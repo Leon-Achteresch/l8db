@@ -8,6 +8,7 @@ import {
   CheckIcon,
 } from "lucide-react";
 
+import { SqlEditor } from "@/components/table/sql-editor";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useViewDefinitionQuery } from "@/lib/queries";
@@ -50,6 +51,22 @@ export function ViewDefinitionPanel({
             <ChevronDownIcon className="size-4 text-muted-foreground" />
           </motion.span>
         </button>
+
+        {open && definition ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleCopy}
+            aria-label="SQL kopieren"
+          >
+            {copied ? (
+              <CheckIcon className="size-3.5" />
+            ) : (
+              <CopyIcon className="size-3.5" />
+            )}
+          </Button>
+        ) : null}
       </div>
 
       <AnimatePresence initial={false}>
@@ -65,32 +82,18 @@ export function ViewDefinitionPanel({
             }}
             className="overflow-hidden"
           >
-            <div className="relative px-3 pb-3">
+            <div className="px-3 pb-3">
               {isLoading ? (
                 <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
                   <Spinner />
                   Lade Definition…
                 </div>
               ) : definition ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleCopy}
-                    className="absolute top-1 right-4"
-                    aria-label="SQL kopieren"
-                  >
-                    {copied ? (
-                      <CheckIcon className="size-3.5" />
-                    ) : (
-                      <CopyIcon className="size-3.5" />
-                    )}
-                  </Button>
-                  <pre className="max-h-48 overflow-auto rounded-md border bg-background p-3 font-mono text-xs leading-relaxed text-foreground">
-                    {definition}
-                  </pre>
-                </>
+                <SqlEditor
+                  value={definition}
+                  readOnly
+                  className="h-48"
+                />
               ) : (
                 <p className="py-2 text-sm text-muted-foreground">
                   Definition nicht verfügbar.

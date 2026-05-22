@@ -7,11 +7,12 @@ import { cn } from "@/lib/utils";
 
 interface SqlEditorProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   onSubmit?: () => void;
   columns?: string[];
   placeholder?: string;
   className?: string;
+  readOnly?: boolean;
 }
 
 function themeFor(resolved: string | undefined): string {
@@ -25,6 +26,7 @@ export function SqlEditor({
   columns = [],
   placeholder,
   className,
+  readOnly = false,
 }: SqlEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -74,11 +76,13 @@ export function SqlEditor({
       tabSize: 2,
       fixedOverflowWidgets: true,
       placeholder,
+      readOnly,
+      domReadOnly: readOnly,
     });
     editorRef.current = editor;
 
     const changeSub = editor.onDidChangeModelContent(() => {
-      onChangeRef.current(editor.getValue());
+      onChangeRef.current?.(editor.getValue());
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {

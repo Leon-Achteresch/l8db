@@ -102,6 +102,7 @@ export function useTableRowsQuery(
   table: string,
   filter?: string,
   sorting: SortingState = [],
+  isView = false,
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -116,6 +117,7 @@ export function useTableRowsQuery(
       filter ?? "",
       sort?.column ?? "",
       sort?.desc ?? false,
+      isView,
     ],
     queryFn: () =>
       fetchTableRows(
@@ -127,6 +129,7 @@ export function useTableRowsQuery(
         undefined,
         database ?? undefined,
         sort,
+        isView,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
