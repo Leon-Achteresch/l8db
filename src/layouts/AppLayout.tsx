@@ -29,8 +29,8 @@ export function AppLayout() {
     >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
-        <header className="flex shrink-0 items-end gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1 self-center" />
+        <header className="flex shrink-0 items-center gap-2 border-b px-3">
+          <SidebarTrigger className="-ml-1" />
           <TableTabs />
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">

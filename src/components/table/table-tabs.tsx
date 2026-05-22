@@ -1,7 +1,17 @@
 import type * as React from "react";
+import { useRef } from "react";
 
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { CopyIcon, BracesIcon, PackageIcon, PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
+import {
+  CopyIcon,
+  BracesIcon,
+  EyeIcon,
+  PackageIcon,
+  PlusIcon,
+  SquareTerminalIcon,
+  TableIcon,
+  XIcon,
+} from "lucide-react";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
@@ -34,6 +44,21 @@ interface SortableTabProps {
   onCopyFull?: () => void;
 }
 
+function tabVisual(tab: Tab) {
+  switch (tab.kind) {
+    case "query":
+      return { Icon: SquareTerminalIcon, iconColor: "text-sky-500" };
+    case "function":
+      return { Icon: BracesIcon, iconColor: "text-violet-500" };
+    case "extension":
+      return { Icon: PackageIcon, iconColor: "text-amber-500" };
+    default:
+      return (tab.entityType ?? "table") === "view"
+        ? { Icon: EyeIcon, iconColor: "text-cyan-500" }
+        : { Icon: TableIcon, iconColor: "text-emerald-500" };
+  }
+}
+
 function SortableTab({
   tab,
   index,
@@ -52,6 +77,8 @@ function SortableTab({
 }: SortableTabProps) {
   const { ref, isDragging } = useSortable({ id: tabKey(tab), index });
 
+  const { Icon, iconColor } = tabVisual(tab);
+
   const label =
     tab.kind === "table"
       ? tab.table
@@ -69,34 +96,35 @@ function SortableTab({
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group flex shrink-0 cursor-grab items-center rounded-t-md text-sm transition-colors active:cursor-grabbing",
+            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-lg border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
             isActive
-              ? "border-border bg-accent text-accent-foreground"
-              : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-            isDragging && "opacity-50",
+              ? "border-border bg-card text-foreground shadow-sm"
+              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/50 hover:text-foreground",
+            isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
+          <span
+            className={cn(
+              "mr-2 size-1.5 shrink-0 rounded-full transition-colors",
+              isActive ? "bg-primary" : "bg-transparent",
+            )}
+          />
           <button
             type="button"
             onClick={onNavigate}
-            className="flex max-w-40 items-center gap-1.5 truncate px-3 py-1 text-left"
+            className="flex max-w-44 items-center gap-2 truncate py-1 text-left"
           >
-            {tab.kind === "query" && (
-              <SquareTerminalIcon className="size-3 shrink-0 opacity-60" />
-            )}
-            {tab.kind === "function" && (
-              <BracesIcon className="size-3 shrink-0 opacity-60" />
-            )}
-            {tab.kind === "extension" && (
-              <PackageIcon className="size-3 shrink-0 opacity-60" />
-            )}
-            <span className="truncate">{label}</span>
+            <Icon className={cn("size-3.5 shrink-0", iconColor)} />
+            <span className="truncate font-medium">{label}</span>
           </button>
           <button
             type="button"
             onClick={onClose}
             aria-label={`${label} schließen`}
-            className="mr-1 rounded-sm p-0.5 opacity-60 hover:bg-background hover:opacity-100"
+            className={cn(
+              "ml-1.5 grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-all hover:bg-foreground/10 hover:text-foreground",
+              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
           >
             <XIcon className="size-3.5" />
           </button>
@@ -154,6 +182,14 @@ export function TableTabs() {
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
+  const navRef = useRef<HTMLElement>(null);
+
+  const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
+    const el = navRef.current;
+    if (!el || event.deltaY === 0 || event.shiftKey) return;
+    if (el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft += event.deltaY;
+  };
 
   const isTabActive = (tab: Tab) => {
     if (tab.kind === "table") {
@@ -261,7 +297,7 @@ export function TableTabs() {
   };
 
   return (
-    <div className="flex min-w-0 flex-1 items-end gap-1">
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
       <DragDropProvider
         sensors={sensors}
         onDragEnd={(event) => {
@@ -274,7 +310,11 @@ export function TableTabs() {
           }
         }}
       >
-        <nav className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
+        <nav
+          ref={navRef}
+          onWheel={handleWheel}
+          className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2"
+        >
           {tabs.map((tab, index) => (
             <SortableTab
               key={tabKey(tab)}
@@ -311,9 +351,9 @@ export function TableTabs() {
         type="button"
         onClick={handleNewQueryTab}
         title="Neue Abfrage öffnen"
-        className="flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border/60 hover:bg-accent hover:text-foreground"
       >
-        <PlusIcon className="size-3.5" />
+        <PlusIcon className="size-4" />
       </button>
     </div>
   );

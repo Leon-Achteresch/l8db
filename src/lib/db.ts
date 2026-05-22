@@ -265,3 +265,12 @@ export async function listExtensions(
 ): Promise<ExtensionInfo[]> {
   return invoke("list_extensions", { kind, connectionString, database });
 }
+
+export async function validateSql(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  database?: string,
+): Promise<void> {
+  await invoke("validate_sql", { kind, connectionString, database, sql });
+}

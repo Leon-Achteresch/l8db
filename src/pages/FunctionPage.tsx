@@ -1,11 +1,23 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRouteApi } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
-import { TriangleAlertIcon } from "lucide-react";
+import {
+  CheckCircleIcon,
+  LoaderIcon,
+  PencilIcon,
+  PlayIcon,
+  TriangleAlertIcon,
+  UndoIcon,
+  XCircleIcon,
+} from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase } from "@/lib/db-selection";
+import { executeQuery, validateSql } from "@/lib/db";
 import { monaco } from "@/lib/monaco";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -16,18 +28,89 @@ function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }
 
+type ValidationState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success" }
+  | { status: "error"; message: string };
+
+type ExecutionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; time: number }
+  | { status: "error"; message: string };
+
 export function FunctionPage() {
   const { schema, name } = routeApi.useParams();
   const { oid } = routeApi.useSearch();
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid);
+
+  const [editing, setEditing] = useState(false);
+  const [editedSql, setEditedSql] = useState("");
+  const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
+  const [execution, setExecution] = useState<ExecutionState>({ status: "idle" });
 
   useEffect(() => {
     if (oid) {
       openFunctionTab({ schema, name, oid });
     }
   }, [schema, name, oid, openFunctionTab]);
+
+  const handleEdit = useCallback(() => {
+    setEditing(true);
+    setEditedSql(data ?? "");
+    setValidation({ status: "idle" });
+    setExecution({ status: "idle" });
+  }, [data]);
+
+  const handleCancel = useCallback(() => {
+    setEditing(false);
+    setEditedSql("");
+    setValidation({ status: "idle" });
+    setExecution({ status: "idle" });
+  }, []);
+
+  const handleValidate = useCallback(async () => {
+    if (!connection) return;
+    setValidation({ status: "loading" });
+    setExecution({ status: "idle" });
+    try {
+      await validateSql(
+        connection.kind,
+        connection.connectionString,
+        editedSql,
+        database ?? undefined,
+      );
+      setValidation({ status: "success" });
+    } catch (e) {
+      setValidation({ status: "error", message: String(e) });
+    }
+  }, [connection, database, editedSql]);
+
+  const handleExecute = useCallback(async () => {
+    if (!connection) return;
+    setExecution({ status: "loading" });
+    try {
+      const result = await executeQuery(
+        connection.kind,
+        connection.connectionString,
+        editedSql,
+        database ?? undefined,
+      );
+      setExecution({ status: "success", time: result.execution_time_ms });
+      setValidation({ status: "idle" });
+      await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
+      await queryClient.invalidateQueries({ queryKey: ["functions"] });
+      setEditing(false);
+      setEditedSql("");
+    } catch (e) {
+      setExecution({ status: "error", message: String(e) });
+    }
+  }, [connection, database, editedSql, queryClient]);
 
   if (!connection) {
     return (
@@ -68,22 +151,116 @@ export function FunctionPage() {
     );
   }
 
+  const feedbackState = execution.status !== "idle" ? execution : validation;
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2">
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground flex-1">
           {schema}.{name}
         </span>
+        {!editing ? (
+          <Button variant="outline" size="xs" onClick={handleEdit}>
+            <PencilIcon data-icon="inline-start" />
+            Bearbeiten
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" size="xs" onClick={handleCancel}>
+              <UndoIcon data-icon="inline-start" />
+              Abbrechen
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleValidate}
+              disabled={validation.status === "loading" || execution.status === "loading"}
+            >
+              {validation.status === "loading" ? (
+                <LoaderIcon data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <CheckCircleIcon data-icon="inline-start" />
+              )}
+              Prüfen
+            </Button>
+            <Button
+              variant="default"
+              size="xs"
+              onClick={handleExecute}
+              disabled={execution.status === "loading"}
+            >
+              {execution.status === "loading" ? (
+                <LoaderIcon data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <PlayIcon data-icon="inline-start" />
+              )}
+              Ausführen
+            </Button>
+          </>
+        )}
       </div>
-      <ReadOnlySqlEditor value={data ?? ""} />
+
+      <SqlEditorPane
+        value={editing ? editedSql : (data ?? "")}
+        readOnly={!editing}
+        onChange={editing ? setEditedSql : undefined}
+      />
+
+      {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
+        <FeedbackPanel state={feedbackState} />
+      )}
     </div>
   );
 }
 
-function ReadOnlySqlEditor({ value }: { value: string }) {
+function FeedbackPanel({
+  state,
+}: {
+  state:
+    | { status: "success"; time?: number }
+    | { status: "error"; message: string };
+}) {
+  return (
+    <div
+      className={
+        state.status === "success"
+          ? "flex items-start gap-2 border-t bg-emerald-500/5 px-4 py-2.5"
+          : "flex items-start gap-2 border-t bg-destructive/5 px-4 py-2.5"
+      }
+    >
+      {state.status === "success" ? (
+        <>
+          <CheckCircleIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            Erfolgreich
+            {state.time != null ? ` (${state.time} ms)` : ""}
+          </span>
+        </>
+      ) : (
+        <>
+          <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <pre className="flex-1 whitespace-pre-wrap break-all text-xs font-mono text-destructive select-text">
+            {state.message}
+          </pre>
+        </>
+      )}
+    </div>
+  );
+}
+
+interface SqlEditorPaneProps {
+  value: string;
+  readOnly: boolean;
+  onChange?: (value: string) => void;
+}
+
+function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const onChangeRef = useRef(onChange);
   const { resolvedTheme } = useTheme();
+
+  onChangeRef.current = onChange;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -93,7 +270,8 @@ function ReadOnlySqlEditor({ value }: { value: string }) {
       value,
       language: "sql",
       theme: themeFor(resolvedTheme),
-      readOnly: true,
+      readOnly,
+      domReadOnly: readOnly,
       automaticLayout: true,
       minimap: { enabled: false },
       lineNumbers: "on",
@@ -119,16 +297,27 @@ function ReadOnlySqlEditor({ value }: { value: string }) {
         verticalScrollbarSize: 8,
         horizontalScrollbarSize: 8,
       },
-      domReadOnly: true,
+      tabSize: 2,
     });
 
     editorRef.current = editor;
 
+    const changeSub = editor.onDidChangeModelContent(() => {
+      onChangeRef.current?.(editor.getValue());
+    });
+
     return () => {
+      changeSub.dispose();
       editor.dispose();
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.updateOptions({ readOnly, domReadOnly: readOnly });
+  }, [readOnly]);
 
   useEffect(() => {
     const editor = editorRef.current;

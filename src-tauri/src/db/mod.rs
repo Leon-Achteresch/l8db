@@ -114,6 +114,7 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String>;
     async fn get_function_definition(&self, oid: &str) -> Result<String, String>;
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String>;
+    async fn validate_sql(&self, sql: &str) -> Result<(), String>;
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {
