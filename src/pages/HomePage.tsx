@@ -11,7 +11,7 @@ export function HomePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-4rem)] flex-col justify-center pt-[10vh] text-center">
+    <main className="mx-auto flex flex-1 flex-col justify-center text-center">
       <h1 className="text-center text-3xl font-semibold">
         Welcome to Tauri + React
       </h1>
