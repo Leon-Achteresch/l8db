@@ -1,10 +1,11 @@
-import type * as React from "react";
+import { useState } from "react";
 
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
   DatabaseIcon,
+  EyeIcon,
   LayersIcon,
   SettingsIcon,
   TableIcon,
@@ -37,6 +38,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
   useActiveDatabase,
@@ -47,6 +49,7 @@ import {
   useDatabasesQuery,
   useSchemasQuery,
   useTablesQuery,
+  useViewsQuery,
 } from "@/lib/queries";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 
@@ -69,6 +72,14 @@ export function AppSidebarPanel() {
     isError: tablesError,
     error: tablesErrorValue,
   } = useTablesQuery();
+  const {
+    data: views,
+    isLoading: viewsLoading,
+    isError: viewsError,
+    error: viewsErrorValue,
+  } = useViewsQuery();
+
+  const [sidebarTab, setSidebarTab] = useState<"tables" | "views">("tables");
 
   const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -194,50 +205,54 @@ export function AppSidebarPanel() {
         ) : null}
       </SidebarHeader>
       <SidebarContent>
+        {activeConnection ? (
+          <div className="px-2 pt-2">
+            <Tabs
+              value={sidebarTab}
+              onValueChange={(v) => setSidebarTab(v as "tables" | "views")}
+            >
+              <TabsList className="w-full">
+                <TabsTrigger value="tables" className="flex-1">
+                  <TableIcon className="size-3.5" />
+                  Tabellen
+                </TabsTrigger>
+                <TabsTrigger value="views" className="flex-1">
+                  <EyeIcon className="size-3.5" />
+                  Views
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        ) : null}
         <SidebarGroup>
-          <SidebarGroupLabel>Tabellen</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {sidebarTab === "tables" ? "Tabellen" : "Views"}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             {!activeConnection ? (
               <p className="px-2 py-1 text-sm text-muted-foreground">
                 Keine Verbindung aktiv.
               </p>
-            ) : tablesLoading ? (
-              <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
-                <Spinner />
-                Lade Tabellen…
-              </div>
-            ) : tablesError ? (
-              <p className="px-2 py-1 text-sm text-destructive">
-                {String(tablesErrorValue)}
-              </p>
-            ) : !tables || tables.length === 0 ? (
-              <p className="px-2 py-1 text-sm text-muted-foreground">
-                Keine Tabellen gefunden.
-              </p>
+            ) : sidebarTab === "tables" ? (
+              <SidebarEntityList
+                items={tables}
+                isLoading={tablesLoading}
+                isError={tablesError}
+                error={tablesErrorValue}
+                emptyMessage="Keine Tabellen gefunden."
+                type="table"
+                matchRoute={matchRoute}
+              />
             ) : (
-              <SidebarMenu>
-                {tables.map((table) => {
-                  const isActive = Boolean(
-                    matchRoute({
-                      to: "/tables/$schema/$table",
-                      params: { schema: table.schema, table: table.name },
-                    }),
-                  );
-                  return (
-                    <SidebarMenuItem key={`${table.schema}.${table.name}`}>
-                      <SidebarMenuButton asChild isActive={isActive}>
-                        <Link
-                          to="/tables/$schema/$table"
-                          params={{ schema: table.schema, table: table.name }}
-                        >
-                          <TableIcon className="text-muted-foreground" />
-                          <span className="truncate">{table.name}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
+              <SidebarEntityList
+                items={views}
+                isLoading={viewsLoading}
+                isError={viewsError}
+                error={viewsErrorValue}
+                emptyMessage="Keine Views gefunden."
+                type="view"
+                matchRoute={matchRoute}
+              />
             )}
           </SidebarGroupContent>
         </SidebarGroup>
@@ -249,5 +264,77 @@ export function AppSidebarPanel() {
         className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-sidebar-border"
       />
     </Sidebar>
+  );
+}
+
+interface SidebarEntityListProps {
+  items: { schema: string; name: string }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  emptyMessage: string;
+  type: "table" | "view";
+  matchRoute: ReturnType<typeof useMatchRoute>;
+}
+
+function SidebarEntityList({
+  items,
+  isLoading,
+  isError,
+  error,
+  emptyMessage,
+  type,
+  matchRoute,
+}: SidebarEntityListProps) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+        <Spinner />
+        {type === "table" ? "Lade Tabellen…" : "Lade Views…"}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <p className="px-2 py-1 text-sm text-muted-foreground">{emptyMessage}</p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {items.map((item) => {
+        const isActive = Boolean(
+          matchRoute({
+            to: "/tables/$schema/$table",
+            params: { schema: item.schema, table: item.name },
+          }),
+        );
+        return (
+          <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+            <SidebarMenuButton asChild isActive={isActive}>
+              <Link
+                to="/tables/$schema/$table"
+                params={{ schema: item.schema, table: item.name }}
+                search={{ type }}
+              >
+                {type === "table" ? (
+                  <TableIcon className="text-muted-foreground" />
+                ) : (
+                  <EyeIcon className="text-muted-foreground" />
+                )}
+                <span className="truncate">{item.name}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
   );
 }

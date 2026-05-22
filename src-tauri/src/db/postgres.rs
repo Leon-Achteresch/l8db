@@ -203,6 +203,7 @@ impl DatabaseAdapter for PostgresAdapter {
         limit: i64,
         order_by: Option<&str>,
         order_desc: bool,
+        is_view: bool,
     ) -> Result<TableData, String> {
         let (client, handle) = self.connect().await?;
 
@@ -236,13 +237,23 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 _ => String::new(),
             };
-            let sql = format!(
-                "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1",
-                quote_ident(schema),
-                quote_ident(table),
-                where_clause,
-                order_clause,
-            );
+            let sql = if is_view {
+                format!(
+                    "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1",
+                    quote_ident(schema),
+                    quote_ident(table),
+                    where_clause,
+                    order_clause,
+                )
+            } else {
+                format!(
+                    "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1",
+                    quote_ident(schema),
+                    quote_ident(table),
+                    where_clause,
+                    order_clause,
+                )
+            };
             let data_rows = client
                 .query(&sql, &[&limit])
                 .await
@@ -405,6 +416,65 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         .await;
 
+        handle.abort();
+        result
+    }
+
+    async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
+        let (client, handle) = self.connect().await?;
+        let query = match schema {
+            Some(schema) => {
+                client
+                    .query(
+                        "SELECT table_schema, table_name \
+                         FROM information_schema.views \
+                         WHERE table_schema = $1 \
+                         ORDER BY table_name",
+                        &[&schema],
+                    )
+                    .await
+            }
+            None => {
+                client
+                    .query(
+                        "SELECT table_schema, table_name \
+                         FROM information_schema.views \
+                         WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
+                         ORDER BY table_schema, table_name",
+                        &[],
+                    )
+                    .await
+            }
+        };
+        let result = query.map_err(|error| error.to_string()).map(|rows| {
+            rows.into_iter()
+                .map(|row| TableInfo {
+                    schema: row.get(0),
+                    name: row.get(1),
+                })
+                .collect()
+        });
+        handle.abort();
+        result
+    }
+
+    async fn get_view_definition(
+        &self,
+        schema: &str,
+        view: &str,
+    ) -> Result<String, String> {
+        let (client, handle) = self.connect().await?;
+        let result = client
+            .query_one(
+                "SELECT pg_get_viewdef(c.oid, true) \
+                 FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('v', 'm')",
+                &[&schema, &view],
+            )
+            .await
+            .map_err(|e| e.to_string())
+            .map(|row| row.get::<_, String>(0));
         handle.abort();
         result
     }
