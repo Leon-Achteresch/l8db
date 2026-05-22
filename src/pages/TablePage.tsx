@@ -8,7 +8,7 @@ import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { useTableRowsQuery } from "@/lib/queries";
+import { useTableRowsQuery, useUpdateRowMutation } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
@@ -25,6 +25,7 @@ export function TablePage() {
     filter,
     sorting,
   );
+  const updateRowMutation = useUpdateRowMutation(schema, table);
 
   useEffect(() => {
     openTab({ schema, table });
@@ -99,6 +100,7 @@ export function TablePage() {
             sorting={sorting}
             onSortingChange={setSorting}
             isFetching={isFetching}
+            onSaveRow={(ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
           />
         </div>
       )}

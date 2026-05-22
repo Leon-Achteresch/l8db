@@ -157,7 +157,7 @@ export function ConnectionsPage() {
   }
 
   return (
-    <div className="min-h-svh w-full overflow-x-hidden overflow-y-auto bg-background/10">
+    <div className="h-full w-full overflow-x-hidden overflow-y-auto bg-background/10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-8 md:px-10">
         <header className="shrink-0 border-b border-border/20 pb-6">
           <div className="flex flex-col gap-1">

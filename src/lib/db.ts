@@ -83,3 +83,23 @@ export async function fetchTableRows(
     orderDesc: sort?.desc,
   });
 }
+
+export async function updateRow(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  ctid: string,
+  updates: Record<string, string | null>,
+  database?: string,
+): Promise<void> {
+  await invoke("update_row", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    ctid,
+    updates,
+  });
+}
