@@ -41,8 +41,8 @@ export function TablePage() {
   };
 
   useEffect(() => {
-    openTab({ schema, table });
-  }, [schema, table, openTab]);
+    openTab({ schema, table, entityType: isView ? "view" : "table" });
+  }, [schema, table, isView, openTab]);
 
   useEffect(() => {
     setFilter("");
