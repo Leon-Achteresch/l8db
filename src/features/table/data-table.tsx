@@ -22,6 +22,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  CopyPlusIcon,
   DatabaseIcon,
   ExternalLinkIcon,
   FilterIcon,
@@ -33,6 +34,7 @@ import {
   Maximize2Icon,
   PlayIcon,
   RotateCcwIcon,
+  Trash2Icon,
   TypeIcon,
   XIcon,
 } from "lucide-react";
@@ -397,6 +399,8 @@ type DataTableProps = {
   currentSchema?: string;
   currentTable?: string;
   onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
+  onDuplicateRow?: (ctid: string) => void;
+  onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
 };
 
 export function DataTable({
@@ -417,6 +421,8 @@ export function DataTable({
   currentSchema,
   currentTable,
   onNavigateToTable,
+  onDuplicateRow,
+  onDeleteRow,
 }: DataTableProps) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
@@ -914,8 +920,10 @@ export function DataTable({
                 const rowIndex = row.index;
                 const rowCtid = row.original["__ctid__"] as string | undefined;
                 const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
+                const hasRowActions =
+                  !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
 
-                return (
+                const rowEl = (
                   <tr
                     key={rowCtid ?? row.id}
                     data-row-index={rowIndex}
@@ -1034,6 +1042,39 @@ export function DataTable({
                       );
                     })}
                   </tr>
+                );
+
+                if (!hasRowActions) {
+                  return rowEl;
+                }
+
+                return (
+                  <ContextMenu key={rowCtid ?? row.id}>
+                    <ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuLabel className="font-mono text-[11px]">
+                        Zeile {rowIndex + 1 + page * pageSize}
+                      </ContextMenuLabel>
+                      <ContextMenuSeparator />
+                      {onDuplicateRow && (
+                        <ContextMenuItem
+                          onClick={() => onDuplicateRow(rowCtid!)}
+                        >
+                          <CopyPlusIcon />
+                          Zeile duplizieren
+                        </ContextMenuItem>
+                      )}
+                      {onDeleteRow && (
+                        <ContextMenuItem
+                          variant="destructive"
+                          onClick={() => onDeleteRow(rowCtid!, row.original)}
+                        >
+                          <Trash2Icon />
+                          Zeile löschen
+                        </ContextMenuItem>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
                 );
               })
             )}

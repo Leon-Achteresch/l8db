@@ -5,13 +5,14 @@ import { listTransactions } from "@/lib/db";
 
 export interface TransactionChange {
   id: string;
-  type: "update" | "query";
+  type: "update" | "query" | "insert" | "delete";
   timestamp: number;
   schema?: string;
   table?: string;
   ctid?: string;
   oldValues?: Record<string, unknown>;
   newValues?: Record<string, string | null>;
+  rowValues?: Record<string, unknown>;
   sql?: string;
   rowsAffected?: number | null;
 }

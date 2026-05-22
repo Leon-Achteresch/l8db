@@ -3,6 +3,7 @@ import { ThemeProvider } from "next-themes";
 import "../index.css";
 
 import { AppHeader } from "@/features/shell/app-header";
+import { Toaster } from "@/components/ui/sonner";
 
 function RootComponent() {
   return (
@@ -13,6 +14,7 @@ function RootComponent() {
           <Outlet />
         </div>
       </div>
+      <Toaster />
     </ThemeProvider>
   );
 }
