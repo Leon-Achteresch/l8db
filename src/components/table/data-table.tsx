@@ -513,22 +513,91 @@ export function DataTable({
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, index) => (
                   <ContextMenu key={header.id}>
-                    <ContextMenuTrigger asChild>
-                      <th
-                        className={cn(
-                          "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
-                          index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
-                          index > 0 && "min-w-[10rem]",
-                        )}
-                      >
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
+                    <Popover
+                      open={filterColumn === header.id}
+                      onOpenChange={(open) => { if (!open) setFilterColumn(null); }}
+                    >
+                      <PopoverAnchor asChild>
+                        <ContextMenuTrigger asChild>
+                          <th
+                            className={cn(
+                              "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
+                              index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
+                              index > 0 && "min-w-[10rem]",
                             )}
-                      </th>
-                    </ContextMenuTrigger>
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                          </th>
+                        </ContextMenuTrigger>
+                      </PopoverAnchor>
+                      {index > 0 && onApplyFilter && (
+                        <PopoverContent align="start" sideOffset={4} className="w-80 p-0 gap-0">
+                          <div className="flex items-center gap-2 border-b px-3 py-2">
+                            <FilterIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="font-mono text-[12px] font-semibold text-foreground/80 truncate">{header.id}</span>
+                          </div>
+                          <div className="space-y-2 px-3 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="shrink-0 text-xs text-muted-foreground w-6">Wo</span>
+                              <NativeSelect
+                                size="sm"
+                                value={filterOperator}
+                                onChange={(e) => setFilterOperator(e.target.value)}
+                                className="min-w-44 flex-1"
+                              >
+                                {OPERATORS.map((op) => (
+                                  <NativeSelectOption key={op.key} value={op.key}>
+                                    {op.label}
+                                  </NativeSelectOption>
+                                ))}
+                              </NativeSelect>
+                              {operatorNeedsValue(filterOperator) ? (
+                                <Input
+                                  value={filterValue}
+                                  onChange={(e) => setFilterValue(e.target.value)}
+                                  placeholder="Wert"
+                                  autoFocus
+                                  className="h-8 w-full min-w-0"
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") applyColumnFilter();
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full" />
+                              )}
+                            </div>
+                            <p className="font-mono text-xs text-muted-foreground">
+                              {compiledFilter !== "" ? `WHERE ${compiledFilter}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setFilterColumn(null)}
+                            >
+                              <RotateCcwIcon />
+                              Abbrechen
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={applyColumnFilter}
+                              disabled={operatorNeedsValue(filterOperator) && filterValue.trim() === ""}
+                            >
+                              <PlayIcon />
+                              Filter anwenden
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      )}
+                    </Popover>
                     <ContextMenuContent>
                       {index > 0 && (
                         <>
@@ -806,57 +875,6 @@ export function DataTable({
                 )}
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {filterColumn && (
-        <Dialog open={true} onOpenChange={(open) => { if (!open) setFilterColumn(null); }}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-sm">
-                <FilterIcon className="size-4 text-primary" />
-                <span className="font-mono text-primary font-bold">{filterColumn}</span>
-                filtern
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <NativeSelect
-                value={filterOperator}
-                onChange={(e) => setFilterOperator(e.target.value)}
-                className="w-full"
-              >
-                {OPERATORS.map((op) => (
-                  <NativeSelectOption key={op.key} value={op.key}>
-                    {op.label}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              {operatorNeedsValue(filterOperator) && (
-                <Input
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                  placeholder="Wert…"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") applyColumnFilter();
-                    if (e.key === "Escape") setFilterColumn(null);
-                  }}
-                />
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setFilterColumn(null)}>
-                Abbrechen
-              </Button>
-              <Button
-                size="sm"
-                onClick={applyColumnFilter}
-                disabled={operatorNeedsValue(filterOperator) && filterValue.trim() === ""}
-              >
-                Anwenden
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

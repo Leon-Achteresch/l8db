@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
 use async_trait::async_trait;
-use tokio_postgres::{Client, Config, NoTls};
+use tokio_postgres::{Client, Config, NoTls, SimpleQueryMessage};
 
-use super::{ConnectionConfig, DatabaseAdapter, TableData, TableInfo};
+use super::{ColumnInfo, ConnectionConfig, DatabaseAdapter, QueryResult, TableData, TableInfo};
 
 pub struct PostgresAdapter {
     config: Config,
