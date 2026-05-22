@@ -23,6 +23,7 @@ import {
   listRoles,
   listSchemas,
   listSequences,
+  listTableColumnsDetailed,
   listTables,
   listTriggers,
   listViews,
@@ -300,6 +301,24 @@ export function useTriggersQuery(schema: string, table: string) {
     queryKey: ["triggers", connection?.id, database, schema, table],
     queryFn: () =>
       listTriggers(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDetailedColumnsQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["columns-detailed", connection?.id, database, schema, table],
+    queryFn: () =>
+      listTableColumnsDetailed(
         connection!.kind,
         connection!.connectionString,
         schema,
