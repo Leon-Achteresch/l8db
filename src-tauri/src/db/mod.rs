@@ -44,6 +44,17 @@ pub struct ColumnInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ForeignKeyInfo {
+    pub constraint_name: String,
+    pub from_schema: String,
+    pub from_table: String,
+    pub from_column: String,
+    pub to_schema: String,
+    pub to_table: String,
+    pub to_column: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<serde_json::Value>,
@@ -67,6 +78,91 @@ pub struct ExtensionInfo {
     pub version: Option<String>,
     pub schema: Option<String>,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RoleInfo {
+    pub name: String,
+    pub oid: String,
+    pub superuser: bool,
+    pub can_login: bool,
+    pub create_db: bool,
+    pub create_role: bool,
+    pub replication: bool,
+    pub bypass_rls: bool,
+    pub conn_limit: i32,
+    pub valid_until: Option<String>,
+    pub member_of: Vec<String>,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateRoleOptions {
+    pub name: String,
+    pub password: Option<String>,
+    pub superuser: bool,
+    pub can_login: bool,
+    pub create_db: bool,
+    pub create_role: bool,
+    pub replication: bool,
+    pub bypass_rls: bool,
+    pub conn_limit: Option<i32>,
+    pub valid_until: Option<String>,
+    pub member_of: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlterRoleOptions {
+    pub name: String,
+    pub password: Option<String>,
+    pub superuser: Option<bool>,
+    pub can_login: Option<bool>,
+    pub create_db: Option<bool>,
+    pub create_role: Option<bool>,
+    pub replication: Option<bool>,
+    pub bypass_rls: Option<bool>,
+    pub conn_limit: Option<i32>,
+    pub valid_until: Option<String>,
+    pub clear_valid_until: bool,
+    pub grant_roles: Vec<String>,
+    pub revoke_roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TablePrivileges {
+    pub schema: String,
+    pub table: String,
+    pub object_type: String,
+    pub select: bool,
+    pub insert: bool,
+    pub update: bool,
+    pub delete: bool,
+    pub truncate: bool,
+    pub references: bool,
+    pub trigger: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchemaPrivileges {
+    pub schema: String,
+    pub usage: bool,
+    pub create: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RolePrivileges {
+    pub schemas: Vec<SchemaPrivileges>,
+    pub tables: Vec<TablePrivileges>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrivilegeChange {
+    pub grant: bool,
+    pub privilege: String,
+    pub object_type: String,
+    pub schema: Option<String>,
+    pub table: Option<String>,
+    pub role_name: String,
 }
 
 #[async_trait]
@@ -114,7 +210,18 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String>;
     async fn get_function_definition(&self, oid: &str) -> Result<String, String>;
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String>;
+    async fn list_roles(&self) -> Result<Vec<RoleInfo>, String>;
+    async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String>;
+    async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String>;
+    async fn drop_role(&self, name: &str) -> Result<(), String>;
+    async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String>;
+    async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String>;
     async fn validate_sql(&self, sql: &str) -> Result<(), String>;
+    async fn list_foreign_keys(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ForeignKeyInfo>, String>;
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {

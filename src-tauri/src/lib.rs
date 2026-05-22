@@ -28,7 +28,14 @@ pub fn run() {
             db::commands::list_functions,
             db::commands::get_function_definition,
             db::commands::list_extensions,
-            db::commands::validate_sql
+            db::commands::validate_sql,
+            db::commands::list_roles,
+            db::commands::create_role,
+            db::commands::alter_role,
+            db::commands::drop_role,
+            db::commands::list_role_privileges,
+            db::commands::modify_privilege,
+            db::commands::list_foreign_keys
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, ColumnInfo, ConnectionConfig, DatabaseAdapter, ExtensionInfo, FunctionInfo, QueryResult, TableData, TableInfo};
+use super::{map_pg_err, quote_ident, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -599,6 +599,367 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn list_roles(&self) -> Result<Vec<RoleInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let role_rows = conn
+                .query(
+                    "SELECT r.rolname, r.oid::text, r.rolsuper, r.rolcanlogin, \
+                            r.rolcreatedb, r.rolcreaterole, r.rolreplication, \
+                            r.rolbypassrls, r.rolconnlimit, \
+                            r.rolvaliduntil::text \
+                     FROM pg_roles r \
+                     ORDER BY r.rolname",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let membership_rows = conn
+                .query(
+                    "SELECT m.oid::text, g.rolname \
+                     FROM pg_auth_members am \
+                     JOIN pg_roles m ON m.oid = am.member \
+                     JOIN pg_roles g ON g.oid = am.roleid",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let mut member_of_map: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+            let mut members_map: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+
+            for row in &membership_rows {
+                let member_oid: String = row.get(0);
+                let group_name: String = row.get(1);
+                member_of_map
+                    .entry(member_oid)
+                    .or_default()
+                    .push(group_name.clone());
+
+                let member_name: String = role_rows
+                    .iter()
+                    .find(|r| r.get::<_, String>(1) == row.get::<_, String>(0))
+                    .map(|r| r.get::<_, String>(0))
+                    .unwrap_or_default();
+                if !member_name.is_empty() {
+                    members_map
+                        .entry(group_name)
+                        .or_default()
+                        .push(member_name);
+                }
+            }
+
+            let roles = role_rows
+                .into_iter()
+                .map(|row| {
+                    let oid: String = row.get(1);
+                    let name: String = row.get(0);
+                    RoleInfo {
+                        name: name.clone(),
+                        oid: oid.clone(),
+                        superuser: row.get(2),
+                        can_login: row.get(3),
+                        create_db: row.get(4),
+                        create_role: row.get(5),
+                        replication: row.get(6),
+                        bypass_rls: row.get(7),
+                        conn_limit: row.get(8),
+                        valid_until: row.get(9),
+                        member_of: member_of_map.remove(&oid).unwrap_or_default(),
+                        members: members_map.remove(&name).unwrap_or_default(),
+                    }
+                })
+                .collect();
+
+            Ok(roles)
+        })
+        .await
+    }
+
+    async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
+            let mut with_opts = Vec::new();
+
+            if options.can_login {
+                with_opts.push("LOGIN".to_string());
+            } else {
+                with_opts.push("NOLOGIN".to_string());
+            }
+            if options.superuser {
+                with_opts.push("SUPERUSER".to_string());
+            }
+            if options.create_db {
+                with_opts.push("CREATEDB".to_string());
+            }
+            if options.create_role {
+                with_opts.push("CREATEROLE".to_string());
+            }
+            if options.replication {
+                with_opts.push("REPLICATION".to_string());
+            }
+            if options.bypass_rls {
+                with_opts.push("BYPASSRLS".to_string());
+            }
+            if let Some(limit) = options.conn_limit {
+                with_opts.push(format!("CONNECTION LIMIT {limit}"));
+            }
+            if let Some(ref password) = options.password {
+                if !password.is_empty() {
+                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
+                }
+            }
+            if let Some(ref valid) = options.valid_until {
+                if !valid.is_empty() {
+                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
+                }
+            }
+
+            if !with_opts.is_empty() {
+                parts.push(format!("WITH {}", with_opts.join(" ")));
+            }
+
+            let sql = parts.join(" ");
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+
+            for role in &options.member_of {
+                let grant_sql = format!(
+                    "GRANT {} TO {}",
+                    quote_ident(role),
+                    quote_ident(&options.name)
+                );
+                conn.execute(grant_sql.as_str(), &[])
+                    .await
+                    .map_err(map_pg_err)?;
+            }
+
+            Ok(())
+        })
+        .await
+    }
+
+    async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let mut with_opts = Vec::new();
+
+            if let Some(v) = options.superuser {
+                with_opts.push(if v { "SUPERUSER" } else { "NOSUPERUSER" }.to_string());
+            }
+            if let Some(v) = options.can_login {
+                with_opts.push(if v { "LOGIN" } else { "NOLOGIN" }.to_string());
+            }
+            if let Some(v) = options.create_db {
+                with_opts.push(if v { "CREATEDB" } else { "NOCREATEDB" }.to_string());
+            }
+            if let Some(v) = options.create_role {
+                with_opts.push(if v { "CREATEROLE" } else { "NOCREATEROLE" }.to_string());
+            }
+            if let Some(v) = options.replication {
+                with_opts.push(if v { "REPLICATION" } else { "NOREPLICATION" }.to_string());
+            }
+            if let Some(v) = options.bypass_rls {
+                with_opts.push(if v { "BYPASSRLS" } else { "NOBYPASSRLS" }.to_string());
+            }
+            if let Some(limit) = options.conn_limit {
+                with_opts.push(format!("CONNECTION LIMIT {limit}"));
+            }
+            if let Some(ref password) = options.password {
+                if !password.is_empty() {
+                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
+                }
+            }
+            if options.clear_valid_until {
+                with_opts.push("VALID UNTIL 'infinity'".to_string());
+            } else if let Some(ref valid) = options.valid_until {
+                if !valid.is_empty() {
+                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
+                }
+            }
+
+            if !with_opts.is_empty() {
+                let sql = format!(
+                    "ALTER ROLE {} WITH {}",
+                    quote_ident(&options.name),
+                    with_opts.join(" ")
+                );
+                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            }
+
+            for role in &options.grant_roles {
+                let sql = format!(
+                    "GRANT {} TO {}",
+                    quote_ident(role),
+                    quote_ident(&options.name)
+                );
+                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            }
+
+            for role in &options.revoke_roles {
+                let sql = format!(
+                    "REVOKE {} FROM {}",
+                    quote_ident(role),
+                    quote_ident(&options.name)
+                );
+                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            }
+
+            Ok(())
+        })
+        .await
+    }
+
+    async fn drop_role(&self, name: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = format!("DROP ROLE {}", quote_ident(name));
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let schema_rows = conn
+                .query(
+                    "SELECT n.nspname, \
+                            has_schema_privilege($1, n.nspname, 'USAGE') AS usage_priv, \
+                            has_schema_privilege($1, n.nspname, 'CREATE') AS create_priv \
+                     FROM pg_namespace n \
+                     WHERE n.nspname NOT LIKE 'pg_%' \
+                       AND n.nspname <> 'information_schema' \
+                     ORDER BY n.nspname",
+                    &[&role_name],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let schemas: Vec<SchemaPrivileges> = schema_rows
+                .iter()
+                .map(|row| SchemaPrivileges {
+                    schema: row.get(0),
+                    usage: row.get(1),
+                    create: row.get(2),
+                })
+                .collect();
+
+            let table_rows = conn
+                .query(
+                    "SELECT c.relnamespace::regnamespace::text AS schema_name, \
+                            c.relname, \
+                            CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' \
+                                           WHEN 'm' THEN 'materialized_view' WHEN 'S' THEN 'sequence' \
+                                           ELSE 'other' END AS object_type, \
+                            has_table_privilege($1, c.oid, 'SELECT') AS sel, \
+                            has_table_privilege($1, c.oid, 'INSERT') AS ins, \
+                            has_table_privilege($1, c.oid, 'UPDATE') AS upd, \
+                            has_table_privilege($1, c.oid, 'DELETE') AS del, \
+                            has_table_privilege($1, c.oid, 'TRUNCATE') AS trunc, \
+                            has_table_privilege($1, c.oid, 'REFERENCES') AS refs, \
+                            has_table_privilege($1, c.oid, 'TRIGGER') AS trig \
+                     FROM pg_class c \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE c.relkind IN ('r', 'v', 'm', 'S') \
+                       AND n.nspname NOT LIKE 'pg_%' \
+                       AND n.nspname <> 'information_schema' \
+                     ORDER BY n.nspname, c.relname",
+                    &[&role_name],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let tables: Vec<TablePrivileges> = table_rows
+                .iter()
+                .map(|row| TablePrivileges {
+                    schema: row.get(0),
+                    table: row.get(1),
+                    object_type: row.get(2),
+                    select: row.get(3),
+                    insert: row.get(4),
+                    update: row.get(5),
+                    delete: row.get(6),
+                    truncate: row.get(7),
+                    references: row.get(8),
+                    trigger: row.get(9),
+                })
+                .collect();
+
+            Ok(RolePrivileges { schemas, tables })
+        })
+        .await
+    }
+
+    async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String> {
+        let valid_privileges = [
+            "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE",
+            "REFERENCES", "TRIGGER", "USAGE", "CREATE", "ALL PRIVILEGES",
+        ];
+        let priv_upper = change.privilege.to_uppercase();
+        if !valid_privileges.contains(&priv_upper.as_str()) {
+            return Err(format!("Ungültiges Privileg: {}", change.privilege));
+        }
+
+        let valid_object_types = ["schema", "table", "view", "materialized_view", "sequence"];
+        if !valid_object_types.contains(&change.object_type.as_str()) {
+            return Err(format!("Ungültiger Objekttyp: {}", change.object_type));
+        }
+
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = match change.object_type.as_str() {
+                "schema" => {
+                    let schema = change.schema.as_deref()
+                        .ok_or_else(|| "Schema fehlt".to_string())?;
+                    if change.grant {
+                        format!(
+                            "GRANT {} ON SCHEMA {} TO {}",
+                            priv_upper,
+                            quote_ident(schema),
+                            quote_ident(&change.role_name)
+                        )
+                    } else {
+                        format!(
+                            "REVOKE {} ON SCHEMA {} FROM {}",
+                            priv_upper,
+                            quote_ident(schema),
+                            quote_ident(&change.role_name)
+                        )
+                    }
+                }
+                _ => {
+                    let schema = change.schema.as_deref()
+                        .ok_or_else(|| "Schema fehlt".to_string())?;
+                    let table = change.table.as_deref()
+                        .ok_or_else(|| "Tabelle fehlt".to_string())?;
+                    if change.grant {
+                        format!(
+                            "GRANT {} ON {} TO {}",
+                            priv_upper,
+                            format!("{}.{}", quote_ident(schema), quote_ident(table)),
+                            quote_ident(&change.role_name)
+                        )
+                    } else {
+                        format!(
+                            "REVOKE {} ON {} FROM {}",
+                            priv_upper,
+                            format!("{}.{}", quote_ident(schema), quote_ident(table)),
+                            quote_ident(&change.role_name)
+                        )
+                    }
+                }
+            };
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
     async fn validate_sql(&self, sql: &str) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
@@ -606,6 +967,60 @@ impl DatabaseAdapter for PostgresAdapter {
             let result = conn.simple_query(sql).await.map_err(map_pg_err);
             let _ = conn.simple_query("ROLLBACK").await;
             result.map(|_| ())
+        })
+        .await
+    }
+
+    async fn list_foreign_keys(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ForeignKeyInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query(
+                "SELECT \
+                     con.conname, \
+                     ns_from.nspname, \
+                     cl_from.relname, \
+                     att_from.attname, \
+                     ns_to.nspname, \
+                     cl_to.relname, \
+                     att_to.attname \
+                 FROM pg_constraint con \
+                 JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
+                 JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
+                 JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
+                 JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
+                 CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
+                     WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
+                 JOIN pg_attribute att_from \
+                     ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
+                 JOIN pg_attribute att_to \
+                     ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
+                 WHERE con.contype = 'f' \
+                   AND ( \
+                       (ns_from.nspname = $1 AND cl_from.relname = $2) \
+                       OR (ns_to.nspname = $1 AND cl_to.relname = $2) \
+                   ) \
+                 ORDER BY con.conname, u.ord",
+                &[&schema, &table],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ForeignKeyInfo {
+                        constraint_name: row.get(0),
+                        from_schema: row.get(1),
+                        from_table: row.get(2),
+                        from_column: row.get(3),
+                        to_schema: row.get(4),
+                        to_table: row.get(5),
+                        to_column: row.get(6),
+                    })
+                    .collect()
+            })
         })
         .await
     }
