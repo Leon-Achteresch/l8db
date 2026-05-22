@@ -11,37 +11,58 @@ export function HomePage() {
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] flex-col justify-center pt-[10vh] text-center">
+      <h1 className="text-center text-3xl font-semibold">
+        Welcome to Tauri + React
+      </h1>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
+      <div className="mt-8 flex justify-center">
+        <a href="https://vite.dev" target="_blank" rel="noreferrer">
+          <img
+            src="/vite.svg"
+            className="h-24 p-6 transition will-change-[filter] hover:drop-shadow-[0_0_2em_#747bff]"
+            alt="Vite logo"
+          />
         </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
+        <a href="https://tauri.app" target="_blank" rel="noreferrer">
+          <img
+            src="/tauri.svg"
+            className="h-24 p-6 transition will-change-[filter] hover:drop-shadow-[0_0_2em_#24c8db]"
+            alt="Tauri logo"
+          />
         </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
+        <a href="https://react.dev" target="_blank" rel="noreferrer">
+          <img
+            src={reactLogo}
+            className="h-24 p-6 transition will-change-[filter] hover:drop-shadow-[0_0_2em_#61dafb]"
+            alt="React logo"
+          />
         </a>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <p className="mt-4">
+        Click on the Tauri, Vite, and React logos to learn more.
+      </p>
 
       <form
-        className="row"
+        className="mt-6 flex justify-center"
         onSubmit={(e) => {
           e.preventDefault();
           greet();
         }}
       >
         <input
-          id="greet-input"
+          className="mr-1.5 rounded-lg border border-transparent bg-white px-5 py-2.5 text-base font-medium text-neutral-900 shadow-sm transition-colors outline-none hover:border-blue-600 focus:border-blue-600 dark:bg-neutral-950/60 dark:text-white dark:hover:border-blue-600"
           onChange={(e) => setName(e.currentTarget.value)}
           placeholder="Enter a name..."
         />
-        <button type="submit">Greet</button>
+        <button
+          type="submit"
+          className="cursor-pointer rounded-lg border border-transparent bg-white px-5 py-2.5 text-base font-medium text-neutral-900 shadow-sm transition-colors outline-none hover:border-blue-600 active:border-blue-600 active:bg-neutral-200 dark:bg-neutral-950/60 dark:text-white dark:active:bg-neutral-950/40"
+        >
+          Greet
+        </button>
       </form>
-      <p>{greetMsg}</p>
+      <p className="mt-4">{greetMsg}</p>
     </main>
   );
 }

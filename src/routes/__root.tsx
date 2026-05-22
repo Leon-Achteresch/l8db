@@ -1,5 +1,5 @@
 import { createRootRoute } from "@tanstack/react-router";
-import "../App.css";
+import "../index.css";
 import { RootLayout } from "../layouts/RootLayout";
 
 export const Route = createRootRoute({
