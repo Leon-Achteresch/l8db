@@ -222,6 +222,8 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String>;
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String>;
     async fn drop_role(&self, name: &str) -> Result<(), String>;
+    async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String>;
+    async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String>;
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String>;
     async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String>;
     async fn validate_sql(&self, sql: &str) -> Result<(), String>;

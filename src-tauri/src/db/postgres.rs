@@ -852,6 +852,26 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = format!("DROP TABLE {}.{} CASCADE", quote_ident(schema), quote_ident(table));
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = format!("TRUNCATE TABLE {}.{}", quote_ident(schema), quote_ident(table));
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
         let conn = self.get_conn().await?;
         self.timed(async {

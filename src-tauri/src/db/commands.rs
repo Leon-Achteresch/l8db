@@ -447,6 +447,34 @@ pub async fn get_er_schema(
 }
 
 #[tauri::command]
+pub async fn drop_table(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .drop_table(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn truncate_table(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .truncate_table(&schema, &table)
+        .await
+}
+
+#[tauri::command]
 pub async fn list_triggers(
     kind: DatabaseKind,
     connection_string: String,

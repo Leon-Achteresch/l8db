@@ -43,7 +43,9 @@ pub fn run() {
             db::commands::modify_privilege,
             db::commands::list_foreign_keys,
             db::commands::get_er_schema,
-            db::commands::list_triggers
+            db::commands::list_triggers,
+            db::commands::drop_table,
+            db::commands::truncate_table
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
   BracesIcon,
@@ -19,6 +20,23 @@ import {
   UsersIcon,
 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +70,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { dropTable, truncateTable } from "@/lib/db";
 import {
   useActiveDatabase,
   useActiveSchema,
@@ -389,8 +408,17 @@ function SidebarEntityList({
 }: SidebarEntityListProps) {
   const [search, setSearch] = useState("");
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    kind: "drop" | "truncate";
+    schema: string;
+    name: string;
+  } | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
+  const activeConnection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const queryClient = useQueryClient();
   const { data: columns } = useColumnsQuery(
     type === "table" ? "BASE TABLE" : "VIEW",
   );
@@ -452,6 +480,26 @@ function SidebarEntityList({
     );
   }
 
+  const handleConfirmAction = async () => {
+    if (!confirmAction || !activeConnection) return;
+    setActionLoading(true);
+    try {
+      const connStr = activeConnection.connectionString;
+      const kind = activeConnection.kind;
+      if (confirmAction.kind === "drop") {
+        await dropTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+      } else {
+        await truncateTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["tables"] });
+      await queryClient.invalidateQueries({ queryKey: ["columns"] });
+      await queryClient.invalidateQueries({ queryKey: ["table-rows"] });
+    } finally {
+      setActionLoading(false);
+      setConfirmAction(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1 px-2">
@@ -475,6 +523,29 @@ function SidebarEntityList({
         </button>
       </div>
       <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.kind === "drop"
+                ? `Tabelle "${confirmAction.name}" löschen?`
+                : `Alle Daten in "${confirmAction?.name}" löschen?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.kind === "drop"
+                ? "Die Tabelle und alle enthaltenen Daten werden unwiderruflich gelöscht (DROP TABLE CASCADE)."
+                : "Alle Zeilen in dieser Tabelle werden unwiderruflich gelöscht (TRUNCATE TABLE). Die Tabellenstruktur bleibt erhalten."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction} disabled={actionLoading}>
+              {actionLoading ? <Spinner className="size-4" /> : null}
+              {confirmAction?.kind === "drop" ? "Drop Table" : "Delete All"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {filtered && filtered.length === 0 ? (
         <p className="px-2 py-1 text-sm text-muted-foreground">
           Keine Treffer.
@@ -496,36 +567,69 @@ function SidebarEntityList({
                       params: { schema: item.schema, table: item.name },
                     }),
                   );
+
+            const menuButton =
+              type === "view" ? (
+                <SidebarMenuButton
+                  isActive={isActive}
+                  onClick={() => {
+                    openViewEditorTab({
+                      schema: item.schema,
+                      view: item.name,
+                    });
+                    navigate({
+                      to: "/view-editor/$schema/$view",
+                      params: { schema: item.schema, view: item.name },
+                    });
+                  }}
+                >
+                  <EyeIcon className="text-muted-foreground" />
+                  <span className="truncate">{item.name}</span>
+                </SidebarMenuButton>
+              ) : (
+                <SidebarMenuButton asChild isActive={isActive}>
+                  <Link
+                    to="/tables/$schema/$table"
+                    params={{ schema: item.schema, table: item.name }}
+                    search={{ type }}
+                  >
+                    <TableIcon className="text-muted-foreground" />
+                    <span className="truncate">{item.name}</span>
+                  </Link>
+                </SidebarMenuButton>
+              );
+
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
-                {type === "view" ? (
-                  <SidebarMenuButton
-                    isActive={isActive}
-                    onClick={() => {
-                      openViewEditorTab({
-                        schema: item.schema,
-                        view: item.name,
-                      });
-                      navigate({
-                        to: "/view-editor/$schema/$view",
-                        params: { schema: item.schema, view: item.name },
-                      });
-                    }}
-                  >
-                    <EyeIcon className="text-muted-foreground" />
-                    <span className="truncate">{item.name}</span>
-                  </SidebarMenuButton>
+                {type === "table" ? (
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      {menuButton}
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        variant="destructive"
+                        onSelect={() =>
+                          setConfirmAction({ kind: "truncate", schema: item.schema, name: item.name })
+                        }
+                      >
+                        <TrashIcon />
+                        Delete All Rows
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        variant="destructive"
+                        onSelect={() =>
+                          setConfirmAction({ kind: "drop", schema: item.schema, name: item.name })
+                        }
+                      >
+                        <TrashIcon />
+                        Drop Table
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 ) : (
-                  <SidebarMenuButton asChild isActive={isActive}>
-                    <Link
-                      to="/tables/$schema/$table"
-                      params={{ schema: item.schema, table: item.name }}
-                      search={{ type }}
-                    >
-                      <TableIcon className="text-muted-foreground" />
-                      <span className="truncate">{item.name}</span>
-                    </Link>
-                  </SidebarMenuButton>
+                  menuButton
                 )}
                 {item.matchingColumns.length > 0 && (
                   <SidebarMenuSub>
