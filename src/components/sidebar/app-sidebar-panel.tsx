@@ -5,6 +5,7 @@ import {
   CheckIcon,
   ChevronsUpDownIcon,
   DatabaseIcon,
+  LayersIcon,
   SettingsIcon,
   TableIcon,
 } from "lucide-react";
@@ -18,6 +19,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -30,7 +38,16 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { useTablesQuery } from "@/lib/queries";
+import {
+  useActiveDatabase,
+  useActiveSchema,
+  useDbSelectionStore,
+} from "@/lib/db-selection";
+import {
+  useDatabasesQuery,
+  useSchemasQuery,
+  useTablesQuery,
+} from "@/lib/queries";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 
 export function AppSidebarPanel() {
@@ -40,6 +57,12 @@ export function AppSidebarPanel() {
   const setWidth = useSidebarPanel((state) => state.setWidth);
   const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
   const matchRoute = useMatchRoute();
+  const setDatabase = useDbSelectionStore((state) => state.setDatabase);
+  const setSchema = useDbSelectionStore((state) => state.setSchema);
+  const activeDatabase = useActiveDatabase();
+  const activeSchema = useActiveSchema();
+  const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
+  const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
   const {
     data: tables,
     isLoading: tablesLoading,
@@ -120,6 +143,56 @@ export function AppSidebarPanel() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {activeConnection ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid min-w-0 gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                Datenbank
+              </span>
+              <Select
+                value={activeDatabase ?? undefined}
+                onValueChange={(value) =>
+                  setDatabase(activeConnection.id, value)
+                }
+                disabled={databasesLoading}
+              >
+                <SelectTrigger size="sm" className="w-full">
+                  <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="Wählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(databases ?? []).map((database) => (
+                    <SelectItem key={database} value={database}>
+                      {database}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid min-w-0 gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                Schema
+              </span>
+              <Select
+                value={activeSchema}
+                onValueChange={(value) => setSchema(activeConnection.id, value)}
+                disabled={schemasLoading}
+              >
+                <SelectTrigger size="sm" className="w-full">
+                  <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue placeholder="Wählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(schemas ?? []).map((schema) => (
+                    <SelectItem key={schema} value={schema}>
+                      {schema}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : null}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

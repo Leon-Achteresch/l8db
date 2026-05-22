@@ -13,6 +13,9 @@ interface TableTabsState {
   tabs: TableTab[];
   openTab: (tab: TableTab) => void;
   closeTab: (tab: TableTab) => void;
+  closeOtherTabs: (tab: TableTab) => void;
+  closeTabsToRight: (tab: TableTab) => void;
+  closeAllTabs: () => void;
 }
 
 export const useTableTabs = create<TableTabsState>()((set) => ({
@@ -27,4 +30,16 @@ export const useTableTabs = create<TableTabsState>()((set) => ({
     set((state) => ({
       tabs: state.tabs.filter((existing) => tabKey(existing) !== tabKey(tab)),
     })),
+  closeOtherTabs: (tab) =>
+    set((state) => ({
+      tabs: state.tabs.filter((existing) => tabKey(existing) === tabKey(tab)),
+    })),
+  closeTabsToRight: (tab) =>
+    set((state) => {
+      const index = state.tabs.findIndex(
+        (existing) => tabKey(existing) === tabKey(tab),
+      );
+      return index === -1 ? state : { tabs: state.tabs.slice(0, index + 1) };
+    }),
+  closeAllTabs: () => set({ tabs: [] }),
 }));

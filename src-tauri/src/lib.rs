@@ -14,6 +14,8 @@ pub fn run() {
             greet,
             db::commands::test_connection,
             db::commands::test_connection_string,
+            db::commands::list_databases,
+            db::commands::list_schemas,
             db::commands::list_tables,
             db::commands::fetch_table_rows
         ])

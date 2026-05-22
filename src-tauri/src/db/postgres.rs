@@ -20,8 +20,16 @@ impl PostgresAdapter {
         Self { config: pg }
     }
 
-    pub fn from_connection_string(connection_string: &str) -> Result<Self, String> {
-        let config = Config::from_str(connection_string).map_err(|error| error.to_string())?;
+    pub fn from_connection_string(
+        connection_string: &str,
+        database: Option<&str>,
+    ) -> Result<Self, String> {
+        let mut config = Config::from_str(connection_string).map_err(|error| error.to_string())?;
+        if let Some(database) = database {
+            if !database.is_empty() {
+                config.dbname(database);
+            }
+        }
         Ok(Self { config })
     }
 
@@ -55,27 +63,74 @@ impl DatabaseAdapter for PostgresAdapter {
         result
     }
 
-    async fn list_tables(&self) -> Result<Vec<TableInfo>, String> {
+    async fn list_databases(&self) -> Result<Vec<String>, String> {
         let (client, handle) = self.connect().await?;
         let result = client
             .query(
-                "SELECT table_schema, table_name \
-                 FROM information_schema.tables \
-                 WHERE table_type = 'BASE TABLE' \
-                   AND table_schema NOT IN ('pg_catalog', 'information_schema') \
-                 ORDER BY table_schema, table_name",
+                "SELECT datname FROM pg_database \
+                 WHERE datistemplate = false AND datallowconn = true \
+                 ORDER BY datname",
                 &[],
             )
             .await
             .map_err(|error| error.to_string())
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| TableInfo {
-                        schema: row.get(0),
-                        name: row.get(1),
-                    })
-                    .collect()
-            });
+            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect());
+        handle.abort();
+        result
+    }
+
+    async fn list_schemas(&self) -> Result<Vec<String>, String> {
+        let (client, handle) = self.connect().await?;
+        let result = client
+            .query(
+                "SELECT schema_name FROM information_schema.schemata \
+                 WHERE schema_name <> 'information_schema' \
+                   AND schema_name NOT LIKE 'pg_%' \
+                 ORDER BY schema_name",
+                &[],
+            )
+            .await
+            .map_err(|error| error.to_string())
+            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect());
+        handle.abort();
+        result
+    }
+
+    async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
+        let (client, handle) = self.connect().await?;
+        let query = match schema {
+            Some(schema) => {
+                client
+                    .query(
+                        "SELECT table_schema, table_name \
+                         FROM information_schema.tables \
+                         WHERE table_type = 'BASE TABLE' AND table_schema = $1 \
+                         ORDER BY table_name",
+                        &[&schema],
+                    )
+                    .await
+            }
+            None => {
+                client
+                    .query(
+                        "SELECT table_schema, table_name \
+                         FROM information_schema.tables \
+                         WHERE table_type = 'BASE TABLE' \
+                           AND table_schema NOT IN ('pg_catalog', 'information_schema') \
+                         ORDER BY table_schema, table_name",
+                        &[],
+                    )
+                    .await
+            }
+        };
+        let result = query.map_err(|error| error.to_string()).map(|rows| {
+            rows.into_iter()
+                .map(|row| TableInfo {
+                    schema: row.get(0),
+                    name: row.get(1),
+                })
+                .collect()
+        });
         handle.abort();
         result
     }
@@ -84,6 +139,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         schema: &str,
         table: &str,
+        filter: Option<&str>,
         limit: i64,
     ) -> Result<TableData, String> {
         let (client, handle) = self.connect().await?;
@@ -101,10 +157,17 @@ impl DatabaseAdapter for PostgresAdapter {
                 .map_err(|error| error.to_string())?;
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
 
+            let where_clause = match filter {
+                Some(expression) if !expression.trim().is_empty() => {
+                    format!(" WHERE {}", expression.trim())
+                }
+                _ => String::new(),
+            };
             let sql = format!(
-                "SELECT to_jsonb(t) FROM {}.{} AS t LIMIT $1",
+                "SELECT to_jsonb(t) FROM {}.{} AS t{} LIMIT $1",
                 quote_ident(schema),
                 quote_ident(table),
+                where_clause,
             );
             let data_rows = client
                 .query(&sql, &[&limit])
