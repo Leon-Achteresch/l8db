@@ -20,9 +20,28 @@ pub struct ConnectionConfig {
     pub database: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TableInfo {
+    pub schema: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TableData {
+    pub columns: Vec<String>,
+    pub rows: Vec<serde_json::Value>,
+}
+
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
     async fn test_connection(&self) -> Result<(), String>;
+    async fn list_tables(&self) -> Result<Vec<TableInfo>, String>;
+    async fn fetch_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        limit: i64,
+    ) -> Result<TableData, String>;
 }
 
 pub fn create_adapter(config: ConnectionConfig) -> Box<dyn DatabaseAdapter> {
