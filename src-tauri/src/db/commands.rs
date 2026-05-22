@@ -1,6 +1,6 @@
 use super::{
-    create_adapter, create_adapter_from_string, ConnectionConfig, DatabaseKind, TableData,
-    TableInfo,
+    create_adapter, create_adapter_from_string, ColumnInfo, ConnectionConfig, DatabaseKind,
+    QueryResult, TableData, TableInfo,
 };
 
 #[tauri::command]
@@ -101,5 +101,28 @@ pub async fn update_row(
 ) -> Result<(), String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref())?
         .update_row(&schema, &table, &ctid, &updates)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_all_columns(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+) -> Result<Vec<ColumnInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .list_columns(None, None)
+        .await
+}
+
+#[tauri::command]
+pub async fn execute_query(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    sql: String,
+) -> Result<QueryResult, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .execute_query(&sql)
         .await
 }

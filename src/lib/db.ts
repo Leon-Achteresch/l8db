@@ -32,6 +32,20 @@ export interface TableData {
   rows: Record<string, unknown>[];
 }
 
+export interface ColumnInfo {
+  schema: string;
+  table: string;
+  name: string;
+  data_type: string;
+}
+
+export interface QueryResult {
+  columns: string[];
+  rows: Record<string, string | null>[];
+  rows_affected: number | null;
+  execution_time_ms: number;
+}
+
 export async function listDatabases(
   kind: DatabaseKind,
   connectionString: string,
@@ -54,6 +68,14 @@ export async function listTables(
   schema?: string,
 ): Promise<TableInfo[]> {
   return invoke("list_tables", { kind, connectionString, database, schema });
+}
+
+export async function listAllColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<ColumnInfo[]> {
+  return invoke("list_all_columns", { kind, connectionString, database });
 }
 
 export type TableRowSort = {
@@ -120,4 +142,13 @@ export async function updateRow(
     ctid,
     updates,
   });
+}
+
+export async function executeQuery(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  database?: string,
+): Promise<QueryResult> {
+  return invoke("execute_query", { kind, connectionString, database, sql });
 }
