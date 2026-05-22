@@ -1,7 +1,11 @@
-import type * as React from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Command } from "lucide-react";
 
-import { NavUser } from "@/components/nav-user";
+import { NavUser } from "@/components/sidebar/nav-user";
+import {
+  appSidebarData,
+  type AppSidebarNavItem,
+  type AppSidebarUser,
+} from "@/components/sidebar/app-sidebar-data";
 import {
   Sidebar,
   SidebarContent,
@@ -14,24 +18,17 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-export type AppSidebarNavItem = {
-  title: string;
-  url: "/" | "/about";
-  icon: React.ReactNode;
-};
-
 type AppSidebarIconRailProps = {
-  user: {
-    name: string;
-    email: string;
-    avatar: string;
-  };
-  navItems: AppSidebarNavItem[];
+  activeItem: AppSidebarNavItem;
+  onNavSelect: (item: AppSidebarNavItem) => void;
+  user: AppSidebarUser;
 };
 
-export function AppSidebarIconRail({ user, navItems }: AppSidebarIconRailProps) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-
+export function AppSidebarIconRail({
+  activeItem,
+  onNavSelect,
+  user,
+}: AppSidebarIconRailProps) {
   return (
     <Sidebar
       collapsible="none"
@@ -41,11 +38,15 @@ export function AppSidebarIconRail({ user, navItems }: AppSidebarIconRailProps) 
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-              <Link to="/">
+              <a href="#">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <img src="/logo.png" alt="logo" />
+                  <Command className="size-4" />
                 </div>
-              </Link>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">Acme Inc</span>
+                  <span className="truncate text-xs">Enterprise</span>
+                </div>
+              </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -54,21 +55,19 @@ export function AppSidebarIconRail({ user, navItems }: AppSidebarIconRailProps) 
         <SidebarGroup>
           <SidebarGroupContent className="px-1.5 md:px-0">
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.url}>
+              {appSidebarData.navMain.map((item) => (
+                <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     tooltip={{
                       children: item.title,
                       hidden: false,
                     }}
-                    asChild
-                    isActive={pathname === item.url}
+                    onClick={() => onNavSelect(item)}
+                    isActive={activeItem.title === item.title}
                     className="px-2.5 md:px-2"
                   >
-                    <Link to={item.url}>
-                      {item.icon}
-                      <span>{item.title}</span>
-                    </Link>
+                    <item.icon />
+                    <span>{item.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
