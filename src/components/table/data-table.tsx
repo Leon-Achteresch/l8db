@@ -20,17 +20,33 @@ import {
   CheckIcon,
   CopyIcon,
   DatabaseIcon,
+  FilterIcon,
   FingerprintIcon,
   HashIcon,
   KeyIcon,
   Loader2Icon,
   Maximize2Icon,
+  PlayIcon,
+  RotateCcwIcon,
   TypeIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { OPERATORS, compileSingleCondition, operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
 type TableRow = Record<string, unknown>;
@@ -218,6 +234,7 @@ type DataTableProps = {
   onSortingChange: OnChangeFn<SortingState>;
   isFetching?: boolean;
   onSaveRow?: (ctid: string, updates: Record<string, string | null>) => Promise<void>;
+  onApplyFilter?: (where: string) => void;
 };
 
 export function DataTable({
@@ -229,11 +246,15 @@ export function DataTable({
   onSortingChange,
   isFetching = false,
   onSaveRow,
+  onApplyFilter,
 }: DataTableProps) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
   const [editingRow, setEditingRow] = useState<EditingRow | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [filterColumn, setFilterColumn] = useState<string | null>(null);
+  const [filterOperator, setFilterOperator] = useState("eq");
+  const [filterValue, setFilterValue] = useState("");
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
@@ -351,6 +372,20 @@ export function DataTable({
   const handleCancelEdit = useCallback(() => {
     setEditingRow(null);
   }, []);
+
+  const applyColumnFilter = useCallback(() => {
+    if (!filterColumn || !onApplyFilter) return;
+    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue);
+    if (sql) {
+      onApplyFilter(sql);
+    }
+    setFilterColumn(null);
+  }, [filterColumn, filterOperator, filterValue, onApplyFilter]);
+
+  const compiledFilter = useMemo(
+    () => (filterColumn ? (compileSingleCondition(filterColumn, filterOperator, filterValue) ?? "") : ""),
+    [filterColumn, filterOperator, filterValue],
+  );
 
   const handleRowDoubleClick = useCallback(
     (row: Row<TableRow>) => {
@@ -477,21 +512,67 @@ export function DataTable({
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, index) => (
-                  <th
-                    key={header.id}
-                    className={cn(
-                      "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
-                      index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
-                      index > 0 && "min-w-[10rem]",
-                    )}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
+                  <ContextMenu key={header.id}>
+                    <ContextMenuTrigger asChild>
+                      <th
+                        className={cn(
+                          "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
+                          index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
+                          index > 0 && "min-w-[10rem]",
                         )}
-                  </th>
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </th>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      {index > 0 && (
+                        <>
+                          <ContextMenuLabel className="font-mono text-[11px]">{header.id}</ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => onSortingChange([{ id: header.id, desc: false }])}
+                            disabled={isFetching}
+                          >
+                            <ArrowUpIcon />
+                            Aufsteigend sortieren
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => onSortingChange([{ id: header.id, desc: true }])}
+                            disabled={isFetching}
+                          >
+                            <ArrowDownIcon />
+                            Absteigend sortieren
+                          </ContextMenuItem>
+                          {sorting.length > 0 && (
+                            <ContextMenuItem onClick={() => onSortingChange([])}>
+                              <XIcon />
+                              Sortierung entfernen
+                            </ContextMenuItem>
+                          )}
+                          {onApplyFilter && (
+                            <>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => {
+                                  setFilterColumn(header.id);
+                                  setFilterOperator("eq");
+                                  setFilterValue("");
+                                }}
+                              >
+                                <FilterIcon />
+                                Filter setzen…
+                              </ContextMenuItem>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
                 ))}
               </tr>
             ))}
@@ -725,6 +806,57 @@ export function DataTable({
                 )}
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {filterColumn && (
+        <Dialog open={true} onOpenChange={(open) => { if (!open) setFilterColumn(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <FilterIcon className="size-4 text-primary" />
+                <span className="font-mono text-primary font-bold">{filterColumn}</span>
+                filtern
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <NativeSelect
+                value={filterOperator}
+                onChange={(e) => setFilterOperator(e.target.value)}
+                className="w-full"
+              >
+                {OPERATORS.map((op) => (
+                  <NativeSelectOption key={op.key} value={op.key}>
+                    {op.label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              {operatorNeedsValue(filterOperator) && (
+                <Input
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  placeholder="Wert…"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyColumnFilter();
+                    if (e.key === "Escape") setFilterColumn(null);
+                  }}
+                />
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setFilterColumn(null)}>
+                Abbrechen
+              </Button>
+              <Button
+                size="sm"
+                onClick={applyColumnFilter}
+                disabled={operatorNeedsValue(filterOperator) && filterValue.trim() === ""}
+              >
+                Anwenden
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

@@ -6,6 +6,7 @@ import { TriangleAlertIcon } from "lucide-react";
 
 import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
+import { TableViewsPanel } from "@/components/table/table-views-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { useTableRowsQuery, useUpdateRowMutation } from "@/lib/queries";
@@ -51,6 +52,12 @@ export function TablePage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TableViewsPanel
+        schema={schema}
+        table={table}
+        activeFilter={filter}
+        onSelectView={setFilter}
+      />
       <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
         <TableFilterPanel
           key={`${schema}.${table}`}
@@ -101,6 +108,7 @@ export function TablePage() {
             onSortingChange={setSorting}
             isFetching={isFetching}
             onSaveRow={(ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
+            onApplyFilter={setFilter}
           />
         </div>
       )}

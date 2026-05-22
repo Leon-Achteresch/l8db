@@ -76,6 +76,20 @@ pub async fn fetch_table_rows(
 }
 
 #[tauri::command]
+pub async fn count_table_rows(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    filter: Option<String>,
+) -> Result<i64, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .count_rows(&schema, &table, filter.as_deref())
+        .await
+}
+
+#[tauri::command]
 pub async fn update_row(
     kind: DatabaseKind,
     connection_string: String,

@@ -18,6 +18,7 @@ pub fn run() {
             db::commands::list_schemas,
             db::commands::list_tables,
             db::commands::fetch_table_rows,
+            db::commands::count_table_rows,
             db::commands::update_row
         ])
         .run(tauri::generate_context!())
