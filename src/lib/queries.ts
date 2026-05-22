@@ -22,6 +22,7 @@ import {
   listRolePrivileges,
   listRoles,
   listSchemas,
+  listSequences,
   listTables,
   listTriggers,
   listViews,
@@ -56,6 +57,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "count",
   "all-tables",
   "all-columns",
+  "sequences",
 ]);
 
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
@@ -323,6 +325,23 @@ export function useErSchemaQuery(schema?: string) {
       ),
     enabled: Boolean(connection),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useSequencesQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["sequences", connection?.id, database, schema],
+    queryFn: () =>
+      listSequences(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
   });
 }
 

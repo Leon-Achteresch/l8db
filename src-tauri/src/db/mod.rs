@@ -271,6 +271,7 @@ pub trait DatabaseAdapter: Send + Sync {
         schema: &str,
         table: &str,
     ) -> Result<Vec<TriggerInfo>, String>;
+    async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -285,6 +286,19 @@ pub struct TriggerInfo {
     pub function_name: String,
     pub enabled: String,
     pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SequenceInfo {
+    pub schema: String,
+    pub name: String,
+    pub data_type: String,
+    pub start_value: String,
+    pub min_value: String,
+    pub max_value: String,
+    pub increment_by: String,
+    pub cycle: bool,
+    pub last_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

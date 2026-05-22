@@ -4,7 +4,7 @@ use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
     AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseKind,
     DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
-    QueryResult, RoleInfo, RolePrivileges, TableData, TableInfo, TriggerInfo,
+    QueryResult, RoleInfo, RolePrivileges, SequenceInfo, TableData, TableInfo, TriggerInfo,
 };
 
 #[tauri::command]
@@ -545,5 +545,18 @@ pub async fn drop_column(
 ) -> Result<(), String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .drop_column(&schema, &table, &column)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_sequences(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<SequenceInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_sequences(schema.as_deref())
         .await
 }

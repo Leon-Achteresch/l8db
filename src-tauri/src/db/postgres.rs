@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges, TriggerInfo};
+use super::{map_pg_err, quote_ident, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, SequenceInfo, TableData, TableInfo, TablePrivileges, TriggerInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -1341,7 +1341,55 @@ impl DatabaseAdapter for PostgresAdapter {
                         function_schema: row.get(6),
                         function_name: row.get(7),
                         enabled: row.get(8),
-                        definition: row.get(9),
+                         definition: row.get(9),
+                     })
+                     .collect()
+             })
+         })
+         .await
+     }
+
+    async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(s) => {
+                    conn.query(
+                        "SELECT schemaname, sequencename, data_type, \
+                                start_value::text, min_value::text, max_value::text, \
+                                increment_by::text, cycle, last_value::text \
+                         FROM pg_sequences \
+                         WHERE schemaname = $1 \
+                         ORDER BY sequencename",
+                        &[&s],
+                    )
+                    .await
+                }
+                None => {
+                    conn.query(
+                        "SELECT schemaname, sequencename, data_type, \
+                                start_value::text, min_value::text, max_value::text, \
+                                increment_by::text, cycle, last_value::text \
+                         FROM pg_sequences \
+                         WHERE schemaname NOT IN ('pg_catalog', 'information_schema') \
+                         ORDER BY schemaname, sequencename",
+                        &[],
+                    )
+                    .await
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| SequenceInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                        data_type: row.get(2),
+                        start_value: row.get(3),
+                        min_value: row.get(4),
+                        max_value: row.get(5),
+                        increment_by: row.get(6),
+                        cycle: row.get(7),
+                        last_value: row.get(8),
                     })
                     .collect()
             })
