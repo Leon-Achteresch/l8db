@@ -72,6 +72,37 @@ export interface ForeignKeyInfo {
   to_column: string;
 }
 
+export interface TriggerInfo {
+  trigger_name: string;
+  table_schema: string;
+  table_name: string;
+  event: string;
+  timing: string;
+  orientation: string;
+  function_schema: string;
+  function_name: string;
+  enabled: string;
+  definition: string;
+}
+
+export interface ERColumn {
+  name: string;
+  data_type: string;
+  is_primary_key: boolean;
+  is_nullable: boolean;
+}
+
+export interface ERTable {
+  schema: string;
+  name: string;
+  columns: ERColumn[];
+}
+
+export interface ERSchema {
+  tables: ERTable[];
+  foreign_keys: ForeignKeyInfo[];
+}
+
 export interface RoleInfo {
   name: string;
   oid: string;
@@ -178,8 +209,10 @@ export async function listAllColumns(
   kind: DatabaseKind,
   connectionString: string,
   database?: string,
+  schema?: string,
+  tableType?: string,
 ): Promise<ColumnInfo[]> {
-  return invoke("list_all_columns", { kind, connectionString, database });
+  return invoke("list_all_columns", { kind, connectionString, database, schema, tableType });
 }
 
 export type TableRowSort = {
@@ -283,6 +316,26 @@ export async function getViewDefinition(
     database,
     schema,
     view,
+  });
+}
+
+export async function updateViewDefinition(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  view: string,
+  body: string,
+  dryRun: boolean,
+  database?: string,
+): Promise<void> {
+  await invoke("update_view_definition", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    view,
+    body,
+    dryRun,
   });
 }
 
@@ -434,6 +487,36 @@ export async function listForeignKeys(
   database?: string,
 ): Promise<ForeignKeyInfo[]> {
   return invoke("list_foreign_keys", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+  });
+}
+
+export async function getErSchema(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<ERSchema> {
+  return invoke("get_er_schema", {
+    kind,
+    connectionString,
+    database,
+    schema,
+  });
+}
+
+export async function listTriggers(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<TriggerInfo[]> {
+  return invoke("list_triggers", {
     kind,
     connectionString,
     database,

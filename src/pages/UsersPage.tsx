@@ -59,7 +59,6 @@ import {
   type CreateRoleOptions,
   type PrivilegeChange,
   type RoleInfo,
-  type RolePrivileges,
   type SchemaPrivileges,
   type TablePrivileges,
 } from "@/lib/db";

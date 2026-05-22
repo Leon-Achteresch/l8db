@@ -3,11 +3,30 @@ import { persist } from "zustand/middleware";
 
 import type { DatabaseKind } from "@/lib/db";
 
+export interface ConnectionTag {
+  name: string;
+  color: string;
+}
+
+export const TAG_COLORS = [
+  "#3b82f6",
+  "#f97316",
+  "#22c55e",
+  "#14b8a6",
+  "#a855f7",
+  "#ec4899",
+  "#eab308",
+  "#ef4444",
+  "#64748b",
+  "#06b6d4",
+];
+
 export interface SavedConnection {
   id: string;
   name: string;
   kind: DatabaseKind;
   connectionString: string;
+  tags?: ConnectionTag[];
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;

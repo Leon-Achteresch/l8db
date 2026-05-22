@@ -24,6 +24,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   useActiveConnection,
   useConnectionsStore,
+  TAG_COLORS,
+  type ConnectionTag,
   type SavedConnection,
 } from "@/lib/connections";
 import { type DatabaseKind, testConnectionString } from "@/lib/db";
@@ -46,6 +48,7 @@ interface FormState {
   user: string;
   password: string;
   database: string;
+  tags: ConnectionTag[];
 }
 
 const emptyForm: FormState = {
@@ -58,6 +61,7 @@ const emptyForm: FormState = {
   user: "postgres",
   password: "",
   database: "postgres",
+  tags: [],
 };
 
 function buildConnectionString(form: FormState): string {
@@ -98,6 +102,8 @@ export function ConnectionsPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [state, setState] = useState<TestState>({ status: "idle" });
+  const [tagInput, setTagInput] = useState("");
+  const [tagColor, setTagColor] = useState(TAG_COLORS[0]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((previous) => ({ ...previous, [key]: value }));
@@ -118,6 +124,7 @@ export function ConnectionsPage() {
       kind: connection.kind,
       mode: "string",
       connectionString: connection.connectionString,
+      tags: connection.tags ?? [],
     });
     setState({ status: "idle" });
   }
@@ -147,7 +154,7 @@ export function ConnectionsPage() {
       });
       return;
     }
-    const input = { name, kind: form.kind, connectionString };
+    const input = { name, kind: form.kind, connectionString, tags: form.tags };
     if (editingId) {
       updateConnection(editingId, input);
     } else {
@@ -245,6 +252,15 @@ export function ConnectionsPage() {
                         <span className="min-w-0 truncate text-sm font-semibold">
                           {connection.name}
                         </span>
+                        {connection.tags?.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                            style={{ backgroundColor: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
                         {isActive ? (
                           <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                             <span className="relative flex size-1.5 rounded-full bg-emerald-500">
@@ -325,6 +341,89 @@ export function ConnectionsPage() {
                   placeholder="z. B. Produktions-Datenbank"
                   className="h-10 border-border/40 bg-background/20 focus-visible:ring-primary/20 focus-visible:border-primary rounded-xl"
                 />
+              </div>
+
+              <div className="grid gap-2">
+                <Label className="text-sm font-medium">Tags</Label>
+                {form.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                        <button
+                          type="button"
+                          className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded-full hover:bg-white/20"
+                          onClick={() =>
+                            update(
+                              "tags",
+                              form.tags.filter((_, i) => i !== index),
+                            )
+                          }
+                        >
+                          <X className="size-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    {TAG_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`size-5 rounded-full border-2 transition-all ${
+                          tagColor === color
+                            ? "border-foreground scale-110"
+                            : "border-transparent hover:scale-110"
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setTagColor(color)}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    value={tagInput}
+                    onChange={(event) => setTagInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        const trimmed = tagInput.trim();
+                        if (trimmed) {
+                          update("tags", [
+                            ...form.tags,
+                            { name: trimmed, color: tagColor },
+                          ]);
+                          setTagInput("");
+                        }
+                      }
+                    }}
+                    placeholder="Tag-Name + Enter"
+                    className="h-8 flex-1 border-border/40 bg-background/20 focus-visible:ring-primary/20 rounded-xl text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-xl border-border/40 text-xs"
+                    onClick={() => {
+                      const trimmed = tagInput.trim();
+                      if (trimmed) {
+                        update("tags", [
+                          ...form.tags,
+                          { name: trimmed, color: tagColor },
+                        ]);
+                        setTagInput("");
+                      }
+                    }}
+                  >
+                    <Plus className="size-3" />
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-3">

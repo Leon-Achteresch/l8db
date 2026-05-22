@@ -12,6 +12,7 @@ import {
   TableIcon,
   UsersIcon,
   XIcon,
+  ZapIcon,
 } from "lucide-react";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
@@ -55,6 +56,10 @@ function tabVisual(tab: Tab) {
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
     case "role":
       return { Icon: UsersIcon, iconColor: "text-rose-500" };
+    case "trigger":
+      return { Icon: ZapIcon, iconColor: "text-orange-500" };
+    case "view-editor":
+      return { Icon: EyeIcon, iconColor: "text-cyan-500" };
     default:
       return (tab.entityType ?? "table") === "view"
         ? { Icon: EyeIcon, iconColor: "text-cyan-500" }
@@ -89,7 +94,11 @@ function SortableTab({
         ? tab.title
         : tab.kind === "function"
           ? tab.name
-          : tab.name;
+          : tab.kind === "trigger"
+            ? tab.trigger
+            : tab.kind === "view-editor"
+              ? tab.view
+              : tab.name;
 
   return (
     <ContextMenu>
@@ -222,6 +231,22 @@ export function TableTabs() {
         matchRoute({ to: "/users/$name", params: { name: tab.name } }),
       );
     }
+    if (tab.kind === "trigger") {
+      return Boolean(
+        matchRoute({
+          to: "/triggers/$schema/$table/$trigger",
+          params: { schema: tab.schema, table: tab.table, trigger: tab.trigger },
+        }),
+      );
+    }
+    if (tab.kind === "view-editor") {
+      return Boolean(
+        matchRoute({
+          to: "/view-editor/$schema/$view",
+          params: { schema: tab.schema, view: tab.view },
+        }),
+      );
+    }
     return Boolean(
       matchRoute({ to: "/extensions/$name", params: { name: tab.name } }),
     );
@@ -249,6 +274,16 @@ export function TableTabs() {
       });
     } else if (tab.kind === "role") {
       void navigate({ to: "/users/$name", params: { name: tab.name } });
+    } else if (tab.kind === "trigger") {
+      void navigate({
+        to: "/triggers/$schema/$table/$trigger",
+        params: { schema: tab.schema, table: tab.table, trigger: tab.trigger },
+      });
+    } else if (tab.kind === "view-editor") {
+      void navigate({
+        to: "/view-editor/$schema/$view",
+        params: { schema: tab.schema, view: tab.view },
+      });
     } else {
       void navigate({ to: "/extensions/$name", params: { name: tab.name } });
     }

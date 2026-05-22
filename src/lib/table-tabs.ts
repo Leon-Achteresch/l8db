@@ -11,13 +11,17 @@ export type QueryTab = { kind: "query"; id: string; title: string; sql: string }
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
 export type RoleTab = { kind: "role"; name: string };
-export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab | RoleTab;
+export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
+export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
+export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab | RoleTab | TriggerTab | ViewEditorTab;
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
   if (tab.kind === "role") return `role:${tab.name}`;
+  if (tab.kind === "trigger") return `trigger:${tab.schema}.${tab.table}.${tab.trigger}`;
+  if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   return `extension:${tab.name}`;
 }
 
@@ -29,6 +33,8 @@ interface TabsState {
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
   openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
+  openTriggerTab: (tab: Omit<TriggerTab, "kind">) => void;
+  openViewEditorTab: (tab: Omit<ViewEditorTab, "kind">) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
@@ -105,6 +111,24 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
           return { tabs: [...state.tabs, rt] };
+        });
+      },
+
+      openTriggerTab: (tab) => {
+        const tt: TriggerTab = { kind: "trigger", ...tab };
+        const key = tabKey(tt);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return { tabs: [...state.tabs, tt] };
+        });
+      },
+
+      openViewEditorTab: (tab) => {
+        const vt: ViewEditorTab = { kind: "view-editor", ...tab };
+        const key = tabKey(vt);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return { tabs: [...state.tabs, vt] };
         });
       },
 

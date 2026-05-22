@@ -2,8 +2,8 @@ use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, AlterRoleOptions, ColumnInfo, ConnectionConfig,
-    CreateRoleOptions, DatabaseKind, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
-    QueryResult, RoleInfo, RolePrivileges, TableData, TableInfo,
+    CreateRoleOptions, DatabaseKind, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
+    QueryResult, RoleInfo, RolePrivileges, TableData, TableInfo, TriggerInfo,
 };
 
 #[tauri::command]
@@ -128,10 +128,12 @@ pub async fn list_all_columns(
     kind: DatabaseKind,
     connection_string: String,
     database: Option<String>,
+    schema: Option<String>,
+    table_type: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ColumnInfo>, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_columns(None, None)
+        .list_columns(schema.as_deref(), None, table_type.as_deref())
         .await
 }
 
@@ -172,6 +174,22 @@ pub async fn get_view_definition(
 ) -> Result<String, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .get_view_definition(&schema, &view)
+        .await
+}
+
+#[tauri::command]
+pub async fn update_view_definition(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    view: String,
+    body: String,
+    dry_run: bool,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .update_view_definition(&schema, &view, &body, dry_run)
         .await
 }
 
@@ -373,5 +391,32 @@ pub async fn list_foreign_keys(
 ) -> Result<Vec<ForeignKeyInfo>, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .list_foreign_keys(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn get_er_schema(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<ERSchema, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .get_er_schema(schema.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn list_triggers(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<TriggerInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_triggers(&schema, &table)
         .await
 }

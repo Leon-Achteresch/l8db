@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
   BracesIcon,
   CheckIcon,
   ChevronsUpDownIcon,
+  ColumnsIcon,
   DatabaseIcon,
   EyeIcon,
   FileCodeIcon,
+  FilterIcon,
   LayersIcon,
   PackageIcon,
+  SearchIcon,
   SettingsIcon,
   TableIcon,
   TrashIcon,
@@ -38,9 +41,13 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,6 +58,7 @@ import {
   useDbSelectionStore,
 } from "@/lib/db-selection";
 import {
+  useColumnsQuery,
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
@@ -62,6 +70,7 @@ import {
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTableTabs } from "@/lib/table-tabs";
+import { TableSearchModal } from "@/components/sidebar/table-search-modal";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -124,8 +133,19 @@ export function AppSidebarPanel() {
               className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <DatabaseIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate">
-                {activeConnection ? activeConnection.name : "Keine Verbindung"}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span className="truncate">
+                  {activeConnection ? activeConnection.name : "Keine Verbindung"}
+                </span>
+                {activeConnection?.tags?.map((tag, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                    style={{ backgroundColor: tag.color }}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
               </span>
               <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -146,7 +166,18 @@ export function AppSidebarPanel() {
                   onSelect={() => setActiveId(connection.id)}
                 >
                   <DatabaseIcon className="text-muted-foreground" />
-                  <span className="flex-1 truncate">{connection.name}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <span className="truncate">{connection.name}</span>
+                    {connection.tags?.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </span>
                   {connection.id === activeConnection?.id ? (
                     <CheckIcon className="size-4" />
                   ) : null}
@@ -356,6 +387,50 @@ function SidebarEntityList({
   type,
   matchRoute,
 }: SidebarEntityListProps) {
+  const [search, setSearch] = useState("");
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const navigate = useNavigate();
+  const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
+  const { data: columns } = useColumnsQuery(
+    type === "table" ? "BASE TABLE" : "VIEW",
+  );
+
+  const columnsByTable = useMemo(() => {
+    if (!columns) return new Map<string, string[]>();
+    const map = new Map<string, string[]>();
+    for (const col of columns) {
+      const key = `${col.schema}.${col.table}`;
+      const arr = map.get(key);
+      if (arr) {
+        arr.push(col.name);
+      } else {
+        map.set(key, [col.name]);
+      }
+    }
+    return map;
+  }, [columns]);
+
+  const filtered = useMemo(() => {
+    if (!items) return undefined;
+    const q = search.trim().toLowerCase();
+    if (!q) return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
+    return items
+      .map((item) => {
+        const nameMatch = item.name.toLowerCase().includes(q);
+        const key = `${item.schema}.${item.name}`;
+        const cols = columnsByTable.get(key) ?? [];
+        const matchingColumns = cols.filter((c) => c.toLowerCase().includes(q));
+        if (nameMatch || matchingColumns.length > 0) {
+          return { ...item, matchingColumns };
+        }
+        return null;
+      })
+      .filter(
+        (item): item is { schema: string; name: string; matchingColumns: string[] } =>
+          item !== null,
+      );
+  }, [items, search, columnsByTable]);
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
@@ -378,35 +453,129 @@ function SidebarEntityList({
   }
 
   return (
-    <SidebarMenu>
-      {items.map((item) => {
-        const isActive = Boolean(
-          matchRoute({
-            to: "/tables/$schema/$table",
-            params: { schema: item.schema, table: item.name },
-            search: type === "view" ? { type: "view" } : {},
-          }),
-        );
-        return (
-          <SidebarMenuItem key={`${item.schema}.${item.name}`}>
-            <SidebarMenuButton asChild isActive={isActive}>
-              <Link
-                to="/tables/$schema/$table"
-                params={{ schema: item.schema, table: item.name }}
-                search={{ type }}
-              >
-                {type === "table" ? (
-                  <TableIcon className="text-muted-foreground" />
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1 px-2">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <SidebarInput
+            placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setSearchModalOpen(true)}
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Erweiterte Suche"
+          title="Erweiterte Suche mit Regex & SQL WHERE"
+        >
+          <FilterIcon className="size-3.5" />
+        </button>
+      </div>
+      <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+      {filtered && filtered.length === 0 ? (
+        <p className="px-2 py-1 text-sm text-muted-foreground">
+          Keine Treffer.
+        </p>
+      ) : (
+        <SidebarMenu>
+          {filtered?.map((item) => {
+            const isActive =
+              type === "view"
+                ? Boolean(
+                    matchRoute({
+                      to: "/view-editor/$schema/$view",
+                      params: { schema: item.schema, view: item.name },
+                    }),
+                  )
+                : Boolean(
+                    matchRoute({
+                      to: "/tables/$schema/$table",
+                      params: { schema: item.schema, table: item.name },
+                    }),
+                  );
+            return (
+              <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+                {type === "view" ? (
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    onClick={() => {
+                      openViewEditorTab({
+                        schema: item.schema,
+                        view: item.name,
+                      });
+                      navigate({
+                        to: "/view-editor/$schema/$view",
+                        params: { schema: item.schema, view: item.name },
+                      });
+                    }}
+                  >
+                    <EyeIcon className="text-muted-foreground" />
+                    <span className="truncate">{item.name}</span>
+                  </SidebarMenuButton>
                 ) : (
-                  <EyeIcon className="text-muted-foreground" />
+                  <SidebarMenuButton asChild isActive={isActive}>
+                    <Link
+                      to="/tables/$schema/$table"
+                      params={{ schema: item.schema, table: item.name }}
+                      search={{ type }}
+                    >
+                      <TableIcon className="text-muted-foreground" />
+                      <span className="truncate">{item.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
                 )}
-                <span className="truncate">{item.name}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        );
-      })}
-    </SidebarMenu>
+                {item.matchingColumns.length > 0 && (
+                  <SidebarMenuSub>
+                    {item.matchingColumns.map((col) => (
+                      <SidebarMenuSubItem key={col}>
+                        {type === "view" ? (
+                          <SidebarMenuSubButton
+                            size="sm"
+                            onClick={() => {
+                              openViewEditorTab({
+                                schema: item.schema,
+                                view: item.name,
+                              });
+                              navigate({
+                                to: "/view-editor/$schema/$view",
+                                params: {
+                                  schema: item.schema,
+                                  view: item.name,
+                                },
+                              });
+                            }}
+                          >
+                            <ColumnsIcon className="text-muted-foreground" />
+                            <span className="truncate">{col}</span>
+                          </SidebarMenuSubButton>
+                        ) : (
+                          <SidebarMenuSubButton size="sm" asChild>
+                            <Link
+                              to="/tables/$schema/$table"
+                              params={{
+                                schema: item.schema,
+                                table: item.name,
+                              }}
+                              search={{ type }}
+                            >
+                              <ColumnsIcon className="text-muted-foreground" />
+                              <span className="truncate">{col}</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        )}
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      )}
+    </div>
   );
 }
 

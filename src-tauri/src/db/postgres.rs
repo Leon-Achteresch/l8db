@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges};
+use super::{map_pg_err, quote_ident, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges, TriggerInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -172,8 +172,10 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         schema: Option<&str>,
         table: Option<&str>,
+        table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
         let conn = self.get_conn().await?;
+        let type_filter = table_type.unwrap_or("BASE TABLE");
         self.timed(async {
             let result = match (schema, table) {
                 (Some(s), Some(t)) => {
@@ -192,9 +194,9 @@ impl DatabaseAdapter for PostgresAdapter {
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
-                         WHERE t.table_type = 'BASE TABLE' AND c.table_schema = $1 \
+                         WHERE t.table_type = $1 AND c.table_schema = $2 \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
-                        &[&s],
+                        &[&type_filter, &s],
                     )
                     .await
                 }
@@ -204,10 +206,10 @@ impl DatabaseAdapter for PostgresAdapter {
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
-                         WHERE t.table_type = 'BASE TABLE' \
+                         WHERE t.table_type = $1 \
                            AND c.table_schema NOT IN ('pg_catalog', 'information_schema') \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
-                        &[],
+                        &[&type_filter],
                     )
                     .await
                 }
@@ -492,6 +494,33 @@ impl DatabaseAdapter for PostgresAdapter {
             .await
             .map_err(map_pg_err)
             .map(|row| row.get::<_, String>(0))
+        })
+        .await
+    }
+
+    async fn update_view_definition(
+        &self,
+        schema: &str,
+        view: &str,
+        body: &str,
+        dry_run: bool,
+    ) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        let ddl = format!(
+            "CREATE OR REPLACE VIEW {}.{} AS {}",
+            quote_ident(schema),
+            quote_ident(view),
+            body
+        );
+        self.timed(async {
+            if dry_run {
+                conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+                let result = conn.simple_query(&ddl).await.map_err(map_pg_err);
+                let _ = conn.simple_query("ROLLBACK").await;
+                result.map(|_| ())
+            } else {
+                conn.simple_query(&ddl).await.map_err(map_pg_err).map(|_| ())
+            }
         })
         .await
     }
@@ -1018,6 +1047,183 @@ impl DatabaseAdapter for PostgresAdapter {
                         to_schema: row.get(4),
                         to_table: row.get(5),
                         to_column: row.get(6),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let schema_filter = schema.unwrap_or("public");
+
+            let col_rows = conn
+                .query(
+                    "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, \
+                         CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_pk \
+                     FROM information_schema.columns c \
+                     JOIN information_schema.tables t \
+                       ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
+                     LEFT JOIN ( \
+                         SELECT ku.table_schema, ku.table_name, ku.column_name \
+                         FROM information_schema.table_constraints tc \
+                         JOIN information_schema.key_column_usage ku \
+                           ON tc.constraint_name = ku.constraint_name \
+                          AND tc.table_schema = ku.table_schema \
+                         WHERE tc.constraint_type = 'PRIMARY KEY' \
+                     ) pk ON pk.table_schema = c.table_schema \
+                         AND pk.table_name = c.table_name \
+                         AND pk.column_name = c.column_name \
+                     WHERE t.table_type = 'BASE TABLE' AND c.table_schema = $1 \
+                     ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                    &[&schema_filter],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let mut tables: Vec<ERTable> = Vec::new();
+            let mut current_key = String::new();
+
+            for row in &col_rows {
+                let tbl_schema: String = row.get(0);
+                let tbl_name: String = row.get(1);
+                let key = format!("{}.{}", tbl_schema, tbl_name);
+
+                let col = ERColumn {
+                    name: row.get(2),
+                    data_type: row.get(3),
+                    is_nullable: row.get::<_, String>(4) == "YES",
+                    is_primary_key: row.get(5),
+                };
+
+                if key != current_key {
+                    tables.push(ERTable {
+                        schema: tbl_schema,
+                        name: tbl_name,
+                        columns: vec![col],
+                    });
+                    current_key = key;
+                } else if let Some(last) = tables.last_mut() {
+                    last.columns.push(col);
+                }
+            }
+
+            let fk_rows = conn
+                .query(
+                    "SELECT \
+                         con.conname, \
+                         ns_from.nspname, \
+                         cl_from.relname, \
+                         att_from.attname, \
+                         ns_to.nspname, \
+                         cl_to.relname, \
+                         att_to.attname \
+                     FROM pg_constraint con \
+                     JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
+                     JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
+                     JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
+                     JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
+                     CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
+                         WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
+                     JOIN pg_attribute att_from \
+                         ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
+                     JOIN pg_attribute att_to \
+                         ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
+                     WHERE con.contype = 'f' \
+                       AND (ns_from.nspname = $1 OR ns_to.nspname = $1) \
+                     ORDER BY con.conname, u.ord",
+                    &[&schema_filter],
+                )
+                .await
+                .map_err(map_pg_err)?;
+
+            let foreign_keys: Vec<ForeignKeyInfo> = fk_rows
+                .into_iter()
+                .map(|row| ForeignKeyInfo {
+                    constraint_name: row.get(0),
+                    from_schema: row.get(1),
+                    from_table: row.get(2),
+                    from_column: row.get(3),
+                    to_schema: row.get(4),
+                    to_table: row.get(5),
+                    to_column: row.get(6),
+                })
+                .collect();
+
+            Ok(ERSchema {
+                tables,
+                foreign_keys,
+            })
+        })
+        .await
+    }
+
+    async fn list_triggers(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<TriggerInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query(
+                "SELECT \
+                     t.tgname, \
+                     n.nspname, \
+                     c.relname, \
+                     CASE \
+                         WHEN t.tgtype::int & 4 = 4 THEN 'INSERT' \
+                         WHEN t.tgtype::int & 8 = 8 THEN 'DELETE' \
+                         WHEN t.tgtype::int & 16 = 16 THEN 'UPDATE' \
+                         WHEN t.tgtype::int & 32 = 32 THEN 'TRUNCATE' \
+                         ELSE 'UNKNOWN' \
+                     END, \
+                     CASE \
+                         WHEN t.tgtype::int & 2 = 2 THEN 'BEFORE' \
+                         WHEN t.tgtype::int & 64 = 64 THEN 'INSTEAD OF' \
+                         ELSE 'AFTER' \
+                     END, \
+                     CASE \
+                         WHEN t.tgtype::int & 1 = 1 THEN 'ROW' \
+                         ELSE 'STATEMENT' \
+                     END, \
+                     pn.nspname, \
+                     p.proname, \
+                     CASE t.tgenabled \
+                         WHEN 'O' THEN 'ORIGIN' \
+                         WHEN 'D' THEN 'DISABLED' \
+                         WHEN 'R' THEN 'REPLICA' \
+                         WHEN 'A' THEN 'ALWAYS' \
+                         ELSE 'ENABLED' \
+                     END, \
+                     pg_get_triggerdef(t.oid) \
+                 FROM pg_trigger t \
+                 JOIN pg_class c ON t.tgrelid = c.oid \
+                 JOIN pg_namespace n ON c.relnamespace = n.oid \
+                 JOIN pg_proc p ON t.tgfoid = p.oid \
+                 JOIN pg_namespace pn ON p.pronamespace = pn.oid \
+                 WHERE NOT t.tgisinternal \
+                   AND n.nspname = $1 \
+                   AND c.relname = $2 \
+                 ORDER BY t.tgname",
+                &[&schema, &table],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| TriggerInfo {
+                        trigger_name: row.get(0),
+                        table_schema: row.get(1),
+                        table_name: row.get(2),
+                        event: row.get(3),
+                        timing: row.get(4),
+                        orientation: row.get(5),
+                        function_schema: row.get(6),
+                        function_name: row.get(7),
+                        enabled: row.get(8),
+                        definition: row.get(9),
                     })
                     .collect()
             })
