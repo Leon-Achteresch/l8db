@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { CopyIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -100,9 +100,7 @@ export function TableTabs() {
         return (
           <ContextMenu key={tabKey(tab)}>
             <ContextMenuTrigger asChild>
-              <Link
-                to="/tables/$schema/$table"
-                params={tab}
+              <div
                 onAuxClick={(event) => handleAuxClick(event, tab)}
                 onMouseDown={(event) => {
                   if (event.button === 1) {
@@ -110,26 +108,28 @@ export function TableTabs() {
                   }
                 }}
                 className={cn(
-                  "group flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1 text-sm transition-colors",
+                  "group flex shrink-0 items-center rounded-md border text-sm transition-colors",
                   isActive
                     ? "border-border bg-accent text-accent-foreground"
                     : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )}
               >
-                <span className="max-w-40 truncate">{tab.table}</span>
                 <button
                   type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    handleClose(tab);
-                  }}
+                  onClick={() => navigateToTab(tab)}
+                  className="max-w-40 truncate px-3 py-1 text-left"
+                >
+                  {tab.table}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleClose(tab)}
                   aria-label={`${tab.table} schließen`}
-                  className="-mr-1 rounded-sm p-0.5 opacity-60 hover:bg-background hover:opacity-100"
+                  className="mr-1 rounded-sm p-0.5 opacity-60 hover:bg-background hover:opacity-100"
                 >
                   <XIcon className="size-3.5" />
                 </button>
-              </Link>
+              </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-56">
               <ContextMenuItem onSelect={() => handleClose(tab)}>
