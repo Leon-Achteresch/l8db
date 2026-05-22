@@ -34,15 +34,6 @@ function DiffUpdateEntry({ change }: { change: TransactionChange }) {
     new Set([...Object.keys(oldVals), ...Object.keys(newVals)]),
   ).filter((k) => k !== "__ctid__");
 
-  const changedKeys = allKeys.filter((k) => {
-    const oldStr =
-      oldVals[k] === null || oldVals[k] === undefined
-        ? null
-        : String(oldVals[k]);
-    const newStr = newVals[k] === undefined ? oldStr : newVals[k];
-    return oldStr !== newStr;
-  });
-
   return (
     <div className="rounded border border-border/60 bg-background overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
@@ -55,11 +46,14 @@ function DiffUpdateEntry({ change }: { change: TransactionChange }) {
         </span>
       </div>
       <div className="font-mono text-[11px] leading-[1.7]">
-        {changedKeys.map((key) => {
+        {allKeys.map((key) => {
+          const raw = oldVals[key];
           const oldStr =
-            oldVals[key] === null || oldVals[key] === undefined
+            raw === null || raw === undefined
               ? "NULL"
-              : String(oldVals[key]);
+              : typeof raw === "object"
+                ? JSON.stringify(raw)
+                : String(raw);
           const newVal = newVals[key];
           const newStr =
             newVal === null || newVal === undefined ? "NULL" : String(newVal);
@@ -82,7 +76,7 @@ function DiffUpdateEntry({ change }: { change: TransactionChange }) {
             </div>
           );
         })}
-        {changedKeys.length === 0 && (
+        {allKeys.length === 0 && (
           <div className="px-2.5 py-1 text-muted-foreground">
             Keine sichtbaren Unterschiede
           </div>
@@ -226,7 +220,7 @@ export function TransactionPanel() {
         </button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-3 p-3">
           {transactions.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-12 text-center">

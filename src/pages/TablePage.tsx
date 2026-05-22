@@ -92,7 +92,7 @@ export function TablePage() {
       : "Keine Zeilen für diesen Filter.";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {isView ? (
         <ViewDefinitionPanel schema={schema} view={table} />
       ) : null}
@@ -146,16 +146,16 @@ export function TablePage() {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
           <DataTable
-            className="min-h-0 flex-1"
+            className="h-full min-h-0 flex-1"
             columns={data?.columns ?? []}
             data={data?.rows ?? []}
             emptyMessage={emptyMessage}
             sorting={sorting}
             onSortingChange={setSorting}
             isFetching={isFetching}
-            onSaveRow={isView ? undefined : (ctid, updates, oldValues) => updateRowMutation.mutateAsync({ ctid, updates, oldValues })}
+            onSaveRow={isView ? undefined : async (ctid, updates, oldValues) => { await updateRowMutation.mutateAsync({ ctid, updates, oldValues }); }}
             onApplyFilter={handleFilterChange}
             page={page}
             totalCount={totalCount ?? undefined}

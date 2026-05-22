@@ -521,11 +521,12 @@ export function DataTable({
       )}
       <div
         className={cn(
-          "relative min-h-0 flex-1 overflow-auto transition-opacity",
+          "relative min-h-0 flex-1 basis-0 overflow-auto [scrollbar-gutter:stable] transition-opacity",
           isFetching && "opacity-85",
           table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
         )}
       >
+        <div className="pb-3">
         <table className="min-w-full border-separate border-spacing-0 text-sm table-fixed" style={{ width: table.getTotalSize() }}>
           <thead className="sticky top-0 z-10 select-none">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -851,6 +852,7 @@ export function DataTable({
             )}
           </tbody>
         </table>
+        </div>
       </div>
       {rows.length > 0 && (() => {
         const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;

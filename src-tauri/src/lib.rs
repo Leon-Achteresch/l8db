@@ -23,7 +23,8 @@ pub fn run() {
             db::commands::execute_in_transaction,
             db::commands::update_row_in_transaction,
             db::commands::commit_transaction,
-            db::commands::rollback_transaction
+            db::commands::rollback_transaction,
+            db::commands::list_transactions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
