@@ -203,8 +203,8 @@ export function TableFilterPanel({
   };
 
   return (
-    <div className="shrink-0 border-b bg-muted/30">
-      <div className="flex items-center gap-2 px-3 py-2">
+    <div className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -221,8 +221,8 @@ export function TableFilterPanel({
         </button>
 
         {hasActiveFilter ? (
-          <Badge variant="secondary" className="gap-1 font-normal">
-            <span className="max-w-80 truncate font-mono text-xs">
+          <Badge variant="secondary" className="min-w-0 gap-1 font-normal">
+            <span className="max-w-[50vw] truncate font-mono text-xs sm:max-w-80">
               {activeFilter}
             </span>
             <button
@@ -235,14 +235,15 @@ export function TableFilterPanel({
             </button>
           </Badge>
         ) : (
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
             Keine Filter aktiv – alle Zeilen werden angezeigt
           </span>
         )}
       </div>
 
       {open ? (
-        <div className="space-y-3 px-3 pb-3">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-3">
           <Tabs
             value={mode}
             onValueChange={(value) => switchMode(value as FilterMode)}
@@ -264,9 +265,9 @@ export function TableFilterPanel({
               {conditions.map((condition, index) => (
                 <div
                   key={condition.id}
-                  className="flex flex-wrap items-center gap-2"
+                  className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
                 >
-                  <div className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                  <div className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
                     {index === 0 ? (
                       "Wo"
                     ) : (
@@ -276,7 +277,7 @@ export function TableFilterPanel({
                         onChange={(event) =>
                           setCombinator(event.target.value as Combinator)
                         }
-                        className="w-full"
+                        className="w-24 sm:w-full"
                       >
                         <NativeSelectOption value="AND">und</NativeSelectOption>
                         <NativeSelectOption value="OR">oder</NativeSelectOption>
@@ -292,7 +293,7 @@ export function TableFilterPanel({
                         column: event.target.value,
                       })
                     }
-                    className="min-w-40 flex-1"
+                    className="w-full min-w-0 sm:min-w-40 sm:flex-1"
                   >
                     <NativeSelectOption value="" disabled>
                       Spalte wählen…
@@ -312,7 +313,7 @@ export function TableFilterPanel({
                         operator: event.target.value,
                       })
                     }
-                    className="min-w-44"
+                    className="w-full min-w-0 sm:w-auto sm:min-w-44"
                   >
                     {OPERATORS.map((operator) => (
                       <NativeSelectOption key={operator.key} value={operator.key}>
@@ -335,10 +336,10 @@ export function TableFilterPanel({
                         }
                       }}
                       placeholder="Wert"
-                      className="h-8 min-w-32 flex-1"
+                      className="h-8 w-full min-w-0 sm:min-w-32 sm:flex-1"
                     />
                   ) : (
-                    <div className="min-w-32 flex-1" />
+                    <div className="hidden sm:block sm:min-w-32 sm:flex-1" />
                   )}
 
                   <Button
@@ -347,6 +348,7 @@ export function TableFilterPanel({
                     size="icon-sm"
                     onClick={() => removeCondition(condition.id)}
                     aria-label="Bedingung entfernen"
+                    className="self-end sm:self-auto"
                   >
                     <Trash2Icon />
                   </Button>
@@ -396,13 +398,15 @@ export function TableFilterPanel({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2">
+          </div>
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={reset}
               disabled={!hasActiveFilter && draft === ""}
+              className="w-full sm:w-auto"
             >
               <RotateCcwIcon />
               Zurücksetzen
@@ -412,6 +416,7 @@ export function TableFilterPanel({
               size="sm"
               onClick={apply}
               disabled={!isDirty}
+              className="w-full sm:w-auto"
             >
               <PlayIcon />
               Filter anwenden
