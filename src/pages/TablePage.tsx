@@ -75,16 +75,8 @@ export function TablePage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4">
-      <div>
-        <h1 className="text-lg font-medium">
-          {schema}.{table}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {data?.rows.length ?? 0} Zeilen
-        </p>
-      </div>
-      <div className="rounded-md border">
+    <div className="flex flex-1 ">
+      <div className="">
         <Table>
           <TableHeader>
             {tableInstance.getHeaderGroups().map((headerGroup) => (
@@ -117,7 +109,10 @@ export function TablePage() {
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
