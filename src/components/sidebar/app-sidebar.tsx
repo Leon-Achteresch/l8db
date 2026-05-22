@@ -14,6 +14,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar
       collapsible="icon"
       className={cn(
+        "top-[var(--app-header-height)]! bottom-0! h-[calc(100dvh-var(--app-header-height))]! inset-y-auto!",
         "overflow-hidden *:data-[sidebar=sidebar]:flex-row",
         isResizing && "transition-none!",
       )}
