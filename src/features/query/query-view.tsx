@@ -3,9 +3,9 @@ import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookmarkIcon, PlayIcon, Trash2Icon } from "lucide-react";
 
-import { QueryEditorPane } from "@/components/query/QueryEditorPane";
-import { QueryResultTable } from "@/components/query/QueryResultTable";
-import { SaveQueryDialog } from "@/components/query/SaveQueryDialog";
+import { QueryEditorPane } from "@/features/query/query-editor-pane";
+import { QueryResultTable } from "@/features/query/query-result-table";
+import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -28,11 +28,11 @@ import {
 const DML_PATTERN =
   /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
 
-interface QueryPageProps {
+interface QueryViewProps {
   tabId: string;
 }
 
-export function QueryPage({ tabId }: QueryPageProps) {
+export function QueryView({ tabId }: QueryViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
 

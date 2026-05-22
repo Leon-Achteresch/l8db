@@ -1,8 +1,8 @@
 import { Outlet } from "@tanstack/react-router";
 
-import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { TableTabs } from "@/components/table/table-tabs";
-import { TransactionPanel } from "@/components/transaction-panel";
+import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { TableTabs } from "@/features/shell/table-tabs";
+import { TransactionPanel } from "@/features/shell/transaction-panel";
 import {
   SidebarInset,
   SidebarProvider,

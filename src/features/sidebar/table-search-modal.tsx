@@ -16,7 +16,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 
-import { SqlEditor } from "@/components/table/sql-editor";
+import { SqlEditor } from "@/features/table/sql-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

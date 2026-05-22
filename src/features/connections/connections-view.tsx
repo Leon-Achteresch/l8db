@@ -87,7 +87,7 @@ function maskConnectionString(str: string): string {
   }
 }
 
-export function ConnectionsPage() {
+export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
   const addConnection = useConnectionsStore((state) => state.addConnection);
   const updateConnection = useConnectionsStore(

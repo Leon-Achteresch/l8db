@@ -40,14 +40,14 @@ type ExecutionState =
   | { status: "success"; time: number }
   | { status: "error"; message: string };
 
-export function FunctionPage() {
+export function FunctionView() {
   const { schema, name } = routeApi.useParams();
   const { oid } = routeApi.useSearch();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
-  const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid);
+  const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
 
   const [editing, setEditing] = useState(false);
   const [editedSql, setEditedSql] = useState("");

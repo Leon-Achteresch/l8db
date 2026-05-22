@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ERDiagramPage } from "../pages/ERDiagramPage";
+
+import { ErDiagramView } from "@/features/er-diagram/er-diagram-view";
 
 export const Route = createFileRoute("/_app/er-diagram")({
-  component: ERDiagramPage,
+  component: ErDiagramView,
 });

@@ -3,7 +3,7 @@ import { useTheme } from "next-themes";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-export function SettingsPage() {
+export function SettingsView() {
   const { theme, setTheme } = useTheme();
 
   return (

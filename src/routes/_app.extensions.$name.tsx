@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ExtensionPage } from "@/pages/ExtensionPage";
+import { ExtensionView } from "@/features/extensions/extension-view";
 
 export const Route = createFileRoute("/_app/extensions/$name")({
-  component: ExtensionPage,
+  component: ExtensionView,
 });

@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TriggerPage } from "@/pages/TriggerPage";
+import { TriggerView } from "@/features/triggers/trigger-view";
 
-export const Route = createFileRoute(
-  "/_app/triggers/$schema/$table/$trigger",
-)({
-  component: TriggerPage,
+export const Route = createFileRoute("/_app/triggers/$schema/$table/$trigger")({
+  component: TriggerView,
 });

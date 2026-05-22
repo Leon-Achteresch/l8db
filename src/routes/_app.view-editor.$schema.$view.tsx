@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ViewEditorPage } from "@/pages/ViewEditorPage";
+import { ViewEditorView } from "@/features/view-editor/view-editor-view";
 
 export const Route = createFileRoute("/_app/view-editor/$schema/$view")({
-  component: function ViewEditorTab() {
+  component: function ViewEditorRoute() {
     const { schema, view } = Route.useParams();
-    return <ViewEditorPage schema={schema} view={view} />;
+    return <ViewEditorView schema={schema} view={view} />;
   },
 });

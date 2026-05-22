@@ -70,7 +70,7 @@ import {
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTableTabs } from "@/lib/table-tabs";
-import { TableSearchModal } from "@/components/sidebar/table-search-modal";
+import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);

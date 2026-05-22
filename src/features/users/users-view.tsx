@@ -112,7 +112,7 @@ function privKey(tp: TablePrivileges, priv: string): boolean {
   }
 }
 
-export function UsersPage() {
+export function UsersView() {
   const { name } = routeApi.useParams();
   const connection = useActiveConnection();
   const database = useActiveDatabase();

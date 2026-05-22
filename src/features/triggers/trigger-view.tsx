@@ -42,7 +42,7 @@ type ExecutionState =
   | { status: "success"; time: number }
   | { status: "error"; message: string };
 
-export function TriggerPage() {
+export function TriggerView() {
   const { schema, table, trigger: triggerName } = routeApi.useParams();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
