@@ -1,23 +1,15 @@
+import { Outlet } from "@tanstack/react-router";
+
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+import { TableTabs } from "@/components/table-tabs";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 
 export function AppLayout() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isAbout = pathname === "/about";
   const panelWidth = useSidebarPanel((state) => state.width);
 
   return (
@@ -29,32 +21,12 @@ export function AppLayout() {
       }
     >
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="h-svh overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                {isAbout ? (
-                  <BreadcrumbLink asChild>
-                    <Link to="/">Home</Link>
-                  </BreadcrumbLink>
-                ) : (
-                  <BreadcrumbPage>Home</BreadcrumbPage>
-                )}
-              </BreadcrumbItem>
-              {isAbout ? (
-                <>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>About</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </>
-              ) : null}
-            </BreadcrumbList>
-          </Breadcrumb>
+          <TableTabs />
         </header>
-        <div className="flex flex-1">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <Outlet />
         </div>
       </SidebarInset>
