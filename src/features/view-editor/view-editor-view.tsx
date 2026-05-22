@@ -6,6 +6,7 @@ import type { SortingState } from "@tanstack/react-table";
 import {
   CheckIcon,
   CodeIcon,
+  Columns2Icon,
   CopyIcon,
   PlayIcon,
   RotateCcwIcon,
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 
 import { QueryEditorPane } from "@/features/query/query-editor-pane";
 import { DataTable } from "@/features/table/data-table";
+import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { Button } from "@/components/ui/button";
@@ -51,7 +53,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const openTab = useTableTabs((state) => state.openTab);
   const { data: foreignKeys } = useForeignKeysQuery(schema, view);
 
-  const [activeTab, setActiveTab] = useState<"data" | "definition">("data");
+  const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition">("data");
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
@@ -227,7 +229,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   return (
     <Tabs
       value={activeTab}
-      onValueChange={(v) => setActiveTab(v as "data" | "definition")}
+      onValueChange={(v) => setActiveTab(v as "data" | "columns" | "definition")}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
@@ -235,6 +237,10 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
           <TabsTrigger value="data">
             <TableIcon className="size-3.5" />
             Daten
+          </TabsTrigger>
+          <TabsTrigger value="columns">
+            <Columns2Icon className="size-3.5" />
+            Columns
           </TabsTrigger>
           <TabsTrigger value="definition">
             <CodeIcon className="size-3.5" />
@@ -273,6 +279,13 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             />
           </div>
         )}
+      </TabsContent>
+
+      <TabsContent
+        value="columns"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <TableColumnsList schema={schema} table={view} />
       </TabsContent>
 
       <TabsContent
