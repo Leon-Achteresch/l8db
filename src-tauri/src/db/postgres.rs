@@ -141,6 +141,8 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         filter: Option<&str>,
         limit: i64,
+        order_by: Option<&str>,
+        order_desc: bool,
     ) -> Result<TableData, String> {
         let (client, handle) = self.connect().await?;
 
@@ -163,11 +165,23 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 _ => String::new(),
             };
+            let order_clause = match order_by {
+                Some(column) if columns.iter().any(|name| name == column) => {
+                    let direction = if order_desc { "DESC" } else { "ASC" };
+                    format!(
+                        " ORDER BY t.{} {}",
+                        quote_ident(column),
+                        direction
+                    )
+                }
+                _ => String::new(),
+            };
             let sql = format!(
-                "SELECT to_jsonb(t) FROM {}.{} AS t{} LIMIT $1",
+                "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1",
                 quote_ident(schema),
                 quote_ident(table),
                 where_clause,
+                order_clause,
             );
             let data_rows = client
                 .query(&sql, &[&limit])

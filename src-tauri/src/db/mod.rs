@@ -44,6 +44,8 @@ pub trait DatabaseAdapter: Send + Sync {
         table: &str,
         filter: Option<&str>,
         limit: i64,
+        order_by: Option<&str>,
+        order_desc: bool,
     ) -> Result<TableData, String>;
 }
 
