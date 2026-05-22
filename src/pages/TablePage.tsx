@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -10,7 +10,13 @@ import { TableViewsPanel } from "@/components/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/components/table/view-definition-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { useTableRowsQuery, useTableRowCountQuery, useUpdateRowMutation, PAGE_SIZE } from "@/lib/queries";
+import {
+  useTableRowsQuery,
+  useTableRowCountQuery,
+  useUpdateRowMutation,
+  useViewsQuery,
+  PAGE_SIZE,
+} from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
@@ -18,7 +24,21 @@ const routeApi = getRouteApi("/_app/tables/$schema/$table");
 export function TablePage() {
   const { schema, table } = routeApi.useParams();
   const { type } = routeApi.useSearch();
-  const isView = type === "view";
+  const navigate = routeApi.useNavigate();
+  const { data: views } = useViewsQuery();
+  const tabEntityType = useTableTabs((state) => {
+    const tab = state.tabs.find(
+      (t) => t.kind === "table" && t.schema === schema && t.table === table,
+    );
+    return tab?.kind === "table" ? (tab.entityType ?? "table") : undefined;
+  });
+  const isView = useMemo(() => {
+    if (type === "view") return true;
+    if (views !== undefined) {
+      return views.some((v) => v.schema === schema && v.name === table);
+    }
+    return tabEntityType === "view";
+  }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
   const [filter, setFilter] = useState("");
@@ -43,6 +63,14 @@ export function TablePage() {
   useEffect(() => {
     openTab({ schema, table, entityType: isView ? "view" : "table" });
   }, [schema, table, isView, openTab]);
+
+  useEffect(() => {
+    if (!isView || type === "view") return;
+    void navigate({
+      search: { type: "view" },
+      replace: true,
+    });
+  }, [isView, type, navigate]);
 
   useEffect(() => {
     setFilter("");
@@ -127,7 +155,7 @@ export function TablePage() {
             sorting={sorting}
             onSortingChange={setSorting}
             isFetching={isFetching}
-            onSaveRow={isView ? undefined : (ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
+            onSaveRow={isView ? undefined : (ctid, updates, oldValues) => updateRowMutation.mutateAsync({ ctid, updates, oldValues })}
             onApplyFilter={handleFilterChange}
             page={page}
             totalCount={totalCount ?? undefined}

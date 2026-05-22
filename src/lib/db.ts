@@ -181,3 +181,36 @@ export async function getViewDefinition(
     view,
   });
 }
+
+export async function beginTransaction(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<string> {
+  return invoke("begin_transaction", { kind, connectionString, database });
+}
+
+export async function executeInTransaction(
+  txId: string,
+  sql: string,
+): Promise<QueryResult> {
+  return invoke("execute_in_transaction", { txId, sql });
+}
+
+export async function updateRowInTransaction(
+  txId: string,
+  schema: string,
+  table: string,
+  ctid: string,
+  updates: Record<string, string | null>,
+): Promise<string> {
+  return invoke("update_row_in_transaction", { txId, schema, table, ctid, updates });
+}
+
+export async function commitTransaction(txId: string): Promise<void> {
+  await invoke("commit_transaction", { txId });
+}
+
+export async function rollbackTransaction(txId: string): Promise<void> {
+  await invoke("rollback_transaction", { txId });
+}
