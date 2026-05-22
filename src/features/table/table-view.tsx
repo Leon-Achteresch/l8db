@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
+import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
@@ -60,6 +61,7 @@ export function TableView() {
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
+  const [addRowOpen, setAddRowOpen] = useState(false);
   const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
     schema,
     table,
@@ -79,10 +81,11 @@ export function TableView() {
     setPage(0);
   };
 
-  const handleAddRow = async () => {
+  const handleInsertRow = async (values: Record<string, string | null>) => {
     try {
-      await insertRowMutation.mutateAsync({});
+      await insertRowMutation.mutateAsync(values);
       toast.success("Neue Zeile hinzugefügt.");
+      setAddRowOpen(false);
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
     }
@@ -260,7 +263,7 @@ export function TableView() {
             size="sm"
             variant="ghost"
             className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
-            onClick={handleAddRow}
+            onClick={() => setAddRowOpen(true)}
             disabled={insertRowMutation.isPending}
           >
             <PlusIcon className="size-3.5" />
@@ -276,6 +279,16 @@ export function TableView() {
       <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableTriggersList schema={schema} table={table} />
       </TabsContent>
+
+      <NewRowDialog
+        open={addRowOpen}
+        onOpenChange={setAddRowOpen}
+        schema={schema}
+        table={table}
+        columns={data?.columns ?? []}
+        isPending={insertRowMutation.isPending}
+        onSubmit={handleInsertRow}
+      />
     </Tabs>
   );
 }
