@@ -36,6 +36,35 @@ pub struct TableData {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct DetailedColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: bool,
+    pub column_default: Option<String>,
+    pub is_primary_key: bool,
+    pub ordinal_position: i32,
+    pub character_maximum_length: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AddColumnRequest {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: bool,
+    pub default_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlterColumnRequest {
+    pub old_name: String,
+    pub new_name: Option<String>,
+    pub data_type: Option<String>,
+    pub set_not_null: Option<bool>,
+    pub new_default: Option<String>,
+    pub drop_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ColumnInfo {
     pub schema: String,
     pub table: String,
@@ -224,6 +253,10 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn drop_role(&self, name: &str) -> Result<(), String>;
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String>;
     async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String>;
+    async fn list_table_columns_detailed(&self, schema: &str, table: &str) -> Result<Vec<DetailedColumnInfo>, String>;
+    async fn add_column(&self, schema: &str, table: &str, column: &AddColumnRequest) -> Result<(), String>;
+    async fn alter_column(&self, schema: &str, table: &str, changes: &AlterColumnRequest) -> Result<(), String>;
+    async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String>;
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String>;
     async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String>;
     async fn validate_sql(&self, sql: &str) -> Result<(), String>;

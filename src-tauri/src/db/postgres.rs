@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges, TriggerInfo};
+use super::{map_pg_err, quote_ident, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, TableData, TableInfo, TablePrivileges, TriggerInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -870,6 +870,104 @@ impl DatabaseAdapter for PostgresAdapter {
             Ok(())
         })
         .await
+    }
+
+    async fn list_table_columns_detailed(&self, schema: &str, table: &str) -> Result<Vec<DetailedColumnInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let rows = conn.query(
+                "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.ordinal_position, \
+                        c.character_maximum_length, \
+                        COALESCE(( \
+                            SELECT true FROM information_schema.table_constraints tc \
+                            JOIN information_schema.key_column_usage kcu \
+                              ON tc.constraint_name = kcu.constraint_name \
+                             AND tc.table_schema = kcu.table_schema \
+                            WHERE tc.constraint_type = 'PRIMARY KEY' \
+                              AND tc.table_schema = c.table_schema \
+                              AND tc.table_name = c.table_name \
+                              AND kcu.column_name = c.column_name \
+                        ), false) AS is_primary_key \
+                 FROM information_schema.columns c \
+                 WHERE c.table_schema = $1 AND c.table_name = $2 \
+                 ORDER BY c.ordinal_position",
+                &[&schema, &table],
+            ).await.map_err(map_pg_err)?;
+            Ok(rows.iter().map(|r| {
+                let nullable: String = r.get("is_nullable");
+                let ordinal: i32 = r.get("ordinal_position");
+                DetailedColumnInfo {
+                    name: r.get("column_name"),
+                    data_type: r.get("data_type"),
+                    is_nullable: nullable == "YES",
+                    column_default: r.get("column_default"),
+                    is_primary_key: r.get("is_primary_key"),
+                    ordinal_position: ordinal,
+                    character_maximum_length: r.get("character_maximum_length"),
+                }
+            }).collect())
+        }).await
+    }
+
+    async fn add_column(&self, schema: &str, table: &str, column: &AddColumnRequest) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let mut sql = format!(
+                "ALTER TABLE {}.{} ADD COLUMN {} {}",
+                quote_ident(schema), quote_ident(table), quote_ident(&column.name), column.data_type
+            );
+            if !column.is_nullable {
+                sql.push_str(" NOT NULL");
+            }
+            if let Some(ref def) = column.default_value {
+                sql.push_str(&format!(" DEFAULT {def}"));
+            }
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        }).await
+    }
+
+    async fn alter_column(&self, schema: &str, table: &str, changes: &AlterColumnRequest) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
+            let col = quote_ident(&changes.old_name);
+            let mut stmts: Vec<String> = Vec::new();
+            if let Some(ref dt) = changes.data_type {
+                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}"));
+            }
+            if let Some(not_null) = changes.set_not_null {
+                if not_null {
+                    stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
+                } else {
+                    stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"));
+                }
+            }
+            if changes.drop_default {
+                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
+            } else if let Some(ref def) = changes.new_default {
+                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"));
+            }
+            if let Some(ref new_name) = changes.new_name {
+                stmts.push(format!("ALTER TABLE {tbl} RENAME COLUMN {col} TO {}", quote_ident(new_name)));
+            }
+            for stmt in &stmts {
+                conn.execute(stmt.as_str(), &[]).await.map_err(map_pg_err)?;
+            }
+            Ok(())
+        }).await
+    }
+
+    async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = format!(
+                "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
+                quote_ident(schema), quote_ident(table), quote_ident(column)
+            );
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        }).await
     }
 
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {

@@ -82,6 +82,14 @@ export function TableTabs() {
         }),
       );
     }
+    if (tab.kind === "alter-table") {
+      return Boolean(
+        matchRoute({
+          to: "/alter-table/$schema/$table",
+          params: { schema: tab.schema, table: tab.table },
+        }),
+      );
+    }
     return Boolean(
       matchRoute({ to: "/extensions/$name", params: { name: tab.name } }),
     );
@@ -118,6 +126,11 @@ export function TableTabs() {
       void navigate({
         to: "/view-editor/$schema/$view",
         params: { schema: tab.schema, view: tab.view },
+      });
+    } else if (tab.kind === "alter-table") {
+      void navigate({
+        to: "/alter-table/$schema/$table",
+        params: { schema: tab.schema, table: tab.table },
       });
     } else {
       void navigate({ to: "/extensions/$name", params: { name: tab.name } });

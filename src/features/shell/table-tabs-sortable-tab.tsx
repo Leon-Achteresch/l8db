@@ -8,6 +8,7 @@ import {
   SquareTerminalIcon,
   TableIcon,
   UsersIcon,
+  WrenchIcon,
   XIcon,
   ZapIcon,
 } from "lucide-react";
@@ -55,6 +56,8 @@ function tabVisual(tab: Tab) {
       return { Icon: ZapIcon, iconColor: "text-orange-500" };
     case "view-editor":
       return { Icon: EyeIcon, iconColor: "text-cyan-500" };
+    case "alter-table":
+      return { Icon: WrenchIcon, iconColor: "text-orange-500" };
     default:
       return (tab.entityType ?? "table") === "view"
         ? { Icon: EyeIcon, iconColor: "text-cyan-500" }
@@ -93,7 +96,9 @@ export function TableTabsSortableTab({
             ? tab.trigger
             : tab.kind === "view-editor"
               ? tab.view
-              : tab.name;
+              : tab.kind === "alter-table"
+                ? tab.table
+                : tab.name;
 
   return (
     <ContextMenu>

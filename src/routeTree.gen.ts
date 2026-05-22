@@ -23,6 +23,7 @@ import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.
 import { Route as AppViewEditorSchemaViewRouteImport } from './routes/_app.view-editor.$schema.$view'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
 import { Route as AppFunctionsSchemaNameRouteImport } from './routes/_app.functions.$schema.$name'
+import { Route as AppAlterTableSchemaTableRouteImport } from './routes/_app.alter-table.$schema.$table'
 import { Route as AppTriggersSchemaTableTriggerRouteImport } from './routes/_app.triggers.$schema.$table.$trigger'
 
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -94,6 +95,12 @@ const AppFunctionsSchemaNameRoute = AppFunctionsSchemaNameRouteImport.update({
   path: '/functions/$schema/$name',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAlterTableSchemaTableRoute =
+  AppAlterTableSchemaTableRouteImport.update({
+    id: '/alter-table/$schema/$table',
+    path: '/alter-table/$schema/$table',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppTriggersSchemaTableTriggerRoute =
   AppTriggersSchemaTableTriggerRouteImport.update({
     id: '/triggers/$schema/$table/$trigger',
@@ -112,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/query/$id': typeof AppQueryIdRoute
   '/users/$name': typeof AppUsersNameRoute
   '/query/': typeof AppQueryIndexRoute
+  '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
@@ -127,6 +135,7 @@ export interface FileRoutesByTo {
   '/query/$id': typeof AppQueryIdRoute
   '/users/$name': typeof AppUsersNameRoute
   '/query': typeof AppQueryIndexRoute
+  '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
@@ -145,6 +154,7 @@ export interface FileRoutesById {
   '/_app/query/$id': typeof AppQueryIdRoute
   '/_app/users/$name': typeof AppUsersNameRoute
   '/_app/query/': typeof AppQueryIndexRoute
+  '/_app/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/_app/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/query/$id'
     | '/users/$name'
     | '/query/'
+    | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/query/$id'
     | '/users/$name'
     | '/query'
+    | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
@@ -195,6 +207,7 @@ export interface FileRouteTypes {
     | '/_app/query/$id'
     | '/_app/users/$name'
     | '/_app/query/'
+    | '/_app/alter-table/$schema/$table'
     | '/_app/functions/$schema/$name'
     | '/_app/tables/$schema/$table'
     | '/_app/view-editor/$schema/$view'
@@ -306,6 +319,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFunctionsSchemaNameRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/alter-table/$schema/$table': {
+      id: '/_app/alter-table/$schema/$table'
+      path: '/alter-table/$schema/$table'
+      fullPath: '/alter-table/$schema/$table'
+      preLoaderRoute: typeof AppAlterTableSchemaTableRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/triggers/$schema/$table/$trigger': {
       id: '/_app/triggers/$schema/$table/$trigger'
       path: '/triggers/$schema/$table/$trigger'
@@ -338,6 +358,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppExtensionsNameRoute: typeof AppExtensionsNameRoute
   AppUsersNameRoute: typeof AppUsersNameRoute
+  AppAlterTableSchemaTableRoute: typeof AppAlterTableSchemaTableRoute
   AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
   AppViewEditorSchemaViewRoute: typeof AppViewEditorSchemaViewRoute
@@ -352,6 +373,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppExtensionsNameRoute: AppExtensionsNameRoute,
   AppUsersNameRoute: AppUsersNameRoute,
+  AppAlterTableSchemaTableRoute: AppAlterTableSchemaTableRoute,
   AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
   AppViewEditorSchemaViewRoute: AppViewEditorSchemaViewRoute,

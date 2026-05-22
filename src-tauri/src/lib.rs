@@ -45,7 +45,11 @@ pub fn run() {
             db::commands::get_er_schema,
             db::commands::list_triggers,
             db::commands::drop_table,
-            db::commands::truncate_table
+            db::commands::truncate_table,
+            db::commands::list_table_columns_detailed,
+            db::commands::add_column,
+            db::commands::alter_column,
+            db::commands::drop_column
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
