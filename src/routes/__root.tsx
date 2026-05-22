@@ -1,16 +1,19 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { ThemeProvider } from "next-themes";
 import "../index.css";
 
 import { AppHeader } from "@/components/app-header";
 
 function RootComponent() {
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
-      <AppHeader />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <Outlet />
+    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
+      <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
+        <AppHeader />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <Outlet />
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 }
 

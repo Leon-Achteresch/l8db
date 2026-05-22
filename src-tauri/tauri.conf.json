@@ -15,7 +15,7 @@
         "title": "l8db",
         "width": 800,
         "height": 600,
-        "titleBarStyle": "overlay"
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

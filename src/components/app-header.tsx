@@ -92,13 +92,13 @@ export function AppHeader() {
         <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden />
 
         <Link
-          to="/connections"
-          aria-label="Verbindungen verwalten"
-          title="Verbindungen verwalten"
+          to="/settings"
+          aria-label="Einstellungen"
+          title="Einstellungen"
           className={cn(
             "inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150",
             "hover:bg-muted hover:text-foreground",
-            pathname.startsWith("/connections") && "bg-muted text-foreground",
+            pathname.startsWith("/settings") && "bg-muted text-foreground",
           )}
         >
           <Settings className="size-4" strokeWidth={2} />

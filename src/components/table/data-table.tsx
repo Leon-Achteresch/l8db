@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type ColumnDef,
@@ -36,6 +36,47 @@ import { cn } from "@/lib/utils";
 type TableRow = Record<string, unknown>;
 
 const INDEX_COLUMN = "__row_index__";
+
+function debugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  // #region agent log
+  fetch("http://127.0.0.1:7578/ingest/a446df08-7154-43f3-b666-79e09390df4a", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "26a762",
+    },
+    body: JSON.stringify({
+      sessionId: "26a762",
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+function resolveRowIndexFromPointer(
+  tbody: HTMLTableSectionElement,
+  clientY: number,
+  maxIndex: number,
+): number {
+  for (let i = 0; i < tbody.children.length && i < maxIndex; i++) {
+    const child = tbody.children[i];
+    if (!(child instanceof HTMLTableRowElement)) continue;
+    const rect = child.getBoundingClientRect();
+    if (clientY >= rect.top && clientY < rect.bottom) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 function renderTypeIcon(iconName: string, className?: string) {
   switch (iconName) {
@@ -235,6 +276,7 @@ export function DataTable({
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
   const [editingRow, setEditingRow] = useState<EditingRow | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -349,9 +391,27 @@ export function DataTable({
   }, []);
 
   const handleRowDoubleClick = useCallback(
-    (row: Row<TableRow>, rowIndex: number) => {
+    (row: Row<TableRow>, rowIndex: number, domRowIndex: number) => {
       const ctid = row.original["__ctid__"] as string | undefined;
-      if (!ctid) return;
+      const sampleCol = columnNames[0];
+      const sampleVal = sampleCol ? row.original[sampleCol] : undefined;
+      debugLog("H1-H3", "data-table.tsx:handleRowDoubleClick", "dblclick handler", {
+        passedRowIndex: rowIndex,
+        tanstackRowIndex: row.index,
+        tanstackRowId: row.id,
+        domRowIndex,
+        ctid,
+        sampleCol,
+        sampleVal: sampleVal === undefined ? null : String(sampleVal).slice(0, 40),
+        indexMismatch: rowIndex !== row.index,
+      });
+      if (!ctid) {
+        debugLog("H5", "data-table.tsx:handleRowDoubleClick", "no ctid abort", {
+          passedRowIndex: rowIndex,
+          tanstackRowIndex: row.index,
+        });
+        return;
+      }
       const values: Record<string, string> = {};
       for (const col of columnNames) {
         const val = row.original[col];
@@ -363,11 +423,117 @@ export function DataTable({
           values[col] = String(val);
         }
       }
+      debugLog("H3-H5", "data-table.tsx:handleRowDoubleClick", "setEditingRow", {
+        storedRowIndex: rowIndex,
+        ctid,
+        firstValue: sampleCol ? values[sampleCol]?.slice(0, 40) : null,
+      });
       setEditingRow({ rowIndex, ctid, values });
       setActiveCell(null);
     },
     [columnNames],
   );
+
+  const handleTbodyDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (!onSaveRow) return;
+      const tbody = e.currentTarget;
+      const scrollEl = tbody.closest(".overflow-auto");
+      const closestTr = (e.target as HTMLElement).closest("tr");
+      const closestIndex =
+        closestTr?.parentElement === tbody
+          ? Array.from(tbody.children).indexOf(closestTr)
+          : -1;
+      const hitTr = document.elementFromPoint(e.clientX, e.clientY)?.closest("tbody tr");
+      const hitIndex =
+        hitTr?.parentElement === tbody
+          ? Array.from(tbody.children).indexOf(hitTr)
+          : -1;
+      const pointerIndex = resolveRowIndexFromPointer(tbody, e.clientY, rows.length);
+      const rowIndex =
+        pointerIndex >= 0
+          ? pointerIndex
+          : hitIndex >= 0
+            ? hitIndex
+            : closestIndex;
+      if (rowIndex < 0 || rowIndex >= rows.length) return;
+      if (editingRow?.rowIndex === rowIndex) return;
+      const row = rows[rowIndex];
+      const pointerTr = tbody.children[rowIndex];
+      const pointerRect =
+        pointerTr instanceof HTMLTableRowElement
+          ? pointerTr.getBoundingClientRect()
+          : null;
+      debugLog("H7-H9", "data-table.tsx:handleTbodyDoubleClick", "pointer resolve", {
+        clientY: e.clientY,
+        scrollTop: scrollEl instanceof HTMLElement ? scrollEl.scrollTop : null,
+        closestIndex,
+        hitIndex,
+        pointerIndex,
+        chosenRowIndex: rowIndex,
+        rowsLength: rows.length,
+        indicesAgree: closestIndex === hitIndex && hitIndex === pointerIndex,
+        tanstackRowId: row.id,
+        pointerRectTop: pointerRect?.top,
+        pointerRectBottom: pointerRect?.bottom,
+      });
+      handleRowDoubleClick(
+        row,
+        rowIndex,
+        pointerTr instanceof HTMLTableRowElement ? pointerTr.rowIndex : rowIndex,
+      );
+    },
+    [onSaveRow, rows, editingRow, handleRowDoubleClick],
+  );
+
+  useEffect(() => {
+    if (!editingRow || !tbodyRef.current) return;
+    requestAnimationFrame(() => {
+      const tbody = tbodyRef.current;
+      if (!tbody) return;
+      const inputRowIndices: number[] = [];
+      Array.from(tbody.children).forEach((child, i) => {
+        if (child instanceof HTMLTableRowElement && child.querySelector("input")) {
+          inputRowIndices.push(i);
+        }
+      });
+      const scrollEl = tbody.closest(".overflow-auto");
+      debugLog("H7", "data-table.tsx:dom-audit", "input rows in DOM", {
+        storedRowIndex: editingRow.rowIndex,
+        inputRowIndices,
+        domMatchesState: inputRowIndices.length === 1 && inputRowIndices[0] === editingRow.rowIndex,
+        scrollTop: scrollEl instanceof HTMLElement ? scrollEl.scrollTop : null,
+      });
+      const tr = tbody.children[editingRow.rowIndex];
+      if (tr instanceof HTMLTableRowElement) {
+        tr.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    });
+  }, [editingRow]);
+
+  useEffect(() => {
+    if (!editingRow) return;
+    const indices = rows.map((r) => r.index);
+    const editingMatches = rows.filter((r) => r.index === editingRow.rowIndex);
+    const row0Sample = columnNames[0] ? rows[0]?.original[columnNames[0]] : undefined;
+    const storedSample = columnNames[0]
+      ? rows[editingRow.rowIndex]?.original[columnNames[0]]
+      : undefined;
+    debugLog("H2-H4", "data-table.tsx:editingRow-effect", "editing state after set", {
+      storedRowIndex: editingRow.rowIndex,
+      ctid: editingRow.ctid,
+      rowsLength: rows.length,
+      allTanstackIndices: indices,
+      matchingRowCount: editingMatches.length,
+      matchingRowIds: editingMatches.map((r) => r.id),
+      row0EqualsStoredOriginal: rows[0]?.original === rows[editingRow.rowIndex]?.original,
+      row0Sample: row0Sample === undefined ? null : String(row0Sample).slice(0, 40),
+      storedRowSample: storedSample === undefined ? null : String(storedSample).slice(0, 40),
+      editingFirstValue: columnNames[0]
+        ? editingRow.values[columnNames[0]]?.slice(0, 40)
+        : null,
+    });
+  }, [editingRow, rows, columnNames]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -476,7 +642,10 @@ export function DataTable({
               </tr>
             ))}
           </thead>
-          <tbody>
+          <tbody
+            ref={tbodyRef}
+            onDoubleClick={rows.length > 0 ? handleTbodyDoubleClick : undefined}
+          >
             {rows.length === 0 ? (
               <tr>
                 <td
@@ -490,14 +659,17 @@ export function DataTable({
               rows.map((row) => {
                 const rowIndex = row.index;
                 const isEditing = editingRow?.rowIndex === rowIndex;
+                if (isEditing) {
+                  debugLog("H4", "data-table.tsx:row-render", "row marked isEditing", {
+                    rowIndex,
+                    tanstackRowId: row.id,
+                    storedRowIndex: editingRow?.rowIndex,
+                  });
+                }
                 return (
                   <tr
                     key={row.id}
-                    onDoubleClick={
-                      onSaveRow && !isEditing
-                        ? () => handleRowDoubleClick(row, rowIndex)
-                        : undefined
-                    }
+                    data-row-index={rowIndex}
                     className={cn(
                       "group/row",
                       isEditing
