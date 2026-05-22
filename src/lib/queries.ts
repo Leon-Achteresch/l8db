@@ -7,8 +7,11 @@ import {
   beginTransaction,
   countTableRows,
   fetchTableRows,
+  getFunctionDefinition,
   getViewDefinition,
   listDatabases,
+  listExtensions,
+  listFunctions,
   listSchemas,
   listTables,
   listViews,
@@ -101,6 +104,54 @@ export function useViewDefinitionQuery(schema: string, view: string) {
         database ?? undefined,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(view),
+  });
+}
+
+export function useFunctionsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["functions", connection?.id, database, schema],
+    queryFn: () =>
+      listFunctions(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useFunctionDefinitionQuery(oid: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["function-definition", connection?.id, database, oid],
+    queryFn: () =>
+      getFunctionDefinition(
+        connection!.kind,
+        connection!.connectionString,
+        oid,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(oid),
+  });
+}
+
+export function useExtensionsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["extensions", connection?.id, database],
+    queryFn: () =>
+      listExtensions(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
   });
 }
 

@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, ColumnInfo, ConnectionConfig, DatabaseAdapter, QueryResult, TableData, TableInfo};
+use super::{map_pg_err, quote_ident, ColumnInfo, ConnectionConfig, DatabaseAdapter, ExtensionInfo, FunctionInfo, QueryResult, TableData, TableInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -492,6 +492,109 @@ impl DatabaseAdapter for PostgresAdapter {
             .await
             .map_err(map_pg_err)
             .map(|row| row.get::<_, String>(0))
+        })
+        .await
+    }
+
+    async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(schema) => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                pg_catalog.pg_get_function_result(p.oid), \
+                                l.lanname, \
+                                p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+                         ORDER BY p.proname",
+                        &[&schema],
+                    )
+                    .await
+                }
+                None => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                pg_catalog.pg_get_function_result(p.oid), \
+                                l.lanname, \
+                                p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                               AND p.prokind IN ('f', 'p') \
+                         ORDER BY n.nspname, p.proname",
+                        &[],
+                    )
+                    .await
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| FunctionInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                        identity_args: row.get(2),
+                        return_type: row.get(3),
+                        language: row.get(4),
+                        oid: row.get(5),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
+        let conn = self.get_conn().await?;
+        let oid_val: u32 = oid
+            .parse()
+            .map_err(|_| format!("Ungültige OID: {oid}"))?;
+        self.timed(async {
+            conn.query_one(
+                "SELECT pg_get_functiondef($1::oid)",
+                &[&oid_val],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|row| row.get::<_, String>(0))
+        })
+        .await
+    }
+
+    async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query(
+                "SELECT e.extname, \
+                        e.extversion, \
+                        n.nspname, \
+                        c.description \
+                 FROM pg_extension e \
+                 JOIN pg_namespace n ON n.oid = e.extnamespace \
+                 LEFT JOIN pg_description c \
+                   ON c.objoid = e.oid \
+                   AND c.classoid = 'pg_extension'::regclass \
+                 ORDER BY e.extname",
+                &[],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ExtensionInfo {
+                        name: row.get(0),
+                        version: row.get(1),
+                        schema: row.get(2),
+                        description: row.get(3),
+                    })
+                    .collect()
+            })
         })
         .await
     }

@@ -8,12 +8,15 @@ export type TableTab = {
   entityType?: "table" | "view";
 };
 export type QueryTab = { kind: "query"; id: string; title: string; sql: string };
-export type Tab = TableTab | QueryTab;
+export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
+export type ExtensionTab = { kind: "extension"; name: string };
+export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab;
 
 export function tabKey(tab: Tab): string {
-  return tab.kind === "table"
-    ? `table:${tab.schema}.${tab.table}`
-    : `query:${tab.id}`;
+  if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
+  if (tab.kind === "query") return `query:${tab.id}`;
+  if (tab.kind === "function") return `function:${tab.oid}`;
+  return `extension:${tab.name}`;
 }
 
 interface TabsState {
@@ -21,6 +24,8 @@ interface TabsState {
   queryCounter: number;
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
+  openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
+  openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
@@ -71,6 +76,24 @@ export const useTableTabs = create<TabsState>()(
         };
         set((state) => ({ tabs: [...state.tabs, qt], queryCounter: counter }));
         return qt.id;
+      },
+
+      openFunctionTab: (tab) => {
+        const ft: FunctionTab = { kind: "function", ...tab };
+        const key = tabKey(ft);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return { tabs: [...state.tabs, ft] };
+        });
+      },
+
+      openExtensionTab: (tab) => {
+        const et: ExtensionTab = { kind: "extension", ...tab };
+        const key = tabKey(et);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return { tabs: [...state.tabs, et] };
+        });
       },
 
       closeTab: (key) =>

@@ -17,7 +17,9 @@ import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
 import { Route as AppQueryIndexRouteImport } from './routes/_app.query.index'
 import { Route as AppQueryIdRouteImport } from './routes/_app.query.$id'
+import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.$name'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
+import { Route as AppFunctionsSchemaNameRouteImport } from './routes/_app.functions.$schema.$name'
 
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
@@ -58,9 +60,19 @@ const AppQueryIdRoute = AppQueryIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AppQueryRoute,
 } as any)
+const AppExtensionsNameRoute = AppExtensionsNameRouteImport.update({
+  id: '/extensions/$name',
+  path: '/extensions/$name',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTablesSchemaTableRoute = AppTablesSchemaTableRouteImport.update({
   id: '/tables/$schema/$table',
   path: '/tables/$schema/$table',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFunctionsSchemaNameRoute = AppFunctionsSchemaNameRouteImport.update({
+  id: '/functions/$schema/$name',
+  path: '/functions/$schema/$name',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -70,8 +82,10 @@ export interface FileRoutesByFullPath {
   '/about': typeof AppAboutRoute
   '/query': typeof AppQueryRouteWithChildren
   '/settings': typeof AppSettingsRoute
+  '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
   '/query/': typeof AppQueryIndexRoute
+  '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRoutesByTo {
@@ -79,8 +93,10 @@ export interface FileRoutesByTo {
   '/about': typeof AppAboutRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
+  '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
   '/query': typeof AppQueryIndexRoute
+  '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRoutesById {
@@ -91,8 +107,10 @@ export interface FileRoutesById {
   '/_app/query': typeof AppQueryRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/extensions/$name': typeof AppExtensionsNameRoute
   '/_app/query/$id': typeof AppQueryIdRoute
   '/_app/query/': typeof AppQueryIndexRoute
+  '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRouteTypes {
@@ -103,8 +121,10 @@ export interface FileRouteTypes {
     | '/about'
     | '/query'
     | '/settings'
+    | '/extensions/$name'
     | '/query/$id'
     | '/query/'
+    | '/functions/$schema/$name'
     | '/tables/$schema/$table'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -112,8 +132,10 @@ export interface FileRouteTypes {
     | '/about'
     | '/settings'
     | '/'
+    | '/extensions/$name'
     | '/query/$id'
     | '/query'
+    | '/functions/$schema/$name'
     | '/tables/$schema/$table'
   id:
     | '__root__'
@@ -123,8 +145,10 @@ export interface FileRouteTypes {
     | '/_app/query'
     | '/_app/settings'
     | '/_app/'
+    | '/_app/extensions/$name'
     | '/_app/query/$id'
     | '/_app/query/'
+    | '/_app/functions/$schema/$name'
     | '/_app/tables/$schema/$table'
   fileRoutesById: FileRoutesById
 }
@@ -191,11 +215,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQueryIdRouteImport
       parentRoute: typeof AppQueryRoute
     }
+    '/_app/extensions/$name': {
+      id: '/_app/extensions/$name'
+      path: '/extensions/$name'
+      fullPath: '/extensions/$name'
+      preLoaderRoute: typeof AppExtensionsNameRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tables/$schema/$table': {
       id: '/_app/tables/$schema/$table'
       path: '/tables/$schema/$table'
       fullPath: '/tables/$schema/$table'
       preLoaderRoute: typeof AppTablesSchemaTableRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/functions/$schema/$name': {
+      id: '/_app/functions/$schema/$name'
+      path: '/functions/$schema/$name'
+      fullPath: '/functions/$schema/$name'
+      preLoaderRoute: typeof AppFunctionsSchemaNameRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -220,6 +258,8 @@ interface AppRouteChildren {
   AppQueryRoute: typeof AppQueryRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppExtensionsNameRoute: typeof AppExtensionsNameRoute
+  AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
 }
 
@@ -228,6 +268,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppQueryRoute: AppQueryRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppExtensionsNameRoute: AppExtensionsNameRoute,
+  AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
 }
 

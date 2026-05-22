@@ -24,7 +24,10 @@ pub fn run() {
             db::commands::update_row_in_transaction,
             db::commands::commit_transaction,
             db::commands::rollback_transaction,
-            db::commands::list_transactions
+            db::commands::list_transactions,
+            db::commands::list_functions,
+            db::commands::get_function_definition,
+            db::commands::list_extensions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

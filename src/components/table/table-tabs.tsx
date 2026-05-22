@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { CopyIcon, PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
+import { CopyIcon, BracesIcon, PackageIcon, PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
@@ -52,7 +52,14 @@ function SortableTab({
 }: SortableTabProps) {
   const { ref, isDragging } = useSortable({ id: tabKey(tab), index });
 
-  const label = tab.kind === "table" ? tab.table : tab.title;
+  const label =
+    tab.kind === "table"
+      ? tab.table
+      : tab.kind === "query"
+        ? tab.title
+        : tab.kind === "function"
+          ? tab.name
+          : tab.name;
 
   return (
     <ContextMenu>
@@ -62,7 +69,7 @@ function SortableTab({
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group flex shrink-0 cursor-grab items-center rounded-md border text-sm transition-colors active:cursor-grabbing",
+            "group flex shrink-0 cursor-grab items-center rounded-t-md text-sm transition-colors active:cursor-grabbing",
             isActive
               ? "border-border bg-accent text-accent-foreground"
               : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -76,6 +83,12 @@ function SortableTab({
           >
             {tab.kind === "query" && (
               <SquareTerminalIcon className="size-3 shrink-0 opacity-60" />
+            )}
+            {tab.kind === "function" && (
+              <BracesIcon className="size-3 shrink-0 opacity-60" />
+            )}
+            {tab.kind === "extension" && (
+              <PackageIcon className="size-3 shrink-0 opacity-60" />
             )}
             <span className="truncate">{label}</span>
           </button>
@@ -153,7 +166,21 @@ export function TableTabs() {
         }),
       );
     }
-    return Boolean(matchRoute({ to: "/query/$id", params: { id: tab.id } }));
+    if (tab.kind === "query") {
+      return Boolean(matchRoute({ to: "/query/$id", params: { id: tab.id } }));
+    }
+    if (tab.kind === "function") {
+      return Boolean(
+        matchRoute({
+          to: "/functions/$schema/$name",
+          params: { schema: tab.schema, name: tab.name },
+          search: { oid: tab.oid },
+        }),
+      );
+    }
+    return Boolean(
+      matchRoute({ to: "/extensions/$name", params: { name: tab.name } }),
+    );
   };
 
   const activeTab = tabs.find(isTabActive);
@@ -168,8 +195,16 @@ export function TableTabs() {
             ? { type: "view" as const }
             : {},
       });
-    } else {
+    } else if (tab.kind === "query") {
       void navigate({ to: "/query/$id", params: { id: tab.id } });
+    } else if (tab.kind === "function") {
+      void navigate({
+        to: "/functions/$schema/$name",
+        params: { schema: tab.schema, name: tab.name },
+        search: { oid: tab.oid },
+      });
+    } else {
+      void navigate({ to: "/extensions/$name", params: { name: tab.name } });
     }
   };
 
@@ -226,7 +261,7 @@ export function TableTabs() {
   };
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
+    <div className="flex min-w-0 flex-1 items-end gap-1">
       <DragDropProvider
         sensors={sensors}
         onDragEnd={(event) => {
@@ -239,7 +274,7 @@ export function TableTabs() {
           }
         }}
       >
-        <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        <nav className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
           {tabs.map((tab, index) => (
             <SortableTab
               key={tabKey(tab)}

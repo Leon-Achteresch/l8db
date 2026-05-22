@@ -51,6 +51,24 @@ pub struct QueryResult {
     pub execution_time_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionInfo {
+    pub schema: String,
+    pub name: String,
+    pub identity_args: String,
+    pub return_type: String,
+    pub language: String,
+    pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtensionInfo {
+    pub name: String,
+    pub version: Option<String>,
+    pub schema: Option<String>,
+    pub description: Option<String>,
+}
+
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
     async fn test_connection(&self) -> Result<(), String>;
@@ -93,6 +111,9 @@ pub trait DatabaseAdapter: Send + Sync {
         schema: &str,
         view: &str,
     ) -> Result<String, String>;
+    async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String>;
+    async fn get_function_definition(&self, oid: &str) -> Result<String, String>;
+    async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String>;
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {

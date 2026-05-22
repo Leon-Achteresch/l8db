@@ -2,12 +2,14 @@ import { useState } from "react";
 
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
+  BracesIcon,
   CheckIcon,
   ChevronsUpDownIcon,
   DatabaseIcon,
   EyeIcon,
   FileCodeIcon,
   LayersIcon,
+  PackageIcon,
   SettingsIcon,
   TableIcon,
   TrashIcon,
@@ -49,6 +51,8 @@ import {
 } from "@/lib/db-selection";
 import {
   useDatabasesQuery,
+  useExtensionsQuery,
+  useFunctionsQuery,
   useSchemasQuery,
   useTablesQuery,
   useViewsQuery,
@@ -81,8 +85,22 @@ export function AppSidebarPanel() {
     isError: viewsError,
     error: viewsErrorValue,
   } = useViewsQuery();
+  const {
+    data: functions,
+    isLoading: functionsLoading,
+    isError: functionsError,
+    error: functionsErrorValue,
+  } = useFunctionsQuery();
+  const {
+    data: extensions,
+    isLoading: extensionsLoading,
+    isError: extensionsError,
+    error: extensionsErrorValue,
+  } = useExtensionsQuery();
 
-  const [sidebarTab, setSidebarTab] = useState<"tables" | "views" | "queries">("tables");
+  const [sidebarTab, setSidebarTab] = useState<
+    "tables" | "views" | "queries" | "functions" | "extensions"
+  >("tables");
 
   return (
     <Sidebar
@@ -192,7 +210,7 @@ export function AppSidebarPanel() {
           <div className="px-2 pt-2">
             <Tabs
               value={sidebarTab}
-              onValueChange={(v) => setSidebarTab(v as "tables" | "views" | "queries")}
+              onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}
             >
               <TabsList className="w-full">
                 <TabsTrigger
@@ -210,6 +228,20 @@ export function AppSidebarPanel() {
                   <EyeIcon className="size-4" />
                 </TabsTrigger>
                 <TabsTrigger
+                  value="functions"
+                  className="flex-1 px-0"
+                  aria-label="Funktionen"
+                >
+                  <BracesIcon className="size-4" />
+                </TabsTrigger>
+                <TabsTrigger
+                  value="extensions"
+                  className="flex-1 px-0"
+                  aria-label="Packages"
+                >
+                  <PackageIcon className="size-4" />
+                </TabsTrigger>
+                <TabsTrigger
                   value="queries"
                   className="flex-1 px-0"
                   aria-label="Queries"
@@ -222,7 +254,15 @@ export function AppSidebarPanel() {
         ) : null}
         <SidebarGroup>
           <SidebarGroupLabel>
-            {sidebarTab === "tables" ? "Tabellen" : sidebarTab === "views" ? "Views" : "Gespeicherte Queries"}
+            {sidebarTab === "tables"
+              ? "Tabellen"
+              : sidebarTab === "views"
+                ? "Views"
+                : sidebarTab === "functions"
+                  ? "Funktionen"
+                  : sidebarTab === "extensions"
+                    ? "Packages"
+                    : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {!activeConnection ? (
@@ -248,6 +288,20 @@ export function AppSidebarPanel() {
                 emptyMessage="Keine Views gefunden."
                 type="view"
                 matchRoute={matchRoute}
+              />
+            ) : sidebarTab === "functions" ? (
+              <SidebarFunctionList
+                items={functions}
+                isLoading={functionsLoading}
+                isError={functionsError}
+                error={functionsErrorValue}
+              />
+            ) : sidebarTab === "extensions" ? (
+              <SidebarExtensionList
+                items={extensions}
+                isLoading={extensionsLoading}
+                isError={extensionsError}
+                error={extensionsErrorValue}
               />
             ) : (
               <SavedQueriesList />
@@ -328,6 +382,139 @@ function SidebarEntityList({
           </SidebarMenuItem>
         );
       })}
+    </SidebarMenu>
+  );
+}
+
+interface SidebarFunctionListProps {
+  items: { schema: string; name: string; identity_args: string; oid: string }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+function SidebarFunctionList({
+  items,
+  isLoading,
+  isError,
+  error,
+}: SidebarFunctionListProps) {
+  const navigate = useNavigate();
+  const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+        <Spinner />
+        Lade Funktionen…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <p className="px-2 py-1 text-sm text-muted-foreground">
+        Keine Funktionen gefunden.
+      </p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {items.map((item) => (
+        <SidebarMenuItem key={item.oid}>
+          <SidebarMenuButton
+            onClick={() => {
+              openFunctionTab({
+                schema: item.schema,
+                name: item.name,
+                oid: item.oid,
+              });
+              navigate({
+                to: "/functions/$schema/$name",
+                params: { schema: item.schema, name: item.name },
+                search: { oid: item.oid },
+              });
+            }}
+          >
+            <BracesIcon className="text-muted-foreground" />
+            <span className="truncate">
+              {item.name}
+              {item.identity_args ? `(${item.identity_args})` : "()"}
+            </span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  );
+}
+
+interface SidebarExtensionListProps {
+  items: { name: string; version: string | null }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+function SidebarExtensionList({
+  items,
+  isLoading,
+  isError,
+  error,
+}: SidebarExtensionListProps) {
+  const navigate = useNavigate();
+  const openExtensionTab = useTableTabs((state) => state.openExtensionTab);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+        <Spinner />
+        Lade Packages…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <p className="px-2 py-1 text-sm text-muted-foreground">
+        Keine Packages installiert.
+      </p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {items.map((item) => (
+        <SidebarMenuItem key={item.name}>
+          <SidebarMenuButton
+            onClick={() => {
+              openExtensionTab({ name: item.name });
+              navigate({
+                to: "/extensions/$name",
+                params: { name: item.name },
+              });
+            }}
+          >
+            <PackageIcon className="text-muted-foreground" />
+            <span className="truncate">
+              {item.name}
+              {item.version ? ` (${item.version})` : ""}
+            </span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
     </SidebarMenu>
   );
 }

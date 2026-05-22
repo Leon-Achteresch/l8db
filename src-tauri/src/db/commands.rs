@@ -2,7 +2,7 @@ use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, ColumnInfo, ConnectionConfig, DatabaseKind,
-    QueryResult, TableData, TableInfo,
+    ExtensionInfo, FunctionInfo, QueryResult, TableData, TableInfo,
 };
 
 #[tauri::command]
@@ -231,4 +231,42 @@ pub async fn list_transactions(
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<Vec<String>, String> {
     Ok(tx_state.list_active_ids().await)
+}
+
+#[tauri::command]
+pub async fn list_functions(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<FunctionInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_functions(schema.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn get_function_definition(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    oid: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .get_function_definition(&oid)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_extensions(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ExtensionInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_extensions()
+        .await
 }
