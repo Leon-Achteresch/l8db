@@ -1,7 +1,9 @@
 pub mod commands;
+pub mod pool;
 mod postgres;
 
 use async_trait::async_trait;
+use pool::PoolState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +67,7 @@ pub trait DatabaseAdapter: Send + Sync {
         table: &str,
         filter: Option<&str>,
         limit: i64,
+        offset: i64,
         order_by: Option<&str>,
         order_desc: bool,
         is_view: bool,
@@ -91,9 +94,9 @@ pub trait DatabaseAdapter: Send + Sync {
     ) -> Result<String, String>;
 }
 
-pub fn create_adapter(config: ConnectionConfig) -> Box<dyn DatabaseAdapter> {
+pub fn create_adapter(config: ConnectionConfig, pool_state: PoolState) -> Box<dyn DatabaseAdapter> {
     match config.kind {
-        DatabaseKind::Postgres => Box::new(postgres::PostgresAdapter::from_config(config)),
+        DatabaseKind::Postgres => Box::new(postgres::PostgresAdapter::from_config(config, pool_state)),
     }
 }
 
@@ -101,10 +104,11 @@ pub fn create_adapter_from_string(
     kind: DatabaseKind,
     connection_string: &str,
     database: Option<&str>,
+    pool_state: PoolState,
 ) -> Result<Box<dyn DatabaseAdapter>, String> {
     match kind {
         DatabaseKind::Postgres => Ok(Box::new(
-            postgres::PostgresAdapter::from_connection_string(connection_string, database)?,
+            postgres::PostgresAdapter::from_connection_string(connection_string, database, pool_state)?,
         )),
     }
 }

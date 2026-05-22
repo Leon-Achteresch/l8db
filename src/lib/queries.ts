@@ -97,12 +97,15 @@ export function useViewDefinitionQuery(schema: string, view: string) {
   });
 }
 
+export const PAGE_SIZE = 100;
+
 export function useTableRowsQuery(
   schema: string,
   table: string,
   filter?: string,
   sorting: SortingState = [],
   isView = false,
+  page = 0,
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -118,6 +121,7 @@ export function useTableRowsQuery(
       sort?.column ?? "",
       sort?.desc ?? false,
       isView,
+      page,
     ],
     queryFn: () =>
       fetchTableRows(
@@ -126,7 +130,8 @@ export function useTableRowsQuery(
         schema,
         table,
         filter,
-        undefined,
+        PAGE_SIZE,
+        page * PAGE_SIZE,
         database ?? undefined,
         sort,
         isView,

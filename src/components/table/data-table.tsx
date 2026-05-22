@@ -18,6 +18,10 @@ import {
   BracesIcon,
   CalendarIcon,
   CheckIcon,
+  ChevronFirstIcon,
+  ChevronLastIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CopyIcon,
   DatabaseIcon,
   FilterIcon,
@@ -235,6 +239,10 @@ type DataTableProps = {
   isFetching?: boolean;
   onSaveRow?: (ctid: string, updates: Record<string, string | null>) => Promise<void>;
   onApplyFilter?: (where: string) => void;
+  page?: number;
+  totalCount?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
 };
 
 export function DataTable({
@@ -247,6 +255,10 @@ export function DataTable({
   isFetching = false,
   onSaveRow,
   onApplyFilter,
+  page = 0,
+  totalCount,
+  pageSize = 100,
+  onPageChange,
 }: DataTableProps) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
@@ -269,7 +281,7 @@ export function DataTable({
         enableSorting: false,
         cell: (info) => (
           <span className="font-mono text-xs tabular-nums text-muted-foreground/60 select-none">
-            {info.row.index + 1}
+            {info.row.index + 1 + page * pageSize}
           </span>
         ),
         size: 48,
@@ -331,7 +343,7 @@ export function DataTable({
         }),
       ),
     ],
-    [columnNames, isFetching, data],
+    [columnNames, isFetching, data, page, pageSize],
   );
 
   const table = useReactTable({
@@ -813,13 +825,19 @@ export function DataTable({
           </tbody>
         </table>
       </div>
-      {rows.length > 0 && (
+      {rows.length > 0 && (() => {
+        const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
+        const rangeStart = page * pageSize + 1;
+        const rangeEnd = page * pageSize + rows.length;
+        return (
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
           <span>
-            {rows.length} {rows.length === 1 ? "Zeile" : "Zeilen"}
+            {totalCount != null
+              ? `${rangeStart}–${rangeEnd} von ${totalCount}`
+              : `${rows.length} ${rows.length === 1 ? "Zeile" : "Zeilen"}`}
           </span>
           {isFetching ? (
-            <span>Sortiere…</span>
+            <span>Lade…</span>
           ) : activeSort ? (
             <span className="truncate">
               Sortiert nach{" "}
@@ -835,8 +853,46 @@ export function DataTable({
                 : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
             </span>
           )}
+          {onPageChange && totalPages != null && totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <span className="mr-1">Seite {page + 1} / {totalPages}</span>
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => onPageChange(0)}
+                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+              >
+                <ChevronFirstIcon className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => onPageChange(page - 1)}
+                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+              >
+                <ChevronLeftIcon className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages - 1}
+                onClick={() => onPageChange(page + 1)}
+                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+              >
+                <ChevronRightIcon className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages - 1}
+                onClick={() => onPageChange(totalPages - 1)}
+                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+              >
+                <ChevronLastIcon className="size-3.5" />
+              </button>
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {inspectCell && (
         <Dialog open={true} onOpenChange={() => setInspectCell(null)}>
