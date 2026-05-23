@@ -272,6 +272,14 @@ pub trait DatabaseAdapter: Send + Sync {
         table: &str,
     ) -> Result<Vec<TriggerInfo>, String>;
     async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String>;
+    async fn alter_sequence(&self, schema: &str, name: &str, changes: &AlterSequenceRequest) -> Result<(), String>;
+    async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String>;
+    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String>;
+    async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String>;
+    async fn uninstall_extension(&self, name: &str) -> Result<(), String>;
+    async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String>;
+    async fn execute_script(&self, sql: &str) -> Result<Vec<ScriptStatementResult>, String>;
+    async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,6 +328,67 @@ pub struct ERTable {
 pub struct ERSchema {
     pub tables: Vec<ERTable>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexInfo {
+    pub name: String,
+    pub is_unique: bool,
+    pub is_primary: bool,
+    pub columns: Vec<String>,
+    pub index_type: String,
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConstraintInfo {
+    pub name: String,
+    pub constraint_type: String,
+    pub columns: Vec<String>,
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScriptStatementResult {
+    pub statement: String,
+    pub success: bool,
+    pub rows_affected: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ColumnDefinition {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: bool,
+    pub default_value: Option<String>,
+    pub is_primary_key: bool,
+    pub is_unique: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateTableRequest {
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<ColumnDefinition>,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlterSequenceRequest {
+    pub increment_by: Option<String>,
+    pub min_value: Option<String>,
+    pub max_value: Option<String>,
+    pub cycle: Option<bool>,
+    pub restart_with: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AvailableExtensionInfo {
+    pub name: String,
+    pub default_version: String,
+    pub comment: Option<String>,
+    pub installed: bool,
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {

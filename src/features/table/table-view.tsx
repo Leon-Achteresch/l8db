@@ -2,14 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { CodeIcon, Columns2Icon, PlusIcon, TableIcon, ZapIcon } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { CodeIcon, Columns2Icon, DownloadIcon, LayersIcon, LoaderIcon, PlusIcon, TableIcon, ZapIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
@@ -26,14 +35,14 @@ import {
   useDeleteRowMutation,
   useViewsQuery,
   useForeignKeysQuery,
-  PAGE_SIZE,
 } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
 
 type ViewTab = "data" | "definition" | "columns";
-type TableTab = "data" | "triggers" | "columns";
+type TableTab = "data" | "triggers" | "columns" | "indexes";
 
 export function TableView() {
   const { schema, table } = routeApi.useParams();
@@ -57,12 +66,14 @@ export function TableView() {
   }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
+  const rowLimit = useSettingsStore((s) => s.rowLimit);
   const [viewTab, setViewTab] = useState<ViewTab>("data");
   const [tableTab, setTableTab] = useState<TableTab>("data");
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
     schema,
     table,
@@ -110,6 +121,52 @@ export function TableView() {
       toast.success("Zeile gelöscht.");
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const handleExport = async (format: "csv" | "json") => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      const ext = format === "csv" ? "csv" : "json";
+      const filePath = await save({
+        defaultPath: `${table}.${ext}`,
+        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+      });
+      if (!filePath) return;
+
+      let content: string;
+      if (format === "csv") {
+        const cols = data.columns.filter((c) => c !== "__ctid__");
+        const header = cols.map((c) => JSON.stringify(c)).join(",");
+        const rows = data.rows.map((row) => {
+          const r = row as Record<string, unknown>;
+          return cols
+            .map((c) => {
+              const v = r[c];
+              if (v === null || v === undefined) return "";
+              const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+              return `"${s.replace(/"/g, '""')}"`;
+            })
+            .join(",");
+        });
+        content = [header, ...rows].join("\n");
+      } else {
+        const cols = data.columns.filter((c) => c !== "__ctid__");
+        const rows = data.rows.map((row) => {
+          const r = row as Record<string, unknown>;
+          const obj: Record<string, unknown> = {};
+          for (const c of cols) obj[c] = r[c] ?? null;
+          return obj;
+        });
+        content = JSON.stringify(rows, null, 2);
+      }
+      await writeTextFile(filePath, content);
+      toast.success(`Exportiert nach ${filePath.split("/").pop()}`);
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -199,7 +256,7 @@ export function TableView() {
         onApplyFilter={handleFilterChange}
         page={page}
         totalCount={totalCount ?? undefined}
-        pageSize={PAGE_SIZE}
+        pageSize={rowLimit}
         onPageChange={setPage}
         foreignKeys={foreignKeys}
         currentSchema={schema}
@@ -233,6 +290,33 @@ export function TableView() {
               Definition
             </TabsTrigger>
           </TabsList>
+          {viewTab === "data" && data && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
+                  disabled={exporting}
+                >
+                  {exporting ? (
+                    <LoaderIcon className="size-3.5 animate-spin" />
+                  ) : (
+                    <DownloadIcon className="size-3.5" />
+                  )}
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleExport("csv")}>
+                  Als CSV exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleExport("json")}>
+                  Als JSON exportieren
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -258,31 +342,64 @@ export function TableView() {
     >
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
         <TabsList variant="line" className="h-9">
-          <TabsTrigger value="data">
-            <TableIcon className="size-3.5" />
-            Daten
-          </TabsTrigger>
-          <TabsTrigger value="columns">
-            <Columns2Icon className="size-3.5" />
-            Columns
-          </TabsTrigger>
-          <TabsTrigger value="triggers">
-            <ZapIcon className="size-3.5" />
-            Trigger
-          </TabsTrigger>
-        </TabsList>
-        {tableTab === "data" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
-            onClick={() => setAddRowOpen(true)}
-            disabled={insertRowMutation.isPending}
-          >
-            <PlusIcon className="size-3.5" />
-            Neue Zeile
-          </Button>
-        )}
+            <TabsTrigger value="data">
+              <TableIcon className="size-3.5" />
+              Daten
+            </TabsTrigger>
+            <TabsTrigger value="columns">
+              <Columns2Icon className="size-3.5" />
+              Columns
+            </TabsTrigger>
+            <TabsTrigger value="triggers">
+              <ZapIcon className="size-3.5" />
+              Trigger
+            </TabsTrigger>
+            <TabsTrigger value="indexes">
+              <LayersIcon className="size-3.5" />
+              Indexes
+            </TabsTrigger>
+          </TabsList>
+          <div className="ml-auto flex items-center gap-1">
+            {tableTab === "data" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-2.5 text-xs"
+                onClick={() => setAddRowOpen(true)}
+                disabled={insertRowMutation.isPending}
+              >
+                <PlusIcon className="size-3.5" />
+                Neue Zeile
+              </Button>
+            )}
+            {tableTab === "data" && data && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <LoaderIcon className="size-3.5 animate-spin" />
+                    ) : (
+                      <DownloadIcon className="size-3.5" />
+                    )}
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void handleExport("csv")}>
+                    Als CSV exportieren
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExport("json")}>
+                    Als JSON exportieren
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
       </div>
 
       <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -295,6 +412,10 @@ export function TableView() {
 
       <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableTriggersList schema={schema} table={table} />
+      </TabsContent>
+
+      <TabsContent value="indexes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableIndexesList schema={schema} table={table} />
       </TabsContent>
 
       <NewRowDialog

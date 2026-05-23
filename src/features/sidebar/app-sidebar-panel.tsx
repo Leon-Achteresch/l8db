@@ -14,11 +14,13 @@ import {
   LayersIcon,
   ListOrderedIcon,
   PackageIcon,
+  PlusIcon,
   SearchIcon,
   SettingsIcon,
   SquareTerminalIcon,
   TableIcon,
   TrashIcon,
+  UploadIcon,
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -409,6 +411,30 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
+        {activeConnection ? (
+          <SidebarGroup className="mt-auto border-t pt-2">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/import">
+                      <UploadIcon className="text-muted-foreground" />
+                      <span>SQL importieren</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/create-table">
+                      <PlusIcon className="text-muted-foreground" />
+                      <span>Tabelle erstellen</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
     </Sidebar>
   );
@@ -853,14 +879,29 @@ function SidebarExtensionList({
 
   if (!items || items.length === 0) {
     return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Packages installiert.
-      </p>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => navigate({ to: "/available-extensions" })}
+          >
+            <SearchIcon className="text-muted-foreground" />
+            <span className="truncate">Extensions durchsuchen</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
     );
   }
 
   return (
     <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={() => navigate({ to: "/available-extensions" })}
+        >
+          <SearchIcon className="text-muted-foreground" />
+          <span className="truncate">Extensions durchsuchen</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       {items.map((item) => (
         <SidebarMenuItem key={item.name}>
           <SidebarMenuButton

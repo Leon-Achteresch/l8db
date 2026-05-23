@@ -4,6 +4,7 @@ import type { SortingState } from "@tanstack/react-table";
 
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { useSettingsStore } from "@/lib/settings";
 import {
   beginTransaction,
   countTableRows,
@@ -15,10 +16,13 @@ import {
   getViewDefinition,
   insertRowInTransaction,
   listAllColumns,
+  listAvailableExtensions,
+  listConstraints,
   listDatabases,
   listExtensions,
   listForeignKeys,
   listFunctions,
+  listIndexes,
   listRolePrivileges,
   listRoles,
   listSchemas,
@@ -49,6 +53,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "functions",
   "function-definition",
   "extensions",
+  "available-extensions",
   "roles",
   "role-privileges",
   "foreign-keys",
@@ -59,6 +64,8 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "all-tables",
   "all-columns",
   "sequences",
+  "indexes",
+  "constraints",
 ]);
 
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
@@ -364,6 +371,58 @@ export function useSequencesQuery() {
   });
 }
 
+export function useIndexesQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["indexes", connection?.id, database, schema, table],
+    queryFn: () =>
+      listIndexes(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useConstraintsQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["constraints", connection?.id, database, schema, table],
+    queryFn: () =>
+      listConstraints(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useAvailableExtensionsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["available-extensions", connection?.id, database],
+    queryFn: () =>
+      listAvailableExtensions(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
 export const PAGE_SIZE = 100;
 
 export function useTableRowsQuery(
@@ -376,6 +435,7 @@ export function useTableRowsQuery(
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const rowLimit = useSettingsStore((s) => s.rowLimit);
   const sort = sortingToRowSort(sorting);
   return useQuery({
     queryKey: [
@@ -389,6 +449,7 @@ export function useTableRowsQuery(
       sort?.desc ?? false,
       isView,
       page,
+      rowLimit,
     ],
     queryFn: () =>
       fetchTableRows(
@@ -397,8 +458,8 @@ export function useTableRowsQuery(
         schema,
         table,
         filter,
-        PAGE_SIZE,
-        page * PAGE_SIZE,
+        rowLimit,
+        page * rowLimit,
         database ?? undefined,
         sort,
         isView,

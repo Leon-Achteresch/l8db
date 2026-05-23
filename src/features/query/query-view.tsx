@@ -1,8 +1,16 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import { BookmarkIcon, PlayIcon, Trash2Icon } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { BookmarkIcon, DownloadIcon, LoaderIcon, PlayIcon, Trash2Icon } from "lucide-react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { QueryEditorPane } from "@/features/query/query-editor-pane";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
@@ -48,6 +56,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [editorHeight, setEditorHeight] = useState(280);
   const dragStartRef = useRef<{ y: number; h: number } | null>(null);
@@ -146,6 +155,40 @@ export function QueryView({ tabId }: QueryViewProps) {
     }
   }, [connection, sql, database]);
 
+  const handleExport = async (format: "csv" | "json") => {
+    if (!result || result.columns.length === 0) return;
+    setExporting(true);
+    try {
+      const ext = format === "csv" ? "csv" : "json";
+      const filePath = await save({
+        defaultPath: `query-result.${ext}`,
+        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+      });
+      if (!filePath) return;
+
+      let content: string;
+      if (format === "csv") {
+        const header = result.columns.map((c) => JSON.stringify(c)).join(",");
+        const rows = result.rows.map((row) =>
+          result.columns
+            .map((c) => {
+              const v = row[c];
+              if (v === null || v === undefined) return "";
+              return `"${v.replace(/"/g, '""')}"`;
+            })
+            .join(","),
+        );
+        content = [header, ...rows].join("\n");
+      } else {
+        content = JSON.stringify(result.rows, null, 2);
+      }
+      await writeTextFile(filePath, content);
+    } catch {
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     dragStartRef.current = { y: e.clientY, h: editorHeight };
@@ -237,6 +280,33 @@ export function QueryView({ tabId }: QueryViewProps) {
           <span className="ml-auto text-xs tabular-nums text-muted-foreground">
             {statusText}
           </span>
+        )}
+        {result && result.columns.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-3 text-xs"
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <LoaderIcon className="size-3 animate-spin" />
+                ) : (
+                  <DownloadIcon className="size-3" />
+                )}
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void handleExport("csv")}>
+                Als CSV exportieren
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void handleExport("json")}>
+                Als JSON exportieren
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {error && !statusText && (
           <span className="ml-auto text-xs text-destructive">Fehler</span>

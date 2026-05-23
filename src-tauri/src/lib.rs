@@ -50,7 +50,15 @@ pub fn run() {
             db::commands::add_column,
             db::commands::alter_column,
             db::commands::drop_column,
-            db::commands::list_sequences
+            db::commands::list_sequences,
+            db::commands::alter_sequence,
+            db::commands::list_indexes,
+            db::commands::list_constraints,
+            db::commands::install_extension,
+            db::commands::uninstall_extension,
+            db::commands::list_available_extensions,
+            db::commands::execute_script,
+            db::commands::create_table,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
