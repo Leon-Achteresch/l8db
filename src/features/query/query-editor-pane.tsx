@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { lintUnknownTables } from "@/lib/sql-lint";
 
 interface SchemaRegistry {
   schemas: string[];
@@ -541,6 +542,31 @@ function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }
 
+function refreshLintMarkers(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  registry: SchemaRegistry,
+) {
+  const model = editor.getModel();
+  if (!model) return;
+  const findings = lintUnknownTables(model.getValue(), registry.tables);
+  monaco.editor.setModelMarkers(
+    model,
+    "l8db-sql-lint",
+    findings.map((finding) => {
+      const start = model.getPositionAt(finding.offset);
+      const end = model.getPositionAt(finding.offset + finding.length);
+      return {
+        severity: monaco.MarkerSeverity.Warning,
+        message: finding.message,
+        startLineNumber: start.lineNumber,
+        startColumn: start.column,
+        endLineNumber: end.lineNumber,
+        endColumn: end.column,
+      };
+    }),
+  );
+}
+
 export function QueryEditorPane({
   value,
   onChange,
@@ -605,9 +631,16 @@ export function QueryEditorPane({
     });
 
     editorRef.current = editor;
+    refreshLintMarkers(editor, registryRef.current);
 
+    let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
       onChangeRef.current(editor.getValue());
+      if (lintTimer) clearTimeout(lintTimer);
+      lintTimer = setTimeout(() => {
+        const current = editorRef.current;
+        if (current) refreshLintMarkers(current, registryRef.current);
+      }, 500);
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -630,6 +663,7 @@ export function QueryEditorPane({
     );
 
     return () => {
+      if (lintTimer) clearTimeout(lintTimer);
       changeSub.dispose();
       completionProvider.dispose();
       formatAction.dispose();
@@ -644,6 +678,11 @@ export function QueryEditorPane({
       editor.setValue(value);
     }
   }, [value]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) refreshLintMarkers(editor, registry);
+  }, [registry]);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));

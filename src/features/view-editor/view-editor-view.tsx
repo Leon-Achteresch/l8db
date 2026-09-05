@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import {
   listAllColumns,
   listTables,
@@ -56,6 +57,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition">("data");
   const [filter, setFilter] = useState("");
+  const [filterRaw, setFilterRaw] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
 
@@ -66,8 +68,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     sorting,
     true,
     page,
+    filterRaw,
   );
-  const { data: totalCount } = useTableRowCountQuery(schema, view, filter);
+  const { data: totalCount } = useTableRowCountQuery(schema, view, filter, filterRaw);
 
   const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(
     schema,
@@ -93,6 +96,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   useEffect(() => {
     setFilter("");
+    setFilterRaw(false);
     setSorting([]);
     setPage(0);
     setActiveTab("data");
@@ -105,7 +109,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     queryFn: () =>
       listTables(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -116,7 +120,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     queryFn: () =>
       listAllColumns(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -129,8 +133,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     columns: columns ?? [],
   };
 
-  const handleFilterChange = (newFilter: string) => {
+  const handleFilterChange = (newFilter: string, raw = false) => {
     setFilter(newFilter);
+    setFilterRaw(raw);
     setPage(0);
   };
 
@@ -170,7 +175,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,
@@ -194,7 +199,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,

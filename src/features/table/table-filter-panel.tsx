@@ -65,7 +65,7 @@ function compileConditions(
 interface TableFilterPanelProps {
   columns: string[];
   activeFilter: string;
-  onApply: (where: string) => void;
+  onApply: (where: string, isRaw: boolean) => void;
 }
 
 export function TableFilterPanel({
@@ -115,7 +115,7 @@ export function TableFilterPanel({
   };
 
   const apply = () => {
-    onApply(draft);
+    onApply(draft, mode === "sql");
     setOpen(true);
   };
 
@@ -123,7 +123,7 @@ export function TableFilterPanel({
     setConditions([emptyCondition()]);
     setCombinator("AND");
     setSql("");
-    onApply("");
+    onApply("", false);
   };
 
   return (

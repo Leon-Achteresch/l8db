@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { installExtension, uninstallExtension } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useAvailableExtensionsQuery } from "@/lib/queries";
@@ -67,7 +68,7 @@ export function AvailableExtensionsView() {
       if (installed) {
         await uninstallExtension(
           connection.kind,
-          connection.connectionString,
+          effectiveConnectionString(connection),
           name,
           database ?? undefined,
         );
@@ -75,7 +76,7 @@ export function AvailableExtensionsView() {
       } else {
         await installExtension(
           connection.kind,
-          connection.connectionString,
+          effectiveConnectionString(connection),
           name,
           undefined,
           database ?? undefined,

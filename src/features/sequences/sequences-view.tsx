@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { alterSequence, type AlterSequenceRequest, type SequenceInfo } from "@/lib/db";
 import { useSequencesQuery } from "@/lib/queries";
@@ -53,7 +54,7 @@ function EditSequenceDialog({ sequence, open, onOpenChange, onSuccess }: EditSeq
 
       await alterSequence(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sequence.schema,
         sequence.name,
         changes,

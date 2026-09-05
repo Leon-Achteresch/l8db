@@ -19,6 +19,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { activateConnectionWithToast } from "@/lib/ssh";
 import { useTablesQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,6 @@ export function AppHeaderSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const connections = useConnectionsStore((state) => state.connections);
-  const setActiveId = useConnectionsStore((state) => state.setActiveId);
   const activeConnection = useActiveConnection();
   const { data: tables } = useTablesQuery();
 
@@ -72,11 +72,11 @@ export function AppHeaderSearch() {
 
   const onSelectConnection = useCallback(
     (id: string) => {
-      setActiveId(id);
       setOpen(false);
       void navigate({ to: "/" });
+      void activateConnectionWithToast(id);
     },
-    [navigate, setActiveId],
+    [navigate],
   );
 
   const onSelectTable = useCallback(

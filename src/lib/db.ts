@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type DatabaseKind = "postgres";
+export type DatabaseKind = "postgres" | "mysql" | "sqlite";
+
+export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 export interface ConnectionConfig {
   kind: DatabaseKind;
@@ -9,6 +11,7 @@ export interface ConnectionConfig {
   user: string;
   password: string;
   database: string;
+  ssl_mode?: SslMode;
 }
 
 export async function testConnection(config: ConnectionConfig): Promise<void> {
@@ -231,6 +234,7 @@ export async function fetchTableRows(
   database?: string,
   sort?: TableRowSort,
   isView?: boolean,
+  allowRaw?: boolean,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
@@ -244,6 +248,7 @@ export async function fetchTableRows(
     orderBy: sort?.column,
     orderDesc: sort?.desc,
     isView: isView || undefined,
+    allowRaw: allowRaw ?? true,
   });
 }
 
@@ -254,6 +259,7 @@ export async function countTableRows(
   table: string,
   filter?: string,
   database?: string,
+  allowRaw?: boolean,
 ): Promise<number> {
   return invoke("count_table_rows", {
     kind,
@@ -262,6 +268,7 @@ export async function countTableRows(
     schema,
     table,
     filter: filter && filter.trim() !== "" ? filter : undefined,
+    allowRaw: allowRaw ?? true,
   });
 }
 
@@ -292,6 +299,46 @@ export async function executeQuery(
   database?: string,
 ): Promise<QueryResult> {
   return invoke("execute_query", { kind, connectionString, database, sql });
+}
+
+export interface ExplainPlan {
+  Plan?: ExplainNode;
+  [key: string]: unknown;
+}
+
+export interface ExplainNode {
+  "Node Type": string;
+  "Relation Name"?: string;
+  "Alias"?: string;
+  "Startup Cost": number;
+  "Total Cost": number;
+  "Plan Rows": number;
+  "Plan Width": number;
+  "Actual Startup Time"?: number;
+  "Actual Total Time"?: number;
+  "Actual Rows"?: number;
+  "Actual Loops"?: number;
+  "Shared Hit Blocks"?: number;
+  "Shared Read Blocks"?: number;
+  "Index Name"?: string;
+  "Index Cond"?: string;
+  "Filter"?: string;
+  "Hash Cond"?: string;
+  "Join Type"?: string;
+  "Sort Key"?: string[];
+  "Group Key"?: string[];
+  "Plans"?: ExplainNode[];
+  [key: string]: unknown;
+}
+
+export async function explainQuery(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  analyze: boolean,
+  database?: string,
+): Promise<ExplainPlan[]> {
+  return invoke("explain_query", { kind, connectionString, database, sql, analyze });
 }
 
 export async function listViews(
@@ -829,4 +876,377 @@ export async function createTable(
   database?: string,
 ): Promise<void> {
   await invoke("create_table", { kind, connectionString, database, request });
+}
+
+export interface MatviewInfo {
+  schema: string;
+  name: string;
+  is_populated: boolean;
+  definition: string | null;
+}
+
+export interface CreateMatviewRequest {
+  schema: string;
+  name: string;
+  query: string;
+  with_data: boolean;
+}
+
+export async function listMaterializedViews(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<MatviewInfo[]> {
+  return invoke("list_materialized_views", { kind, connectionString, database, schema });
+}
+
+export async function refreshMaterializedView(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  concurrently: boolean,
+  database?: string,
+): Promise<void> {
+  await invoke("refresh_materialized_view", { kind, connectionString, database, schema, name, concurrently });
+}
+
+export async function dropMaterializedView(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_materialized_view", { kind, connectionString, database, schema, name });
+}
+
+export async function createMaterializedView(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CreateMatviewRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("create_materialized_view", { kind, connectionString, database, request });
+}
+
+export interface PolicyInfo {
+  name: string;
+  command: string;
+  roles: string[];
+  using_expr: string | null;
+  check_expr: string | null;
+}
+
+export interface TableRlsInfo {
+  rls_enabled: boolean;
+  force_rls: boolean;
+  policies: PolicyInfo[];
+}
+
+export interface CreatePolicyRequest {
+  name: string;
+  command: string;
+  roles: string[];
+  using_expr?: string;
+  check_expr?: string;
+}
+
+export async function getTableRls(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<TableRlsInfo> {
+  return invoke("get_table_rls", { kind, connectionString, database, schema, table });
+}
+
+export async function setTableRls(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  enabled: boolean,
+  force: boolean,
+  database?: string,
+): Promise<void> {
+  await invoke("set_table_rls", { kind, connectionString, database, schema, table, enabled, force });
+}
+
+export async function createPolicy(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  policy: CreatePolicyRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("create_policy", { kind, connectionString, database, schema, table, policy });
+}
+
+export async function dropPolicy(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  name: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_policy", { kind, connectionString, database, schema, table, name });
+}
+
+export interface PartitionChild {
+  schema: string;
+  name: string;
+}
+
+export interface PartitionInfo {
+  is_partitioned: boolean;
+  strategy: string | null;
+  partition_key: string | null;
+  partitions: PartitionChild[];
+}
+
+export async function getPartitionInfo(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<PartitionInfo> {
+  return invoke("get_partition_info", { kind, connectionString, database, schema, table });
+}
+
+export async function detachPartition(
+  kind: DatabaseKind,
+  connectionString: string,
+  parentSchema: string,
+  parentTable: string,
+  childSchema: string,
+  childTable: string,
+  database?: string,
+): Promise<void> {
+  await invoke("detach_partition", {
+    kind, connectionString, database,
+    parentSchema, parentTable, childSchema, childTable,
+  });
+}
+
+export async function attachPartition(
+  kind: DatabaseKind,
+  connectionString: string,
+  parentSchema: string,
+  parentTable: string,
+  childSchema: string,
+  childTable: string,
+  bound: string,
+  database?: string,
+): Promise<void> {
+  await invoke("attach_partition", {
+    kind, connectionString, database,
+    parentSchema, parentTable, childSchema, childTable, bound,
+  });
+}
+
+export interface PublicationInfo {
+  name: string;
+  owner: string;
+  all_tables: boolean;
+  insert: boolean;
+  update: boolean;
+  delete: boolean;
+  truncate: boolean;
+  tables: string[];
+}
+
+export interface CreatePublicationRequest {
+  name: string;
+  for_all_tables: boolean;
+  tables: { schema: string; table: string }[];
+  publish_insert: boolean;
+  publish_update: boolean;
+  publish_delete: boolean;
+  publish_truncate: boolean;
+}
+
+export async function listPublications(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<PublicationInfo[]> {
+  return invoke("list_publications", { kind, connectionString, database });
+}
+
+export async function createPublication(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CreatePublicationRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("create_publication", { kind, connectionString, database, request });
+}
+
+export async function dropPublication(
+  kind: DatabaseKind,
+  connectionString: string,
+  name: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_publication", { kind, connectionString, database, name });
+}
+
+export interface SubscriptionInfo {
+  name: string;
+  enabled: boolean;
+  connection_string: string;
+  slot_name: string | null;
+  publications: string[];
+}
+
+export interface CreateSubscriptionRequest {
+  name: string;
+  connection_string: string;
+  publications: string[];
+  slot_name?: string;
+  enabled: boolean;
+  connect: boolean;
+}
+
+export async function listSubscriptions(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<SubscriptionInfo[]> {
+  return invoke("list_subscriptions", { kind, connectionString, database });
+}
+
+export async function createSubscription(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CreateSubscriptionRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("create_subscription", { kind, connectionString, database, request });
+}
+
+export async function dropSubscription(
+  kind: DatabaseKind,
+  connectionString: string,
+  name: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_subscription", { kind, connectionString, database, name });
+}
+
+export interface SessionInfo {
+  pid: number;
+  user: string;
+  database: string;
+  application: string;
+  client_addr: string | null;
+  state: string | null;
+  query: string;
+  query_start: string | null;
+  transaction_start: string | null;
+  wait_event: string | null;
+  is_self: boolean;
+}
+
+export async function listSessions(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<SessionInfo[]> {
+  return invoke("list_sessions", { kind, connectionString, database });
+}
+
+export async function cancelSession(
+  kind: DatabaseKind,
+  connectionString: string,
+  pid: number,
+  database?: string,
+): Promise<boolean> {
+  return invoke("cancel_session", { kind, connectionString, database, pid });
+}
+
+export async function terminateSession(
+  kind: DatabaseKind,
+  connectionString: string,
+  pid: number,
+  database?: string,
+): Promise<boolean> {
+  return invoke("terminate_session", { kind, connectionString, database, pid });
+}
+
+export interface LockInfo {
+  pid: number;
+  lock_type: string;
+  relation: string | null;
+  mode: string;
+  granted: boolean;
+}
+
+export async function listLocks(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<LockInfo[]> {
+  return invoke("list_locks", { kind, connectionString, database });
+}
+
+export interface EnumInfo {
+  schema: string;
+  name: string;
+  values: string[];
+}
+
+export async function listEnums(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<EnumInfo[]> {
+  return invoke("list_enums", { kind, connectionString, database, schema });
+}
+
+export async function createSchema(
+  kind: DatabaseKind,
+  connectionString: string,
+  name: string,
+  database?: string,
+): Promise<void> {
+  await invoke("create_schema", { kind, connectionString, database, name });
+}
+
+export async function dropSchema(
+  kind: DatabaseKind,
+  connectionString: string,
+  name: string,
+  cascade: boolean,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_schema", { kind, connectionString, database, name, cascade });
+}
+
+export interface SchemaSize {
+  schema: string;
+  table_count: number;
+  size_bytes: number;
+}
+
+export interface DatabaseOverview {
+  database: string;
+  size_bytes: number;
+  size_pretty: string;
+  schemas: SchemaSize[];
+}
+
+export async function getDatabaseOverview(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<DatabaseOverview> {
+  return invoke("get_database_overview", { kind, connectionString, database });
 }

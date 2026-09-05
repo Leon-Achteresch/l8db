@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
@@ -78,7 +79,7 @@ function CreateIndexDialog({ open, onOpenChange, schema, table, onSuccess }: Cre
     try {
       await executeQuery(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );

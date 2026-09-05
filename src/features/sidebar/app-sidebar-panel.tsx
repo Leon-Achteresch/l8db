@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import {
+  ActivityIcon,
   BracesIcon,
   CheckIcon,
   ChevronsUpDownIcon,
@@ -12,9 +14,11 @@ import {
   FileCodeIcon,
   FilterIcon,
   LayersIcon,
+  ListIcon,
   ListOrderedIcon,
   PackageIcon,
   PlusIcon,
+  RadioIcon,
   SearchIcon,
   SettingsIcon,
   SquareTerminalIcon,
@@ -72,10 +76,23 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { dropTable, truncateTable } from "@/lib/db";
+import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
+import { createMaterializedView, createSchema, dropSchema, dropTable, truncateTable } from "@/lib/db";
 import {
   useActiveDatabase,
   useActiveSchema,
@@ -86,6 +103,7 @@ import {
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useMaterializedViewsQuery,
   useRolesQuery,
   useSchemasQuery,
   useSequencesQuery,
@@ -99,7 +117,6 @@ import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
-  const setActiveId = useConnectionsStore((state) => state.setActiveId);
   const activeConnection = useActiveConnection();
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
@@ -147,9 +164,12 @@ export function AppSidebarPanel() {
     error: sequencesErrorValue,
   } = useSequencesQuery();
 
+  const { data: matviews } = useMaterializedViewsQuery();
+
   const [sidebarTab, setSidebarTab] = useState<
     "tables" | "views" | "queries" | "functions" | "extensions" | "roles" | "sequences"
   >("tables");
+  const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
 
   return (
     <Sidebar
@@ -195,7 +215,7 @@ export function AppSidebarPanel() {
               connections.map((connection) => (
                 <DropdownMenuItem
                   key={connection.id}
-                  onSelect={() => setActiveId(connection.id)}
+                  onSelect={() => void activateConnectionWithToast(connection.id)}
                 >
                   <DatabaseIcon className="text-muted-foreground" />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -252,8 +272,16 @@ export function AppSidebarPanel() {
               </Select>
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                 Schema
+                <button
+                  type="button"
+                  onClick={() => setSchemaDialogOpen(true)}
+                  className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                  title="Schemas verwalten"
+                >
+                  <WrenchIcon className="size-3" />
+                </button>
               </span>
               <Select
                 value={activeSchema}
@@ -369,15 +397,18 @@ export function AppSidebarPanel() {
                 matchRoute={matchRoute}
               />
             ) : sidebarTab === "views" ? (
-              <SidebarEntityList
-                items={views}
-                isLoading={viewsLoading}
-                isError={viewsError}
-                error={viewsErrorValue}
-                emptyMessage="Keine Views gefunden."
-                type="view"
-                matchRoute={matchRoute}
-              />
+              <>
+                <SidebarEntityList
+                  items={views}
+                  isLoading={viewsLoading}
+                  isError={viewsError}
+                  error={viewsErrorValue}
+                  emptyMessage="Keine Views gefunden."
+                  type="view"
+                  matchRoute={matchRoute}
+                />
+                <SidebarMatviewList items={matviews} />
+              </>
             ) : sidebarTab === "functions" ? (
               <SidebarFunctionList
                 items={functions}
@@ -431,11 +462,36 @@ export function AppSidebarPanel() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/sessions">
+                      <ActivityIcon className="text-muted-foreground" />
+                      <span>Sitzungen & Locks</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/replication">
+                      <RadioIcon className="text-muted-foreground" />
+                      <span>Replikation</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/enums">
+                      <ListIcon className="text-muted-foreground" />
+                      <span>Enum-Typen</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
       </SidebarContent>
+      <SchemaManagerDialog open={schemaDialogOpen} onOpenChange={setSchemaDialogOpen} />
     </Sidebar>
   );
 }
@@ -538,7 +594,7 @@ function SidebarEntityList({
     if (!confirmAction || !activeConnection) return;
     setActionLoading(true);
     try {
-      const connStr = activeConnection.connectionString;
+      const connStr = effectiveConnectionString(activeConnection);
       const kind = activeConnection.kind;
       if (confirmAction.kind === "drop") {
         await dropTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
@@ -922,6 +978,266 @@ function SidebarExtensionList({
         </SidebarMenuItem>
       ))}
     </SidebarMenu>
+  );
+}
+
+function SidebarMatviewList({
+  items,
+}: {
+  items: { schema: string; name: string; is_populated: boolean }[] | undefined;
+}) {
+  const navigate = useNavigate();
+  const matchRoute = useMatchRoute();
+  const activeConnection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [schema, setSchemaName] = useState("public");
+  const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const [withData, setWithData] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    if (!activeConnection || !name.trim() || !query.trim()) return;
+    setSaving(true);
+    try {
+      await createMaterializedView(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        {
+          schema: schema.trim() || "public",
+          name: name.trim(),
+          query: query.trim(),
+          with_data: withData,
+        },
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Materialized View "${name.trim()}" erstellt.`);
+      setName("");
+      setQuery("");
+      setDialogOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["matviews"] });
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between px-2 py-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Materialized Views
+        </p>
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Materialized View erstellen"
+        >
+          <PlusIcon className="size-3" />
+        </button>
+      </div>
+      {(!items || items.length === 0) && (
+        <p className="px-2 py-1 text-xs text-muted-foreground">Keine vorhanden.</p>
+      )}
+      <SidebarMenu>
+        {items?.map((item) => {
+          const isActive = Boolean(
+            matchRoute({
+              to: "/matviews/$schema/$name",
+              params: { schema: item.schema, name: item.name },
+            }),
+          );
+          return (
+            <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+              <SidebarMenuButton
+                isActive={isActive}
+                onClick={() => {
+                  navigate({
+                    to: "/matviews/$schema/$name",
+                    params: { schema: item.schema, name: item.name },
+                  });
+                }}
+              >
+                <LayersIcon className="text-muted-foreground" />
+                <span className="truncate">
+                  {item.schema}.{item.name}
+                  {item.is_populated ? "" : " (leer)"}
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Materialized View erstellen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Schema</Label>
+                <Input
+                  value={schema}
+                  onChange={(e) => setSchemaName(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                  placeholder="z. B. umsatz_pro_tag"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">SELECT-Abfrage</Label>
+              <Textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="min-h-28 font-mono text-xs"
+                placeholder="SELECT …"
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <Switch checked={withData} onCheckedChange={setWithData} />
+              Sofort befüllen (WITH DATA)
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} disabled={saving}>
+              Abbrechen
+            </Button>
+            <Button size="sm" onClick={handleCreate} disabled={saving || !name.trim() || !query.trim()}>
+              {saving ? "Erstellen…" : "Erstellen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SchemaManagerDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const activeConnection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const activeSchema = useActiveSchema();
+  const setSchema = useDbSelectionStore((state) => state.setSchema);
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [cascade, setCascade] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refreshSchemas = () => {
+    void queryClient.invalidateQueries({ queryKey: ["schemas"] });
+  };
+
+  const handleCreate = async () => {
+    if (!activeConnection || !name.trim()) return;
+    setBusy(true);
+    try {
+      await createSchema(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        name.trim(),
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Schema "${name.trim()}" erstellt.`);
+      setName("");
+      refreshSchemas();
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDrop = async () => {
+    if (!activeConnection || !activeSchema) return;
+    if (
+      !window.confirm(
+        `Schema "${activeSchema}" wirklich löschen${cascade ? " (CASCADE – alle enthaltenen Objekte gehen verloren)" : ""}?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await dropSchema(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        activeSchema,
+        cascade,
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Schema "${activeSchema}" gelöscht.`);
+      setSchema(activeConnection.id, "public");
+      setCascade(false);
+      refreshSchemas();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-sm">Schemas verwalten</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Neues Schema</Label>
+            <div className="flex gap-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-8 flex-1 text-xs font-mono"
+                placeholder="z. B. analytics"
+              />
+              <Button size="sm" className="h-8" onClick={handleCreate} disabled={busy || !name.trim()}>
+                Erstellen
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2 rounded-lg border border-destructive/20 p-3">
+            <p className="text-xs">
+              Aktives Schema:{" "}
+              <span className="font-mono font-medium">{activeSchema ?? "—"}</span>
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <Switch checked={cascade} onCheckedChange={setCascade} />
+              CASCADE (alle Objekte im Schema mit löschen)
+            </label>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 w-full"
+              onClick={handleDrop}
+              disabled={busy || !activeSchema}
+            >
+              Aktives Schema löschen
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

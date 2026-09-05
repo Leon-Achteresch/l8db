@@ -8,6 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
+        .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
             db::commands::test_connection,
             db::commands::test_connection_string,
@@ -59,6 +60,38 @@ pub fn run() {
             db::commands::list_available_extensions,
             db::commands::execute_script,
             db::commands::create_table,
+            db::secrets::store_secret,
+            db::secrets::load_secret,
+            db::secrets::delete_secret,
+            db::ssh::open_ssh_tunnel,
+            db::ssh::close_ssh_tunnel,
+            db::ssh::list_ssh_tunnels,
+            db::commands::explain_query,
+            db::commands::list_materialized_views,
+            db::commands::refresh_materialized_view,
+            db::commands::drop_materialized_view,
+            db::commands::create_materialized_view,
+            db::commands::get_table_rls,
+            db::commands::set_table_rls,
+            db::commands::create_policy,
+            db::commands::drop_policy,
+            db::commands::get_partition_info,
+            db::commands::detach_partition,
+            db::commands::attach_partition,
+            db::commands::list_publications,
+            db::commands::create_publication,
+            db::commands::drop_publication,
+            db::commands::list_subscriptions,
+            db::commands::create_subscription,
+            db::commands::drop_subscription,
+            db::commands::list_sessions,
+            db::commands::cancel_session,
+            db::commands::terminate_session,
+            db::commands::list_locks,
+            db::commands::list_enums,
+            db::commands::create_schema,
+            db::commands::drop_schema,
+            db::commands::get_database_overview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

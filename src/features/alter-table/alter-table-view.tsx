@@ -42,6 +42,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import {
   addColumn,
   alterColumn,
@@ -253,7 +254,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     queryFn: () =>
       listTableColumnsDetailed(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -333,7 +334,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
 
       await alterColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         changes,
@@ -355,7 +356,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     try {
       await addColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         addForm,
@@ -378,7 +379,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     try {
       await dropColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         dropTarget,

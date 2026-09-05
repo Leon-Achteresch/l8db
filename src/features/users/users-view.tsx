@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase } from "@/lib/db-selection";
 import {
   alterRole,
@@ -198,7 +199,7 @@ export function UsersView() {
       };
       await alterRole(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         options,
         database ?? undefined,
       );
@@ -219,7 +220,7 @@ export function UsersView() {
     try {
       await dropRole(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         role.name,
         database ?? undefined,
       );
@@ -555,7 +556,7 @@ function PrivilegesPanel({ roleName }: { roleName: string }) {
       try {
         await modifyPrivilege(
           connection.kind,
-          connection.connectionString,
+          effectiveConnectionString(connection),
           change,
           database ?? undefined,
         );
@@ -1135,7 +1136,7 @@ function CreateRoleDialog({
       };
       await createRole(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         options,
         database ?? undefined,
       );

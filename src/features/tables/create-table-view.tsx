@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { ColumnDefinition, createTable } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 
@@ -90,7 +91,7 @@ export function CreateTableView() {
     try {
       await createTable(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         {
           schema: schema.trim() || "public",
           name: tableName.trim(),

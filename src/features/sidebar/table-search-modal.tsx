@@ -211,6 +211,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     [conditions, combinator],
   );
   const whereClause = filterMode === "sql" ? sql.trim() : compiledSimple;
+  const whereIsRaw = filterMode === "sql";
 
   const updateCondition = (id: string, patch: Partial<Condition>) => {
     setConditions((cur) =>
@@ -266,9 +267,10 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
       search: {
         type: selectedEntity.type,
         ...(whereClause ? { fkFilter: whereClause } : {}),
+        ...(whereClause && whereIsRaw ? { fkRaw: true } : {}),
       },
     });
-  }, [selectedEntity, whereClause, openTab, onOpenChange, navigate]);
+  }, [selectedEntity, whereClause, whereIsRaw, openTab, onOpenChange, navigate]);
 
   const handleOpenDirect = useCallback(
     (entity: MatchedEntity) => {

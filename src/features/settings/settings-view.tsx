@@ -2,12 +2,13 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
-  const { rowLimit, editorFontSize, queryTimeout, setRowLimit, setEditorFontSize, setQueryTimeout } =
+  const { rowLimit, editorFontSize, queryTimeout, sshTrustNewHosts, setRowLimit, setEditorFontSize, setQueryTimeout, setSshTrustNewHosts } =
     useSettingsStore();
 
   return (
@@ -106,6 +107,18 @@ export function SettingsView() {
               if (!isNaN(v) && v >= 5 && v <= 300) setQueryTimeout(v);
             }}
             className="w-24 text-right"
+          />
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div>
+            <p className="text-sm font-medium">Neue SSH-Host-Keys akzeptieren</p>
+            <p className="text-sm text-muted-foreground">
+              Unbekannte Server-Keys beim ersten Verbinden in known_hosts speichern (TOFU)
+            </p>
+          </div>
+          <Switch
+            checked={sshTrustNewHosts}
+            onCheckedChange={setSshTrustNewHosts}
           />
         </div>
       </div>

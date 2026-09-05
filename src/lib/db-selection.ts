@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface DbSelectionState {
   databaseByConnection: Record<string, string>;
@@ -65,7 +66,7 @@ export function useActiveDatabase(): string | null {
   if (!connection) {
     return null;
   }
-  return selected ?? databaseFromConnectionString(connection.connectionString);
+  return selected ?? databaseFromConnectionString(effectiveConnectionString(connection));
 }
 
 export function useActiveSchema(): string {

@@ -56,6 +56,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { fetchTableRows, type ForeignKeyInfo } from "@/lib/db";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { OPERATORS, compileSingleCondition, operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
@@ -272,7 +273,7 @@ function FkPreviewPopover({
     const filterSql = formatFkFilter(targetColumn, value);
     fetchTableRows(
       connection.kind,
-      connection.connectionString,
+      effectiveConnectionString(connection),
       targetSchema,
       targetTable,
       filterSql,
@@ -390,7 +391,7 @@ type DataTableProps = {
   onSortingChange: OnChangeFn<SortingState>;
   isFetching?: boolean;
   onSaveRow?: (ctid: string, updates: Record<string, string | null>, oldValues: Record<string, unknown>) => Promise<void>;
-  onApplyFilter?: (where: string) => void;
+  onApplyFilter?: (where: string, isRaw: boolean) => void;
   page?: number;
   totalCount?: number;
   pageSize?: number;
@@ -606,7 +607,7 @@ export function DataTable({
     if (!filterColumn || !onApplyFilter) return;
     const sql = compileSingleCondition(filterColumn, filterOperator, filterValue);
     if (sql) {
-      onApplyFilter(sql);
+      onApplyFilter(sql, false);
     }
     setFilterColumn(null);
   }, [filterColumn, filterOperator, filterValue, onApplyFilter]);

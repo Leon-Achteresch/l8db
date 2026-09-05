@@ -14,6 +14,7 @@ import { SqlEditor } from "@/features/table/sql-editor";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { updateViewDefinition } from "@/lib/db";
 import { useViewDefinitionQuery } from "@/lib/queries";
@@ -74,7 +75,7 @@ export function ViewDefinitionPanel({
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,
@@ -98,7 +99,7 @@ export function ViewDefinitionPanel({
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,

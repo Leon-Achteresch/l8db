@@ -1,18 +1,33 @@
 import { useEffect } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
-import { DatabaseIcon, EyeIcon, FunctionSquareIcon, ListOrderedIcon, PackageIcon, ServerIcon } from "lucide-react";
+import { DatabaseIcon, EyeIcon, FunctionSquareIcon, LayersIcon, ListOrderedIcon, PackageIcon, ServerIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { activateConnectionWithToast } from "@/lib/ssh";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
+  useDatabaseOverviewQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useMaterializedViewsQuery,
   useSequencesQuery,
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -45,6 +60,8 @@ function ConnectedDashboard() {
   const { data: functions, isLoading: functionsLoading } = useFunctionsQuery();
   const { data: extensions, isLoading: extensionsLoading } = useExtensionsQuery();
   const { data: sequences, isLoading: sequencesLoading } = useSequencesQuery();
+  const { data: matviews, isLoading: matviewsLoading } = useMaterializedViewsQuery();
+  const { data: overview, isLoading: overviewLoading } = useDatabaseOverviewQuery();
 
   return (
     <div className="flex flex-1 flex-col overflow-auto p-8">
@@ -92,6 +109,41 @@ function ConnectedDashboard() {
           value={sequences?.length}
           isLoading={sequencesLoading}
         />
+        <StatCard
+          icon={<LayersIcon className="size-4" />}
+          label="Mat. Views"
+          value={matviews?.length}
+          isLoading={matviewsLoading}
+        />
+      </div>
+
+      <div className="mt-8 max-w-2xl">
+        <h2 className="mb-3 text-sm font-semibold">Speicher & Schemas</h2>
+        {overviewLoading ? (
+          <p className="text-sm text-muted-foreground">Lade Größen…</p>
+        ) : overview ? (
+          <div className="overflow-hidden rounded-lg border">
+            <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2.5 text-sm">
+              <span className="font-mono font-medium">{overview.database}</span>
+              <span className="tabular-nums text-muted-foreground">{overview.size_pretty}</span>
+            </div>
+            <table className="w-full text-xs">
+              <tbody className="divide-y divide-border/50">
+                {overview.schemas.slice(0, 8).map((entry) => (
+                  <tr key={entry.schema} className="hover:bg-muted/40">
+                    <td className="px-4 py-2 font-mono">{entry.schema}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                      {entry.table_count} Tabellen
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                      {formatBytes(entry.size_bytes)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -99,7 +151,6 @@ function ConnectedDashboard() {
 
 export function HomeView() {
   const connections = useConnectionsStore((s) => s.connections);
-  const setActiveId = useConnectionsStore((s) => s.setActiveId);
   const activeConnection = useActiveConnection();
   const navigate = useNavigate();
 
@@ -120,7 +171,7 @@ export function HomeView() {
         {connections.map((conn) => (
           <button
             key={conn.id}
-            onClick={() => setActiveId(conn.id)}
+            onClick={() => void activateConnectionWithToast(conn.id)}
             className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
           >
             <ServerIcon className="size-4 shrink-0 text-muted-foreground" />

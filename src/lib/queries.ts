@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useSettingsStore } from "@/lib/settings";
 import {
@@ -13,20 +14,29 @@ import {
   fetchTableRows,
   getErSchema,
   getFunctionDefinition,
+  getPartitionInfo,
+  getTableRls,
+  getDatabaseOverview,
   getViewDefinition,
   insertRowInTransaction,
   listAllColumns,
   listAvailableExtensions,
   listConstraints,
   listDatabases,
+  listEnums,
   listExtensions,
   listForeignKeys,
   listFunctions,
   listIndexes,
+  listLocks,
+  listMaterializedViews,
+  listPublications,
   listRolePrivileges,
   listRoles,
   listSchemas,
   listSequences,
+  listSessions,
+  listSubscriptions,
   listTableColumnsDetailed,
   listTables,
   listTriggers,
@@ -48,6 +58,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "schemas",
   "tables",
   "views",
+  "matviews",
   "columns",
   "view-definition",
   "functions",
@@ -66,6 +77,14 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "sequences",
   "indexes",
   "constraints",
+  "rls",
+  "partitions",
+  "publications",
+  "subscriptions",
+  "sessions",
+  "locks",
+  "enums",
+  "overview",
 ]);
 
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
@@ -114,7 +133,7 @@ export function useDatabasesQuery() {
   return useQuery({
     queryKey: ["databases", connection?.id],
     queryFn: () =>
-      listDatabases(connection!.kind, connection!.connectionString),
+      listDatabases(connection!.kind, effectiveConnectionString(connection!)),
     enabled: Boolean(connection),
   });
 }
@@ -127,7 +146,7 @@ export function useSchemasQuery() {
     queryFn: () =>
       listSchemas(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -143,7 +162,7 @@ export function useTablesQuery() {
     queryFn: () =>
       listTables(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
       ),
@@ -160,7 +179,7 @@ export function useViewsQuery() {
     queryFn: () =>
       listViews(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
       ),
@@ -177,7 +196,7 @@ export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW") {
     queryFn: () =>
       listAllColumns(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
         tableType,
@@ -195,7 +214,7 @@ export function useViewDefinitionQuery(schema: string, view: string) {
     queryFn: () =>
       getViewDefinition(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         view,
         database ?? undefined,
@@ -213,7 +232,7 @@ export function useFunctionsQuery() {
     queryFn: () =>
       listFunctions(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
       ),
@@ -229,7 +248,7 @@ export function useFunctionDefinitionQuery(oid: string) {
     queryFn: () =>
       getFunctionDefinition(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         oid,
         database ?? undefined,
       ),
@@ -245,7 +264,7 @@ export function useExtensionsQuery() {
     queryFn: () =>
       listExtensions(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -260,7 +279,7 @@ export function useRolesQuery() {
     queryFn: () =>
       listRoles(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -275,7 +294,7 @@ export function useRolePrivilegesQuery(roleName: string) {
     queryFn: () =>
       listRolePrivileges(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         roleName,
         database ?? undefined,
       ),
@@ -291,7 +310,7 @@ export function useForeignKeysQuery(schema: string, table: string) {
     queryFn: () =>
       listForeignKeys(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -309,7 +328,7 @@ export function useTriggersQuery(schema: string, table: string) {
     queryFn: () =>
       listTriggers(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -327,7 +346,7 @@ export function useDetailedColumnsQuery(schema: string, table: string) {
     queryFn: () =>
       listTableColumnsDetailed(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -345,7 +364,7 @@ export function useErSchemaQuery(schema?: string) {
     queryFn: () =>
       getErSchema(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
       ),
@@ -363,7 +382,7 @@ export function useSequencesQuery() {
     queryFn: () =>
       listSequences(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
         schema,
       ),
@@ -379,7 +398,7 @@ export function useIndexesQuery(schema: string, table: string) {
     queryFn: () =>
       listIndexes(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -397,7 +416,7 @@ export function useConstraintsQuery(schema: string, table: string) {
     queryFn: () =>
       listConstraints(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -415,7 +434,7 @@ export function useAvailableExtensionsQuery() {
     queryFn: () =>
       listAvailableExtensions(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -432,6 +451,7 @@ export function useTableRowsQuery(
   sorting: SortingState = [],
   isView = false,
   page = 0,
+  allowRaw = true,
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -450,11 +470,12 @@ export function useTableRowsQuery(
       isView,
       page,
       rowLimit,
+      allowRaw,
     ],
     queryFn: () =>
       fetchTableRows(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         filter,
@@ -463,6 +484,7 @@ export function useTableRowsQuery(
         database ?? undefined,
         sort,
         isView,
+        allowRaw,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
@@ -484,6 +506,7 @@ export function useTableRowCountQuery(
   schema: string,
   table: string,
   filter?: string,
+  allowRaw = true,
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -495,15 +518,17 @@ export function useTableRowCountQuery(
       schema,
       table,
       filter ?? "",
+      allowRaw,
     ],
     queryFn: () =>
       countTableRows(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         filter,
         database ?? undefined,
+        allowRaw,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
@@ -552,7 +577,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
       if (!tx) {
         const txId = await beginTransaction(
           connection!.kind,
-          connection!.connectionString,
+          effectiveConnectionString(connection!),
           database ?? undefined,
         );
         const newTx = {
@@ -624,7 +649,7 @@ async function ensureTransaction(
 
   const txId = await beginTransaction(
     connection.kind,
-    connection.connectionString,
+    effectiveConnectionString(connection),
     database ?? undefined,
   );
   const newTx: ActiveTransaction = {
@@ -777,5 +802,149 @@ export function useDeleteRowMutation(schema: string, table: string) {
         (old) => (typeof old === "number" ? Math.max(0, old - 1) : old),
       );
     },
+  });
+}
+
+export function useMaterializedViewsQuery(schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["matviews", connection?.id, database, schema ?? ""],
+    queryFn: () =>
+      listMaterializedViews(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useTableRlsQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["rls", connection?.id, database, schema, table],
+    queryFn: () =>
+      getTableRls(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+  });
+}
+
+export function usePartitionInfoQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["partitions", connection?.id, database, schema, table],
+    queryFn: () =>
+      getPartitionInfo(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+  });
+}
+
+export function usePublicationsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["publications", connection?.id, database],
+    queryFn: () =>
+      listPublications(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useSubscriptionsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["subscriptions", connection?.id, database],
+    queryFn: () =>
+      listSubscriptions(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useSessionsQuery(refetchInterval = 5000) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["sessions", connection?.id, database],
+    queryFn: () =>
+      listSessions(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+    refetchInterval,
+  });
+}
+
+export function useLocksQuery(refetchInterval = 5000) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["locks", connection?.id, database],
+    queryFn: () =>
+      listLocks(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+    refetchInterval,
+  });
+}
+
+export function useEnumsQuery(schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["enums", connection?.id, database, schema ?? ""],
+    queryFn: () =>
+      listEnums(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useDatabaseOverviewQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["overview", connection?.id, database],
+    queryFn: () =>
+      getDatabaseOverview(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+    staleTime: 60_000,
   });
 }

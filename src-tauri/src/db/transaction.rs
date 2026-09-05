@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use bb8::PooledConnection;
 use bb8_postgres::PostgresConnectionManager;
+use postgres_native_tls::MakeTlsConnector;
 use tokio::sync::Mutex;
-use tokio_postgres::{NoTls, SimpleQueryMessage};
+use tokio_postgres::SimpleQueryMessage;
 
-use super::pool::PoolState;
+use super::pool::{PoolState, PoolUse};
 use super::{map_pg_err, quote_ident, QueryResult};
 
 static TX_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -30,7 +31,7 @@ fn validate_ctid(ctid: &str) -> Result<String, String> {
 }
 
 struct TransactionEntry {
-    conn: Mutex<PooledConnection<'static, PostgresConnectionManager<NoTls>>>,
+    conn: Mutex<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>>,
 }
 
 pub struct TransactionManager {
@@ -62,11 +63,11 @@ impl TransactionManager {
         config.connect_timeout(Duration::from_secs(10));
 
         let pool_key = match database {
-            Some(db) if !db.is_empty() => format!("{connection_string}##{db}"),
-            _ => connection_string.to_string(),
+            Some(db) if !db.is_empty() => format!("{}##{db}", super::redact_connection_string(connection_string)),
+            _ => super::redact_connection_string(connection_string),
         };
 
-        let pool = pool_state.get_pool(&pool_key, config).await?;
+        let pool = pool_state.get_pool(&pool_key, config, PoolUse::Query).await?;
         let conn = pool
             .get_owned()
             .await

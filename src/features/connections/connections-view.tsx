@@ -23,6 +23,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -31,8 +35,24 @@ import {
   useConnectionsStore,
   type ConnectionTag,
   type SavedConnection,
+  type SshAuth,
 } from "@/lib/connections"
-import { type DatabaseKind, testConnectionString } from "@/lib/db"
+import { type DatabaseKind, type SslMode, testConnectionString } from "@/lib/db"
+import {
+  extractUrlPassword,
+  loadSecret,
+  storeSecret,
+  withSslModeParam,
+} from "@/lib/secrets"
+import { useSettingsStore } from "@/lib/settings"
+import {
+  activateConnectionWithToast,
+  closeSshTunnel,
+  openSshTunnel,
+  rewriteHostPort,
+  sshSecretAccount,
+} from "@/lib/ssh"
+import { toast } from "sonner"
 
 import { OnboardingHero } from "./onboarding-hero"
 
@@ -54,6 +74,13 @@ interface FormState {
   user: string
   password: string
   database: string
+  sslMode: SslMode
+  sshHost: string
+  sshPort: number
+  sshUser: string
+  sshAuth: SshAuth
+  sshKeyFile: string
+  sshPassword: string
   tags: ConnectionTag[]
 }
 
@@ -67,6 +94,13 @@ const emptyForm: FormState = {
   user: "postgres",
   password: "",
   database: "postgres",
+  sslMode: "prefer",
+  sshHost: "",
+  sshPort: 22,
+  sshUser: "",
+  sshAuth: "key",
+  sshKeyFile: "",
+  sshPassword: "",
   tags: [],
 }
 
@@ -98,11 +132,29 @@ const FEATURES = [
 ]
 
 function buildConnectionString(form: FormState): string {
-  if (form.mode === "string") return form.connectionString.trim()
+  if (form.mode === "string") {
+    return withSslModeParam(form.connectionString.trim(), form.sslMode)
+  }
   const auth = form.password
     ? `${encodeURIComponent(form.user)}:${encodeURIComponent(form.password)}`
     : encodeURIComponent(form.user)
-  return `postgresql://${auth}@${form.host}:${form.port}/${form.database}`
+  const base = `postgresql://${auth}@${form.host}:${form.port}/${form.database}`
+  return withSslModeParam(base, form.sslMode)
+}
+
+function sslModeFromUrl(url: string): SslMode {
+  const match = url.match(/[?&]sslmode=([^&]+)/i)
+  const value = match?.[1]?.toLowerCase()
+  if (
+    value === "disable" ||
+    value === "prefer" ||
+    value === "require" ||
+    value === "verify-ca" ||
+    value === "verify-full"
+  ) {
+    return value
+  }
+  return "prefer"
 }
 
 function maskConnectionString(str: string): string {
@@ -121,8 +173,8 @@ export function ConnectionsView() {
   const addConnection = useConnectionsStore((state) => state.addConnection)
   const updateConnection = useConnectionsStore((state) => state.updateConnection)
   const removeConnection = useConnectionsStore((state) => state.removeConnection)
-  const setActiveId = useConnectionsStore((state) => state.setActiveId)
   const activeConnection = useActiveConnection()
+  const sshTrustNewHosts = useSettingsStore((state) => state.sshTrustNewHosts)
 
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -149,6 +201,13 @@ export function ConnectionsView() {
       kind: connection.kind,
       mode: "string",
       connectionString: connection.connectionString,
+      sslMode: connection.sslMode ?? sslModeFromUrl(connection.connectionString),
+      sshHost: connection.ssh?.host ?? "",
+      sshPort: connection.ssh?.port ?? 22,
+      sshUser: connection.ssh?.user ?? "",
+      sshAuth: connection.ssh?.auth ?? "key",
+      sshKeyFile: connection.ssh?.keyFile ?? "",
+      sshPassword: "",
       tags: connection.tags ?? [],
     })
     setTestState({ status: "idle" })
@@ -161,6 +220,10 @@ export function ConnectionsView() {
       return
     }
     setTestState({ status: "testing" })
+    if (form.sshHost.trim() !== "") {
+      await handleTestViaTunnel(connectionString)
+      return
+    }
     try {
       await testConnectionString(form.kind, connectionString)
       setTestState({ status: "success" })
@@ -169,7 +232,53 @@ export function ConnectionsView() {
     }
   }
 
-  function handleSave() {
+  async function handleTestViaTunnel(connectionString: string) {
+    let sshSecret = form.sshPassword
+    if (!sshSecret && editingId) {
+      try {
+        sshSecret = (await loadSecret(sshSecretAccount(editingId))) ?? ""
+      } catch {
+        sshSecret = ""
+      }
+    }
+    if (form.sshAuth === "password" && !sshSecret) {
+      setTestState({ status: "error", message: "SSH-Passwort fehlt." })
+      return
+    }
+    if (form.sshAuth === "key" && !form.sshKeyFile.trim()) {
+      setTestState({ status: "error", message: "SSH-Key-Datei fehlt." })
+      return
+    }
+    const tunnelId = `test-${Date.now()}`
+    try {
+      const info = await openSshTunnel({
+        id: tunnelId,
+        host: form.sshHost.trim(),
+        port: form.sshPort,
+        user: form.sshUser.trim(),
+        auth:
+          form.sshAuth === "key"
+            ? { key_file: form.sshKeyFile.trim(), ...(sshSecret ? { passphrase: sshSecret } : {}) }
+            : { password: sshSecret },
+        remote_host: "127.0.0.1",
+        remote_port: 5432,
+        accept_new_host_key: sshTrustNewHosts,
+      })
+      const tunneled = rewriteHostPort(connectionString, "127.0.0.1", info.local_port)
+      await testConnectionString(form.kind, tunneled)
+      setTestState({ status: "success" })
+    } catch (error) {
+      setTestState({ status: "error", message: String(error) })
+    } finally {
+      try {
+        await closeSshTunnel(tunnelId)
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  async function handleSave() {
     const name = form.name.trim()
     const connectionString = buildConnectionString(form)
     if (!name || !connectionString) {
@@ -179,11 +288,51 @@ export function ConnectionsView() {
       })
       return
     }
-    const input = { name, kind: form.kind, connectionString, tags: form.tags }
+    const ssh =
+      form.sshHost.trim() === ""
+        ? null
+        : {
+            host: form.sshHost.trim(),
+            port: form.sshPort,
+            user: form.sshUser.trim(),
+            auth: form.sshAuth,
+            keyFile: form.sshKeyFile.trim(),
+            remoteHost: "127.0.0.1",
+            remotePort: 5432,
+          }
+    const input = {
+      name,
+      kind: form.kind,
+      connectionString,
+      sslMode: form.sslMode,
+      ssh,
+      tags: form.tags,
+    }
+    let saved: string
     if (editingId) {
       updateConnection(editingId, input)
+      saved = editingId
     } else {
-      addConnection(input)
+      saved = addConnection(input).id
+    }
+    const password = extractUrlPassword(connectionString)
+    if (password) {
+      try {
+        await storeSecret(saved, password)
+      } catch {
+        toast.warning(
+          "Keychain nicht verfügbar – Passwort gilt nur für diese Sitzung.",
+        )
+      }
+    }
+    if (form.sshHost.trim() !== "" && form.sshPassword) {
+      try {
+        await storeSecret(sshSecretAccount(saved), form.sshPassword)
+      } catch {
+        toast.warning(
+          "Keychain nicht verfügbar – SSH-Passwort gilt nur für diese Sitzung.",
+        )
+      }
     }
     resetForm()
   }
@@ -448,6 +597,154 @@ export function ConnectionsView() {
         </TabsContent>
       </Tabs>
 
+      <div className="grid gap-2">
+        <Label
+          htmlFor="conn-ssl"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          SSL / TLS
+        </Label>
+        <NativeSelect
+          id="conn-ssl"
+          value={form.sslMode}
+          onChange={(e) => update("sslMode", e.target.value as SslMode)}
+        >
+          <NativeSelectOption value="disable">
+            Deaktiviert (nur lokale/vertrauenswürdige Netze)
+          </NativeSelectOption>
+          <NativeSelectOption value="prefer">
+            Bevorzugt (Standard)
+          </NativeSelectOption>
+          <NativeSelectOption value="require">
+            Erforderlich (verschlüsselt, ohne Prüfung)
+          </NativeSelectOption>
+          <NativeSelectOption value="verify-ca">
+            Erforderlich mit CA-Prüfung (System-Zertifikate)
+          </NativeSelectOption>
+          <NativeSelectOption value="verify-full">
+            Erforderlich mit CA- und Host-Prüfung
+          </NativeSelectOption>
+        </NativeSelect>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-dashed border-border/40 bg-muted/10 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-xs font-medium text-muted-foreground">
+            SSH-Tunnel
+          </Label>
+          <Badge
+            variant="outline"
+            className="rounded-full bg-background/50 px-1.5 py-0 text-[9px] font-normal leading-normal"
+          >
+            Optional
+          </Badge>
+        </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Host hier hinterlegen, um die Datenbank durch einen SSH-Tunnel zu
+          erreichen. Der Tunnel öffnet sich beim Aktivieren und beim Testen
+          automatisch; der Datenbank-Traffic bleibt Ende-zu-Ende TLS-verschlüsselt.
+        </p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2 grid gap-2">
+            <Label
+              htmlFor="conn-ssh-host"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              SSH-Host
+            </Label>
+            <Input
+              id="conn-ssh-host"
+              value={form.sshHost}
+              onChange={(e) => update("sshHost", e.target.value)}
+              placeholder="z. B. bastion.example.com"
+              className="h-10 rounded-xl border-border/40 bg-background/20 focus-visible:ring-primary/20"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label
+              htmlFor="conn-ssh-port"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Port
+            </Label>
+            <Input
+              id="conn-ssh-port"
+              type="number"
+              value={form.sshPort}
+              onChange={(e) => update("sshPort", Number(e.target.value) || 22)}
+              className="h-10 rounded-xl border-border/40 bg-background/20 focus-visible:ring-primary/20"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-2">
+            <Label
+              htmlFor="conn-ssh-user"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              SSH-Benutzer
+            </Label>
+            <Input
+              id="conn-ssh-user"
+              value={form.sshUser}
+              onChange={(e) => update("sshUser", e.target.value)}
+              className="h-10 rounded-xl border-border/40 bg-background/20 focus-visible:ring-primary/20"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label
+              htmlFor="conn-ssh-auth"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Authentifizierung
+            </Label>
+            <NativeSelect
+              id="conn-ssh-auth"
+              value={form.sshAuth}
+              onChange={(e) => update("sshAuth", e.target.value as SshAuth)}
+            >
+              <NativeSelectOption value="key">Key-Datei</NativeSelectOption>
+              <NativeSelectOption value="password">Passwort</NativeSelectOption>
+            </NativeSelect>
+          </div>
+        </div>
+        {form.sshAuth === "key" && (
+          <div className="grid gap-2">
+            <Label
+              htmlFor="conn-ssh-key"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Key-Datei
+            </Label>
+            <Input
+              id="conn-ssh-key"
+              value={form.sshKeyFile}
+              onChange={(e) => update("sshKeyFile", e.target.value)}
+              placeholder="z. B. ~/.ssh/id_ed25519"
+              className="h-10 rounded-xl border-border/40 bg-background/20 font-mono text-xs focus-visible:ring-primary/20"
+            />
+          </div>
+        )}
+        <div className="grid gap-2">
+          <Label
+            htmlFor="conn-ssh-password"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {form.sshAuth === "key" ? "Key-Passphrase (optional)" : "SSH-Passwort"}
+          </Label>
+          <Input
+            id="conn-ssh-password"
+            type="password"
+            value={form.sshPassword}
+            onChange={(e) => update("sshPassword", e.target.value)}
+            placeholder={
+              editingId ? "Leer lassen, um das Gespeicherte zu behalten" : ""
+            }
+            className="h-10 rounded-xl border-border/40 bg-background/20 focus-visible:ring-primary/20"
+          />
+        </div>
+      </div>
+
       {testState.status === "success" && (
         <Alert className="rounded-xl border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400">
           <Check className="h-4 w-4 text-emerald-500" />
@@ -651,7 +948,7 @@ export function ConnectionsView() {
                           variant="ghost"
                           size="icon"
                           className="size-8 shrink-0 rounded-lg hover:bg-emerald-500/10 hover:text-emerald-600"
-                          onClick={() => setActiveId(connection.id)}
+                          onClick={() => void activateConnectionWithToast(connection.id)}
                           title="Aktivieren"
                         >
                           <Check className="size-4" />
@@ -675,6 +972,7 @@ export function ConnectionsView() {
                         size="icon"
                         className="size-8 shrink-0 rounded-lg hover:bg-destructive/10 hover:text-destructive"
                         onClick={() => {
+                          void closeSshTunnel(connection.id).catch(() => undefined)
                           removeConnection(connection.id)
                           if (editingId === connection.id) resetForm()
                         }}

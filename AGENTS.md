@@ -13,6 +13,7 @@ Tauri v2 desktop database client (PostgreSQL viewer). Frontend: React 19 + TypeS
 | Rust lint | `cargo clippy` | `src-tauri/` |
 | Rust format | `cargo fmt` | `src-tauri/` |
 | Rust tests | `cargo test [<test_name>]` | `src-tauri/` |
+| Rust E2E tests (needs lab, see below) | `cargo test --lib -- --ignored --test-threads=1` | `src-tauri/` |
 
 No JS/TS tests, no JS linter or formatter configured.
 
@@ -42,8 +43,11 @@ All `invoke()` calls are centralized in `src/lib/db.ts`. TypeScript type definit
 
 - `DatabaseAdapter` trait in `src-tauri/src/db/mod.rs` — extend here to add new DB engines.
 - Rust enum `DatabaseKind` uses `#[serde(rename_all = "snake_case")]` — TS must send `"postgres"`.
-- Postgres connections use `NoTls` — SSL is not supported.
-- `fetch_table_rows` defaults to 100 rows. The `filter` string is interpolated directly into SQL (not parameterized) — be aware when modifying that code path.
+- Postgres connections use `postgres-native-tls` (OS certificate store); per-connection `ssl_mode` (`disable`/`prefer`/`require`/`verify-ca`/`verify-full`), parsed from `?sslmode=` in connection strings.
+- SSH tunnels (`src-tauri/src/db/ssh.rs`, `russh`): local port-forward per connection id; frontend opens the tunnel on activation/test and talks to `127.0.0.1:<port>` via `effectiveConnectionString()` (`src/lib/ssh.ts`). Never add a direct-connect fallback — a failed tunnel must fail loudly.
+- Secrets live in the OS keychain (`store_secret`/`load_secret`/`delete_secret`); `connectionString` in the store is the *direct* URL, `tunnelPort` is memory-only, `effectiveConnectionString()` resolves the usable URL. All `invoke()` call sites must use the effective URL.
+- `fetch_table_rows` defaults to 100 rows. Simple (builder-generated) filters are validated server-side (`validate_table_filter`: string literals are stripped, then `; -- /* */ UNION RETURNING INTO` are rejected); explicit raw SQL sets `allow_raw=true` (`fetch_table_rows`/`count_table_rows`, threaded from the SQL filter modes via `filterRaw`/`fkRaw`).
+- Ignored Rust tests under `#[ignore]` need a local lab: Postgres 18 on `127.0.0.1:5433` (`postgres`/`testpw`, db `testdb`, `wal_level=logical`; override via `L8DB_E2E_PG_URL`) plus OpenSSH on `127.0.0.1:2222` (root login, provider hostname `l8db-pg`; overrides `L8DB_E2E_SSH_HOST`/`_PORT`, client key via `L8DB_E2E_KEY_FILE`, isolated known_hosts via `L8DB_KNOWN_HOSTS`). Subscription tests create a `testsub` database and clean up after themselves; `connect=false` keeps CREATE SUBSCRIPTION deterministic (no worker timing).
 
 ## State / Storage
 

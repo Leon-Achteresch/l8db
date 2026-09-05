@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { executeScript, ScriptStatementResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 
@@ -41,7 +42,7 @@ export function ImportView() {
     try {
       const res = await executeScript(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );

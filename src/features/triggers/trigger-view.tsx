@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { executeQuery, validateSql } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
@@ -99,7 +100,7 @@ export function TriggerView() {
       const sql = `${buildDropSql()}\n${currentValue}`;
       await validateSql(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );
@@ -116,7 +117,7 @@ export function TriggerView() {
       const sql = `${buildDropSql()}\n${currentValue}`;
       const result = await executeQuery(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );
