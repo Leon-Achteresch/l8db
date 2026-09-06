@@ -40,6 +40,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   csv_import: true,
   column_search: true,
   source_search: true,
+  schema_snapshot: true,
   ssl: true,
   ssh: true,
   query_language: "sql",
@@ -81,7 +82,12 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "Klassisches MySQL oder kompatible Hosts.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false, csv_import: false },
+    capabilities: {
+      ...POSTGRES_CAPABILITIES,
+      read_only_mode: false,
+      csv_import: false,
+      schema_snapshot: false,
+    },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -96,7 +102,12 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "MariaDB mit eigener visueller Identität.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false, csv_import: false },
+    capabilities: {
+      ...POSTGRES_CAPABILITIES,
+      read_only_mode: false,
+      csv_import: false,
+      schema_snapshot: false,
+    },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -114,6 +125,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      schema_snapshot: false,
       csv_import: false,
       ssl: false,
       ssh: false,
@@ -135,6 +147,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      schema_snapshot: false,
       csv_import: false,
       ssl: false,
       ssh: false,
