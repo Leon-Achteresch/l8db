@@ -9,7 +9,21 @@ export type TableTab = {
   table: string;
   entityType?: "table" | "view";
 };
-export type QueryTab = { kind: "query"; id: string; title: string; sql: string };
+export type QueryTab = {
+  kind: "query";
+  id: string;
+  title: string;
+  sql: string;
+  filePath?: string;
+  savedSql?: string;
+  fileMtime?: number | null;
+  externalChange?: boolean;
+};
+export type QueryFileInfo = { path: string; mtime: number | null };
+
+export function isQueryTabDirty(tab: QueryTab): boolean {
+  return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
+}
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
 export type RoleTab = { kind: "role"; name: string };
@@ -80,6 +94,15 @@ interface TabsState {
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
+  openFileQueryTab: (file: QueryFileInfo & { sql: string; title: string }) => string;
+  bindQueryTabFile: (id: string, file: QueryFileInfo & { title: string }) => void;
+  markQueryTabSaved: (id: string, mtime: number | null) => void;
+  setQueryTabExternalChange: (id: string, changed: boolean, mtime?: number | null) => void;
+  reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
+}
+
+function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[] {
+  return tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, ...patch } : t));
 }
 
 function storeFor(
@@ -274,9 +297,75 @@ export const useTableTabs = create<TabsState>()(
         }),
 
       updateQuerySql: (id, sql) =>
+        set((state) => storeFor(patchQueryTab(state.tabs, id, { sql }), state)),
+
+      openFileQueryTab: (file) => {
+        const existing = get().tabs.find((t) => t.kind === "query" && t.filePath === file.path);
+        if (existing && existing.kind === "query") return existing.id;
+        const qt: QueryTab = {
+          kind: "query",
+          id: crypto.randomUUID(),
+          title: file.title,
+          sql: file.sql,
+          filePath: file.path,
+          savedSql: file.sql,
+          fileMtime: file.mtime,
+          externalChange: false,
+        };
+        set((state) => storeFor([...state.tabs, qt], state));
+        return qt.id;
+      },
+
+      bindQueryTabFile: (id, file) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              filePath: file.path,
+              title: file.title,
+              savedSql: tab.sql,
+              fileMtime: file.mtime,
+              externalChange: false,
+            }),
+            state,
+          );
+        }),
+
+      markQueryTabSaved: (id, mtime) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              savedSql: tab.sql,
+              fileMtime: mtime,
+              externalChange: false,
+            }),
+            state,
+          );
+        }),
+
+      setQueryTabExternalChange: (id, changed, mtime) =>
         set((state) =>
           storeFor(
-            state.tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, sql } : t)),
+            patchQueryTab(state.tabs, id, {
+              externalChange: changed,
+              ...(mtime === undefined ? {} : { fileMtime: mtime }),
+            }),
+            state,
+          ),
+        ),
+
+      reloadQueryTabFromFile: (id, sql, mtime) =>
+        set((state) =>
+          storeFor(
+            patchQueryTab(state.tabs, id, {
+              sql,
+              savedSql: sql,
+              fileMtime: mtime,
+              externalChange: false,
+            }),
             state,
           ),
         ),

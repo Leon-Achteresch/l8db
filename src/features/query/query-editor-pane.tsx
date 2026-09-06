@@ -15,6 +15,7 @@ interface QueryEditorPaneProps {
   value: string;
   onChange: (value: string) => void;
   onRun: () => void;
+  onSave?: () => void;
   registry: SchemaRegistry;
   className?: string;
 }
@@ -546,6 +547,7 @@ export function QueryEditorPane({
   value,
   onChange,
   onRun,
+  onSave,
   registry,
   className,
 }: QueryEditorPaneProps) {
@@ -553,11 +555,13 @@ export function QueryEditorPane({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const onSaveRef = useRef(onSave);
   const registryRef = useRef(registry);
   const { resolvedTheme } = useTheme();
 
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
+  onSaveRef.current = onSave;
   registryRef.current = registry;
 
   useEffect(() => {
@@ -619,6 +623,10 @@ export function QueryEditorPane({
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       onRunRef.current();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      onSaveRef.current?.();
     });
 
     const formatAction = addSqlFormatAction(editor);
