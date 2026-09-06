@@ -32,6 +32,7 @@ export interface CommandPaletteProps {
   emptyMessage?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  maxVisible?: number;
 }
 
 function fuzzyMatch(needle: string, hay: string) {
@@ -62,6 +63,7 @@ export function CommandPalette({
   emptyMessage = "No results found.",
   open: controlledOpen,
   onOpenChange,
+  maxVisible,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const controlled = controlledOpen !== undefined;
@@ -114,12 +116,14 @@ export function CommandPalette({
   }, [open]);
 
   const filtered = useMemo(() => {
-    if (!query) return items;
-    return items.filter((it) => {
-      const haystacks = [it.label, it.group ?? "", ...(it.keywords ?? [])];
-      return haystacks.some((h) => fuzzyMatch(query, h));
-    });
-  }, [items, query]);
+    const matches = query
+      ? items.filter((it) => {
+          const haystacks = [it.label, it.group ?? "", ...(it.keywords ?? [])];
+          return haystacks.some((h) => fuzzyMatch(query, h));
+        })
+      : items;
+    return maxVisible && matches.length > maxVisible ? matches.slice(0, maxVisible) : matches;
+  }, [items, maxVisible, query]);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.

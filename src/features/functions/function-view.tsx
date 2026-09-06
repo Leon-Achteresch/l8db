@@ -43,7 +43,7 @@ type ExecutionState =
 
 export function FunctionView() {
   const { schema, name } = routeApi.useParams();
-  const { oid } = routeApi.useSearch();
+  const { oid, line } = routeApi.useSearch();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -205,6 +205,7 @@ export function FunctionView() {
         value={editing ? editedSql : (data ?? "")}
         readOnly={!editing}
         onChange={editing ? setEditedSql : undefined}
+        revealLine={line}
       />
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
