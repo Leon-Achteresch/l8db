@@ -888,6 +888,7 @@ impl DatabaseAdapter for OracleAdapter {
                 transaction_start: None,
                 wait_event: s_opt(r, 7),
                 is_self: i(r, 8) == 1,
+                blocked_by: Vec::new(),
             })
             .collect())
     }

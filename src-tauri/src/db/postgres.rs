@@ -2264,7 +2264,7 @@ impl DatabaseAdapter for PostgresAdapter {
             conn.query(
                 "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
                         state, COALESCE(left(query, 500), ''), query_start::text, xact_start::text, \
-                        wait_event, pid = pg_backend_pid() \
+                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid) \
                  FROM pg_stat_activity WHERE datname IS NOT NULL \
                  ORDER BY query_start NULLS LAST",
                 &[],
@@ -2285,6 +2285,7 @@ impl DatabaseAdapter for PostgresAdapter {
                         transaction_start: row.get(8),
                         wait_event: row.get(9),
                         is_self: row.get(10),
+                        blocked_by: row.get(11),
                     })
                     .collect()
             })

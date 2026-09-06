@@ -1,7 +1,7 @@
 # L8DB-PLAN-048: Blockierende PostgreSQL-Sitzungen verknüpft anzeigen
 
 Typ: Story · Priorität: **P1** · Schätzung: **3 SP** · Bereich: Sessions
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

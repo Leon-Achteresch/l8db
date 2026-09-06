@@ -1,7 +1,7 @@
 # L8DB-PLAN-050: Sitzungen nach Benutzer oder Anwendung gruppieren
 
 Typ: Story · Priorität: **P3** · Schätzung: **2 SP** · Bereich: Sessions
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

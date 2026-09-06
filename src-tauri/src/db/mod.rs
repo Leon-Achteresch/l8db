@@ -876,6 +876,7 @@ pub struct SessionInfo {
     pub transaction_start: Option<String>,
     pub wait_event: Option<String>,
     pub is_self: bool,
+    pub blocked_by: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
