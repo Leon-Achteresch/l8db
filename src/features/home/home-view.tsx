@@ -1,10 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, Plus } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { ConnectedDashboard } from "./connected-dashboard";
 
@@ -30,13 +32,15 @@ export function HomeView() {
         <p className="mt-3 text-sm text-muted-foreground">
           Wähle eine Verbindung, um Tabellen und Abfragen zu öffnen.
         </p>
-        <div className="my-7 space-y-2">
+        <div className="my-7 space-y-2" data-tour="home-pick">
           {connections.map((connection) => {
             const provider = providerFor(connection);
             return (
-              <button
+              <motion.button
                 type="button"
                 key={connection.id}
+                layout
+                transition={{ layout: SPRING_LAYOUT }}
                 disabled={isSwitching}
                 onClick={() => {
                   void activateConnectionWithToast(connection.id);
@@ -59,7 +63,7 @@ export function HomeView() {
                   </span>
                 </span>
                 <ArrowUpRight className="size-4 text-muted-foreground" />
-              </button>
+              </motion.button>
             );
           })}
         </div>

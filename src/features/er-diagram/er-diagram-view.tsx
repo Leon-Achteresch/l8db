@@ -495,8 +495,10 @@ function ERDiagramInner() {
 
 export function ErDiagramView() {
   return (
-    <ReactFlowProvider>
-      <ERDiagramInner />
-    </ReactFlowProvider>
+    <div data-tour="er-page" className="flex h-full min-h-0 flex-1 flex-col">
+      <ReactFlowProvider>
+        <ERDiagramInner />
+      </ReactFlowProvider>
+    </div>
   );
 }

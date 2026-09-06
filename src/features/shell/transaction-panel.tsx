@@ -9,6 +9,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +21,7 @@ import {
   type TransactionChange,
   useTransactionStore,
 } from "@/lib/transactions";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 function formatTime(ts: number) {
@@ -197,7 +199,11 @@ function TransactionCard({ tx }: { tx: ActiveTransaction }) {
   }, [tx.txId, removeTransaction, queryClient]);
 
   return (
-    <div className="rounded-lg border border-border bg-card shadow-xs">
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="rounded-lg border border-border bg-card shadow-xs"
+    >
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
         <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
         <div className="min-w-0 flex-1">
@@ -244,7 +250,7 @@ function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           Rollback
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -253,7 +259,12 @@ export function TransactionPanel() {
   const setPanelOpen = useTransactionStore((s) => s.setPanelOpen);
 
   return (
-    <div className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50">
+    <div data-tour="tx-panel" className="flex h-full min-h-0">
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50"
+    >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <span className="text-xs font-semibold text-foreground">Transactions</span>
         {transactions.length > 0 && (
@@ -291,6 +302,7 @@ export function TransactionPanel() {
           ))}
         </div>
       </ScrollArea>
+    </motion.div>
     </div>
   );
 }

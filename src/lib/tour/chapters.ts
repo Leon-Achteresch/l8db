@@ -90,7 +90,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         route: "/",
         wait: { type: "active-connection" },
         waitHint: "Warte auf eine aktive Verbindung…",
-        skipIf: "no-connection",
+        skipIf: "has-active",
         side: "over",
       },
       {
@@ -99,7 +99,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "Hier siehst du Name, Engine, Datenbank und Schema. Die Kennzahlen zählen Tabellen, Views, Funktionen und mehr — abhängig davon, was die Engine kann.",
         route: "/",
         target: "[data-tour='dashboard']",
-        skipIf: "no-connection",
         side: "bottom",
       },
       {
@@ -107,7 +106,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         title: "Schnellstart vom Dashboard",
         body: "Aktualisieren lädt die Objektliste neu. „SQL-Abfrage“ öffnet einen neuen Editor-Tab. Die Tabellenliste darunter filtert lokal, ohne die Datenbank zu belasten.",
         target: "[data-tour='dashboard-actions']",
-        skipIf: "no-connection",
         side: "left",
       },
     ],
@@ -123,7 +121,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "Dieser Schalter sitzt dauerhaft links. Darüber wechselst du gespeicherte Verbindungen oder landest wieder in der Verwaltung. Ein Wechsel prüft den Tunnel und die Erreichbarkeit, bevor der Arbeitsplatz umschaltet.",
         route: "/",
         target: "[data-tour='sidebar-connection']",
-        skipIf: "no-connection",
         side: "right",
       },
       {
@@ -131,7 +128,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         title: "Datenbank und Schema",
         body: "Viele Server haben mehrere Datenbanken und Schemas. Die Auswahl gilt für Tabellen, Queries und das ER-Diagramm. Rechts am Schema liegt die Verwaltung (anlegen, löschen).",
         target: "[data-tour='sidebar-scope']",
-        skipIf: "no-connection",
         side: "right",
       },
       {
@@ -139,7 +135,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         title: "Objektarten",
         body: "Tabs trennen Tabellen, Views, Funktionen, Packages, Extensions, Rollen und Sequenzen. Was die aktuelle Engine nicht kann, bleibt ausgeblendet — dieselbe Oberfläche, andere Fähigkeiten.",
         target: "[data-tour='sidebar-tabs']",
-        skipIf: "no-connection",
         side: "right",
       },
       {
@@ -147,7 +142,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         title: "Objekte filtern",
         body: "Die Suche filtert die Liste nach Name oder Spalte. Rechts daneben öffnet die große Suche alle Tabellen der Verbindung. Klicke als Nächstes eine Tabelle an — oder lass den Autopiloten die erste nehmen.",
         target: "[data-tour='sidebar-search']",
-        skipIf: "no-connection",
         side: "right",
       },
       {
@@ -175,7 +169,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "Oben wechselst du zwischen Daten, Spalten, Triggern, Indexes, RLS und Partitionen — je nach Engine. Export schreibt die aktuelle Seite als CSV oder JSON.",
         tableRoute: true,
         target: "[data-tour='table-toolbar']",
-        skipIf: "no-connection",
         side: "bottom",
       },
       {
@@ -184,7 +177,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "Der Filter baut WHERE-Bedingungen oder nimmt rohes SQL. Gespeicherte Sichten merken häufige Ausschnitte. Sortierung und Seitengröße kommen aus den Einstellungen (Zeilenlimit).",
         tableRoute: true,
         target: "[data-tour='table-filter']",
-        skipIf: "no-connection",
         side: "bottom",
       },
       {
@@ -193,7 +185,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "„Neue Zeile“ öffnet ein Formular anhand der Spaltentypen. Änderungen können sofort geschrieben oder — wenn aktiviert — erst im Transaktionspanel gesammelt werden.",
         tableRoute: true,
         target: "[data-tour='table-add']",
-        skipIf: "no-connection",
         side: "left",
       },
     ],
@@ -253,7 +244,6 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         body: "Jede Zeilenänderung und jedes DML kann in einer Transaktion landen, wenn die Einstellung aktiv ist. Der Button in der Kopfzeile öffnet das Protokoll — die Tour öffnet es jetzt.",
         route: "/",
         target: "[data-tour='header-tx']",
-        autoClick: "[data-tour='header-tx']",
         openTx: true,
         side: "bottom",
       },

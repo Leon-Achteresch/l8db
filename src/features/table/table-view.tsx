@@ -240,7 +240,10 @@ export function TableView() {
             activeFilter={filter}
             onSelectView={handleFilterChange}
           />
-          <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+          <div
+            className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
+            data-tour="table-filter"
+          >
             <TableFilterPanel
               key={`${schema}.${table}`}
               columns={data?.columns ?? []}
@@ -287,7 +290,7 @@ export function TableView() {
         onValueChange={(v) => setViewTab(v as ViewTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+        <div className="flex shrink-0 items-center border-b bg-muted/30 px-3" data-tour="table-toolbar">
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="data">
               <TableIcon className="size-3.5" />
@@ -352,7 +355,7 @@ export function TableView() {
       onValueChange={(v) => setTableTab(v as TableTab)}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+      <div className="flex shrink-0 items-center border-b bg-muted/30 px-3" data-tour="table-toolbar">
         <TabsList variant="line" className="h-9">
           <TabsTrigger value="data">
             <TableIcon className="size-3.5" />
@@ -393,6 +396,7 @@ export function TableView() {
               size="sm"
               variant="ghost"
               className="h-7 gap-1.5 px-2.5 text-xs"
+              data-tour="table-add"
               onClick={() => setAddRowOpen(true)}
               disabled={insertRowMutation.isPending}
             >
