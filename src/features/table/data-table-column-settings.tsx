@@ -9,7 +9,8 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import { DataTableColumnSettingsItem } from "@/features/table/data-table-column-settings-item";
-import { moveColumn } from "@/lib/table-column-prefs";
+import { DataTableLayoutProfiles } from "@/features/table/data-table-layout-profiles";
+import { moveColumn, type TableLayoutProfile } from "@/lib/table-column-prefs";
 
 const sensors = [
   PointerSensor.configure({
@@ -29,6 +30,12 @@ type DataTableColumnSettingsProps = {
   onShowAll: () => void;
   onUnpinAll: () => void;
   onCopyColumnNames: () => void;
+  profiles: TableLayoutProfile[];
+  canUseProfiles: boolean;
+  onSaveProfile: (name: string) => void;
+  onApplyProfile: (id: string) => void;
+  onRenameProfile: (id: string, name: string) => void;
+  onDeleteProfile: (id: string) => void;
 };
 
 export function DataTableColumnSettings({
@@ -42,6 +49,12 @@ export function DataTableColumnSettings({
   onShowAll,
   onUnpinAll,
   onCopyColumnNames,
+  profiles,
+  canUseProfiles,
+  onSaveProfile,
+  onApplyProfile,
+  onRenameProfile,
+  onDeleteProfile,
 }: DataTableColumnSettingsProps) {
   const hiddenSet = new Set(hidden);
   const visibleCount = columns.length - hidden.length;
@@ -93,6 +106,15 @@ export function DataTableColumnSettings({
           <PinOffIcon />
           Fixierungen aufheben
         </ContextMenuItem>
+      )}
+      {canUseProfiles && (
+        <DataTableLayoutProfiles
+          profiles={profiles}
+          onSave={onSaveProfile}
+          onApply={onApplyProfile}
+          onRename={onRenameProfile}
+          onDelete={onDeleteProfile}
+        />
       )}
       <ContextMenuSeparator />
       <ContextMenuItem onSelect={onCopyColumnNames}>

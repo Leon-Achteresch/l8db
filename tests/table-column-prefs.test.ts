@@ -13,13 +13,19 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const {
+  applyLayoutProfile,
+  createLayoutProfile,
   formatVisibleColumnNames,
   moveColumn,
   reorderVisibleColumns,
   resolveColumnPrefs,
   tableColumnPrefKey,
+  normalizeLayoutProfileName,
+  removeLayoutProfile,
+  renameLayoutProfile,
   toggleHiddenColumn,
   togglePinnedColumn,
+  upsertLayoutProfile,
   useTableColumnPrefs,
 } = await import("../src/lib/table-column-prefs");
 
@@ -27,7 +33,7 @@ await useTableColumnPrefs.persist.rehydrate();
 
 beforeEach(() => {
   storage.clear();
-  useTableColumnPrefs.setState({ prefs: {} });
+  useTableColumnPrefs.setState({ prefs: {}, profiles: {} });
 });
 
 describe("resolveColumnPrefs", () => {
@@ -134,5 +140,73 @@ describe("formatVisibleColumnNames", () => {
 
   test("liefert leeren Text ohne sichtbare Spalten", () => {
     expect(formatVisibleColumnNames([], [])).toBe("");
+  });
+});
+
+describe("Layoutprofile", () => {
+  const profile = createLayoutProfile("p1", "  Analyse  Ansicht ", {
+    order: ["id", "name", "email"],
+    hidden: ["email"],
+    pinned: ["id"],
+  });
+
+  test("normalisiert den Namen beim Anlegen", () => {
+    expect(normalizeLayoutProfileName("  Analyse  Ansicht ")).toBe("Analyse Ansicht");
+    expect(profile.name).toBe("Analyse Ansicht");
+  });
+
+  test("legt neue Profile an und ersetzt gleichnamige", () => {
+    const list = upsertLayoutProfile([], profile);
+    expect(list).toHaveLength(1);
+    const replaced = upsertLayoutProfile(
+      list,
+      createLayoutProfile("p2", "analyse ansicht", { order: ["name"], hidden: [], pinned: [] }),
+    );
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0].id).toBe("p1");
+    expect(replaced[0].order).toEqual(["name"]);
+  });
+
+  test("ignoriert Profile ohne Namen", () => {
+    expect(
+      upsertLayoutProfile([], createLayoutProfile("p9", "   ", { order: [], hidden: [] })),
+    ).toEqual([]);
+  });
+
+  test("benennt um und verhindert Namenskollisionen", () => {
+    const list = [profile, createLayoutProfile("p2", "Kompakt", { order: [], hidden: [] })];
+    expect(renameLayoutProfile(list, "p2", " Export ")[1].name).toBe("Export");
+    expect(renameLayoutProfile(list, "p2", "analyse ansicht")[1].name).toBe("Kompakt");
+    expect(renameLayoutProfile(list, "p2", "  ")[1].name).toBe("Kompakt");
+  });
+
+  test("löscht Profile anhand der Id", () => {
+    expect(removeLayoutProfile([profile], "p1")).toEqual([]);
+    expect(removeLayoutProfile([profile], "unbekannt")).toHaveLength(1);
+  });
+
+  test("wendet Profile verträglich auf geänderte Spalten an", () => {
+    const applied = applyLayoutProfile(["id", "name", "created_at"], profile);
+    expect(applied.order).toEqual(["id", "name", "created_at"]);
+    expect(applied.hidden).toEqual([]);
+    expect(applied.pinned).toEqual(["id"]);
+  });
+
+  test("zieht fixierte Spalten des Profils nach vorn", () => {
+    const applied = applyLayoutProfile(
+      ["id", "name", "email"],
+      createLayoutProfile("p3", "Pin", {
+        order: ["id", "name", "email"],
+        hidden: [],
+        pinned: ["email"],
+      }),
+    );
+    expect(applied.order).toEqual(["email", "id", "name"]);
+  });
+
+  test("speichert Profile pro Tabellenschlüssel im Store", () => {
+    const key = tableColumnPrefKey("conn", "public", "users");
+    useTableColumnPrefs.getState().setProfiles(key, [profile]);
+    expect(useTableColumnPrefs.getState().profiles[key]).toHaveLength(1);
   });
 });
