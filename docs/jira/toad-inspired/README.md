@@ -1,6 +1,6 @@
 # Jira-Backlog: sinnvolle Toad-Funktionen für l8db
 
-Stand: 6. September 2026. **62 kleine Feature-Tickets als einzelne Markdown-Dateien.** Die IDs `L8DB-PLAN-*` sind lokale Planungsnummern; es wurden keine Tickets in einer Jira-Instanz angelegt.
+Stand: 6. September 2026. **75 kleine Feature-Tickets als einzelne Markdown-Dateien.** Die IDs `L8DB-PLAN-*` sind lokale Planungsnummern; es wurden keine Tickets in einer Jira-Instanz angelegt.
 
 ## Empfehlung
 
@@ -8,7 +8,7 @@ l8db sollte zuerst die tägliche Arbeit mit SQL, Ergebnissen und Datentransfer v
 
 Die breite Provider-Registry macht gemeinsame Oberflächenfunktionen besonders wertvoll. Funktionen, die Daten schreiben oder stark vom Dialekt abhängen, beginnen ausdrücklich bei nativem PostgreSQL. Die Unterstützung einer PostgreSQL-kompatiblen Marke ist keine automatische Zusage gleicher Kataloge oder DDL-Fähigkeiten.
 
-Den vollständigen Toad-Funktionsumfang nachzubauen wäre für den derzeitigen l8db-Stand wenig sinnvoll. Oracle-Verwaltung, Debugger, komplette Optimizer- und Monitoring-Suiten sowie ein eigener Git-Client würden jeweils große eigenständige Produktbereiche eröffnen. KI-Assistenten und ein MCP-Server bleiben vorerst zurückgestellt: Der Nutzen der konkreten Editor- und Datenfunktionen ist im aktuellen Code direkter erkennbar.
+Den vollständigen Toad-Funktionsumfang nachzubauen wäre für den derzeitigen l8db-Stand wenig sinnvoll. Oracle-Verwaltung, Debugger, komplette Optimizer- und Monitoring-Suiten sowie ein eigener Git-Client würden jeweils große eigenständige Produktbereiche eröffnen. Ergänzend beschreiben [L8DB-PLAN-063](L8DB-PLAN-063-used-by-analyse.md) bis [L8DB-PLAN-075](L8DB-PLAN-075-zeile-duplizieren-edit.md) bewusst kleine Slices aus zuvor zurückgestellten Bereichen (Used-By-Analyse, Synonyme, Jobs, Regex-Helper, Schema-Transfer, Debugger-Einstieg, DBMS-Output, Prozeduren, Kompilieren, Drop/Rename/Alter/Audit, Performance-Test, Migrationsskripte, Duplizieren im Edit-State). KI-Assistenten und ein MCP-Server bleiben vorerst zurückgestellt: Der Nutzen der konkreten Editor- und Datenfunktionen ist im aktuellen Code direkter erkennbar.
 
 Die Auswahl beruht auf einer statischen Prüfung der Feature-Module, Stores, Bridge und Provider-Architektur sowie dem [Toad-Audit](../../toad-for-oracle-feature-audit.de.md). Es wurde keine laufende Installation funktional getestet. „Nicht erkennbar“ bedeutet: im geprüften Code kein entsprechender Ablauf gefunden. Der Arbeitsstand ist kein unveränderlicher Release-Snapshot und ist vor Umsetzung nochmals abzugleichen.
 
@@ -17,8 +17,8 @@ Die Auswahl beruht auf einer statischen Prüfung der Feature-Module, Stores, Bri
 | Priorität | Anzahl | Bedeutung |
 |---|---:|---|
 | P1 | 20 | Zuerst einplanen: häufige Aufgaben, klarer bestehender Bedarf oder notwendige Vorstufe |
-| P2 | 31 | Danach: gezielte Produktivitätsgewinne und vertiefte Workflows |
-| P3 | 11 | Später: Nutzen prüfen, sobald die häufigen Arbeitsabläufe ausgereift sind |
+| P2 | 38 | Danach: gezielte Produktivitätsgewinne und vertiefte Workflows |
+| P3 | 17 | Später: Nutzen prüfen, sobald die häufigen Arbeitsabläufe ausgereift sind |
 
 1 SP bedeutet sehr kleiner Eingriff, 2 SP kleiner Funktionsschritt, 3 SP begrenzter Ablauf über mehrere Stellen und 5 SP ein enger, aber technisch anspruchsvoller Schritt. Das sind grobe relative Schätzungen, keine Tagesangaben oder Lieferzusagen. Abhängigkeiten gehen vor der Priorität. Ein 5-SP-Ticket ist vor Umsetzung technisch zu verfeinern, falls der benannte Umfang nicht in einen kleinen Arbeitsabschnitt passt.
 
@@ -70,7 +70,7 @@ Die Reihenfolge einer Zeile beschreibt den sinnvollen Ablauf; verbindliche Abhä
 | Sitzungen | Session-/Lock-Listen, Polling, Cancel und Terminate | Blocking-Beziehungen, Filter und Gruppierung |
 | Transaktionen | Änderungsübersicht, Commit/Rollback | In neuen Schreibabläufen wiederverwenden |
 
-Die [Entscheidung über alle 75 Toad-Kategorien](ENTSCHEIDUNG.md) dokumentiert auch die nicht ausgewählten Bereiche. Die 62 Tickets beziehen sich auf 119 unterschiedliche Toad-Inventareinträge. Zusammengehörige Mikrooptionen sind zu einem kleinen nutzbaren Feature gebündelt; derselbe Toad-Eintrag kann mehrere aufeinanderfolgende Schritte inspirieren. Das ist kein 1:1-Port und keine Zusage, dass historische Toad-Funktionen in dessen aktueller Version unverändert existieren.
+Die [Entscheidung über alle 75 Toad-Kategorien](ENTSCHEIDUNG.md) dokumentiert auch die nicht ausgewählten Bereiche. Die ursprüngliche Auswahl bezog 119 unterschiedliche Toad-Inventareinträge ein; [L8DB-PLAN-063](L8DB-PLAN-063-used-by-analyse.md) bis [L8DB-PLAN-075](L8DB-PLAN-075-zeile-duplizieren-edit.md) verlinken jeweils ihre zusätzlichen Einträge. Zusammengehörige Mikrooptionen sind zu einem kleinen nutzbaren Feature gebündelt; derselbe Toad-Eintrag kann mehrere aufeinanderfolgende Schritte inspirieren. Das ist kein 1:1-Port und keine Zusage, dass historische Toad-Funktionen in dessen aktueller Version unverändert existieren.
 
 ## Umsetzungsrahmen
 
@@ -154,3 +154,16 @@ Für diese reine Backlog-Erstellung wurden keine Anwendungstests ausgeführt. Ge
 | [L8DB-PLAN-060](L8DB-PLAN-060-query-bindparameter.md) | PostgreSQL-Abfragen mit Bind-Parametern ausführen | P2 | 5 | Editor | – |
 | [L8DB-PLAN-061](L8DB-PLAN-061-spaltennamen-kopieren.md) | Sichtbare Spaltennamen kopieren | P2 | 1 | Grid | – |
 | [L8DB-PLAN-062](L8DB-PLAN-062-fenstertitel-kontext.md) | Verbindung und Datenbank im Fenstertitel anzeigen | P2 | 1 | Shell | – |
+| [L8DB-PLAN-063](L8DB-PLAN-063-used-by-analyse.md) | Used-By-Tab für Tabellen und Views mit Abhängigkeitsanalyse | P2 | 5 | Objekte | [L8DB-PLAN-039](L8DB-PLAN-039-routinen-quelltextsuche.md) |
+| [L8DB-PLAN-064](L8DB-PLAN-064-synonyme-browsen.md) | Synonyme browsen und zum Zielobjekt auflösen | P3 | 3 | Objekte | – |
+| [L8DB-PLAN-065](L8DB-PLAN-065-scheduler-jobs.md) | Scheduler-Jobs anzeigen und steuern | P3 | 5 | Sessions | – |
+| [L8DB-PLAN-066](L8DB-PLAN-066-regex-suche-helper.md) | Regex-Suche mit Helper und Live-Trefferzählung | P2 | 2 | Editor | [L8DB-PLAN-020](L8DB-PLAN-020-grid-textsuche.md), [L8DB-PLAN-039](L8DB-PLAN-039-routinen-quelltextsuche.md) |
+| [L8DB-PLAN-067](L8DB-PLAN-067-objekt-schema-kopieren.md) | Objekte vergleichen und in anderes Schema erstellen | P2 | 5 | Vergleich | [L8DB-PLAN-043](L8DB-PLAN-043-definitionen-vergleichen.md), [L8DB-PLAN-041](L8DB-PLAN-041-create-table-ddl-vorschau.md) |
+| [L8DB-PLAN-068](L8DB-PLAN-068-plsql-debugger.md) | PL/SQL-Debugger als schlanker Einstieg | P3 | 5 | Editor | [L8DB-PLAN-071](L8DB-PLAN-071-objekte-kompilieren.md) |
+| [L8DB-PLAN-069](L8DB-PLAN-069-dbms-log-output.md) | DBMS- und Log-Outputs im Query-Arbeitsplatz anzeigen | P3 | 3 | Editor | – |
+| [L8DB-PLAN-070](L8DB-PLAN-070-prozeduren.md) | Prozeduren als eigene Objektfamilie | P2 | 3 | Objekte | – |
+| [L8DB-PLAN-071](L8DB-PLAN-071-objekte-kompilieren.md) | Funktionen, Prozeduren und Packages per Kontextmenü kompilieren | P2 | 2 | DDL | [L8DB-PLAN-070](L8DB-PLAN-070-prozeduren.md) |
+| [L8DB-PLAN-072](L8DB-PLAN-072-drop-rename-alter-audit.md) | Tabellen und Views droppen, umbenennen, ändern und auditieren | P2 | 3 | DDL | [L8DB-PLAN-041](L8DB-PLAN-041-create-table-ddl-vorschau.md) |
+| [L8DB-PLAN-073](L8DB-PLAN-073-performance-test.md) | Performance-Test für Tabellen und Views | P3 | 3 | Explain | [L8DB-PLAN-045](L8DB-PLAN-045-explain-speichern.md), [L8DB-PLAN-047](L8DB-PLAN-047-explain-vergleichen.md) |
+| [L8DB-PLAN-074](L8DB-PLAN-074-migrationsskripte.md) | Migrationsskripte automatisch erstellen | P3 | 5 | Vergleich | [L8DB-PLAN-043](L8DB-PLAN-043-definitionen-vergleichen.md), [L8DB-PLAN-044](L8DB-PLAN-044-schema-snapshot.md), [L8DB-PLAN-057](L8DB-PLAN-057-datendifferenz-sql.md) |
+| [L8DB-PLAN-075](L8DB-PLAN-075-zeile-duplizieren-edit.md) | Zeile duplizieren im Edit-State mit änderbarem PK | P2 | 2 | Grid | – |
