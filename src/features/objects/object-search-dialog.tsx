@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { BracesIcon, ColumnsIcon, EyeIcon, SearchIcon, TableIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { RegexSearchHelper } from "@/components/regex-search-helper";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -23,6 +24,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { supports } from "@/lib/providers";
 import { useColumnSearchQuery, useSchemasQuery, useSourceSearchQuery } from "@/lib/queries";
+import {
+  compileRegexSearch,
+  describeRegexError,
+  insertRegexPattern,
+  regexLiteralPrefilter,
+} from "@/lib/regex-search";
+import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 
 const ALL_SCHEMAS = "__all__";
 
@@ -42,10 +50,35 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
   const schemaFilter = schema === ALL_SCHEMAS ? undefined : schema;
   const { data: schemas } = useSchemasQuery();
 
+  const sourceRegex = useRegexEnabled("source");
+  const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
+  const regexActive = tab === "source" && sourceRegex;
+
+  const compiled = useMemo(
+    () => (regexActive && term.trim() ? compileRegexSearch(term.trim()) : null),
+    [regexActive, term],
+  );
+  const regexError = compiled && !compiled.ok ? compiled.error : null;
+  const prefilter = useMemo(
+    () => (regexActive ? regexLiteralPrefilter(term.trim()) : term),
+    [regexActive, term],
+  );
+  const sourceTerm = regexActive ? (regexError ? "" : prefilter) : term;
+
   const columnSearch = useColumnSearchQuery(tab === "columns" ? term : "", schemaFilter);
-  const sourceSearch = useSourceSearchQuery(tab === "source" ? term : "", schemaFilter);
+  const sourceSearch = useSourceSearchQuery(tab === "source" ? sourceTerm : "", schemaFilter);
   const active = tab === "columns" ? columnSearch : sourceSearch;
-  const tooShort = term.trim().length > 0 && term.trim().length < 2;
+  const sourceMatches = useMemo(() => {
+    const rows = sourceSearch.data ?? [];
+    if (!regexActive || !compiled?.ok) return rows;
+    return rows.filter((match) => compiled.regex.test(match.snippet));
+  }, [sourceSearch.data, regexActive, compiled]);
+  const tooShort =
+    tab === "source"
+      ? sourceTerm.trim().length > 0 && sourceTerm.trim().length < 2
+      : term.trim().length > 0 && term.trim().length < 2;
+  const prefilterMissing =
+    regexActive && !regexError && term.trim().length > 0 && prefilter.trim().length < 2;
 
   const close = () => onOpenChange(false);
 
@@ -73,13 +106,43 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
             <div className="relative flex-1">
               <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                id="object-search-term"
                 autoFocus
                 value={term}
                 onChange={(event) => setTerm(event.target.value)}
-                placeholder={tab === "columns" ? "Spaltenname…" : "Text im Quelltext…"}
+                placeholder={
+                  tab === "columns"
+                    ? "Spaltenname…"
+                    : sourceRegex
+                      ? "Regulärer Ausdruck im Quelltext…"
+                      : "Text im Quelltext…"
+                }
                 className="pl-8"
               />
             </div>
+            {tab === "source" ? (
+              <RegexSearchHelper
+                enabled={sourceRegex}
+                onEnabledChange={(enabled) => setRegexEnabled("source", enabled)}
+                query={term}
+                onQueryChange={setTerm}
+                onInsert={(snippet) => {
+                  const input = document.getElementById(
+                    "object-search-term",
+                  ) as HTMLInputElement | null;
+                  const start = input?.selectionStart ?? term.length;
+                  const end = input?.selectionEnd ?? term.length;
+                  const next = insertRegexPattern(term, start, end, snippet);
+                  setTerm(next.value);
+                  requestAnimationFrame(() => {
+                    input?.focus();
+                    input?.setSelectionRange(next.cursor, next.cursor);
+                  });
+                }}
+                error={regexError}
+                matchCount={sourceMatches.length}
+              />
+            ) : null}
             <Select value={schema} onValueChange={setSchema}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Alle Schemas" />
@@ -96,6 +159,21 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
           </div>
           {tooShort ? (
             <p className="mt-2 text-sm text-muted-foreground">Mindestens zwei Zeichen eingeben.</p>
+          ) : null}
+          {regexError ? (
+            <p className="mt-2 text-sm text-destructive">{describeRegexError(regexError)}</p>
+          ) : null}
+          {prefilterMissing ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Für die Serversuche werden mindestens zwei zusammenhängende literale Zeichen im Muster
+              benötigt.
+            </p>
+          ) : null}
+          {regexActive && !regexError && !prefilterMissing && term.trim() ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Der Server sucht vorab nach „{prefilter}“; der reguläre Ausdruck filtert die
+              gefundenen Textausschnitte nach.
+            </p>
           ) : null}
           {active.isError ? (
             <p className="mt-2 text-sm text-destructive">
@@ -152,11 +230,11 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
           </TabsContent>
           <TabsContent value="source">
             <ScrollArea className="mt-2 h-80">
-              {!active.isError && sourceSearch.data?.length === 0 ? (
+              {!active.isError && sourceSearch.data && sourceMatches.length === 0 ? (
                 <p className="p-2 text-sm text-muted-foreground">Keine Treffer.</p>
               ) : null}
               <ul className="flex flex-col gap-1">
-                {(sourceSearch.data ?? []).map((match) => (
+                {sourceMatches.map((match) => (
                   <li key={`${match.object_type}:${match.oid}`}>
                     <button
                       type="button"

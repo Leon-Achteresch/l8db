@@ -1,3 +1,10 @@
+import {
+  compileRegexSearch,
+  escapeRegexLiteral,
+  type RegexCompileError,
+  type RegexCompileResult,
+} from "@/lib/regex-search";
+
 export interface TabSearchSource {
   id: string;
   title: string;
@@ -26,25 +33,17 @@ export interface TabSearchMatch {
 export interface TabSearchResult {
   matches: TabSearchMatch[];
   invalidPattern: boolean;
+  patternError: RegexCompileError | null;
   truncated: boolean;
 }
 
 const PREVIEW_RADIUS = 48;
 const DEFAULT_MAX_MATCHES = 500;
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function buildPattern(query: string, options: TabSearchOptions): RegExp | null {
-  const source = options.regex ? query : escapeRegExp(query);
+function buildPattern(query: string, options: TabSearchOptions): RegexCompileResult {
+  const source = options.regex ? query : escapeRegexLiteral(query);
   const wrapped = options.wholeWord ? `\\b(?:${source})\\b` : source;
-  const flags = options.caseSensitive ? "g" : "gi";
-  try {
-    return new RegExp(wrapped, flags);
-  } catch {
-    return null;
-  }
+  return compileRegexSearch(wrapped, { caseSensitive: options.caseSensitive });
 }
 
 function buildPreview(
@@ -70,14 +69,22 @@ export function searchQueryTabs(
   options: TabSearchOptions = {},
 ): TabSearchResult {
   const trimmed = query.trim();
-  if (!trimmed) return { matches: [], invalidPattern: false, truncated: false };
+  if (!trimmed) return { matches: [], invalidPattern: false, patternError: null, truncated: false };
 
-  const pattern = buildPattern(query, options);
-  if (!pattern) return { matches: [], invalidPattern: true, truncated: false };
+  const compiled = buildPattern(query, options);
+  if (!compiled.ok) {
+    return {
+      matches: [],
+      invalidPattern: true,
+      patternError: compiled.error,
+      truncated: false,
+    };
+  }
+  const pattern = compiled.regex;
 
   const maxMatches = options.maxMatches ?? DEFAULT_MAX_MATCHES;
   const matches: TabSearchMatch[] = [];
-  let truncated = false;
+  const truncated = false;
 
   for (const source of sources) {
     const lines = source.sql.split("\n");
@@ -87,7 +94,7 @@ export function searchQueryTabs(
       let hit: RegExpExecArray | null;
       while ((hit = pattern.exec(lineText)) !== null) {
         if (matches.length >= maxMatches) {
-          return { matches, invalidPattern: false, truncated: true };
+          return { matches, invalidPattern: false, patternError: null, truncated: true };
         }
         const length = hit[0].length;
         const column = hit.index + 1;
@@ -105,7 +112,7 @@ export function searchQueryTabs(
     }
   }
 
-  return { matches, invalidPattern: false, truncated };
+  return { matches, invalidPattern: false, patternError: null, truncated };
 }
 
 export function groupMatchesByTab(matches: TabSearchMatch[]): {
