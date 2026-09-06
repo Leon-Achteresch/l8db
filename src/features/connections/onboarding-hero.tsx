@@ -1,4 +1,4 @@
-import { Safari } from "@/components/ui/safari"
+import { Safari } from "@/components/ui/safari";
 
 export function OnboardingHero() {
   return (
@@ -19,13 +19,12 @@ export function OnboardingHero() {
         </h1>
 
         <p className="text-xl font-medium text-muted-foreground">
-          Manage your databases with{" "}
-          <span className="font-bold text-foreground">precision</span>
+          Manage your databases with <span className="font-bold text-foreground">precision</span>
         </p>
 
         <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-          Browse tables, run queries, inspect schemas, manage users, and visualize
-          ER diagrams — from one native desktop app.
+          Browse tables, run queries, inspect schemas, manage users, and visualize ER diagrams —
+          from one native desktop app.
         </p>
       </div>
 
@@ -33,5 +32,5 @@ export function OnboardingHero() {
         <Safari url="l8db · app" mode="simple" />
       </div>
     </section>
-  )
+  );
 }

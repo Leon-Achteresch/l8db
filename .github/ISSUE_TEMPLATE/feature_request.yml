@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an idea for l8db
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      placeholder: Which workflow is painful or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      placeholder: What should l8db do instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Table browser, Query editor, Connections, Backend / providers, Updater / releases, Other]

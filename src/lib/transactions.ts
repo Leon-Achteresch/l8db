@@ -46,8 +46,7 @@ export const useTransactionStore = create<TransactionStoreState>()(
       togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
       setPanelOpen: (open) => set({ panelOpen: open }),
 
-      addTransaction: (tx) =>
-        set((s) => ({ transactions: [...s.transactions, tx] })),
+      addTransaction: (tx) => set((s) => ({ transactions: [...s.transactions, tx] })),
 
       removeTransaction: (txId) =>
         set((s) => ({
@@ -84,10 +83,6 @@ export const useTransactionStore = create<TransactionStoreState>()(
   ),
 );
 
-export function getTransactionForConnection(
-  connectionId: string,
-): ActiveTransaction | undefined {
-  return useTransactionStore
-    .getState()
-    .transactions.find((t) => t.connectionId === connectionId);
+export function getTransactionForConnection(connectionId: string): ActiveTransaction | undefined {
+  return useTransactionStore.getState().transactions.find((t) => t.connectionId === connectionId);
 }

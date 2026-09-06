@@ -1,5 +1,3 @@
-import { useMemo, useState } from "react";
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -11,6 +9,7 @@ import {
   TrashIcon,
   XIcon,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -34,25 +33,22 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
 import { useActiveConnection } from "@/lib/connections";
 import {
-  addColumn,
-  alterColumn,
-  dropColumn,
-  listTableColumnsDetailed,
   type AddColumnRequest,
   type AlterColumnRequest,
+  addColumn,
+  alterColumn,
   type DatabaseKind,
   type DetailedColumnInfo,
+  dropColumn,
+  listTableColumnsDetailed,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { effectiveConnectionString } from "@/lib/ssh";
+import { cn } from "@/lib/utils";
 
 interface DataTypeGroup {
   label: string;
@@ -77,14 +73,7 @@ const POSTGRES_TYPES: DataTypeGroup[] = [
   },
   {
     label: "Text",
-    types: [
-      "character varying",
-      "varchar",
-      "character",
-      "char",
-      "text",
-      "citext",
-    ],
+    types: ["character varying", "varchar", "character", "char", "text", "citext"],
   },
   {
     label: "Datum / Zeit",
@@ -123,26 +112,11 @@ const POSTGRES_TYPES: DataTypeGroup[] = [
   },
   {
     label: "Array",
-    types: [
-      "integer[]",
-      "text[]",
-      "boolean[]",
-      "varchar[]",
-      "bigint[]",
-      "uuid[]",
-      "jsonb[]",
-    ],
+    types: ["integer[]", "text[]", "boolean[]", "varchar[]", "bigint[]", "uuid[]", "jsonb[]"],
   },
   {
     label: "Bereich",
-    types: [
-      "int4range",
-      "int8range",
-      "numrange",
-      "tsrange",
-      "tstzrange",
-      "daterange",
-    ],
+    types: ["int4range", "int8range", "numrange", "tsrange", "tstzrange", "daterange"],
   },
   {
     label: "Sonstige",
@@ -175,10 +149,7 @@ function DataTypeCombobox({ value, onChange, kind, className }: DataTypeCombobox
   const [open, setOpen] = useState(false);
   const groups = useMemo(() => getDataTypeGroups(kind), [kind]);
 
-  const allTypes = useMemo(
-    () => groups.flatMap((g) => g.types),
-    [groups],
-  );
+  const allTypes = useMemo(() => groups.flatMap((g) => g.types), [groups]);
 
   const isCustom = value !== "" && !allTypes.includes(value.toLowerCase());
 
@@ -214,9 +185,7 @@ function DataTypeCombobox({ value, onChange, kind, className }: DataTypeCombobox
                     className="text-xs"
                   >
                     <span className="font-mono">{t}</span>
-                    {value.toLowerCase() === t && (
-                      <CheckIcon className="ml-auto size-3.5" />
-                    )}
+                    {value.toLowerCase() === t && <CheckIcon className="ml-auto size-3.5" />}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -253,7 +222,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     queryFn: () =>
       listTableColumnsDetailed(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         schema,
         table,
         database ?? undefined,
@@ -333,7 +302,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
 
       await alterColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         changes,
@@ -355,7 +324,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     try {
       await addColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         addForm,
@@ -378,7 +347,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     try {
       await dropColumn(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         table,
         dropTarget,
@@ -444,12 +413,18 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
         </Button>
       </div>
 
-      <AlertDialog open={dropTarget !== null} onOpenChange={(open) => { if (!open) setDropTarget(null); }}>
+      <AlertDialog
+        open={dropTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDropTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Spalte &quot;{dropTarget}&quot; löschen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Die Spalte und alle abhängigen Constraints werden unwiderruflich gelöscht (DROP COLUMN CASCADE).
+              Die Spalte und alle abhängigen Constraints werden unwiderruflich gelöscht (DROP COLUMN
+              CASCADE).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -513,10 +488,21 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                 />
               </div>
               <div className="flex items-center gap-1 bg-background px-3 py-1.5">
-                <Button variant="ghost" size="icon" className="size-6" onClick={handleAddColumn} disabled={saving || !addForm.name.trim()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={handleAddColumn}
+                  disabled={saving || !addForm.name.trim()}
+                >
                   <SaveIcon className="size-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" className="size-6" onClick={() => setAddingColumn(false)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => setAddingColumn(false)}
+                >
                   <XIcon className="size-3.5" />
                 </Button>
               </div>
@@ -548,7 +534,9 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                   <div className="flex items-center bg-background px-3 py-1.5">
                     <button
                       type="button"
-                      onClick={() => setEditForm((f) => ({ ...f, set_not_null: !(f.set_not_null ?? false) }))}
+                      onClick={() =>
+                        setEditForm((f) => ({ ...f, set_not_null: !(f.set_not_null ?? false) }))
+                      }
                       className="text-xs text-muted-foreground hover:text-foreground"
                     >
                       {editForm.set_not_null ? "NO" : "YES"}
@@ -563,10 +551,21 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                     />
                   </div>
                   <div className="flex items-center gap-1 bg-background px-3 py-1.5">
-                    <Button variant="ghost" size="icon" className="size-6" onClick={handleSaveEdit} disabled={saving}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                    >
                       <SaveIcon className="size-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="size-6" onClick={handleCancelEdit}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={handleCancelEdit}
+                    >
                       <XIcon className="size-3.5" />
                     </Button>
                   </div>
@@ -590,10 +589,20 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                     <span className="truncate">{col.column_default ?? ""}</span>
                   </div>
                   <div className="flex items-center gap-1 bg-background px-3 py-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button variant="ghost" size="icon" className="size-6" onClick={() => handleStartEdit(col)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={() => handleStartEdit(col)}
+                    >
                       <PencilIcon className="size-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="size-6 text-destructive hover:text-destructive" onClick={() => setDropTarget(col.name)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-destructive hover:text-destructive"
+                      onClick={() => setDropTarget(col.name)}
+                    >
                       <TrashIcon className="size-3.5" />
                     </Button>
                   </div>

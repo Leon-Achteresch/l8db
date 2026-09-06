@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-
 import { Loader2Icon, PlusIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -47,9 +46,7 @@ export function NewRowDialog({
   isPending,
   onSubmit,
 }: NewRowDialogProps) {
-  const [fields, setFields] = useState<Record<string, FieldState>>(() =>
-    initialFields(columns),
-  );
+  const [fields, setFields] = useState<Record<string, FieldState>>(() => initialFields(columns));
 
   useEffect(() => {
     if (open) {
@@ -117,10 +114,7 @@ export function NewRowDialog({
                       >
                         Standard
                       </ModeChip>
-                      <ModeChip
-                        active={field.mode === "null"}
-                        onClick={() => setMode(col, "null")}
-                      >
+                      <ModeChip active={field.mode === "null"} onClick={() => setMode(col, "null")}>
                         NULL
                       </ModeChip>
                     </div>
@@ -141,8 +135,7 @@ export function NewRowDialog({
                     }
                     className={cn(
                       "h-8 font-mono text-[13px]",
-                      field.mode !== "value" &&
-                        "text-muted-foreground/60 italic",
+                      field.mode !== "value" && "text-muted-foreground/60 italic",
                     )}
                   />
                 </div>

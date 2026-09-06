@@ -1,40 +1,57 @@
-import { useCallback, useRef, useState } from "react";
-
 import { useQuery } from "@tanstack/react-query";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { BookmarkIcon, DownloadIcon, LoaderIcon, PlayIcon, Trash2Icon } from "lucide-react";
-
+import {
+  BookmarkIcon,
+  DownloadIcon,
+  GaugeIcon,
+  HistoryIcon,
+  LoaderIcon,
+  PlayIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ExplainPlanView } from "@/features/query/explain-plan-view";
 import { QueryEditorPane } from "@/features/query/query-editor-pane";
+import { QueryHistoryPanel } from "@/features/query/query-history-panel";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
-import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import {
   beginTransaction,
+  type ExplainNode,
   executeInTransaction,
   executeQuery,
+  explainQuery,
   listAllColumns,
   listTables,
   type QueryResult,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
+import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { useSettingsStore } from "@/lib/settings";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-import {
-  getTransactionForConnection,
-  useTransactionStore,
-} from "@/lib/transactions";
+import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
 
-const DML_PATTERN =
-  /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
+const QUERY_LANGUAGES = {
+  sql: "SQL",
+  cql: "CQL",
+  json: "MongoDB-Befehle als JSON",
+  redis: "Redis-Befehle, eine pro Zeile",
+} as const;
+
+const DML_PATTERN = /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
 
 interface QueryViewProps {
   tabId: string;
@@ -51,12 +68,17 @@ export function QueryView({ tabId }: QueryViewProps) {
   const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
 
   const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
+  const recordHistory = useQueryHistoryStore((state) => state.record);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [plan, setPlan] = useState<{ node: ExplainNode; analyzed: boolean } | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
 
   const [editorHeight, setEditorHeight] = useState(280);
   const dragStartRef = useRef<{ y: number; h: number } | null>(null);
@@ -66,11 +88,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const { data: tables } = useQuery({
     queryKey: ["all-tables", connection?.id, database],
     queryFn: () =>
-      listTables(
-        connection!.kind,
-        connection!.connectionString,
-        database ?? undefined,
-      ),
+      listTables(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: Boolean(connection),
   });
 
@@ -79,7 +97,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     queryFn: () =>
       listAllColumns(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -92,10 +110,29 @@ export function QueryView({ tabId }: QueryViewProps) {
     columns: columns ?? [],
   };
 
+  const caps = useCapabilities(connection?.kind);
+
   const handleRun = useCallback(async () => {
     if (!connection || !sql.trim()) return;
     setIsRunning(true);
     setError(null);
+    const startedAt = performance.now();
+    const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
+      recordHistory({
+        connectionId: connection.id,
+        database: database ?? null,
+        sql,
+        durationMs: Math.round(performance.now() - startedAt),
+        rowCount: outcome.rowCount,
+        error: outcome.error ? outcome.error.slice(0, 500) : null,
+      });
+    };
+    const rowCountOf = (res: QueryResult): number | null =>
+      res.columns.length > 0
+        ? res.rows.length
+        : res.rows_affected != null
+          ? Number(res.rows_affected)
+          : null;
     try {
       const store = useTransactionStore.getState();
       const existingTx = getTransactionForConnection(connection.id);
@@ -114,10 +151,11 @@ export function QueryView({ tabId }: QueryViewProps) {
           store.setPanelOpen(true);
         }
         setResult(res);
-      } else if (isDml) {
+        finishHistory({ rowCount: rowCountOf(res), error: null });
+      } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
         const txId = await beginTransaction(
           connection.kind,
-          connection.connectionString,
+          effectiveConnectionString(connection),
           database ?? undefined,
         );
         store.addTransaction({
@@ -138,22 +176,56 @@ export function QueryView({ tabId }: QueryViewProps) {
         });
         store.setPanelOpen(true);
         setResult(res);
+        finishHistory({ rowCount: rowCountOf(res), error: null });
       } else {
         const res = await executeQuery(
           connection.kind,
-          connection.connectionString,
+          effectiveConnectionString(connection),
           sql,
           database ?? undefined,
         );
         setResult(res);
+        finishHistory({ rowCount: rowCountOf(res), error: null });
       }
     } catch (err) {
-      setError(String(err));
+      const message = String(err);
+      setError(message);
       setResult(null);
+      finishHistory({ rowCount: null, error: message });
     } finally {
       setIsRunning(false);
     }
-  }, [connection, sql, database]);
+  }, [connection, sql, database, recordHistory, caps.transactions]);
+
+  const handleExplain = useCallback(
+    async (analyze: boolean) => {
+      if (!connection || !sql.trim() || planLoading) return;
+      setPlanLoading(true);
+      setPlanError(null);
+      try {
+        const plans = await explainQuery(
+          connection.kind,
+          effectiveConnectionString(connection),
+          sql,
+          analyze,
+          database ?? undefined,
+        );
+        const node = plans[0]?.Plan;
+        if (!node) {
+          setPlanError("Kein Ausführungsplan erhalten.");
+          setPlan(null);
+        } else {
+          setPlan({ node, analyzed: analyze });
+        }
+      } catch (err) {
+        setPlanError(String(err));
+        setPlan(null);
+      } finally {
+        setPlanLoading(false);
+      }
+    },
+    [connection, sql, database, planLoading],
+  );
 
   const handleExport = async (format: "csv" | "json") => {
     if (!result || result.columns.length === 0) return;
@@ -198,9 +270,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     const onMove = (ev: PointerEvent) => {
       if (!dragStartRef.current) return;
       const delta = ev.clientY - dragStartRef.current.y;
-      setEditorHeight(
-        Math.max(80, Math.min(700, dragStartRef.current.h + delta)),
-      );
+      setEditorHeight(Math.max(80, Math.min(700, dragStartRef.current.h + delta)));
     };
 
     const onUp = () => {
@@ -219,9 +289,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     if (!result) return null;
     const parts: string[] = [];
     if (result.columns.length > 0) {
-      parts.push(
-        `${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`,
-      );
+      parts.push(`${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`);
     }
     if (
       result.rows_affected !== null &&
@@ -235,109 +303,168 @@ export function QueryView({ tabId }: QueryViewProps) {
   })();
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-        <Button
-          size="sm"
-          variant="default"
-          className="h-7 gap-1.5 px-3 text-xs"
-          onClick={handleRun}
-          disabled={isRunning || !connection}
-        >
-          <PlayIcon className="size-3" />
-          Ausführen
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 gap-1.5 px-3 text-xs"
-          onClick={() => setSaveDialogOpen(true)}
-          disabled={!sql.trim()}
-        >
-          <BookmarkIcon className="size-3" />
-          Speichern
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 gap-1.5 px-3 text-xs"
-          onClick={() => {
-            setResult(null);
-            setError(null);
-            updateQuerySql(tabId, "");
-          }}
-          disabled={isRunning}
-        >
-          <Trash2Icon className="size-3" />
-          Leeren
-        </Button>
-        {!connection && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            Keine Verbindung aktiv
-          </span>
-        )}
-        {statusText && (
-          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-            {statusText}
-          </span>
-        )}
-        {result && result.columns.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+    <div className="flex h-full w-full min-h-0">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card/60 px-3">
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 gap-1.5 px-3 text-xs"
+            onClick={handleRun}
+            disabled={isRunning || !connection}
+          >
+            <PlayIcon className="size-3" />
+            Ausführen
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-3 text-xs"
+            onClick={() => setSaveDialogOpen(true)}
+            disabled={!sql.trim()}
+          >
+            <BookmarkIcon className="size-3" />
+            Speichern
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-3 text-xs"
+            onClick={() => {
+              setResult(null);
+              setError(null);
+              updateQuerySql(tabId, "");
+            }}
+            disabled={isRunning}
+          >
+            <Trash2Icon className="size-3" />
+            Leeren
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-3 text-xs"
+            onClick={() => setHistoryOpen((open) => !open)}
+            title="Verlauf und gespeicherte Queries"
+          >
+            <HistoryIcon className="size-3" />
+            Verlauf
+          </Button>
+          {caps.explain && (
+            <>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-7 gap-1.5 px-3 text-xs"
-                disabled={exporting}
+                onClick={() => void handleExplain(false)}
+                disabled={isRunning || planLoading || !sql.trim()}
+                title="Ausführungsplan anzeigen (führt nichts aus)"
               >
-                {exporting ? (
+                <GaugeIcon className="size-3" />
+                Explain
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-3 text-xs"
+                onClick={() => void handleExplain(true)}
+                disabled={isRunning || planLoading || !sql.trim()}
+                title="Achtung: führt die Query wirklich aus und misst sie"
+              >
+                {planLoading ? (
                   <LoaderIcon className="size-3 animate-spin" />
                 ) : (
-                  <DownloadIcon className="size-3" />
+                  <GaugeIcon className="size-3" />
                 )}
-                Export
+                Explain Analyze
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                Als CSV exportieren
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void handleExport("json")}>
-                Als JSON exportieren
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {error && !statusText && (
-          <span className="ml-auto text-xs text-destructive">Fehler</span>
-        )}
-      </div>
+            </>
+          )}
+          {!connection && (
+            <span className="ml-2 text-xs text-muted-foreground">Keine Verbindung aktiv</span>
+          )}
+          {connection && caps.query_language !== "sql" && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {QUERY_LANGUAGES[caps.query_language]}
+            </span>
+          )}
+          {statusText && (
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">{statusText}</span>
+          )}
+          {result && result.columns.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1.5 px-3 text-xs"
+                  disabled={exporting}
+                >
+                  {exporting ? (
+                    <LoaderIcon className="size-3 animate-spin" />
+                  ) : (
+                    <DownloadIcon className="size-3" />
+                  )}
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void handleExport("csv")}>
+                  Als CSV exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleExport("json")}>
+                  Als JSON exportieren
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {error && !statusText && <span className="ml-auto text-xs text-destructive">Fehler</span>}
+        </div>
 
-      <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
-        <QueryEditorPane
-          value={sql}
-          onChange={(v) => updateQuerySql(tabId, v)}
-          onRun={handleRun}
-          registry={registry}
+        <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
+          <QueryEditorPane
+            value={sql}
+            onChange={(v) => updateQuerySql(tabId, v)}
+            onRun={handleRun}
+            registry={registry}
+          />
+        </div>
+
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          onPointerDown={handleDragStart}
+          className="h-1 shrink-0 cursor-row-resize bg-transparent transition-colors hover:bg-border"
+        />
+
+        {planError && (
+          <p className="shrink-0 border-b px-3 py-1.5 text-xs text-destructive">{planError}</p>
+        )}
+        {plan && (
+          <ExplainPlanView
+            plan={plan.node}
+            analyzed={plan.analyzed}
+            onClose={() => setPlan(null)}
+          />
+        )}
+
+        <div className="min-h-0 flex-1 border-t">
+          <QueryResultTable result={result} isLoading={isRunning} error={error} />
+        </div>
+
+        <SaveQueryDialog
+          open={saveDialogOpen}
+          onOpenChange={setSaveDialogOpen}
+          onSave={(name) => saveQuery(name, sql)}
         />
       </div>
-
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        onPointerDown={handleDragStart}
-        className="h-1 shrink-0 cursor-row-resize bg-transparent transition-colors hover:bg-border"
-      />
-
-      <div className="min-h-0 flex-1 border-t">
-        <QueryResultTable result={result} isLoading={isRunning} error={error} />
-      </div>
-
-      <SaveQueryDialog
-        open={saveDialogOpen}
-        onOpenChange={setSaveDialogOpen}
-        onSave={(name) => saveQuery(name, sql)}
-      />
+      {historyOpen && (
+        <QueryHistoryPanel
+          connectionId={connection?.id ?? null}
+          onLoad={(loaded) => updateQuerySql(tabId, loaded)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </div>
   );
 }

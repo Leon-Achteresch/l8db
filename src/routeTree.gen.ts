@@ -13,10 +13,14 @@ import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppSessionsRouteImport } from './routes/_app.sessions'
 import { Route as AppSequencesRouteImport } from './routes/_app.sequences'
+import { Route as AppReplicationRouteImport } from './routes/_app.replication'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppImportRouteImport } from './routes/_app.import'
 import { Route as AppErDiagramRouteImport } from './routes/_app.er-diagram'
+import { Route as AppEnumsRouteImport } from './routes/_app.enums'
+import { Route as AppDriversRouteImport } from './routes/_app.drivers'
 import { Route as AppCreateTableRouteImport } from './routes/_app.create-table'
 import { Route as AppAvailableExtensionsRouteImport } from './routes/_app.available-extensions'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
@@ -26,6 +30,8 @@ import { Route as AppQueryIdRouteImport } from './routes/_app.query.$id'
 import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.$name'
 import { Route as AppViewEditorSchemaViewRouteImport } from './routes/_app.view-editor.$schema.$view'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
+import { Route as AppPackagesSchemaNameRouteImport } from './routes/_app.packages.$schema.$name'
+import { Route as AppMatviewsSchemaNameRouteImport } from './routes/_app.matviews.$schema.$name'
 import { Route as AppFunctionsSchemaNameRouteImport } from './routes/_app.functions.$schema.$name'
 import { Route as AppAlterTableSchemaTableRouteImport } from './routes/_app.alter-table.$schema.$table'
 import { Route as AppTriggersSchemaTableTriggerRouteImport } from './routes/_app.triggers.$schema.$table.$trigger'
@@ -49,9 +55,19 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSessionsRoute = AppSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSequencesRoute = AppSequencesRouteImport.update({
   id: '/sequences',
   path: '/sequences',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReplicationRoute = AppReplicationRouteImport.update({
+  id: '/replication',
+  path: '/replication',
   getParentRoute: () => AppRoute,
 } as any)
 const AppQueryRoute = AppQueryRouteImport.update({
@@ -67,6 +83,16 @@ const AppImportRoute = AppImportRouteImport.update({
 const AppErDiagramRoute = AppErDiagramRouteImport.update({
   id: '/er-diagram',
   path: '/er-diagram',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEnumsRoute = AppEnumsRouteImport.update({
+  id: '/enums',
+  path: '/enums',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversRoute = AppDriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCreateTableRoute = AppCreateTableRouteImport.update({
@@ -114,6 +140,16 @@ const AppTablesSchemaTableRoute = AppTablesSchemaTableRouteImport.update({
   path: '/tables/$schema/$table',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPackagesSchemaNameRoute = AppPackagesSchemaNameRouteImport.update({
+  id: '/packages/$schema/$name',
+  path: '/packages/$schema/$name',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMatviewsSchemaNameRoute = AppMatviewsSchemaNameRouteImport.update({
+  id: '/matviews/$schema/$name',
+  path: '/matviews/$schema/$name',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFunctionsSchemaNameRoute = AppFunctionsSchemaNameRouteImport.update({
   id: '/functions/$schema/$name',
   path: '/functions/$schema/$name',
@@ -138,10 +174,14 @@ export interface FileRoutesByFullPath {
   '/about': typeof AppAboutRoute
   '/available-extensions': typeof AppAvailableExtensionsRoute
   '/create-table': typeof AppCreateTableRoute
+  '/drivers': typeof AppDriversRoute
+  '/enums': typeof AppEnumsRoute
   '/er-diagram': typeof AppErDiagramRoute
   '/import': typeof AppImportRoute
   '/query': typeof AppQueryRouteWithChildren
+  '/replication': typeof AppReplicationRoute
   '/sequences': typeof AppSequencesRoute
+  '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
@@ -149,6 +189,8 @@ export interface FileRoutesByFullPath {
   '/query/': typeof AppQueryIndexRoute
   '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
+  '/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -158,9 +200,13 @@ export interface FileRoutesByTo {
   '/about': typeof AppAboutRoute
   '/available-extensions': typeof AppAvailableExtensionsRoute
   '/create-table': typeof AppCreateTableRoute
+  '/drivers': typeof AppDriversRoute
+  '/enums': typeof AppEnumsRoute
   '/er-diagram': typeof AppErDiagramRoute
   '/import': typeof AppImportRoute
+  '/replication': typeof AppReplicationRoute
   '/sequences': typeof AppSequencesRoute
+  '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
@@ -169,6 +215,8 @@ export interface FileRoutesByTo {
   '/query': typeof AppQueryIndexRoute
   '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
+  '/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -180,10 +228,14 @@ export interface FileRoutesById {
   '/_app/about': typeof AppAboutRoute
   '/_app/available-extensions': typeof AppAvailableExtensionsRoute
   '/_app/create-table': typeof AppCreateTableRoute
+  '/_app/drivers': typeof AppDriversRoute
+  '/_app/enums': typeof AppEnumsRoute
   '/_app/er-diagram': typeof AppErDiagramRoute
   '/_app/import': typeof AppImportRoute
   '/_app/query': typeof AppQueryRouteWithChildren
+  '/_app/replication': typeof AppReplicationRoute
   '/_app/sequences': typeof AppSequencesRoute
+  '/_app/sessions': typeof AppSessionsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/extensions/$name': typeof AppExtensionsNameRoute
@@ -192,6 +244,8 @@ export interface FileRoutesById {
   '/_app/query/': typeof AppQueryIndexRoute
   '/_app/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
+  '/_app/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/_app/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/_app/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/_app/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -204,10 +258,14 @@ export interface FileRouteTypes {
     | '/about'
     | '/available-extensions'
     | '/create-table'
+    | '/drivers'
+    | '/enums'
     | '/er-diagram'
     | '/import'
     | '/query'
+    | '/replication'
     | '/sequences'
+    | '/sessions'
     | '/settings'
     | '/extensions/$name'
     | '/query/$id'
@@ -215,6 +273,8 @@ export interface FileRouteTypes {
     | '/query/'
     | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
+    | '/matviews/$schema/$name'
+    | '/packages/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -224,9 +284,13 @@ export interface FileRouteTypes {
     | '/about'
     | '/available-extensions'
     | '/create-table'
+    | '/drivers'
+    | '/enums'
     | '/er-diagram'
     | '/import'
+    | '/replication'
     | '/sequences'
+    | '/sessions'
     | '/settings'
     | '/'
     | '/extensions/$name'
@@ -235,6 +299,8 @@ export interface FileRouteTypes {
     | '/query'
     | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
+    | '/matviews/$schema/$name'
+    | '/packages/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -245,10 +311,14 @@ export interface FileRouteTypes {
     | '/_app/about'
     | '/_app/available-extensions'
     | '/_app/create-table'
+    | '/_app/drivers'
+    | '/_app/enums'
     | '/_app/er-diagram'
     | '/_app/import'
     | '/_app/query'
+    | '/_app/replication'
     | '/_app/sequences'
+    | '/_app/sessions'
     | '/_app/settings'
     | '/_app/'
     | '/_app/extensions/$name'
@@ -257,6 +327,8 @@ export interface FileRouteTypes {
     | '/_app/query/'
     | '/_app/alter-table/$schema/$table'
     | '/_app/functions/$schema/$name'
+    | '/_app/matviews/$schema/$name'
+    | '/_app/packages/$schema/$name'
     | '/_app/tables/$schema/$table'
     | '/_app/view-editor/$schema/$view'
     | '/_app/triggers/$schema/$table/$trigger'
@@ -297,11 +369,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sessions': {
+      id: '/_app/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof AppSessionsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/sequences': {
       id: '/_app/sequences'
       path: '/sequences'
       fullPath: '/sequences'
       preLoaderRoute: typeof AppSequencesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/replication': {
+      id: '/_app/replication'
+      path: '/replication'
+      fullPath: '/replication'
+      preLoaderRoute: typeof AppReplicationRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/query': {
@@ -323,6 +409,20 @@ declare module '@tanstack/react-router' {
       path: '/er-diagram'
       fullPath: '/er-diagram'
       preLoaderRoute: typeof AppErDiagramRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/enums': {
+      id: '/_app/enums'
+      path: '/enums'
+      fullPath: '/enums'
+      preLoaderRoute: typeof AppEnumsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/drivers': {
+      id: '/_app/drivers'
+      path: '/drivers'
+      fullPath: '/drivers'
+      preLoaderRoute: typeof AppDriversRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/create-table': {
@@ -388,6 +488,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTablesSchemaTableRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/packages/$schema/$name': {
+      id: '/_app/packages/$schema/$name'
+      path: '/packages/$schema/$name'
+      fullPath: '/packages/$schema/$name'
+      preLoaderRoute: typeof AppPackagesSchemaNameRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/matviews/$schema/$name': {
+      id: '/_app/matviews/$schema/$name'
+      path: '/matviews/$schema/$name'
+      fullPath: '/matviews/$schema/$name'
+      preLoaderRoute: typeof AppMatviewsSchemaNameRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/functions/$schema/$name': {
       id: '/_app/functions/$schema/$name'
       path: '/functions/$schema/$name'
@@ -430,16 +544,22 @@ interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
   AppAvailableExtensionsRoute: typeof AppAvailableExtensionsRoute
   AppCreateTableRoute: typeof AppCreateTableRoute
+  AppDriversRoute: typeof AppDriversRoute
+  AppEnumsRoute: typeof AppEnumsRoute
   AppErDiagramRoute: typeof AppErDiagramRoute
   AppImportRoute: typeof AppImportRoute
   AppQueryRoute: typeof AppQueryRouteWithChildren
+  AppReplicationRoute: typeof AppReplicationRoute
   AppSequencesRoute: typeof AppSequencesRoute
+  AppSessionsRoute: typeof AppSessionsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppExtensionsNameRoute: typeof AppExtensionsNameRoute
   AppUsersNameRoute: typeof AppUsersNameRoute
   AppAlterTableSchemaTableRoute: typeof AppAlterTableSchemaTableRoute
   AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
+  AppMatviewsSchemaNameRoute: typeof AppMatviewsSchemaNameRoute
+  AppPackagesSchemaNameRoute: typeof AppPackagesSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
   AppViewEditorSchemaViewRoute: typeof AppViewEditorSchemaViewRoute
   AppTriggersSchemaTableTriggerRoute: typeof AppTriggersSchemaTableTriggerRoute
@@ -449,16 +569,22 @@ const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
   AppAvailableExtensionsRoute: AppAvailableExtensionsRoute,
   AppCreateTableRoute: AppCreateTableRoute,
+  AppDriversRoute: AppDriversRoute,
+  AppEnumsRoute: AppEnumsRoute,
   AppErDiagramRoute: AppErDiagramRoute,
   AppImportRoute: AppImportRoute,
   AppQueryRoute: AppQueryRouteWithChildren,
+  AppReplicationRoute: AppReplicationRoute,
   AppSequencesRoute: AppSequencesRoute,
+  AppSessionsRoute: AppSessionsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppExtensionsNameRoute: AppExtensionsNameRoute,
   AppUsersNameRoute: AppUsersNameRoute,
   AppAlterTableSchemaTableRoute: AppAlterTableSchemaTableRoute,
   AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
+  AppMatviewsSchemaNameRoute: AppMatviewsSchemaNameRoute,
+  AppPackagesSchemaNameRoute: AppPackagesSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
   AppViewEditorSchemaViewRoute: AppViewEditorSchemaViewRoute,
   AppTriggersSchemaTableTriggerRoute: AppTriggersSchemaTableTriggerRoute,

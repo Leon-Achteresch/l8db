@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
-
 import { useTheme } from "next-themes";
+import { useEffect, useRef } from "react";
 
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { cn } from "@/lib/utils";
@@ -59,8 +58,7 @@ export function SqlEditor({
       scrollBeyondLastLine: false,
       wordWrap: "on",
       fontSize: 12,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 8, bottom: 8 },
       renderLineHighlight: "none",
       overviewRulerLanes: 0,

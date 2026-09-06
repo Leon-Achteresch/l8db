@@ -12,6 +12,25 @@ dist
 dist-ssr
 *.local
 
+# Rust / Tauri
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/gen/
+
+# Tauri updater signing keys - never commit
+*.key
+*.pem
+*.pub
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+coverage/
+*.lcov
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

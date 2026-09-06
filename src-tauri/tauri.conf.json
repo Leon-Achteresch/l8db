@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "l8db",
-        "width": 800,
-        "height": 600,
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 560,
         "titleBarStyle": "Overlay"
       }
     ],
@@ -22,9 +24,24 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Leon-Achteresch/l8db/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCQ0E1MjBEMzUzREExMjIKUldRaW9UMDFEVkxLcXhrRE15cGsvRlFJaU5keTk1SXRsVy9Ib3RqVlROenZZTm5LVW9kZGZsdDMK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Leon Achteresch",
+    "category": "DeveloperTool",
+    "shortDescription": "l8db",
+    "longDescription": "l8db is a fast, native desktop client for PostgreSQL and other databases.",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

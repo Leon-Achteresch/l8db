@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { getRouteApi } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { useTheme } from "next-themes";
 import {
   CheckCircleIcon,
   LoaderIcon,
@@ -12,14 +10,17 @@ import {
   UndoIcon,
   XCircleIcon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveDatabase } from "@/lib/db-selection";
 import { executeQuery, validateSql } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useExtensionsQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/extensions/$name");
@@ -105,7 +106,7 @@ export function ExtensionView() {
     try {
       await validateSql(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         editedSql,
         database ?? undefined,
       );
@@ -121,7 +122,7 @@ export function ExtensionView() {
     try {
       const result = await executeQuery(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         editedSql,
         database ?? undefined,
       );
@@ -138,9 +139,7 @@ export function ExtensionView() {
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
-        <p className="text-sm text-muted-foreground font-medium">
-          Keine Verbindung aktiv.
-        </p>
+        <p className="text-sm text-muted-foreground font-medium">Keine Verbindung aktiv.</p>
       </div>
     );
   }
@@ -151,7 +150,11 @@ export function ExtensionView() {
         <Skeleton className="h-6 w-64 bg-muted/50" />
         <div className="space-y-2 mt-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-5 bg-muted/30" style={{ width: `${40 + Math.random() * 40}%` }} />
+            <Skeleton
+              key={i}
+              className="h-5 bg-muted/30"
+              style={{ width: `${40 + Math.random() * 40}%` }}
+            />
           ))}
         </div>
       </div>
@@ -249,9 +252,7 @@ export function ExtensionView() {
 function FeedbackPanel({
   state,
 }: {
-  state:
-    | { status: "success"; time?: number }
-    | { status: "error"; message: string };
+  state: { status: "success"; time?: number } | { status: "error"; message: string };
 }) {
   return (
     <div
@@ -316,8 +317,7 @@ function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
       wordWrap: "on",
       fontSize: 13,
       lineHeight: 24,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
       overviewRulerLanes: 0,

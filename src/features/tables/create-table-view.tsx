@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useNavigate } from "@tanstack/react-router";
 import { PlusIcon, TableIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useActiveConnection } from "@/lib/connections";
-import { ColumnDefinition, createTable } from "@/lib/db";
+import { type ColumnDefinition, createTable } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 const COMMON_TYPES = [
   "bigint",
@@ -63,15 +63,26 @@ export function CreateTableView() {
   const [schema, setSchema] = useState(activeSchema ?? "public");
   const [ifNotExists, setIfNotExists] = useState(false);
   const [columns, setColumns] = useState<(ColumnDefinition & { id: number })[]>([
-    { ...emptyColumn(), name: "id", data_type: "bigserial", is_nullable: false, is_primary_key: true },
-    { ...emptyColumn(), name: "created_at", data_type: "timestamptz", is_nullable: false, default_value: "now()" },
+    {
+      ...emptyColumn(),
+      name: "id",
+      data_type: "bigserial",
+      is_nullable: false,
+      is_primary_key: true,
+    },
+    {
+      ...emptyColumn(),
+      name: "created_at",
+      data_type: "timestamptz",
+      is_nullable: false,
+      default_value: "now()",
+    },
   ]);
   const [saving, setSaving] = useState(false);
 
   const addColumn = () => setColumns((prev) => [...prev, emptyColumn()]);
 
-  const removeColumn = (id: number) =>
-    setColumns((prev) => prev.filter((c) => c.id !== id));
+  const removeColumn = (id: number) => setColumns((prev) => prev.filter((c) => c.id !== id));
 
   const updateColumn = (id: number, patch: Partial<ColumnDefinition>) =>
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -90,7 +101,7 @@ export function CreateTableView() {
     try {
       await createTable(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         {
           schema: schema.trim() || "public",
           name: tableName.trim(),
@@ -215,26 +226,20 @@ export function CreateTableView() {
                   <div className="flex justify-center">
                     <Checkbox
                       checked={col.is_nullable}
-                      onCheckedChange={(v) =>
-                        updateColumn(col.id, { is_nullable: Boolean(v) })
-                      }
+                      onCheckedChange={(v) => updateColumn(col.id, { is_nullable: Boolean(v) })}
                     />
                   </div>
                   <div className="flex justify-center">
                     <Checkbox
                       checked={col.is_primary_key}
-                      onCheckedChange={(v) =>
-                        updateColumn(col.id, { is_primary_key: Boolean(v) })
-                      }
+                      onCheckedChange={(v) => updateColumn(col.id, { is_primary_key: Boolean(v) })}
                     />
                   </div>
                   <div className="flex justify-center">
                     <Checkbox
                       checked={col.is_unique}
                       disabled={col.is_primary_key}
-                      onCheckedChange={(v) =>
-                        updateColumn(col.id, { is_unique: Boolean(v) })
-                      }
+                      onCheckedChange={(v) => updateColumn(col.id, { is_unique: Boolean(v) })}
                     />
                   </div>
                   <Button
@@ -265,11 +270,7 @@ export function CreateTableView() {
             <Button size="sm" disabled={saving} onClick={() => void handleCreate()}>
               {saving ? "Wird erstellt…" : "Tabelle erstellen"}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void navigate({ to: "/" })}
-            >
+            <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/" })}>
               Abbrechen
             </Button>
           </div>

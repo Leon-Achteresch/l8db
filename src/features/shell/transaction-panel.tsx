@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   CheckIcon,
@@ -9,18 +9,18 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { useCallback } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
 import { commitTransaction, rollbackTransaction } from "@/lib/db";
 import {
-  useTransactionStore,
   type ActiveTransaction,
   type TransactionChange,
+  useTransactionStore,
 } from "@/lib/transactions";
+import { cn } from "@/lib/utils";
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString("de-DE", {
@@ -33,9 +33,9 @@ function formatTime(ts: number) {
 function DiffUpdateEntry({ change }: { change: TransactionChange }) {
   const oldVals = change.oldValues ?? {};
   const newVals = change.newValues ?? {};
-  const allKeys = Array.from(
-    new Set([...Object.keys(oldVals), ...Object.keys(newVals)]),
-  ).filter((k) => k !== "__ctid__");
+  const allKeys = Array.from(new Set([...Object.keys(oldVals), ...Object.keys(newVals)])).filter(
+    (k) => k !== "__ctid__",
+  );
 
   return (
     <div className="rounded border border-border/60 bg-background overflow-hidden">
@@ -58,21 +58,16 @@ function DiffUpdateEntry({ change }: { change: TransactionChange }) {
                 ? JSON.stringify(raw)
                 : String(raw);
           const newVal = newVals[key];
-          const newStr =
-            newVal === null || newVal === undefined ? "NULL" : String(newVal);
+          const newStr = newVal === null || newVal === undefined ? "NULL" : String(newVal);
           return (
             <div key={key}>
               <div className="flex bg-red-500/[0.07] text-red-600 dark:text-red-400 px-2.5">
-                <span className="w-4 shrink-0 select-none text-red-500/60">
-                  -
-                </span>
+                <span className="w-4 shrink-0 select-none text-red-500/60">-</span>
                 <span className="text-red-500/70">{key}: </span>
                 <span className="ml-1 truncate">{oldStr}</span>
               </div>
               <div className="flex bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400 px-2.5">
-                <span className="w-4 shrink-0 select-none text-emerald-500/60">
-                  +
-                </span>
+                <span className="w-4 shrink-0 select-none text-emerald-500/60">+</span>
                 <span className="text-emerald-500/70">{key}: </span>
                 <span className="ml-1 truncate">{newStr}</span>
               </div>
@@ -80,9 +75,7 @@ function DiffUpdateEntry({ change }: { change: TransactionChange }) {
           );
         })}
         {allKeys.length === 0 && (
-          <div className="px-2.5 py-1 text-muted-foreground">
-            Keine sichtbaren Unterschiede
-          </div>
+          <div className="px-2.5 py-1 text-muted-foreground">Keine sichtbaren Unterschiede</div>
         )}
       </div>
     </div>
@@ -135,9 +128,7 @@ function DiffRowEntry({ change }: { change: TransactionChange }) {
             >
               {isInsert ? "+" : "-"}
             </span>
-            <span className={isInsert ? "text-emerald-500/70" : "text-red-500/70"}>
-              {key}:{" "}
-            </span>
+            <span className={isInsert ? "text-emerald-500/70" : "text-red-500/70"}>{key}: </span>
             <span className="ml-1 truncate">{formatValue(values[key])}</span>
           </div>
         ))}
@@ -156,9 +147,7 @@ function DiffQueryEntry({ change }: { change: TransactionChange }) {
     <div className="rounded border border-border/60 bg-background overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
         <TerminalIcon className="size-3 text-muted-foreground" />
-        <span className="font-mono text-[11px] font-semibold text-foreground/80">
-          SQL Query
-        </span>
+        <span className="font-mono text-[11px] font-semibold text-foreground/80">SQL Query</span>
         <span className="ml-auto text-[10px] text-muted-foreground">
           {formatTime(change.timestamp)}
         </span>
@@ -212,9 +201,7 @@ function TransactionCard({ tx }: { tx: ActiveTransaction }) {
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
         <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-foreground truncate">
-            {tx.connectionName}
-          </p>
+          <p className="text-xs font-semibold text-foreground truncate">{tx.connectionName}</p>
           <p className="text-[10px] text-muted-foreground">
             {formatTime(tx.startedAt)} · {tx.changes.length}{" "}
             {tx.changes.length === 1 ? "Änderung" : "Änderungen"}
@@ -233,9 +220,7 @@ function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           ),
         )}
         {tx.changes.length === 0 && (
-          <p className="py-3 text-center text-xs text-muted-foreground">
-            Noch keine Änderungen
-          </p>
+          <p className="py-3 text-center text-xs text-muted-foreground">Noch keine Änderungen</p>
         )}
       </div>
 
@@ -270,9 +255,7 @@ export function TransactionPanel() {
   return (
     <div className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-        <span className="text-xs font-semibold text-foreground">
-          Transactions
-        </span>
+        <span className="text-xs font-semibold text-foreground">Transactions</span>
         {transactions.length > 0 && (
           <span className="inline-flex size-4 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
             {transactions.length}
@@ -298,8 +281,8 @@ export function TransactionPanel() {
                 Keine offenen Transaktionen
               </p>
               <p className="max-w-[220px] text-[10px] leading-relaxed text-muted-foreground/70">
-                Schreiboperationen (UPDATE, INSERT, DELETE) werden automatisch
-                in einer Transaktion ausgeführt.
+                Schreiboperationen (UPDATE, INSERT, DELETE) werden automatisch in einer Transaktion
+                ausgeführt.
               </p>
             </div>
           )}

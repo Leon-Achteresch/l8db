@@ -1,15 +1,43 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { RouterProvider } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StartupView } from "@/features/shell/startup-view";
+import { initConnectionSecrets } from "@/lib/connections";
+import { loadProviders } from "@/lib/providers";
+import { restoreSshTunnel } from "@/lib/ssh";
+import { checkForUpdates } from "@/lib/updater";
 import { router } from "./router";
+import { createExtensionHost } from "@/lib/extensions/host";
+import { ExtensionHostContext } from "@/lib/extensions/react-context";
 
 const queryClient = new QueryClient();
+const extensionHost = createExtensionHost();
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
+root.render(<StartupView />);
+
+function render() {
+  root.render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ExtensionHostContext.Provider value={extensionHost.manager}>
+          <RouterProvider router={router} />
+        </ExtensionHostContext.Provider>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+}
+
+Promise.all([loadProviders(), initConnectionSecrets()])
+  .then(restoreSshTunnel)
+  .catch(() => undefined)
+  .then(() => extensionHost.start())
+  .catch(error => extensionHost.manager.log("host", "error", String(error)))
+  .finally(render);
+
+if (!import.meta.env.DEV) {
+  window.addEventListener("load", () => {
+    void checkForUpdates();
+  });
+}

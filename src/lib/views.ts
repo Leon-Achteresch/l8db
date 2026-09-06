@@ -41,19 +41,14 @@ export const useViewsStore = create<ViewsState>()(
         set((state) => ({
           views: {
             ...state.views,
-            [tableKey]: [
-              ...(state.views[tableKey] ?? []),
-              { id: createId(), ...view },
-            ],
+            [tableKey]: [...(state.views[tableKey] ?? []), { id: createId(), ...view }],
           },
         })),
       removeView: (tableKey, id) =>
         set((state) => ({
           views: {
             ...state.views,
-            [tableKey]: (state.views[tableKey] ?? []).filter(
-              (v) => v.id !== id,
-            ),
+            [tableKey]: (state.views[tableKey] ?? []).filter((v) => v.id !== id),
           },
         })),
       renameView: (tableKey, id, name) =>

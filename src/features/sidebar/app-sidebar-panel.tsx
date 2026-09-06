@@ -1,8 +1,7 @@
-import { useMemo, useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
+  ActivityIcon,
   BracesIcon,
   CheckIcon,
   ChevronsUpDownIcon,
@@ -12,9 +11,11 @@ import {
   FileCodeIcon,
   FilterIcon,
   LayersIcon,
+  ListIcon,
   ListOrderedIcon,
   PackageIcon,
   PlusIcon,
+  RadioIcon,
   SearchIcon,
   SettingsIcon,
   SquareTerminalIcon,
@@ -24,6 +25,8 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   AlertDialog,
@@ -35,6 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,6 +47,13 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -50,6 +61,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -61,6 +74,7 @@ import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -73,10 +87,21 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { dropTable, truncateTable } from "@/lib/db";
 import {
+  createMaterializedView,
+  createSchema,
+  dropSchema,
+  dropTable,
+  truncateTable,
+} from "@/lib/db";
+import {
+  useActiveCapabilities,
   useActiveDatabase,
   useActiveSchema,
   useDbSelectionStore,
@@ -86,6 +111,7 @@ import {
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useMaterializedViewsQuery,
   useRolesQuery,
   useSchemasQuery,
   useSequencesQuery,
@@ -94,15 +120,15 @@ import {
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
+import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
-  const setActiveId = useConnectionsStore((state) => state.setActiveId);
   const activeConnection = useActiveConnection();
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
+  const navigate = useNavigate();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const activeDatabase = useActiveDatabase();
@@ -147,9 +173,32 @@ export function AppSidebarPanel() {
     error: sequencesErrorValue,
   } = useSequencesQuery();
 
-  const [sidebarTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "extensions" | "roles" | "sequences"
+  const { data: matviews } = useMaterializedViewsQuery();
+
+  const [selectedTab, setSidebarTab] = useState<
+    "tables" | "views" | "queries" | "functions" | "packages" | "extensions" | "roles" | "sequences"
   >("tables");
+  const caps = useActiveCapabilities();
+  const packages = functions?.filter((f) => f.return_type === "PACKAGE");
+  const plainFunctions = functions?.filter((f) => f.return_type !== "PACKAGE");
+  const sidebarTabs = [
+    { value: "tables", label: "Tabellen", icon: TableIcon, enabled: true },
+    { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
+    { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
+    {
+      value: "packages",
+      label: "Packages",
+      icon: PackageIcon,
+      enabled: Boolean(packages?.length),
+    },
+    { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
+    { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
+    { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
+    { value: "sequences", label: "Sequenzen", icon: ListOrderedIcon, enabled: caps.sequences },
+  ].filter((tab) => tab.enabled);
+  const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
+  const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
 
   return (
     <Sidebar
@@ -162,9 +211,9 @@ export function AppSidebarPanel() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              <DatabaseIcon className="size-4 shrink-0 text-muted-foreground" />
+              <DatabaseIcon className="size-4 shrink-0 text-primary" />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="truncate">
                   {activeConnection ? activeConnection.name : "Keine Verbindung"}
@@ -188,14 +237,16 @@ export function AppSidebarPanel() {
           >
             <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
             {connections.length === 0 ? (
-              <DropdownMenuItem disabled>
-                Keine Verbindungen gespeichert
-              </DropdownMenuItem>
+              <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
             ) : (
               connections.map((connection) => (
                 <DropdownMenuItem
                   key={connection.id}
-                  onSelect={() => setActiveId(connection.id)}
+                  onSelect={() => {
+                    void activateConnectionWithToast(connection.id).then((ok) => {
+                      if (ok) void navigate({ to: "/" });
+                    });
+                  }}
                 >
                   <DatabaseIcon className="text-muted-foreground" />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -210,9 +261,7 @@ export function AppSidebarPanel() {
                       </span>
                     ))}
                   </span>
-                  {connection.id === activeConnection?.id ? (
-                    <CheckIcon className="size-4" />
-                  ) : null}
+                  {connection.id === activeConnection?.id ? <CheckIcon className="size-4" /> : null}
                 </DropdownMenuItem>
               ))
             )}
@@ -226,113 +275,79 @@ export function AppSidebarPanel() {
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid min-w-0 gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                Datenbank
-              </span>
-              <Select
-                value={activeDatabase ?? undefined}
-                onValueChange={(value) =>
-                  setDatabase(activeConnection.id, value)
-                }
-                disabled={databasesLoading}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="Wählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(databases ?? []).map((database) => (
-                    <SelectItem key={database} value={database}>
-                      {database}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid min-w-0 gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                Schema
-              </span>
-              <Select
-                value={activeSchema}
-                onValueChange={(value) => setSchema(activeConnection.id, value)}
-                disabled={schemasLoading}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="Wählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(schemas ?? []).map((schema) => (
-                    <SelectItem key={schema} value={schema}>
-                      {schema}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex gap-2">
+            {caps.databases && (
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
+                <Select
+                  value={activeDatabase ?? undefined}
+                  onValueChange={(value) => setDatabase(activeConnection.id, value)}
+                  disabled={databasesLoading}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(databases ?? []).map((database) => (
+                      <SelectItem key={database} value={database}>
+                        {database}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {caps.schemas && (
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                  Schema
+                  <button
+                    type="button"
+                    onClick={() => setSchemaDialogOpen(true)}
+                    className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                    title="Schemas verwalten"
+                  >
+                    <WrenchIcon className="size-3" />
+                  </button>
+                </span>
+                <Select
+                  value={activeSchema}
+                  onValueChange={(value) => setSchema(activeConnection.id, value)}
+                  disabled={schemasLoading}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(schemas ?? []).map((schema) => (
+                      <SelectItem key={schema} value={schema}>
+                        {schema}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         ) : null}
       </SidebarHeader>
       <SidebarContent>
         {activeConnection ? (
           <div className="px-2 pt-2">
-            <Tabs
-              value={sidebarTab}
-              onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}
-            >
+            <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
               <TabsList className="w-full">
-                <TabsTrigger
-                  value="tables"
-                  className="flex-1 px-0"
-                  aria-label="Tabellen"
-                >
-                  <TableIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="views"
-                  className="flex-1 px-0"
-                  aria-label="Views"
-                >
-                  <EyeIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="functions"
-                  className="flex-1 px-0"
-                  aria-label="Funktionen"
-                >
-                  <BracesIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="extensions"
-                  className="flex-1 px-0"
-                  aria-label="Packages"
-                >
-                  <PackageIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="roles"
-                  className="flex-1 px-0"
-                  aria-label="Benutzer"
-                >
-                  <UsersIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="queries"
-                  className="flex-1 px-0"
-                  aria-label="Queries"
-                >
-                  <FileCodeIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="sequences"
-                  className="flex-1 px-0"
-                  aria-label="Sequenzen"
-                >
-                  <ListOrderedIcon className="size-4" />
-                </TabsTrigger>
+                {sidebarTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="flex-1 px-0"
+                    aria-label={tab.label}
+                  >
+                    <tab.icon className="size-4" />
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </Tabs>
           </div>
@@ -345,19 +360,28 @@ export function AppSidebarPanel() {
                 ? "Views"
                 : sidebarTab === "functions"
                   ? "Funktionen"
-                  : sidebarTab === "extensions"
+                  : sidebarTab === "packages"
                     ? "Packages"
-                    : sidebarTab === "roles"
-                      ? "Benutzer & Rollen"
-                      : sidebarTab === "sequences"
-                        ? "Sequenzen"
-                        : "Gespeicherte Queries"}
+                    : sidebarTab === "extensions"
+                      ? "Packages"
+                      : sidebarTab === "roles"
+                        ? "Benutzer & Rollen"
+                        : sidebarTab === "sequences"
+                          ? "Sequenzen"
+                          : "Gespeicherte Queries"}
           </SidebarGroupLabel>
+          {sidebarTab === "tables" || sidebarTab === "views" ? (
+            <SidebarGroupAction
+              onClick={() => setSearchModalOpen(true)}
+              aria-label="Erweiterte Suche"
+              title="Erweiterte Suche mit Regex & SQL WHERE"
+            >
+              <FilterIcon />
+            </SidebarGroupAction>
+          ) : null}
           <SidebarGroupContent>
             {!activeConnection ? (
-              <p className="px-2 py-1 text-sm text-muted-foreground">
-                Keine Verbindung aktiv.
-              </p>
+              <p className="py-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
             ) : sidebarTab === "tables" ? (
               <SidebarEntityList
                 items={tables}
@@ -369,18 +393,28 @@ export function AppSidebarPanel() {
                 matchRoute={matchRoute}
               />
             ) : sidebarTab === "views" ? (
-              <SidebarEntityList
-                items={views}
-                isLoading={viewsLoading}
-                isError={viewsError}
-                error={viewsErrorValue}
-                emptyMessage="Keine Views gefunden."
-                type="view"
-                matchRoute={matchRoute}
-              />
+              <>
+                <SidebarEntityList
+                  items={views}
+                  isLoading={viewsLoading}
+                  isError={viewsError}
+                  error={viewsErrorValue}
+                  emptyMessage="Keine Views gefunden."
+                  type="view"
+                  matchRoute={matchRoute}
+                />
+                <SidebarMatviewList items={matviews} />
+              </>
             ) : sidebarTab === "functions" ? (
               <SidebarFunctionList
-                items={functions}
+                items={plainFunctions}
+                isLoading={functionsLoading}
+                isError={functionsError}
+                error={functionsErrorValue}
+              />
+            ) : sidebarTab === "packages" ? (
+              <SidebarPackageList
+                items={packages}
                 isLoading={functionsLoading}
                 isError={functionsError}
                 error={functionsErrorValue}
@@ -411,6 +445,7 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
+        <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
         {activeConnection ? (
           <SidebarGroup className="mt-auto border-t pt-2">
             <SidebarGroupContent>
@@ -431,11 +466,36 @@ export function AppSidebarPanel() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/sessions">
+                      <ActivityIcon className="text-muted-foreground" />
+                      <span>Sitzungen & Locks</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/replication">
+                      <RadioIcon className="text-muted-foreground" />
+                      <span>Replikation</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/enums">
+                      <ListIcon className="text-muted-foreground" />
+                      <span>Enum-Typen</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
       </SidebarContent>
+      <SchemaManagerDialog open={schemaDialogOpen} onOpenChange={setSchemaDialogOpen} />
     </Sidebar>
   );
 }
@@ -460,7 +520,6 @@ function SidebarEntityList({
   matchRoute,
 }: SidebarEntityListProps) {
   const [search, setSearch] = useState("");
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     kind: "drop" | "truncate";
     schema: string;
@@ -470,12 +529,11 @@ function SidebarEntityList({
   const navigate = useNavigate();
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
   const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
+  const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
-  const { data: columns } = useColumnsQuery(
-    type === "table" ? "BASE TABLE" : "VIEW",
-  );
+  const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
 
   const columnsByTable = useMemo(() => {
     if (!columns) return new Map<string, string[]>();
@@ -515,7 +573,7 @@ function SidebarEntityList({
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         {type === "table" ? "Lade Tabellen…" : "Lade Views…"}
       </div>
@@ -523,27 +581,35 @@ function SidebarEntityList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">{emptyMessage}</p>
-    );
+    return <p className="py-1 text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const handleConfirmAction = async () => {
     if (!confirmAction || !activeConnection) return;
     setActionLoading(true);
     try {
-      const connStr = activeConnection.connectionString;
+      const connStr = effectiveConnectionString(activeConnection);
       const kind = activeConnection.kind;
       if (confirmAction.kind === "drop") {
-        await dropTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+        await dropTable(
+          kind,
+          connStr,
+          confirmAction.schema,
+          confirmAction.name,
+          activeDatabase ?? undefined,
+        );
       } else {
-        await truncateTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+        await truncateTable(
+          kind,
+          connStr,
+          confirmAction.schema,
+          confirmAction.name,
+          activeDatabase ?? undefined,
+        );
       }
       await queryClient.invalidateQueries({ queryKey: ["tables"] });
       await queryClient.invalidateQueries({ queryKey: ["columns"] });
@@ -555,21 +621,7 @@ function SidebarEntityList({
   };
 
   const handleOpenInEditor = (itemSchema: string, itemName: string) => {
-    const id = crypto.randomUUID();
-    const sql = `SELECT * FROM ${itemSchema}."${itemName}";`;
-    const counter = useTableTabs.getState().queryCounter + 1;
-    useTableTabs.setState((state) => ({
-      tabs: [
-        ...state.tabs,
-        {
-          kind: "query" as const,
-          id,
-          title: `Query ${counter}`,
-          sql,
-        },
-      ],
-      queryCounter: counter,
-    }));
+    const id = openQueryTabWithSql(`SELECT * FROM ${itemSchema}."${itemName}";`);
     navigate({ to: "/query/$id", params: { id } });
   };
 
@@ -583,28 +635,21 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1 px-2">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <SidebarInput
-            placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setSearchModalOpen(true)}
-          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Erweiterte Suche"
-          title="Erweiterte Suche mit Regex & SQL WHERE"
-        >
-          <FilterIcon className="size-3.5" />
-        </button>
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <SidebarInput
+          placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8"
+        />
       </div>
-      <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
-      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -628,9 +673,7 @@ function SidebarEntityList({
         </AlertDialogContent>
       </AlertDialog>
       {filtered && filtered.length === 0 ? (
-        <p className="px-2 py-1 text-sm text-muted-foreground">
-          Keine Treffer.
-        </p>
+        <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
         <SidebarMenu>
           {filtered?.map((item) => {
@@ -684,19 +727,13 @@ function SidebarEntityList({
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
                 {type === "table" ? (
                   <ContextMenu>
-                    <ContextMenuTrigger asChild>
-                      {menuButton}
-                    </ContextMenuTrigger>
+                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem
-                        onSelect={() => handleOpenInEditor(item.schema, item.name)}
-                      >
+                      <ContextMenuItem onSelect={() => handleOpenInEditor(item.schema, item.name)}>
                         <SquareTerminalIcon />
                         Im Editor öffnen
                       </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() => handleAlterTable(item.schema, item.name)}
-                      >
+                      <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
                         <WrenchIcon />
                         Alter Table
                       </ContextMenuItem>
@@ -704,7 +741,11 @@ function SidebarEntityList({
                       <ContextMenuItem
                         variant="destructive"
                         onSelect={() =>
-                          setConfirmAction({ kind: "truncate", schema: item.schema, name: item.name })
+                          setConfirmAction({
+                            kind: "truncate",
+                            schema: item.schema,
+                            name: item.name,
+                          })
                         }
                       >
                         <TrashIcon />
@@ -778,24 +819,22 @@ function SidebarEntityList({
 }
 
 interface SidebarFunctionListProps {
-  items: { schema: string; name: string; identity_args: string; oid: string }[] | undefined;
+  items:
+    | { schema: string; name: string; identity_args: string; oid: string; return_type: string }[]
+    | undefined;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
 }
 
-function SidebarFunctionList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarFunctionListProps) {
+function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFunctionListProps) {
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
+  const openPackageTab = useTableTabs((state) => state.openPackageTab);
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Funktionen…
       </div>
@@ -803,17 +842,11 @@ function SidebarFunctionList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Funktionen gefunden.
-      </p>
-    );
+    return <p className="py-1 text-sm text-muted-foreground">Keine Funktionen gefunden.</p>;
   }
 
   return (
@@ -822,6 +855,14 @@ function SidebarFunctionList({
         <SidebarMenuItem key={item.oid}>
           <SidebarMenuButton
             onClick={() => {
+              if (item.return_type === "PACKAGE") {
+                openPackageTab({ schema: item.schema, name: item.name });
+                navigate({
+                  to: "/packages/$schema/$name",
+                  params: { schema: item.schema, name: item.name },
+                });
+                return;
+              }
               openFunctionTab({
                 schema: item.schema,
                 name: item.name,
@@ -834,10 +875,18 @@ function SidebarFunctionList({
               });
             }}
           >
-            <BracesIcon className="text-muted-foreground" />
+            {item.return_type === "PACKAGE" ? (
+              <PackageIcon className="text-muted-foreground" />
+            ) : (
+              <BracesIcon className="text-muted-foreground" />
+            )}
             <span className="truncate">
               {item.name}
-              {item.identity_args ? `(${item.identity_args})` : "()"}
+              {item.return_type === "PACKAGE"
+                ? ""
+                : item.identity_args
+                  ? `(${item.identity_args})`
+                  : "()"}
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -853,18 +902,13 @@ interface SidebarExtensionListProps {
   error: unknown;
 }
 
-function SidebarExtensionList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarExtensionListProps) {
+function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExtensionListProps) {
   const navigate = useNavigate();
   const openExtensionTab = useTableTabs((state) => state.openExtensionTab);
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Packages…
       </div>
@@ -872,18 +916,14 @@ function SidebarExtensionList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => navigate({ to: "/available-extensions" })}
-          >
+          <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
             <SearchIcon className="text-muted-foreground" />
             <span className="truncate">Extensions durchsuchen</span>
           </SidebarMenuButton>
@@ -895,9 +935,7 @@ function SidebarExtensionList({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={() => navigate({ to: "/available-extensions" })}
-        >
+        <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
           <SearchIcon className="text-muted-foreground" />
           <span className="truncate">Extensions durchsuchen</span>
         </SidebarMenuButton>
@@ -925,43 +963,301 @@ function SidebarExtensionList({
   );
 }
 
+function SidebarMatviewList({
+  items,
+}: {
+  items: { schema: string; name: string; is_populated: boolean }[] | undefined;
+}) {
+  const navigate = useNavigate();
+  const matchRoute = useMatchRoute();
+  const activeConnection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [schema, setSchemaName] = useState("public");
+  const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const [withData, setWithData] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    if (!activeConnection || !name.trim() || !query.trim()) return;
+    setSaving(true);
+    try {
+      await createMaterializedView(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        {
+          schema: schema.trim() || "public",
+          name: name.trim(),
+          query: query.trim(),
+          with_data: withData,
+        },
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Materialized View "${name.trim()}" erstellt.`);
+      setName("");
+      setQuery("");
+      setDialogOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["matviews"] });
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between py-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Materialized Views
+        </p>
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Materialized View erstellen"
+        >
+          <PlusIcon className="size-3" />
+        </button>
+      </div>
+      {(!items || items.length === 0) && (
+        <p className="py-1 text-xs text-muted-foreground">Keine vorhanden.</p>
+      )}
+      <SidebarMenu>
+        {items?.map((item) => {
+          const isActive = Boolean(
+            matchRoute({
+              to: "/matviews/$schema/$name",
+              params: { schema: item.schema, name: item.name },
+            }),
+          );
+          return (
+            <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+              <SidebarMenuButton
+                isActive={isActive}
+                onClick={() => {
+                  navigate({
+                    to: "/matviews/$schema/$name",
+                    params: { schema: item.schema, name: item.name },
+                  });
+                }}
+              >
+                <LayersIcon className="text-muted-foreground" />
+                <span className="truncate">
+                  {item.schema}.{item.name}
+                  {item.is_populated ? "" : " (leer)"}
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Materialized View erstellen</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Schema</Label>
+                <Input
+                  value={schema}
+                  onChange={(e) => setSchemaName(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                  placeholder="z. B. umsatz_pro_tag"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">SELECT-Abfrage</Label>
+              <Textarea
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="min-h-28 font-mono text-xs"
+                placeholder="SELECT …"
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <Switch checked={withData} onCheckedChange={setWithData} />
+              Sofort befüllen (WITH DATA)
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDialogOpen(false)}
+              disabled={saving}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={saving || !name.trim() || !query.trim()}
+            >
+              {saving ? "Erstellen…" : "Erstellen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SchemaManagerDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const activeConnection = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const activeSchema = useActiveSchema();
+  const setSchema = useDbSelectionStore((state) => state.setSchema);
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [cascade, setCascade] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refreshSchemas = () => {
+    void queryClient.invalidateQueries({ queryKey: ["schemas"] });
+  };
+
+  const handleCreate = async () => {
+    if (!activeConnection || !name.trim()) return;
+    setBusy(true);
+    try {
+      await createSchema(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        name.trim(),
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Schema "${name.trim()}" erstellt.`);
+      setName("");
+      refreshSchemas();
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDrop = async () => {
+    if (!activeConnection || !activeSchema) return;
+    if (
+      !window.confirm(
+        `Schema "${activeSchema}" wirklich löschen${cascade ? " (CASCADE – alle enthaltenen Objekte gehen verloren)" : ""}?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await dropSchema(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        activeSchema,
+        cascade,
+        activeDatabase ?? undefined,
+      );
+      toast.success(`Schema "${activeSchema}" gelöscht.`);
+      setSchema(activeConnection.id, "public");
+      setCascade(false);
+      refreshSchemas();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-sm">Schemas verwalten</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Neues Schema</Label>
+            <div className="flex gap-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-8 flex-1 text-xs font-mono"
+                placeholder="z. B. analytics"
+              />
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={handleCreate}
+                disabled={busy || !name.trim()}
+              >
+                Erstellen
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2 rounded-lg border border-destructive/20 p-3">
+            <p className="text-xs">
+              Aktives Schema: <span className="font-mono font-medium">{activeSchema ?? "—"}</span>
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <Switch checked={cascade} onCheckedChange={setCascade} />
+              CASCADE (alle Objekte im Schema mit löschen)
+            </label>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 w-full"
+              onClick={handleDrop}
+              disabled={busy || !activeSchema}
+            >
+              Aktives Schema löschen
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SavedQueriesList() {
   const queries = useSavedQueriesStore((state) => state.queries);
   const deleteQuery = useSavedQueriesStore((state) => state.deleteQuery);
   const navigate = useNavigate();
   const tabs = useTableTabs((state) => state.tabs);
+  const openSavedQueryTab = useTableTabs((state) => state.openSavedQueryTab);
 
   if (queries.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine gespeicherten Queries.
-      </p>
-    );
+    return <p className="py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
   }
 
   return (
     <SidebarMenu>
       {queries.map((query) => {
-        const existingTab = tabs.find(
-          (t) => t.kind === "query" && t.id === query.id,
-        );
+        const existingTab = tabs.find((t) => t.kind === "query" && t.id === query.id);
         return (
           <SidebarMenuItem key={query.id}>
             <SidebarMenuButton
               isActive={Boolean(existingTab)}
               onClick={() => {
                 if (!existingTab) {
-                  useTableTabs.setState((state) => ({
-                    tabs: [
-                      ...state.tabs,
-                      {
-                        kind: "query",
-                        id: query.id,
-                        title: query.name,
-                        sql: query.sql,
-                      },
-                    ],
-                  }));
+                  openSavedQueryTab({ id: query.id, title: query.name, sql: query.sql });
                 }
                 navigate({ to: "/query/$id", params: { id: query.id } });
               }}
@@ -993,18 +1289,13 @@ interface SidebarRoleListProps {
   error: unknown;
 }
 
-function SidebarRoleList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarRoleListProps) {
+function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListProps) {
   const navigate = useNavigate();
   const openRoleTab = useTableTabs((state) => state.openRoleTab);
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Benutzer…
       </div>
@@ -1012,17 +1303,11 @@ function SidebarRoleList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Rollen gefunden.
-      </p>
-    );
+    return <p className="py-1 text-sm text-muted-foreground">Keine Rollen gefunden.</p>;
   }
 
   return (
@@ -1057,17 +1342,12 @@ interface SidebarSequenceListProps {
   error: unknown;
 }
 
-function SidebarSequenceList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarSequenceListProps) {
+function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequenceListProps) {
   const navigate = useNavigate();
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Sequenzen…
       </div>
@@ -1075,17 +1355,11 @@ function SidebarSequenceList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Sequenzen gefunden.
-      </p>
-    );
+    return <p className="py-1 text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>;
   }
 
   return (

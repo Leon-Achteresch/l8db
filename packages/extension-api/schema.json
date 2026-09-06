@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "l8db Extension Manifest v1",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "publisher",
+    "engines",
+    "main",
+    "activationEvents"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$",
+      "maxLength": 160
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "publisher": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Valid Semantic Version, checked by the runtime validator"
+    },
+    "main": {
+      "type": "string",
+      "pattern": "^(\\./)?[a-zA-Z0-9_./-]+\\.js$",
+      "description": "Safe relative path; parent segments and reserved filenames are rejected by validation"
+    },
+    "engines": {
+      "type": "object",
+      "required": [
+        "l8db"
+      ],
+      "properties": {
+        "l8db": {
+          "type": "string",
+          "description": "npm semver range"
+        },
+        "api": {
+          "const": "^1.0.0",
+          "default": "^1.0.0"
+        }
+      }
+    },
+    "activationEvents": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "pattern": "^(onStartup|onDatabaseOpen|onCommand:[a-zA-Z0-9][a-zA-Z0-9._-]{0,127})$"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "database:read",
+          "database:write",
+          "network",
+          "filesystem:extension-storage",
+          "filesystem",
+          "clipboard:read",
+          "clipboard:write",
+          "process:execute"
+        ]
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "description": "npm semver range; self dependencies and cycles forbidden"
+      }
+    },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            }
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "default"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "boolean"
+                  },
+                  "default": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "default"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "string"
+                  },
+                  "default": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "default"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "number"
+                  },
+                  "default": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

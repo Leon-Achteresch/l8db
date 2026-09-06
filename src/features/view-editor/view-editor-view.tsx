@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import {
   CheckIcon,
@@ -13,22 +12,18 @@ import {
   ShieldCheckIcon,
   TableIcon,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QueryEditorPane } from "@/features/query/query-editor-pane";
 import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
-import {
-  listAllColumns,
-  listTables,
-  updateViewDefinition,
-} from "@/lib/db";
+import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import {
   useForeignKeysQuery,
@@ -38,6 +33,7 @@ import {
   useViewDefinitionQuery,
 } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 interface ViewEditorViewProps {
@@ -56,6 +52,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition">("data");
   const [filter, setFilter] = useState("");
+  const [filterRaw, setFilterRaw] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
 
@@ -66,20 +63,16 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     sorting,
     true,
     page,
+    filterRaw,
   );
-  const { data: totalCount } = useTableRowCountQuery(schema, view, filter);
+  const { data: totalCount } = useTableRowCountQuery(schema, view, filter, filterRaw);
 
-  const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(
-    schema,
-    view,
-  );
+  const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(schema, view);
 
   const [draft, setDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [compileStatus, setCompileStatus] = useState<"idle" | "ok" | "error">(
-    "idle",
-  );
+  const [compileStatus, setCompileStatus] = useState<"idle" | "ok" | "error">("idle");
   const [compileError, setCompileError] = useState<string | null>(null);
 
   const currentValue = draft ?? definition ?? "";
@@ -93,6 +86,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   useEffect(() => {
     setFilter("");
+    setFilterRaw(false);
     setSorting([]);
     setPage(0);
     setActiveTab("data");
@@ -103,11 +97,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const { data: tables } = useQuery({
     queryKey: ["all-tables", connection?.id, database],
     queryFn: () =>
-      listTables(
-        connection!.kind,
-        connection!.connectionString,
-        database ?? undefined,
-      ),
+      listTables(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: Boolean(connection),
   });
 
@@ -116,7 +106,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     queryFn: () =>
       listAllColumns(
         connection!.kind,
-        connection!.connectionString,
+        effectiveConnectionString(connection!),
         database ?? undefined,
       ),
     enabled: Boolean(connection),
@@ -129,8 +119,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     columns: columns ?? [],
   };
 
-  const handleFilterChange = (newFilter: string) => {
+  const handleFilterChange = (newFilter: string, raw = false) => {
     setFilter(newFilter);
+    setFilterRaw(raw);
     setPage(0);
   };
 
@@ -170,7 +161,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,
@@ -194,7 +185,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     try {
       await updateViewDefinition(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         schema,
         view,
         currentValue,
@@ -217,15 +208,12 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
-        <p className="text-sm text-muted-foreground font-medium">
-          Keine Verbindung aktiv.
-        </p>
+        <p className="text-sm text-muted-foreground font-medium">Keine Verbindung aktiv.</p>
       </div>
     );
   }
 
-  const emptyMessage =
-    filter.trim() === "" ? "Keine Daten." : "Keine Zeilen für diesen Filter.";
+  const emptyMessage = filter.trim() === "" ? "Keine Daten." : "Keine Zeilen für diesen Filter.";
 
   return (
     <Tabs
@@ -250,10 +238,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
         </TabsList>
       </div>
 
-      <TabsContent
-        value="data"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      >
+      <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isLoading ? (
           <TableDataSkeleton />
         ) : isError ? (
@@ -282,17 +267,11 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
         )}
       </TabsContent>
 
-      <TabsContent
-        value="columns"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      >
+      <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableColumnsList schema={schema} table={view} />
       </TabsContent>
 
-      <TabsContent
-        value="definition"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      >
+      <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {defLoading ? (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -310,11 +289,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                 onClick={handleExecute}
                 disabled={busy || !isDirty}
               >
-                {busy ? (
-                  <Spinner className="size-3" />
-                ) : (
-                  <PlayIcon className="size-3" />
-                )}
+                {busy ? <Spinner className="size-3" /> : <PlayIcon className="size-3" />}
                 Ausführen
               </Button>
               <Button
@@ -333,11 +308,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                 className="h-7 gap-1.5 px-3 text-xs"
                 onClick={handleCopy}
               >
-                {copied ? (
-                  <CheckIcon className="size-3" />
-                ) : (
-                  <CopyIcon className="size-3" />
-                )}
+                {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
                 Kopieren
               </Button>
               {isDirty && (

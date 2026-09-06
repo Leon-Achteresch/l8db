@@ -1,8 +1,7 @@
-import type * as React from "react";
-
+import { useSortable } from "@dnd-kit/react/sortable";
 import {
-  CopyIcon,
   BracesIcon,
+  CopyIcon,
   EyeIcon,
   PackageIcon,
   SquareTerminalIcon,
@@ -12,9 +11,8 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { useSortable } from "@dnd-kit/react/sortable";
-
-import { cn } from "@/lib/utils";
+import { motion, useReducedMotion } from "motion/react";
+import type * as React from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -23,7 +21,9 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { tabKey, type Tab } from "@/lib/table-tabs";
+import { SPRING } from "@/lib/ease";
+import { type Tab, tabKey } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
   tab: Tab;
@@ -50,6 +50,8 @@ function tabVisual(tab: Tab) {
       return { Icon: BracesIcon, iconColor: "text-violet-500" };
     case "extension":
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
+    case "package":
+      return { Icon: PackageIcon, iconColor: "text-violet-500" };
     case "role":
       return { Icon: UsersIcon, iconColor: "text-rose-500" };
     case "trigger":
@@ -81,6 +83,7 @@ export function TableTabsSortableTab({
   onCopyTable,
   onCopyFull,
 }: TableTabsSortableTabProps) {
+  const reduce = useReducedMotion();
   const { ref, isDragging } = useSortable({ id: tabKey(tab), index });
 
   const { Icon, iconColor } = tabVisual(tab);
@@ -108,13 +111,20 @@ export function TableTabsSortableTab({
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-lg border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
+            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-full border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
             isActive
-              ? "border-border bg-card text-foreground shadow-sm"
-              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/50 hover:text-foreground",
+              ? "border-primary/30 bg-card text-foreground shadow-sm"
+              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
+          {isActive && (
+            <motion.span
+              layoutId={reduce ? undefined : "workspace-active-tab"}
+              transition={SPRING}
+              className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"
+            />
+          )}
           <span
             className={cn(
               "mr-2 size-1.5 shrink-0 rounded-full transition-colors",
@@ -135,7 +145,9 @@ export function TableTabsSortableTab({
             aria-label={`${label} schließen`}
             className={cn(
               "ml-1.5 grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-all hover:bg-foreground/10 hover:text-foreground",
-              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
             )}
           >
             <XIcon className="size-3.5" />
@@ -165,9 +177,7 @@ export function TableTabsSortableTab({
                 <CopyIcon className="size-3.5" />
               </ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onSelect={onCopyFull}>
-              Vollständigen Namen kopieren
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={onCopyFull}>Vollständigen Namen kopieren</ContextMenuItem>
           </>
         )}
       </ContextMenuContent>
