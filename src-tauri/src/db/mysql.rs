@@ -5,10 +5,10 @@ use mysql_async::{Column, Conn, Opts, OptsBuilder, Pool, Row, SslOpts, Value};
 
 use super::pool::PoolState;
 use super::{
-    create_table_sql, hex_blob, rows_to_objects, timed, where_clause, AddColumnRequest,
-    AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult,
-    SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo,
+    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, where_clause,
+    AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
+    QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 pub struct MysqlAdapter {
@@ -21,7 +21,7 @@ pub fn quote(ident: &str) -> String {
     format!("`{}`", ident.replace('`', "``"))
 }
 
-fn lit(value: &str) -> String {
+pub fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
@@ -211,6 +211,7 @@ impl MysqlAdapter {
         let opts = Opts::from_url(url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
         let mut builder = OptsBuilder::from_opts(opts)
             .tcp_nodelay(true)
+            .client_found_rows(true)
             .conn_ttl(Some(std::time::Duration::from_secs(60)));
         if let Some(db) = database.filter(|d| !d.is_empty()) {
             builder = builder.db_name(Some(db));
@@ -271,6 +272,60 @@ impl MysqlAdapter {
 
     fn function_oid(schema: &str, name: &str, routine_type: &str) -> String {
         format!("{schema}\u{1f}{name}\u{1f}{routine_type}")
+    }
+}
+
+async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    timed(async {
+        let mut result = conn.query_iter(sql).await.map_err(map_err)?;
+        let columns_meta: Vec<Column> = result.columns().map(|c| c.to_vec()).unwrap_or_default();
+        let columns: Vec<String> = columns_meta
+            .iter()
+            .map(|c| c.name_str().into_owned())
+            .collect();
+        let rows: Vec<Row> = result.collect().await.map_err(map_err)?;
+        let rows_affected = if columns.is_empty() {
+            Some(result.affected_rows())
+        } else {
+            None
+        };
+        result.drop_result().await.map_err(map_err)?;
+        let data: Vec<Vec<serde_json::Value>> = rows
+            .into_iter()
+            .map(|row| {
+                let values = row.unwrap();
+                values
+                    .into_iter()
+                    .zip(columns_meta.iter())
+                    .map(|(v, c)| value_to_json(v, c))
+                    .collect()
+            })
+            .collect();
+        Ok(QueryResult {
+            rows: rows_to_objects(&columns, data),
+            columns,
+            rows_affected,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        })
+    })
+    .await
+}
+
+struct MysqlTx {
+    conn: Conn,
+}
+
+#[async_trait]
+impl TxSession for MysqlTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        run_query(&mut self.conn, sql).await
+    }
+    async fn commit(&mut self) -> Result<(), String> {
+        self.conn.query_drop("COMMIT").await.map_err(map_err)
+    }
+    async fn rollback(&mut self) -> Result<(), String> {
+        self.conn.query_drop("ROLLBACK").await.map_err(map_err)
     }
 }
 
@@ -363,12 +418,13 @@ impl DatabaseAdapter for MysqlAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
+        let detailed = self.list_table_columns_detailed(schema, table).await?;
+        let pk: Vec<String> = detailed
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
             .collect();
+        let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
         let order_sql = match order_by {
             Some(col) if columns.iter().any(|c| c == col) => format!(
                 " ORDER BY {} {}",
@@ -386,7 +442,8 @@ impl DatabaseAdapter for MysqlAdapter {
             limit.max(0),
             offset.max(0)
         );
-        let result = self.execute_query(&sql).await?;
+        let mut result = self.execute_query(&sql).await?;
+        attach_row_keys(&mut result.rows, &pk);
         Ok(TableData {
             columns: if columns.is_empty() {
                 result.columns
@@ -418,43 +475,17 @@ impl DatabaseAdapter for MysqlAdapter {
             .unwrap_or(0))
     }
 
+    async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
+        let mut conn = timed(async { Conn::new(self.opts.clone()).await.map_err(map_err) }).await?;
+        conn.query_drop("START TRANSACTION")
+            .await
+            .map_err(map_err)?;
+        Ok(Box::new(MysqlTx { conn }))
+    }
+
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let mut conn = self.conn().await?;
-        let start = std::time::Instant::now();
-        timed(async {
-            let mut result = conn.query_iter(sql).await.map_err(map_err)?;
-            let columns_meta: Vec<Column> =
-                result.columns().map(|c| c.to_vec()).unwrap_or_default();
-            let columns: Vec<String> = columns_meta
-                .iter()
-                .map(|c| c.name_str().into_owned())
-                .collect();
-            let rows: Vec<Row> = result.collect().await.map_err(map_err)?;
-            let rows_affected = if columns.is_empty() {
-                Some(result.affected_rows())
-            } else {
-                None
-            };
-            result.drop_result().await.map_err(map_err)?;
-            let data: Vec<Vec<serde_json::Value>> = rows
-                .into_iter()
-                .map(|row| {
-                    let values = row.unwrap();
-                    values
-                        .into_iter()
-                        .zip(columns_meta.iter())
-                        .map(|(v, c)| value_to_json(v, c))
-                        .collect()
-                })
-                .collect();
-            Ok(QueryResult {
-                rows: rows_to_objects(&columns, data),
-                columns,
-                rows_affected,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-            })
-        })
-        .await
+        run_query(&mut conn, sql).await
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {

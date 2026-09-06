@@ -1391,3 +1391,11 @@ export async function closeSshTunnel(id: string): Promise<void> {
 export async function listSshTunnels(): Promise<import("@/lib/ssh").SshTunnelInfo[]> {
   return invoke("list_ssh_tunnels");
 }
+
+export function communityExtensionStore<T>(operation: string, id = "", value: unknown = null): Promise<T> {
+  return invoke("community_extension_store", { operation, id, value });
+}
+
+export function readCommunityExtension(path: string, development = false): Promise<import("../../packages/extension-api/src").ExtensionArchive> {
+  return invoke("read_community_extension", { path, development });
+}

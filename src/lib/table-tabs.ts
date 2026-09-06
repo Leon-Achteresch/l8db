@@ -16,6 +16,7 @@ export type RoleTab = { kind: "role"; name: string };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
+export type PackageTab = { kind: "package"; schema: string; name: string };
 export type Tab =
   | TableTab
   | QueryTab
@@ -24,7 +25,8 @@ export type Tab =
   | RoleTab
   | TriggerTab
   | ViewEditorTab
-  | AlterTableTab;
+  | AlterTableTab
+  | PackageTab;
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
@@ -34,6 +36,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "trigger") return `trigger:${tab.schema}.${tab.table}.${tab.trigger}`;
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   if (tab.kind === "alter-table") return `alter-table:${tab.schema}.${tab.table}`;
+  if (tab.kind === "package") return `package:${tab.schema}.${tab.name}`;
   return `extension:${tab.name}`;
 }
 
@@ -69,6 +72,7 @@ interface TabsState {
   openTriggerTab: (tab: Omit<TriggerTab, "kind">) => void;
   openViewEditorTab: (tab: Omit<ViewEditorTab, "kind">) => void;
   openAlterTableTab: (tab: Omit<AlterTableTab, "kind">) => void;
+  openPackageTab: (tab: Omit<PackageTab, "kind">) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
@@ -173,6 +177,15 @@ export const useTableTabs = create<TabsState>()(
         });
       },
 
+      openPackageTab: (tab) => {
+        const pt: PackageTab = { kind: "package", ...tab };
+        const key = tabKey(pt);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return storeFor([...state.tabs, pt], state);
+        });
+      },
+
       openRoleTab: (tab) => {
         const rt: RoleTab = { kind: "role", ...tab };
         const key = tabKey(rt);
@@ -210,10 +223,20 @@ export const useTableTabs = create<TabsState>()(
       },
 
       closeTab: (key) =>
-        set((state) => storeFor(state.tabs.filter((t) => tabKey(t) !== key), state)),
+        set((state) =>
+          storeFor(
+            state.tabs.filter((t) => tabKey(t) !== key),
+            state,
+          ),
+        ),
 
       closeOtherTabs: (key) =>
-        set((state) => storeFor(state.tabs.filter((t) => tabKey(t) === key), state)),
+        set((state) =>
+          storeFor(
+            state.tabs.filter((t) => tabKey(t) === key),
+            state,
+          ),
+        ),
 
       closeTabsToRight: (key) =>
         set((state) => {

@@ -251,9 +251,10 @@ interface SqlEditorPaneProps {
   value: string;
   readOnly: boolean;
   onChange?: (value: string) => void;
+  revealLine?: number;
 }
 
-function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
+export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -330,6 +331,27 @@ function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !revealLine) return;
+    editor.revealLineInCenter(revealLine);
+    editor.setPosition({ lineNumber: revealLine, column: 1 });
+    const decorations = editor.createDecorationsCollection();
+    const range = new monaco.Range(revealLine, 1, revealLine, 1);
+    const timers = [0, 1, 2].flatMap((i) => [
+      setTimeout(
+        () =>
+          decorations.set([{ range, options: { isWholeLine: true, className: "sql-flash-line" } }]),
+        i * 400,
+      ),
+      setTimeout(() => decorations.clear(), i * 400 + 200),
+    ]);
+    return () => {
+      timers.forEach(clearTimeout);
+      decorations.clear();
+    };
+  }, [revealLine, value]);
 
   return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
 }

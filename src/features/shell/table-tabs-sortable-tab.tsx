@@ -50,6 +50,8 @@ function tabVisual(tab: Tab) {
       return { Icon: BracesIcon, iconColor: "text-violet-500" };
     case "extension":
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
+    case "package":
+      return { Icon: PackageIcon, iconColor: "text-violet-500" };
     case "role":
       return { Icon: UsersIcon, iconColor: "text-rose-500" };
     case "trigger":

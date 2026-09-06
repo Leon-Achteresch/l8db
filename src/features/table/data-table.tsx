@@ -1,3 +1,6 @@
+import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
 import {
   type ColumnDef,
   flexRender,
@@ -23,22 +26,17 @@ import {
   CopyPlusIcon,
   DatabaseIcon,
   ExternalLinkIcon,
-  FilterIcon,
   FingerprintIcon,
   HashIcon,
   KeyIcon,
   LinkIcon,
   Loader2Icon,
   Maximize2Icon,
-  PlayIcon,
-  RotateCcwIcon,
   Trash2Icon,
   TypeIcon,
-  XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -49,21 +47,26 @@ import {
 } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
+import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
 import { useActiveConnection } from "@/lib/connections";
 import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
+import {
+  reorderVisibleColumns,
+  toggleHiddenColumn,
+  useTableColumnLayout,
+} from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
+
+const headerSensors = [
+  PointerSensor.configure({
+    activationConstraints: () => [new PointerActivationConstraints.Distance({ value: 5 })],
+    preventActivation: () => false,
+  }),
+];
 
 type TableRow = Record<string, unknown>;
 
@@ -438,6 +441,13 @@ export function DataTable({
   onDuplicateRow,
   onDeleteRow,
 }: DataTableProps) {
+  const connection = useActiveConnection();
+  const { order, hidden, setOrder, setHidden, reset, isCustomized } = useTableColumnLayout(
+    connection?.id,
+    currentSchema,
+    currentTable,
+    columnNames,
+  );
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(
     null,
@@ -468,7 +478,10 @@ export function DataTable({
       {
         id: INDEX_COLUMN,
         header: () => (
-          <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase select-none">
+          <span
+            title="Rechtsklick: Spalten"
+            className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase select-none"
+          >
             #
           </span>
         ),
@@ -578,10 +591,16 @@ export function DataTable({
     ],
   );
 
+  const columnOrder = useMemo(() => [INDEX_COLUMN, ...order], [order]);
+  const columnVisibility = useMemo(
+    () => Object.fromEntries(hidden.map((column) => [column, false])),
+    [hidden],
+  );
+
   const table = useReactTable({
     data,
     columns,
-    state: { sorting },
+    state: { sorting, columnOrder, columnVisibility },
     onSortingChange,
     manualSorting: true,
     columnResizeMode: "onChange",
@@ -593,8 +612,12 @@ export function DataTable({
   });
 
   const rows = table.getRowModel().rows;
-  const colSpan = table.getAllColumns().length || 1;
+  const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];
+  const visibleDataColumns = table
+    .getVisibleLeafColumns()
+    .map((column) => column.id)
+    .filter((id) => id !== INDEX_COLUMN);
 
   const handleSaveCell = useCallback(async () => {
     if (!editingCell || !onSaveRow || isSaving) return;
@@ -693,7 +716,7 @@ export function DataTable({
 
       if (!activeCell) return;
       const { rowIndex, columnId } = activeCell;
-      const colIndex = columnNames.indexOf(columnId);
+      const colIndex = visibleDataColumns.indexOf(columnId);
 
       if (e.key === "Escape") {
         setActiveCell(null);
@@ -720,11 +743,11 @@ export function DataTable({
         nextColIndex = Math.max(-1, colIndex - 1);
         e.preventDefault();
       } else if (e.key === "ArrowRight") {
-        nextColIndex = Math.min(columnNames.length - 1, colIndex + 1);
+        nextColIndex = Math.min(visibleDataColumns.length - 1, colIndex + 1);
         e.preventDefault();
       }
 
-      const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : columnNames[nextColIndex];
+      const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : visibleDataColumns[nextColIndex];
       if (nextRowIndex !== rowIndex || nextColumnId !== columnId) {
         setActiveCell({ rowIndex: nextRowIndex, columnId: nextColumnId });
       }
@@ -744,7 +767,7 @@ export function DataTable({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeCell, columnNames, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
+  }, [activeCell, visibleDataColumns, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
 
   const handleCellCopy = (val: unknown) => {
     if (val === undefined || val === null) return;
@@ -768,6 +791,16 @@ export function DataTable({
         )}
       >
         <div className="pb-3">
+          <DragDropProvider
+            sensors={headerSensors}
+            onDragEnd={(event) => {
+              const { operation, canceled } = event;
+              if (canceled || !isSortable(operation.source)) return;
+              const source = operation.source;
+              if (source.initialIndex === source.index) return;
+              setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
+            }}
+          >
           <table
             className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
             style={{ width: table.getTotalSize() }}
@@ -775,168 +808,68 @@ export function DataTable({
             <thead className="sticky top-0 z-10 select-none">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header, index) => (
-                    <ContextMenu key={header.id}>
-                      <Popover
-                        open={filterColumn === header.id}
-                        onOpenChange={(open) => {
-                          if (!open) setFilterColumn(null);
-                        }}
-                      >
-                        <PopoverAnchor asChild>
-                          <ContextMenuTrigger asChild>
-                            <th
-                              className={cn(
-                                "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs relative",
-                                index === 0 &&
-                                  "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
-                              )}
-                              style={{ width: header.getSize() }}
-                            >
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                              {header.column.getCanResize() && (
-                                <div
-                                  onDoubleClick={() => header.column.resetSize()}
-                                  onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                    header.getResizeHandler()(e);
-                                  }}
-                                  onTouchStart={(e) => {
-                                    e.stopPropagation();
-                                    header.getResizeHandler()(e);
-                                  }}
-                                  className={cn(
-                                    "absolute -right-px top-0 z-40 h-full w-2 cursor-col-resize select-none touch-none",
-                                    header.column.getIsResizing()
-                                      ? "bg-primary"
-                                      : "bg-transparent hover:bg-primary/30",
-                                  )}
-                                />
-                              )}
-                            </th>
-                          </ContextMenuTrigger>
-                        </PopoverAnchor>
-                        {index > 0 && onApplyFilter && (
-                          <PopoverContent align="start" sideOffset={4} className="w-80 p-0 gap-0">
-                            <div className="flex items-center gap-2 border-b px-3 py-2">
-                              <FilterIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                              <span className="font-mono text-[12px] font-semibold text-foreground/80 truncate">
-                                {header.id}
-                              </span>
-                            </div>
-                            <div className="space-y-2 px-3 py-3">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="shrink-0 text-xs text-muted-foreground w-6">
-                                  Wo
-                                </span>
-                                <Select
-                                  value={filterOperator}
-                                  onValueChange={setFilterOperator}
-                                >
-                                  <SelectTrigger size="sm" className="min-w-44 flex-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent position="popper">
-                                    {OPERATORS.map((op) => (
-                                      <SelectItem key={op.key} value={op.key}>
-                                        {op.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                {operatorNeedsValue(filterOperator) ? (
-                                  <Input
-                                    value={filterValue}
-                                    onChange={(e) => setFilterValue(e.target.value)}
-                                    placeholder="Wert"
-                                    autoFocus
-                                    className="h-8 w-full min-w-0"
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") applyColumnFilter();
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="w-full" />
-                                )}
-                              </div>
-                              <p className="font-mono text-xs text-muted-foreground">
-                                {compiledFilter !== "" ? `WHERE ${compiledFilter}` : ""}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setFilterColumn(null)}
+                  {headerGroup.headers
+                    .filter((header) => header.column.getIsVisible())
+                    .map((header) => {
+                      if (header.id === INDEX_COLUMN) {
+                        return (
+                          <ContextMenu key={header.id}>
+                            <ContextMenuTrigger asChild>
+                              <th
+                                title="Rechtsklick: Spalten"
+                                className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted/95 px-3 py-2 text-center align-middle backdrop-blur-md shadow-xs"
+                                style={{ width: header.getSize() }}
                               >
-                                <RotateCcwIcon />
-                                Abbrechen
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={applyColumnFilter}
-                                disabled={
-                                  operatorNeedsValue(filterOperator) && filterValue.trim() === ""
+                                {header.isPlaceholder
+                                  ? null
+                                  : flexRender(header.column.columnDef.header, header.getContext())}
+                              </th>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-64">
+                              <DataTableColumnSettings
+                                columns={order}
+                                hidden={hidden}
+                                isCustomized={isCustomized}
+                                onToggle={(column) =>
+                                  setHidden(toggleHiddenColumn(order, hidden, column))
                                 }
-                              >
-                                <PlayIcon />
-                                Filter anwenden
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        )}
-                      </Popover>
-                      <ContextMenuContent>
-                        {index > 0 && (
-                          <>
-                            <ContextMenuLabel className="font-mono text-[11px]">
-                              {header.id}
-                            </ContextMenuLabel>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              onClick={() => onSortingChange([{ id: header.id, desc: false }])}
-                              disabled={isFetching}
-                            >
-                              <ArrowUpIcon />
-                              Aufsteigend sortieren
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onClick={() => onSortingChange([{ id: header.id, desc: true }])}
-                              disabled={isFetching}
-                            >
-                              <ArrowDownIcon />
-                              Absteigend sortieren
-                            </ContextMenuItem>
-                            {sorting.length > 0 && (
-                              <ContextMenuItem onClick={() => onSortingChange([])}>
-                                <XIcon />
-                                Sortierung entfernen
-                              </ContextMenuItem>
-                            )}
-                            {onApplyFilter && (
-                              <>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem
-                                  onClick={() => {
-                                    setFilterColumn(header.id);
-                                    setFilterOperator("eq");
-                                    setFilterValue("");
-                                  }}
-                                >
-                                  <FilterIcon />
-                                  Filter setzen…
-                                </ContextMenuItem>
-                              </>
-                            )}
-                          </>
-                        )}
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ))}
+                                onReorder={setOrder}
+                                onReset={reset}
+                                onShowAll={() => setHidden([])}
+                              />
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      }
+                      return (
+                        <DataTableHeaderCell
+                          key={header.id}
+                          header={header}
+                          sortableIndex={visibleDataColumns.indexOf(header.id)}
+                          isFetching={isFetching}
+                          sorting={sorting}
+                          onSortingChange={onSortingChange}
+                          filterOpen={filterColumn === header.id}
+                          onFilterOpenChange={(open) => {
+                            if (open) setFilterColumn(header.id);
+                            else setFilterColumn(null);
+                          }}
+                          filterOperator={filterOperator}
+                          onFilterOperatorChange={setFilterOperator}
+                          filterValue={filterValue}
+                          onFilterValueChange={setFilterValue}
+                          compiledFilter={
+                            filterColumn === header.id ? compiledFilter : ""
+                          }
+                          onApplyFilter={onApplyFilter}
+                          onApplyColumnFilter={applyColumnFilter}
+                          onHideColumn={() =>
+                            setHidden(toggleHiddenColumn(order, hidden, header.id))
+                          }
+                          canHide={visibleDataColumns.length > 1}
+                        />
+                      );
+                    })}
                 </tr>
               ))}
             </thead>
@@ -1115,6 +1048,7 @@ export function DataTable({
               )}
             </tbody>
           </table>
+          </DragDropProvider>
         </div>
       </div>
       {rows.length > 0 &&

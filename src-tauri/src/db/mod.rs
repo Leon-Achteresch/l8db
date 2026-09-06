@@ -243,7 +243,17 @@ pub struct PrivilegeChange {
 }
 
 #[async_trait]
+pub trait TxSession: Send {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String>;
+    async fn commit(&mut self) -> Result<(), String>;
+    async fn rollback(&mut self) -> Result<(), String>;
+}
+
+#[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
+    async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
+        Err(unsupported("Transaktionen"))
+    }
     async fn test_connection(&self) -> Result<(), String>;
     async fn list_databases(&self) -> Result<Vec<String>, String>;
     async fn list_schemas(&self) -> Result<Vec<String>, String>;
@@ -971,6 +981,28 @@ pub(crate) fn split_statements(sql: &str) -> Vec<String> {
         statements.push(current.trim().to_string());
     }
     statements
+}
+
+pub(crate) fn row_key(row: &serde_json::Value, pk: &[String]) -> Option<String> {
+    let obj = row.as_object()?;
+    if pk.is_empty() {
+        return None;
+    }
+    let mut key = serde_json::Map::new();
+    for col in pk {
+        key.insert(col.clone(), obj.get(col)?.clone());
+    }
+    Some(serde_json::Value::Object(key).to_string())
+}
+
+pub(crate) fn attach_row_keys(rows: &mut [serde_json::Value], pk: &[String]) {
+    for row in rows.iter_mut() {
+        if let Some(key) = row_key(row, pk) {
+            if let Some(obj) = row.as_object_mut() {
+                obj.insert("__ctid__".to_string(), serde_json::Value::String(key));
+            }
+        }
+    }
 }
 
 pub(crate) fn rows_to_objects(

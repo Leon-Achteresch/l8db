@@ -12,7 +12,8 @@
     "format": "biome format --write ./src",
     "check": "biome check ./src",
     "test": "bun test tests",
-    "version:check": "node scripts/version.mjs check"
+    "version:check": "node scripts/version.mjs check",
+    "extension": "bun packages/extension-sdk/src/cli.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -53,6 +54,7 @@
     "react-dom": "^19.1.0",
     "react-resizable-panels": "^4.11.1",
     "recharts": "^3.8.1",
+    "semver": "^7.8.5",
     "shadcn": "^4.8.0",
     "sonner": "^2.0.7",
     "sql-formatter": "^15.8.0",
@@ -71,9 +73,15 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/semver": "^7.8.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4.3.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ]
 }

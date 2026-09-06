@@ -1,10 +1,11 @@
+import { useTheme } from "next-themes";
+import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { useSettingsStore } from "@/lib/settings";
-import { useTheme } from "next-themes";
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -13,10 +14,12 @@ export function SettingsView() {
     editorFontSize,
     queryTimeout,
     sshTrustNewHosts,
+    transactionsEnabled,
     setRowLimit,
     setEditorFontSize,
     setQueryTimeout,
     setSshTrustNewHosts,
+    setTransactionsEnabled,
   } = useSettingsStore();
 
   return (
@@ -36,10 +39,7 @@ export function SettingsView() {
               ]}
             />
           </SettingsRow>
-          <SettingsRow
-            title="Zeilenlimit"
-            description="Maximale Zeilen pro Seite, 10 bis 5000."
-          >
+          <SettingsRow title="Zeilenlimit" description="Maximale Zeilen pro Seite, 10 bis 5000.">
             <Input
               type="number"
               min={10}
@@ -100,7 +100,18 @@ export function SettingsView() {
               aria-label="Neue SSH-Host-Keys akzeptieren"
             />
           </SettingsRow>
+          <SettingsRow
+            title="Änderungen als Transaktion"
+            description="Zeilenänderungen und DML-Abfragen sammeln und erst nach Commit schreiben. Deaktiviert wird jede Änderung sofort gespeichert."
+          >
+            <Switch
+              checked={transactionsEnabled}
+              onCheckedChange={setTransactionsEnabled}
+              aria-label="Änderungen als Transaktion"
+            />
+          </SettingsRow>
           <UpdateSection />
+          <CommunityExtensionsSection />
         </div>
       </div>
     </main>

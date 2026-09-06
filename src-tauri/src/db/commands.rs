@@ -272,14 +272,19 @@ pub async fn update_view_definition(
 
 #[tauri::command]
 pub async fn begin_transaction(
-    #[allow(unused_variables)] kind: DatabaseKind,
+    kind: DatabaseKind,
     connection_string: String,
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<String, String> {
     tx_state
-        .begin(&connection_string, database.as_deref(), pool_state.inner())
+        .begin(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner(),
+        )
         .await
 }
 

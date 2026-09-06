@@ -30,6 +30,7 @@ import { Route as AppQueryIdRouteImport } from './routes/_app.query.$id'
 import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.$name'
 import { Route as AppViewEditorSchemaViewRouteImport } from './routes/_app.view-editor.$schema.$view'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
+import { Route as AppPackagesSchemaNameRouteImport } from './routes/_app.packages.$schema.$name'
 import { Route as AppMatviewsSchemaNameRouteImport } from './routes/_app.matviews.$schema.$name'
 import { Route as AppFunctionsSchemaNameRouteImport } from './routes/_app.functions.$schema.$name'
 import { Route as AppAlterTableSchemaTableRouteImport } from './routes/_app.alter-table.$schema.$table'
@@ -139,6 +140,11 @@ const AppTablesSchemaTableRoute = AppTablesSchemaTableRouteImport.update({
   path: '/tables/$schema/$table',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPackagesSchemaNameRoute = AppPackagesSchemaNameRouteImport.update({
+  id: '/packages/$schema/$name',
+  path: '/packages/$schema/$name',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppMatviewsSchemaNameRoute = AppMatviewsSchemaNameRouteImport.update({
   id: '/matviews/$schema/$name',
   path: '/matviews/$schema/$name',
@@ -184,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -209,6 +216,7 @@ export interface FileRoutesByTo {
   '/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -237,6 +245,7 @@ export interface FileRoutesById {
   '/_app/alter-table/$schema/$table': typeof AppAlterTableSchemaTableRoute
   '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/_app/matviews/$schema/$name': typeof AppMatviewsSchemaNameRoute
+  '/_app/packages/$schema/$name': typeof AppPackagesSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
   '/_app/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
   '/_app/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
@@ -265,6 +274,7 @@ export interface FileRouteTypes {
     | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
+    | '/packages/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -290,6 +300,7 @@ export interface FileRouteTypes {
     | '/alter-table/$schema/$table'
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
+    | '/packages/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -317,6 +328,7 @@ export interface FileRouteTypes {
     | '/_app/alter-table/$schema/$table'
     | '/_app/functions/$schema/$name'
     | '/_app/matviews/$schema/$name'
+    | '/_app/packages/$schema/$name'
     | '/_app/tables/$schema/$table'
     | '/_app/view-editor/$schema/$view'
     | '/_app/triggers/$schema/$table/$trigger'
@@ -476,6 +488,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTablesSchemaTableRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/packages/$schema/$name': {
+      id: '/_app/packages/$schema/$name'
+      path: '/packages/$schema/$name'
+      fullPath: '/packages/$schema/$name'
+      preLoaderRoute: typeof AppPackagesSchemaNameRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/matviews/$schema/$name': {
       id: '/_app/matviews/$schema/$name'
       path: '/matviews/$schema/$name'
@@ -540,6 +559,7 @@ interface AppRouteChildren {
   AppAlterTableSchemaTableRoute: typeof AppAlterTableSchemaTableRoute
   AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
   AppMatviewsSchemaNameRoute: typeof AppMatviewsSchemaNameRoute
+  AppPackagesSchemaNameRoute: typeof AppPackagesSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
   AppViewEditorSchemaViewRoute: typeof AppViewEditorSchemaViewRoute
   AppTriggersSchemaTableTriggerRoute: typeof AppTriggersSchemaTableTriggerRoute
@@ -564,6 +584,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAlterTableSchemaTableRoute: AppAlterTableSchemaTableRoute,
   AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
   AppMatviewsSchemaNameRoute: AppMatviewsSchemaNameRoute,
+  AppPackagesSchemaNameRoute: AppPackagesSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
   AppViewEditorSchemaViewRoute: AppViewEditorSchemaViewRoute,
   AppTriggersSchemaTableTriggerRoute: AppTriggersSchemaTableTriggerRoute,

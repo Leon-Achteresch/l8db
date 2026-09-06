@@ -5,6 +5,7 @@ import type { SavedConnection } from "@/lib/connections";
 import { useActiveConnection } from "@/lib/connections";
 import {
   beginTransaction,
+  commitTransaction,
   countTableRows,
   deleteRowInTransaction,
   duplicateRowInTransaction,
@@ -38,6 +39,7 @@ import {
   listTables,
   listTriggers,
   listViews,
+  rollbackTransaction,
   type TableData,
   type TableRowSort,
   updateRowInTransaction,
@@ -552,41 +554,19 @@ export function useUpdateRowMutation(schema: string, table: string) {
         return { newCtid: ctid };
       }
 
-      const store = useTransactionStore.getState();
-      let tx = getTransactionForConnection(connection!.id);
-
-      if (!tx) {
-        const txId = await beginTransaction(
-          connection!.kind,
-          effectiveConnectionString(connection!),
-          database ?? undefined,
-        );
-        const newTx = {
-          txId,
-          connectionId: connection!.id,
-          connectionName: connection!.name,
-          database: database ?? undefined,
-          changes: [] as TransactionChange[],
-          startedAt: Date.now(),
-        };
-        store.addTransaction(newTx);
-        tx = newTx;
-      }
-
-      const newCtid = await updateRowInTransaction(tx.txId, schema, table, ctid, changedUpdates);
-
-      store.addChange(tx.txId, {
-        id: crypto.randomUUID(),
-        type: "update",
-        timestamp: Date.now(),
-        schema,
-        table,
-        ctid,
-        oldValues: changedOld,
-        newValues: changedUpdates,
-      });
-
-      store.setPanelOpen(true);
+      const newCtid = await runInTransaction(
+        connection!,
+        database ?? null,
+        (txId) => updateRowInTransaction(txId, schema, table, ctid, changedUpdates),
+        () => ({
+          type: "update",
+          schema,
+          table,
+          ctid,
+          oldValues: changedOld,
+          newValues: changedUpdates,
+        }),
+      );
 
       return { newCtid };
     },
@@ -607,14 +587,29 @@ export function useUpdateRowMutation(schema: string, table: string) {
   });
 }
 
-async function ensureTransaction(
+const pendingTransactions = new Map<string, Promise<ActiveTransaction>>();
+
+function ensureTransaction(
+  connection: SavedConnection,
+  database: string | null,
+): Promise<ActiveTransaction> {
+  const existing = getTransactionForConnection(connection.id);
+  if (existing) return Promise.resolve(existing);
+  let pending = pendingTransactions.get(connection.id);
+  if (!pending) {
+    pending = openTransaction(connection, database).finally(() =>
+      pendingTransactions.delete(connection.id),
+    );
+    pendingTransactions.set(connection.id, pending);
+  }
+  return pending;
+}
+
+async function openTransaction(
   connection: SavedConnection,
   database: string | null,
 ): Promise<ActiveTransaction> {
   const store = useTransactionStore.getState();
-  const existing = getTransactionForConnection(connection.id);
-  if (existing) return existing;
-
   const txId = await beginTransaction(
     connection.kind,
     effectiveConnectionString(connection),
@@ -632,6 +627,43 @@ async function ensureTransaction(
   return newTx;
 }
 
+async function runInTransaction<T>(
+  connection: SavedConnection,
+  database: string | null,
+  op: (txId: string) => Promise<T>,
+  change: (result: T) => Omit<TransactionChange, "id" | "timestamp">,
+): Promise<T> {
+  const store = useTransactionStore.getState();
+  if (
+    getTransactionForConnection(connection.id) ||
+    useSettingsStore.getState().transactionsEnabled
+  ) {
+    const tx = await ensureTransaction(connection, database);
+    const result = await op(tx.txId);
+    store.addChange(tx.txId, { id: crypto.randomUUID(), timestamp: Date.now(), ...change(result) });
+    store.setPanelOpen(true);
+    return result;
+  }
+  const txId = await beginTransaction(
+    connection.kind,
+    effectiveConnectionString(connection),
+    database ?? undefined,
+  );
+  try {
+    const result = await op(txId);
+    await commitTransaction(txId);
+    return result;
+  } catch (err) {
+    await rollbackTransaction(txId).catch(() => undefined);
+    throw err;
+  }
+}
+
+function splitRow(row: unknown) {
+  const { __ctid__: ctid, ...rowValues } = row as { __ctid__?: string; [key: string]: unknown };
+  return { ctid, rowValues };
+}
+
 function matchesTable(
   queryKey: readonly unknown[],
   root: string,
@@ -647,26 +679,12 @@ export function useInsertRowMutation(schema: string, table: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (values: Record<string, string | null>) => {
-      const store = useTransactionStore.getState();
-      const tx = await ensureTransaction(connection!, database ?? null);
-      const row = await insertRowInTransaction(tx.txId, schema, table, values);
-
-      const { __ctid__: ctid, ...rowValues } = row as {
-        __ctid__?: string;
-        [key: string]: unknown;
-      };
-
-      store.addChange(tx.txId, {
-        id: crypto.randomUUID(),
-        type: "insert",
-        timestamp: Date.now(),
-        schema,
-        table,
-        ctid: ctid,
-        rowValues,
-      });
-      store.setPanelOpen(true);
-
+      const row = await runInTransaction(
+        connection!,
+        database ?? null,
+        (txId) => insertRowInTransaction(txId, schema, table, values),
+        (inserted) => ({ type: "insert", schema, table, ...splitRow(inserted) }),
+      );
       return { row };
     },
     onSuccess: ({ row }) => {
@@ -688,26 +706,12 @@ export function useDuplicateRowMutation(schema: string, table: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (ctid: string) => {
-      const store = useTransactionStore.getState();
-      const tx = await ensureTransaction(connection!, database ?? null);
-      const row = await duplicateRowInTransaction(tx.txId, schema, table, ctid);
-
-      const { __ctid__: newCtid, ...rowValues } = row as {
-        __ctid__?: string;
-        [key: string]: unknown;
-      };
-
-      store.addChange(tx.txId, {
-        id: crypto.randomUUID(),
-        type: "insert",
-        timestamp: Date.now(),
-        schema,
-        table,
-        ctid: newCtid,
-        rowValues,
-      });
-      store.setPanelOpen(true);
-
+      const row = await runInTransaction(
+        connection!,
+        database ?? null,
+        (txId) => duplicateRowInTransaction(txId, schema, table, ctid),
+        (inserted) => ({ type: "insert", schema, table, ...splitRow(inserted) }),
+      );
       return { row };
     },
     onSuccess: ({ row }) => {
@@ -735,21 +739,12 @@ export function useDeleteRowMutation(schema: string, table: string) {
       ctid: string;
       oldValues: Record<string, unknown>;
     }) => {
-      const store = useTransactionStore.getState();
-      const tx = await ensureTransaction(connection!, database ?? null);
-      await deleteRowInTransaction(tx.txId, schema, table, ctid);
-
-      store.addChange(tx.txId, {
-        id: crypto.randomUUID(),
-        type: "delete",
-        timestamp: Date.now(),
-        schema,
-        table,
-        ctid,
-        oldValues,
-      });
-      store.setPanelOpen(true);
-
+      await runInTransaction(
+        connection!,
+        database ?? null,
+        (txId) => deleteRowInTransaction(txId, schema, table, ctid),
+        () => ({ type: "delete", schema, table, ctid, oldValues }),
+      );
       return { ctid };
     },
     onSuccess: ({ ctid }) => {

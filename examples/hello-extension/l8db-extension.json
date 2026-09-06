@@ -1,0 +1,15 @@
+{
+  "id": "community.hello",
+  "name": "Hello l8db",
+  "version": "1.0.0",
+  "description": "A minimal community extension demonstrating commands, events and configuration.",
+  "publisher": "community",
+  "engines": { "l8db": ">=0.1.0 <1.0.0", "api": "^1.0.0" },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onCommand:hello.greet", "onDatabaseOpen"],
+  "permissions": ["database:read"],
+  "contributes": {
+    "commands": [{ "id": "hello.greet", "title": "Hello: Greet" }],
+    "configuration": { "hello.enabled": { "type": "boolean", "default": true, "description": "Show greeting notifications" } }
+  }
+}

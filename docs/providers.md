@@ -16,7 +16,7 @@ Die Registry lebt in `src-tauri/src/db/provider.rs` und ist die einzige Quelle d
 | `mongodb` | MongoDB, Atlas, DocumentDB, Cosmos DB (Mongo), FerretDB | `mongodb` (eingebettet) | keine |
 | `redis` | Redis, Valkey, KeyDB, Dragonfly | `redis` (eingebettet) | keine |
 | `cassandra` | Cassandra, ScyllaDB | `scylla` (eingebettet) | keine |
-| `oracle` | Oracle Database | `oracle` (ODPI-C, lädt den Instant Client zur Laufzeit) | Instant Client: `brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic` bzw. Download, siehe Hinweis im Editor |
+| `oracle` | Oracle Database | `oracle` (ODPI-C, lädt den Instant Client zur Laufzeit) | macOS ARM: offizielles ARM64-DMG nach `~/Downloads`, Libs nach `~/lib` verlinkt; Intel: `brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic`; sonst Download, siehe Hinweis im Editor |
 | `duckdb` | DuckDB | `duckdb` (bundled), Cargo-Feature `duckdb` | Build mit `cargo tauri build --features duckdb` |
 | `odbc` | DB2, Firebird, Informix, Sybase, HANA, Teradata, Snowflake, BigQuery, Databricks, Athena, Vertica, Exasol, Trino, Hive, Netezza, Access, generisch | `odbc-api`, Cargo-Feature `odbc` | unixODBC (`brew install unixodbc` / `apt install unixodbc`) plus Hersteller-Treiber |
 
@@ -26,7 +26,7 @@ Reine Rust-Treiber sind fest in die App kompiliert; nichts muss installiert werd
 
 `DatabaseKind::capabilities()` beschreibt pro Familie, welche Bereiche des Arbeitsplatzes gelten (Datenbanken, Schemas, Views, Funktionen, Extensions, Rollen, Sequenzen, Trigger, Indizes, RLS, Partitionen, Replikation, Sessions, Transaktionen, Zeilenbearbeitung, Explain, Übersicht, SSL-Parameter, SSH, Query-Sprache). Nicht unterstützte Trait-Methoden liefern im Backend `Err("… wird von diesem Treiber nicht unterstützt")`, das Frontend deaktiviert die zugehörigen Queries und Tabs vorab.
 
-Zeilenbearbeitung bleibt PostgreSQL vorbehalten (`ctid`-basiert); andere Familien zeigen Daten schreibgeschützt. Transaktionen im Query-Editor gelten ebenfalls nur für PostgreSQL; andere Familien führen DML direkt aus.
+Zeilenbearbeitung und Transaktionen gibt es für PostgreSQL (`ctid`-basiert), Oracle (`ROWID`) sowie MySQL, SQLite und SQL Server (Primärschlüssel als JSON in `__ctid__`); Tabellen ohne Primärschlüssel und Views bleiben dort schreibgeschützt. Alle übrigen Familien zeigen Daten schreibgeschützt und führen DML direkt aus.
 
 ## URL-Formate
 
@@ -52,7 +52,7 @@ Eine neue Familie:
 
 ## Treiber-Seite
 
-Die Seite `/drivers` listet alle Treiberfamilien mit Status. Fehlende Treiber mit `install_command` lassen sich per `install_driver` direkt installieren (nur allowlistete Befehle, 10-Minuten-Limit). Auf macOS wird der Oracle-Tap vorher per `brew trust` freigegeben. Wird der Treiber nach erfolgreicher Installation noch nicht erkannt, weist das Ergebnis auf einen App-Neustart hin.
+Die Seite `/drivers` listet alle Treiberfamilien mit Status. Fehlende Treiber mit `install_command` lassen sich per `install_driver` direkt installieren (nur allowlistete Befehle, 10-Minuten-Limit). Auf macOS wird der Oracle-Tap vorher per `brew trust` freigegeben; auf ARM-Macs lädt der Installer stattdessen das offizielle ARM64-DMG (der Brew-Tap liefert nur Intel-Binaries) und verlinkt die Bibliotheken nach `~/lib`. Wird der Treiber nach erfolgreicher Installation noch nicht erkannt, weist das Ergebnis auf einen App-Neustart hin.
 
 ## Smoke-Tests
 

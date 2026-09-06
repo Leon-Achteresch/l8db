@@ -74,6 +74,7 @@ import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -86,6 +87,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -174,13 +176,21 @@ export function AppSidebarPanel() {
   const { data: matviews } = useMaterializedViewsQuery();
 
   const [selectedTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "extensions" | "roles" | "sequences"
+    "tables" | "views" | "queries" | "functions" | "packages" | "extensions" | "roles" | "sequences"
   >("tables");
   const caps = useActiveCapabilities();
+  const packages = functions?.filter((f) => f.return_type === "PACKAGE");
+  const plainFunctions = functions?.filter((f) => f.return_type !== "PACKAGE");
   const sidebarTabs = [
     { value: "tables", label: "Tabellen", icon: TableIcon, enabled: true },
     { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
     { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
+    {
+      value: "packages",
+      label: "Packages",
+      icon: PackageIcon,
+      enabled: Boolean(packages?.length),
+    },
     { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
     { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
     { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
@@ -188,6 +198,7 @@ export function AppSidebarPanel() {
   ].filter((tab) => tab.enabled);
   const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
 
   return (
     <Sidebar
@@ -349,17 +360,28 @@ export function AppSidebarPanel() {
                 ? "Views"
                 : sidebarTab === "functions"
                   ? "Funktionen"
-                  : sidebarTab === "extensions"
+                  : sidebarTab === "packages"
                     ? "Packages"
-                    : sidebarTab === "roles"
-                      ? "Benutzer & Rollen"
-                      : sidebarTab === "sequences"
-                        ? "Sequenzen"
-                        : "Gespeicherte Queries"}
+                    : sidebarTab === "extensions"
+                      ? "Packages"
+                      : sidebarTab === "roles"
+                        ? "Benutzer & Rollen"
+                        : sidebarTab === "sequences"
+                          ? "Sequenzen"
+                          : "Gespeicherte Queries"}
           </SidebarGroupLabel>
+          {sidebarTab === "tables" || sidebarTab === "views" ? (
+            <SidebarGroupAction
+              onClick={() => setSearchModalOpen(true)}
+              aria-label="Erweiterte Suche"
+              title="Erweiterte Suche mit Regex & SQL WHERE"
+            >
+              <FilterIcon />
+            </SidebarGroupAction>
+          ) : null}
           <SidebarGroupContent>
             {!activeConnection ? (
-              <p className="px-2 py-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
+              <p className="py-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
             ) : sidebarTab === "tables" ? (
               <SidebarEntityList
                 items={tables}
@@ -385,7 +407,14 @@ export function AppSidebarPanel() {
               </>
             ) : sidebarTab === "functions" ? (
               <SidebarFunctionList
-                items={functions}
+                items={plainFunctions}
+                isLoading={functionsLoading}
+                isError={functionsError}
+                error={functionsErrorValue}
+              />
+            ) : sidebarTab === "packages" ? (
+              <SidebarPackageList
+                items={packages}
                 isLoading={functionsLoading}
                 isError={functionsError}
                 error={functionsErrorValue}
@@ -416,6 +445,7 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
+        <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
         {activeConnection ? (
           <SidebarGroup className="mt-auto border-t pt-2">
             <SidebarGroupContent>
@@ -490,7 +520,6 @@ function SidebarEntityList({
   matchRoute,
 }: SidebarEntityListProps) {
   const [search, setSearch] = useState("");
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     kind: "drop" | "truncate";
     schema: string;
@@ -544,7 +573,7 @@ function SidebarEntityList({
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         {type === "table" ? "Lade Tabellen…" : "Lade Views…"}
       </div>
@@ -552,11 +581,11 @@ function SidebarEntityList({
   }
 
   if (isError) {
-    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return <p className="px-2 py-1 text-sm text-muted-foreground">{emptyMessage}</p>;
+    return <p className="py-1 text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const handleConfirmAction = async () => {
@@ -606,27 +635,15 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1 px-2">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <SidebarInput
-            placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setSearchModalOpen(true)}
-          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Erweiterte Suche"
-          title="Erweiterte Suche mit Regex & SQL WHERE"
-        >
-          <FilterIcon className="size-3.5" />
-        </button>
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <SidebarInput
+          placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8"
+        />
       </div>
-      <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
       <AlertDialog
         open={confirmAction !== null}
         onOpenChange={(open) => {
@@ -656,7 +673,7 @@ function SidebarEntityList({
         </AlertDialogContent>
       </AlertDialog>
       {filtered && filtered.length === 0 ? (
-        <p className="px-2 py-1 text-sm text-muted-foreground">Keine Treffer.</p>
+        <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
         <SidebarMenu>
           {filtered?.map((item) => {
@@ -802,7 +819,9 @@ function SidebarEntityList({
 }
 
 interface SidebarFunctionListProps {
-  items: { schema: string; name: string; identity_args: string; oid: string }[] | undefined;
+  items:
+    | { schema: string; name: string; identity_args: string; oid: string; return_type: string }[]
+    | undefined;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -811,10 +830,11 @@ interface SidebarFunctionListProps {
 function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFunctionListProps) {
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
+  const openPackageTab = useTableTabs((state) => state.openPackageTab);
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Funktionen…
       </div>
@@ -822,11 +842,11 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   }
 
   if (isError) {
-    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Funktionen gefunden.</p>;
+    return <p className="py-1 text-sm text-muted-foreground">Keine Funktionen gefunden.</p>;
   }
 
   return (
@@ -835,6 +855,14 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
         <SidebarMenuItem key={item.oid}>
           <SidebarMenuButton
             onClick={() => {
+              if (item.return_type === "PACKAGE") {
+                openPackageTab({ schema: item.schema, name: item.name });
+                navigate({
+                  to: "/packages/$schema/$name",
+                  params: { schema: item.schema, name: item.name },
+                });
+                return;
+              }
               openFunctionTab({
                 schema: item.schema,
                 name: item.name,
@@ -847,10 +875,18 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
               });
             }}
           >
-            <BracesIcon className="text-muted-foreground" />
+            {item.return_type === "PACKAGE" ? (
+              <PackageIcon className="text-muted-foreground" />
+            ) : (
+              <BracesIcon className="text-muted-foreground" />
+            )}
             <span className="truncate">
               {item.name}
-              {item.identity_args ? `(${item.identity_args})` : "()"}
+              {item.return_type === "PACKAGE"
+                ? ""
+                : item.identity_args
+                  ? `(${item.identity_args})`
+                  : "()"}
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -872,7 +908,7 @@ function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExten
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Packages…
       </div>
@@ -880,7 +916,7 @@ function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExten
   }
 
   if (isError) {
-    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
@@ -973,7 +1009,7 @@ function SidebarMatviewList({
 
   return (
     <div className="mt-2">
-      <div className="flex items-center justify-between px-2 py-1">
+      <div className="flex items-center justify-between py-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Materialized Views
         </p>
@@ -987,7 +1023,7 @@ function SidebarMatviewList({
         </button>
       </div>
       {(!items || items.length === 0) && (
-        <p className="px-2 py-1 text-xs text-muted-foreground">Keine vorhanden.</p>
+        <p className="py-1 text-xs text-muted-foreground">Keine vorhanden.</p>
       )}
       <SidebarMenu>
         {items?.map((item) => {
@@ -1208,7 +1244,7 @@ function SavedQueriesList() {
   const openSavedQueryTab = useTableTabs((state) => state.openSavedQueryTab);
 
   if (queries.length === 0) {
-    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
+    return <p className="py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
   }
 
   return (
@@ -1259,7 +1295,7 @@ function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListPr
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Benutzer…
       </div>
@@ -1267,11 +1303,11 @@ function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListPr
   }
 
   if (isError) {
-    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Rollen gefunden.</p>;
+    return <p className="py-1 text-sm text-muted-foreground">Keine Rollen gefunden.</p>;
   }
 
   return (
@@ -1311,7 +1347,7 @@ function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequen
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
         <Spinner />
         Lade Sequenzen…
       </div>
@@ -1319,11 +1355,11 @@ function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequen
   }
 
   if (isError) {
-    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
+    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>;
+    return <p className="py-1 text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>;
   }
 
   return (

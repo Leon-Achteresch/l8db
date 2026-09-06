@@ -1,0 +1,8 @@
+{
+  "name": "l8db-hello-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "l8db-extension build .", "dev": "l8db-extension dev .", "pack": "l8db-extension pack .", "typecheck": "tsc --noEmit" },
+  "devDependencies": { "@l8db/extension-api": "file:../../packages/extension-api", "@l8db/extension-sdk": "file:../../packages/extension-sdk", "typescript": "~5.8.3" }
+}

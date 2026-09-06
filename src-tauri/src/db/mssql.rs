@@ -4,10 +4,11 @@ use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::{
-    create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
+    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo,
+    TxSession,
 };
 
 type MsClient = Client<Compat<TcpStream>>;
@@ -20,7 +21,7 @@ pub fn quote(ident: &str) -> String {
     format!("[{}]", ident.replace(']', "]]"))
 }
 
-fn lit(value: &str) -> String {
+pub fn lit(value: &str) -> String {
     format!("N'{}'", value.replace('\'', "''"))
 }
 
@@ -138,19 +139,20 @@ fn int(row: &Row, index: usize) -> i64 {
 
 fn is_result_statement(sql: &str) -> bool {
     let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-    matches!(
-        first.as_str(),
-        "SELECT"
-            | "WITH"
-            | "EXEC"
-            | "EXECUTE"
-            | "DECLARE"
-            | "SHOW"
-            | "DBCC"
-            | "SP_HELP"
-            | "PRINT"
-            | "SET"
-    )
+    sql.to_uppercase().contains(" OUTPUT ")
+        || matches!(
+            first.as_str(),
+            "SELECT"
+                | "WITH"
+                | "EXEC"
+                | "EXECUTE"
+                | "DECLARE"
+                | "SHOW"
+                | "DBCC"
+                | "SP_HELP"
+                | "PRINT"
+                | "SET"
+        )
 }
 
 impl MssqlAdapter {
@@ -258,6 +260,82 @@ fn percent_decode(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
+fn is_tx_control(sql: &str) -> bool {
+    let mut words = sql.split_whitespace().map(str::to_uppercase);
+    let first = words.next().unwrap_or_default();
+    matches!(first.as_str(), "COMMIT" | "ROLLBACK" | "SAVE")
+        || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
+}
+
+async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    timed(async {
+        if is_tx_control(sql) {
+            client
+                .simple_query(sql)
+                .await
+                .map_err(map_err)?
+                .into_results()
+                .await
+                .map_err(map_err)?;
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+        if !is_result_statement(sql) {
+            let affected = client.execute(sql, &[]).await.map_err(map_err)?.total();
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: Some(affected),
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+        let rows = client
+            .simple_query(sql)
+            .await
+            .map_err(map_err)?
+            .into_first_result()
+            .await
+            .map_err(map_err)?;
+        let columns: Vec<String> = rows
+            .first()
+            .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
+            .unwrap_or_default();
+        let data: Vec<Vec<serde_json::Value>> = rows
+            .iter()
+            .map(|r| r.cells().map(|(_, d)| value_to_json(d)).collect())
+            .collect();
+        Ok(QueryResult {
+            rows: rows_to_objects(&columns, data),
+            columns,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        })
+    })
+    .await
+}
+
+struct MssqlTx {
+    client: MsClient,
+}
+
+#[async_trait]
+impl TxSession for MssqlTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        run_query(&mut self.client, sql).await
+    }
+    async fn commit(&mut self) -> Result<(), String> {
+        run_query(&mut self.client, "COMMIT").await.map(|_| ())
+    }
+    async fn rollback(&mut self) -> Result<(), String> {
+        run_query(&mut self.client, "ROLLBACK").await.map(|_| ())
+    }
+}
+
 #[async_trait]
 impl DatabaseAdapter for MssqlAdapter {
     async fn test_connection(&self) -> Result<(), String> {
@@ -343,12 +421,13 @@ impl DatabaseAdapter for MssqlAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
+        let detailed = self.list_table_columns_detailed(schema, table).await?;
+        let pk: Vec<String> = detailed
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
             .collect();
+        let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
         let order_sql = match order_by {
             Some(col) if columns.iter().any(|c| c == col) => format!(
                 " ORDER BY {} {}",
@@ -365,7 +444,8 @@ impl DatabaseAdapter for MssqlAdapter {
             offset.max(0),
             limit.max(1)
         );
-        let result = self.execute_query(&sql).await?;
+        let mut result = self.execute_query(&sql).await?;
+        attach_row_keys(&mut result.rows, &pk);
         Ok(TableData {
             columns: if columns.is_empty() {
                 result.columns
@@ -396,32 +476,15 @@ impl DatabaseAdapter for MssqlAdapter {
             .unwrap_or(0))
     }
 
+    async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
+        let mut client = self.connect().await?;
+        run_query(&mut client, "BEGIN TRANSACTION").await?;
+        Ok(Box::new(MssqlTx { client }))
+    }
+
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
-        let start = std::time::Instant::now();
-        if !is_result_statement(sql) {
-            let affected = self.exec(sql).await?;
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: Some(affected),
-                execution_time_ms: start.elapsed().as_millis() as u64,
-            });
-        }
-        let rows = self.rows(sql).await?;
-        let columns: Vec<String> = rows
-            .first()
-            .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
-            .unwrap_or_default();
-        let data: Vec<Vec<serde_json::Value>> = rows
-            .iter()
-            .map(|r| r.cells().map(|(_, d)| value_to_json(d)).collect())
-            .collect();
-        Ok(QueryResult {
-            rows: rows_to_objects(&columns, data),
-            columns,
-            rows_affected: None,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-        })
+        let mut client = self.connect().await?;
+        run_query(&mut client, sql).await
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -945,5 +1008,11 @@ mod tests {
         assert!(MssqlAdapter::new("mysql://x@y/z", None).is_err());
         assert!(is_result_statement("  select 1"));
         assert!(!is_result_statement("UPDATE t SET a = 1"));
+        assert!(is_result_statement(
+            "INSERT INTO t OUTPUT INSERTED.* DEFAULT VALUES"
+        ));
+        assert!(is_tx_control("begin tran"));
+        assert!(is_tx_control("ROLLBACK"));
+        assert!(!is_tx_control("BEGIN SELECT 1 END"));
     }
 }

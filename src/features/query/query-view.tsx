@@ -39,6 +39,7 @@ import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
@@ -151,7 +152,7 @@ export function QueryView({ tabId }: QueryViewProps) {
         }
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
-      } else if (isDml && caps.transactions) {
+      } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
         const txId = await beginTransaction(
           connection.kind,
           effectiveConnectionString(connection),

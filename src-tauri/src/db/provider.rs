@@ -136,9 +136,20 @@ impl DatabaseKind {
             },
             DatabaseKind::Mysql => Capabilities {
                 sessions: true,
+                transactions: true,
+                row_edit: true,
                 ..SQL_COMMON
             },
-            DatabaseKind::Sqlite | DatabaseKind::Duckdb => Capabilities {
+            DatabaseKind::Sqlite => Capabilities {
+                databases: false,
+                ssl: false,
+                ssh: false,
+                functions: false,
+                transactions: true,
+                row_edit: true,
+                ..SQL_COMMON
+            },
+            DatabaseKind::Duckdb => Capabilities {
                 databases: false,
                 ssl: false,
                 ssh: false,
@@ -148,6 +159,8 @@ impl DatabaseKind {
             DatabaseKind::Mssql => Capabilities {
                 sessions: true,
                 sequences: true,
+                transactions: true,
+                row_edit: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
@@ -166,6 +179,8 @@ impl DatabaseKind {
                 ssl: false,
                 sequences: true,
                 sessions: true,
+                transactions: true,
+                row_edit: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Cassandra => Capabilities {
@@ -448,9 +463,21 @@ fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
     hints
 }
 
+const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic";
+
+const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p \"$HOME/lib\" /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach /tmp/l8db-ic/ic.dmg && sh /Volumes/instantclient-basic-macos.arm64-*/install_ic.sh && for f in $(ls -td \"$HOME\"/Downloads/instantclient_* | head -1)/*.dylib*; do ln -sf \"$f\" \"$HOME/lib/\"; done && hdiutil detach /Volumes/instantclient-basic-macos.arm64-* && rm -rf /tmp/l8db-ic";
+
+fn oracle_macos_command() -> &'static str {
+    if std::env::consts::ARCH == "aarch64" {
+        ORACLE_MACOS_ARM64_INSTALL
+    } else {
+        ORACLE_MACOS_INTEL_INSTALL
+    }
+}
+
 fn oracle_hints() -> Vec<InstallHint> {
     vec![
-        InstallHint { os: "macos", command: "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic", url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
+        InstallHint { os: "macos", command: oracle_macos_command(), url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
         InstallHint { os: "linux", command: "sudo apt install libaio1 && unzip instantclient-basic-linux.x64-*.zip -d /opt/oracle && echo /opt/oracle/instantclient_* | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig", url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },
         InstallHint { os: "windows", command: "Instant Client Basic entpacken und den Ordner zur PATH-Variable hinzufügen", url: "https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html" },
     ]
@@ -600,7 +627,7 @@ pub fn kind_driver_status(kind: DatabaseKind) -> DriverStatus {
 pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
     match kind {
         DatabaseKind::Oracle => match std::env::consts::OS {
-            "macos" => Ok("brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic"),
+            "macos" => Ok(oracle_macos_command()),
             "linux" => Err("Der Oracle Instant Client lässt sich unter Linux nicht automatisch installieren. Lade ihn von https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html, entpacke ihn nach /opt/oracle und führe ldconfig aus.".to_string()),
             "windows" => Err("Der Oracle Instant Client lässt sich unter Windows nicht automatisch installieren. Entpacke ihn von https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html und füge den Ordner zur PATH-Variable hinzu.".to_string()),
             os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.oracle.com/database/technologies/instant-client/")),
@@ -623,7 +650,7 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
 
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let command = install_command(kind)?;
-    if std::env::consts::OS == "macos" {
+    if std::env::consts::OS == "macos" && command.contains("brew ") {
         let brew = tokio::process::Command::new("sh")
             .arg("-c")
             .arg("command -v brew")
@@ -731,7 +758,9 @@ mod tests {
         assert!(install_command(DatabaseKind::Postgres).is_err());
         assert!(install_command(DatabaseKind::Sqlite).is_err());
         assert!(install_command(DatabaseKind::Mongodb).is_err());
-        assert!(kind_driver_status(DatabaseKind::Postgres).install_command.is_none());
+        assert!(kind_driver_status(DatabaseKind::Postgres)
+            .install_command
+            .is_none());
     }
 
     #[test]
@@ -743,6 +772,16 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_install_commands_use_brew() {
+        if std::env::consts::ARCH == "aarch64" {
+            let oracle = install_command(DatabaseKind::Oracle).unwrap();
+            assert!(
+                oracle.contains("instantclient-basic-macos-arm64.dmg"),
+                "{oracle}"
+            );
+            assert!(oracle.contains("$HOME/lib"), "{oracle}");
+            assert!(oracle.contains("install_ic.sh"), "{oracle}");
+            return;
+        }
         let oracle = install_command(DatabaseKind::Oracle).unwrap();
         assert!(oracle.contains("brew tap InstantClientTap/instantclient"));
         assert!(oracle.contains("brew trust instantclienttap/instantclient"));
@@ -751,31 +790,25 @@ mod tests {
             oracle.find("trust") < oracle.find("brew install"),
             "{oracle}"
         );
-        assert!(
-            kind_driver_status(DatabaseKind::Oracle)
-                .install_command
-                .is_some_and(|command| command.contains("brew"))
-        );
+        assert!(kind_driver_status(DatabaseKind::Oracle)
+            .install_command
+            .is_some_and(|command| command.contains("brew")));
     }
 
     #[cfg(all(target_os = "macos", feature = "odbc"))]
     #[test]
     fn macos_odbc_install_command_targets_unixodbc() {
-        assert!(
-            install_command(DatabaseKind::Odbc)
-                .unwrap()
-                .contains("brew install unixodbc")
-        );
+        assert!(install_command(DatabaseKind::Odbc)
+            .unwrap()
+            .contains("brew install unixodbc"));
     }
 
     #[cfg(all(target_os = "linux", feature = "odbc"))]
     #[test]
     fn linux_odbc_install_command_targets_unixodbc() {
-        assert!(
-            install_command(DatabaseKind::Odbc)
-                .unwrap()
-                .contains("unixodbc")
-        );
+        assert!(install_command(DatabaseKind::Odbc)
+            .unwrap()
+            .contains("unixodbc"));
         assert!(install_command(DatabaseKind::Oracle).is_err());
     }
 
@@ -784,6 +817,8 @@ mod tests {
     fn odbc_without_feature_reports_rebuild() {
         let err = install_command(DatabaseKind::Odbc).unwrap_err();
         assert!(err.contains("--features odbc"), "{err}");
-        assert!(kind_driver_status(DatabaseKind::Odbc).install_command.is_none());
+        assert!(kind_driver_status(DatabaseKind::Odbc)
+            .install_command
+            .is_none());
     }
 }

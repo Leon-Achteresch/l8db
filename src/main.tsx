@@ -8,8 +8,11 @@ import { loadProviders } from "@/lib/providers";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { checkForUpdates } from "@/lib/updater";
 import { router } from "./router";
+import { createExtensionHost } from "@/lib/extensions/host";
+import { ExtensionHostContext } from "@/lib/extensions/react-context";
 
 const queryClient = new QueryClient();
+const extensionHost = createExtensionHost();
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 root.render(<StartupView />);
@@ -18,7 +21,9 @@ function render() {
   root.render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <ExtensionHostContext.Provider value={extensionHost.manager}>
+          <RouterProvider router={router} />
+        </ExtensionHostContext.Provider>
       </QueryClientProvider>
     </React.StrictMode>,
   );
@@ -27,6 +32,8 @@ function render() {
 Promise.all([loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
   .catch(() => undefined)
+  .then(() => extensionHost.start())
+  .catch(error => extensionHost.manager.log("host", "error", String(error)))
   .finally(render);
 
 if (!import.meta.env.DEV) {

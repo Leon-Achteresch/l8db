@@ -6,10 +6,10 @@ use rusqlite::{Connection, OpenFlags};
 
 use super::pool::PoolState;
 use super::{
-    create_table_sql, hex_blob, rows_to_objects, unsupported, where_clause, AddColumnRequest,
-    AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult, SchemaSize,
-    TableData, TableInfo, TriggerInfo,
+    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, unsupported, where_clause,
+    AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult,
+    SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 pub struct SqliteAdapter {
@@ -134,27 +134,30 @@ impl SqliteAdapter {
         })
     }
 
+    fn open(path: &str) -> Result<Connection, String> {
+        let conn = if path == ":memory:" {
+            Connection::open_in_memory().map_err(map_err)?
+        } else {
+            Connection::open_with_flags(
+                path,
+                OpenFlags::SQLITE_OPEN_READ_WRITE
+                    | OpenFlags::SQLITE_OPEN_CREATE
+                    | OpenFlags::SQLITE_OPEN_URI,
+            )
+            .map_err(|e| format!("SQLite-Datei konnte nicht geöffnet werden ({path}): {e}"))?
+        };
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(map_err)?;
+        Ok(conn)
+    }
+
     async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
         let path = self.path.clone();
         self.pool_state
-            .shared(&self.key, || async move {
-                let conn = if path == ":memory:" {
-                    Connection::open_in_memory().map_err(map_err)?
-                } else {
-                    Connection::open_with_flags(
-                        &path,
-                        OpenFlags::SQLITE_OPEN_READ_WRITE
-                            | OpenFlags::SQLITE_OPEN_CREATE
-                            | OpenFlags::SQLITE_OPEN_URI,
-                    )
-                    .map_err(|e| {
-                        format!("SQLite-Datei konnte nicht geöffnet werden ({path}): {e}")
-                    })?
-                };
-                conn.busy_timeout(std::time::Duration::from_secs(5))
-                    .map_err(map_err)?;
-                Ok(Mutex::new(conn))
-            })
+            .shared(
+                &self.key,
+                || async move { Self::open(&path).map(Mutex::new) },
+            )
             .await
     }
 
@@ -163,15 +166,7 @@ impl SqliteAdapter {
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
     {
-        let conn = self.conn().await?;
-        tokio::task::spawn_blocking(move || {
-            let guard = conn
-                .lock()
-                .map_err(|_| "SQLite-Verbindung ist blockiert".to_string())?;
-            f(&guard)
-        })
-        .await
-        .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))?
+        run_blocking(self.conn().await?, f).await
     }
 
     fn master(schema: &str) -> String {
@@ -199,6 +194,80 @@ impl SqliteAdapter {
                 character_maximum_length: None,
             })
             .collect())
+    }
+}
+
+fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    match c.prepare(sql) {
+        Ok(stmt) if stmt.column_count() > 0 => {
+            drop(stmt);
+            let (columns, rows) = query_all(c, sql)?;
+            Ok(QueryResult {
+                columns: columns.clone(),
+                rows: rows_to_objects(&columns, rows),
+                rows_affected: None,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            })
+        }
+        Ok(mut stmt) => {
+            let affected = stmt.execute([]).map_err(map_err)?;
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: Some(affected as u64),
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            })
+        }
+        Err(rusqlite::Error::MultipleStatement) => {
+            c.execute_batch(sql).map_err(map_err)?;
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: Some(c.changes()),
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            })
+        }
+        Err(e) => Err(map_err(e)),
+    }
+}
+
+async fn run_blocking<T, F>(conn: Arc<Mutex<Connection>>, f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || {
+        let guard = conn
+            .lock()
+            .map_err(|_| "SQLite-Verbindung ist blockiert".to_string())?;
+        f(&guard)
+    })
+    .await
+    .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))?
+}
+
+struct SqliteTx {
+    conn: Arc<Mutex<Connection>>,
+}
+
+#[async_trait]
+impl TxSession for SqliteTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        let sql = sql.trim().to_string();
+        run_blocking(self.conn.clone(), move |c| run_query(c, &sql)).await
+    }
+    async fn commit(&mut self) -> Result<(), String> {
+        run_blocking(self.conn.clone(), |c| {
+            c.execute_batch("COMMIT").map_err(map_err)
+        })
+        .await
+    }
+    async fn rollback(&mut self) -> Result<(), String> {
+        run_blocking(self.conn.clone(), |c| {
+            c.execute_batch("ROLLBACK").map_err(map_err)
+        })
+        .await
     }
 }
 
@@ -278,10 +347,13 @@ impl DatabaseAdapter for SqliteAdapter {
             order_by.map(str::to_string),
         );
         self.run(move |c| {
-            let columns: Vec<String> = Self::table_info(c, &schema, &table)?
-                .into_iter()
-                .map(|c| c.name)
+            let detailed = Self::table_info(c, &schema, &table)?;
+            let pk: Vec<String> = detailed
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.clone())
                 .collect();
+            let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
             let order_sql = match order_by {
                 Some(col) if columns.contains(&col) => format!(
                     " ORDER BY {} {}",
@@ -300,13 +372,15 @@ impl DatabaseAdapter for SqliteAdapter {
                 offset.max(0)
             );
             let (cols, rows) = query_all(c, &sql)?;
+            let mut rows = rows_to_objects(&cols, rows);
+            attach_row_keys(&mut rows, &pk);
             Ok(TableData {
                 columns: if columns.is_empty() {
                     cols.clone()
                 } else {
                     columns
                 },
-                rows: rows_to_objects(&cols, rows),
+                rows,
             })
         })
         .await
@@ -332,43 +406,23 @@ impl DatabaseAdapter for SqliteAdapter {
         .await
     }
 
+    async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
+        let conn = if self.path == ":memory:" {
+            self.conn().await?
+        } else {
+            let path = self.path.clone();
+            let conn = tokio::task::spawn_blocking(move || Self::open(&path))
+                .await
+                .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))??;
+            Arc::new(Mutex::new(conn))
+        };
+        run_blocking(conn.clone(), |c| c.execute_batch("BEGIN").map_err(map_err)).await?;
+        Ok(Box::new(SqliteTx { conn }))
+    }
+
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        self.run(move |c| {
-            let start = std::time::Instant::now();
-            match c.prepare(&sql) {
-                Ok(stmt) if stmt.column_count() > 0 => {
-                    drop(stmt);
-                    let (columns, rows) = query_all(c, &sql)?;
-                    Ok(QueryResult {
-                        columns: columns.clone(),
-                        rows: rows_to_objects(&columns, rows),
-                        rows_affected: None,
-                        execution_time_ms: start.elapsed().as_millis() as u64,
-                    })
-                }
-                Ok(mut stmt) => {
-                    let affected = stmt.execute([]).map_err(map_err)?;
-                    Ok(QueryResult {
-                        columns: vec![],
-                        rows: vec![],
-                        rows_affected: Some(affected as u64),
-                        execution_time_ms: start.elapsed().as_millis() as u64,
-                    })
-                }
-                Err(rusqlite::Error::MultipleStatement) => {
-                    c.execute_batch(&sql).map_err(map_err)?;
-                    Ok(QueryResult {
-                        columns: vec![],
-                        rows: vec![],
-                        rows_affected: Some(c.changes()),
-                        execution_time_ms: start.elapsed().as_millis() as u64,
-                    })
-                }
-                Err(e) => Err(map_err(e)),
-            }
-        })
-        .await
+        self.run(move |c| run_query(c, &sql)).await
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {

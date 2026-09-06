@@ -1,3 +1,4 @@
+mod community_extensions;
 mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -8,10 +9,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(community_extensions::ExtensionStoreLock::default())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            community_extensions::community_extension_store,
+            community_extensions::read_community_extension,
             db::commands::list_providers,
             db::commands::driver_status,
             db::commands::install_driver,

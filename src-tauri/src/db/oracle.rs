@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use oracle::sql_type::OracleType;
-use oracle::{Connection, Connector, Row};
+pub use oracle::Connection;
+use oracle::{Connector, Row};
 
 use super::pool::PoolState;
 use super::{
@@ -30,6 +31,23 @@ fn lit(value: &str) -> String {
 
 fn map_err(e: oracle::Error) -> String {
     format!("Oracle: {e}")
+}
+
+const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
+const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
+
+fn validate_rowid(rowid: &str) -> Result<&str, String> {
+    let rowid = rowid.trim();
+    let ok = !rowid.is_empty()
+        && rowid.len() <= 4000
+        && rowid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'*'));
+    if ok {
+        Ok(rowid)
+    } else {
+        Err("Ungültige ROWID".to_string())
+    }
 }
 
 fn is_query(sql: &str) -> bool {
@@ -148,28 +166,32 @@ impl OracleAdapter {
         })
     }
 
-    async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
+    pub async fn open_connection(&self) -> Result<Mutex<Connection>, String> {
         let (user, password, connect_string) = (
             self.user.clone(),
             self.password.clone(),
             self.connect_string.clone(),
         );
+        tokio::task::spawn_blocking(move || {
+            let mut connector = Connector::new(&user, &password, &connect_string);
+            if user.eq_ignore_ascii_case("sys") {
+                connector.privilege(oracle::Privilege::Sysdba);
+            }
+            let mut conn = connector
+                .connect()
+                .map_err(|e| format!("Oracle-Verbindung fehlgeschlagen: {e}"))?;
+            conn.set_autocommit(true);
+            conn.execute(NLS_SESSION, &[])
+                .map_err(|e| format!("Oracle-Sitzungsformat fehlgeschlagen: {e}"))?;
+            Ok(Mutex::new(conn))
+        })
+        .await
+        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+    }
+
+    async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
         self.pool_state
-            .shared(&self.key, || async move {
-                tokio::task::spawn_blocking(move || {
-                    let mut connector = Connector::new(&user, &password, &connect_string);
-                    if user.eq_ignore_ascii_case("sys") {
-                        connector.privilege(oracle::Privilege::Sysdba);
-                    }
-                    let mut conn = connector
-                        .connect()
-                        .map_err(|e| format!("Oracle-Verbindung fehlgeschlagen: {e}"))?;
-                    conn.set_autocommit(true);
-                    Ok(Mutex::new(conn))
-                })
-                .await
-                .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
-            })
+            .shared(&self.key, || self.open_connection())
             .await
     }
 
@@ -299,7 +321,7 @@ impl DatabaseAdapter for OracleAdapter {
         offset: i64,
         order_by: Option<&str>,
         order_desc: bool,
-        _is_view: bool,
+        is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
@@ -318,7 +340,8 @@ impl DatabaseAdapter for OracleAdapter {
             _ => String::new(),
         };
         let sql = format!(
-            "SELECT * FROM {}.{}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+            "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+            if is_view { "t.*" } else { ROWID_SELECT },
             quote(schema),
             quote(table),
             where_sql,
@@ -904,4 +927,206 @@ mod tests {
         .is_err());
         assert!(is_query("  with x as (select 1 from dual) select * from x"));
     }
+}
+
+fn table_columns(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    insertable: bool,
+) -> Result<Vec<String>, String> {
+    let extra = if insertable {
+        " AND virtual_column = 'NO' AND identity_column = 'NO'"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT column_name FROM all_tab_cols WHERE owner = {} AND table_name = {} AND hidden_column = 'NO'{extra} ORDER BY column_id",
+        lit(schema),
+        lit(table)
+    );
+    Ok(fetch(c, &sql)?.iter().map(|r| s(r, 0)).collect())
+}
+
+fn row_by_rowid(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    rowid: &str,
+) -> Result<serde_json::Value, String> {
+    let sql = format!(
+        "SELECT {ROWID_SELECT} FROM {}.{} t WHERE t.ROWID = CHARTOROWID({})",
+        quote(schema),
+        quote(table),
+        lit(rowid)
+    );
+    let (cols, rows) = run_query(c, &sql)?;
+    rows_to_objects(&cols, rows)
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Zeile nicht gefunden".to_string())
+}
+
+fn sql_value(value: &Option<String>) -> String {
+    value
+        .as_deref()
+        .map(lit)
+        .unwrap_or_else(|| "NULL".to_string())
+}
+
+pub fn tx_begin(c: &mut Connection) {
+    c.set_autocommit(false);
+}
+
+pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
+    let result = if commit { c.commit() } else { c.rollback() };
+    let _ = c.close();
+    result.map_err(map_err)
+}
+
+pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    let statement = sql.trim().trim_end_matches(';');
+    if is_query(statement) {
+        let (columns, rows) = run_query(c, statement)?;
+        return Ok(QueryResult {
+            rows: rows_to_objects(&columns, rows),
+            columns,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        });
+    }
+    let affected = c
+        .execute(statement, &[])
+        .map_err(map_err)
+        .and_then(|st| st.row_count().map_err(map_err))?;
+    Ok(QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: Some(affected),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+    })
+}
+
+pub fn tx_update_row(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    rowid: &str,
+    updates: &std::collections::HashMap<String, Option<String>>,
+) -> Result<String, String> {
+    let rowid = validate_rowid(rowid)?;
+    let valid = table_columns(c, schema, table, false)?;
+    let mut set_parts = Vec::new();
+    for (col, val) in updates {
+        if !valid.contains(col) {
+            return Err(format!("Unbekannte Spalte: {col}"));
+        }
+        set_parts.push(format!("{} = {}", quote(col), sql_value(val)));
+    }
+    if set_parts.is_empty() {
+        return Ok(rowid.to_string());
+    }
+    let sql = format!(
+        "UPDATE {}.{} SET {} WHERE ROWID = CHARTOROWID({})",
+        quote(schema),
+        quote(table),
+        set_parts.join(", "),
+        lit(rowid)
+    );
+    let affected = c
+        .execute(&sql, &[])
+        .map_err(map_err)
+        .and_then(|st| st.row_count().map_err(map_err))?;
+    if affected == 0 {
+        return Err("Zeile nicht gefunden".to_string());
+    }
+    Ok(rowid.to_string())
+}
+
+pub fn tx_insert_row(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Result<serde_json::Value, String> {
+    let valid = table_columns(c, schema, table, false)?;
+    let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
+        let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
+        (vec![quote(first)], vec!["DEFAULT".to_string()])
+    } else {
+        let mut cols = Vec::new();
+        let mut vals = Vec::new();
+        for (col, val) in values {
+            if !valid.contains(col) {
+                return Err(format!("Unbekannte Spalte: {col}"));
+            }
+            cols.push(quote(col));
+            vals.push(sql_value(val));
+        }
+        (cols, vals)
+    };
+    let sql = format!(
+        "INSERT INTO {}.{} ({}) VALUES ({}) RETURNING ROWIDTOCHAR(ROWID) INTO :rid",
+        quote(schema),
+        quote(table),
+        cols.join(", "),
+        vals.join(", ")
+    );
+    let stmt = c
+        .execute(&sql, &[&OracleType::Varchar2(4000)])
+        .map_err(map_err)?;
+    let rowid: String = stmt
+        .returned_values::<&str, String>("rid")
+        .map_err(map_err)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Zeile konnte nicht eingefügt werden".to_string())?;
+    row_by_rowid(c, schema, table, &rowid)
+}
+
+pub fn tx_duplicate_row(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    rowid: &str,
+) -> Result<serde_json::Value, String> {
+    let rowid = validate_rowid(rowid)?;
+    let insertable = table_columns(c, schema, table, true)?;
+    let source = row_by_rowid(c, schema, table, rowid)?;
+    let values = source
+        .as_object()
+        .map(|obj| {
+            obj.iter()
+                .filter(|(k, _)| insertable.contains(k))
+                .map(|(k, v)| {
+                    let text = match v {
+                        serde_json::Value::Null => None,
+                        serde_json::Value::String(t) => Some(t.clone()),
+                        other => Some(other.to_string()),
+                    };
+                    (k.clone(), text)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    tx_insert_row(c, schema, table, &values)
+}
+
+pub fn tx_delete_row(c: &Connection, schema: &str, table: &str, rowid: &str) -> Result<(), String> {
+    let rowid = validate_rowid(rowid)?;
+    let sql = format!(
+        "DELETE FROM {}.{} WHERE ROWID = CHARTOROWID({})",
+        quote(schema),
+        quote(table),
+        lit(rowid)
+    );
+    let affected = c
+        .execute(&sql, &[])
+        .map_err(map_err)
+        .and_then(|st| st.row_count().map_err(map_err))?;
+    if affected == 0 {
+        return Err("Zeile nicht gefunden".to_string());
+    }
+    Ok(())
 }

@@ -365,3 +365,7 @@
     scroll-behavior: auto !important;
   }
 }
+
+.sql-flash-line {
+  background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+}
