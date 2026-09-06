@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowRight, Eye, EyeOff, FolderOpen, LockKeyhole, PlugZap, Save, X } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, FolderOpen, LockKeyhole, PlugZap, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ import {
   connectionError,
   detectProvider,
   filePath,
+  kindFromUrl,
   parseConnectionUrl,
   sslModeFromUrl,
 } from "@/lib/connection-url";
@@ -56,6 +57,7 @@ interface Props {
   onCancel: () => void;
 }
 type Mode = "string" | "fields";
+type SetupMode = "simple" | "connection-string";
 type TestResult = {
   status: "idle" | "testing" | "success" | "error";
   message?: string;
@@ -83,6 +85,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [name, setName] = useState(connection?.name ?? "");
   const [value, setValue] = useState(connection?.connectionString ?? "");
   const [mode, setMode] = useState<Mode>("string");
+  const [setupMode, setSetupMode] = useState<SetupMode>("simple");
   const [provider, setProvider] = useState(
     connection ? detectProvider(connection.connectionString, connection.kind) : "postgres",
   );
@@ -115,11 +118,21 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
+  const quickKind = kindFromUrl(value) ?? kind;
+  const quickProviderId = value.trim() ? detectProvider(value, quickKind) : provider;
+  const quickInfo = providers.find((entry) => entry.id === quickProviderId) ?? info;
 
   useEffect(() => {
-    setPreview(kind, provider);
+    if (setupMode === "connection-string") setPreview(quickKind, quickProviderId);
+    else setPreview(kind, provider);
     return () => setPreview(null);
-  }, [kind, provider, setPreview]);
+  }, [setupMode, quickKind, quickProviderId, kind, provider, setPreview]);
+
+  function switchSetupMode(next: SetupMode) {
+    if (next === setupMode) return;
+    setSetupMode(next);
+    setResult({ status: "idle" });
+  }
 
   function selectProvider(id: string) {
     const next = providers.find((entry) => entry.id === id);
@@ -136,6 +149,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   }
 
   function makeUrl() {
+    if (setupMode === "connection-string") {
+      if (!value.trim()) throw new Error("Gib eine Verbindungs-URL ein, z. B. postgresql://…");
+      return parseConnectionUrl(value, quickKind).toString();
+    }
     if (info.file_based)
       return parseConnectionUrl(mode === "string" ? value : file, kind).toString();
     if (mode === "string") return withSsl(parseConnectionUrl(value, kind).toString());
@@ -184,7 +201,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     try {
       const picked = await open({ multiple: false, directory: false });
       if (typeof picked !== "string") return;
-      if (mode === "string") setValue(picked);
+      if (setupMode === "connection-string" || mode === "string") setValue(picked);
       else setFile(picked);
       setResult({ status: "idle" });
     } catch (error) {
@@ -193,6 +210,11 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   }
 
   async function configuration() {
+    if (setupMode === "connection-string") {
+      if (!value.trim()) throw new Error("Gib eine Verbindungs-URL ein, z. B. postgresql://…");
+      const connectionString = parseConnectionUrl(value, quickKind).toString();
+      return { connectionString, secret: "", ssh: null, kind: quickKind };
+    }
     const connectionString = makeUrl();
     const target = info.file_based ? null : parseConnectionUrl(connectionString, kind);
     const useSsh = caps.ssh && sshEnabled;
@@ -210,6 +232,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     return {
       connectionString,
       secret,
+      kind,
       ssh:
         useSsh && target
           ? {
@@ -250,9 +273,9 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
         });
         tunnelOpened = true;
-        url = tunneledConnectionString(url, tunnel.local_port, kind);
+        url = tunneledConnectionString(url, tunnel.local_port, config.kind);
       }
-      await testConnectionString(kind, url);
+      await testConnectionString(config.kind, url);
       setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });
@@ -295,24 +318,27 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
       }
       if (connection?.ssh) await closeSshTunnel(id).catch(() => undefined);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
+      const quickSave = setupMode === "connection-string";
       const input = {
         name: name.trim(),
-        kind,
+        kind: config.kind,
         connectionString: config.connectionString,
-        sslMode: ssl,
+        sslMode: quickSave ? sslModeFromUrl(config.connectionString) : ssl,
         ssh: config.ssh,
         tunnelPort: null,
-        tags: [
-          ...new Set(
-            tags
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-          ),
-        ].map((name) => ({
-          name,
-          color: connection?.tags?.find((tag) => tag.name === name)?.color ?? "#4d8c78",
-        })),
+        tags: quickSave
+          ? (connection?.tags ?? [])
+          : [
+              ...new Set(
+                tags
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+              ),
+            ].map((tagName) => ({
+              name: tagName,
+              color: connection?.tags?.find((tag) => tag.name === tagName)?.color ?? "#4d8c78",
+            })),
       };
       if (connection) useConnectionsStore.getState().updateConnection(id, input);
       else
@@ -340,12 +366,14 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
 
   return (
     <section className="shell-bezel flex max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3 pb-2">
-        <div className="min-w-0">
+      <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-3 pb-2">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-tight">
             {connection ? connection.name : "Neue Verbindung"}
           </h2>
-          <p className="truncate text-xs text-muted-foreground">{info.name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {setupMode === "connection-string" ? quickInfo.name : info.name}
+          </p>
         </div>
         <Button
           variant="ghost"
@@ -358,12 +386,25 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         </Button>
       </header>
       <div className="shrink-0 px-4 pb-3">
-        <SetupStepper step={step} onStep={(next) => setStep(next)} />
+        <SegmentedControl
+          value={setupMode}
+          onChange={switchSetupMode}
+          label="Erstellungsmodus"
+          options={[
+            { value: "simple", label: "Einfacher Modus" },
+            { value: "connection-string", label: "Connection-String" },
+          ]}
+        />
       </div>
+      {setupMode === "simple" && (
+        <div className="shrink-0 px-4 pb-3">
+          <SetupStepper step={step} onStep={(next) => setStep(next)} />
+        </div>
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (step === 3) void save();
+          if (setupMode === "connection-string" || step === 3) void save();
         }}
         onChange={() => setResult({ status: "idle" })}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -372,6 +413,130 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           disabled={busy}
           className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 disabled:opacity-70"
         >
+          {setupMode === "connection-string" ? (
+            <div className="flex flex-col gap-3 pr-1 pb-2">
+              <p className="text-xs text-muted-foreground">
+                Connection-String einfügen, testen, speichern. Provider und Engine werden
+                automatisch erkannt.
+              </p>
+              {!quickInfo.driver_status.available && (
+                <div
+                  role="status"
+                  className="space-y-1 rounded-xl bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:text-amber-300"
+                >
+                  <DriverDetail detail={quickInfo.driver_status.detail} className="block" />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => void refreshDriverStatus(quickKind).catch(() => undefined)}
+                    >
+                      Erneut prüfen
+                    </button>
+                    <Link to="/drivers" className="underline">
+                      Treiber
+                    </Link>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="grid size-8 place-items-center rounded-xl bg-background ring-1 ring-border">
+                  <ProviderLogo
+                    providerId={quickProviderId}
+                    kind={quickKind}
+                    className="size-4"
+                  />
+                </span>
+                <ConnectionField
+                  id="quick-connection-name"
+                  label="Name"
+                  placeholder="Produktion, Staging, Lokal"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="relative">
+                <ConnectionField
+                  id="quick-connection-url"
+                  label={quickInfo.file_based ? "Datenbankdatei" : "Connection-String"}
+                  type={quickInfo.file_based || showPassword ? "text" : "password"}
+                  placeholder={quickInfo.placeholder}
+                  value={value}
+                  onChange={(event) => {
+                    setValue(event.target.value);
+                    if (event.target.value.trim()) setSsl(sslModeFromUrl(event.target.value));
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  aria-label={
+                    quickInfo.file_based
+                      ? "Datei auswählen"
+                      : showPassword
+                        ? "URL verbergen"
+                        : "URL anzeigen"
+                  }
+                  onClick={() =>
+                    quickInfo.file_based ? void pickFile() : setShowPassword(!showPassword)
+                  }
+                  className="absolute right-2 bottom-2 rounded bg-card p-1 text-muted-foreground"
+                >
+                  {quickInfo.file_based ? (
+                    <FolderOpen className="size-4" />
+                  ) : showPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
+              </div>
+              {value.trim() ? (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  Erkannt: {quickInfo.name}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Beispiel: {quickInfo.placeholder}
+                </p>
+              )}
+              {quickProviderId === "supabase" && /:6543(?:\/|$)/.test(value) && (
+                <p
+                  role="status"
+                  className="min-w-0 break-words rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 [overflow-wrap:anywhere] dark:text-amber-300"
+                >
+                  Du nutzt einen Transaction Pooler. Für den vollständigen SQL-Arbeitsplatz nutze
+                  eine direkte Verbindung oder den Session Pooler auf Port 5432.
+                </p>
+              )}
+              <div aria-live="polite" className="min-h-8">
+                {result.status === "testing" && (
+                  <AnimatedBadge status="loading" size="sm">
+                    Verbindung wird geprüft
+                  </AnimatedBadge>
+                )}
+                {result.status === "success" && (
+                  <AnimatedBadge status="success" size="sm">
+                    Erreichbar · {result.ms} ms
+                  </AnimatedBadge>
+                )}
+                {result.status === "error" && (
+                  <p
+                    role="alert"
+                    className="break-words rounded-xl bg-destructive/10 p-3 text-xs leading-relaxed text-destructive"
+                  >
+                    {result.message}
+                  </p>
+                )}
+              </div>
+              <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <LockKeyhole className="size-3" />
+                Passwörter bleiben im System-Schlüsselbund
+              </p>
+            </div>
+          ) : (
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={step}
@@ -715,24 +880,6 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void test()}
-                    >
-                      <PlugZap className="size-4" />
-                      Testen
-                    </Button>
-                    <SlideActionButton
-                      className="h-14 w-64"
-                      completeLabel="Gespeichert"
-                      onComplete={() => void save()}
-                    >
-                      Speichern
-                    </SlideActionButton>
-                  </div>
                   <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                     <LockKeyhole className="size-3" />
                     Passwörter bleiben im System-Schlüsselbund
@@ -741,8 +888,30 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
               )}
             </motion.div>
           </AnimatePresence>
+          )}
         </fieldset>
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-card/50 px-4 py-3">
+          {setupMode === "connection-string" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void test()}
+              >
+                <PlugZap className="size-4" />
+                Testen
+              </Button>
+              <SlideActionButton
+                className={busy ? "h-11 w-60 pointer-events-none opacity-70" : "h-11 w-60"}
+                completeLabel="Gespeichert"
+                onComplete={() => void save()}
+              >
+                Speichern
+              </SlideActionButton>
+            </>
+          ) : (
+            <>
           <Button
             type="button"
             variant="ghost"
@@ -765,10 +934,26 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
               <ArrowRight className="size-3.5" />
             </Button>
           ) : (
-            <Button type="button" disabled={busy} onClick={() => void save()}>
-              <Save className="size-4" />
-              {saving ? "Speichern…" : "Speichern"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void test()}
+              >
+                <PlugZap className="size-4" />
+                Testen
+              </Button>
+              <SlideActionButton
+                className={busy ? "h-11 w-60 pointer-events-none opacity-70" : "h-11 w-60"}
+                completeLabel="Gespeichert"
+                onComplete={() => void save()}
+              >
+                Speichern
+              </SlideActionButton>
+            </div>
+          )}
+            </>
           )}
         </footer>
       </form>
