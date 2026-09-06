@@ -8,10 +8,13 @@ import {
   DownloadIcon,
   FileIcon,
   GaugeIcon,
+  BookmarkPlusIcon,
   HistoryIcon,
+  ListOrderedIcon,
   LoaderIcon,
   PlayIcon,
   ScanTextIcon,
+  SearchIcon,
   TextSelectIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -33,6 +36,12 @@ import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
 import { SnippetMenu } from "@/features/query/snippet-menu";
+import {
+  ScriptResultList,
+  type ScriptRunEntry,
+} from "@/features/query/script-result-list";
+import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
+import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import {
   beginTransaction,
@@ -52,8 +61,9 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { statementAtOffset } from "@/lib/sql-statements";
-import { isQueryTabDirty, useTableTabs } from "@/lib/table-tabs";
+import { useQueryRevealStore } from "@/lib/query-reveal";
+import { splitSqlStatements, statementAtOffset } from "@/lib/sql-statements";
+import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
 
 const QUERY_LANGUAGES = {
@@ -62,6 +72,14 @@ const QUERY_LANGUAGES = {
   json: "MongoDB-Befehle als JSON",
   redis: "Redis-Befehle, eine pro Zeile",
 } as const;
+
+const EMPTY_BOOKMARKS: number[] = [];
+
+const SCRIPT_MODE_NOTE: Record<ScriptRunMode, string> = {
+  "existing-transaction": "läuft in offener Transaktion, kein Autocommit",
+  "new-transaction": "verwaltete Transaktion, Commit über Transaktionspanel",
+  autocommit: "Autocommit je Statement",
+};
 
 const DML_PATTERN = /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
 
@@ -150,12 +168,45 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [editorHeight, setEditorHeight] = useState(280);
   const dragStartRef = useRef<{ y: number; h: number } | null>(null);
 
+  const bookmarks = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? (tab.bookmarks ?? EMPTY_BOOKMARKS) : EMPTY_BOOKMARKS;
+  });
+  const setQueryBookmarks = useTableTabs((state) => state.setQueryBookmarks);
+  const clearQueryBookmarks = useTableTabs((state) => state.clearQueryBookmarks);
+  const normalizedBookmarks = useMemo(() => normalizeBookmarks(bookmarks), [bookmarks]);
+
+  const [tabSearchOpen, setTabSearchOpen] = useState(false);
+  const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [scriptMode, setScriptMode] = useState<ScriptRunMode>("autocommit");
+  const [scriptEntries, setScriptEntries] = useState<ScriptRunEntry[] | null>(null);
+  const [scriptActiveIndex, setScriptActiveIndex] = useState<number | null>(null);
+  const [scriptNote, setScriptNote] = useState("");
+
+  const revealRequest = useQueryRevealStore((state) => state.request);
+  const clearReveal = useQueryRevealStore((state) => state.clearReveal);
+
   useEffect(() => {
     setSelectedSql("");
     setCursorOffset(0);
     setStatementRange(null);
     setStatementError(null);
+    setScriptEntries(null);
+    setScriptActiveIndex(null);
   }, [tabId]);
+
+  useEffect(() => {
+    if (!revealRequest || revealRequest.tabId !== tabId) return;
+    const timer = setTimeout(() => {
+      editorApiRef.current?.revealMatch(
+        revealRequest.line,
+        revealRequest.column,
+        revealRequest.length,
+      );
+      clearReveal(tabId);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [revealRequest, tabId, clearReveal]);
 
   const { data: schemas } = useSchemasQuery();
 
@@ -306,6 +357,153 @@ export function QueryView({ tabId }: QueryViewProps) {
     void runSql(statement.text);
   }, [cursorOffset, handleRunSelection, runSql, selectedSql, sql]);
 
+  const scriptSplit = useMemo(() => splitSqlStatements(sql), [sql]);
+
+  const handleOpenScriptDialog = useCallback(() => {
+    if (!connection) return;
+    const existingTx = getTransactionForConnection(connection.id);
+    const hasDml = scriptSplit.statements.some((statement) =>
+      DML_PATTERN.test(statement.text.trim()),
+    );
+    if (existingTx) setScriptMode("existing-transaction");
+    else if (hasDml && caps.transactions && useSettingsStore.getState().transactionsEnabled)
+      setScriptMode("new-transaction");
+    else setScriptMode("autocommit");
+    setScriptDialogOpen(true);
+  }, [connection, caps.transactions, scriptSplit]);
+
+  const runScript = useCallback(
+    async (mode: ScriptRunMode) => {
+      if (!connection || isRunning) return;
+      const statements = scriptSplit.statements;
+      if (statements.length === 0) return;
+
+      const entries: ScriptRunEntry[] = statements.map((statement, index) => ({
+        index,
+        sql: statement.text,
+        start: statement.start,
+        end: statement.end,
+        status: "pending",
+        durationMs: null,
+        rowCount: null,
+        rowsAffected: null,
+        error: null,
+      }));
+
+      setScriptNote(SCRIPT_MODE_NOTE[mode]);
+      setScriptEntries(entries.map((entry) => ({ ...entry })));
+      setScriptActiveIndex(null);
+      setStatementError(null);
+      setStatementRange(null);
+      setError(null);
+      setIsRunning(true);
+
+      const store = useTransactionStore.getState();
+      let txId = getTransactionForConnection(connection.id)?.txId ?? null;
+
+      try {
+        if (!txId && mode === "new-transaction") {
+          txId = await beginTransaction(
+            connection.kind,
+            effectiveConnectionString(connection),
+            database ?? undefined,
+          );
+          store.addTransaction({
+            txId,
+            connectionId: connection.id,
+            connectionName: connection.name,
+            database: database ?? undefined,
+            changes: [],
+            startedAt: Date.now(),
+          });
+          store.setPanelOpen(true);
+        }
+      } catch (err) {
+        setError(String(err));
+        setIsRunning(false);
+        return;
+      }
+
+      let lastResult: QueryResult | null = null;
+      let failed = false;
+
+      for (const entry of entries) {
+        if (failed) {
+          entry.status = "skipped";
+          continue;
+        }
+        entry.status = "running";
+        setScriptEntries(entries.map((item) => ({ ...item })));
+        const startedAt = performance.now();
+        try {
+          const res = txId
+            ? await executeInTransaction(txId, entry.sql)
+            : await executeQuery(
+                connection.kind,
+                effectiveConnectionString(connection),
+                entry.sql,
+                database ?? undefined,
+              );
+          entry.status = "success";
+          entry.durationMs = Math.round(performance.now() - startedAt);
+          entry.rowCount = res.columns.length > 0 ? res.rows.length : null;
+          entry.rowsAffected = res.rows_affected == null ? null : Number(res.rows_affected);
+          if (res.columns.length > 0 || lastResult === null) lastResult = res;
+          if (txId && DML_PATTERN.test(entry.sql.trim())) {
+            store.addChange(txId, {
+              id: crypto.randomUUID(),
+              type: "query",
+              timestamp: Date.now(),
+              sql: entry.sql,
+              rowsAffected: res.rows_affected,
+            });
+          }
+          recordHistory({
+            connectionId: connection.id,
+            database: database ?? null,
+            sql: entry.sql,
+            durationMs: entry.durationMs,
+            rowCount: entry.rowCount ?? entry.rowsAffected,
+            error: null,
+          });
+        } catch (err) {
+          const message = String(err);
+          entry.status = "error";
+          entry.error = message;
+          entry.durationMs = Math.round(performance.now() - startedAt);
+          failed = true;
+          setError(message);
+          setStatementRange({ start: entry.start, end: entry.end });
+          setScriptActiveIndex(entry.index);
+          recordHistory({
+            connectionId: connection.id,
+            database: database ?? null,
+            sql: entry.sql,
+            durationMs: entry.durationMs,
+            rowCount: null,
+            error: message.slice(0, 500),
+          });
+        }
+        setScriptEntries(entries.map((item) => ({ ...item })));
+      }
+
+      setScriptEntries(entries.map((item) => ({ ...item })));
+      setResult(failed ? null : lastResult);
+      setIsRunning(false);
+    },
+    [connection, database, isRunning, recordHistory, scriptSplit],
+  );
+
+  const handleSelectScriptEntry = useCallback(
+    (entry: ScriptRunEntry) => {
+      setScriptActiveIndex(entry.index);
+      setStatementRange({ start: entry.start, end: entry.end });
+      const before = sql.slice(0, entry.start).split("\n");
+      editorApiRef.current?.revealMatch(before.length, before[before.length - 1].length + 1, 0);
+    },
+    [sql],
+  );
+
   const handleExplain = useCallback(
     async (analyze: boolean) => {
       if (!connection || !sql.trim() || planLoading) return;
@@ -445,6 +643,70 @@ export function QueryView({ tabId }: QueryViewProps) {
             <ScanTextIcon className="size-3" />
             Statement
           </Button>
+          {caps.query_language === "sql" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 px-3 text-xs"
+              onClick={handleOpenScriptDialog}
+              disabled={isRunning || !connection || scriptSplit.statements.length === 0}
+              title="Alle Statements nacheinander ausführen und Einzelergebnisse anzeigen"
+            >
+              <ListOrderedIcon className="size-3" />
+              Skript
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-3 text-xs"
+            onClick={() => setTabSearchOpen(true)}
+            title="In allen offenen Query-Tabs suchen (Cmd/Ctrl+Shift+F)"
+          >
+            <SearchIcon className="size-3" />
+            Suchen
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-3 text-xs"
+                title="Lesezeichen setzen und anspringen"
+              >
+                <BookmarkPlusIcon className="size-3" />
+                Lesezeichen
+                {normalizedBookmarks.length > 0 && (
+                  <span className="tabular-nums text-muted-foreground">
+                    {normalizedBookmarks.length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => editorApiRef.current?.toggleBookmark()}>
+                Lesezeichen setzen/entfernen (Cmd/Ctrl+Alt+B)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => editorApiRef.current?.gotoBookmark("next")}
+                disabled={normalizedBookmarks.length === 0}
+              >
+                Nächstes Lesezeichen (F2)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => editorApiRef.current?.gotoBookmark("previous")}
+                disabled={normalizedBookmarks.length === 0}
+              >
+                Vorheriges Lesezeichen (Shift+F2)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => clearQueryBookmarks(tabId)}
+                disabled={normalizedBookmarks.length === 0}
+              >
+                Alle Lesezeichen entfernen
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="sm"
             variant="ghost"
@@ -627,6 +889,9 @@ export function QueryView({ tabId }: QueryViewProps) {
             onSelectionChange={setSelectedSql}
             onCursorChange={setCursorOffset}
             highlight={statementRange}
+            bookmarks={normalizedBookmarks}
+            onBookmarksChange={(lines) => setQueryBookmarks(tabId, lines)}
+            onSearchTabs={() => setTabSearchOpen(true)}
             registry={registry}
           />
         </div>
@@ -654,6 +919,16 @@ export function QueryView({ tabId }: QueryViewProps) {
           />
         )}
 
+        {scriptEntries && scriptEntries.length > 0 && (
+          <ScriptResultList
+            entries={scriptEntries}
+            activeIndex={scriptActiveIndex}
+            onSelect={handleSelectScriptEntry}
+            onClose={() => setScriptEntries(null)}
+            note={scriptNote}
+          />
+        )}
+
         <div className="min-h-0 flex-1 border-t">
           <QueryResultTable result={result} isLoading={isRunning} error={error} />
         </div>
@@ -672,6 +947,25 @@ export function QueryView({ tabId }: QueryViewProps) {
             setSnippetDialogOpen(false);
             editorApiRef.current?.insertSnippet(snippet.body);
           }}
+        />
+
+        <ScriptRunDialog
+          open={scriptDialogOpen}
+          onOpenChange={setScriptDialogOpen}
+          statementCount={scriptSplit.statements.length}
+          mode={scriptMode}
+          unterminated={scriptSplit.unterminated}
+          onConfirm={() => {
+            setScriptDialogOpen(false);
+            void runScript(scriptMode);
+          }}
+        />
+
+        <TabSearchDialog
+          open={tabSearchOpen}
+          onOpenChange={setTabSearchOpen}
+          initialQuery={selectedSql}
+          currentTabId={tabId}
         />
 
         <CsvExportDialog

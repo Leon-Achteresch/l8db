@@ -18,6 +18,7 @@ export type QueryTab = {
   savedSql?: string;
   fileMtime?: number | null;
   externalChange?: boolean;
+  bookmarks?: number[];
 };
 export type QueryFileInfo = { path: string; mtime: number | null };
 
@@ -99,6 +100,19 @@ interface TabsState {
   markQueryTabSaved: (id: string, mtime: number | null) => void;
   setQueryTabExternalChange: (id: string, changed: boolean, mtime?: number | null) => void;
   reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
+  toggleQueryBookmark: (id: string, line: number) => void;
+  setQueryBookmarks: (id: string, lines: number[]) => void;
+  clearQueryBookmarks: (id: string) => void;
+}
+
+export function normalizeBookmarks(lines: number[]): number[] {
+  return [...new Set(lines.filter((line) => Number.isInteger(line) && line > 0))].sort(
+    (a, b) => a - b,
+  );
+}
+
+export function queryTabBookmarks(tab: QueryTab): number[] {
+  return normalizeBookmarks(tab.bookmarks ?? []);
 }
 
 function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[] {
@@ -369,6 +383,32 @@ export const useTableTabs = create<TabsState>()(
             state,
           ),
         ),
+
+      toggleQueryBookmark: (id, line) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          const current = queryTabBookmarks(tab);
+          const next = current.includes(line)
+            ? current.filter((entry) => entry !== line)
+            : normalizeBookmarks([...current, line]);
+          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+        }),
+
+      setQueryBookmarks: (id, lines) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          const next = normalizeBookmarks(lines);
+          const current = queryTabBookmarks(tab);
+          if (next.length === current.length && next.every((line, i) => line === current[i])) {
+            return state;
+          }
+          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+        }),
+
+      clearQueryBookmarks: (id) =>
+        set((state) => storeFor(patchQueryTab(state.tabs, id, { bookmarks: [] }), state)),
     }),
     {
       name: "l8db.table-tabs",
