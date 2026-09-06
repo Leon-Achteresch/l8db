@@ -4,8 +4,18 @@ import {
   language as sqlLanguage,
 } from "monaco-editor/esm/vs/basic-languages/sql/sql";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import { format } from "sql-formatter";
+import { toast } from "sonner";
+import { useConnectionsStore } from "@/lib/connections";
+import type { DatabaseKind } from "@/lib/db";
+import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
+import {
+  formatSqlWith,
+  sqlDialectForKind,
+  supportsSqlFormatting,
+  type SqlDialect,
+  type SqlFormatOptions,
+} from "@/lib/sql-format";
 
 const globalScope = self as unknown as {
   MonacoEnvironment?: monaco.Environment;
@@ -94,44 +104,62 @@ monaco.editor.defineTheme("l8db-dark", {
   },
 });
 
-export function formatSql(sql: string): string {
+function activeConnectionKind(): DatabaseKind | null {
+  const { connections, activeId } = useConnectionsStore.getState();
+  return connections.find((connection) => connection.id === activeId)?.kind ?? null;
+}
+
+export function activeSqlDialect(): SqlDialect {
+  return sqlDialectForKind(activeConnectionKind());
+}
+
+export function isSqlFormattingAvailable(): boolean {
+  const kind = activeConnectionKind();
+  if (!kind) return true;
+  return supportsSqlFormatting(capabilitiesFor(kind).query_language);
+}
+
+function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
   const { editorTabSize, editorKeywordCase } = useSettingsStore.getState();
-  return format(sql, {
-    language: "postgresql",
+  return {
+    dialect: dialect ?? activeSqlDialect(),
     tabWidth: editorTabSize ?? 2,
     keywordCase: editorKeywordCase ?? "upper",
-    linesBetweenQueries: 2,
-  });
+  };
+}
+
+export function formatSql(sql: string, dialect?: SqlDialect): string {
+  const result = formatSqlWith(sql, currentFormatOptions(dialect));
+  if (!result.ok) throw new Error(result.reason);
+  return result.sql;
+}
+
+function reportFormatError(reason: string): void {
+  toast.error("SQL-Formatierung fehlgeschlagen", { description: reason });
 }
 
 for (const lang of ["sql", "plsql"]) {
   monaco.languages.registerDocumentFormattingEditProvider(lang, {
     provideDocumentFormattingEdits(model) {
-      try {
-        return [
-          {
-            range: model.getFullModelRange(),
-            text: formatSql(model.getValue()),
-          },
-        ];
-      } catch {
+      if (!isSqlFormattingAvailable()) return [];
+      const result = formatSqlWith(model.getValue(), currentFormatOptions());
+      if (!result.ok) {
+        reportFormatError(result.reason);
         return [];
       }
+      return [{ range: model.getFullModelRange(), text: result.sql }];
     },
   });
 
   monaco.languages.registerDocumentRangeFormattingEditProvider(lang, {
     provideDocumentRangeFormattingEdits(model, range) {
-      try {
-        return [
-          {
-            range,
-            text: formatSql(model.getValueInRange(range)),
-          },
-        ];
-      } catch {
+      if (!isSqlFormattingAvailable()) return [];
+      const result = formatSqlWith(model.getValueInRange(range), currentFormatOptions());
+      if (!result.ok) {
+        reportFormatError(result.reason);
         return [];
       }
+      return [{ range, text: result.sql }];
     },
   });
 }
@@ -139,9 +167,17 @@ for (const lang of ["sql", "plsql"]) {
 export function addSqlFormatAction(
   editor: monaco.editor.IStandaloneCodeEditor,
 ): monaco.IDisposable {
-  return editor.addAction({
+  const available = editor.createContextKey<boolean>(
+    "l8dbSqlFormattable",
+    isSqlFormattingAvailable(),
+  );
+  const unsubscribe = useConnectionsStore.subscribe(() => {
+    available.set(isSqlFormattingAvailable());
+  });
+  const action = editor.addAction({
     id: "l8db.format-sql",
     label: "SQL-Syntax formatieren",
+    precondition: "l8dbSqlFormattable",
     keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
     contextMenuGroupId: "1_modification",
     contextMenuOrder: 1.5,
@@ -149,6 +185,12 @@ export function addSqlFormatAction(
       void ed.getAction("editor.action.formatDocument")?.run();
     },
   });
+  return {
+    dispose() {
+      unsubscribe();
+      action.dispose();
+    },
+  };
 }
 
 export { monaco };
