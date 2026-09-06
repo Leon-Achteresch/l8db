@@ -13,7 +13,7 @@ jobs:
     name: Tag matches sources
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: node scripts/version.mjs check-tag ${{ github.ref_name }}
 
   release:
@@ -31,7 +31,7 @@ jobs:
             args: ""
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Tauri system dependencies
         if: runner.os == 'Linux'
         run: |
