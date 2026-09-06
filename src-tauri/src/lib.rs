@@ -61,6 +61,8 @@ pub fn run() {
             db::commands::list_table_columns_detailed,
             db::commands::list_import_columns,
             db::commands::csv_import,
+            db::commands::export_table_csv,
+            db::commands::cancel_table_export,
             db::commands::add_column,
             db::commands::alter_column,
             db::commands::drop_column,

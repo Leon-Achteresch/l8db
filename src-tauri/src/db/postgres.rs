@@ -485,6 +485,144 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn export_table_csv(
+        &self,
+        request: &super::export::TableExportRequest,
+        progress: &(dyn Fn(i64) + Send + Sync),
+    ) -> Result<super::export::TableExportOutcome, String> {
+        use super::export;
+
+        export::validate_csv_options(&request.options)?;
+        let trimmed = request.filter.as_deref().map(str::trim).filter(|f| !f.is_empty());
+        if !request.allow_raw_filter {
+            if let Some(expression) = trimmed {
+                validate_table_filter(expression)?;
+            }
+        }
+
+        let conn = self.get_conn().await?;
+        let column_rows = conn
+            .query(
+                "SELECT column_name \
+                 FROM information_schema.columns \
+                 WHERE table_schema = $1 AND table_name = $2 \
+                 ORDER BY ordinal_position",
+                &[&request.schema.as_str(), &request.table.as_str()],
+            )
+            .await
+            .map_err(map_pg_err)?;
+        let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+        if columns.is_empty() {
+            return Err("Keine Spalten für den Export gefunden.".to_string());
+        }
+
+        let where_clause = match trimmed {
+            Some(expression) => format!(" WHERE {expression}"),
+            None => String::new(),
+        };
+        let mut order_parts: Vec<String> = Vec::new();
+        if let Some(column) = request.order_by.as_deref() {
+            if columns.iter().any(|name| name == column) {
+                let direction = if request.order_desc { "DESC" } else { "ASC" };
+                order_parts.push(format!("t.{} {}", quote_ident(column), direction));
+            }
+        }
+        if !request.is_view {
+            order_parts.push("t.ctid".to_string());
+        }
+        let order_clause = if order_parts.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", order_parts.join(", "))
+        };
+        let sql = format!(
+            "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
+            quote_ident(&request.schema),
+            quote_ident(&request.table),
+            where_clause,
+            order_clause,
+        );
+
+        conn.batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await
+            .map_err(map_pg_err)?;
+
+        let max_rows = export::effective_max_rows(request.max_rows);
+        let mut writer = match export::CsvFileWriter::create(&request.path, &request.options) {
+            Ok(writer) => writer,
+            Err(e) => {
+                let _ = conn.batch_execute("COMMIT").await;
+                return Err(e);
+            }
+        };
+
+        let mut total: i64 = 0;
+        let mut offset: i64 = 0;
+        let mut truncated = false;
+        let mut failure: Option<String> = None;
+        let mut cancelled = false;
+
+        if let Err(e) = writer.write_header(&columns) {
+            failure = Some(e);
+        }
+
+        while failure.is_none() && !cancelled {
+            if export::is_cancelled(&request.job_id) {
+                cancelled = true;
+                break;
+            }
+            let remaining = max_rows - total;
+            if remaining <= 0 {
+                truncated = true;
+                break;
+            }
+            let batch = remaining.min(export::EXPORT_BATCH_ROWS);
+            let data_rows = match conn.query(&sql, &[&batch, &offset]).await {
+                Ok(rows) => rows,
+                Err(e) => {
+                    failure = Some(map_pg_err(e));
+                    break;
+                }
+            };
+            let fetched = data_rows.len() as i64;
+            for row in &data_rows {
+                let value: serde_json::Value = row.get(0);
+                let line = export::csv_row_line(&columns, &value, &request.masks, &request.options);
+                if let Err(e) = writer.write_line(&line) {
+                    failure = Some(e);
+                    break;
+                }
+            }
+            if failure.is_some() {
+                break;
+            }
+            total += fetched;
+            offset += fetched;
+            progress(total);
+            if fetched < batch {
+                break;
+            }
+        }
+
+        let _ = conn.batch_execute("COMMIT").await;
+
+        if cancelled {
+            writer.abort();
+            export::clear_cancel(&request.job_id);
+            return Err("Export abgebrochen.".to_string());
+        }
+        if let Some(message) = failure {
+            writer.abort();
+            return Err(message);
+        }
+        writer.finish()?;
+        Ok(export::TableExportOutcome {
+            rows: total,
+            path: request.path.clone(),
+            truncated,
+        })
+    }
+
     async fn count_rows(
         &self,
         schema: &str,

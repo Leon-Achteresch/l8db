@@ -41,6 +41,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   column_search: true,
   source_search: true,
   schema_snapshot: true,
+  full_table_export: true,
   ssl: true,
   ssh: true,
   query_language: "sql",
@@ -85,6 +86,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      full_table_export: false,
       csv_import: false,
       schema_snapshot: false,
     },
@@ -105,6 +107,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      full_table_export: false,
       csv_import: false,
       schema_snapshot: false,
     },
@@ -125,6 +128,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      full_table_export: false,
       schema_snapshot: false,
       csv_import: false,
       ssl: false,
@@ -147,6 +151,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...POSTGRES_CAPABILITIES,
       read_only_mode: false,
+      full_table_export: false,
       schema_snapshot: false,
       csv_import: false,
       ssl: false,

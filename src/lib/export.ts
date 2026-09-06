@@ -87,6 +87,38 @@ export function csvPreview(
   return serializeCsv(columns, rows.slice(0, limit), { ...options, bom: false });
 }
 
+export type MaskMode = "text" | "null";
+
+export interface ColumnMask {
+  column: string;
+  mode: MaskMode;
+  text?: string | null;
+}
+
+export const DEFAULT_MASK_TEXT = "***";
+
+export function maskedValue(column: string, value: unknown, masks: ColumnMask[]): unknown {
+  const mask = masks.find((m) => m.column === column);
+  if (!mask) return value;
+  if (mask.mode === "null") return null;
+  return mask.text ?? "";
+}
+
+export function applyMasks(
+  columns: string[],
+  rows: Record<string, unknown>[],
+  masks: ColumnMask[],
+): Record<string, unknown>[] {
+  if (masks.length === 0) return rows;
+  return rows.map((row) => {
+    const out: Record<string, unknown> = { ...row };
+    for (const column of columns) {
+      out[column] = maskedValue(column, row[column], masks);
+    }
+    return out;
+  });
+}
+
 export function parseCsv(text: string, options: CsvOptions): string[][] {
   const input = text.startsWith("\uFEFF") ? text.slice(1) : text;
   const rows: string[][] = [];
