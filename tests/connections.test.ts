@@ -342,4 +342,23 @@ describe("Oracle Key-Value", () => {
     );
     expect(extractUrlPassword(kv)).toBe("XXX");
   });
+  test("maps Oracle network errors to actionable messages", () => {
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12514: TNS:listener does not know of service"),
+    ).toContain("ORA-12514");
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12541: TNS:no listener"),
+    ).toContain("ORA-12541");
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12545: Connect failed because target host does not exist"),
+    ).toContain("ORA-12545");
+    expect(
+      connectionError(
+        "Oracle-Host csorastby.rzhit.win:1521 antwortet nicht (TCP-Timeout nach 8 s). Prüfe VPN, Firewall und Hostnamen.",
+      ),
+    ).toContain("TCP-Timeout nach 8 s");
+    expect(
+      connectionError("Oracle-Host db.internal kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN."),
+    ).toContain("DNS");
+  });
 });

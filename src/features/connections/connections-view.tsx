@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useConnectionsStore } from "@/lib/connections";
-import { activateConnectionWithToast } from "@/lib/ssh";
+import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { ConnectionAddTile } from "./connection-add-tile";
@@ -26,21 +26,18 @@ export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeId = useConnectionsStore((state) => state.activeId);
   const [editorId, setEditorId] = useState<string | null>(connections.length ? null : "new");
-  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
+  const switchTargetId = useConnectionSwitch((state) => state.targetId);
+  const connectingId = isSwitching ? (switchTargetId ?? "disconnect") : null;
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
 
   async function connect(id: string | null) {
-    if (connectingId) return;
-    setConnectingId(id ?? "disconnect");
-    try {
-      if (await activateConnectionWithToast(id)) {
-        await navigate({ to: "/" });
-      }
-    } finally {
-      setConnectingId(null);
+    if (useConnectionSwitch.getState().isSwitching) return;
+    if (await activateConnectionWithToast(id)) {
+      await navigate({ to: "/" });
     }
   }
 

@@ -33,7 +33,7 @@ Zeilenbearbeitung und Transaktionen gibt es für PostgreSQL (`ctid`-basiert), Or
 - Netzwerk-Datenbanken: `schema://user:passwort@host:port/datenbank?optionen` mit den Schemata aus `url_schemes()` (z. B. `mysql://`, `mssql://`, `clickhouse://`, `mongodb+srv://`, `redis://`, `oracle://host:1521/SERVICE`, `cassandra://`).
 - Dateibasierte Datenbanken: absoluter Pfad, `~/pfad`, `:memory:` oder `sqlite:/pfad`. Das Frontend speichert `sqlite:/absoluter/pfad`.
 - ODBC: `odbc://user:pw@host:port/db?Driver=Name&Option=Wert` wird in einen ODBC-Connection-String übersetzt.
-- Oracle versteht zusätzlich ODP.NET-Key-Value (`User Id=scott;Password=tiger;Data Source=host:1521/service`, auch TNS-Deskriptor oder -Alias als Data Source). Das Frontend normalisiert nach `oracle://` und nutzt `?connect_string=` für Aliase.
+- Oracle versteht zusätzlich ODP.NET-Key-Value (`User Id=scott;Password=tiger;Data Source=host:1521/service`, auch TNS-Deskriptor oder -Alias als Data Source). Das Frontend normalisiert nach `oracle://` und nutzt `?connect_string=` für Aliase. Vor dem ODPI-Connect prüft das Backend per TCP-Dial (8 s Timeout), ob Host und Port erreichbar sind.
 - SSL: `sslmode=` gilt für PostgreSQL, MySQL und SQL Server. Andere Familien nutzen ihre eigenen Parameter (`tls=true`, `rediss://`, `secure=1`).
 - SQL Server: `encrypt=false` verbindet ohne TLS, `encrypt=true&trust_server_certificate=true` akzeptiert selbstsignierte Zertifikate (TLS über `rustls`, damit der Handshake auch auf macOS funktioniert).
 - Cassandra in Docker: Der Treiber verbindet sich nach dem ersten Kontakt mit der Adresse aus `system.local`. Container deshalb mit `-e CASSANDRA_BROADCAST_RPC_ADDRESS=127.0.0.1 -p 9042:9042` starten.

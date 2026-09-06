@@ -123,12 +123,15 @@ import {
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
-import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
+import { activateConnectionWithToast, effectiveConnectionString, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
+  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
+  const switchTargetId = useConnectionSwitch((state) => state.targetId);
+  const switchTarget = connections.find((connection) => connection.id === switchTargetId);
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
@@ -216,7 +219,9 @@ export function AppSidebarPanel() {
               type="button"
               className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              {activeConnection ? (
+              {isSwitching ? (
+                <Spinner className="size-4 shrink-0" />
+              ) : activeConnection ? (
                 <ProviderLogo
                   providerId={providerFor(activeConnection).id}
                   kind={activeConnection.kind}
@@ -227,17 +232,25 @@ export function AppSidebarPanel() {
               )}
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="truncate">
-                  {activeConnection ? activeConnection.name : "Keine Verbindung"}
+                  {isSwitching
+                    ? switchTarget
+                      ? `Verbinde… ${switchTarget.name}`
+                      : "Verbinde…"
+                    : activeConnection
+                      ? activeConnection.name
+                      : "Keine Verbindung"}
                 </span>
-                {activeConnection?.tags?.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                    style={{ backgroundColor: tag.color }}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+                {isSwitching
+                  ? null
+                  : activeConnection?.tags?.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
               </span>
               <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -253,7 +266,10 @@ export function AppSidebarPanel() {
               connections.map((connection) => (
                 <DropdownMenuItem
                   key={connection.id}
+                  disabled={isSwitching}
                   onSelect={() => {
+                    if (useConnectionSwitch.getState().isSwitching) return;
+                    if (connection.id === activeConnection?.id) return;
                     void activateConnectionWithToast(connection.id).then((ok) => {
                       if (ok) void navigate({ to: "/" });
                     });
@@ -272,7 +288,11 @@ export function AppSidebarPanel() {
                       </span>
                     ))}
                   </span>
-                  {connection.id === activeConnection?.id ? <CheckIcon className="size-4" /> : null}
+                  {isSwitching && switchTargetId === connection.id ? (
+                    <Spinner className="size-4" />
+                  ) : connection.id === activeConnection?.id ? (
+                    <CheckIcon className="size-4" />
+                  ) : null}
                 </DropdownMenuItem>
               ))
             )}

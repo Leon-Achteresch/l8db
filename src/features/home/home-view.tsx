@@ -1,17 +1,19 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { activateConnectionWithToast } from "@/lib/ssh";
+import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { ConnectedDashboard } from "./connected-dashboard";
 
 export function HomeView() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
-  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
+  const switchTargetId = useConnectionSwitch((state) => state.targetId);
+  const connectingId = isSwitching ? switchTargetId : null;
   const navigate = useNavigate();
   useEffect(() => {
     if (!connections.length) void navigate({ to: "/connections" });
@@ -35,14 +37,9 @@ export function HomeView() {
               <button
                 type="button"
                 key={connection.id}
-                disabled={Boolean(connectingId)}
-                onClick={async () => {
-                  setConnectingId(connection.id);
-                  try {
-                    await activateConnectionWithToast(connection.id);
-                  } finally {
-                    setConnectingId(null);
-                  }
+                disabled={isSwitching}
+                onClick={() => {
+                  void activateConnectionWithToast(connection.id);
                 }}
                 className="flex w-full items-center gap-3 rounded-2xl border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/45 disabled:opacity-60"
               >

@@ -10,6 +10,7 @@ import {
 export { closeSshTunnel, listSshTunnels, openSshTunnel } from "@/lib/db";
 
 import { toast } from "sonner";
+import { create } from "zustand";
 
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { loadSecret } from "@/lib/secrets";
@@ -160,62 +161,77 @@ export async function ensureSshTunnel(
   }
 }
 
+interface ConnectionSwitchState {
+  targetId: string | null;
+  isSwitching: boolean;
+}
+
+export const useConnectionSwitch = create<ConnectionSwitchState>(() => ({
+  targetId: null,
+  isSwitching: false,
+}));
+
 async function performActivation(
   id: string | null,
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
-  const store = useConnectionsStore.getState();
-  const previous = store.connections.find((entry) => entry.id === store.activeId);
-  const next = id ? store.connections.find((entry) => entry.id === id) : undefined;
-  if (previous && previous.id !== id && getTransactionForConnection(previous.id)) {
-    return {
-      ok: false,
-      error:
-        "Schließe zuerst die offene Transaktion ab: Übernehmen oder Zurückrollen im Transaktionspanel.",
-    };
-  }
-  if (id && !next) return { ok: false, error: "Verbindung nicht gefunden." };
-  if (next?.ssh?.host) {
-    const outcome = await ensureSshTunnel(next, sshPassword);
-    if (!outcome.ok) return outcome;
-  }
-  if (next) {
-    try {
-      const current = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
-      if (!current) return { ok: false, error: "Verbindung wurde entfernt." };
-      await testConnectionString(current.kind, effectiveConnectionString(current));
-      if (useConnectionsStore.getState().connections.find((entry) => entry.id === id) !== current) {
-        return {
-          ok: false,
-          error: "Die Verbindung wurde während des Tests geändert. Bitte erneut verbinden.",
-        };
-      }
-    } catch (error) {
-      if (next.ssh?.host && previous?.id !== next.id) {
-        await closeSshTunnel(next.id).catch(() => undefined);
-        useConnectionsStore.setState((state) => ({
-          connections: state.connections.map((entry) =>
-            entry.id === next.id ? { ...entry, tunnelPort: null } : entry,
-          ),
-        }));
-      }
-      return { ok: false, error: connectionError(error) };
+  useConnectionSwitch.setState({ targetId: id, isSwitching: true });
+  try {
+    const store = useConnectionsStore.getState();
+    const previous = store.connections.find((entry) => entry.id === store.activeId);
+    const next = id ? store.connections.find((entry) => entry.id === id) : undefined;
+    if (previous && previous.id !== id && getTransactionForConnection(previous.id)) {
+      return {
+        ok: false,
+        error:
+          "Schließe zuerst die offene Transaktion ab: Übernehmen oder Zurückrollen im Transaktionspanel.",
+      };
     }
-  }
-  if (previous?.tunnelPort && previous.id !== id) {
-    try {
-      await closeSshTunnel(previous.id);
-    } catch {
-      toast.warning("Der bisherige SSH-Tunnel konnte nicht geschlossen werden.");
+    if (id && !next) return { ok: false, error: "Verbindung nicht gefunden." };
+    if (next?.ssh?.host) {
+      const outcome = await ensureSshTunnel(next, sshPassword);
+      if (!outcome.ok) return outcome;
     }
-    useConnectionsStore.setState((state) => ({
-      connections: state.connections.map((entry) =>
-        entry.id === previous.id ? { ...entry, tunnelPort: null } : entry,
-      ),
-    }));
+    if (next) {
+      try {
+        const current = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+        if (!current) return { ok: false, error: "Verbindung wurde entfernt." };
+        await testConnectionString(current.kind, effectiveConnectionString(current));
+        if (useConnectionsStore.getState().connections.find((entry) => entry.id === id) !== current) {
+          return {
+            ok: false,
+            error: "Die Verbindung wurde während des Tests geändert. Bitte erneut verbinden.",
+          };
+        }
+      } catch (error) {
+        if (next.ssh?.host && previous?.id !== next.id) {
+          await closeSshTunnel(next.id).catch(() => undefined);
+          useConnectionsStore.setState((state) => ({
+            connections: state.connections.map((entry) =>
+              entry.id === next.id ? { ...entry, tunnelPort: null } : entry,
+            ),
+          }));
+        }
+        return { ok: false, error: connectionError(error) };
+      }
+    }
+    if (previous?.tunnelPort && previous.id !== id) {
+      try {
+        await closeSshTunnel(previous.id);
+      } catch {
+        toast.warning("Der bisherige SSH-Tunnel konnte nicht geschlossen werden.");
+      }
+      useConnectionsStore.setState((state) => ({
+        connections: state.connections.map((entry) =>
+          entry.id === previous.id ? { ...entry, tunnelPort: null } : entry,
+        ),
+      }));
+    }
+    store.setActiveId(id);
+    return { ok: true };
+  } finally {
+    useConnectionSwitch.setState({ targetId: null, isSwitching: false });
   }
-  store.setActiveId(id);
-  return { ok: true };
 }
 
 let activationQueue: Promise<unknown> = Promise.resolve();
@@ -233,9 +249,19 @@ export async function activateConnectionWithToast(
   id: string | null,
   sshPassword?: string | null,
 ): Promise<boolean> {
+  const target = id
+    ? useConnectionsStore.getState().connections.find((entry) => entry.id === id)
+    : null;
+  const label = target?.name ?? "Verbindung";
+  const pending = id ? toast.loading(`Verbinde mit „${label}“…`) : toast.loading("Trenne Verbindung…");
   const outcome = await activateConnection(id, sshPassword);
+  toast.dismiss(pending);
   if (!outcome.ok) {
     toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
+  } else if (id) {
+    toast.success(`Mit „${label}“ verbunden`);
+  } else {
+    toast.success("Verbindung getrennt");
   }
   return outcome.ok;
 }
