@@ -12,7 +12,11 @@ export { closeSshTunnel, listSshTunnels, openSshTunnel } from "@/lib/db";
 import { toast } from "sonner";
 import { create } from "zustand";
 
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  isReadOnlyConnection,
+  type SavedConnection,
+  useConnectionsStore,
+} from "@/lib/connections";
 import { loadSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
@@ -77,15 +81,27 @@ export function tunneledConnectionString(
   return url.toString();
 }
 
+export const READ_ONLY_OPTION = "-c default_transaction_read_only=on";
+
+export function readOnlyConnectionString(value: string): string {
+  const url = new URL(value);
+  const params = url.search
+    .slice(1)
+    .split("&")
+    .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "options");
+  params.push(`options=${encodeURIComponent(READ_ONLY_OPTION)}`);
+  url.search = params.join("&");
+  return url.toString();
+}
+
 export function effectiveConnectionString(connection: SavedConnection): string {
-  if (!connection.ssh?.host) return connection.connectionString;
+  const base = isReadOnlyConnection(connection)
+    ? readOnlyConnectionString(connection.connectionString)
+    : connection.connectionString;
+  if (!connection.ssh?.host) return base;
   if (!connection.tunnelPort)
     throw new Error("SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden.");
-  return tunneledConnectionString(
-    connection.connectionString,
-    connection.tunnelPort,
-    connection.kind,
-  );
+  return tunneledConnectionString(base, connection.tunnelPort, connection.kind);
 }
 
 interface TunnelOutcome {

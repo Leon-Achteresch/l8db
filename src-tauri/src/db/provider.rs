@@ -45,6 +45,7 @@ pub struct Capabilities {
     pub explain: bool,
     pub overview: bool,
     pub sql_filter: bool,
+    pub read_only_mode: bool,
     pub ssl: bool,
     pub ssh: bool,
     pub query_language: &'static str,
@@ -79,6 +80,7 @@ const NONE: Capabilities = Capabilities {
     explain: false,
     overview: false,
     sql_filter: true,
+    read_only_mode: false,
     ssl: true,
     ssh: true,
     query_language: "sql",
@@ -119,6 +121,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                read_only_mode: true,
                 materialized_views: true,
                 extensions: true,
                 roles: true,

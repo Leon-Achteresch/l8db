@@ -278,6 +278,12 @@ pub async fn begin_transaction(
     pool_state: tauri::State<'_, PoolState>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<String, String> {
+    if super::connection::connection_string_is_read_only(&connection_string) {
+        return Err(
+            "Lesemodus: Transaktionen mit Schreibzugriff sind für diese Verbindung gesperrt."
+                .to_string(),
+        );
+    }
     tx_state
         .begin(
             kind,

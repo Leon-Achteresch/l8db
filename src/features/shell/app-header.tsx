@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
+import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
@@ -96,6 +97,7 @@ export function AppHeader() {
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           <ConnectionColorBadge variant="header" />
+          <ReadOnlyBadge />
           <div className="min-w-0 flex-1">
             <AppHeaderSearch />
           </div>
