@@ -259,10 +259,7 @@ export function AppSidebarPanel() {
                     });
                   }}
                 >
-                  <ProviderLogo
-                    providerId={providerFor(connection).id}
-                    kind={connection.kind}
-                  />
+                  <ProviderLogo providerId={providerFor(connection).id} kind={connection.kind} />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
                     <span className="truncate">{connection.name}</span>
                     {connection.tags?.map((tag, index) => (
