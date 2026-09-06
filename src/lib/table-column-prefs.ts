@@ -5,6 +5,13 @@ import { persist } from "zustand/middleware";
 export type TableColumnPref = {
   order: string[];
   hidden: string[];
+  pinned?: string[];
+};
+
+export type ResolvedColumnPref = {
+  order: string[];
+  hidden: string[];
+  pinned: string[];
 };
 
 interface TableColumnPrefsState {
@@ -20,16 +27,33 @@ export function tableColumnPrefKey(connectionId: string, schema: string, table: 
 export function resolveColumnPrefs(
   columns: string[],
   saved: TableColumnPref | undefined,
-): TableColumnPref {
+): ResolvedColumnPref {
   const known = new Set(columns);
   const savedOrder = saved?.order?.filter((column) => known.has(column)) ?? [];
   const savedSet = new Set(savedOrder);
-  const order = [...savedOrder, ...columns.filter((column) => !savedSet.has(column))];
+  const baseOrder = [...savedOrder, ...columns.filter((column) => !savedSet.has(column))];
+  const pinned: string[] = [];
+  for (const column of saved?.pinned ?? []) {
+    if (known.has(column) && !pinned.includes(column)) pinned.push(column);
+  }
+  const pinnedSet = new Set(pinned);
+  const order = [...pinned, ...baseOrder.filter((column) => !pinnedSet.has(column))];
   const hidden = (saved?.hidden ?? []).filter((column) => known.has(column));
   if (order.length > 0 && hidden.length >= order.length) {
-    return { order, hidden: hidden.filter((column) => column !== order[0]) };
+    return { order, hidden: hidden.filter((column) => column !== order[0]), pinned };
   }
-  return { order, hidden };
+  return { order, hidden, pinned };
+}
+
+export function togglePinnedColumn(order: string[], pinned: string[], column: string): string[] {
+  if (!order.includes(column)) return pinned;
+  if (pinned.includes(column)) return pinned.filter((entry) => entry !== column);
+  return [...pinned, column];
+}
+
+export function formatVisibleColumnNames(order: string[], hidden: string[]): string {
+  const hiddenSet = new Set(hidden);
+  return order.filter((column) => !hiddenSet.has(column) && !/^__.*__$/.test(column)).join(", ");
 }
 
 export function reorderVisibleColumns(
@@ -126,16 +150,23 @@ export function useTableColumnLayout(
 
   const setOrder = useCallback(
     (order: string[]) => {
-      write({ order, hidden: resolved.hidden });
+      write({ order, hidden: resolved.hidden, pinned: resolved.pinned });
     },
-    [write, resolved.hidden],
+    [write, resolved.hidden, resolved.pinned],
   );
 
   const setHidden = useCallback(
     (hidden: string[]) => {
-      write({ order: resolved.order, hidden });
+      write({ order: resolved.order, hidden, pinned: resolved.pinned });
     },
-    [write, resolved.order],
+    [write, resolved.order, resolved.pinned],
+  );
+
+  const setPinned = useCallback(
+    (pinned: string[]) => {
+      write({ order: resolved.order, hidden: resolved.hidden, pinned });
+    },
+    [write, resolved.order, resolved.hidden],
   );
 
   const reset = useCallback(() => {
@@ -149,8 +180,10 @@ export function useTableColumnLayout(
   return {
     order: resolved.order,
     hidden: resolved.hidden,
+    pinned: resolved.pinned,
     setOrder,
     setHidden,
+    setPinned,
     reset,
     isCustomized: source !== undefined,
   };

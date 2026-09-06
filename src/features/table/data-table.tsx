@@ -3,6 +3,7 @@ import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import {
   type ColumnDef,
+  type ColumnPinningState,
   flexRender,
   getCoreRowModel,
   type HeaderContext,
@@ -32,8 +33,10 @@ import {
   LinkIcon,
   Loader2Icon,
   Maximize2Icon,
+  SearchIcon,
   Trash2Icon,
   TypeIcon,
+  XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -53,11 +56,19 @@ import { DataTableHeaderName } from "@/features/table/data-table-header-name";
 import { useActiveConnection } from "@/lib/connections";
 import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import {
+  describeGridSearch,
+  findGridMatches,
+  gridMatchKey,
+  stepMatchIndex,
+} from "@/lib/grid-search";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
+  formatVisibleColumnNames,
   reorderVisibleColumns,
   toggleHiddenColumn,
+  togglePinnedColumn,
   useTableColumnLayout,
 } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
@@ -443,12 +454,8 @@ export function DataTable({
   onDeleteRow,
 }: DataTableProps) {
   const connection = useActiveConnection();
-  const { order, hidden, setOrder, setHidden, reset, isCustomized } = useTableColumnLayout(
-    connection?.id,
-    currentSchema,
-    currentTable,
-    columnNames,
-  );
+  const { order, hidden, pinned, setOrder, setHidden, setPinned, reset, isCustomized } =
+    useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(
     null,
@@ -458,7 +465,12 @@ export function DataTable({
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
   const [filterOperator, setFilterOperator] = useState("eq");
   const [filterValue, setFilterValue] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const fkByColumn = useMemo(() => {
     if (!foreignKeys || !currentSchema || !currentTable) return new Map<string, ForeignKeyInfo>();
@@ -595,11 +607,33 @@ export function DataTable({
     () => Object.fromEntries(hidden.map((column) => [column, false])),
     [hidden],
   );
+  const searchColumns = useMemo(() => {
+    const hiddenSet = new Set(hidden);
+    return order.filter((column) => !hiddenSet.has(column));
+  }, [order, hidden]);
+  const columnPinning = useMemo<ColumnPinningState>(() => {
+    const hiddenSet = new Set(hidden);
+    return {
+      left: [INDEX_COLUMN, ...pinned.filter((column) => !hiddenSet.has(column))],
+      right: [],
+    };
+  }, [pinned, hidden]);
+  const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
+  const matches = useMemo(
+    () => (searchOpen ? findGridMatches(data, searchColumns, searchQuery) : []),
+    [searchOpen, data, searchColumns, searchQuery],
+  );
+  const matchKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const match of matches) keys.add(gridMatchKey(match.rowIndex, match.columnId));
+    return keys;
+  }, [matches]);
+  const activeMatch = matches[matchIndex] ?? null;
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnOrder, columnVisibility },
+    state: { sorting, columnOrder, columnVisibility, columnPinning },
     onSortingChange,
     manualSorting: true,
     columnResizeMode: "onChange",
@@ -698,6 +732,58 @@ export function DataTable({
     });
   }, [editingCell]);
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setMatchIndex(0);
+  }, []);
+
+  const stepMatch = useCallback(
+    (step: number) => {
+      setMatchIndex((current) => stepMatchIndex(current, matches.length, step));
+    },
+    [matches.length],
+  );
+
+  const copyColumnNames = useCallback(() => {
+    const names = formatVisibleColumnNames(order, hidden);
+    if (names === "") return;
+    void navigator.clipboard.writeText(names);
+    toast.success("Spaltennamen kopiert.");
+  }, [order, hidden]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Treffer neu zählen bei Query- oder Datenwechsel
+  useEffect(() => {
+    setMatchIndex(0);
+  }, [searchQuery, data]);
+
+  useEffect(() => {
+    if (!activeMatch) return;
+    setActiveCell({ rowIndex: activeMatch.rowIndex, columnId: activeMatch.columnId });
+    const tbody = tbodyRef.current;
+    if (!tbody) return;
+    const cell = Array.from(tbody.querySelectorAll<HTMLTableCellElement>("td[data-col]")).find(
+      (element) =>
+        element.dataset.rowIndex === String(activeMatch.rowIndex) &&
+        element.dataset.col === activeMatch.columnId,
+    );
+    cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeMatch]);
+
+  useEffect(() => {
+    const handleSearchHotkey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "f") return;
+      const root = rootRef.current;
+      const focusInside = root?.contains(document.activeElement) ?? false;
+      if (!focusInside && activeCell === null) return;
+      e.preventDefault();
+      setSearchOpen(true);
+      requestAnimationFrame(() => searchInputRef.current?.select());
+    };
+    window.addEventListener("keydown", handleSearchHotkey);
+    return () => window.removeEventListener("keydown", handleSearchHotkey);
+  }, [activeCell]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingCell) {
@@ -712,6 +798,9 @@ export function DataTable({
         }
         return;
       }
+
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
 
       if (!activeCell) return;
       const { rowIndex, columnId } = activeCell;
@@ -784,10 +873,68 @@ export function DataTable({
   };
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col relative", className)}>
+    <div ref={rootRef} className={cn("flex min-h-0 flex-1 flex-col relative", className)}>
       {isFetching && (
         <div className="absolute top-0 left-0 right-0 z-50 h-0.5 w-full bg-primary/20 overflow-hidden">
           <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />
+        </div>
+      )}
+      {searchOpen && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
+          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            // biome-ignore lint/a11y/noAutofocus: Suchfeld wird gezielt geöffnet
+            autoFocus
+            placeholder="In geladenen Zeilen suchen…"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeSearch();
+                return;
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                stepMatch(event.shiftKey ? -1 : 1);
+              }
+            }}
+            className="h-6 min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground/60"
+          />
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {describeGridSearch(matches.length, matchIndex)}
+          </span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {data.length} geladene {data.length === 1 ? "Zeile" : "Zeilen"} · {searchColumns.length}{" "}
+            sichtbare Spalten
+          </span>
+          <button
+            type="button"
+            title="Vorheriger Treffer"
+            disabled={matches.length === 0}
+            onClick={() => stepMatch(-1)}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+          >
+            <ArrowUpIcon className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Nächster Treffer"
+            disabled={matches.length === 0}
+            onClick={() => stepMatch(1)}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+          >
+            <ArrowDownIcon className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Suche schließen"
+            onClick={closeSearch}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent cursor-pointer"
+          >
+            <XIcon className="size-3.5" />
+          </button>
         </div>
       )}
       <div
@@ -839,6 +986,7 @@ export function DataTable({
                                 <DataTableColumnSettings
                                   columns={order}
                                   hidden={hidden}
+                                  pinned={pinned}
                                   isCustomized={isCustomized}
                                   onToggle={(column) =>
                                     setHidden(toggleHiddenColumn(order, hidden, column))
@@ -846,6 +994,8 @@ export function DataTable({
                                   onReorder={setOrder}
                                   onReset={reset}
                                   onShowAll={() => setHidden([])}
+                                  onUnpinAll={() => setPinned([])}
+                                  onCopyColumnNames={copyColumnNames}
                                 />
                               </ContextMenuContent>
                             </ContextMenu>
@@ -875,6 +1025,10 @@ export function DataTable({
                               setHidden(toggleHiddenColumn(order, hidden, header.id))
                             }
                             canHide={visibleDataColumns.length > 1}
+                            isPinned={pinnedSet.has(header.id)}
+                            onTogglePin={() =>
+                              setPinned(togglePinnedColumn(order, pinned, header.id))
+                            }
                           />
                         );
                       })}
@@ -916,6 +1070,13 @@ export function DataTable({
                             !isRowEditing &&
                             activeCell?.rowIndex === rowIndex &&
                             activeCell.columnId === columnId;
+                          const pinnedOffset =
+                            cellIndex > 0 && cell.column.getIsPinned() === "left"
+                              ? cell.column.getStart("left")
+                              : null;
+                          const isMatch = matchKeys.has(gridMatchKey(rowIndex, columnId));
+                          const isActiveMatch =
+                            activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;
 
                           if (isCellEditing && editingCell) {
                             return (
@@ -971,11 +1132,21 @@ export function DataTable({
                                     }
                                   : undefined
                               }
-                              style={{ width: cell.column.getSize() }}
+                              data-row-index={rowIndex}
+                              data-col={cellIndex > 0 ? columnId : undefined}
+                              style={{
+                                width: cell.column.getSize(),
+                                left: pinnedOffset ?? undefined,
+                              }}
                               className={cn(
                                 "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
                                 cellIndex === 0 &&
                                   "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
+                                pinnedOffset !== null &&
+                                  "sticky z-10 bg-inherit border-r border-border shadow-[1px_0_0_0_var(--border)]",
+                                isMatch && "bg-amber-400/15",
+                                isActiveMatch &&
+                                  "bg-amber-400/30 outline outline-2 -outline-offset-2 outline-amber-500 z-20",
                                 isActive &&
                                   "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
                                 !isActive && cellIndex > 0 && "hover:bg-muted/10",
