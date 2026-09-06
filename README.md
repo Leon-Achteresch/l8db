@@ -4,6 +4,7 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml/badge.svg)](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml)
 
 ---
 
@@ -127,7 +128,7 @@ src-tauri/src/
 - `DatabaseAdapter` trait in `src-tauri/src/db/mod.rs` is the extension point for additional DB engines.
 - Routes in `src/routes/` are thin: they wire `createFileRoute` to feature views. Route tree is auto-generated into `src/routeTree.gen.ts` — **do not edit it manually**.
 - Connections are persisted in `localStorage` under key `l8db.connections`.
-- PostgreSQL connections use `NoTls` — SSL is not supported yet.
+- PostgreSQL connections use `postgres-native-tls` (OS certificate store) with per-connection `ssl_mode`.
 - `fetch_table_rows` uses the configurable page size from settings (default 100). Builder-generated filters are validated server-side; raw SQL filter mode sends `allow_raw=true`.
 
 ---
@@ -138,6 +139,14 @@ src-tauri/src/
 2. Run `cargo check` and `cargo clippy` in `src-tauri/` before committing Rust changes.
 3. Run `npx tsc -p tsconfig.app.json --noEmit` to typecheck the frontend.
 4. Open a pull request with a clear description of the change.
+
+---
+
+## Operations
+
+- `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).
+- Releases: push a `v*` tag — GitHub Actions builds installers for macOS, Windows, and Linux plus `latest.json` for the in-app auto-updater. Full runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+- `SECURITY.md` describes supported versions and how to report vulnerabilities.
 
 ---
 
