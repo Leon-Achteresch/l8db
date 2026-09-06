@@ -1,6 +1,93 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type DatabaseKind = "postgres" | "mysql" | "sqlite";
+export type DatabaseKind =
+  | "postgres"
+  | "mysql"
+  | "sqlite"
+  | "mssql"
+  | "clickhouse"
+  | "mongodb"
+  | "redis"
+  | "oracle"
+  | "cassandra"
+  | "duckdb"
+  | "odbc";
+
+export interface Capabilities {
+  databases: boolean;
+  schemas: boolean;
+  views: boolean;
+  view_editor: boolean;
+  materialized_views: boolean;
+  functions: boolean;
+  extensions: boolean;
+  roles: boolean;
+  privileges: boolean;
+  sequences: boolean;
+  enums: boolean;
+  triggers: boolean;
+  indexes: boolean;
+  constraints: boolean;
+  foreign_keys: boolean;
+  rls: boolean;
+  partitions: boolean;
+  replication: boolean;
+  sessions: boolean;
+  locks: boolean;
+  transactions: boolean;
+  row_edit: boolean;
+  ddl: boolean;
+  alter_columns: boolean;
+  explain: boolean;
+  overview: boolean;
+  sql_filter: boolean;
+  ssl: boolean;
+  ssh: boolean;
+  query_language: "sql" | "cql" | "json" | "redis";
+  filter_hint: string;
+}
+
+export type Driver =
+  | { type: "builtin" }
+  | { type: "runtime_library"; library: string }
+  | { type: "odbc"; driver: string }
+  | { type: "cargo_feature"; feature: string };
+
+export interface InstallHint {
+  os: string;
+  command: string;
+  url: string;
+}
+
+export interface DriverStatus {
+  available: boolean;
+  detail: string;
+  install: InstallHint[];
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  group: string;
+  kind: DatabaseKind;
+  default_port: number | null;
+  file_based: boolean;
+  url_schemes: string[];
+  placeholder: string;
+  hint: string;
+  hosts: string[];
+  driver: Driver;
+  capabilities: Capabilities;
+  driver_status: DriverStatus;
+}
+
+export function listProviders(): Promise<ProviderInfo[]> {
+  return invoke("list_providers");
+}
+
+export function driverStatus(kind: DatabaseKind): Promise<DriverStatus> {
+  return invoke("driver_status", { kind });
+}
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
@@ -309,7 +396,7 @@ export interface ExplainPlan {
 export interface ExplainNode {
   "Node Type": string;
   "Relation Name"?: string;
-  "Alias"?: string;
+  Alias?: string;
   "Startup Cost": number;
   "Total Cost": number;
   "Plan Rows": number;
@@ -322,12 +409,12 @@ export interface ExplainNode {
   "Shared Read Blocks"?: number;
   "Index Name"?: string;
   "Index Cond"?: string;
-  "Filter"?: string;
+  Filter?: string;
   "Hash Cond"?: string;
   "Join Type"?: string;
   "Sort Key"?: string[];
   "Group Key"?: string[];
-  "Plans"?: ExplainNode[];
+  Plans?: ExplainNode[];
   [key: string]: unknown;
 }
 
@@ -394,10 +481,7 @@ export async function beginTransaction(
   return invoke("begin_transaction", { kind, connectionString, database });
 }
 
-export async function executeInTransaction(
-  txId: string,
-  sql: string,
-): Promise<QueryResult> {
+export async function executeInTransaction(txId: string, sql: string): Promise<QueryResult> {
   return invoke("execute_in_transaction", { txId, sql });
 }
 
@@ -909,7 +993,14 @@ export async function refreshMaterializedView(
   concurrently: boolean,
   database?: string,
 ): Promise<void> {
-  await invoke("refresh_materialized_view", { kind, connectionString, database, schema, name, concurrently });
+  await invoke("refresh_materialized_view", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    name,
+    concurrently,
+  });
 }
 
 export async function dropMaterializedView(
@@ -972,7 +1063,15 @@ export async function setTableRls(
   force: boolean,
   database?: string,
 ): Promise<void> {
-  await invoke("set_table_rls", { kind, connectionString, database, schema, table, enabled, force });
+  await invoke("set_table_rls", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    enabled,
+    force,
+  });
 }
 
 export async function createPolicy(
@@ -1029,8 +1128,13 @@ export async function detachPartition(
   database?: string,
 ): Promise<void> {
   await invoke("detach_partition", {
-    kind, connectionString, database,
-    parentSchema, parentTable, childSchema, childTable,
+    kind,
+    connectionString,
+    database,
+    parentSchema,
+    parentTable,
+    childSchema,
+    childTable,
   });
 }
 
@@ -1045,8 +1149,14 @@ export async function attachPartition(
   database?: string,
 ): Promise<void> {
   await invoke("attach_partition", {
-    kind, connectionString, database,
-    parentSchema, parentTable, childSchema, childTable, bound,
+    kind,
+    connectionString,
+    database,
+    parentSchema,
+    parentTable,
+    childSchema,
+    childTable,
+    bound,
   });
 }
 
@@ -1249,4 +1359,30 @@ export async function getDatabaseOverview(
   database?: string,
 ): Promise<DatabaseOverview> {
   return invoke("get_database_overview", { kind, connectionString, database });
+}
+
+export async function storeSecret(account: string, secret: string): Promise<void> {
+  await invoke("store_secret", { account, secret });
+}
+
+export async function loadSecret(account: string): Promise<string | null> {
+  return invoke("load_secret", { account });
+}
+
+export async function deleteSecret(account: string): Promise<void> {
+  await invoke("delete_secret", { account });
+}
+
+export async function openSshTunnel(
+  request: import("@/lib/ssh").SshTunnelRequest,
+): Promise<import("@/lib/ssh").SshTunnelInfo> {
+  return invoke("open_ssh_tunnel", { request });
+}
+
+export async function closeSshTunnel(id: string): Promise<void> {
+  await invoke("close_ssh_tunnel", { id });
+}
+
+export async function listSshTunnels(): Promise<import("@/lib/ssh").SshTunnelInfo[]> {
+  return invoke("list_ssh_tunnels");
 }

@@ -1,35 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  ReactFlowProvider,
-  Handle,
-  Position,
+  type Edge,
   getNodesBounds,
   getViewportForBounds,
+  Handle,
+  MiniMap,
   type Node,
-  type Edge,
   type NodeProps,
-  BackgroundVariant,
   Panel,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 import { toPng, toSvg } from "html-to-image";
 import { jsPDF } from "jspdf";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { KeyRound, Loader2, Image, FileText, FileCode } from "lucide-react";
+import { FileCode, FileText, Image, KeyRound, Loader2 } from "lucide-react";
 
 import { useActiveConnection } from "@/lib/connections";
+import type { ERTable, ForeignKeyInfo } from "@/lib/db";
 import { useActiveSchema } from "@/lib/db-selection";
 import { useErSchemaQuery } from "@/lib/queries";
-import type { ERTable, ForeignKeyInfo } from "@/lib/db";
 
 type TableNodeData = {
   label: string;
@@ -58,9 +58,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
     <div className="min-w-[220px] rounded-lg border border-border bg-card shadow-md overflow-hidden">
       <div className="bg-primary px-3 py-2 text-primary-foreground font-semibold text-sm flex items-center gap-2">
         <span className="truncate">{data.label}</span>
-        <span className="ml-auto text-[10px] font-normal opacity-70">
-          {data.schema}
-        </span>
+        <span className="ml-auto text-[10px] font-normal opacity-70">{data.schema}</span>
       </div>
       <div className="divide-y divide-border">
         {data.columns.map((col) => (
@@ -81,9 +79,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
               className="!w-2 !h-2 !bg-primary !border-primary-foreground !-right-1"
             />
             <span className="flex items-center gap-1 font-medium min-w-0 shrink">
-              {col.isPrimaryKey && (
-                <KeyRound className="size-3 text-amber-500 shrink-0" />
-              )}
+              {col.isPrimaryKey && <KeyRound className="size-3 text-amber-500 shrink-0" />}
               {col.isForeignKey && !col.isPrimaryKey && (
                 <KeyRound className="size-3 text-blue-500 shrink-0" />
               )}
@@ -91,9 +87,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
             </span>
             <span className="ml-auto text-muted-foreground whitespace-nowrap">
               {col.dataType}
-              {!col.isNullable && (
-                <span className="ml-1 text-amber-500">*</span>
-              )}
+              {!col.isNullable && <span className="ml-1 text-amber-500">*</span>}
             </span>
           </div>
         ))}
@@ -224,9 +218,7 @@ function buildNodes(
           dataType: col.data_type,
           isPrimaryKey: col.is_primary_key,
           isNullable: col.is_nullable,
-          isForeignKey: fkColumns.has(
-            `${table.schema}.${table.name}.${col.name}`,
-          ),
+          isForeignKey: fkColumns.has(`${table.schema}.${table.name}.${col.name}`),
         })),
       },
     };
@@ -267,14 +259,7 @@ function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
         const w = bounds.width + EXPORT_PADDING * 2;
         const h = bounds.height + EXPORT_PADDING * 2;
 
-        const viewport = getViewportForBounds(
-          bounds,
-          w,
-          h,
-          0.1,
-          2,
-          EXPORT_PADDING,
-        );
+        const viewport = getViewportForBounds(bounds, w, h, 0.1, 2, EXPORT_PADDING);
 
         const el = await getFlowElement();
 
@@ -355,6 +340,7 @@ function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
   return (
     <div className="rounded-md bg-card border border-border shadow-sm flex items-center">
       <button
+        type="button"
         onClick={() => doExport("png")}
         disabled={exporting || nodes.length === 0}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-40 disabled:pointer-events-none rounded-l-md"
@@ -365,6 +351,7 @@ function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
       </button>
       <div className="w-px h-5 bg-border" />
       <button
+        type="button"
         onClick={() => doExport("svg")}
         disabled={exporting || nodes.length === 0}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
@@ -375,6 +362,7 @@ function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
       </button>
       <div className="w-px h-5 bg-border" />
       <button
+        type="button"
         onClick={() => doExport("pdf")}
         disabled={exporting || nodes.length === 0}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-40 disabled:pointer-events-none rounded-r-md"
@@ -413,27 +401,19 @@ function ERDiagramInner() {
     const version = ++layoutVersionRef.current;
 
     setLayoutReady(false);
-    computeElkLayout(erSchema.tables, erSchema.foreign_keys).then(
-      (positions) => {
-        if (layoutVersionRef.current !== version) return;
-        const layoutedNodes = buildNodes(
-          erSchema.tables,
-          erSchema.foreign_keys,
-          positions,
-        );
-        setNodes(layoutedNodes);
-        setEdges(builtEdges);
-        setLayoutReady(true);
-      },
-    );
+    computeElkLayout(erSchema.tables, erSchema.foreign_keys).then((positions) => {
+      if (layoutVersionRef.current !== version) return;
+      const layoutedNodes = buildNodes(erSchema.tables, erSchema.foreign_keys, positions);
+      setNodes(layoutedNodes);
+      setEdges(builtEdges);
+      setLayoutReady(true);
+    });
   }, [erSchema, builtEdges, setNodes, setEdges]);
 
   if (!connection) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground">
-          Verbinde dich zuerst mit einer Datenbank.
-        </p>
+        <p className="text-muted-foreground">Verbinde dich zuerst mit einer Datenbank.</p>
       </main>
     );
   }
@@ -459,9 +439,7 @@ function ERDiagramInner() {
   if (!erSchema || erSchema.tables.length === 0) {
     return (
       <main className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground">
-          Keine Tabellen im Schema "{activeSchema}" gefunden.
-        </p>
+        <p className="text-muted-foreground">Keine Tabellen im Schema "{activeSchema}" gefunden.</p>
       </main>
     );
   }
@@ -491,13 +469,9 @@ function ERDiagramInner() {
           />
           <Panel position="top-left" className="flex flex-col gap-1">
             <div className="rounded-md bg-card border border-border px-3 py-2 text-xs text-muted-foreground shadow-sm">
-              <span className="font-medium text-foreground">
-                {erSchema.tables.length}
-              </span>{" "}
+              <span className="font-medium text-foreground">{erSchema.tables.length}</span>{" "}
               Tabellen,{" "}
-              <span className="font-medium text-foreground">
-                {erSchema.foreign_keys.length}
-              </span>{" "}
+              <span className="font-medium text-foreground">{erSchema.foreign_keys.length}</span>{" "}
               Foreign Keys
             </div>
             <ExportButtons nodes={nodes} />

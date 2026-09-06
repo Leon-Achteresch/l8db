@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, PackageIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { installExtension, uninstallExtension } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useAvailableExtensionsQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 export function AvailableExtensionsView() {
   const connection = useActiveConnection();
@@ -57,9 +56,7 @@ export function AvailableExtensionsView() {
   const q = search.trim().toLowerCase();
   const filtered = (extensions ?? []).filter(
     (ext) =>
-      !q ||
-      ext.name.toLowerCase().includes(q) ||
-      (ext.comment ?? "").toLowerCase().includes(q),
+      !q || ext.name.toLowerCase().includes(q) || (ext.comment ?? "").toLowerCase().includes(q),
   );
 
   const handleToggle = async (name: string, installed: boolean) => {
@@ -99,13 +96,11 @@ export function AvailableExtensionsView() {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
         <PackageIcon className="size-4 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Extensions
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">Extensions</span>
         {extensions && (
           <span className="text-xs text-muted-foreground">
-            {extensions.filter((e) => e.installed).length} installiert ·{" "}
-            {extensions.length} verfügbar
+            {extensions.filter((e) => e.installed).length} installiert · {extensions.length}{" "}
+            verfügbar
           </span>
         )}
         <div className="relative ml-auto max-w-xs flex-1">
@@ -127,9 +122,7 @@ export function AvailableExtensionsView() {
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Installiert
               </span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {installed.length}
-              </span>
+              <span className="ml-auto text-xs text-muted-foreground">{installed.length}</span>
             </div>
             <div className="divide-y">
               {installed.map((ext) => (
@@ -154,9 +147,7 @@ export function AvailableExtensionsView() {
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Verfügbar
               </span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {available.length}
-              </span>
+              <span className="ml-auto text-xs text-muted-foreground">{available.length}</span>
             </div>
             <div className="divide-y">
               {available.map((ext) => (
@@ -209,9 +200,7 @@ function ExtensionRow({ name, version, comment, installed, pending, onToggle }: 
             </Badge>
           )}
         </div>
-        {comment && (
-          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{comment}</p>
-        )}
+        {comment && <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{comment}</p>}
       </div>
       <Button
         size="sm"

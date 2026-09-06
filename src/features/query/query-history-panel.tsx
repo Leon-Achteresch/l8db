@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
-
 import { BookmarkIcon, HistoryIcon, PlayIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,11 @@ function formatTime(timestamp: number): string {
 }
 
 function firstLine(sql: string): string {
-  const line = sql.split("\n").map((part) => part.trim()).filter(Boolean)[0] ?? "";
+  const line =
+    sql
+      .split("\n")
+      .map((part) => part.trim())
+      .filter(Boolean)[0] ?? "";
   return line.length > 80 ? `${line.slice(0, 80)}…` : line;
 }
 
@@ -50,9 +53,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
     const query = search.trim().toLowerCase();
     return savedQueries.filter(
       (item) =>
-        (!query ||
-          item.sql.toLowerCase().includes(query) ||
-          item.name.toLowerCase().includes(query)),
+        !query || item.sql.toLowerCase().includes(query) || item.name.toLowerCase().includes(query),
     );
   }, [savedQueries, search]);
 
@@ -71,7 +72,13 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={onClose} title="Schließen">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0"
+          onClick={onClose}
+          title="Schließen"
+        >
           <XIcon className="size-4" />
         </Button>
       </div>

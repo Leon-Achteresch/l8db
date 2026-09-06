@@ -1,12 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Database, Search, Table } from "lucide-react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Command,
@@ -19,13 +13,11 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { activateConnectionWithToast } from "@/lib/ssh";
 import { useTablesQuery } from "@/lib/queries";
+import { activateConnectionWithToast } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 
-const IS_MAC =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 
 const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
 
@@ -50,9 +42,7 @@ export function AppHeaderSearch() {
 
   const filteredConnections = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? connections.filter((c) => c.name.toLowerCase().includes(q))
-      : connections;
+    const list = q ? connections.filter((c) => c.name.toLowerCase().includes(q)) : connections;
     return list.slice(0, 8);
   }, [connections, query]);
 
@@ -71,10 +61,9 @@ export function AppHeaderSearch() {
   }, [tables, query]);
 
   const onSelectConnection = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setOpen(false);
-      void navigate({ to: "/" });
-      void activateConnectionWithToast(id);
+      if (await activateConnectionWithToast(id)) await navigate({ to: "/" });
     },
     [navigate],
   );
@@ -95,8 +84,7 @@ export function AppHeaderSearch() {
     if (!next) setQuery("");
   }, []);
 
-  const hasResults =
-    filteredConnections.length > 0 || filteredTables.length > 0;
+  const hasResults = filteredConnections.length > 0 || filteredTables.length > 0;
 
   return (
     <>
@@ -131,15 +119,9 @@ export function AppHeaderSearch() {
         description="Tabellen und Verbindungen durchsuchen"
       >
         <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Suchen…"
-            value={query}
-            onValueChange={setQuery}
-          />
+          <CommandInput placeholder="Suchen…" value={query} onValueChange={setQuery} />
           <CommandList>
-            {!hasResults && (
-              <CommandEmpty>Keine Treffer</CommandEmpty>
-            )}
+            {!hasResults && <CommandEmpty>Keine Treffer</CommandEmpty>}
 
             {filteredConnections.length > 0 && (
               <CommandGroup heading="Verbindungen">
@@ -150,21 +132,16 @@ export function AppHeaderSearch() {
                     onSelect={() => onSelectConnection(connection.id)}
                   >
                     <Database className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-xs">
-                      {connection.name}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs">{connection.name}</span>
                     {connection.id === activeConnection?.id ? (
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        aktiv
-                      </span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">aktiv</span>
                     ) : null}
                   </CommandItem>
                 ))}
               </CommandGroup>
             )}
 
-            {filteredConnections.length > 0 &&
-              filteredTables.length > 0 && <CommandSeparator />}
+            {filteredConnections.length > 0 && filteredTables.length > 0 && <CommandSeparator />}
 
             {filteredTables.length > 0 && (
               <CommandGroup heading="Tabellen">
@@ -178,9 +155,7 @@ export function AppHeaderSearch() {
                     <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                       {table.schema}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-xs">
-                      {table.name}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs">{table.name}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

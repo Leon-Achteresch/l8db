@@ -38,9 +38,7 @@ export const useSavedQueriesStore = create<SavedQueriesState>()(
 
       updateQuery: (id, name, sql) =>
         set((state) => ({
-          queries: state.queries.map((q) =>
-            q.id === id ? { ...q, name, sql } : q,
-          ),
+          queries: state.queries.map((q) => (q.id === id ? { ...q, name, sql } : q)),
         })),
     }),
     {

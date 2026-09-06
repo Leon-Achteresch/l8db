@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { useNavigate } from "@tanstack/react-router";
 import {
   Code2Icon,
@@ -15,8 +13,7 @@ import {
   TableIcon,
   Trash2Icon,
 } from "lucide-react";
-
-import { SqlEditor } from "@/features/table/sql-editor";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,19 +24,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
+import { SqlEditor } from "@/features/table/sql-editor";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
-import {
-  OPERATORS,
-  compileSingleCondition,
-  operatorNeedsValue,
-} from "@/lib/sql-filter";
+import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -61,10 +52,7 @@ function emptyCondition(column = ""): Condition {
 type Combinator = "AND" | "OR";
 type FilterMode = "simple" | "sql";
 
-function compileConditions(
-  conditions: Condition[],
-  combinator: Combinator,
-): string {
+function compileConditions(conditions: Condition[], combinator: Combinator): string {
   const parts = conditions
     .map((c) => compileSingleCondition(c.column, c.operator, c.value))
     .filter((part): part is string => part !== null);
@@ -72,10 +60,7 @@ function compileConditions(
   return parts.join(` ${combinator} `);
 }
 
-function parsePatterns(
-  raw: string,
-  useRegex: boolean,
-): ((name: string) => boolean)[] {
+function parsePatterns(raw: string, useRegex: boolean): ((name: string) => boolean)[] {
   const parts = raw
     .split(";")
     .map((s) => s.trim())
@@ -214,9 +199,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
   const whereIsRaw = filterMode === "sql";
 
   const updateCondition = (id: string, patch: Partial<Condition>) => {
-    setConditions((cur) =>
-      cur.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    );
+    setConditions((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
   const addCondition = () => {
@@ -243,15 +226,12 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     setSql("");
   };
 
-  const handleSelectEntity = useCallback(
-    (entity: MatchedEntity) => {
-      setSelectedEntity(entity);
-      setConditions([emptyCondition()]);
-      setCombinator("AND");
-      setSql("");
-    },
-    [],
-  );
+  const handleSelectEntity = useCallback((entity: MatchedEntity) => {
+    setSelectedEntity(entity);
+    setConditions([emptyCondition()]);
+    setCombinator("AND");
+    setSql("");
+  }, []);
 
   const handleOpen = useCallback(() => {
     if (!selectedEntity) return;
@@ -384,9 +364,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                             {entity.schema}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {entity.name}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium">{entity.name}</span>
                         </button>
                         {entity.matchingColumns.length > 0 && (
                           <div className="ml-7 border-l border-border/40 py-0.5 pl-2">
@@ -429,10 +407,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                   )}
                 </div>
                 <div className="border-b px-3 py-2">
-                  <Tabs
-                    value={filterMode}
-                    onValueChange={(v) => switchFilterMode(v as FilterMode)}
-                  >
+                  <Tabs value={filterMode} onValueChange={(v) => switchFilterMode(v as FilterMode)}>
                     <TabsList className="w-full">
                       <TabsTrigger value="simple" className="flex-1">
                         <SlidersHorizontalIcon className="size-3" />
@@ -451,10 +426,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                     {filterMode === "simple" ? (
                       <>
                         {conditions.map((condition, index) => (
-                          <div
-                            key={condition.id}
-                            className="flex flex-col gap-1.5"
-                          >
+                          <div key={condition.id} className="flex flex-col gap-1.5">
                             <div className="text-[10px] text-muted-foreground">
                               {index === 0 ? (
                                 "Wo"
@@ -462,17 +434,11 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                 <NativeSelect
                                   size="sm"
                                   value={combinator}
-                                  onChange={(e) =>
-                                    setCombinator(e.target.value as Combinator)
-                                  }
+                                  onChange={(e) => setCombinator(e.target.value as Combinator)}
                                   className="w-20"
                                 >
-                                  <NativeSelectOption value="AND">
-                                    und
-                                  </NativeSelectOption>
-                                  <NativeSelectOption value="OR">
-                                    oder
-                                  </NativeSelectOption>
+                                  <NativeSelectOption value="AND">und</NativeSelectOption>
+                                  <NativeSelectOption value="OR">oder</NativeSelectOption>
                                 </NativeSelect>
                               )}
                             </div>
@@ -579,11 +545,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                     <RotateCcwIcon />
                   </Button>
                   <div className="flex-1" />
-                  <Button
-                    type="button"
-                    size="xs"
-                    onClick={handleOpen}
-                  >
+                  <Button type="button" size="xs" onClick={handleOpen}>
                     <PlayIcon />
                     Offnen
                   </Button>
@@ -595,9 +557,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 <p className="text-xs text-muted-foreground">
                   Tabelle auswahlen um Filter zu setzen
                 </p>
-                <p className="text-[10px] text-muted-foreground/60">
-                  Doppelklick offnet direkt
-                </p>
+                <p className="text-[10px] text-muted-foreground/60">Doppelklick offnet direkt</p>
               </div>
             )}
           </div>
@@ -609,9 +569,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
             mehrere Muster
           </span>
           <span>Doppelklick = direkt offnen</span>
-          {useRegex && (
-            <span className="ml-auto font-mono text-blue-400/70">regex</span>
-          )}
+          {useRegex && <span className="ml-auto font-mono text-blue-400/70">regex</span>}
         </div>
       </DialogContent>
     </Dialog>

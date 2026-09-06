@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { ListIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +15,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { executeQuery } from "@/lib/db";
-import { quoteIdent } from "@/lib/sql-filter";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useEnumsQuery } from "@/lib/queries";
+import { quoteIdent } from "@/lib/sql-filter";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 function CreateEnumDialog({
   open,
@@ -40,7 +39,10 @@ function CreateEnumDialog({
 
   const handleSave = async () => {
     if (!connection || !name.trim()) return;
-    const labels = values.split(",").map((v) => v.trim()).filter(Boolean);
+    const labels = values
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
     if (labels.length === 0) return;
     setSaving(true);
     try {
@@ -103,7 +105,11 @@ function CreateEnumDialog({
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
             Abbrechen
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !values.trim()}>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !name.trim() || !values.trim()}
+          >
             {saving ? "Erstellen…" : "Erstellen"}
           </Button>
         </DialogFooter>
@@ -125,7 +131,12 @@ export function EnumsView() {
 
   const handleDrop = async (schema: string, name: string) => {
     if (!connection) return;
-    if (!window.confirm(`Enum-Typ "${schema}.${name}" wirklich löschen? Genutzte Spalten verhindern das Löschen.`)) return;
+    if (
+      !window.confirm(
+        `Enum-Typ "${schema}.${name}" wirklich löschen? Genutzte Spalten verhindern das Löschen.`,
+      )
+    )
+      return;
     try {
       await executeQuery(
         connection.kind,
@@ -153,7 +164,11 @@ export function EnumsView() {
       <header className="flex shrink-0 items-center gap-2">
         <ListIcon className="size-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight">Enum-Typen</h1>
-        <Button size="sm" className="ml-auto h-8 gap-1.5 text-xs" onClick={() => setDialogOpen(true)}>
+        <Button
+          size="sm"
+          className="ml-auto h-8 gap-1.5 text-xs"
+          onClick={() => setDialogOpen(true)}
+        >
           <PlusIcon className="size-3.5" />
           Neuer Enum
         </Button>
@@ -163,7 +178,9 @@ export function EnumsView() {
         {isLoading ? (
           <p className="p-8 text-center text-sm text-muted-foreground">Lade Enums…</p>
         ) : (enums?.length ?? 0) === 0 ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">Keine Enum-Typen gefunden.</p>
+          <p className="p-8 text-center text-sm text-muted-foreground">
+            Keine Enum-Typen gefunden.
+          </p>
         ) : (
           <div className="flex flex-col gap-2">
             {enums!.map((entry) => (
@@ -184,7 +201,11 @@ export function EnumsView() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {entry.values.map((value) => (
-                    <Badge key={value} variant="secondary" className="px-1.5 py-0 font-mono text-[11px]">
+                    <Badge
+                      key={value}
+                      variant="secondary"
+                      className="px-1.5 py-0 font-mono text-[11px]"
+                    >
                       {value}
                     </Badge>
                   ))}

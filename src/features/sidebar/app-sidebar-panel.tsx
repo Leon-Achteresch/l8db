@@ -1,8 +1,5 @@
-import { useMemo, useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
 import {
   ActivityIcon,
   BracesIcon,
@@ -28,6 +25,8 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   AlertDialog,
@@ -39,6 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -47,6 +47,13 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -54,6 +61,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -76,24 +85,21 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
-import { createMaterializedView, createSchema, dropSchema, dropTable, truncateTable } from "@/lib/db";
 import {
+  createMaterializedView,
+  createSchema,
+  dropSchema,
+  dropTable,
+  truncateTable,
+} from "@/lib/db";
+import {
+  useActiveCapabilities,
   useActiveDatabase,
   useActiveSchema,
   useDbSelectionStore,
@@ -112,8 +118,8 @@ import {
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
+import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -166,9 +172,20 @@ export function AppSidebarPanel() {
 
   const { data: matviews } = useMaterializedViewsQuery();
 
-  const [sidebarTab, setSidebarTab] = useState<
+  const [selectedTab, setSidebarTab] = useState<
     "tables" | "views" | "queries" | "functions" | "extensions" | "roles" | "sequences"
   >("tables");
+  const caps = useActiveCapabilities();
+  const sidebarTabs = [
+    { value: "tables", label: "Tabellen", icon: TableIcon, enabled: true },
+    { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
+    { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
+    { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
+    { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
+    { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
+    { value: "sequences", label: "Sequenzen", icon: ListOrderedIcon, enabled: caps.sequences },
+  ].filter((tab) => tab.enabled);
+  const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
 
   return (
@@ -208,9 +225,7 @@ export function AppSidebarPanel() {
           >
             <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
             {connections.length === 0 ? (
-              <DropdownMenuItem disabled>
-                Keine Verbindungen gespeichert
-              </DropdownMenuItem>
+              <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
             ) : (
               connections.map((connection) => (
                 <DropdownMenuItem
@@ -230,9 +245,7 @@ export function AppSidebarPanel() {
                       </span>
                     ))}
                   </span>
-                  {connection.id === activeConnection?.id ? (
-                    <CheckIcon className="size-4" />
-                  ) : null}
+                  {connection.id === activeConnection?.id ? <CheckIcon className="size-4" /> : null}
                 </DropdownMenuItem>
               ))
             )}
@@ -246,121 +259,79 @@ export function AppSidebarPanel() {
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid min-w-0 gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                Datenbank
-              </span>
-              <Select
-                value={activeDatabase ?? undefined}
-                onValueChange={(value) =>
-                  setDatabase(activeConnection.id, value)
-                }
-                disabled={databasesLoading}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="Wählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(databases ?? []).map((database) => (
-                    <SelectItem key={database} value={database}>
-                      {database}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid min-w-0 gap-1.5">
-              <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-                Schema
-                <button
-                  type="button"
-                  onClick={() => setSchemaDialogOpen(true)}
-                  className="rounded p-0.5 hover:bg-muted hover:text-foreground"
-                  title="Schemas verwalten"
+          <div className="flex gap-2">
+            {caps.databases && (
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
+                <Select
+                  value={activeDatabase ?? undefined}
+                  onValueChange={(value) => setDatabase(activeConnection.id, value)}
+                  disabled={databasesLoading}
                 >
-                  <WrenchIcon className="size-3" />
-                </button>
-              </span>
-              <Select
-                value={activeSchema}
-                onValueChange={(value) => setSchema(activeConnection.id, value)}
-                disabled={schemasLoading}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <SelectValue placeholder="Wählen…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(schemas ?? []).map((schema) => (
-                    <SelectItem key={schema} value={schema}>
-                      {schema}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  <SelectTrigger size="sm" className="w-full">
+                    <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(databases ?? []).map((database) => (
+                      <SelectItem key={database} value={database}>
+                        {database}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {caps.schemas && (
+              <div className="grid min-w-0 flex-1 gap-1.5">
+                <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                  Schema
+                  <button
+                    type="button"
+                    onClick={() => setSchemaDialogOpen(true)}
+                    className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                    title="Schemas verwalten"
+                  >
+                    <WrenchIcon className="size-3" />
+                  </button>
+                </span>
+                <Select
+                  value={activeSchema}
+                  onValueChange={(value) => setSchema(activeConnection.id, value)}
+                  disabled={schemasLoading}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(schemas ?? []).map((schema) => (
+                      <SelectItem key={schema} value={schema}>
+                        {schema}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         ) : null}
       </SidebarHeader>
       <SidebarContent>
         {activeConnection ? (
           <div className="px-2 pt-2">
-            <Tabs
-              value={sidebarTab}
-              onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}
-            >
+            <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
               <TabsList className="w-full">
-                <TabsTrigger
-                  value="tables"
-                  className="flex-1 px-0"
-                  aria-label="Tabellen"
-                >
-                  <TableIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="views"
-                  className="flex-1 px-0"
-                  aria-label="Views"
-                >
-                  <EyeIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="functions"
-                  className="flex-1 px-0"
-                  aria-label="Funktionen"
-                >
-                  <BracesIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="extensions"
-                  className="flex-1 px-0"
-                  aria-label="Packages"
-                >
-                  <PackageIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="roles"
-                  className="flex-1 px-0"
-                  aria-label="Benutzer"
-                >
-                  <UsersIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="queries"
-                  className="flex-1 px-0"
-                  aria-label="Queries"
-                >
-                  <FileCodeIcon className="size-4" />
-                </TabsTrigger>
-                <TabsTrigger
-                  value="sequences"
-                  className="flex-1 px-0"
-                  aria-label="Sequenzen"
-                >
-                  <ListOrderedIcon className="size-4" />
-                </TabsTrigger>
+                {sidebarTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="flex-1 px-0"
+                    aria-label={tab.label}
+                  >
+                    <tab.icon className="size-4" />
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </Tabs>
           </div>
@@ -383,9 +354,7 @@ export function AppSidebarPanel() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {!activeConnection ? (
-              <p className="px-2 py-1 text-sm text-muted-foreground">
-                Keine Verbindung aktiv.
-              </p>
+              <p className="px-2 py-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
             ) : sidebarTab === "tables" ? (
               <SidebarEntityList
                 items={tables}
@@ -529,9 +498,7 @@ function SidebarEntityList({
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
-  const { data: columns } = useColumnsQuery(
-    type === "table" ? "BASE TABLE" : "VIEW",
-  );
+  const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
 
   const columnsByTable = useMemo(() => {
     if (!columns) return new Map<string, string[]>();
@@ -579,15 +546,11 @@ function SidebarEntityList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">{emptyMessage}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const handleConfirmAction = async () => {
@@ -597,9 +560,21 @@ function SidebarEntityList({
       const connStr = effectiveConnectionString(activeConnection);
       const kind = activeConnection.kind;
       if (confirmAction.kind === "drop") {
-        await dropTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+        await dropTable(
+          kind,
+          connStr,
+          confirmAction.schema,
+          confirmAction.name,
+          activeDatabase ?? undefined,
+        );
       } else {
-        await truncateTable(kind, connStr, confirmAction.schema, confirmAction.name, activeDatabase ?? undefined);
+        await truncateTable(
+          kind,
+          connStr,
+          confirmAction.schema,
+          confirmAction.name,
+          activeDatabase ?? undefined,
+        );
       }
       await queryClient.invalidateQueries({ queryKey: ["tables"] });
       await queryClient.invalidateQueries({ queryKey: ["columns"] });
@@ -660,7 +635,12 @@ function SidebarEntityList({
         </button>
       </div>
       <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
-      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -684,9 +664,7 @@ function SidebarEntityList({
         </AlertDialogContent>
       </AlertDialog>
       {filtered && filtered.length === 0 ? (
-        <p className="px-2 py-1 text-sm text-muted-foreground">
-          Keine Treffer.
-        </p>
+        <p className="px-2 py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
         <SidebarMenu>
           {filtered?.map((item) => {
@@ -740,19 +718,13 @@ function SidebarEntityList({
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
                 {type === "table" ? (
                   <ContextMenu>
-                    <ContextMenuTrigger asChild>
-                      {menuButton}
-                    </ContextMenuTrigger>
+                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem
-                        onSelect={() => handleOpenInEditor(item.schema, item.name)}
-                      >
+                      <ContextMenuItem onSelect={() => handleOpenInEditor(item.schema, item.name)}>
                         <SquareTerminalIcon />
                         Im Editor öffnen
                       </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() => handleAlterTable(item.schema, item.name)}
-                      >
+                      <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
                         <WrenchIcon />
                         Alter Table
                       </ContextMenuItem>
@@ -760,7 +732,11 @@ function SidebarEntityList({
                       <ContextMenuItem
                         variant="destructive"
                         onSelect={() =>
-                          setConfirmAction({ kind: "truncate", schema: item.schema, name: item.name })
+                          setConfirmAction({
+                            kind: "truncate",
+                            schema: item.schema,
+                            name: item.name,
+                          })
                         }
                       >
                         <TrashIcon />
@@ -840,12 +816,7 @@ interface SidebarFunctionListProps {
   error: unknown;
 }
 
-function SidebarFunctionList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarFunctionListProps) {
+function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFunctionListProps) {
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
 
@@ -859,17 +830,11 @@ function SidebarFunctionList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Funktionen gefunden.
-      </p>
-    );
+    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Funktionen gefunden.</p>;
   }
 
   return (
@@ -909,12 +874,7 @@ interface SidebarExtensionListProps {
   error: unknown;
 }
 
-function SidebarExtensionList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarExtensionListProps) {
+function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExtensionListProps) {
   const navigate = useNavigate();
   const openExtensionTab = useTableTabs((state) => state.openExtensionTab);
 
@@ -928,18 +888,14 @@ function SidebarExtensionList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => navigate({ to: "/available-extensions" })}
-          >
+          <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
             <SearchIcon className="text-muted-foreground" />
             <span className="truncate">Extensions durchsuchen</span>
           </SidebarMenuButton>
@@ -951,9 +907,7 @@ function SidebarExtensionList({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={() => navigate({ to: "/available-extensions" })}
-        >
+        <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
           <SearchIcon className="text-muted-foreground" />
           <span className="truncate">Extensions durchsuchen</span>
         </SidebarMenuButton>
@@ -1112,10 +1066,19 @@ function SidebarMatviewList({
             </label>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} disabled={saving}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDialogOpen(false)}
+              disabled={saving}
+            >
               Abbrechen
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving || !name.trim() || !query.trim()}>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={saving || !name.trim() || !query.trim()}
+            >
               {saving ? "Erstellen…" : "Erstellen"}
             </Button>
           </DialogFooter>
@@ -1211,15 +1174,19 @@ function SchemaManagerDialog({
                 className="h-8 flex-1 text-xs font-mono"
                 placeholder="z. B. analytics"
               />
-              <Button size="sm" className="h-8" onClick={handleCreate} disabled={busy || !name.trim()}>
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={handleCreate}
+                disabled={busy || !name.trim()}
+              >
                 Erstellen
               </Button>
             </div>
           </div>
           <div className="space-y-2 rounded-lg border border-destructive/20 p-3">
             <p className="text-xs">
-              Aktives Schema:{" "}
-              <span className="font-mono font-medium">{activeSchema ?? "—"}</span>
+              Aktives Schema: <span className="font-mono font-medium">{activeSchema ?? "—"}</span>
             </p>
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
               <Switch checked={cascade} onCheckedChange={setCascade} />
@@ -1248,19 +1215,13 @@ function SavedQueriesList() {
   const tabs = useTableTabs((state) => state.tabs);
 
   if (queries.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine gespeicherten Queries.
-      </p>
-    );
+    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
   }
 
   return (
     <SidebarMenu>
       {queries.map((query) => {
-        const existingTab = tabs.find(
-          (t) => t.kind === "query" && t.id === query.id,
-        );
+        const existingTab = tabs.find((t) => t.kind === "query" && t.id === query.id);
         return (
           <SidebarMenuItem key={query.id}>
             <SidebarMenuButton
@@ -1309,12 +1270,7 @@ interface SidebarRoleListProps {
   error: unknown;
 }
 
-function SidebarRoleList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarRoleListProps) {
+function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListProps) {
   const navigate = useNavigate();
   const openRoleTab = useTableTabs((state) => state.openRoleTab);
 
@@ -1328,17 +1284,11 @@ function SidebarRoleList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Rollen gefunden.
-      </p>
-    );
+    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Rollen gefunden.</p>;
   }
 
   return (
@@ -1373,12 +1323,7 @@ interface SidebarSequenceListProps {
   error: unknown;
 }
 
-function SidebarSequenceList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarSequenceListProps) {
+function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequenceListProps) {
   const navigate = useNavigate();
 
   if (isLoading) {
@@ -1391,17 +1336,11 @@ function SidebarSequenceList({
   }
 
   if (isError) {
-    return (
-      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
-    );
+    return <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>;
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="px-2 py-1 text-sm text-muted-foreground">
-        Keine Sequenzen gefunden.
-      </p>
-    );
+    return <p className="px-2 py-1 text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>;
   }
 
   return (

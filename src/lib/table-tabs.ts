@@ -14,7 +14,15 @@ export type RoleTab = { kind: "role"; name: string };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
-export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab | RoleTab | TriggerTab | ViewEditorTab | AlterTableTab;
+export type Tab =
+  | TableTab
+  | QueryTab
+  | FunctionTab
+  | ExtensionTab
+  | RoleTab
+  | TriggerTab
+  | ViewEditorTab
+  | AlterTableTab;
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
@@ -172,9 +180,7 @@ export const useTableTabs = create<TabsState>()(
 
       updateQuerySql: (id, sql) =>
         set((state) => ({
-          tabs: state.tabs.map((t) =>
-            t.kind === "query" && t.id === id ? { ...t, sql } : t,
-          ),
+          tabs: state.tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, sql } : t)),
         })),
     }),
     {

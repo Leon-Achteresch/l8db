@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { LayersIcon, LinkIcon, PlusIcon, UnlinkIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { attachPartition, detachPartition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { usePartitionInfoQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TablePartitionsPanelProps {
   schema: string;
@@ -115,7 +114,11 @@ function AttachPartitionDialog({
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
             Abbrechen
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !childTable.trim() || !bound.trim()}>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !childTable.trim() || !bound.trim()}
+          >
             {saving ? "Anhängen…" : "Anhängen"}
           </Button>
         </DialogFooter>
@@ -147,7 +150,9 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
         childTable,
         database ?? undefined,
       );
-      toast.success(`Partition "${childTable}" gelöst. Die Tabelle bleibt als eigenständige Tabelle erhalten.`);
+      toast.success(
+        `Partition "${childTable}" gelöst. Die Tabelle bleibt als eigenständige Tabelle erhalten.`,
+      );
       refresh();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));

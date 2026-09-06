@@ -7,11 +7,7 @@ interface QueryResultTableProps {
   error: string | null;
 }
 
-export function QueryResultTable({
-  result,
-  isLoading,
-  error,
-}: QueryResultTableProps) {
+export function QueryResultTable({ result, isLoading, error }: QueryResultTableProps) {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -20,7 +16,10 @@ export function QueryResultTable({
             className="size-4 animate-spin"
             fill="none"
             viewBox="0 0 24 24"
+            role="img"
+            aria-label="Wird ausgeführt"
           >
+            <title>Wird ausgeführt</title>
             <circle
               className="opacity-25"
               cx="12"
@@ -44,12 +43,8 @@ export function QueryResultTable({
   if (error) {
     return (
       <div className="flex h-full flex-col items-start gap-2 overflow-auto p-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-destructive">
-          Fehler
-        </span>
-        <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">
-          {error}
-        </pre>
+        <span className="text-xs font-medium uppercase tracking-wide text-destructive">Fehler</span>
+        <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">{error}</pre>
       </div>
     );
   }
@@ -59,10 +54,8 @@ export function QueryResultTable({
       <div className="flex h-full items-center justify-center">
         <p className="text-sm text-muted-foreground">
           Drücke{" "}
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
-            ⌘ Enter
-          </kbd>{" "}
-          um die Abfrage auszuführen.
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">⌘ Enter</kbd> um
+          die Abfrage auszuführen.
         </p>
       </div>
     );

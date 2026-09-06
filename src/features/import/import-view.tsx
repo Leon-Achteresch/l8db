@@ -1,16 +1,15 @@
-import { useState } from "react";
-
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { CheckCircle2Icon, FileUpIcon, XCircleIcon } from "lucide-react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
-import { executeScript, ScriptStatementResult } from "@/lib/db";
+import { executeScript, type ScriptStatementResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 export function ImportView() {
   const connection = useActiveConnection();
@@ -91,11 +90,7 @@ export function ImportView() {
         )}
 
         <div className="flex items-center gap-3">
-          <Button
-            size="sm"
-            disabled={!sql || running}
-            onClick={() => void handleRun()}
-          >
+          <Button size="sm" disabled={!sql || running} onClick={() => void handleRun()}>
             {running ? "Wird ausgeführt…" : "Ausführen"}
           </Button>
           {results && (

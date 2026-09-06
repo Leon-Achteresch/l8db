@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { ActivityIcon, LockIcon, OctagonXIcon, StopCircleIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "—";
@@ -49,7 +48,9 @@ export function SessionsView() {
         pid,
         database ?? undefined,
       );
-      toast.success(cancelled ? `Abfrage auf PID ${pid} abgebrochen.` : `PID ${pid}: nichts abzubrechen.`);
+      toast.success(
+        cancelled ? `Abfrage auf PID ${pid} abgebrochen.` : `PID ${pid}: nichts abzubrechen.`,
+      );
       refresh();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
@@ -60,7 +61,12 @@ export function SessionsView() {
 
   const handleTerminate = async (pid: number) => {
     if (!connection) return;
-    if (!window.confirm(`Sitzung mit PID ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`)) return;
+    if (
+      !window.confirm(
+        `Sitzung mit PID ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`,
+      )
+    )
+      return;
     setActingPid(pid);
     try {
       await terminateSession(
@@ -158,7 +164,10 @@ export function SessionsView() {
                     <td className="px-3 py-2 font-mono text-muted-foreground">
                       {session.wait_event ?? "—"}
                     </td>
-                    <td className="max-w-md truncate px-3 py-2 font-mono text-muted-foreground" title={session.query}>
+                    <td
+                      className="max-w-md truncate px-3 py-2 font-mono text-muted-foreground"
+                      title={session.query}
+                    >
                       {session.query || "—"}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
@@ -210,13 +219,19 @@ export function SessionsView() {
             </thead>
             <tbody className="divide-y divide-border/50">
               {(locks ?? []).map((lock, index) => (
-                <tr key={`${lock.pid}-${lock.lock_type}-${lock.relation ?? ""}-${lock.mode}-${index}`} className="hover:bg-muted/40">
+                <tr
+                  key={`${lock.pid}-${lock.lock_type}-${lock.relation ?? ""}-${lock.mode}-${index}`}
+                  className="hover:bg-muted/40"
+                >
                   <td className="px-3 py-2 font-mono tabular-nums">{lock.pid}</td>
                   <td className="px-3 py-2 font-mono">{lock.lock_type}</td>
                   <td className="px-3 py-2 font-mono">{lock.relation ?? "—"}</td>
                   <td className="px-3 py-2 font-mono">{lock.mode}</td>
                   <td className="px-3 py-2">
-                    <Badge variant={lock.granted ? "secondary" : "destructive"} className="px-1.5 py-0 text-[10px]">
+                    <Badge
+                      variant={lock.granted ? "secondary" : "destructive"}
+                      className="px-1.5 py-0 text-[10px]"
+                    >
                       {lock.granted ? "gewährt" : "wartet"}
                     </Badge>
                   </td>

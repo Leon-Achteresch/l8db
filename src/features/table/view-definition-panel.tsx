@@ -1,33 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  CheckIcon,
-  CopyIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  ShieldCheckIcon,
-} from "lucide-react";
+import { CheckIcon, CopyIcon, PlayIcon, RotateCcwIcon, ShieldCheckIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
-import { SqlEditor } from "@/features/table/sql-editor";
-import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { SqlEditor } from "@/features/table/sql-editor";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
-import { useActiveDatabase } from "@/lib/db-selection";
 import { updateViewDefinition } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { useViewDefinitionQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface ViewDefinitionPanelProps {
   schema: string;
   view: string;
 }
 
-export function ViewDefinitionPanel({
-  schema,
-  view,
-}: ViewDefinitionPanelProps) {
+export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) {
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [compileStatus, setCompileStatus] = useState<"idle" | "ok" | "error">("idle");
@@ -53,14 +42,11 @@ export function ViewDefinitionPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleChange = useCallback(
-    (value: string) => {
-      setDraft(value);
-      setCompileStatus("idle");
-      setCompileError(null);
-    },
-    [],
-  );
+  const handleChange = useCallback((value: string) => {
+    setDraft(value);
+    setCompileStatus("idle");
+    setCompileError(null);
+  }, []);
 
   const handleReset = () => {
     setDraft(null);
@@ -133,9 +119,7 @@ export function ViewDefinitionPanel({
   if (!definition) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted-foreground">
-          Definition nicht verfügbar.
-        </p>
+        <p className="text-sm text-muted-foreground">Definition nicht verfügbar.</p>
       </div>
     );
   }
@@ -150,11 +134,7 @@ export function ViewDefinitionPanel({
           onClick={handleCopy}
           aria-label="SQL kopieren"
         >
-          {copied ? (
-            <CheckIcon className="size-3.5" />
-          ) : (
-            <CopyIcon className="size-3.5" />
-          )}
+          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
         </Button>
 
         {isDirty ? (
@@ -177,11 +157,7 @@ export function ViewDefinitionPanel({
           onClick={handleCompile}
           disabled={busy || !isDirty}
         >
-          {busy ? (
-            <Spinner className="size-3" />
-          ) : (
-            <ShieldCheckIcon className="size-3.5" />
-          )}
+          {busy ? <Spinner className="size-3" /> : <ShieldCheckIcon className="size-3.5" />}
           Kompilieren
         </Button>
 
@@ -198,11 +174,7 @@ export function ViewDefinitionPanel({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <SqlEditor
-          value={currentValue}
-          onChange={handleChange}
-          className="min-h-0 flex-1"
-        />
+        <SqlEditor value={currentValue} onChange={handleChange} className="min-h-0 flex-1" />
       </div>
 
       {compileError ? (

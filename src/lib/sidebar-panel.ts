@@ -19,10 +19,7 @@ export function selectSidebarPanelWidth(state: SidebarPanelState): number {
 }
 
 function clampWidth(width: number): number {
-  return Math.min(
-    SIDEBAR_PANEL_MAX_WIDTH,
-    Math.max(SIDEBAR_PANEL_MIN_WIDTH, Math.round(width)),
-  );
+  return Math.min(SIDEBAR_PANEL_MAX_WIDTH, Math.max(SIDEBAR_PANEL_MIN_WIDTH, Math.round(width)));
 }
 
 export const useSidebarPanel = create<SidebarPanelState>()(

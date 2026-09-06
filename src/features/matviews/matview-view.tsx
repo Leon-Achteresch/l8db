@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type { SortingState } from "@tanstack/react-table";
-import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon, RefreshCwOffIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,15 +11,11 @@ import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { dropMaterializedView, refreshMaterializedView } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import {
-  useMaterializedViewsQuery,
-  useTableRowCountQuery,
-  useTableRowsQuery,
-} from "@/lib/queries";
+import { useMaterializedViewsQuery, useTableRowCountQuery, useTableRowsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface MatviewViewProps {
   schema: string;

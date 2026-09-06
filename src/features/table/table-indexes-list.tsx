@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { KeyRoundIcon, LayersIcon, LinkIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TableIndexesListProps {
   schema: string;
@@ -63,12 +62,16 @@ interface CreateIndexDialogProps {
   onSuccess: () => void;
 }
 
-function CreateIndexDialog({ open, onOpenChange, schema, table, onSuccess }: CreateIndexDialogProps) {
+function CreateIndexDialog({
+  open,
+  onOpenChange,
+  schema,
+  table,
+  onSuccess,
+}: CreateIndexDialogProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const [sql, setSql] = useState(
-    `CREATE INDEX ON "${schema}"."${table}" (column_name);`,
-  );
+  const [sql, setSql] = useState(`CREATE INDEX ON "${schema}"."${table}" (column_name);`);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,7 +117,12 @@ function CreateIndexDialog({ open, onOpenChange, schema, table, onSuccess }: Cre
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={running}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={running}
+          >
             Abbrechen
           </Button>
           <Button size="sm" onClick={handleRun} disabled={running || !sql.trim()}>
@@ -243,7 +251,9 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                         {idx.is_primary ? (
                           <KeyRoundIcon className="size-4 text-amber-500" />
                         ) : (
-                          <LayersIcon className={`size-4 ${idx.is_unique ? "text-blue-500" : "text-muted-foreground"}`} />
+                          <LayersIcon
+                            className={`size-4 ${idx.is_unique ? "text-blue-500" : "text-muted-foreground"}`}
+                          />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -255,12 +265,18 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                             {idx.index_type.toUpperCase()}
                           </Badge>
                           {idx.is_primary && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-500 border-amber-500/20 bg-amber-500/5">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 text-amber-500 border-amber-500/20 bg-amber-500/5"
+                            >
                               PRIMARY
                             </Badge>
                           )}
                           {idx.is_unique && !idx.is_primary && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5"
+                            >
                               UNIQUE
                             </Badge>
                           )}

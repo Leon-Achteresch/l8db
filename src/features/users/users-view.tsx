@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -15,7 +14,8 @@ import {
   UndoIcon,
   UserIcon,
 } from "lucide-react";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,31 +42,25 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
-import { useActiveDatabase } from "@/lib/db-selection";
 import {
+  type AlterRoleOptions,
   alterRole,
+  type CreateRoleOptions,
   createRole,
   dropRole,
   modifyPrivilege,
-  type AlterRoleOptions,
-  type CreateRoleOptions,
   type PrivilegeChange,
   type RoleInfo,
   type SchemaPrivileges,
   type TablePrivileges,
 } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { useRolePrivilegesQuery, useRolesQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 const routeApi = getRouteApi("/_app/users/$name");
 
@@ -164,36 +158,16 @@ export function UsersView() {
     try {
       const options: AlterRoleOptions = {
         name: role.name,
-        superuser:
-          editState.superuser !== role.superuser
-            ? editState.superuser
-            : undefined,
-        can_login:
-          editState.can_login !== role.can_login
-            ? editState.can_login
-            : undefined,
-        create_db:
-          editState.create_db !== role.create_db
-            ? editState.create_db
-            : undefined,
-        create_role:
-          editState.create_role !== role.create_role
-            ? editState.create_role
-            : undefined,
-        replication:
-          editState.replication !== role.replication
-            ? editState.replication
-            : undefined,
-        bypass_rls:
-          editState.bypass_rls !== role.bypass_rls
-            ? editState.bypass_rls
-            : undefined,
-        conn_limit:
-          editState.conn_limit !== "" ? Number(editState.conn_limit) : undefined,
+        superuser: editState.superuser !== role.superuser ? editState.superuser : undefined,
+        can_login: editState.can_login !== role.can_login ? editState.can_login : undefined,
+        create_db: editState.create_db !== role.create_db ? editState.create_db : undefined,
+        create_role: editState.create_role !== role.create_role ? editState.create_role : undefined,
+        replication: editState.replication !== role.replication ? editState.replication : undefined,
+        bypass_rls: editState.bypass_rls !== role.bypass_rls ? editState.bypass_rls : undefined,
+        conn_limit: editState.conn_limit !== "" ? Number(editState.conn_limit) : undefined,
         password: editState.password || undefined,
         valid_until: editState.valid_until || undefined,
-        clear_valid_until:
-          role.valid_until !== null && editState.valid_until === "",
+        clear_valid_until: role.valid_until !== null && editState.valid_until === "",
         grant_roles: editState.grant_roles,
         revoke_roles: editState.revoke_roles,
       };
@@ -274,9 +248,7 @@ export function UsersView() {
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
-        <p className="text-sm text-muted-foreground font-medium">
-          Keine Verbindung aktiv.
-        </p>
+        <p className="text-sm text-muted-foreground font-medium">Keine Verbindung aktiv.</p>
       </div>
     );
   }
@@ -303,9 +275,7 @@ export function UsersView() {
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
         <div className="flex flex-col items-center gap-3 max-w-md text-center p-6 rounded-lg border border-destructive/20 bg-destructive/5 shadow-xs">
           <TriangleAlertIcon className="size-8 text-destructive animate-bounce" />
-          <h3 className="text-sm font-semibold text-destructive">
-            Fehler beim Laden der Rollen
-          </h3>
+          <h3 className="text-sm font-semibold text-destructive">Fehler beim Laden der Rollen</h3>
           <p className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text">
             {String(error)}
           </p>
@@ -333,9 +303,7 @@ export function UsersView() {
           ) : (
             <ShieldIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="text-xs font-medium text-muted-foreground truncate">
-            {role.name}
-          </span>
+          <span className="text-xs font-medium text-muted-foreground truncate">{role.name}</span>
           <Badge variant={role.can_login ? "default" : "secondary"}>
             {role.can_login ? "Login" : "Rolle"}
           </Badge>
@@ -343,11 +311,7 @@ export function UsersView() {
         </div>
         {!editing ? (
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => setCreateOpen(true)}
-            >
+            <Button variant="outline" size="xs" onClick={() => setCreateOpen(true)}>
               <PlusIcon data-icon="inline-start" />
               Neue Rolle
             </Button>
@@ -357,11 +321,7 @@ export function UsersView() {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="text-destructive"
-                >
+                <Button variant="outline" size="xs" className="text-destructive">
                   <TrashIcon data-icon="inline-start" />
                   Löschen
                 </Button>
@@ -370,16 +330,13 @@ export function UsersView() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Rolle löschen?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Die Rolle &quot;{role.name}&quot; wird unwiderruflich
-                    gelöscht.
+                    Die Rolle &quot;{role.name}&quot; wird unwiderruflich gelöscht.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Abbrechen</AlertDialogCancel>
                   <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-                    {deleting ? (
-                      <LoaderIcon className="size-4 animate-spin" />
-                    ) : null}
+                    {deleting ? <LoaderIcon className="size-4 animate-spin" /> : null}
                     Löschen
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -392,17 +349,9 @@ export function UsersView() {
               <UndoIcon data-icon="inline-start" />
               Abbrechen
             </Button>
-            <Button
-              variant="default"
-              size="xs"
-              onClick={handleSave}
-              disabled={saving}
-            >
+            <Button variant="default" size="xs" onClick={handleSave} disabled={saving}>
               {saving ? (
-                <LoaderIcon
-                  data-icon="inline-start"
-                  className="animate-spin"
-                />
+                <LoaderIcon data-icon="inline-start" className="animate-spin" />
               ) : (
                 <CheckIcon data-icon="inline-start" />
               )}
@@ -426,11 +375,7 @@ export function UsersView() {
         )}
       </div>
 
-      <CreateRoleDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        allRoles={roles ?? []}
-      />
+      <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} allRoles={roles ?? []} />
     </div>
   );
 }
@@ -471,9 +416,7 @@ function RoleDetailView({ role }: { role: RoleInfo }) {
             </div>
             <div className="flex items-center justify-between py-1">
               <span className="text-muted-foreground">Gültig bis</span>
-              <span className="font-mono">
-                {role.valid_until ?? "Unbegrenzt"}
-              </span>
+              <span className="font-mono">{role.valid_until ?? "Unbegrenzt"}</span>
             </div>
           </div>
         </section>
@@ -481,9 +424,7 @@ function RoleDetailView({ role }: { role: RoleInfo }) {
         <section className="space-y-3">
           <h3 className="text-sm font-semibold">Mitglied von</h3>
           {role.member_of.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Keine Mitgliedschaften.
-            </p>
+            <p className="text-sm text-muted-foreground">Keine Mitgliedschaften.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {role.member_of.map((r) => (
@@ -525,12 +466,7 @@ function PrivilegesPanel({ roleName }: { roleName: string }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
-  const {
-    data: privileges,
-    isLoading,
-    isError,
-    error,
-  } = useRolePrivilegesQuery(roleName);
+  const { data: privileges, isLoading, isError, error } = useRolePrivilegesQuery(roleName);
 
   const [pendingChanges, setPendingChanges] = useState<Set<string>>(new Set());
 
@@ -611,14 +547,9 @@ function PrivilegesPanel({ roleName }: { roleName: string }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/30">
-                <th className="px-3 py-2 text-left font-medium text-xs">
-                  Schema
-                </th>
+                <th className="px-3 py-2 text-left font-medium text-xs">Schema</th>
                 {SCHEMA_PRIVS.map((p) => (
-                  <th
-                    key={p}
-                    className="w-20 px-2 py-2 text-center font-medium text-xs"
-                  >
+                  <th key={p} className="w-20 px-2 py-2 text-center font-medium text-xs">
                     {p}
                   </th>
                 ))}
@@ -757,12 +688,8 @@ function SchemaTableGroup({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-t bg-muted/30">
-                <th className="px-3 py-1.5 text-left font-medium text-xs min-w-[180px]">
-                  Objekt
-                </th>
-                <th className="px-2 py-1.5 text-left font-medium text-xs w-16">
-                  Typ
-                </th>
+                <th className="px-3 py-1.5 text-left font-medium text-xs min-w-[180px]">Objekt</th>
+                <th className="px-2 py-1.5 text-left font-medium text-xs w-16">Typ</th>
                 {TABLE_PRIVS.map((p) => (
                   <TooltipProvider key={p} delayDuration={200}>
                     <Tooltip>
@@ -777,9 +704,7 @@ function SchemaTableGroup({
                     </Tooltip>
                   </TooltipProvider>
                 ))}
-                <th className="w-12 px-1 py-1.5 text-center font-medium text-xs">
-                  ALL
-                </th>
+                <th className="w-12 px-1 py-1.5 text-center font-medium text-xs">ALL</th>
               </tr>
             </thead>
             <tbody>
@@ -826,16 +751,15 @@ function TablePrivRow({
 
   return (
     <tr className="border-t hover:bg-muted/20 transition-colors">
-      <td className="px-3 py-1 font-mono text-xs truncate max-w-[220px]">
-        {tp.table}
-      </td>
+      <td className="px-3 py-1 font-mono text-xs truncate max-w-[220px]">{tp.table}</td>
       <td className="px-2 py-1">
         <Badge
           variant="outline"
           className={cn(
             "text-[10px] px-1.5 py-0",
             tp.object_type === "view" && "border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
-            tp.object_type === "sequence" && "border-amber-500/30 text-amber-600 dark:text-amber-400",
+            tp.object_type === "sequence" &&
+              "border-amber-500/30 text-amber-600 dark:text-amber-400",
           )}
         >
           {tp.object_type === "materialized_view" ? "mview" : tp.object_type}
@@ -865,11 +789,7 @@ function TablePrivRow({
         );
       })}
       <td className="px-1 py-1 text-center">
-        <PrivCheckbox
-          checked={allGranted}
-          pending={false}
-          onToggle={handleToggleAll}
-        />
+        <PrivCheckbox checked={allGranted} pending={false} onToggle={handleToggleAll} />
       </td>
     </tr>
   );
@@ -898,31 +818,20 @@ function PrivCheckbox({
       onCheckedChange={onToggle}
       className={cn(
         "size-4",
-        checked &&
-          "data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600",
+        checked && "data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600",
       )}
     />
   );
 }
 
-function PrivBar({
-  granted,
-  total,
-}: {
-  granted: number;
-  total: number;
-}) {
+function PrivBar({ granted, total }: { granted: number; total: number }) {
   const pct = total === 0 ? 0 : Math.round((granted / total) * 100);
   return (
     <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
       <div
         className={cn(
           "h-full rounded-full transition-all",
-          pct === 0
-            ? "bg-muted"
-            : pct === 100
-              ? "bg-emerald-500"
-              : "bg-amber-500",
+          pct === 0 ? "bg-muted" : pct === 100 ? "bg-emerald-500" : "bg-amber-500",
         )}
         style={{ width: `${pct}%` }}
       />
@@ -934,11 +843,7 @@ function PropertyRow({ label, value }: { label: string; value: boolean }) {
   return (
     <div className="flex items-center justify-between py-1">
       <span className="text-muted-foreground">{label}</span>
-      {value ? (
-        <Badge variant="default">Ja</Badge>
-      ) : (
-        <Badge variant="secondary">Nein</Badge>
-      )}
+      {value ? <Badge variant="default">Ja</Badge> : <Badge variant="secondary">Nein</Badge>}
     </div>
   );
 }
@@ -1019,9 +924,7 @@ function RoleEditForm({
               min={-1}
               placeholder="-1 = Unbegrenzt"
               value={state.conn_limit}
-              onChange={(e) =>
-                onChange({ ...state, conn_limit: e.target.value })
-              }
+              onChange={(e) => onChange({ ...state, conn_limit: e.target.value })}
             />
           </div>
           <div className="space-y-1.5">
@@ -1032,9 +935,7 @@ function RoleEditForm({
               id="valid-until"
               type="datetime-local"
               value={state.valid_until}
-              onChange={(e) =>
-                onChange({ ...state, valid_until: e.target.value })
-              }
+              onChange={(e) => onChange({ ...state, valid_until: e.target.value })}
             />
           </div>
         </div>
@@ -1055,9 +956,7 @@ function RoleEditForm({
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Mitgliedschaften</h3>
         {otherRoles.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Keine anderen Rollen vorhanden.
-          </p>
+          <p className="text-sm text-muted-foreground">Keine anderen Rollen vorhanden.</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {otherRoles.map((r) => {
@@ -1129,8 +1028,7 @@ function CreateRoleDialog({
         create_role: form.create_role,
         replication: form.replication,
         bypass_rls: form.bypass_rls,
-        conn_limit:
-          form.conn_limit !== "" ? Number(form.conn_limit) : undefined,
+        conn_limit: form.conn_limit !== "" ? Number(form.conn_limit) : undefined,
         valid_until: form.valid_until || undefined,
         member_of: form.member_of,
       };
@@ -1226,9 +1124,7 @@ function CreateRoleDialog({
                 min={-1}
                 placeholder="-1 = Unbegrenzt"
                 value={form.conn_limit}
-                onChange={(e) =>
-                  setForm({ ...form, conn_limit: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, conn_limit: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
@@ -1239,9 +1135,7 @@ function CreateRoleDialog({
                 id="create-valid-until"
                 type="datetime-local"
                 value={form.valid_until}
-                onChange={(e) =>
-                  setForm({ ...form, valid_until: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
               />
             </div>
           </div>
@@ -1285,10 +1179,7 @@ function CreateRoleDialog({
           >
             Abbrechen
           </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={creating || !form.name.trim()}
-          >
+          <Button onClick={handleCreate} disabled={creating || !form.name.trim()}>
             {creating ? (
               <LoaderIcon className="size-4 animate-spin" />
             ) : (

@@ -1,22 +1,19 @@
-import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
-
+import { useCallback, useState } from "react";
+import type { SavedConnection } from "@/lib/connections";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
-import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
-import { useSettingsStore } from "@/lib/settings";
 import {
   beginTransaction,
   countTableRows,
   deleteRowInTransaction,
   duplicateRowInTransaction,
   fetchTableRows,
+  getDatabaseOverview,
   getErSchema,
   getFunctionDefinition,
   getPartitionInfo,
   getTableRls,
-  getDatabaseOverview,
   getViewDefinition,
   insertRowInTransaction,
   listAllColumns,
@@ -41,17 +38,20 @@ import {
   listTables,
   listTriggers,
   listViews,
-  updateRowInTransaction,
   type TableData,
   type TableRowSort,
+  updateRowInTransaction,
 } from "@/lib/db";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { supports } from "@/lib/providers";
+import { useSettingsStore } from "@/lib/settings";
+import { effectiveConnectionString } from "@/lib/ssh";
 import {
-  getTransactionForConnection,
-  useTransactionStore,
   type ActiveTransaction,
+  getTransactionForConnection,
   type TransactionChange,
+  useTransactionStore,
 } from "@/lib/transactions";
-import type { SavedConnection } from "@/lib/connections";
 
 const CONNECTION_QUERY_ROOTS = new Set([
   "databases",
@@ -90,9 +90,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
   const root = queryKey[0];
   return (
-    typeof root === "string" &&
-    CONNECTION_QUERY_ROOTS.has(root) &&
-    queryKey[1] === connectionId
+    typeof root === "string" && CONNECTION_QUERY_ROOTS.has(root) && queryKey[1] === connectionId
   );
 }
 
@@ -132,9 +130,8 @@ export function useDatabasesQuery() {
   const connection = useActiveConnection();
   return useQuery({
     queryKey: ["databases", connection?.id],
-    queryFn: () =>
-      listDatabases(connection!.kind, effectiveConnectionString(connection!)),
-    enabled: Boolean(connection),
+    queryFn: () => listDatabases(connection!.kind, effectiveConnectionString(connection!)),
+    enabled: supports(connection, "databases"),
   });
 }
 
@@ -144,12 +141,8 @@ export function useSchemasQuery() {
   return useQuery({
     queryKey: ["schemas", connection?.id, database],
     queryFn: () =>
-      listSchemas(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection),
+      listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: supports(connection, "schemas"),
   });
 }
 
@@ -183,7 +176,7 @@ export function useViewsQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "views"),
   });
 }
 
@@ -219,7 +212,7 @@ export function useViewDefinitionQuery(schema: string, view: string) {
         view,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(view),
+    enabled: supports(connection, "view_editor") && Boolean(schema) && Boolean(view),
   });
 }
 
@@ -236,7 +229,7 @@ export function useFunctionsQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "functions"),
   });
 }
 
@@ -252,7 +245,7 @@ export function useFunctionDefinitionQuery(oid: string) {
         oid,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(oid),
+    enabled: supports(connection, "functions") && Boolean(oid),
   });
 }
 
@@ -267,7 +260,7 @@ export function useExtensionsQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "extensions"),
   });
 }
 
@@ -277,12 +270,8 @@ export function useRolesQuery() {
   return useQuery({
     queryKey: ["roles", connection?.id, database],
     queryFn: () =>
-      listRoles(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection),
+      listRoles(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: supports(connection, "roles"),
   });
 }
 
@@ -298,7 +287,7 @@ export function useRolePrivilegesQuery(roleName: string) {
         roleName,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(roleName),
+    enabled: supports(connection, "privileges") && Boolean(roleName),
   });
 }
 
@@ -315,7 +304,7 @@ export function useForeignKeysQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "foreign_keys") && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -333,7 +322,7 @@ export function useTriggersQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "triggers") && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -386,7 +375,7 @@ export function useSequencesQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "sequences"),
   });
 }
 
@@ -403,7 +392,7 @@ export function useIndexesQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "indexes") && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -421,7 +410,7 @@ export function useConstraintsQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "constraints") && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -437,7 +426,7 @@ export function useAvailableExtensionsQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "extensions"),
     staleTime: 10 * 60 * 1000,
   });
 }
@@ -511,15 +500,7 @@ export function useTableRowCountQuery(
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
-    queryKey: [
-      "count",
-      connection?.id,
-      database,
-      schema,
-      table,
-      filter ?? "",
-      allowRaw,
-    ],
+    queryKey: ["count", connection?.id, database, schema, table, filter ?? "", allowRaw],
     queryFn: () =>
       countTableRows(
         connection!.kind,
@@ -592,13 +573,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
         tx = newTx;
       }
 
-      const newCtid = await updateRowInTransaction(
-        tx.txId,
-        schema,
-        table,
-        ctid,
-        changedUpdates,
-      );
+      const newCtid = await updateRowInTransaction(tx.txId, schema, table, ctid, changedUpdates);
 
       store.addChange(tx.txId, {
         id: crypto.randomUUID(),
@@ -616,25 +591,18 @@ export function useUpdateRowMutation(schema: string, table: string) {
       return { newCtid };
     },
     onSuccess: (result, { ctid, updates }) => {
-      queryClient.setQueriesData<TableData>(
-        { queryKey: ["rows"] },
-        (old) => {
-          if (!old) return old;
-          const idx = old.rows.findIndex(
-            (r) => (r as Record<string, unknown>).__ctid__ === ctid,
-          );
-          if (idx === -1) return old;
-          const updatedRows = [...old.rows];
-          updatedRows[idx] = {
-            ...updatedRows[idx],
-            __ctid__: result.newCtid,
-            ...Object.fromEntries(
-              Object.entries(updates).map(([k, v]) => [k, v]),
-            ),
-          };
-          return { ...old, rows: updatedRows };
-        },
-      );
+      queryClient.setQueriesData<TableData>({ queryKey: ["rows"] }, (old) => {
+        if (!old) return old;
+        const idx = old.rows.findIndex((r) => (r as Record<string, unknown>).__ctid__ === ctid);
+        if (idx === -1) return old;
+        const updatedRows = [...old.rows];
+        updatedRows[idx] = {
+          ...updatedRows[idx],
+          __ctid__: result.newCtid,
+          ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v])),
+        };
+        return { ...old, rows: updatedRows };
+      });
     },
   });
 }
@@ -791,9 +759,7 @@ export function useDeleteRowMutation(schema: string, table: string) {
           old
             ? {
                 ...old,
-                rows: old.rows.filter(
-                  (r) => (r as Record<string, unknown>).__ctid__ !== ctid,
-                ),
+                rows: old.rows.filter((r) => (r as Record<string, unknown>).__ctid__ !== ctid),
               }
             : old,
       );
@@ -817,7 +783,7 @@ export function useMaterializedViewsQuery(schema?: string) {
         database ?? undefined,
         schema,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "materialized_views"),
   });
 }
 
@@ -834,7 +800,7 @@ export function useTableRlsQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "rls") && Boolean(schema) && Boolean(table),
   });
 }
 
@@ -851,7 +817,7 @@ export function usePartitionInfoQuery(schema: string, table: string) {
         table,
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: supports(connection, "partitions") && Boolean(schema) && Boolean(table),
   });
 }
 
@@ -866,7 +832,7 @@ export function usePublicationsQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "replication"),
   });
 }
 
@@ -881,7 +847,7 @@ export function useSubscriptionsQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "replication"),
   });
 }
 
@@ -891,12 +857,8 @@ export function useSessionsQuery(refetchInterval = 5000) {
   return useQuery({
     queryKey: ["sessions", connection?.id, database],
     queryFn: () =>
-      listSessions(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection),
+      listSessions(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: supports(connection, "sessions"),
     refetchInterval,
   });
 }
@@ -907,12 +869,8 @@ export function useLocksQuery(refetchInterval = 5000) {
   return useQuery({
     queryKey: ["locks", connection?.id, database],
     queryFn: () =>
-      listLocks(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection),
+      listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: supports(connection, "locks"),
     refetchInterval,
   });
 }
@@ -929,7 +887,7 @@ export function useEnumsQuery(schema?: string) {
         database ?? undefined,
         schema,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "enums"),
   });
 }
 
@@ -944,7 +902,7 @@ export function useDatabaseOverviewQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: supports(connection, "overview"),
     staleTime: 60_000,
   });
 }

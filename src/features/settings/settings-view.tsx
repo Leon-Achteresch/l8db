@@ -4,12 +4,21 @@ import { useTheme } from "next-themes";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { UpdateSection } from "@/features/settings/update-section";
 import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
-  const { rowLimit, editorFontSize, queryTimeout, sshTrustNewHosts, setRowLimit, setEditorFontSize, setQueryTimeout, setSshTrustNewHosts } =
-    useSettingsStore();
+  const {
+    rowLimit,
+    editorFontSize,
+    queryTimeout,
+    sshTrustNewHosts,
+    setRowLimit,
+    setEditorFontSize,
+    setQueryTimeout,
+    setSshTrustNewHosts,
+  } = useSettingsStore();
 
   return (
     <main className="mx-auto w-full max-w-2xl p-8">
@@ -19,9 +28,7 @@ export function SettingsView() {
         <div className="flex items-center justify-between rounded-lg border border-border p-4">
           <div>
             <p className="text-sm font-medium">Erscheinungsbild</p>
-            <p className="text-sm text-muted-foreground">
-              Wähle ein Theme für die Anwendung
-            </p>
+            <p className="text-sm text-muted-foreground">Wähle ein Theme für die Anwendung</p>
           </div>
           <ToggleGroup
             type="single"
@@ -62,7 +69,7 @@ export function SettingsView() {
             value={rowLimit}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10);
-              if (!isNaN(v) && v >= 10 && v <= 5000) setRowLimit(v);
+              if (!Number.isNaN(v) && v >= 10 && v <= 5000) setRowLimit(v);
             }}
             className="w-24 text-right"
           />
@@ -83,7 +90,7 @@ export function SettingsView() {
             value={editorFontSize}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10);
-              if (!isNaN(v) && v >= 10 && v <= 24) setEditorFontSize(v);
+              if (!Number.isNaN(v) && v >= 10 && v <= 24) setEditorFontSize(v);
             }}
             className="w-24 text-right"
           />
@@ -104,7 +111,7 @@ export function SettingsView() {
             value={queryTimeout}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10);
-              if (!isNaN(v) && v >= 5 && v <= 300) setQueryTimeout(v);
+              if (!Number.isNaN(v) && v >= 5 && v <= 300) setQueryTimeout(v);
             }}
             className="w-24 text-right"
           />
@@ -116,11 +123,9 @@ export function SettingsView() {
               Unbekannte Server-Keys beim ersten Verbinden in known_hosts speichern (TOFU)
             </p>
           </div>
-          <Switch
-            checked={sshTrustNewHosts}
-            onCheckedChange={setSshTrustNewHosts}
-          />
+          <Switch checked={sshTrustNewHosts} onCheckedChange={setSshTrustNewHosts} />
         </div>
+        <UpdateSection />
       </div>
     </main>
   );

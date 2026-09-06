@@ -1,8 +1,7 @@
-import type * as React from "react";
-
+import { useSortable } from "@dnd-kit/react/sortable";
 import {
-  CopyIcon,
   BracesIcon,
+  CopyIcon,
   EyeIcon,
   PackageIcon,
   SquareTerminalIcon,
@@ -12,9 +11,8 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { useSortable } from "@dnd-kit/react/sortable";
-
-import { cn } from "@/lib/utils";
+import { motion, useReducedMotion } from "motion/react";
+import type * as React from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -23,7 +21,9 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { tabKey, type Tab } from "@/lib/table-tabs";
+import { SPRING } from "@/lib/ease";
+import { type Tab, tabKey } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
   tab: Tab;
@@ -81,6 +81,7 @@ export function TableTabsSortableTab({
   onCopyTable,
   onCopyFull,
 }: TableTabsSortableTabProps) {
+  const reduce = useReducedMotion();
   const { ref, isDragging } = useSortable({ id: tabKey(tab), index });
 
   const { Icon, iconColor } = tabVisual(tab);
@@ -115,6 +116,13 @@ export function TableTabsSortableTab({
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
+          {isActive && (
+            <motion.span
+              layoutId={reduce ? undefined : "workspace-active-tab"}
+              transition={SPRING}
+              className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"
+            />
+          )}
           <span
             className={cn(
               "mr-2 size-1.5 shrink-0 rounded-full transition-colors",
@@ -135,7 +143,9 @@ export function TableTabsSortableTab({
             aria-label={`${label} schließen`}
             className={cn(
               "ml-1.5 grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-all hover:bg-foreground/10 hover:text-foreground",
-              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
             )}
           >
             <XIcon className="size-3.5" />
@@ -165,9 +175,7 @@ export function TableTabsSortableTab({
                 <CopyIcon className="size-3.5" />
               </ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onSelect={onCopyFull}>
-              Vollständigen Namen kopieren
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={onCopyFull}>Vollständigen Namen kopieren</ContextMenuItem>
           </>
         )}
       </ContextMenuContent>

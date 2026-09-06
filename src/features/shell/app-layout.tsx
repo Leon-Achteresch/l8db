@@ -1,18 +1,11 @@
 import { Outlet } from "@tanstack/react-router";
-
-import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TableTabs } from "@/features/shell/table-tabs";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import {
-  selectSidebarPanelWidth,
-  useSidebarPanel,
-} from "@/lib/sidebar-panel";
+import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
+import { WorkspaceStatus } from "./workspace-status";
 
 export function AppLayout() {
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
@@ -29,7 +22,7 @@ export function AppLayout() {
     >
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
-        <header className="flex shrink-0 items-center gap-2 border-b px-3">
+        <header className="flex shrink-0 items-center gap-2 border-b bg-card/60 px-3 py-1">
           <SidebarTrigger className="-ml-1" />
           <TableTabs />
         </header>
@@ -39,6 +32,7 @@ export function AppLayout() {
           </div>
           {panelOpen && <TransactionPanel />}
         </div>
+        <WorkspaceStatus />
       </SidebarInset>
     </SidebarProvider>
   );

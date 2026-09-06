@@ -1,29 +1,29 @@
-import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import {
-  Columns2Icon,
-  KeyRoundIcon,
-  SearchIcon,
-  XIcon,
-  HashIcon,
-  TypeIcon,
-  CalendarIcon,
-  CheckIcon,
-  BracesIcon,
   BinaryIcon,
+  BracesIcon,
+  CalendarIcon,
+  CheckCheckIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  Columns2Icon,
   CopyIcon,
-  CheckCheckIcon,
+  HashIcon,
   InfoIcon,
+  KeyRoundIcon,
+  SearchIcon,
+  TypeIcon,
+  XIcon,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
-import { useDetailedColumnsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import type { DetailedColumnInfo } from "@/lib/db";
+import { useDetailedColumnsQuery } from "@/lib/queries";
 
 interface TableColumnsListProps {
   schema: string;
@@ -65,7 +65,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         icon: KeyRoundIcon,
         color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
         label: "Primary Key",
-        badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/20"
+        badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/20",
       };
     }
     if (
@@ -81,7 +81,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         icon: HashIcon,
         color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
         label: "Numerisch",
-        badgeColor: "bg-blue-500/10 text-blue-500 border-blue-500/20"
+        badgeColor: "bg-blue-500/10 text-blue-500 border-blue-500/20",
       };
     }
     if (
@@ -95,19 +95,15 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         icon: TypeIcon,
         color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
         label: "Text",
-        badgeColor: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+        badgeColor: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
       };
     }
-    if (
-      lower.includes("time") ||
-      lower.includes("date") ||
-      lower.includes("interval")
-    ) {
+    if (lower.includes("time") || lower.includes("date") || lower.includes("interval")) {
       return {
         icon: CalendarIcon,
         color: "text-purple-500 bg-purple-500/10 border-purple-500/20",
         label: "Datum/Zeit",
-        badgeColor: "bg-purple-500/10 text-purple-500 border-purple-500/20"
+        badgeColor: "bg-purple-500/10 text-purple-500 border-purple-500/20",
       };
     }
     if (lower.includes("bool")) {
@@ -115,7 +111,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         icon: CheckIcon,
         color: "text-teal-500 bg-teal-500/10 border-teal-500/20",
         label: "Boolean",
-        badgeColor: "bg-teal-500/10 text-teal-500 border-teal-500/20"
+        badgeColor: "bg-teal-500/10 text-teal-500 border-teal-500/20",
       };
     }
     if (lower.includes("json")) {
@@ -123,70 +119,75 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         icon: BracesIcon,
         color: "text-pink-500 bg-rose-500/10 border-rose-500/20",
         label: "JSON",
-        badgeColor: "bg-rose-500/10 text-rose-500 border-rose-500/20"
+        badgeColor: "bg-rose-500/10 text-rose-500 border-rose-500/20",
       };
     }
     return {
       icon: BinaryIcon,
       color: "text-slate-500 bg-slate-500/10 border-slate-500/20",
       label: "Andere",
-      badgeColor: "bg-slate-500/10 text-slate-500 border-slate-500/20"
+      badgeColor: "bg-slate-500/10 text-slate-500 border-slate-500/20",
     };
   };
 
-  const pkCount = (columns as DetailedColumnInfo[] | undefined)?.filter((c: DetailedColumnInfo) => c.is_primary_key).length ?? 0;
-  const notNullCount = (columns as DetailedColumnInfo[] | undefined)?.filter((c: DetailedColumnInfo) => !c.is_nullable).length ?? 0;
-  const defaultCount = (columns as DetailedColumnInfo[] | undefined)?.filter((c: DetailedColumnInfo) => c.column_default !== null).length ?? 0;
+  const pkCount =
+    (columns as DetailedColumnInfo[] | undefined)?.filter(
+      (c: DetailedColumnInfo) => c.is_primary_key,
+    ).length ?? 0;
+  const notNullCount =
+    (columns as DetailedColumnInfo[] | undefined)?.filter((c: DetailedColumnInfo) => !c.is_nullable)
+      .length ?? 0;
+  const defaultCount =
+    (columns as DetailedColumnInfo[] | undefined)?.filter(
+      (c: DetailedColumnInfo) => c.column_default !== null,
+    ).length ?? 0;
 
-  const filteredColumns = (columns as DetailedColumnInfo[] | undefined)?.filter((column: DetailedColumnInfo) => {
-    const matchesSearch =
-      column.name.toLowerCase().includes(search.toLowerCase()) ||
-      column.data_type.toLowerCase().includes(search.toLowerCase());
+  const filteredColumns =
+    (columns as DetailedColumnInfo[] | undefined)?.filter((column: DetailedColumnInfo) => {
+      const matchesSearch =
+        column.name.toLowerCase().includes(search.toLowerCase()) ||
+        column.data_type.toLowerCase().includes(search.toLowerCase());
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (selectedFilter === "all") return true;
-    if (selectedFilter === "pk") return column.is_primary_key;
-    if (selectedFilter === "not-null") return !column.is_nullable;
-    if (selectedFilter === "has-default") return column.column_default !== null;
+      if (selectedFilter === "all") return true;
+      if (selectedFilter === "pk") return column.is_primary_key;
+      if (selectedFilter === "not-null") return !column.is_nullable;
+      if (selectedFilter === "has-default") return column.column_default !== null;
 
-    const lower = column.data_type.toLowerCase();
-    if (selectedFilter === "numeric") {
-      return (
-        lower.includes("int") ||
-        lower.includes("numeric") ||
-        lower.includes("double") ||
-        lower.includes("real") ||
-        lower.includes("decimal") ||
-        lower.includes("serial") ||
-        lower.includes("float")
-      );
-    }
-    if (selectedFilter === "text") {
-      return (
-        lower.includes("char") ||
-        lower.includes("text") ||
-        lower.includes("varchar") ||
-        lower.includes("uuid") ||
-        lower.includes("xml")
-      );
-    }
-    if (selectedFilter === "date") {
-      return (
-        lower.includes("time") ||
-        lower.includes("date") ||
-        lower.includes("interval")
-      );
-    }
-    if (selectedFilter === "boolean") {
-      return lower.includes("bool");
-    }
-    if (selectedFilter === "json") {
-      return lower.includes("json");
-    }
+      const lower = column.data_type.toLowerCase();
+      if (selectedFilter === "numeric") {
+        return (
+          lower.includes("int") ||
+          lower.includes("numeric") ||
+          lower.includes("double") ||
+          lower.includes("real") ||
+          lower.includes("decimal") ||
+          lower.includes("serial") ||
+          lower.includes("float")
+        );
+      }
+      if (selectedFilter === "text") {
+        return (
+          lower.includes("char") ||
+          lower.includes("text") ||
+          lower.includes("varchar") ||
+          lower.includes("uuid") ||
+          lower.includes("xml")
+        );
+      }
+      if (selectedFilter === "date") {
+        return lower.includes("time") || lower.includes("date") || lower.includes("interval");
+      }
+      if (selectedFilter === "boolean") {
+        return lower.includes("bool");
+      }
+      if (selectedFilter === "json") {
+        return lower.includes("json");
+      }
 
-    return true;
-  }) ?? [];
+      return true;
+    }) ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -341,7 +342,9 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         {filteredColumns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Columns2Icon className="size-8 text-muted-foreground/50 mb-3" />
-            <p className="text-sm text-muted-foreground">Keine Spalten entsprechen den aktuellen Filtern.</p>
+            <p className="text-sm text-muted-foreground">
+              Keine Spalten entsprechen den aktuellen Filtern.
+            </p>
             {(search || selectedFilter !== "all") && (
               <Button
                 variant="outline"
@@ -362,8 +365,8 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
               hidden: { opacity: 0 },
               visible: {
                 opacity: 1,
-                transition: { staggerChildren: 0.02 }
-              }
+                transition: { staggerChildren: 0.02 },
+              },
             }}
             initial="hidden"
             animate="visible"
@@ -385,7 +388,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                   layout="position"
                   variants={{
                     hidden: { opacity: 0, y: 8 },
-                    visible: { opacity: 1, y: 0 }
+                    visible: { opacity: 1, y: 0 },
                   }}
                   className={`group flex flex-col rounded-xl border transition-all duration-200 ${
                     isExpanded
@@ -462,24 +465,40 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                         <div className="border-t border-muted/40 bg-muted/10 p-4">
                           <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
                             <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">Position</div>
-                              <div className="font-mono text-foreground font-semibold text-sm">{column.ordinal_position}</div>
+                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                                Position
+                              </div>
+                              <div className="font-mono text-foreground font-semibold text-sm">
+                                {column.ordinal_position}
+                              </div>
                             </div>
                             <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">Datentyp</div>
-                              <div className="font-mono text-foreground font-semibold text-sm truncate" title={column.data_type}>
+                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                                Datentyp
+                              </div>
+                              <div
+                                className="font-mono text-foreground font-semibold text-sm truncate"
+                                title={column.data_type}
+                              >
                                 {column.data_type}
                               </div>
                             </div>
                             <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">Nullable</div>
+                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                                Nullable
+                              </div>
                               <div className="font-mono text-foreground font-semibold text-sm">
                                 {column.is_nullable ? "YES" : "NO"}
                               </div>
                             </div>
                             <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">Standardwert</div>
-                              <div className="font-mono text-foreground font-semibold text-sm truncate" title={column.column_default ?? "Keiner"}>
+                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                                Standardwert
+                              </div>
+                              <div
+                                className="font-mono text-foreground font-semibold text-sm truncate"
+                                title={column.column_default ?? "Keiner"}
+                              >
                                 {column.column_default ?? "NULL"}
                               </div>
                             </div>

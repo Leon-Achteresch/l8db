@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
-
-import type { DatabaseKind, SslMode } from "@/lib/db";
+import { sslModeFromUrl } from "@/lib/connection-url";
+import { closeSshTunnel, type DatabaseKind, type SslMode } from "@/lib/db";
 import {
   deleteSecret,
   extractUrlPassword,
@@ -90,7 +90,7 @@ const scrubbingStorage: StateStorage = {
       }
       window.localStorage.setItem(key, JSON.stringify(parsed));
     } catch {
-      window.localStorage.setItem(key, value);
+      throw new Error("Verbindungen konnten nicht sicher gespeichert werden.");
     }
   },
   removeItem: (key) => window.localStorage.removeItem(key),
@@ -105,7 +105,6 @@ export const useConnectionsStore = create<ConnectionsState>()(
         const connection: SavedConnection = { ...input, id: createId() };
         set((state) => ({
           connections: [...state.connections, connection],
-          activeId: state.activeId ?? connection.id,
         }));
         return connection;
       },
@@ -117,10 +116,10 @@ export const useConnectionsStore = create<ConnectionsState>()(
         })),
       removeConnection: (id) => {
         void deleteSecret(id).catch(() => undefined);
+        void deleteSecret(`${id}:ssh`).catch(() => undefined);
+        void closeSshTunnel(id).catch(() => undefined);
         set((state) => ({
-          connections: state.connections.filter(
-            (connection) => connection.id !== id,
-          ),
+          connections: state.connections.filter((connection) => connection.id !== id),
           activeId: state.activeId === id ? null : state.activeId,
         }));
       },
@@ -150,16 +149,14 @@ export async function initConnectionSecrets(): Promise<void> {
       const withDefaults: SavedConnection = {
         ssh: null,
         ...connection,
-        sslMode: connection.sslMode ?? "prefer",
+        sslMode: connection.sslMode ?? sslModeFromUrl(connection.connectionString),
       };
-      if (
-        withDefaults.sslMode !== connection.sslMode ||
-        withDefaults.ssh !== connection.ssh
-      ) {
+      if (withDefaults.sslMode !== connection.sslMode || withDefaults.ssh !== connection.ssh) {
         changed = true;
       }
       const inline = extractUrlPassword(withDefaults.connectionString);
       if (inline) {
+        changed = true;
         try {
           await storeSecret(withDefaults.id, inline);
         } catch {
@@ -189,9 +186,6 @@ export async function initConnectionSecrets(): Promise<void> {
 
 export function useActiveConnection(): SavedConnection | null {
   return useConnectionsStore(
-    (state) =>
-      state.connections.find(
-        (connection) => connection.id === state.activeId,
-      ) ?? null,
+    (state) => state.connections.find((connection) => connection.id === state.activeId) ?? null,
   );
 }

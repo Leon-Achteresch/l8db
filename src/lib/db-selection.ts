@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
+import type { Capabilities } from "@/lib/db";
+import { useCapabilities } from "@/lib/providers";
+import { useSchemasQuery } from "@/lib/queries";
 
 interface DbSelectionState {
   databaseByConnection: Record<string, string>;
@@ -46,11 +48,10 @@ export const useDbSelectionStore = create<DbSelectionState>()(
   ),
 );
 
-export function databaseFromConnectionString(
-  connectionString: string,
-): string | null {
+export function databaseFromConnectionString(connectionString: string): string | null {
   try {
     const url = new URL(connectionString);
+    if (!url.host) return null;
     const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
     return database || null;
   } catch {
@@ -61,18 +62,28 @@ export function databaseFromConnectionString(
 export function useActiveDatabase(): string | null {
   const connection = useActiveConnection();
   const selected = useDbSelectionStore((state) =>
-    connection ? state.databaseByConnection[connection.id] ?? null : null,
+    connection ? (state.databaseByConnection[connection.id] ?? null) : null,
   );
   if (!connection) {
     return null;
   }
-  return selected ?? databaseFromConnectionString(effectiveConnectionString(connection));
+  return selected ?? databaseFromConnectionString(connection.connectionString);
 }
 
 export function useActiveSchema(): string {
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schemas = useSchemasQuery().data;
   const selected = useDbSelectionStore((state) =>
-    connection ? state.schemaByConnection[connection.id] ?? null : null,
+    connection ? (state.schemaByConnection[connection.id] ?? null) : null,
   );
-  return selected ?? "public";
+  if (selected) return selected;
+  if (database && schemas?.includes(database)) return database;
+  if (!schemas?.length || schemas.includes("public")) return "public";
+  return schemas[0];
+}
+
+export function useActiveCapabilities(): Capabilities {
+  const connection = useActiveConnection();
+  return useCapabilities(connection?.kind);
 }

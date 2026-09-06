@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, RadioIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,21 +17,17 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
 import {
+  type CreatePublicationRequest,
+  type CreateSubscriptionRequest,
   createPublication,
   createSubscription,
   dropPublication,
   dropSubscription,
-  type CreatePublicationRequest,
-  type CreateSubscriptionRequest,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import {
-  usePublicationsQuery,
-  useSubscriptionsQuery,
-  useTablesQuery,
-} from "@/lib/queries";
+import { usePublicationsQuery, useSubscriptionsQuery, useTablesQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 function CreatePublicationDialog({
   open,
@@ -127,7 +122,10 @@ function CreatePublicationDialog({
                 {(tables ?? []).map((table) => {
                   const key = `${table.schema}.${table.name}`;
                   return (
-                    <label key={key} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
+                    <label
+                      key={key}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60"
+                    >
                       <input
                         type="checkbox"
                         checked={selected.has(key)}
@@ -200,7 +198,10 @@ function CreateSubscriptionDialog({
       const request: CreateSubscriptionRequest = {
         name: name.trim(),
         connection_string: providerUrl.trim(),
-        publications: publications.split(",").map((p) => p.trim()).filter(Boolean),
+        publications: publications
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean),
         enabled,
         connect,
       };
@@ -276,7 +277,8 @@ function CreateSubscriptionDialog({
             <span>
               Sofort verbinden
               <span className="block text-muted-foreground">
-                Aus = nur anlegen ohne Provider-Kontakt, z. B. wenn der Provider gerade nicht erreichbar ist.
+                Aus = nur anlegen ohne Provider-Kontakt, z. B. wenn der Provider gerade nicht
+                erreichbar ist.
               </span>
             </span>
           </label>
@@ -332,7 +334,12 @@ export function ReplicationView() {
 
   const handleDropSub = async (name: string) => {
     if (!connection) return;
-    if (!window.confirm(`Subskription "${name}" wirklich löschen? Der Provider-Slot wird dabei mit gelöscht.`)) return;
+    if (
+      !window.confirm(
+        `Subskription "${name}" wirklich löschen? Der Provider-Slot wird dabei mit gelöscht.`,
+      )
+    )
+      return;
     try {
       await dropSubscription(
         connection.kind,
@@ -374,7 +381,11 @@ export function ReplicationView() {
 
         <TabsContent value="publications" className="min-h-0 flex-1 overflow-y-auto">
           <div className="mb-3 flex justify-end">
-            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setPubDialogOpen(true)}>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setPubDialogOpen(true)}
+            >
               <PlusIcon className="size-3.5" />
               Neue Publikation
             </Button>
@@ -406,10 +417,26 @@ export function ReplicationView() {
                     </Button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-                    {pub.insert && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">insert</Badge>}
-                    {pub.update && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">update</Badge>}
-                    {pub.delete && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">delete</Badge>}
-                    {pub.truncate && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">truncate</Badge>}
+                    {pub.insert && (
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                        insert
+                      </Badge>
+                    )}
+                    {pub.update && (
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                        update
+                      </Badge>
+                    )}
+                    {pub.delete && (
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                        delete
+                      </Badge>
+                    )}
+                    {pub.truncate && (
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                        truncate
+                      </Badge>
+                    )}
                   </div>
                   {!pub.all_tables && (
                     <p className="mt-2 font-mono text-xs text-muted-foreground">
@@ -424,7 +451,11 @@ export function ReplicationView() {
 
         <TabsContent value="subscriptions" className="min-h-0 flex-1 overflow-y-auto">
           <div className="mb-3 flex justify-end">
-            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setSubDialogOpen(true)}>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setSubDialogOpen(true)}
+            >
               <PlusIcon className="size-3.5" />
               Neue Subskription
             </Button>
@@ -439,11 +470,16 @@ export function ReplicationView() {
                 <div key={sub.name} className="rounded-lg border p-4">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{sub.name}</span>
-                    <Badge variant={sub.enabled ? "default" : "outline"} className="px-1.5 py-0 text-[10px]">
+                    <Badge
+                      variant={sub.enabled ? "default" : "outline"}
+                      className="px-1.5 py-0 text-[10px]"
+                    >
                       {sub.enabled ? "aktiv" : "deaktiviert"}
                     </Badge>
                     {sub.slot_name && (
-                      <span className="font-mono text-xs text-muted-foreground">Slot: {sub.slot_name}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        Slot: {sub.slot_name}
+                      </span>
                     )}
                     <Button
                       variant="ghost"
@@ -458,7 +494,10 @@ export function ReplicationView() {
                   <p className="mt-1.5 font-mono text-xs text-muted-foreground">
                     Publikationen: {sub.publications.join(", ")}
                   </p>
-                  <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/70" title={sub.connection_string}>
+                  <p
+                    className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/70"
+                    title={sub.connection_string}
+                  >
                     {sub.connection_string}
                   </p>
                 </div>
@@ -468,8 +507,16 @@ export function ReplicationView() {
         </TabsContent>
       </Tabs>
 
-      <CreatePublicationDialog open={pubDialogOpen} onOpenChange={setPubDialogOpen} onSuccess={refresh} />
-      <CreateSubscriptionDialog open={subDialogOpen} onOpenChange={setSubDialogOpen} onSuccess={refresh} />
+      <CreatePublicationDialog
+        open={pubDialogOpen}
+        onOpenChange={setPubDialogOpen}
+        onSuccess={refresh}
+      />
+      <CreateSubscriptionDialog
+        open={subDialogOpen}
+        onOpenChange={setSubDialogOpen}
+        onSuccess={refresh}
+      />
     </main>
   );
 }

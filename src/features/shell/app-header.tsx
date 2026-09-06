@@ -1,18 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { GitBranchIcon, RefreshCw, Settings } from "lucide-react";
-import { useEffect, type CSSProperties } from "react";
+import { type CSSProperties, useEffect } from "react";
 
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
-const IS_MAC =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 
-const IS_WINDOWS =
-  typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
+const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
 
 export function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -51,7 +48,7 @@ export function AppHeader() {
       </div>
 
       <nav
-        className="flex items-center gap-px px-1"
+        className="flex items-center gap-1 px-3"
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
       >
@@ -63,16 +60,13 @@ export function AppHeader() {
             aria-label="Objekte aktualisieren"
             title="Datenbankobjekte neu laden"
             className={cn(
-              "inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150 cursor-pointer",
+              "inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150 cursor-pointer",
               "hover:bg-muted hover:text-foreground",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
             style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           >
-            <RefreshCw
-              className={cn("size-4", isRefreshing && "animate-spin")}
-              strokeWidth={2}
-            />
+            <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} strokeWidth={2} />
           </button>
         ) : null}
 
@@ -82,7 +76,7 @@ export function AppHeader() {
           aria-label="Transaktionen"
           title="Transaktionen"
           className={cn(
-            "relative inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150 cursor-pointer",
+            "relative inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150 cursor-pointer",
             "hover:bg-muted hover:text-foreground",
             panelOpen && "bg-muted text-foreground",
           )}
@@ -96,14 +90,14 @@ export function AppHeader() {
           )}
         </button>
 
-        <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden />
+        <div className="mx-0.5 h-5 w-px bg-border/60" aria-hidden />
 
         <Link
           to="/settings"
           aria-label="Einstellungen"
           title="Einstellungen"
           className={cn(
-            "inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150",
+            "inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150",
             "hover:bg-muted hover:text-foreground",
             pathname.startsWith("/settings") && "bg-muted text-foreground",
           )}

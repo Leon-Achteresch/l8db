@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, ShieldIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,22 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
-import { effectiveConnectionString } from "@/lib/ssh";
-import {
-  createPolicy,
-  dropPolicy,
-  setTableRls,
-  type CreatePolicyRequest,
-} from "@/lib/db";
+import { type CreatePolicyRequest, createPolicy, dropPolicy, setTableRls } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useTableRlsQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TableRlsPanelProps {
   schema: string;
@@ -68,7 +59,10 @@ function CreatePolicyDialog({
       const request: CreatePolicyRequest = {
         name: name.trim(),
         command,
-        roles: roles.split(",").map((r) => r.trim()).filter(Boolean),
+        roles: roles
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean),
       };
       if (usingExpr.trim()) request.using_expr = usingExpr.trim();
       if (checkExpr.trim()) request.check_expr = checkExpr.trim();
@@ -97,7 +91,9 @@ function CreatePolicyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-sm">Neue Policy für {schema}.{table}</DialogTitle>
+          <DialogTitle className="text-sm">
+            Neue Policy für {schema}.{table}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
@@ -187,9 +183,7 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
         force,
         database ?? undefined,
       );
-      toast.success(
-        enabled ? "Row Level Security aktiviert." : "Row Level Security deaktiviert.",
-      );
+      toast.success(enabled ? "Row Level Security aktiviert." : "Row Level Security deaktiviert.");
       refresh();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
@@ -267,7 +261,8 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
         {data.policies.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">
             Keine Policies vorhanden.
-            {!data.rls_enabled && " Aktiviere RLS und lege eine Policy an, um Zeilenzugriff zu steuern."}
+            {!data.rls_enabled &&
+              " Aktiviere RLS und lege eine Policy an, um Zeilenzugriff zu steuern."}
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
@@ -281,7 +276,10 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
                   <p className="truncate text-sm font-medium">{policy.name}</p>
                   {(policy.using_expr || policy.check_expr) && (
                     <p className="truncate font-mono text-[11px] text-muted-foreground">
-                      {[policy.using_expr && `USING (${policy.using_expr})`, policy.check_expr && `CHECK (${policy.check_expr})`]
+                      {[
+                        policy.using_expr && `USING (${policy.using_expr})`,
+                        policy.check_expr && `CHECK (${policy.check_expr})`,
+                      ]
                         .filter(Boolean)
                         .join(" ")}
                     </p>

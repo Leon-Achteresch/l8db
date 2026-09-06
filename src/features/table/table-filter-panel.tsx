@@ -1,6 +1,3 @@
-import { useMemo, useState } from "react";
-
-import { AnimatePresence, motion } from "motion/react";
 import {
   ChevronDownIcon,
   Code2Icon,
@@ -13,20 +10,15 @@ import {
   XIcon,
 } from "lucide-react";
 
-import { SqlEditor } from "@/features/table/sql-editor";
+import { AnimatePresence, motion } from "motion/react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  OPERATORS,
-  compileSingleCondition,
-  operatorNeedsValue,
-} from "@/lib/sql-filter";
+import { SqlEditor } from "@/features/table/sql-editor";
+import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
 
 type FilterMode = "simple" | "sql";
 type Combinator = "AND" | "OR";
@@ -49,10 +41,7 @@ function emptyCondition(column = ""): Condition {
   return { id: createId(), column, operator: "eq", value: "" };
 }
 
-function compileConditions(
-  conditions: Condition[],
-  combinator: Combinator,
-): string {
+function compileConditions(conditions: Condition[], combinator: Combinator): string {
   const parts = conditions
     .map((c) => compileSingleCondition(c.column, c.operator, c.value))
     .filter((part): part is string => part !== null);
@@ -68,11 +57,7 @@ interface TableFilterPanelProps {
   onApply: (where: string, isRaw: boolean) => void;
 }
 
-export function TableFilterPanel({
-  columns,
-  activeFilter,
-  onApply,
-}: TableFilterPanelProps) {
+export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilterPanelProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<FilterMode>("simple");
   const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
@@ -90,9 +75,7 @@ export function TableFilterPanel({
 
   const updateCondition = (id: string, patch: Partial<Condition>) => {
     setConditions((current) =>
-      current.map((condition) =>
-        condition.id === id ? { ...condition, ...patch } : condition,
-      ),
+      current.map((condition) => (condition.id === id ? { ...condition, ...patch } : condition)),
     );
   };
 
@@ -160,9 +143,7 @@ export function TableFilterPanel({
             </button>
           </Badge>
         ) : (
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            Keine Filter aktiv
-          </span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">Keine Filter aktiv</span>
         )}
       </div>
 
@@ -179,175 +160,158 @@ export function TableFilterPanel({
             }}
             className="overflow-hidden"
           >
-          <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
-            <Tabs
-              value={mode}
-              onValueChange={(value) => switchMode(value as FilterMode)}
-            >
-              <TabsList>
-                <TabsTrigger value="simple">
-                  <SlidersHorizontalIcon />
-                  Einfach
-                </TabsTrigger>
-                <TabsTrigger value="sql">
-                  <Code2Icon />
-                  SQL
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
+              <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
+                <TabsList>
+                  <TabsTrigger value="simple">
+                    <SlidersHorizontalIcon />
+                    Einfach
+                  </TabsTrigger>
+                  <TabsTrigger value="sql">
+                    <Code2Icon />
+                    SQL
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
-            {mode === "simple" ? (
-              <div className="space-y-2">
-                {conditions.map((condition, index) => (
-                  <div
-                    key={condition.id}
-                    className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
-                  >
-                    <div className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
-                      {index === 0 ? (
-                        "Wo"
-                      ) : (
-                        <NativeSelect
-                          size="sm"
-                          value={combinator}
-                          onChange={(event) =>
-                            setCombinator(event.target.value as Combinator)
-                          }
-                          className="w-24 sm:w-full"
-                        >
-                          <NativeSelectOption value="AND">
-                            und
-                          </NativeSelectOption>
-                          <NativeSelectOption value="OR">
-                            oder
-                          </NativeSelectOption>
-                        </NativeSelect>
-                      )}
-                    </div>
-
-                    <NativeSelect
-                      size="sm"
-                      value={condition.column}
-                      onChange={(event) =>
-                        updateCondition(condition.id, {
-                          column: event.target.value,
-                        })
-                      }
-                      className="w-full min-w-0 sm:min-w-40 sm:flex-1"
+              {mode === "simple" ? (
+                <div className="space-y-2">
+                  {conditions.map((condition, index) => (
+                    <div
+                      key={condition.id}
+                      className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
                     >
-                      <NativeSelectOption value="" disabled>
-                        Spalte wählen…
-                      </NativeSelectOption>
-                      {columns.map((column) => (
-                        <NativeSelectOption key={column} value={column}>
-                          {column}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                      <div className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
+                        {index === 0 ? (
+                          "Wo"
+                        ) : (
+                          <NativeSelect
+                            size="sm"
+                            value={combinator}
+                            onChange={(event) => setCombinator(event.target.value as Combinator)}
+                            className="w-24 sm:w-full"
+                          >
+                            <NativeSelectOption value="AND">und</NativeSelectOption>
+                            <NativeSelectOption value="OR">oder</NativeSelectOption>
+                          </NativeSelect>
+                        )}
+                      </div>
 
-                    <NativeSelect
-                      size="sm"
-                      value={condition.operator}
-                      onChange={(event) =>
-                        updateCondition(condition.id, {
-                          operator: event.target.value,
-                        })
-                      }
-                      className="w-full min-w-0 sm:w-auto sm:min-w-44"
-                    >
-                      {OPERATORS.map((operator) => (
-                        <NativeSelectOption
-                          key={operator.key}
-                          value={operator.key}
-                        >
-                          {operator.label}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
-
-                    {operatorNeedsValue(condition.operator) ? (
-                      <Input
-                        value={condition.value}
+                      <NativeSelect
+                        size="sm"
+                        value={condition.column}
                         onChange={(event) =>
                           updateCondition(condition.id, {
-                            value: event.target.value,
+                            column: event.target.value,
                           })
                         }
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            apply();
+                        className="w-full min-w-0 sm:min-w-40 sm:flex-1"
+                      >
+                        <NativeSelectOption value="" disabled>
+                          Spalte wählen…
+                        </NativeSelectOption>
+                        {columns.map((column) => (
+                          <NativeSelectOption key={column} value={column}>
+                            {column}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+
+                      <NativeSelect
+                        size="sm"
+                        value={condition.operator}
+                        onChange={(event) =>
+                          updateCondition(condition.id, {
+                            operator: event.target.value,
+                          })
+                        }
+                        className="w-full min-w-0 sm:w-auto sm:min-w-44"
+                      >
+                        {OPERATORS.map((operator) => (
+                          <NativeSelectOption key={operator.key} value={operator.key}>
+                            {operator.label}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+
+                      {operatorNeedsValue(condition.operator) ? (
+                        <Input
+                          value={condition.value}
+                          onChange={(event) =>
+                            updateCondition(condition.id, {
+                              value: event.target.value,
+                            })
                           }
-                        }}
-                        placeholder="Wert"
-                        className="h-8 w-full min-w-0 sm:min-w-32 sm:flex-1"
-                      />
-                    ) : (
-                      <div className="hidden sm:block sm:min-w-32 sm:flex-1" />
-                    )}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              apply();
+                            }
+                          }}
+                          placeholder="Wert"
+                          className="h-8 w-full min-w-0 sm:min-w-32 sm:flex-1"
+                        />
+                      ) : (
+                        <div className="hidden sm:block sm:min-w-32 sm:flex-1" />
+                      )}
 
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => removeCondition(condition.id)}
-                      aria-label="Bedingung entfernen"
-                      className="self-end sm:self-auto"
-                    >
-                      <Trash2Icon />
-                    </Button>
-                  </div>
-                ))}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => removeCondition(condition.id)}
+                        aria-label="Bedingung entfernen"
+                        className="self-end sm:self-auto"
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </div>
+                  ))}
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addCondition}
-                >
-                  <PlusIcon />
-                  Bedingung hinzufügen
-                </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addCondition}>
+                    <PlusIcon />
+                    Bedingung hinzufügen
+                  </Button>
 
-                <p className="font-mono text-xs text-muted-foreground">
-                  {compiledSimple === "" ? "" : `WHERE ${compiledSimple}`}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <SqlEditor
-                  value={sql}
-                  onChange={setSql}
-                  onSubmit={apply}
-                  columns={columns}
-                  placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
-                  className="h-36"
-                />
-              </div>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={reset}
-              disabled={!hasActiveFilter && draft === ""}
-              className="w-full sm:w-auto"
-            >
-              <RotateCcwIcon />
-              Zurücksetzen
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={apply}
-              disabled={!isDirty}
-              className="w-full sm:w-auto"
-            >
-              <PlayIcon />
-              Filter anwenden
-            </Button>
-          </div>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {compiledSimple === "" ? "" : `WHERE ${compiledSimple}`}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <SqlEditor
+                    value={sql}
+                    onChange={setSql}
+                    onSubmit={apply}
+                    columns={columns}
+                    placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
+                    className="h-36"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={reset}
+                disabled={!hasActiveFilter && draft === ""}
+                className="w-full sm:w-auto"
+              >
+                <RotateCcwIcon />
+                Zurücksetzen
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={apply}
+                disabled={!isDirty}
+                className="w-full sm:w-auto"
+              >
+                <PlayIcon />
+                Filter anwenden
+              </Button>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>

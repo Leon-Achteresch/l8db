@@ -1,20 +1,17 @@
+import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
+import { useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
 import type * as React from "react";
 import { useRef } from "react";
 
-import { useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
-import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
-import { isSortable } from "@dnd-kit/react/sortable";
-import { PointerActivationConstraints } from "@dnd-kit/dom";
-
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
-import { tabKey, useTableTabs, type Tab } from "@/lib/table-tabs";
+import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 
 const sensors = [
   PointerSensor.configure({
-    activationConstraints: () => [
-      new PointerActivationConstraints.Distance({ value: 5 }),
-    ],
+    activationConstraints: () => [new PointerActivationConstraints.Distance({ value: 5 })],
     preventActivation: () => false,
   }),
 ];
@@ -44,8 +41,7 @@ export function TableTabs() {
         matchRoute({
           to: "/tables/$schema/$table",
           params: { schema: tab.schema, table: tab.table },
-          search:
-            (tab.entityType ?? "table") === "view" ? { type: "view" } : {},
+          search: (tab.entityType ?? "table") === "view" ? { type: "view" } : {},
         }),
       );
     }
@@ -62,9 +58,7 @@ export function TableTabs() {
       );
     }
     if (tab.kind === "role") {
-      return Boolean(
-        matchRoute({ to: "/users/$name", params: { name: tab.name } }),
-      );
+      return Boolean(matchRoute({ to: "/users/$name", params: { name: tab.name } }));
     }
     if (tab.kind === "trigger") {
       return Boolean(
@@ -90,9 +84,7 @@ export function TableTabs() {
         }),
       );
     }
-    return Boolean(
-      matchRoute({ to: "/extensions/$name", params: { name: tab.name } }),
-    );
+    return Boolean(matchRoute({ to: "/extensions/$name", params: { name: tab.name } }));
   };
 
   const activeTab = tabs.find(isTabActive);
@@ -102,10 +94,7 @@ export function TableTabs() {
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema: tab.schema, table: tab.table },
-        search: () =>
-          (tab.entityType ?? "table") === "view"
-            ? { type: "view" as const }
-            : {},
+        search: () => ((tab.entityType ?? "table") === "view" ? { type: "view" as const } : {}),
       });
     } else if (tab.kind === "query") {
       void navigate({ to: "/query/$id", params: { id: tab.id } });
@@ -160,10 +149,7 @@ export function TableTabs() {
     const index = tabs.findIndex((t) => tabKey(t) === tabKey(tab));
     const remaining = tabs.slice(0, index + 1);
     closeTabsToRight(tabKey(tab));
-    if (
-      activeTab &&
-      !remaining.some((t) => tabKey(t) === tabKey(activeTab))
-    ) {
+    if (activeTab && !remaining.some((t) => tabKey(t) === tabKey(activeTab))) {
       navigateToTab(tab);
     }
   };
@@ -225,15 +211,9 @@ export function TableTabs() {
               onMouseDown={(event) => {
                 if (event.button === 1) event.preventDefault();
               }}
-              onCopyTable={
-                tab.kind === "table"
-                  ? () => handleCopy(tab.table)
-                  : undefined
-              }
+              onCopyTable={tab.kind === "table" ? () => handleCopy(tab.table) : undefined}
               onCopyFull={
-                tab.kind === "table"
-                  ? () => handleCopy(`${tab.schema}.${tab.table}`)
-                  : undefined
+                tab.kind === "table" ? () => handleCopy(`${tab.schema}.${tab.table}`) : undefined
               }
             />
           ))}
