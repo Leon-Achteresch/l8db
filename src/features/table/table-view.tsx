@@ -52,7 +52,7 @@ import {
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/tables/$schema/$table");
+const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
 type ViewTab = "data" | "definition" | "columns";
 type TableTab = "data" | "triggers" | "columns" | "indexes" | "rls" | "partitions";

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { TableView } from "@/features/table/table-view";
 
-export const Route = createFileRoute("/_app/tables/$schema/$table")({
+export const Route = createFileRoute("/_app/_workspace/tables/$schema/$table")({
   component: TableView,
   validateSearch: (
     search: Record<string, unknown>,

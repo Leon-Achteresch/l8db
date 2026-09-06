@@ -23,7 +23,7 @@ import { useExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/extensions/$name");
+const routeApi = getRouteApi("/_app/_workspace/extensions/$name");
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -302,7 +302,7 @@ function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language: "plsql",
       theme: themeFor(resolvedTheme),
       readOnly,
       domReadOnly: readOnly,

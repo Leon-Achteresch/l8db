@@ -10,7 +10,7 @@ import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/packages/$schema/$name");
+const routeApi = getRouteApi("/_app/_workspace/packages/$schema/$name");
 
 export function PackageView() {
   const { schema, name } = routeApi.useParams();

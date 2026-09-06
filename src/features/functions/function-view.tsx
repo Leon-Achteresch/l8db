@@ -23,7 +23,7 @@ import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/functions/$schema/$name");
+const routeApi = getRouteApi("/_app/_workspace/functions/$schema/$name");
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -268,7 +268,7 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language: "plsql",
       theme: themeFor(resolvedTheme),
       readOnly,
       domReadOnly: readOnly,
