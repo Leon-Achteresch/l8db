@@ -1,23 +1,31 @@
+mod cassandra;
+mod clickhouse;
 pub mod commands;
+mod connection;
+#[cfg(feature = "duckdb")]
+mod duckdb;
+mod mongodb;
+mod mssql;
+mod mysql;
+#[cfg(feature = "odbc")]
+mod odbc;
+mod oracle;
 pub mod pool;
+mod postgres;
+pub mod provider;
+mod redis;
 pub mod secrets;
+mod sqlite;
 pub mod ssh;
 pub mod transaction;
-mod postgres;
 
 use async_trait::async_trait;
 use pool::PoolState;
+pub use provider::DatabaseKind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DatabaseKind {
-    Postgres,
-    Mysql,
-    Sqlite,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum SslMode {
     Disable,
     #[default]
@@ -271,83 +279,374 @@ pub trait DatabaseAdapter: Send + Sync {
         table: &str,
         ctid: &str,
         updates: &std::collections::HashMap<String, Option<String>>,
-    ) -> Result<(), String>;
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = ctid;
+        let _ = updates;
+        Err(unsupported("Direkte Zeilenänderung"))
+    }
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
-    async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String>;
-    async fn get_view_definition(
-        &self,
-        schema: &str,
-        view: &str,
-    ) -> Result<String, String>;
+    async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Views"))
+    }
+    async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
+        let _ = schema;
+        let _ = view;
+        Err(unsupported("View-Definitionen"))
+    }
     async fn update_view_definition(
         &self,
         schema: &str,
         view: &str,
         body: &str,
         dry_run: bool,
-    ) -> Result<(), String>;
-    async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String>;
-    async fn get_function_definition(&self, oid: &str) -> Result<String, String>;
-    async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String>;
-    async fn list_roles(&self) -> Result<Vec<RoleInfo>, String>;
-    async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String>;
-    async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String>;
-    async fn drop_role(&self, name: &str) -> Result<(), String>;
-    async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String>;
-    async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String>;
-    async fn list_table_columns_detailed(&self, schema: &str, table: &str) -> Result<Vec<DetailedColumnInfo>, String>;
-    async fn add_column(&self, schema: &str, table: &str, column: &AddColumnRequest) -> Result<(), String>;
-    async fn alter_column(&self, schema: &str, table: &str, changes: &AlterColumnRequest) -> Result<(), String>;
-    async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String>;
-    async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String>;
-    async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String>;
-    async fn validate_sql(&self, sql: &str) -> Result<(), String>;
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = view;
+        let _ = body;
+        let _ = dry_run;
+        Err(unsupported("View-Bearbeitung"))
+    }
+    async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Funktionen"))
+    }
+    async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
+        let _ = oid;
+        Err(unsupported("Funktionsdefinitionen"))
+    }
+    async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
+        Err(unsupported("Extensions"))
+    }
+    async fn list_roles(&self) -> Result<Vec<RoleInfo>, String> {
+        Err(unsupported("Rollen"))
+    }
+    async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
+        let _ = options;
+        Err(unsupported("Rollenverwaltung"))
+    }
+    async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
+        let _ = options;
+        Err(unsupported("Rollenverwaltung"))
+    }
+    async fn drop_role(&self, name: &str) -> Result<(), String> {
+        let _ = name;
+        Err(unsupported("Rollenverwaltung"))
+    }
+    async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("DROP TABLE"))
+    }
+    async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("TRUNCATE"))
+    }
+    async fn list_table_columns_detailed(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<DetailedColumnInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Spaltendetails"))
+    }
+    async fn add_column(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &AddColumnRequest,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = column;
+        Err(unsupported("Spalten hinzufügen"))
+    }
+    async fn alter_column(
+        &self,
+        schema: &str,
+        table: &str,
+        changes: &AlterColumnRequest,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = changes;
+        Err(unsupported("Spalten ändern"))
+    }
+    async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = column;
+        Err(unsupported("Spalten löschen"))
+    }
+    async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
+        let _ = role_name;
+        Err(unsupported("Berechtigungen"))
+    }
+    async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String> {
+        let _ = change;
+        Err(unsupported("Berechtigungen"))
+    }
+    async fn validate_sql(&self, sql: &str) -> Result<(), String> {
+        let _ = sql;
+        Ok(())
+    }
     async fn list_foreign_keys(
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<ForeignKeyInfo>, String>;
-    async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String>;
-    async fn list_triggers(
+    ) -> Result<Vec<ForeignKeyInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Fremdschlüssel"))
+    }
+    async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String> {
+        let mut tables = Vec::new();
+        let mut foreign_keys = Vec::new();
+        for table in self.list_tables(schema).await? {
+            let columns = self
+                .list_table_columns_detailed(&table.schema, &table.name)
+                .await?
+                .into_iter()
+                .map(|c| ERColumn {
+                    name: c.name,
+                    data_type: c.data_type,
+                    is_primary_key: c.is_primary_key,
+                    is_nullable: c.is_nullable,
+                })
+                .collect();
+            if let Ok(fks) = self.list_foreign_keys(&table.schema, &table.name).await {
+                foreign_keys.extend(fks);
+            }
+            tables.push(ERTable {
+                schema: table.schema,
+                name: table.name,
+                columns,
+            });
+        }
+        Ok(ERSchema {
+            tables,
+            foreign_keys,
+        })
+    }
+    async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Trigger"))
+    }
+    async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Sequenzen"))
+    }
+    async fn alter_sequence(
+        &self,
+        schema: &str,
+        name: &str,
+        changes: &AlterSequenceRequest,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = name;
+        let _ = changes;
+        Err(unsupported("Sequenzen"))
+    }
+    async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Indizes"))
+    }
+    async fn list_constraints(
         &self,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<TriggerInfo>, String>;
-    async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String>;
-    async fn alter_sequence(&self, schema: &str, name: &str, changes: &AlterSequenceRequest) -> Result<(), String>;
-    async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String>;
-    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String>;
-    async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String>;
-    async fn uninstall_extension(&self, name: &str) -> Result<(), String>;
-    async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String>;
-    async fn execute_script(&self, sql: &str) -> Result<Vec<ScriptStatementResult>, String>;
-    async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String>;
-    async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String>;
-    async fn list_materialized_views(&self, schema: Option<&str>) -> Result<Vec<MatviewInfo>, String>;
-    async fn refresh_materialized_view(&self, schema: &str, name: &str, concurrently: bool) -> Result<(), String>;
-    async fn drop_materialized_view(&self, schema: &str, name: &str) -> Result<(), String>;
-    async fn create_materialized_view(&self, req: &CreateMatviewRequest) -> Result<(), String>;
-    async fn get_table_rls(&self, schema: &str, table: &str) -> Result<TableRlsInfo, String>;
-    async fn set_table_rls(&self, schema: &str, table: &str, enabled: bool, force: bool) -> Result<(), String>;
-    async fn create_policy(&self, schema: &str, table: &str, policy: &CreatePolicyRequest) -> Result<(), String>;
-    async fn drop_policy(&self, schema: &str, table: &str, name: &str) -> Result<(), String>;
-    async fn get_partition_info(&self, schema: &str, table: &str) -> Result<PartitionInfo, String>;
-    async fn detach_partition(&self, parent_schema: &str, parent_table: &str, child_schema: &str, child_table: &str) -> Result<(), String>;
-    async fn attach_partition(&self, parent_schema: &str, parent_table: &str, child_schema: &str, child_table: &str, bound: &str) -> Result<(), String>;
-    async fn list_publications(&self) -> Result<Vec<PublicationInfo>, String>;
-    async fn create_publication(&self, req: &CreatePublicationRequest) -> Result<(), String>;
-    async fn drop_publication(&self, name: &str) -> Result<(), String>;
-    async fn list_subscriptions(&self) -> Result<Vec<SubscriptionInfo>, String>;
-    async fn create_subscription(&self, req: &CreateSubscriptionRequest) -> Result<(), String>;
-    async fn drop_subscription(&self, name: &str) -> Result<(), String>;
-    async fn list_sessions(&self) -> Result<Vec<SessionInfo>, String>;
-    async fn cancel_session(&self, pid: i32) -> Result<bool, String>;
-    async fn terminate_session(&self, pid: i32) -> Result<bool, String>;
-    async fn list_locks(&self) -> Result<Vec<LockInfo>, String>;
-    async fn list_enums(&self, schema: Option<&str>) -> Result<Vec<EnumInfo>, String>;
-    async fn create_schema(&self, name: &str) -> Result<(), String>;
-    async fn drop_schema(&self, name: &str, cascade: bool) -> Result<(), String>;
-    async fn get_database_overview(&self) -> Result<DatabaseOverview, String>;
+    ) -> Result<Vec<ConstraintInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Constraints"))
+    }
+    async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
+        let _ = name;
+        let _ = schema;
+        Err(unsupported("Extensions"))
+    }
+    async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+        let _ = name;
+        Err(unsupported("Extensions"))
+    }
+    async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String> {
+        Err(unsupported("Extensions"))
+    }
+    async fn execute_script(&self, sql: &str) -> Result<Vec<ScriptStatementResult>, String> {
+        let mut results = Vec::new();
+        for statement in split_statements(sql) {
+            let result = self.execute_query(&statement).await;
+            results.push(ScriptStatementResult {
+                statement: statement.clone(),
+                success: result.is_ok(),
+                rows_affected: result.as_ref().ok().and_then(|r| r.rows_affected),
+                error: result.err(),
+            });
+        }
+        Ok(results)
+    }
+    async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
+        let _ = req;
+        Err(unsupported("CREATE TABLE"))
+    }
+    async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
+        let _ = sql;
+        let _ = analyze;
+        Err(unsupported("EXPLAIN"))
+    }
+    async fn list_materialized_views(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<MatviewInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Materialized Views"))
+    }
+    async fn refresh_materialized_view(
+        &self,
+        schema: &str,
+        name: &str,
+        concurrently: bool,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = name;
+        let _ = concurrently;
+        Err(unsupported("Materialized Views"))
+    }
+    async fn drop_materialized_view(&self, schema: &str, name: &str) -> Result<(), String> {
+        let _ = schema;
+        let _ = name;
+        Err(unsupported("Materialized Views"))
+    }
+    async fn create_materialized_view(&self, req: &CreateMatviewRequest) -> Result<(), String> {
+        let _ = req;
+        Err(unsupported("Materialized Views"))
+    }
+    async fn get_table_rls(&self, schema: &str, table: &str) -> Result<TableRlsInfo, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Row Level Security"))
+    }
+    async fn set_table_rls(
+        &self,
+        schema: &str,
+        table: &str,
+        enabled: bool,
+        force: bool,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = enabled;
+        let _ = force;
+        Err(unsupported("Row Level Security"))
+    }
+    async fn create_policy(
+        &self,
+        schema: &str,
+        table: &str,
+        policy: &CreatePolicyRequest,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = policy;
+        Err(unsupported("Row Level Security"))
+    }
+    async fn drop_policy(&self, schema: &str, table: &str, name: &str) -> Result<(), String> {
+        let _ = schema;
+        let _ = table;
+        let _ = name;
+        Err(unsupported("Row Level Security"))
+    }
+    async fn get_partition_info(&self, schema: &str, table: &str) -> Result<PartitionInfo, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Partitionen"))
+    }
+    async fn detach_partition(
+        &self,
+        parent_schema: &str,
+        parent_table: &str,
+        child_schema: &str,
+        child_table: &str,
+    ) -> Result<(), String> {
+        let _ = parent_schema;
+        let _ = parent_table;
+        let _ = child_schema;
+        let _ = child_table;
+        Err(unsupported("Partitionen"))
+    }
+    async fn attach_partition(
+        &self,
+        parent_schema: &str,
+        parent_table: &str,
+        child_schema: &str,
+        child_table: &str,
+        bound: &str,
+    ) -> Result<(), String> {
+        let _ = parent_schema;
+        let _ = parent_table;
+        let _ = child_schema;
+        let _ = child_table;
+        let _ = bound;
+        Err(unsupported("Partitionen"))
+    }
+    async fn list_publications(&self) -> Result<Vec<PublicationInfo>, String> {
+        Err(unsupported("Replikation"))
+    }
+    async fn create_publication(&self, req: &CreatePublicationRequest) -> Result<(), String> {
+        let _ = req;
+        Err(unsupported("Replikation"))
+    }
+    async fn drop_publication(&self, name: &str) -> Result<(), String> {
+        let _ = name;
+        Err(unsupported("Replikation"))
+    }
+    async fn list_subscriptions(&self) -> Result<Vec<SubscriptionInfo>, String> {
+        Err(unsupported("Replikation"))
+    }
+    async fn create_subscription(&self, req: &CreateSubscriptionRequest) -> Result<(), String> {
+        let _ = req;
+        Err(unsupported("Replikation"))
+    }
+    async fn drop_subscription(&self, name: &str) -> Result<(), String> {
+        let _ = name;
+        Err(unsupported("Replikation"))
+    }
+    async fn list_sessions(&self) -> Result<Vec<SessionInfo>, String> {
+        Err(unsupported("Sitzungen"))
+    }
+    async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
+        let _ = pid;
+        Err(unsupported("Sitzungen"))
+    }
+    async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
+        let _ = pid;
+        Err(unsupported("Sitzungen"))
+    }
+    async fn list_locks(&self) -> Result<Vec<LockInfo>, String> {
+        Err(unsupported("Sperren"))
+    }
+    async fn list_enums(&self, schema: Option<&str>) -> Result<Vec<EnumInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Enums"))
+    }
+    async fn create_schema(&self, name: &str) -> Result<(), String> {
+        let _ = name;
+        Err(unsupported("Schema anlegen"))
+    }
+    async fn drop_schema(&self, name: &str, cascade: bool) -> Result<(), String> {
+        let _ = name;
+        let _ = cascade;
+        Err(unsupported("Schema löschen"))
+    }
+    async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
+        Err(unsupported("Datenbankübersicht"))
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -616,7 +915,8 @@ pub(crate) fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {    if let Some(db_err) = e.as_db_error() {
+pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
+    if let Some(db_err) = e.as_db_error() {
         let mut msg = format!("{}: {}", db_err.severity(), db_err.message());
         if let Some(detail) = db_err.detail() {
             msg.push_str(&format!("\nDetail: {detail}"));
@@ -633,11 +933,170 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {    if let Some(db
     }
 }
 
-pub fn create_adapter(config: ConnectionConfig, pool_state: PoolState) -> Result<Box<dyn DatabaseAdapter>, String> {
+pub fn unsupported(feature: &str) -> String {
+    format!("{feature} wird von diesem Datenbanktyp nicht unterstützt.")
+}
+
+pub(crate) fn split_statements(sql: &str) -> Vec<String> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in sql.chars() {
+        match quote {
+            Some(q) => {
+                current.push(ch);
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' && q != '`' {
+                    escaped = true;
+                } else if ch == q {
+                    quote = None;
+                }
+            }
+            None if ch == '\'' || ch == '"' || ch == '`' => {
+                quote = Some(ch);
+                current.push(ch);
+            }
+            None if ch == ';' => {
+                if !current.trim().is_empty() {
+                    statements.push(current.trim().to_string());
+                }
+                current.clear();
+            }
+            None => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        statements.push(current.trim().to_string());
+    }
+    statements
+}
+
+pub(crate) fn rows_to_objects(
+    columns: &[String],
+    rows: Vec<Vec<serde_json::Value>>,
+) -> Vec<serde_json::Value> {
+    rows.into_iter()
+        .map(|values| {
+            let mut object = serde_json::Map::with_capacity(columns.len());
+            for (column, value) in columns.iter().zip(values) {
+                object.insert(column.clone(), value);
+            }
+            serde_json::Value::Object(object)
+        })
+        .collect()
+}
+
+pub(crate) async fn timed<T, F>(future: F) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    tokio::time::timeout(std::time::Duration::from_secs(30), future)
+        .await
+        .map_err(|_| "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string())?
+}
+
+pub(crate) fn create_table_sql(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+    qualify_schema: bool,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut pk_cols: Vec<String> = Vec::new();
+    for col in &req.columns {
+        let mut def = format!("{} {}", quote(&col.name), col.data_type);
+        if !col.is_nullable {
+            def.push_str(" NOT NULL");
+        }
+        if let Some(d) = col.default_value.as_deref().filter(|d| !d.is_empty()) {
+            def.push_str(&format!(" DEFAULT {d}"));
+        }
+        if col.is_unique && !col.is_primary_key {
+            def.push_str(" UNIQUE");
+        }
+        parts.push(def);
+        if col.is_primary_key {
+            pk_cols.push(quote(&col.name));
+        }
+    }
+    if !pk_cols.is_empty() {
+        parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+    }
+    let target = if qualify_schema && !req.schema.is_empty() {
+        format!("{}.{}", quote(&req.schema), quote(&req.name))
+    } else {
+        quote(&req.name)
+    };
+    format!(
+        "CREATE TABLE {}{} (\n  {}\n)",
+        if req.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        },
+        target,
+        parts.join(",\n  "),
+    )
+}
+
+pub(crate) fn pretty_bytes(bytes: i64) -> String {
+    let units = ["B", "kB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < units.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", units[unit])
+    }
+}
+
+pub(crate) fn hex_blob(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(2 + bytes.len() * 2);
+    out.push_str("\\x");
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<String, String> {
+    match filter.map(str::trim).filter(|f| !f.is_empty()) {
+        Some(expression) => {
+            if !allow_raw {
+                validate_table_filter(expression)?;
+            }
+            Ok(format!(" WHERE {expression}"))
+        }
+        None => Ok(String::new()),
+    }
+}
+
+pub fn create_adapter(
+    config: ConnectionConfig,
+    pool_state: PoolState,
+) -> Result<Box<dyn DatabaseAdapter>, String> {
     match config.kind {
-        DatabaseKind::Postgres => Ok(Box::new(postgres::PostgresAdapter::from_config(config, pool_state))),
-        DatabaseKind::Mysql => Err("MySQL wird noch nicht unterstützt. Geplant für Phase 3 (Multi-DB).".to_string()),
-        DatabaseKind::Sqlite => Err("SQLite wird noch nicht unterstützt. Geplant für Phase 3 (Multi-DB).".to_string()),
+        DatabaseKind::Postgres => Ok(Box::new(postgres::PostgresAdapter::from_config(
+            config, pool_state,
+        ))),
+        kind => {
+            let scheme = kind.url_schemes()[0];
+            let url = format!(
+                "{scheme}://{}:{}@{}:{}/{}",
+                url::form_urlencoded::byte_serialize(config.user.as_bytes()).collect::<String>(),
+                url::form_urlencoded::byte_serialize(config.password.as_bytes())
+                    .collect::<String>(),
+                config.host,
+                config.port,
+                config.database
+            );
+            create_adapter_from_string(kind, &url, None, pool_state)
+        }
     }
 }
 
@@ -647,23 +1106,162 @@ pub fn create_adapter_from_string(
     database: Option<&str>,
     pool_state: PoolState,
 ) -> Result<Box<dyn DatabaseAdapter>, String> {
-    match kind {
-        DatabaseKind::Postgres => Ok(Box::new(
-            postgres::PostgresAdapter::from_connection_string(connection_string, database, pool_state)?,
-        )),
-        DatabaseKind::Mysql => Err("MySQL wird noch nicht unterstützt. Geplant für Phase 3 (Multi-DB).".to_string()),
-        DatabaseKind::Sqlite => Err("SQLite wird noch nicht unterstützt. Geplant für Phase 3 (Multi-DB).".to_string()),
-    }
+    let database = database.filter(|db| !db.is_empty());
+    let key = connection::connection_key(connection_string, database);
+    Ok(match kind {
+        DatabaseKind::Postgres => Box::new(postgres::PostgresAdapter::from_connection_string(
+            connection_string,
+            database,
+            pool_state,
+        )?),
+        DatabaseKind::Mysql => Box::new(mysql::MysqlAdapter::new(
+            connection_string,
+            database,
+            pool_state,
+            key,
+        )?),
+        DatabaseKind::Sqlite => Box::new(sqlite::SqliteAdapter::new(
+            connection_string,
+            pool_state,
+            key,
+        )?),
+        DatabaseKind::Mssql => Box::new(mssql::MssqlAdapter::new(connection_string, database)?),
+        DatabaseKind::Clickhouse => Box::new(clickhouse::ClickhouseAdapter::new(
+            connection_string,
+            database,
+        )?),
+        DatabaseKind::Mongodb => Box::new(mongodb::MongoAdapter::new(
+            connection_string,
+            database,
+            pool_state,
+            key,
+        )?),
+        DatabaseKind::Redis => Box::new(redis::RedisAdapter::new(
+            connection_string,
+            database,
+            pool_state,
+            key,
+        )?),
+        DatabaseKind::Oracle => Box::new(oracle::OracleAdapter::new(
+            connection_string,
+            pool_state,
+            key,
+        )?),
+        DatabaseKind::Cassandra => Box::new(cassandra::CassandraAdapter::new(
+            connection_string,
+            pool_state,
+            key,
+        )?),
+        #[cfg(feature = "duckdb")]
+        DatabaseKind::Duckdb => Box::new(duckdb::DuckdbAdapter::new(
+            connection_string,
+            pool_state,
+            key,
+        )?),
+        #[cfg(not(feature = "duckdb"))]
+        DatabaseKind::Duckdb => return Err(provider::kind_driver_status(kind).detail),
+        #[cfg(feature = "odbc")]
+        DatabaseKind::Odbc => Box::new(odbc::OdbcAdapter::new(connection_string, pool_state, key)?),
+        #[cfg(not(feature = "odbc"))]
+        DatabaseKind::Odbc => return Err(provider::kind_driver_status(kind).detail),
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{redact_connection_string, validate_table_filter};
+    use super::{redact_connection_string, split_statements, validate_table_filter};
+
+    fn smoke_query(kind: super::DatabaseKind) -> &'static str {
+        match kind {
+            super::DatabaseKind::Redis => "PING",
+            super::DatabaseKind::Mongodb => "{\"ping\": 1}",
+            super::DatabaseKind::Cassandra => "SELECT release_version FROM system.local",
+            super::DatabaseKind::Oracle => "SELECT 1 FROM dual",
+            _ => "SELECT 1",
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn smoke_adapters_from_env() {
+        let pool = std::sync::Arc::new(super::pool::PoolManager::new());
+        for kind in super::DatabaseKind::ALL {
+            let var = format!("L8DB_SMOKE_{}_URL", format!("{kind:?}").to_uppercase());
+            let Ok(url) = std::env::var(&var) else {
+                continue;
+            };
+            let adapter = super::create_adapter_from_string(kind, &url, None, pool.clone())
+                .unwrap_or_else(|e| panic!("{var}: {e}"));
+            adapter
+                .test_connection()
+                .await
+                .unwrap_or_else(|e| panic!("{var} connect: {e}"));
+            let databases = adapter
+                .list_databases()
+                .await
+                .unwrap_or_else(|e| panic!("{var} databases: {e}"));
+            let schemas = adapter
+                .list_schemas()
+                .await
+                .unwrap_or_else(|e| panic!("{var} schemas: {e}"));
+            let schema = schemas.first().cloned();
+            let tables = adapter
+                .list_tables(schema.as_deref())
+                .await
+                .unwrap_or_else(|e| panic!("{var} tables: {e}"));
+            if let Some(table) = tables.first() {
+                let columns = adapter
+                    .list_columns(schema.as_deref(), Some(&table.name), None)
+                    .await
+                    .unwrap_or_else(|e| panic!("{var} columns: {e}"));
+                let rows = adapter
+                    .fetch_rows(
+                        &table.schema,
+                        &table.name,
+                        None,
+                        5,
+                        0,
+                        None,
+                        false,
+                        false,
+                        false,
+                    )
+                    .await
+                    .unwrap_or_else(|e| panic!("{var} rows: {e}"));
+                let count = adapter
+                    .count_rows(&table.schema, &table.name, None, false)
+                    .await
+                    .unwrap_or_else(|e| panic!("{var} count: {e}"));
+                eprintln!(
+                    "{var}: table {} ({} columns, {} rows shown, {count} total)",
+                    table.name,
+                    columns.len(),
+                    rows.rows.len()
+                );
+            }
+            let result = adapter
+                .execute_query(smoke_query(kind))
+                .await
+                .unwrap_or_else(|e| panic!("{var} query: {e}"));
+            assert!(
+                !result.columns.is_empty() || result.rows_affected.is_some(),
+                "{var}: empty result"
+            );
+            eprintln!(
+                "{var}: ok ({} databases, {} schemas, {} tables)",
+                databases.len(),
+                schemas.len(),
+                tables.len()
+            );
+        }
+    }
 
     #[test]
     fn redacts_password_keeps_user_and_host() {
         assert_eq!(
-            redact_connection_string("postgresql://bob:s3cret@db.internal:5432/app?sslmode=require"),
+            redact_connection_string(
+                "postgresql://bob:s3cret@db.internal:5432/app?sslmode=require"
+            ),
             "postgresql://bob@db.internal:5432/app?sslmode=require"
         );
     }
@@ -680,7 +1278,9 @@ mod tests {
     #[test]
     fn redacts_keyword_value_passwords() {
         assert_eq!(
-            redact_connection_string("host=db.internal port=5432 dbname=app user=bob password=s3cret"),
+            redact_connection_string(
+                "host=db.internal port=5432 dbname=app user=bob password=s3cret"
+            ),
             "host=db.internal port=5432 dbname=app user=bob password=***"
         );
         assert_eq!(
@@ -703,6 +1303,27 @@ mod tests {
         ] {
             assert!(validate_table_filter(filter).is_ok(), "{filter}");
         }
+    }
+
+    #[test]
+    fn splits_statements_respecting_escaped_quotes() {
+        let parts = split_statements("INSERT INTO t VALUES ('O\\'Brien; x'); SELECT 1");
+        assert_eq!(
+            parts,
+            vec!["INSERT INTO t VALUES ('O\\'Brien; x')", "SELECT 1"]
+        );
+    }
+
+    #[test]
+    fn splits_statements_respecting_quotes() {
+        assert_eq!(
+            split_statements("SELECT ';'; INSERT INTO t VALUES (\"a;b\");\n\nDELETE FROM t"),
+            vec![
+                "SELECT ';'",
+                "INSERT INTO t VALUES (\"a;b\")",
+                "DELETE FROM t"
+            ]
+        );
     }
 
     #[test]
@@ -783,11 +1404,17 @@ fn redact_keyword_password(input: &str) -> String {
 }
 
 fn find_password_key(haystack: &str) -> Option<usize> {
-    haystack.match_indices("password").find(|(pos, _)| {
-        let before = haystack[..*pos].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
-        let after = haystack[pos + "password".len()..].chars().next();
-        before && after.is_none_or(|c| c.is_whitespace() || c == '=')
-    }).map(|(pos, _)| pos)
+    haystack
+        .match_indices("password")
+        .find(|(pos, _)| {
+            let before = haystack[..*pos]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+            let after = haystack[pos + "password".len()..].chars().next();
+            before && after.is_none_or(|c| c.is_whitespace() || c == '=')
+        })
+        .map(|(pos, _)| pos)
 }
 
 fn skip_spaces(input: &str, mut cursor: usize) -> usize {
@@ -853,13 +1480,17 @@ fn is_word_char(ch: char) -> bool {
 }
 
 fn contains_word(haystack: &str, word: &str) -> bool {
-    haystack
-        .match_indices(word)
-        .any(|(pos, _)| {
-            let before = haystack[..pos].chars().next_back().is_none_or(|c| !is_word_char(c));
-            let after = haystack[pos + word.len()..].chars().next().is_none_or(|c| !is_word_char(c));
-            before && after
-        })
+    haystack.match_indices(word).any(|(pos, _)| {
+        let before = haystack[..pos]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !is_word_char(c));
+        let after = haystack[pos + word.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !is_word_char(c));
+        before && after
+    })
 }
 
 pub fn validate_table_filter(filter: &str) -> Result<(), String> {

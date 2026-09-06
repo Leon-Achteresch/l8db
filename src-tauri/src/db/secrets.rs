@@ -1,7 +1,8 @@
 const SERVICE: &str = "l8db";
 
 fn entry(account: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, account).map_err(|e| format!("Keychain-Zugriff fehlgeschlagen: {e}"))
+    keyring::Entry::new(SERVICE, account)
+        .map_err(|e| format!("Keychain-Zugriff fehlgeschlagen: {e}"))
 }
 
 #[tauri::command]
@@ -38,7 +39,10 @@ mod tests {
     #[tokio::test]
     async fn secret_roundtrip() {
         let account = format!("l8db-test-{}", std::process::id());
-        if store_secret(account.clone(), "s3cret-pw".to_string()).await.is_err() {
+        if store_secret(account.clone(), "s3cret-pw".to_string())
+            .await
+            .is_err()
+        {
             return;
         }
         let loaded = load_secret(account.clone()).await.unwrap();

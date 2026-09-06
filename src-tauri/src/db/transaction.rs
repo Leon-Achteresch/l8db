@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use bb8::PooledConnection;
 use bb8_postgres::PostgresConnectionManager;
@@ -53,29 +51,17 @@ impl TransactionManager {
         database: Option<&str>,
         pool_state: &PoolState,
     ) -> Result<String, String> {
-        let mut config = tokio_postgres::Config::from_str(connection_string)
-            .map_err(|e| format!("Ungültiger Connection String: {e}"))?;
-        if let Some(db) = database {
-            if !db.is_empty() {
-                config.dbname(db);
-            }
-        }
-        config.connect_timeout(Duration::from_secs(10));
-
-        let pool_key = match database {
-            Some(db) if !db.is_empty() => format!("{}##{db}", super::redact_connection_string(connection_string)),
-            _ => super::redact_connection_string(connection_string),
-        };
-
-        let pool = pool_state.get_pool(&pool_key, config, PoolUse::Query).await?;
+        let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
+        let pool_key = super::connection::connection_key(connection_string, database);
+        let pool = pool_state
+            .get_pool(&pool_key, config, ssl, PoolUse::Query)
+            .await?;
         let conn = pool
             .get_owned()
             .await
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
 
-        conn.simple_query("BEGIN")
-            .await
-            .map_err(map_pg_err)?;
+        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
 
         let tx_id = format!("tx_{}", TX_COUNTER.fetch_add(1, Ordering::Relaxed));
         let entry = Arc::new(TransactionEntry {
@@ -192,7 +178,9 @@ impl TransactionManager {
             ctid,
         );
 
-        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        conn.batch_execute("SAVEPOINT l8_op")
+            .await
+            .map_err(map_pg_err)?;
         match conn.query(sql.as_str(), &[]).await {
             Ok(rows) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")
@@ -268,7 +256,9 @@ impl TransactionManager {
             )
         };
 
-        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        conn.batch_execute("SAVEPOINT l8_op")
+            .await
+            .map_err(map_pg_err)?;
         match conn.query(sql.as_str(), &[]).await {
             Ok(rows) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")
@@ -339,7 +329,9 @@ impl TransactionManager {
             )
         };
 
-        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        conn.batch_execute("SAVEPOINT l8_op")
+            .await
+            .map_err(map_pg_err)?;
         match conn.query(sql.as_str(), &[]).await {
             Ok(rows) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")
@@ -383,7 +375,9 @@ impl TransactionManager {
             ctid,
         );
 
-        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        conn.batch_execute("SAVEPOINT l8_op")
+            .await
+            .map_err(map_pg_err)?;
         match conn.execute(sql.as_str(), &[]).await {
             Ok(affected) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")

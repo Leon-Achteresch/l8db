@@ -31,8 +31,13 @@ impl From<russh::Error> for SshError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SshAuthRequest {
-    Password { password: String },
-    Key { key_file: String, passphrase: Option<String> },
+    Password {
+        password: String,
+    },
+    Key {
+        key_file: String,
+        passphrase: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,7 +112,8 @@ impl client::Handler for TunnelHandler {
             PublicKeyOrCertificate::PublicKey { key, .. } => key,
             PublicKeyOrCertificate::Certificate(_) => {
                 return Err(SshError(
-                    "SSH-Zertifikate werden in Phase 2 nicht unterstützt, nur Host-Keys.".to_string(),
+                    "SSH-Zertifikate werden in Phase 2 nicht unterstützt, nur Host-Keys."
+                        .to_string(),
                 ));
             }
         };
@@ -167,22 +173,23 @@ async fn authenticate(
             .authenticate_password(user, password.as_str())
             .await
             .map_err(|e| format!("SSH-Verbindung fehlgeschlagen: {e}"))?,
-        SshAuthRequest::Key { key_file, passphrase } => {
-            let key = russh::keys::load_secret_key(key_file, passphrase.as_deref()).map_err(|e| {
-                format!("SSH-Key {key_file} konnte nicht geladen werden: {e}")
-            })?;
+        SshAuthRequest::Key {
+            key_file,
+            passphrase,
+        } => {
+            let key = russh::keys::load_secret_key(key_file, passphrase.as_deref())
+                .map_err(|e| format!("SSH-Key {key_file} konnte nicht geladen werden: {e}"))?;
             handle
-                .authenticate_publickey(
-                    user,
-                    PrivateKeyWithHashAlg::new(Arc::new(key), None),
-                )
+                .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), None))
                 .await
                 .map_err(|e| format!("SSH-Verbindung fehlgeschlagen: {e}"))?
         }
     };
     match result {
         russh::client::AuthResult::Success => Ok(()),
-        _ => Err("SSH-Authentifizierung abgelehnt (Benutzer, Passwort oder Key prüfen).".to_string()),
+        _ => {
+            Err("SSH-Authentifizierung abgelehnt (Benutzer, Passwort oder Key prüfen).".to_string())
+        }
     }
 }
 
@@ -238,7 +245,12 @@ impl SshTunnelManager {
 
         let addr = tokio::net::lookup_host(format!("{}:{}", request.host, request.port))
             .await
-            .map_err(|e| format!("SSH-Host {} konnte nicht aufgelöst werden: {e}", request.host))?
+            .map_err(|e| {
+                format!(
+                    "SSH-Host {} konnte nicht aufgelöst werden: {e}",
+                    request.host
+                )
+            })?
             .next()
             .ok_or_else(|| format!("SSH-Host {} konnte nicht aufgelöst werden.", request.host))?;
 
@@ -258,7 +270,10 @@ impl SshTunnelManager {
         .await
         .map_err(|_| "SSH-Verbindung hat länger als 15 Sekunden gedauert.".to_string())?
         .map_err(|e| {
-            format!("SSH-Verbindung zu {}:{} fehlgeschlagen: {e}", request.host, request.port)
+            format!(
+                "SSH-Verbindung zu {}:{} fehlgeschlagen: {e}",
+                request.host, request.port
+            )
         })?;
 
         authenticate(&mut handle, &request.user, &request.auth).await?;
@@ -287,10 +302,13 @@ impl SshTunnelManager {
             request.remote_host.clone(),
             request.remote_port,
         ));
-        self.tunnels
-            .lock()
-            .await
-            .insert(request.id.clone(), ActiveTunnel { info: info.clone(), task });
+        self.tunnels.lock().await.insert(
+            request.id.clone(),
+            ActiveTunnel {
+                info: info.clone(),
+                task,
+            },
+        );
         Ok(info)
     }
 
@@ -303,7 +321,12 @@ impl SshTunnelManager {
     }
 
     pub async fn list(&self) -> Vec<SshTunnelInfo> {
-        self.tunnels.lock().await.values().map(|t| t.info.clone()).collect()
+        self.tunnels
+            .lock()
+            .await
+            .values()
+            .map(|t| t.info.clone())
+            .collect()
     }
 }
 
@@ -316,12 +339,17 @@ pub async fn open_ssh_tunnel(
 }
 
 #[tauri::command]
-pub async fn close_ssh_tunnel(id: String, ssh_state: tauri::State<'_, SshState>) -> Result<(), String> {
+pub async fn close_ssh_tunnel(
+    id: String,
+    ssh_state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
     ssh_state.close(&id).await
 }
 
 #[tauri::command]
-pub async fn list_ssh_tunnels(ssh_state: tauri::State<'_, SshState>) -> Result<Vec<SshTunnelInfo>, String> {
+pub async fn list_ssh_tunnels(
+    ssh_state: tauri::State<'_, SshState>,
+) -> Result<Vec<SshTunnelInfo>, String> {
     Ok(ssh_state.list().await)
 }
 

@@ -4,10 +4,21 @@ use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
     AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ConnectionConfig,
     ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest, CreatePublicationRequest,
-    CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind, DetailedColumnInfo,
-    ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult,
-    RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo, TableData, TableInfo, TriggerInfo,
+    CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind,
+    DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
+    PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
+    TableData, TableInfo, TriggerInfo,
 };
+
+#[tauri::command]
+pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
+    super::provider::list_providers()
+}
+
+#[tauri::command]
+pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
+    super::provider::kind_driver_status(kind)
+}
 
 #[tauri::command]
 pub async fn test_connection(
@@ -48,9 +59,14 @@ pub async fn list_schemas(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<String>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_schemas()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_schemas()
+    .await
 }
 
 #[tauri::command]
@@ -61,9 +77,14 @@ pub async fn list_tables(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<TableInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_tables(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_tables(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -82,19 +103,24 @@ pub async fn fetch_table_rows(
     allow_raw: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<TableData, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .fetch_rows(
-            &schema,
-            &table,
-            filter.as_deref(),
-            limit.unwrap_or(100),
-            offset.unwrap_or(0),
-            order_by.as_deref(),
-            order_desc.unwrap_or(false),
-            is_view.unwrap_or(false),
-            allow_raw.unwrap_or(true),
-        )
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .fetch_rows(
+        &schema,
+        &table,
+        filter.as_deref(),
+        limit.unwrap_or(100),
+        offset.unwrap_or(0),
+        order_by.as_deref(),
+        order_desc.unwrap_or(false),
+        is_view.unwrap_or(false),
+        allow_raw.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -108,9 +134,19 @@ pub async fn count_table_rows(
     allow_raw: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<i64, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .count_rows(&schema, &table, filter.as_deref(), allow_raw.unwrap_or(true))
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .count_rows(
+        &schema,
+        &table,
+        filter.as_deref(),
+        allow_raw.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -124,9 +160,14 @@ pub async fn update_row(
     updates: std::collections::HashMap<String, Option<String>>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .update_row(&schema, &table, &ctid, &updates)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .update_row(&schema, &table, &ctid, &updates)
+    .await
 }
 
 #[tauri::command]
@@ -138,9 +179,14 @@ pub async fn list_all_columns(
     table_type: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ColumnInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_columns(schema.as_deref(), None, table_type.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_columns(schema.as_deref(), None, table_type.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -151,9 +197,14 @@ pub async fn execute_query(
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<QueryResult, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .execute_query(&sql)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_query(&sql)
+    .await
 }
 
 #[tauri::command]
@@ -164,9 +215,14 @@ pub async fn list_views(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<TableInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_views(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_views(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -178,9 +234,14 @@ pub async fn get_view_definition(
     view: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<String, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_view_definition(&schema, &view)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_view_definition(&schema, &view)
+    .await
 }
 
 #[tauri::command]
@@ -194,9 +255,14 @@ pub async fn update_view_definition(
     dry_run: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .update_view_definition(&schema, &view, &body, dry_run)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .update_view_definition(&schema, &view, &body, dry_run)
+    .await
 }
 
 #[tauri::command]
@@ -243,9 +309,7 @@ pub async fn insert_row_in_transaction(
     values: std::collections::HashMap<String, Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state
-        .insert_row(&tx_id, &schema, &table, &values)
-        .await
+    tx_state.insert_row(&tx_id, &schema, &table, &values).await
 }
 
 #[tauri::command]
@@ -256,9 +320,7 @@ pub async fn duplicate_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state
-        .duplicate_row(&tx_id, &schema, &table, &ctid)
-        .await
+    tx_state.duplicate_row(&tx_id, &schema, &table, &ctid).await
 }
 
 #[tauri::command]
@@ -269,9 +331,7 @@ pub async fn delete_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state
-        .delete_row(&tx_id, &schema, &table, &ctid)
-        .await
+    tx_state.delete_row(&tx_id, &schema, &table, &ctid).await
 }
 
 #[tauri::command]
@@ -305,9 +365,14 @@ pub async fn list_functions(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<FunctionInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_functions(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_functions(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -318,9 +383,14 @@ pub async fn get_function_definition(
     oid: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<String, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_function_definition(&oid)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_function_definition(&oid)
+    .await
 }
 
 #[tauri::command]
@@ -330,9 +400,14 @@ pub async fn list_extensions(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ExtensionInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_extensions()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_extensions()
+    .await
 }
 
 #[tauri::command]
@@ -343,9 +418,14 @@ pub async fn validate_sql(
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .validate_sql(&sql)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .validate_sql(&sql)
+    .await
 }
 
 #[tauri::command]
@@ -355,9 +435,14 @@ pub async fn list_roles(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<RoleInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_roles()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_roles()
+    .await
 }
 
 #[tauri::command]
@@ -368,9 +453,14 @@ pub async fn create_role(
     options: CreateRoleOptions,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_role(&options)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_role(&options)
+    .await
 }
 
 #[tauri::command]
@@ -381,9 +471,14 @@ pub async fn alter_role(
     options: AlterRoleOptions,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .alter_role(&options)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .alter_role(&options)
+    .await
 }
 
 #[tauri::command]
@@ -394,9 +489,14 @@ pub async fn drop_role(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_role(&name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_role(&name)
+    .await
 }
 
 #[tauri::command]
@@ -407,9 +507,14 @@ pub async fn list_role_privileges(
     role_name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<RolePrivileges, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_role_privileges(&role_name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_role_privileges(&role_name)
+    .await
 }
 
 #[tauri::command]
@@ -420,9 +525,14 @@ pub async fn modify_privilege(
     change: PrivilegeChange,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .modify_privilege(&change)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .modify_privilege(&change)
+    .await
 }
 
 #[tauri::command]
@@ -434,9 +544,14 @@ pub async fn list_foreign_keys(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_foreign_keys(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_foreign_keys(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -447,9 +562,14 @@ pub async fn get_er_schema(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<ERSchema, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_er_schema(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_er_schema(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -461,9 +581,14 @@ pub async fn drop_table(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_table(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_table(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -475,9 +600,14 @@ pub async fn truncate_table(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .truncate_table(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .truncate_table(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -489,9 +619,14 @@ pub async fn list_triggers(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<TriggerInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_triggers(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_triggers(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -503,9 +638,14 @@ pub async fn list_table_columns_detailed(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<DetailedColumnInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_table_columns_detailed(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_table_columns_detailed(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -518,9 +658,14 @@ pub async fn add_column(
     column: AddColumnRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .add_column(&schema, &table, &column)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .add_column(&schema, &table, &column)
+    .await
 }
 
 #[tauri::command]
@@ -533,9 +678,14 @@ pub async fn alter_column(
     changes: AlterColumnRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .alter_column(&schema, &table, &changes)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .alter_column(&schema, &table, &changes)
+    .await
 }
 
 #[tauri::command]
@@ -548,9 +698,14 @@ pub async fn drop_column(
     column: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_column(&schema, &table, &column)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_column(&schema, &table, &column)
+    .await
 }
 
 #[tauri::command]
@@ -561,9 +716,14 @@ pub async fn list_sequences(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<SequenceInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_sequences(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_sequences(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -576,9 +736,14 @@ pub async fn alter_sequence(
     changes: AlterSequenceRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .alter_sequence(&schema, &name, &changes)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .alter_sequence(&schema, &name, &changes)
+    .await
 }
 
 #[tauri::command]
@@ -590,9 +755,14 @@ pub async fn list_indexes(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<IndexInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_indexes(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_indexes(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -604,9 +774,14 @@ pub async fn list_constraints(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ConstraintInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_constraints(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_constraints(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -618,9 +793,14 @@ pub async fn install_extension(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .install_extension(&name, schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .install_extension(&name, schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -631,9 +811,14 @@ pub async fn uninstall_extension(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .uninstall_extension(&name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .uninstall_extension(&name)
+    .await
 }
 
 #[tauri::command]
@@ -643,9 +828,14 @@ pub async fn list_available_extensions(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<AvailableExtensionInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_available_extensions()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_available_extensions()
+    .await
 }
 
 #[tauri::command]
@@ -656,9 +846,14 @@ pub async fn execute_script(
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<ScriptStatementResult>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .execute_script(&sql)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_script(&sql)
+    .await
 }
 
 #[tauri::command]
@@ -669,9 +864,14 @@ pub async fn create_table(
     request: CreateTableRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_table(&request)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_table(&request)
+    .await
 }
 
 #[tauri::command]
@@ -683,9 +883,14 @@ pub async fn explain_query(
     analyze: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<serde_json::Value, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .explain_query(&sql, analyze)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .explain_query(&sql, analyze)
+    .await
 }
 
 #[tauri::command]
@@ -696,9 +901,14 @@ pub async fn list_materialized_views(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::MatviewInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_materialized_views(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_materialized_views(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -711,9 +921,14 @@ pub async fn refresh_materialized_view(
     concurrently: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .refresh_materialized_view(&schema, &name, concurrently)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .refresh_materialized_view(&schema, &name, concurrently)
+    .await
 }
 
 #[tauri::command]
@@ -725,9 +940,14 @@ pub async fn drop_materialized_view(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_materialized_view(&schema, &name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_materialized_view(&schema, &name)
+    .await
 }
 
 #[tauri::command]
@@ -738,9 +958,14 @@ pub async fn create_materialized_view(
     request: CreateMatviewRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_materialized_view(&request)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_materialized_view(&request)
+    .await
 }
 
 #[tauri::command]
@@ -752,9 +977,14 @@ pub async fn get_table_rls(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<super::TableRlsInfo, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_table_rls(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_table_rls(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -768,9 +998,14 @@ pub async fn set_table_rls(
     force: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .set_table_rls(&schema, &table, enabled, force)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .set_table_rls(&schema, &table, enabled, force)
+    .await
 }
 
 #[tauri::command]
@@ -783,9 +1018,14 @@ pub async fn create_policy(
     policy: CreatePolicyRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_policy(&schema, &table, &policy)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_policy(&schema, &table, &policy)
+    .await
 }
 
 #[tauri::command]
@@ -798,9 +1038,14 @@ pub async fn drop_policy(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_policy(&schema, &table, &name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_policy(&schema, &table, &name)
+    .await
 }
 
 #[tauri::command]
@@ -812,9 +1057,14 @@ pub async fn get_partition_info(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<super::PartitionInfo, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_partition_info(&schema, &table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_partition_info(&schema, &table)
+    .await
 }
 
 #[tauri::command]
@@ -828,9 +1078,14 @@ pub async fn detach_partition(
     child_table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .detach_partition(&parent_schema, &parent_table, &child_schema, &child_table)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .detach_partition(&parent_schema, &parent_table, &child_schema, &child_table)
+    .await
 }
 
 #[tauri::command]
@@ -845,9 +1100,20 @@ pub async fn attach_partition(
     bound: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .attach_partition(&parent_schema, &parent_table, &child_schema, &child_table, &bound)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .attach_partition(
+        &parent_schema,
+        &parent_table,
+        &child_schema,
+        &child_table,
+        &bound,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -857,9 +1123,14 @@ pub async fn list_publications(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::PublicationInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_publications()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_publications()
+    .await
 }
 
 #[tauri::command]
@@ -870,9 +1141,14 @@ pub async fn create_publication(
     request: CreatePublicationRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_publication(&request)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_publication(&request)
+    .await
 }
 
 #[tauri::command]
@@ -883,9 +1159,14 @@ pub async fn drop_publication(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_publication(&name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_publication(&name)
+    .await
 }
 
 #[tauri::command]
@@ -895,9 +1176,14 @@ pub async fn list_subscriptions(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::SubscriptionInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_subscriptions()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_subscriptions()
+    .await
 }
 
 #[tauri::command]
@@ -908,9 +1194,14 @@ pub async fn create_subscription(
     request: CreateSubscriptionRequest,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_subscription(&request)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_subscription(&request)
+    .await
 }
 
 #[tauri::command]
@@ -921,9 +1212,14 @@ pub async fn drop_subscription(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_subscription(&name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_subscription(&name)
+    .await
 }
 
 #[tauri::command]
@@ -933,9 +1229,14 @@ pub async fn list_sessions(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::SessionInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_sessions()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_sessions()
+    .await
 }
 
 #[tauri::command]
@@ -946,9 +1247,14 @@ pub async fn cancel_session(
     pid: i32,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<bool, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .cancel_session(pid)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .cancel_session(pid)
+    .await
 }
 
 #[tauri::command]
@@ -959,9 +1265,14 @@ pub async fn terminate_session(
     pid: i32,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<bool, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .terminate_session(pid)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .terminate_session(pid)
+    .await
 }
 
 #[tauri::command]
@@ -971,9 +1282,14 @@ pub async fn list_locks(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::LockInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_locks()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_locks()
+    .await
 }
 
 #[tauri::command]
@@ -984,9 +1300,14 @@ pub async fn list_enums(
     schema: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::EnumInfo>, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .list_enums(schema.as_deref())
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_enums(schema.as_deref())
+    .await
 }
 
 #[tauri::command]
@@ -997,9 +1318,14 @@ pub async fn create_schema(
     name: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .create_schema(&name)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .create_schema(&name)
+    .await
 }
 
 #[tauri::command]
@@ -1011,9 +1337,14 @@ pub async fn drop_schema(
     cascade: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .drop_schema(&name, cascade)
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .drop_schema(&name, cascade)
+    .await
 }
 
 #[tauri::command]
@@ -1023,7 +1354,12 @@ pub async fn get_database_overview(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<super::DatabaseOverview, String> {
-    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
-        .get_database_overview()
-        .await
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_database_overview()
+    .await
 }

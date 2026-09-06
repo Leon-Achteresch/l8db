@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -9,7 +8,15 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, SimpleQueryMessage};
 
 use super::pool::{PoolState, PoolUse};
-use super::{map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, SequenceInfo, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo};
+use super::{
+    map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
+    AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
+    AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions,
+    DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
+    RolePrivileges, SchemaPrivileges, SequenceInfo, SslMode, TableData, TableInfo, TablePrivileges,
+    TriggerInfo,
+};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -17,6 +24,7 @@ pub struct PostgresAdapter {
     config: Config,
     pool_state: PoolState,
     pool_key: String,
+    ssl: SslMode,
 }
 
 impl PostgresAdapter {
@@ -30,18 +38,15 @@ impl PostgresAdapter {
             .dbname(&config.database)
             .ssl_mode(ssl.to_pg())
             .connect_timeout(Duration::from_secs(10));
-        let pool_key = format!(
-            "postgres://{}@{}:{}/{}?sslmode={}",
-            config.user,
-            config.host,
-            config.port,
-            config.database,
-            ssl.as_url_param(),
+        let pool_key = super::connection::connection_key(
+            &format!("{pg:?}{:?}{}", config.password, ssl.as_url_param()),
+            None,
         );
         Self {
             config: pg,
             pool_state,
             pool_key,
+            ssl,
         }
     }
 
@@ -50,32 +55,28 @@ impl PostgresAdapter {
         database: Option<&str>,
         pool_state: PoolState,
     ) -> Result<Self, String> {
-        let mut config =
-            Config::from_str(connection_string).map_err(|e| format!("Ungültiger Connection String: {e}"))?;
-        if let Some(database) = database {
-            if !database.is_empty() {
-                config.dbname(database);
-            }
-        }
-        config.connect_timeout(Duration::from_secs(10));
-        let redacted = redact_connection_string(connection_string);
-        let pool_key = match database {
-            Some(db) if !db.is_empty() => format!("{redacted}##{db}"),
-            _ => redacted,
-        };
+        let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
+        let pool_key = super::connection::connection_key(connection_string, database);
         Ok(Self {
             config,
             pool_state,
             pool_key,
+            ssl,
         })
     }
 
     async fn get_conn(
         &self,
-    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String> {
+    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String>
+    {
         let pool = self
             .pool_state
-            .get_pool(&self.pool_key, self.config.clone(), PoolUse::Query)
+            .get_pool(
+                &self.pool_key,
+                self.config.clone(),
+                self.ssl,
+                PoolUse::Query,
+            )
             .await?;
         pool.get_owned()
             .await
@@ -84,10 +85,16 @@ impl PostgresAdapter {
 
     async fn get_meta(
         &self,
-    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String> {
+    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String>
+    {
         let pool = self
             .pool_state
-            .get_pool(&self.pool_key, self.config.clone(), PoolUse::Metadata)
+            .get_pool(
+                &self.pool_key,
+                self.config.clone(),
+                self.ssl,
+                PoolUse::Metadata,
+            )
             .await?;
         pool.get_owned()
             .await
@@ -98,21 +105,32 @@ impl PostgresAdapter {
     where
         F: std::future::Future<Output = Result<T, String>>,
     {
-        timeout(QUERY_TIMEOUT, future)
-            .await
-            .map_err(|_| "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string())?
+        timeout(QUERY_TIMEOUT, future).await.map_err(|_| {
+            "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string()
+        })?
     }
 }
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let conn = self.get_meta().await?;
         self.timed(async {
-            conn.simple_query("SELECT 1")
+            let (client, connection) = self
+                .config
+                .connect(super::connection::tls_connector(self.ssl)?)
+                .await
+                .map_err(map_pg_err)?;
+            let task = tokio::spawn(async move {
+                let _ = connection.await;
+            });
+            let result = client
+                .simple_query("SELECT 1")
                 .await
                 .map(|_| ())
-                .map_err(map_pg_err)
+                .map_err(map_pg_err);
+            drop(client);
+            task.abort();
+            result
         })
         .await
     }
@@ -441,11 +459,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 match msg {
                     SimpleQueryMessage::Row(row) => {
                         if columns.is_empty() {
-                            columns = row
-                                .columns()
-                                .iter()
-                                .map(|c| c.name().to_string())
-                                .collect();
+                            columns = row.columns().iter().map(|c| c.name().to_string()).collect();
                         }
                         let mut obj = serde_json::Map::new();
                         for (i, col) in columns.iter().enumerate() {
@@ -511,11 +525,7 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn get_view_definition(
-        &self,
-        schema: &str,
-        view: &str,
-    ) -> Result<String, String> {
+    async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             conn.query_one(
@@ -553,7 +563,10 @@ impl DatabaseAdapter for PostgresAdapter {
                 let _ = conn.simple_query("ROLLBACK").await;
                 result.map(|_| ())
             } else {
-                conn.simple_query(&ddl).await.map_err(map_pg_err).map(|_| ())
+                conn.simple_query(&ddl)
+                    .await
+                    .map_err(map_pg_err)
+                    .map(|_| ())
             }
         })
         .await
@@ -615,17 +628,12 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
-        let oid_val: u32 = oid
-            .parse()
-            .map_err(|_| format!("Ungültige OID: {oid}"))?;
+        let oid_val: u32 = oid.parse().map_err(|_| format!("Ungültige OID: {oid}"))?;
         self.timed(async {
-            conn.query_one(
-                "SELECT pg_get_functiondef($1::oid)",
-                &[&oid_val],
-            )
-            .await
-            .map_err(map_pg_err)
-            .map(|row| row.get::<_, String>(0))
+            conn.query_one("SELECT pg_get_functiondef($1::oid)", &[&oid_val])
+                .await
+                .map_err(map_pg_err)
+                .map(|row| row.get::<_, String>(0))
         })
         .await
     }
@@ -708,10 +716,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     .map(|r| r.get::<_, String>(0))
                     .unwrap_or_default();
                 if !member_name.is_empty() {
-                    members_map
-                        .entry(group_name)
-                        .or_default()
-                        .push(member_name);
+                    members_map.entry(group_name).or_default().push(member_name);
                 }
             }
 
@@ -889,7 +894,11 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
-            let sql = format!("DROP TABLE {}.{} CASCADE", quote_ident(schema), quote_ident(table));
+            let sql = format!(
+                "DROP TABLE {}.{} CASCADE",
+                quote_ident(schema),
+                quote_ident(table)
+            );
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
         })
@@ -899,14 +908,22 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
-            let sql = format!("TRUNCATE TABLE {}.{}", quote_ident(schema), quote_ident(table));
+            let sql = format!(
+                "TRUNCATE TABLE {}.{}",
+                quote_ident(schema),
+                quote_ident(table)
+            );
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
         })
         .await
     }
 
-    async fn list_table_columns_detailed(&self, schema: &str, table: &str) -> Result<Vec<DetailedColumnInfo>, String> {
+    async fn list_table_columns_detailed(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<DetailedColumnInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             let rows = conn.query(
@@ -943,12 +960,20 @@ impl DatabaseAdapter for PostgresAdapter {
         }).await
     }
 
-    async fn add_column(&self, schema: &str, table: &str, column: &AddColumnRequest) -> Result<(), String> {
+    async fn add_column(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &AddColumnRequest,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut sql = format!(
                 "ALTER TABLE {}.{} ADD COLUMN {} {}",
-                quote_ident(schema), quote_ident(table), quote_ident(&column.name), column.data_type
+                quote_ident(schema),
+                quote_ident(table),
+                quote_ident(&column.name),
+                column.data_type
             );
             if !column.is_nullable {
                 sql.push_str(" NOT NULL");
@@ -958,10 +983,16 @@ impl DatabaseAdapter for PostgresAdapter {
             }
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
-        }).await
+        })
+        .await
     }
 
-    async fn alter_column(&self, schema: &str, table: &str, changes: &AlterColumnRequest) -> Result<(), String> {
+    async fn alter_column(
+        &self,
+        schema: &str,
+        table: &str,
+        changes: &AlterColumnRequest,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
@@ -974,22 +1005,30 @@ impl DatabaseAdapter for PostgresAdapter {
                 if not_null {
                     stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
                 } else {
-                    stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"));
+                    stmts.push(format!(
+                        "ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"
+                    ));
                 }
             }
             if changes.drop_default {
                 stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
             } else if let Some(ref def) = changes.new_default {
-                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"));
+                stmts.push(format!(
+                    "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
+                ));
             }
             if let Some(ref new_name) = changes.new_name {
-                stmts.push(format!("ALTER TABLE {tbl} RENAME COLUMN {col} TO {}", quote_ident(new_name)));
+                stmts.push(format!(
+                    "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
+                    quote_ident(new_name)
+                ));
             }
             for stmt in &stmts {
                 conn.execute(stmt.as_str(), &[]).await.map_err(map_pg_err)?;
             }
             Ok(())
-        }).await
+        })
+        .await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
@@ -997,11 +1036,14 @@ impl DatabaseAdapter for PostgresAdapter {
         self.timed(async {
             let sql = format!(
                 "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
-                quote_ident(schema), quote_ident(table), quote_ident(column)
+                quote_ident(schema),
+                quote_ident(table),
+                quote_ident(column)
             );
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
-        }).await
+        })
+        .await
     }
 
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
@@ -1078,8 +1120,16 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String> {
         let valid_privileges = [
-            "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE",
-            "REFERENCES", "TRIGGER", "USAGE", "CREATE", "ALL PRIVILEGES",
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "TRUNCATE",
+            "REFERENCES",
+            "TRIGGER",
+            "USAGE",
+            "CREATE",
+            "ALL PRIVILEGES",
         ];
         let priv_upper = change.privilege.to_uppercase();
         if !valid_privileges.contains(&priv_upper.as_str()) {
@@ -1095,7 +1145,9 @@ impl DatabaseAdapter for PostgresAdapter {
         self.timed(async {
             let sql = match change.object_type.as_str() {
                 "schema" => {
-                    let schema = change.schema.as_deref()
+                    let schema = change
+                        .schema
+                        .as_deref()
                         .ok_or_else(|| "Schema fehlt".to_string())?;
                     if change.grant {
                         format!(
@@ -1114,9 +1166,13 @@ impl DatabaseAdapter for PostgresAdapter {
                     }
                 }
                 _ => {
-                    let schema = change.schema.as_deref()
+                    let schema = change
+                        .schema
+                        .as_deref()
                         .ok_or_else(|| "Schema fehlt".to_string())?;
-                    let table = change.table.as_deref()
+                    let table = change
+                        .table
+                        .as_deref()
                         .ok_or_else(|| "Tabelle fehlt".to_string())?;
                     if change.grant {
                         format!(
@@ -1312,11 +1368,7 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn list_triggers(
-        &self,
-        schema: &str,
-        table: &str,
-    ) -> Result<Vec<TriggerInfo>, String> {
+    async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             conn.query(
@@ -1375,13 +1427,13 @@ impl DatabaseAdapter for PostgresAdapter {
                         function_schema: row.get(6),
                         function_name: row.get(7),
                         enabled: row.get(8),
-                         definition: row.get(9),
-                     })
-                     .collect()
-             })
-         })
-         .await
-     }
+                        definition: row.get(9),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
 
     async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
         let conn = self.get_meta().await?;
@@ -1431,7 +1483,12 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn alter_sequence(&self, schema: &str, name: &str, changes: &AlterSequenceRequest) -> Result<(), String> {
+    async fn alter_sequence(
+        &self,
+        schema: &str,
+        name: &str,
+        changes: &AlterSequenceRequest,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut parts: Vec<String> = Vec::new();
@@ -1449,7 +1506,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 None => {}
             }
             if let Some(cycle) = changes.cycle {
-                parts.push(if cycle { "CYCLE".to_string() } else { "NO CYCLE".to_string() });
+                parts.push(if cycle {
+                    "CYCLE".to_string()
+                } else {
+                    "NO CYCLE".to_string()
+                });
             }
             if let Some(ref restart) = changes.restart_with {
                 if !restart.trim().is_empty() {
@@ -1459,17 +1520,27 @@ impl DatabaseAdapter for PostgresAdapter {
             if parts.is_empty() {
                 return Ok(());
             }
-            let sql = format!("ALTER SEQUENCE {}.{} {}", quote_ident(schema), quote_ident(name), parts.join(" "));
+            let sql = format!(
+                "ALTER SEQUENCE {}.{} {}",
+                quote_ident(schema),
+                quote_ident(name),
+                parts.join(" ")
+            );
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
-        }).await
+        })
+        .await
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         self.list_indexes_impl(schema, table).await
     }
 
-    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String> {
+    async fn list_constraints(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ConstraintInfo>, String> {
         self.list_constraints_impl(schema, table).await
     }
 
@@ -1477,12 +1548,17 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = match schema {
-                Some(s) => format!("CREATE EXTENSION IF NOT EXISTS {} SCHEMA {}", quote_ident(name), quote_ident(s)),
+                Some(s) => format!(
+                    "CREATE EXTENSION IF NOT EXISTS {} SCHEMA {}",
+                    quote_ident(name),
+                    quote_ident(s)
+                ),
                 None => format!("CREATE EXTENSION IF NOT EXISTS {}", quote_ident(name)),
             };
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
-        }).await
+        })
+        .await
     }
 
     async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
@@ -1491,7 +1567,8 @@ impl DatabaseAdapter for PostgresAdapter {
             let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
-        }).await
+        })
+        .await
     }
 
     async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String> {
@@ -1549,7 +1626,10 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn list_materialized_views(&self, schema: Option<&str>) -> Result<Vec<super::MatviewInfo>, String> {
+    async fn list_materialized_views(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<super::MatviewInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             let rows = match schema {
@@ -1586,7 +1666,12 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn refresh_materialized_view(&self, schema: &str, name: &str, concurrently: bool) -> Result<(), String> {
+    async fn refresh_materialized_view(
+        &self,
+        schema: &str,
+        name: &str,
+        concurrently: bool,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let modifier = if concurrently { " CONCURRENTLY" } else { "" };
@@ -1616,7 +1701,10 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn create_materialized_view(&self, req: &super::CreateMatviewRequest) -> Result<(), String> {
+    async fn create_materialized_view(
+        &self,
+        req: &super::CreateMatviewRequest,
+    ) -> Result<(), String> {
         let query = req.query.trim();
         if query.is_empty() {
             return Err("Die SELECT-Abfrage darf nicht leer sein.".to_string());
@@ -1626,7 +1714,11 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let conn = self.get_conn().await?;
         self.timed(async {
-            let data = if req.with_data { "WITH DATA" } else { "WITH NO DATA" };
+            let data = if req.with_data {
+                "WITH DATA"
+            } else {
+                "WITH NO DATA"
+            };
             let sql = format!(
                 "CREATE MATERIALIZED VIEW {}.{} AS {} {}",
                 quote_ident(&req.schema),
@@ -1640,7 +1732,11 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn get_table_rls(&self, schema: &str, table: &str) -> Result<super::TableRlsInfo, String> {
+    async fn get_table_rls(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<super::TableRlsInfo, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             let flags: (bool, bool) = conn
@@ -1726,24 +1822,41 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn set_table_rls(&self, schema: &str, table: &str, enabled: bool, force: bool) -> Result<(), String> {
+    async fn set_table_rls(
+        &self,
+        schema: &str,
+        table: &str,
+        enabled: bool,
+        force: bool,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
             let mode = if enabled { "ENABLE" } else { "DISABLE" };
             let force_mode = if force { "FORCE" } else { "NO FORCE" };
-            conn.execute(format!("ALTER TABLE {target} {mode} ROW LEVEL SECURITY").as_str(), &[])
-                .await
-                .map_err(map_pg_err)?;
-            conn.execute(format!("ALTER TABLE {target} {force_mode} ROW LEVEL SECURITY").as_str(), &[])
-                .await
-                .map_err(map_pg_err)?;
+            conn.execute(
+                format!("ALTER TABLE {target} {mode} ROW LEVEL SECURITY").as_str(),
+                &[],
+            )
+            .await
+            .map_err(map_pg_err)?;
+            conn.execute(
+                format!("ALTER TABLE {target} {force_mode} ROW LEVEL SECURITY").as_str(),
+                &[],
+            )
+            .await
+            .map_err(map_pg_err)?;
             Ok(())
         })
         .await
     }
 
-    async fn create_policy(&self, schema: &str, table: &str, policy: &super::CreatePolicyRequest) -> Result<(), String> {
+    async fn create_policy(
+        &self,
+        schema: &str,
+        table: &str,
+        policy: &super::CreatePolicyRequest,
+    ) -> Result<(), String> {
         let name = policy.name.trim();
         if name.is_empty() {
             return Err("Der Policy-Name darf nicht leer sein.".to_string());
@@ -1757,8 +1870,13 @@ impl DatabaseAdapter for PostgresAdapter {
                 continue;
             }
             let valid = !role.is_empty()
-                && role.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
-                && role.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+                && role
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+                && role
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '$');
             if !valid {
                 return Err(format!("Ungültiger Rollenname: {role}"));
             }
@@ -1768,7 +1886,8 @@ impl DatabaseAdapter for PostgresAdapter {
             let to = if policy.roles.is_empty() {
                 "PUBLIC".to_string()
             } else {
-                policy.roles
+                policy
+                    .roles
                     .iter()
                     .map(|r| {
                         if r == "PUBLIC" || r == "CURRENT_USER" || r == "SESSION_USER" {
@@ -1788,10 +1907,20 @@ impl DatabaseAdapter for PostgresAdapter {
                 command,
                 to,
             );
-            if let Some(expr) = policy.using_expr.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
+            if let Some(expr) = policy
+                .using_expr
+                .as_deref()
+                .map(str::trim)
+                .filter(|e| !e.is_empty())
+            {
                 sql.push_str(&format!(" USING ({expr})"));
             }
-            if let Some(expr) = policy.check_expr.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
+            if let Some(expr) = policy
+                .check_expr
+                .as_deref()
+                .map(str::trim)
+                .filter(|e| !e.is_empty())
+            {
                 sql.push_str(&format!(" WITH CHECK ({expr})"));
             }
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
@@ -1815,7 +1944,11 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn get_partition_info(&self, schema: &str, table: &str) -> Result<super::PartitionInfo, String> {
+    async fn get_partition_info(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<super::PartitionInfo, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             let row = conn
@@ -1830,12 +1963,13 @@ impl DatabaseAdapter for PostgresAdapter {
                 .map_err(|_| format!("Tabelle {schema}.{table} nicht gefunden."))?;
             let relkind: i8 = row.get(0);
             let is_partitioned = relkind as u8 as char == 'p';
-            let strategy: Option<String> = row.get::<_, Option<i8>>(1).map(|s| match s as u8 as char {
-                'r' => "RANGE".to_string(),
-                'l' => "LIST".to_string(),
-                'h' => "HASH".to_string(),
-                other => other.to_string(),
-            });
+            let strategy: Option<String> =
+                row.get::<_, Option<i8>>(1).map(|s| match s as u8 as char {
+                    'r' => "RANGE".to_string(),
+                    'l' => "LIST".to_string(),
+                    'h' => "HASH".to_string(),
+                    other => other.to_string(),
+                });
             let partition_key: Option<String> = row.get(2);
             let partitions = if is_partitioned {
                 conn.query(
@@ -1867,7 +2001,13 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn detach_partition(&self, parent_schema: &str, parent_table: &str, child_schema: &str, child_table: &str) -> Result<(), String> {
+    async fn detach_partition(
+        &self,
+        parent_schema: &str,
+        parent_table: &str,
+        child_schema: &str,
+        child_table: &str,
+    ) -> Result<(), String> {
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -1883,7 +2023,14 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn attach_partition(&self, parent_schema: &str, parent_table: &str, child_schema: &str, child_table: &str, bound: &str) -> Result<(), String> {
+    async fn attach_partition(
+        &self,
+        parent_schema: &str,
+        parent_table: &str,
+        child_schema: &str,
+        child_table: &str,
+        bound: &str,
+    ) -> Result<(), String> {
         let trimmed = bound.trim();
         if trimmed.len() < 10 || !trimmed[..10].eq_ignore_ascii_case("for values") {
             return Err("Die Partition-Bindung muss mit FOR VALUES beginnen.".to_string());
@@ -1952,21 +2099,36 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn create_publication(&self, req: &super::CreatePublicationRequest) -> Result<(), String> {
+    async fn create_publication(
+        &self,
+        req: &super::CreatePublicationRequest,
+    ) -> Result<(), String> {
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Publikations-Name darf nicht leer sein.".to_string());
         }
         if !req.for_all_tables && req.tables.is_empty() {
-            return Err("Entweder FOR ALL TABLES oder mindestens eine Tabelle angeben.".to_string());
+            return Err(
+                "Entweder FOR ALL TABLES oder mindestens eine Tabelle angeben.".to_string(),
+            );
         }
         let mut ops = Vec::new();
-        if req.publish_insert { ops.push("insert"); }
-        if req.publish_update { ops.push("update"); }
-        if req.publish_delete { ops.push("delete"); }
-        if req.publish_truncate { ops.push("truncate"); }
+        if req.publish_insert {
+            ops.push("insert");
+        }
+        if req.publish_update {
+            ops.push("update");
+        }
+        if req.publish_delete {
+            ops.push("delete");
+        }
+        if req.publish_truncate {
+            ops.push("truncate");
+        }
         if ops.is_empty() {
-            return Err("Mindestens eine Operation (insert/update/delete/truncate) wählen.".to_string());
+            return Err(
+                "Mindestens eine Operation (insert/update/delete/truncate) wählen.".to_string(),
+            );
         }
         let conn = self.get_conn().await?;
         self.timed(async {
@@ -2031,7 +2193,10 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn create_subscription(&self, req: &super::CreateSubscriptionRequest) -> Result<(), String> {
+    async fn create_subscription(
+        &self,
+        req: &super::CreateSubscriptionRequest,
+    ) -> Result<(), String> {
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Subskriptions-Name darf nicht leer sein.".to_string());
@@ -2042,7 +2207,10 @@ impl DatabaseAdapter for PostgresAdapter {
         if req.connection_string.trim().is_empty() {
             return Err("Der Connection-String darf nicht leer sein.".to_string());
         }
-        let escaped = req.connection_string.replace('\\', "\\\\").replace('\'', "\\'");
+        let escaped = req
+            .connection_string
+            .replace('\\', "\\\\")
+            .replace('\'', "\\'");
         let conn = self.get_conn().await?;
         self.timed(async {
             let publications = req
@@ -2051,9 +2219,20 @@ impl DatabaseAdapter for PostgresAdapter {
                 .map(|p| quote_ident(p))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let mut options = vec![format!("enabled = {}", if req.enabled { "true" } else { "false" })];
-            options.push(format!("connect = {}", if req.connect { "true" } else { "false" }));
-            if let Some(slot) = req.slot_name.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            let mut options = vec![format!(
+                "enabled = {}",
+                if req.enabled { "true" } else { "false" }
+            )];
+            options.push(format!(
+                "connect = {}",
+                if req.connect { "true" } else { "false" }
+            ));
+            if let Some(slot) = req
+                .slot_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
                 options.push(format!("slot_name = {}", quote_literal(slot)));
             }
             let sql = format!(
@@ -2212,7 +2391,10 @@ impl DatabaseAdapter for PostgresAdapter {
                     let schema: String = row.get(0);
                     let name: String = row.get(1);
                     let value: String = row.get(2);
-                    match enums.iter_mut().find(|e| e.schema == schema && e.name == name) {
+                    match enums
+                        .iter_mut()
+                        .find(|e| e.schema == schema && e.name == name)
+                    {
                         Some(entry) => entry.values.push(value),
                         None => enums.push(super::EnumInfo {
                             schema,
@@ -2336,7 +2518,11 @@ impl PostgresAdapter {
         }).await
     }
 
-    async fn list_constraints_impl(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String> {
+    async fn list_constraints_impl(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ConstraintInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
             let rows = conn.query(
@@ -2382,7 +2568,10 @@ impl PostgresAdapter {
         }).await
     }
 
-    async fn execute_script_impl(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+    async fn execute_script_impl(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<super::ScriptStatementResult>, String> {
         use super::ScriptStatementResult;
         let statements: Vec<&str> = sql
             .split(';')
@@ -2439,7 +2628,11 @@ impl PostgresAdapter {
             parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
         }
 
-        let if_not_exists = if req.if_not_exists { "IF NOT EXISTS " } else { "" };
+        let if_not_exists = if req.if_not_exists {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
         format!(
             "CREATE TABLE {}{}.{} (\n  {}\n)",
             if_not_exists,
@@ -2456,18 +2649,13 @@ mod tests {
     use crate::db::{pool::create_pool_state, DatabaseAdapter};
 
     fn lab_connection_string() -> String {
-        std::env::var("L8DB_E2E_PG_URL").unwrap_or_else(|_| {
-            "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string()
-        })
+        std::env::var("L8DB_E2E_PG_URL")
+            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string())
     }
 
     fn lab_adapter() -> PostgresAdapter {
-        PostgresAdapter::from_connection_string(
-            &lab_connection_string(),
-            None,
-            create_pool_state(),
-        )
-        .expect("adapter")
+        PostgresAdapter::from_connection_string(&lab_connection_string(), None, create_pool_state())
+            .expect("adapter")
     }
 
     async fn lab_execute(adapter: &PostgresAdapter, sql: &str) {
@@ -2507,6 +2695,23 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn connection_test_rejects_changed_password() {
+        let state = create_pool_state();
+        let value = lab_connection_string();
+        let valid = PostgresAdapter::from_connection_string(&value, None, state.clone()).unwrap();
+        valid.list_schemas().await.expect("warm metadata pool");
+        valid.test_connection().await.expect("valid credentials");
+        let mut wrong = url::Url::parse(&value).unwrap();
+        wrong
+            .set_password(Some("l8db-intentionally-invalid-password"))
+            .unwrap();
+        let invalid = PostgresAdapter::from_connection_string(wrong.as_str(), None, state).unwrap();
+        assert!(invalid.test_connection().await.is_err());
+        assert_ne!(valid.pool_key, invalid.pool_key);
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn explain_returns_json_plan() {
         let adapter = PostgresAdapter::from_connection_string(
             &lab_connection_string(),
@@ -2518,7 +2723,10 @@ mod tests {
             .explain_query("SELECT 1 AS one", false)
             .await
             .expect("explain");
-        let first = plan.as_array().and_then(|items| items.first()).expect("plan array");
+        let first = plan
+            .as_array()
+            .and_then(|items| items.first())
+            .expect("plan array");
         assert!(first.get("Plan").is_some(), "{plan}");
     }
 
@@ -2591,7 +2799,10 @@ mod tests {
         lab_execute(&adapter, "DROP TABLE IF EXISTS public.e2e_rls").await;
         lab_execute(&adapter, "CREATE TABLE public.e2e_rls (id int, owner text)").await;
         lab_execute(&adapter, "DROP POLICY IF EXISTS e2e_pol ON public.e2e_rls").await;
-        let info = adapter.get_table_rls("public", "e2e_rls").await.expect("info");
+        let info = adapter
+            .get_table_rls("public", "e2e_rls")
+            .await
+            .expect("info");
         assert!(!info.rls_enabled);
         assert!(info.policies.is_empty());
         adapter
@@ -2612,7 +2823,10 @@ mod tests {
             )
             .await
             .expect("create policy");
-        let info = adapter.get_table_rls("public", "e2e_rls").await.expect("info");
+        let info = adapter
+            .get_table_rls("public", "e2e_rls")
+            .await
+            .expect("info");
         assert!(info.rls_enabled);
         assert_eq!(info.policies.len(), 1);
         assert_eq!(info.policies[0].command, "SELECT");
@@ -2643,7 +2857,10 @@ mod tests {
             "CREATE TABLE public.e2e_part_2024 PARTITION OF public.e2e_part FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')",
         )
         .await;
-        let info = adapter.get_partition_info("public", "e2e_part").await.expect("info");
+        let info = adapter
+            .get_partition_info("public", "e2e_part")
+            .await
+            .expect("info");
         assert!(info.is_partitioned);
         assert_eq!(info.strategy.as_deref(), Some("RANGE"));
         assert_eq!(info.partitions.len(), 1);
@@ -2651,7 +2868,10 @@ mod tests {
             .detach_partition("public", "e2e_part", "public", "e2e_part_2024")
             .await
             .expect("detach");
-        let info = adapter.get_partition_info("public", "e2e_part").await.expect("info");
+        let info = adapter
+            .get_partition_info("public", "e2e_part")
+            .await
+            .expect("info");
         assert!(info.partitions.is_empty());
         adapter
             .attach_partition(
@@ -2663,9 +2883,15 @@ mod tests {
             )
             .await
             .expect("attach");
-        let info = adapter.get_partition_info("public", "e2e_part").await.expect("info");
+        let info = adapter
+            .get_partition_info("public", "e2e_part")
+            .await
+            .expect("info");
         assert_eq!(info.partitions.len(), 1);
-        let plain = adapter.get_partition_info("public", "e2e_part_2024").await.expect("plain");
+        let plain = adapter
+            .get_partition_info("public", "e2e_part_2024")
+            .await
+            .expect("plain");
         assert!(!plain.is_partitioned);
         lab_execute(&adapter, "DROP TABLE public.e2e_part_2024").await;
         lab_execute(&adapter, "DROP TABLE public.e2e_part").await;
@@ -2678,7 +2904,11 @@ mod tests {
         let adapter = lab_adapter();
         lab_execute(&adapter, "DROP PUBLICATION IF EXISTS e2e_pub").await;
         lab_execute(&adapter, "DROP TABLE IF EXISTS public.e2e_pub_t").await;
-        lab_execute(&adapter, "CREATE TABLE public.e2e_pub_t (id int primary key, v text)").await;
+        lab_execute(
+            &adapter,
+            "CREATE TABLE public.e2e_pub_t (id int primary key, v text)",
+        )
+        .await;
         adapter
             .create_publication(&CreatePublicationRequest {
                 name: "e2e_pub".to_string(),
@@ -2712,7 +2942,11 @@ mod tests {
         lab_cleanup_subscription(&adapter, "testsub", "e2e_sub").await;
         lab_execute(&adapter, "DROP PUBLICATION IF EXISTS e2e_pub2").await;
         lab_execute(&adapter, "DROP TABLE IF EXISTS public.e2e_pub_t2").await;
-        lab_execute(&adapter, "CREATE TABLE public.e2e_pub_t2 (id int primary key, v text)").await;
+        lab_execute(
+            &adapter,
+            "CREATE TABLE public.e2e_pub_t2 (id int primary key, v text)",
+        )
+        .await;
         adapter
             .create_publication(&CreatePublicationRequest {
                 name: "e2e_pub2".to_string(),
@@ -2728,9 +2962,17 @@ mod tests {
             })
             .await
             .expect("create pub");
-        lab_execute(&adapter, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'").await;
+        lab_execute(
+            &adapter,
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'",
+        )
+        .await;
         lab_cleanup_subscription(&adapter, "testsub", "e2e_sub").await;
-        lab_execute(&adapter, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'").await;
+        lab_execute(
+            &adapter,
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'",
+        )
+        .await;
         lab_execute(&adapter, "DROP DATABASE IF EXISTS testsub").await;
         lab_execute(&adapter, "CREATE DATABASE testsub").await;
         let sub_adapter = PostgresAdapter::from_connection_string(
@@ -2739,7 +2981,11 @@ mod tests {
             create_pool_state(),
         )
         .expect("sub adapter");
-        lab_execute(&sub_adapter, "CREATE TABLE public.e2e_pub_t2 (id int primary key, v text)").await;
+        lab_execute(
+            &sub_adapter,
+            "CREATE TABLE public.e2e_pub_t2 (id int primary key, v text)",
+        )
+        .await;
         sub_adapter
             .create_subscription(&CreateSubscriptionRequest {
                 name: "e2e_sub".to_string(),
@@ -2756,12 +3002,23 @@ mod tests {
         assert!(!found.enabled);
         assert_eq!(found.publications, vec!["e2e_pub2".to_string()]);
         assert!(!found.connection_string.contains("testpw"));
-        lab_execute(&adapter, "SELECT pg_create_logical_replication_slot('e2e_sub', 'pgoutput')").await;
-        sub_adapter.drop_subscription("e2e_sub").await.expect("drop sub");
+        lab_execute(
+            &adapter,
+            "SELECT pg_create_logical_replication_slot('e2e_sub', 'pgoutput')",
+        )
+        .await;
+        sub_adapter
+            .drop_subscription("e2e_sub")
+            .await
+            .expect("drop sub");
         lab_execute(&adapter, "SELECT pg_drop_replication_slot('e2e_sub') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'e2e_sub' AND NOT active)").await;
         lab_execute(&adapter, "DROP PUBLICATION e2e_pub2").await;
         lab_execute(&adapter, "DROP TABLE public.e2e_pub_t2").await;
-        lab_execute(&adapter, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'").await;
+        lab_execute(
+            &adapter,
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'testsub'",
+        )
+        .await;
         lab_execute(&adapter, "DROP DATABASE testsub").await;
     }
 
@@ -2790,9 +3047,8 @@ mod tests {
             .await
             .expect("pid")
             .get(0);
-        let sleep = tokio::spawn(async move {
-            client.query("SELECT pg_sleep(60)", &[]).await.map(|_| ())
-        });
+        let sleep =
+            tokio::spawn(async move { client.query("SELECT pg_sleep(60)", &[]).await.map(|_| ()) });
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         assert!(adapter.cancel_session(pid).await.expect("cancel sleep"));
         let outcome = sleep.await.expect("join");
@@ -2823,8 +3079,10 @@ mod tests {
             .get(0);
         let adapter = lab_adapter();
         assert!(adapter.terminate_session(pid).await.expect("terminate"));
-        assert!(adapter.terminate_session(pid).await.is_err()
-            || adapter.terminate_session(pid).await.expect("retry") == false);
+        assert!(
+            adapter.terminate_session(pid).await.is_err()
+                || adapter.terminate_session(pid).await.expect("retry") == false
+        );
     }
 
     #[tokio::test]
@@ -2833,16 +3091,29 @@ mod tests {
         let adapter = lab_adapter();
         lab_execute(&adapter, "DROP TYPE IF EXISTS public.e2e_mood").await;
         lab_execute(&adapter, "DROP SCHEMA IF EXISTS e2e_schema CASCADE").await;
-        lab_execute(&adapter, "CREATE TYPE public.e2e_mood AS ENUM ('gut', 'ok', 'schlecht')").await;
+        lab_execute(
+            &adapter,
+            "CREATE TYPE public.e2e_mood AS ENUM ('gut', 'ok', 'schlecht')",
+        )
+        .await;
         let enums = adapter.list_enums(Some("public")).await.expect("enums");
         let found = enums.iter().find(|e| e.name == "e2e_mood").expect("found");
-        assert_eq!(found.values, vec!["gut".to_string(), "ok".to_string(), "schlecht".to_string()]);
-        adapter.create_schema("e2e_schema").await.expect("create schema");
+        assert_eq!(
+            found.values,
+            vec!["gut".to_string(), "ok".to_string(), "schlecht".to_string()]
+        );
+        adapter
+            .create_schema("e2e_schema")
+            .await
+            .expect("create schema");
         let overview = adapter.get_database_overview().await.expect("overview");
         assert!(overview.size_bytes > 0);
         assert!(overview.schemas.iter().any(|s| s.schema == "e2e_schema"));
         assert!(adapter.drop_schema("public", false).await.is_err());
         lab_execute(&adapter, "DROP TYPE public.e2e_mood").await;
-        adapter.drop_schema("e2e_schema", false).await.expect("drop schema");
+        adapter
+            .drop_schema("e2e_schema", false)
+            .await
+            .expect("drop schema");
     }
 }
