@@ -39,6 +39,7 @@ const PROVIDERS = [
   provider("mysql", "mysql", ["mysql", "mariadb"], ["localhost"], { default_port: 3306 }),
   provider("sqlite", "sqlite", ["sqlite", "file"], [], { default_port: null, file_based: true }),
   provider("redis", "redis", ["redis", "rediss"], ["localhost"], { default_port: 6379 }),
+  provider("oracle", "oracle", ["oracle"], ["localhost"], { default_port: 1521 }),
 ];
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -78,8 +79,14 @@ const { loadProviders } = await import("../src/lib/providers");
 await loadProviders();
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { useTransactionStore } = await import("../src/lib/transactions");
-const { parseConnectionUrl, detectProvider, connectionError, connectionSummary, kindFromUrl } =
-  await import("../src/lib/connection-url");
+const {
+  parseConnectionUrl,
+  detectProvider,
+  connectionError,
+  connectionSummary,
+  kindFromUrl,
+  isOracleKeyValue,
+} = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
   extractUrlPassword,
@@ -271,5 +278,68 @@ describe("Connection lifecycle", () => {
   });
   test("error messages redact credentials", () => {
     expect(connectionError("Failed postgres://user:secret@host/app")).not.toContain("secret");
+  });
+});
+
+describe("Oracle Key-Value", () => {
+  const kv =
+    "User Id=DEV_ACHTERESCH;Password=XXX;Data Source=csorastby.rzhit.win:1521/sltest.rzhit.win";
+  test("detects ODP.NET strings as Oracle", () => {
+    expect(isOracleKeyValue(kv)).toBe(true);
+    expect(kindFromUrl(kv)).toBe("oracle");
+    expect(detectProvider(kv, "oracle")).toBe("oracle");
+  });
+  test("normalizes to an oracle:// URL", () => {
+    const url = parseConnectionUrl(kv);
+    expect(url.protocol).toBe("oracle:");
+    expect(url.hostname).toBe("csorastby.rzhit.win");
+    expect(url.port).toBe("1521");
+    expect(url.pathname).toBe("/sltest.rzhit.win");
+    expect(decodeURIComponent(url.username)).toBe("DEV_ACHTERESCH");
+    expect(extractUrlPassword(url.toString())).toBe("XXX");
+  });
+  test("accepts lowercase keys and defaults the port", () => {
+    const raw = "user id=scott;pwd=tiger;data source=db.example.com/ORCLPDB";
+    const url = parseConnectionUrl(raw);
+    expect(url.hostname).toBe("db.example.com");
+    expect(url.port).toBe("");
+    expect(connectionSummary(raw)).toEqual({
+      host: "db.example.com",
+      port: "1521",
+      database: "ORCLPDB",
+      user: "scott",
+    });
+  });
+  test("keeps quoted passwords with semicolons intact", () => {
+    const url = parseConnectionUrl('User Id=scott;Password="a;b";Data Source=db:1521/svc');
+    expect(url.password).toBe("a%3Bb");
+    expect(extractUrlPassword(url.toString())).toBe("a;b");
+  });
+  test("extracts endpoints from TNS descriptors", () => {
+    const descriptor =
+      "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=db.example.com)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCLPDB)))";
+    const url = parseConnectionUrl(`User Id=scott;Password=tiger;Data Source=${descriptor}`);
+    expect(url.hostname).toBe("db.example.com");
+    expect(url.pathname).toBe("/ORCLPDB");
+  });
+  test("keeps TNS aliases via connect_string with explicit kind", () => {
+    const url = parseConnectionUrl("User Id=scott;Password=tiger;Data Source=ORCL", "oracle");
+    expect(url.searchParams.get("connect_string")).toBe("ORCL");
+  });
+  test("rejects MSSQL-style strings and incomplete input", () => {
+    expect(kindFromUrl("Server=db.internal;Database=shop;User Id=sa;Password=secret")).toBeUndefined();
+    expect(isOracleKeyValue("Server=db.internal;Database=shop;User Id=sa;Password=secret")).toBe(
+      false,
+    );
+    expect(() => parseConnectionUrl("User Id=scott;Password=tiger")).toThrow();
+    expect(() => parseConnectionUrl("Password=tiger;Data Source=db/svc")).toThrow();
+  });
+  test("redacts key-value passwords", () => {
+    expect(connectionError(`Oracle: ${kv}`)).not.toContain("XXX");
+    expect(connectionError(`Oracle: ${kv}`)).toContain("Password=***");
+    expect(scrubUrlPassword(kv)).toBe(
+      "User Id=DEV_ACHTERESCH;Password=***;Data Source=csorastby.rzhit.win:1521/sltest.rzhit.win",
+    );
+    expect(extractUrlPassword(kv)).toBe("XXX");
   });
 });
