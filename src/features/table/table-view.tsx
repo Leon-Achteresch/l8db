@@ -36,6 +36,7 @@ import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
+import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
 import { useActiveConnection } from "@/lib/connections";
@@ -59,8 +60,15 @@ import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
-type ViewTab = "data" | "definition" | "columns";
-type TableTab = "data" | "triggers" | "columns" | "indexes" | "rls" | "partitions";
+type ViewTab = "data" | "definition" | "columns" | "used-by";
+type TableTab =
+  | "data"
+  | "triggers"
+  | "columns"
+  | "indexes"
+  | "rls"
+  | "partitions"
+  | "used-by";
 
 export function TableView() {
   const { schema, table } = routeApi.useParams();
@@ -363,6 +371,12 @@ export function TableView() {
               <CodeIcon className="size-3.5" />
               Definition
             </TabsTrigger>
+            {caps.used_by && (
+              <TabsTrigger value="used-by">
+                <NetworkIcon className="size-3.5" />
+                Used By
+              </TabsTrigger>
+            )}
           </TabsList>
           {viewTab === "data" && data && (
             <DropdownMenu>
@@ -406,6 +420,10 @@ export function TableView() {
 
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ViewDefinitionPanel schema={schema} view={table} />
+        </TabsContent>
+
+        <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableUsedByPanel schema={schema} name={table} />
         </TabsContent>
         <CsvExportDialog
           open={csvExportOpen}
@@ -460,6 +478,12 @@ export function TableView() {
             <TabsTrigger value="partitions">
               <NetworkIcon className="size-3.5" />
               Partitionen
+            </TabsTrigger>
+          )}
+          {caps.used_by && (
+            <TabsTrigger value="used-by">
+              <NetworkIcon className="size-3.5" />
+              Used By
             </TabsTrigger>
           )}
         </TabsList>
@@ -536,6 +560,10 @@ export function TableView() {
 
       <TabsContent value="partitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TablePartitionsPanel schema={schema} table={table} />
+      </TabsContent>
+
+      <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableUsedByPanel schema={schema} name={table} />
       </TabsContent>
 
       <NewRowDialog

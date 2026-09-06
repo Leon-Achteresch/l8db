@@ -34,6 +34,8 @@ const WRITE_COMMANDS = new Set([
   "install_extension",
   "modify_privilege",
   "refresh_materialized_view",
+  "run_scheduler_job",
+  "set_scheduler_job_enabled",
   "set_table_rls",
   "terminate_session",
   "truncate_table",
@@ -119,6 +121,10 @@ export interface Capabilities {
   compile_objects: boolean;
   debugger: boolean;
   bind_parameters: boolean;
+  used_by: boolean;
+  synonyms: boolean;
+  scheduler_jobs: boolean;
+  server_output: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -428,6 +434,92 @@ export async function searchSource(
   limit?: number,
 ): Promise<SourceMatch[]> {
   return invoke("search_source", { kind, connectionString, database, schema, term, limit });
+}
+
+export interface DependencyInfo {
+  owner: string;
+  name: string;
+  object_type: string;
+  status: string;
+  relation: string;
+  oid: string;
+  detail: string;
+}
+
+export interface SynonymInfo {
+  owner: string;
+  name: string;
+  target_owner: string;
+  target_name: string;
+  target_type: string;
+  db_link: string | null;
+  status: string;
+}
+
+export interface SchedulerJobInfo {
+  id: string;
+  owner: string;
+  name: string;
+  enabled: boolean;
+  state: string;
+  schedule: string;
+  command: string;
+  last_run: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  next_run: string | null;
+}
+
+export async function listUsedBy(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  database?: string,
+): Promise<DependencyInfo[]> {
+  return invoke("list_used_by", { kind, connectionString, database, schema, name });
+}
+
+export async function listSynonyms(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<SynonymInfo[]> {
+  return invoke("list_synonyms", { kind, connectionString, database, schema });
+}
+
+export async function listSchedulerJobs(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<SchedulerJobInfo[]> {
+  return invoke("list_scheduler_jobs", { kind, connectionString, database });
+}
+
+export async function setSchedulerJobEnabled(
+  kind: DatabaseKind,
+  connectionString: string,
+  jobId: string,
+  enabled: boolean,
+  database?: string,
+): Promise<void> {
+  return invoke("set_scheduler_job_enabled", {
+    kind,
+    connectionString,
+    database,
+    jobId,
+    enabled,
+  });
+}
+
+export async function runSchedulerJob(
+  kind: DatabaseKind,
+  connectionString: string,
+  jobId: string,
+  database?: string,
+): Promise<void> {
+  return invoke("run_scheduler_job", { kind, connectionString, database, jobId });
 }
 
 export type TableRowSort = {
@@ -1683,4 +1775,27 @@ export function readCommunityExtension(
   development = false,
 ): Promise<import("../../packages/extension-api/src").ExtensionArchive> {
   return invoke("read_community_extension", { path, development });
+}
+
+export interface ServerMessage {
+  level: string;
+  message: string;
+  detail?: string | null;
+}
+
+export async function setServerOutput(
+  kind: DatabaseKind,
+  connectionString: string,
+  enabled: boolean,
+  database?: string,
+): Promise<void> {
+  return invoke("set_server_output", { kind, connectionString, database, enabled });
+}
+
+export async function takeServerOutput(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<ServerMessage[]> {
+  return invoke("take_server_output", { kind, connectionString, database });
 }
