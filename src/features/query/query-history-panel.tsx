@@ -1,9 +1,11 @@
 import { BookmarkIcon, HistoryIcon, PlayIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 
@@ -58,7 +60,11 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
   }, [savedQueries, search]);
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/20">
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/20"
+    >
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         <Tabs value={tab} onValueChange={setTab} className="min-w-0 flex-1">
           <TabsList className="grid w-full grid-cols-2">
@@ -117,7 +123,12 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                 </div>
               )}
               {history.map((entry) => (
-                <div key={entry.id} className="group px-3 py-2 hover:bg-muted/40">
+                <motion.div
+                  key={entry.id}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
+                  className="group px-3 py-2 hover:bg-muted/40"
+                >
                   <button
                     type="button"
                     className="block w-full text-left"
@@ -152,7 +163,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                       Löschen
                     </Button>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )
@@ -163,7 +174,12 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
         ) : (
           <div className="divide-y divide-border/50">
             {saved.map((item) => (
-              <div key={item.id} className="group px-3 py-2 hover:bg-muted/40">
+              <motion.div
+                key={item.id}
+                layout
+                transition={{ layout: SPRING_LAYOUT }}
+                className="group px-3 py-2 hover:bg-muted/40"
+              >
                 <button
                   type="button"
                   className="block w-full text-left"
@@ -195,11 +211,11 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                     Löschen
                   </Button>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

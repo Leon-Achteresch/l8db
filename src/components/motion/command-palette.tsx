@@ -223,6 +223,7 @@ export function CommandPalette({
               className="pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] z-[100] flex items-start justify-center"
             >
               <motion.div
+                layout
                 role="dialog"
                 aria-modal="true"
                 aria-label="Command palette"

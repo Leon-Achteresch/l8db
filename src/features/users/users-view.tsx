@@ -14,7 +14,9 @@ import {
   UndoIcon,
   UserIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -663,7 +665,7 @@ function SchemaTableGroup({
   const totalCount = tables.length * TABLE_PRIVS.length;
 
   return (
-    <div className="rounded-lg border">
+    <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="rounded-lg border">
       <button
         type="button"
         onClick={() => setCollapsed(!collapsed)}
@@ -721,7 +723,7 @@ function SchemaTableGroup({
           </table>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

@@ -116,7 +116,7 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
   };
 
   return (
-    <div className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
+    <motion.div layout className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
       <div className="flex shrink-0 items-center gap-2 px-3 py-2">
         <button
           type="button"
@@ -327,6 +327,6 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

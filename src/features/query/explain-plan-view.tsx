@@ -1,4 +1,6 @@
 import { XIcon } from "lucide-react";
+import { motion } from "motion/react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 import { Button } from "@/components/ui/button";
 import type { ExplainNode } from "@/lib/db";
@@ -20,7 +22,11 @@ function NodeCard({ node, depth }: { node: ExplainNode; depth: number }) {
       ? node["Actual Total Time"] * node["Actual Loops"]
       : null;
   return (
-    <div className={depth === 0 ? "" : "ml-4 border-l border-border/60 pl-3"}>
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className={depth === 0 ? "" : "ml-4 border-l border-border/60 pl-3"}
+    >
       <details open={depth < 2} className="group py-1">
         <summary className="cursor-pointer list-none">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -66,7 +72,7 @@ function NodeCard({ node, depth }: { node: ExplainNode; depth: number }) {
           />
         ))}
       </details>
-    </div>
+    </motion.div>
   );
 }
 

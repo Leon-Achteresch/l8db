@@ -5,6 +5,7 @@ import {
 } from "monaco-editor/esm/vs/basic-languages/sql/sql";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { format } from "sql-formatter";
+import { useSettingsStore } from "@/lib/settings";
 
 const globalScope = self as unknown as {
   MonacoEnvironment?: monaco.Environment;
@@ -94,10 +95,11 @@ monaco.editor.defineTheme("l8db-dark", {
 });
 
 export function formatSql(sql: string): string {
+  const { editorTabSize, editorKeywordCase } = useSettingsStore.getState();
   return format(sql, {
     language: "postgresql",
-    tabWidth: 2,
-    keywordCase: "upper",
+    tabWidth: editorTabSize ?? 2,
+    keywordCase: editorKeywordCase ?? "upper",
     linesBetweenQueries: 2,
   });
 }

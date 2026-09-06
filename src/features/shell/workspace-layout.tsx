@@ -1,6 +1,8 @@
 import { Outlet } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { TableTabs } from "@/features/shell/table-tabs";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 export function WorkspaceLayout() {
   return (
@@ -9,9 +11,13 @@ export function WorkspaceLayout() {
         <SidebarTrigger className="-ml-1" />
         <TableTabs />
       </header>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <motion.div
+        layout
+        transition={{ layout: SPRING_LAYOUT }}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
         <Outlet />
-      </div>
+      </motion.div>
     </div>
   );
 }

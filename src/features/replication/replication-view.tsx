@@ -1,8 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, RadioIcon, Trash2Icon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -397,7 +399,12 @@ export function ReplicationView() {
           ) : (
             <div className="flex flex-col gap-2">
               {publications!.map((pub) => (
-                <div key={pub.name} className="rounded-lg border p-4">
+                <motion.div
+                  key={pub.name}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
+                  className="rounded-lg border p-4"
+                >
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{pub.name}</span>
                     {pub.all_tables && (
@@ -443,7 +450,7 @@ export function ReplicationView() {
                       {pub.tables.length > 0 ? pub.tables.join(", ") : "Keine Tabellen zugeordnet."}
                     </p>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
@@ -467,7 +474,12 @@ export function ReplicationView() {
           ) : (
             <div className="flex flex-col gap-2">
               {subscriptions!.map((sub) => (
-                <div key={sub.name} className="rounded-lg border p-4">
+                <motion.div
+                  key={sub.name}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
+                  className="rounded-lg border p-4"
+                >
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{sub.name}</span>
                     <Badge
@@ -500,7 +512,7 @@ export function ReplicationView() {
                   >
                     {sub.connection_string}
                   </p>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}

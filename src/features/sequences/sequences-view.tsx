@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { PencilIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useActiveConnection } from "@/lib/connections";
 import { type AlterSequenceRequest, alterSequence, type SequenceInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -258,8 +260,10 @@ export function SequencesView() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map((seq) => (
-                    <tr
+                    <motion.tr
                       key={`${seq.schema}.${seq.name}`}
+                      layout="position"
+                      transition={{ layout: SPRING_LAYOUT }}
                       className="hover:bg-muted/40 transition-colors group"
                     >
                       <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
@@ -293,7 +297,7 @@ export function SequencesView() {
                           <PencilIcon className="size-3.5" />
                         </Button>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
                 </tbody>
               </table>

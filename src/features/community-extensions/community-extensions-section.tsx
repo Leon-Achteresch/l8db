@@ -1,4 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { motion } from "motion/react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useEffect, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,7 +43,12 @@ export function CommunityExtensionsSection() {
     );
   };
   return (
-    <section className="space-y-4 border-t pt-6" aria-label="Community Extensions">
+    <motion.section
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="space-y-4 border-t pt-6"
+      aria-label="Community Extensions"
+    >
       <h2 className="text-lg font-semibold">Community Extensions</h2>
       <p className="text-sm text-muted-foreground">
         Installiere ein Paket oder lade einen lokalen Entwicklungsordner. Prüfe Herausgeber und
@@ -78,6 +85,6 @@ export function CommunityExtensionsSection() {
             .join("\n")}
         </pre>
       </details>
-    </section>
+    </motion.section>
   );
 }

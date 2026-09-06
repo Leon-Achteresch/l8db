@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ListIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useEnumsQuery } from "@/lib/queries";
 import { quoteIdent } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -184,7 +186,12 @@ export function EnumsView() {
         ) : (
           <div className="flex flex-col gap-2">
             {enums!.map((entry) => (
-              <div key={`${entry.schema}.${entry.name}`} className="rounded-lg border p-4">
+              <motion.div
+                key={`${entry.schema}.${entry.name}`}
+                layout
+                transition={{ layout: SPRING_LAYOUT }}
+                className="rounded-lg border p-4"
+              >
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-medium">
                     {entry.schema}.{entry.name}
@@ -210,7 +217,7 @@ export function EnumsView() {
                     </Badge>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}

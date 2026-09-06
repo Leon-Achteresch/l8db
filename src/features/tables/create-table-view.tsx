@@ -1,8 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { PlusIcon, TableIcon, Trash2Icon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -188,8 +190,10 @@ export function CreateTableView() {
                 <span />
               </div>
               {columns.map((col) => (
-                <div
+                <motion.div
                   key={col.id}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
                   className="grid grid-cols-[1fr_1fr_auto_auto_auto_auto_auto] items-center gap-2 border-b px-3 py-2 last:border-b-0"
                 >
                   <Input
@@ -251,7 +255,7 @@ export function CreateTableView() {
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
-                </div>
+                </motion.div>
               ))}
             </div>
 

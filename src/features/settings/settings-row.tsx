@@ -5,7 +5,7 @@ import { SPRING_LAYOUT } from "@/lib/ease";
 interface Props {
   title: string;
   description: string;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export function SettingsRow({ title, description, children }: Props) {
@@ -19,7 +19,7 @@ export function SettingsRow({ title, description, children }: Props) {
         <p className="text-sm font-semibold">{title}</p>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
       </div>
-      <div className="flex shrink-0 justify-end">{children}</div>
+      {children ? <div className="flex shrink-0 justify-end">{children}</div> : null}
     </motion.div>
   );
 }

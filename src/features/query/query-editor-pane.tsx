@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { lintUnknownTables } from "@/lib/sql-lint";
+import { useSettingsStore } from "@/lib/settings";
 
 interface SchemaRegistry {
   schemas: string[];
@@ -587,6 +588,8 @@ export function QueryEditorPane({
   onSelectionChangeRef.current = onSelectionChange;
   onCursorChangeRef.current = onCursorChange;
   registryRef.current = registry;
+  const { editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap } =
+    useSettingsStore();
 
   useEffect(() => {
     const container = containerRef.current;
@@ -597,16 +600,16 @@ export function QueryEditorPane({
       language: "sql",
       theme: themeFor(resolvedTheme),
       automaticLayout: true,
-      minimap: { enabled: false },
-      lineNumbers: "on",
+      minimap: { enabled: editorMinimap },
+      lineNumbers: editorLineNumbers ? "on" : "off",
       glyphMargin: false,
       folding: false,
       lineDecorationsWidth: 0,
       lineNumbersMinChars: 3,
       scrollBeyondLastLine: false,
-      wordWrap: "on",
-      fontSize: 13,
-      lineHeight: 24,
+      wordWrap: editorWordWrap ? "on" : "off",
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.8),
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
@@ -620,7 +623,7 @@ export function QueryEditorPane({
         verticalScrollbarSize: 8,
         horizontalScrollbarSize: 8,
       },
-      tabSize: 2,
+      tabSize: editorTabSize,
       fixedOverflowWidgets: true,
       suggestOnTriggerCharacters: true,
       quickSuggestions: {
@@ -727,6 +730,19 @@ export function QueryEditorPane({
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.updateOptions({
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.8),
+      tabSize: editorTabSize,
+      wordWrap: editorWordWrap ? "on" : "off",
+      lineNumbers: editorLineNumbers ? "on" : "off",
+      minimap: { enabled: editorMinimap },
+    });
+  }, [editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap]);
 
   return <div ref={containerRef} className={className ?? "size-full"} />;
 }

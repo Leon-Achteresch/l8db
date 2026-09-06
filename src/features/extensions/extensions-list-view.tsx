@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, PackageIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +12,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { installExtension, uninstallExtension } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useAvailableExtensionsQuery } from "@/lib/queries";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function AvailableExtensionsView() {
@@ -184,7 +186,11 @@ interface ExtensionRowProps {
 
 function ExtensionRow({ name, version, comment, installed, pending, onToggle }: ExtensionRowProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+    >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-medium">{name}</span>
@@ -211,6 +217,6 @@ function ExtensionRow({ name, version, comment, installed, pending, onToggle }: 
       >
         {pending ? "…" : installed ? "Deinstallieren" : "Installieren"}
       </Button>
-    </div>
+    </motion.div>
   );
 }

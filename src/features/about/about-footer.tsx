@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { FileText, FolderGit, Heart, Scale, ShieldCheck } from "lucide-react";
+import { motion } from "motion/react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -18,7 +20,11 @@ const LINKS = [
 
 export function AboutFooter() {
   return (
-    <footer className="rounded-3xl border bg-card px-6 py-6 sm:px-8">
+    <motion.footer
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="rounded-3xl border bg-card px-6 py-6 sm:px-8"
+    >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <img
@@ -57,6 +63,6 @@ export function AboutFooter() {
         <Heart className="size-3.5 fill-destructive/70 text-destructive/70" />
         für alle gebaut, die täglich mit Daten arbeiten.
       </p>
-    </footer>
+    </motion.footer>
   );
 }
