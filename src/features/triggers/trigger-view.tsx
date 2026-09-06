@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { getRouteApi } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { useTheme } from "next-themes";
 import {
   CheckCircleIcon,
   LoaderIcon,
@@ -12,17 +10,18 @@ import {
   TriangleAlertIcon,
   XCircleIcon,
 } from "lucide-react";
-
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveDatabase } from "@/lib/db-selection";
 import { executeQuery, validateSql } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useTriggersQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-import { useMemo } from "react";
 
 const routeApi = getRouteApi("/_app/triggers/$schema/$table/$trigger");
 
@@ -99,7 +98,7 @@ export function TriggerView() {
       const sql = `${buildDropSql()}\n${currentValue}`;
       await validateSql(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );
@@ -116,7 +115,7 @@ export function TriggerView() {
       const sql = `${buildDropSql()}\n${currentValue}`;
       const result = await executeQuery(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sql,
         database ?? undefined,
       );
@@ -143,7 +142,11 @@ export function TriggerView() {
         <Skeleton className="h-6 w-64 bg-muted/50" />
         <div className="space-y-2 mt-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-5 bg-muted/30" style={{ width: `${60 + Math.random() * 30}%` }} />
+            <Skeleton
+              key={i}
+              className="h-5 bg-muted/30"
+              style={{ width: `${60 + Math.random() * 30}%` }}
+            />
           ))}
         </div>
       </div>
@@ -184,7 +187,9 @@ export function TriggerView() {
             {schema}.{table}
           </span>
           <span className="text-xs text-muted-foreground">/</span>
-          <span className="text-sm font-semibold text-foreground truncate">{trigger.trigger_name}</span>
+          <span className="text-sm font-semibold text-foreground truncate">
+            {trigger.trigger_name}
+          </span>
           <div className="flex items-center gap-1.5">
             <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
               {trigger.timing}
@@ -245,10 +250,7 @@ export function TriggerView() {
         </div>
       </div>
 
-      <TriggerEditorPane
-        value={currentValue}
-        onChange={handleChange}
-      />
+      <TriggerEditorPane value={currentValue} onChange={handleChange} />
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
         <FeedbackPanel state={feedbackState} />
@@ -260,9 +262,7 @@ export function TriggerView() {
 function FeedbackPanel({
   state,
 }: {
-  state:
-    | { status: "success"; time?: number }
-    | { status: "error"; message: string };
+  state: { status: "success"; time?: number } | { status: "error"; message: string };
 }) {
   return (
     <div
@@ -324,8 +324,7 @@ function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
       wordWrap: "on",
       fontSize: 13,
       lineHeight: 24,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
       overviewRulerLanes: 0,

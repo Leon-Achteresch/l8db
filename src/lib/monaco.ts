@@ -87,9 +87,7 @@ export function addSqlFormatAction(
   return editor.addAction({
     id: "l8db.format-sql",
     label: "SQL-Syntax formatieren",
-    keybindings: [
-      monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
-    ],
+    keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
     contextMenuGroupId: "1_modification",
     contextMenuOrder: 1.5,
     run(ed) {

@@ -4,6 +4,7 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml/badge.svg)](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml)
 
 ---
 
@@ -13,8 +14,19 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 - **Inline row editing** — edit, insert, duplicate, and delete rows with transaction support
 - **Schema inspector** — columns, indexes, constraints, foreign keys, and triggers per table
 - **Query editor** — Monaco-based SQL editor with syntax highlighting and formatting
+- **Query history & saved queries** — automatic per-connection history (search, re-run) plus named saved queries
+- **EXPLAIN visualization** — `EXPLAIN` and `EXPLAIN ANALYZE` rendered as a collapsible plan tree with costs and timings
+- **SQL lint** — unknown tables in `FROM`/`JOIN` get warning markers (CTE-aware)
 - **ER diagram** — visual entity-relationship diagram for a schema
 - **Views** — list and edit view definitions
+- **Materialized views** — list, create, refresh (standard and concurrent), and drop
+- **Row Level Security** — enable/force RLS per table, manage policies (roles, USING / WITH CHECK)
+- **Partitioning** — inspect partitioned tables, attach and detach partitions
+- **Logical replication** — manage publications (per-table or FOR ALL TABLES) and subscriptions
+- **Sessions & locks** — live `pg_stat_activity` with cancel/terminate, plus lock monitor
+- **Enums** — browse, create, and drop enum types
+- **Schemas** — create and drop (with optional CASCADE)
+- **Database overview** — sizes per database and schema on the home dashboard
 - **Functions** — browse and edit stored functions/procedures
 - **Triggers** — view trigger definitions per table
 - **Sequences** — list and alter sequences (start, min, max, increment, cycle, restart)
@@ -23,6 +35,9 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 - **Data export** — export table data or query results as CSV or JSON
 - **Transaction panel** — review and commit/rollback pending changes
 - **Multiple connections** — manage and switch between connections; supports connection strings and individual fields
+- **SSL / TLS** — `disable`, `prefer`, `require`, `verify-ca`, `verify-full` per connection (OS certificate store)
+- **SSH tunnels** — reach private databases through a bastion (password or key auth, known_hosts verification with optional TOFU); app traffic stays end-to-end TLS-encrypted
+- **OS keychain secrets** — passwords live in Keychain / Credential Manager / Secret Service, never in localStorage
 - **Dark / light / system theme**
 
 ---
@@ -113,8 +128,8 @@ src-tauri/src/
 - `DatabaseAdapter` trait in `src-tauri/src/db/mod.rs` is the extension point for additional DB engines.
 - Routes in `src/routes/` are thin: they wire `createFileRoute` to feature views. Route tree is auto-generated into `src/routeTree.gen.ts` — **do not edit it manually**.
 - Connections are persisted in `localStorage` under key `l8db.connections`.
-- PostgreSQL connections use `NoTls` — SSL is not supported yet.
-- `fetch_table_rows` uses the configurable page size from settings (default 100). The filter string is interpolated directly into SQL — not parameterized.
+- PostgreSQL connections use `postgres-native-tls` (OS certificate store) with per-connection `ssl_mode`.
+- `fetch_table_rows` uses the configurable page size from settings (default 100). Builder-generated filters are validated server-side; raw SQL filter mode sends `allow_raw=true`.
 
 ---
 
@@ -124,6 +139,14 @@ src-tauri/src/
 2. Run `cargo check` and `cargo clippy` in `src-tauri/` before committing Rust changes.
 3. Run `npx tsc -p tsconfig.app.json --noEmit` to typecheck the frontend.
 4. Open a pull request with a clear description of the change.
+
+---
+
+## Operations
+
+- `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).
+- Releases: push a `v*` tag — GitHub Actions builds installers for macOS, Windows, and Linux plus `latest.json` for the in-app auto-updater. Full runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+- `SECURITY.md` describes supported versions and how to report vulnerabilities.
 
 ---
 

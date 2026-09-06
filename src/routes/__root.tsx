@@ -1,21 +1,25 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import "../index.css";
 
-import { AppHeader } from "@/features/shell/app-header";
+import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
+import { AppHeader } from "@/features/shell/app-header";
 
 function RootComponent() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
-        <AppHeader />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <Outlet />
-        </div>
-      </div>
-      <Toaster />
-    </ThemeProvider>
+    <MotionConfig reducedMotion="user">
+      <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
+        <DbThemeRoot className="h-dvh">
+          <AppHeader />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+        </DbThemeRoot>
+        <Toaster />
+      </ThemeProvider>
+    </MotionConfig>
   );
 }
 

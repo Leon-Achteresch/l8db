@@ -1,7 +1,6 @@
-import { useState } from "react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { PencilIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,9 +16,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
+import { type AlterSequenceRequest, alterSequence, type SequenceInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { alterSequence, type AlterSequenceRequest, type SequenceInfo } from "@/lib/db";
 import { useSequencesQuery } from "@/lib/queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 interface EditSequenceDialogProps {
   sequence: SequenceInfo;
@@ -49,11 +49,12 @@ function EditSequenceDialog({ sequence, open, onOpenChange, onSuccess }: EditSeq
       if (form.min_value !== sequence.min_value) changes.min_value = form.min_value;
       if (form.max_value !== sequence.max_value) changes.max_value = form.max_value;
       if (form.cycle !== sequence.cycle) changes.cycle = form.cycle;
-      if (form.restart_with && form.restart_with.trim() !== "") changes.restart_with = form.restart_with;
+      if (form.restart_with && form.restart_with.trim() !== "")
+        changes.restart_with = form.restart_with;
 
       await alterSequence(
         connection.kind,
-        connection.connectionString,
+        effectiveConnectionString(connection),
         sequence.schema,
         sequence.name,
         changes,
@@ -182,10 +183,7 @@ export function SequencesView() {
 
   const q = search.trim().toLowerCase();
   const filtered = (sequences ?? []).filter(
-    (s) =>
-      !q ||
-      s.name.toLowerCase().includes(q) ||
-      s.schema.toLowerCase().includes(q),
+    (s) => !q || s.name.toLowerCase().includes(q) || s.schema.toLowerCase().includes(q),
   );
 
   const handleEditSuccess = async () => {
@@ -195,21 +193,15 @@ export function SequencesView() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          Sequenzen
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">Sequenzen</span>
         {sequences && sequences.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            ({sequences.length})
-          </span>
+          <span className="text-xs text-muted-foreground">({sequences.length})</span>
         )}
       </div>
 
       {!sequences || sequences.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">
-            Keine Sequenzen gefunden.
-          </p>
+          <p className="text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -227,9 +219,7 @@ export function SequencesView() {
 
           <div className="flex-1 overflow-auto">
             {filtered.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted-foreground">
-                Keine Treffer.
-              </p>
+              <p className="px-4 py-6 text-sm text-muted-foreground">Keine Treffer.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background border-b">
@@ -275,12 +265,8 @@ export function SequencesView() {
                       <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
                         {seq.schema}
                       </td>
-                      <td className="px-4 py-2 font-medium font-mono text-xs">
-                        {seq.name}
-                      </td>
-                      <td className="px-4 py-2 text-muted-foreground text-xs">
-                        {seq.data_type}
-                      </td>
+                      <td className="px-4 py-2 font-medium font-mono text-xs">{seq.name}</td>
+                      <td className="px-4 py-2 text-muted-foreground text-xs">{seq.data_type}</td>
                       <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
                         {seq.start_value}
                       </td>
@@ -293,9 +279,7 @@ export function SequencesView() {
                       <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
                         {seq.increment_by}
                       </td>
-                      <td className="px-4 py-2 text-center text-xs">
-                        {seq.cycle ? "Ja" : "Nein"}
-                      </td>
+                      <td className="px-4 py-2 text-center text-xs">{seq.cycle ? "Ja" : "Nein"}</td>
                       <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
                         {seq.last_value ?? <span className="text-muted-foreground">—</span>}
                       </td>
@@ -322,7 +306,9 @@ export function SequencesView() {
         <EditSequenceDialog
           sequence={editingSequence}
           open={editingSequence !== null}
-          onOpenChange={(open) => { if (!open) setEditingSequence(null); }}
+          onOpenChange={(open) => {
+            if (!open) setEditingSequence(null);
+          }}
           onSuccess={handleEditSuccess}
         />
       )}

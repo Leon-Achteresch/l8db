@@ -1,10 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-
-import {
-  appSidebarData,
-  type AppSidebarUser,
-} from "@/features/sidebar/app-sidebar-data";
-import { NavUser } from "@/features/sidebar/nav-user";
+import { motion, useReducedMotion } from "motion/react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,25 +12,23 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-type AppSidebarIconRailProps = {
-  user: AppSidebarUser;
-};
+import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { NavUser } from "@/features/sidebar/nav-user";
+import { SPRING } from "@/lib/ease";
 
-export function AppSidebarIconRail({ user }: AppSidebarIconRailProps) {
+export function AppSidebarIconRail() {
+  const reduce = useReducedMotion();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <Sidebar
-      collapsible="none"
-      className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
-    >
+    <Sidebar collapsible="none" className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
               <Link to="/">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <img src="/logo.png" alt="logo" />
+                  <img src="/logo.png" alt="l8db" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">l8db</span>
@@ -54,10 +47,25 @@ export function AppSidebarIconRail({ user }: AppSidebarIconRailProps) {
                   <SidebarMenuButton
                     asChild
                     tooltip={{ children: item.title, hidden: false }}
-                    isActive={pathname === item.url}
-                    className="px-2.5 md:px-2"
+                    isActive={item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)}
+                    className="relative isolate px-2.5 md:px-2"
                   >
-                    <Link to={item.url}>
+                    <Link
+                      to={item.url}
+                      aria-label={item.title}
+                      aria-current={
+                        (item.url === "/" ? pathname === "/" : pathname.startsWith(item.url))
+                          ? "page"
+                          : undefined
+                      }
+                    >
+                      {(item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)) && (
+                        <motion.span
+                          layoutId={reduce ? undefined : "sidebar-active"}
+                          transition={SPRING}
+                          className="absolute inset-0 -z-10 rounded-lg bg-primary/10 ring-1 ring-primary/10"
+                        />
+                      )}
                       <item.icon />
                       <span>{item.title}</span>
                     </Link>
@@ -69,7 +77,7 @@ export function AppSidebarIconRail({ user }: AppSidebarIconRailProps) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} />
+        <NavUser />
       </SidebarFooter>
     </Sidebar>
   );
