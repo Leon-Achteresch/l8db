@@ -15,10 +15,12 @@ import {
   PlayIcon,
   ScanTextIcon,
   SearchIcon,
+  TerminalIcon,
   TextSelectIcon,
   Trash2Icon,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { Button } from "@/components/ui/button";
@@ -70,6 +72,12 @@ import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
+import {
+  collectServerOutput,
+  toggleServerOutput,
+  useServerOutputStore,
+} from "@/lib/server-output";
+import { ServerOutputPanel } from "./server-output-panel";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useQueryRevealStore } from "@/lib/query-reveal";
 import { splitSqlStatements, statementAtOffset } from "@/lib/sql-statements";
@@ -194,6 +202,14 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [bindValues, setBindValues] = useState<Record<string, BindParamValue>>({});
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
+  const [outputBusy, setOutputBusy] = useState(false);
+  const outputEnabled = useServerOutputStore((state) =>
+    connection ? state.enabled[connection.id] === true : false,
+  );
+  const outputCount = useServerOutputStore((state) =>
+    connection ? (state.entries[connection.id]?.length ?? 0) : 0,
+  );
   const [scriptMode, setScriptMode] = useState<ScriptRunMode>("autocommit");
   const [scriptEntries, setScriptEntries] = useState<ScriptRunEntry[] | null>(null);
   const [scriptActiveIndex, setScriptActiveIndex] = useState<number | null>(null);
@@ -252,6 +268,41 @@ export function QueryView({ tabId }: QueryViewProps) {
   };
 
   const caps = useCapabilities(connection?.kind);
+
+  const collectOutput = useCallback(async () => {
+    if (!connection || !caps.server_output) return;
+    try {
+      await collectServerOutput(
+        connection.kind,
+        effectiveConnectionString(connection),
+        connection.id,
+        database ?? undefined,
+      );
+    } catch {
+      return;
+    }
+  }, [connection, database, caps.server_output]);
+
+  const handleToggleServerOutput = useCallback(
+    async (enabled: boolean) => {
+      if (!connection) return;
+      setOutputBusy(true);
+      try {
+        await toggleServerOutput(
+          connection.kind,
+          effectiveConnectionString(connection),
+          connection.id,
+          enabled,
+          database ?? undefined,
+        );
+      } catch (err) {
+        toast.error(String(err));
+      } finally {
+        setOutputBusy(false);
+      }
+    },
+    [connection, database],
+  );
 
   const runSql = useCallback(
     async (text: string, bound?: ParameterizedQuery) => {
@@ -364,10 +415,11 @@ export function QueryView({ tabId }: QueryViewProps) {
       setResult(null);
       finishHistory({ rowCount: null, error: message });
     } finally {
+      await collectOutput();
       setIsRunning(false);
     }
     },
-    [connection, database, recordHistory, caps.transactions, caps.bind_parameters],
+    [connection, database, recordHistory, caps.transactions, caps.bind_parameters, collectOutput],
   );
 
   const handleBindConfirm = useCallback(() => {
@@ -541,9 +593,10 @@ export function QueryView({ tabId }: QueryViewProps) {
 
       setScriptEntries(entries.map((item) => ({ ...item })));
       setResult(failed ? null : lastResult);
+      await collectOutput();
       setIsRunning(false);
     },
-    [connection, database, isRunning, recordHistory, scriptSplit],
+    [connection, database, isRunning, recordHistory, scriptSplit, collectOutput],
   );
 
   const handleSelectScriptEntry = useCallback(
@@ -718,6 +771,22 @@ export function QueryView({ tabId }: QueryViewProps) {
             <SearchIcon className="size-3" />
             Suchen
           </Button>
+          {caps.server_output && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-3 text-xs"
+              onClick={() => setOutputOpen((open) => !open)}
+              disabled={!connection}
+              title="Server-Ausgabe (Notices, DBMS_OUTPUT) anzeigen"
+            >
+              <TerminalIcon className="size-3" />
+              Ausgabe
+              {outputCount > 0 && (
+                <span className="tabular-nums text-muted-foreground">{outputCount}</span>
+              )}
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -972,6 +1041,17 @@ export function QueryView({ tabId }: QueryViewProps) {
             databaseKind={connection?.kind ?? ""}
             database={database}
             onClose={() => setPlan(null)}
+          />
+        )}
+
+        {connection && caps.server_output && outputOpen && (
+          <ServerOutputPanel
+            connectionId={connection.id}
+            connectionName={connection.name}
+            enabled={outputEnabled}
+            busy={outputBusy}
+            onToggle={(next) => void handleToggleServerOutput(next)}
+            onClose={() => setOutputOpen(false)}
           />
         )}
 
