@@ -5,6 +5,7 @@ import {
   findGridMatches,
   gridCellText,
   gridMatchKey,
+  runGridSearch,
   stepMatchIndex,
 } from "../src/lib/grid-search";
 
@@ -60,5 +61,31 @@ describe("describeGridSearch", () => {
 describe("gridMatchKey", () => {
   test("bildet eindeutigen Schlüssel", () => {
     expect(gridMatchKey(2, "name")).toBe("2:name");
+  });
+});
+
+describe("runGridSearch", () => {
+  test("findet Zellen über ein reguläres Muster", () => {
+    const result = runGridSearch(rows, ["id", "name", "note"], "^alice$", { regex: true });
+    expect(result.error).toBeNull();
+    expect(result.matches).toEqual([{ rowIndex: 0, columnId: "name" }]);
+  });
+
+  test("meldet ungültige Muster mit Fehlerstelle", () => {
+    const result = runGridSearch(rows, ["name"], "ali(", { regex: true });
+    expect(result.matches).toEqual([]);
+    expect(result.error?.index).toBe(3);
+  });
+
+  test("ignoriert Groß-/Kleinschreibung auch im Regex-Modus", () => {
+    const result = runGridSearch(rows, ["name", "note"], "alice", { regex: true });
+    expect(result.matches).toEqual([
+      { rowIndex: 0, columnId: "name" },
+      { rowIndex: 1, columnId: "note" },
+    ]);
+  });
+
+  test("behandelt Metazeichen im Textmodus als Literale", () => {
+    expect(runGridSearch(rows, ["name"], "^ali", {}).matches).toEqual([]);
   });
 });
