@@ -55,6 +55,13 @@ default = []
 duckdb = ["dep:duckdb"]
 odbc = ["dep:odbc-api"]
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 
