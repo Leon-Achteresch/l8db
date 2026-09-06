@@ -1,10 +1,21 @@
-import { BookmarkIcon, HistoryIcon, PlayIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
+import {
+  BookmarkIcon,
+  DownloadIcon,
+  HistoryIcon,
+  PlayIcon,
+  SearchIcon,
+  Trash2Icon,
+  UploadIcon,
+  XIcon,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
+import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
@@ -35,6 +46,8 @@ function firstLine(sql: string): string {
 
 export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistoryPanelProps) {
   const [tab, setTab] = useState("history");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const entries = useQueryHistoryStore((state) => state.entries);
   const removeEntry = useQueryHistoryStore((state) => state.removeEntry);
@@ -167,12 +180,34 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
               ))}
             </div>
           )
-        ) : saved.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-            Keine gespeicherten Queries. Über „Speichern“ legst du eine an.
-          </p>
         ) : (
           <div className="divide-y divide-border/50">
+            <div className="flex justify-end gap-1 p-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                onClick={() => setImportOpen(true)}
+              >
+                <UploadIcon className="size-3" />
+                Importieren
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                onClick={() => setExportOpen(true)}
+                disabled={savedQueries.length === 0}
+              >
+                <DownloadIcon className="size-3" />
+                Exportieren
+              </Button>
+            </div>
+            {saved.length === 0 && (
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+                Keine gespeicherten Queries. Über „Speichern“ legst du eine an.
+              </p>
+            )}
             {saved.map((item) => (
               <motion.div
                 key={item.id}
@@ -216,6 +251,13 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
           </div>
         )}
       </div>
+
+      <SavedQueriesExportDialog
+        open={exportOpen}
+        queries={savedQueries}
+        onOpenChange={setExportOpen}
+      />
+      <SavedQueriesImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </motion.div>
   );
 }

@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { AboutDiagnostics } from "@/features/about/about-diagnostics";
 import { AboutFeatures } from "@/features/about/about-features";
 import { AboutFooter } from "@/features/about/about-footer";
 import { AboutHero } from "@/features/about/about-hero";
@@ -16,6 +17,7 @@ export function AboutView() {
         <AboutHero />
         <AboutFeatures />
         <AboutStack />
+        <AboutDiagnostics />
         <AboutFooter />
       </motion.div>
     </main>
