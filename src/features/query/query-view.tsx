@@ -11,6 +11,8 @@ import {
   HistoryIcon,
   LoaderIcon,
   PlayIcon,
+  ScanTextIcon,
+  TextSelectIcon,
   Trash2Icon,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -47,6 +49,7 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { statementAtOffset } from "@/lib/sql-statements";
 import { isQueryTabDirty, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
 
@@ -133,8 +136,20 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [planError, setPlanError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
 
+  const [selectedSql, setSelectedSql] = useState("");
+  const [cursorOffset, setCursorOffset] = useState(0);
+  const [statementRange, setStatementRange] = useState<{ start: number; end: number } | null>(null);
+  const [statementError, setStatementError] = useState<string | null>(null);
+
   const [editorHeight, setEditorHeight] = useState(280);
   const dragStartRef = useRef<{ y: number; h: number } | null>(null);
+
+  useEffect(() => {
+    setSelectedSql("");
+    setCursorOffset(0);
+    setStatementRange(null);
+    setStatementError(null);
+  }, [tabId]);
 
   const { data: schemas } = useSchemasQuery();
 
@@ -165,8 +180,10 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const caps = useCapabilities(connection?.kind);
 
-  const handleRun = useCallback(async () => {
-    if (!connection || !sql.trim()) return;
+  const runSql = useCallback(
+    async (text: string) => {
+      const sql = text;
+      if (!connection || !sql.trim()) return;
     setIsRunning(true);
     setError(null);
     const startedAt = performance.now();
@@ -248,7 +265,40 @@ export function QueryView({ tabId }: QueryViewProps) {
     } finally {
       setIsRunning(false);
     }
-  }, [connection, sql, database, recordHistory, caps.transactions]);
+    },
+    [connection, database, recordHistory, caps.transactions],
+  );
+
+  const handleRun = useCallback(() => {
+    setStatementRange(null);
+    setStatementError(null);
+    void runSql(sql);
+  }, [runSql, sql]);
+
+  const handleRunSelection = useCallback(() => {
+    if (!selectedSql.trim()) return;
+    setStatementRange(null);
+    setStatementError(null);
+    void runSql(selectedSql);
+  }, [runSql, selectedSql]);
+
+  const handleRunStatement = useCallback(() => {
+    if (selectedSql.trim()) {
+      handleRunSelection();
+      return;
+    }
+    const statement = statementAtOffset(sql, cursorOffset);
+    if (!statement) {
+      setStatementRange(null);
+      setStatementError(
+        "Statement unter dem Cursor konnte nicht eindeutig bestimmt werden. Bitte den gewünschten Bereich markieren.",
+      );
+      return;
+    }
+    setStatementError(null);
+    setStatementRange({ start: statement.start, end: statement.end });
+    void runSql(statement.text);
+  }, [cursorOffset, handleRunSelection, runSql, selectedSql, sql]);
 
   const handleExplain = useCallback(
     async (analyze: boolean) => {
@@ -373,6 +423,30 @@ export function QueryView({ tabId }: QueryViewProps) {
           >
             <PlayIcon className="size-3" />
             Ausführen
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 px-3 text-xs"
+            data-tour="query-run-selection"
+            onClick={handleRunSelection}
+            disabled={isRunning || !connection || !selectedSql.trim()}
+            title="Nur den markierten Text ausführen (Cmd/Ctrl+Shift+Enter)"
+          >
+            <TextSelectIcon className="size-3" />
+            Auswahl
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 px-3 text-xs"
+            data-tour="query-run-statement"
+            onClick={handleRunStatement}
+            disabled={isRunning || !connection || !sql.trim()}
+            title="Statement unter dem Cursor ausführen (Cmd/Ctrl+Alt+Enter)"
+          >
+            <ScanTextIcon className="size-3" />
+            Statement
           </Button>
           <Button
             size="sm"
@@ -539,9 +613,18 @@ export function QueryView({ tabId }: QueryViewProps) {
         <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
           <QueryEditorPane
             value={sql}
-            onChange={(v) => updateQuerySql(tabId, v)}
+            onChange={(v) => {
+              setStatementRange(null);
+              setStatementError(null);
+              updateQuerySql(tabId, v);
+            }}
             onRun={handleRun}
             onSave={() => void handleFileSave(false)}
+            onRunSelection={handleRunSelection}
+            onRunStatement={handleRunStatement}
+            onSelectionChange={setSelectedSql}
+            onCursorChange={setCursorOffset}
+            highlight={statementRange}
             registry={registry}
           />
         </div>
@@ -553,6 +636,11 @@ export function QueryView({ tabId }: QueryViewProps) {
           className="h-1 shrink-0 cursor-row-resize bg-transparent transition-colors hover:bg-border"
         />
 
+        {statementError && (
+          <p className="shrink-0 border-b px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+            {statementError}
+          </p>
+        )}
         {planError && (
           <p className="shrink-0 border-b px-3 py-1.5 text-xs text-destructive">{planError}</p>
         )}
