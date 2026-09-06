@@ -25,7 +25,7 @@ export function AboutHero() {
         aria-hidden="true"
         className="pointer-events-none absolute -right-24 top-24 h-56 w-56 rounded-full bg-chart-2/25 blur-3xl"
       />
-      <div className="relative mx-auto flex max-w-2xl flex-col items-center px-6 pb-12 pt-12 text-center sm:pb-16 sm:pt-16">
+      <div className="relative mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-12 pt-12 text-center sm:pb-16 sm:pt-16">
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}

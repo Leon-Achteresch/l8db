@@ -59,7 +59,7 @@ export function DriversView() {
   };
 
   return (
-    <main className="mx-auto h-full min-h-0 w-full max-w-5xl overflow-y-auto p-8">
+    <main className="h-full min-h-0 w-full overflow-y-auto p-8">
       <div className="flex items-center gap-2">
         <PlugZap className="size-5 text-primary" />
         <h1 className="text-2xl font-semibold">Treiber</h1>
@@ -85,7 +85,7 @@ export function DriversView() {
           Treiberstatus wird geladen …
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {summaries.map((summary) => (
             <DriverCard
               key={summary.kind}

@@ -5,8 +5,8 @@ import { AboutStack } from "@/features/about/about-stack";
 
 export function AboutView() {
   return (
-    <main className="workspace-canvas h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6 sm:px-6 sm:py-8">
+    <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
+      <div className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6 sm:py-8">
         <AboutHero />
         <AboutFeatures />
         <AboutStack />

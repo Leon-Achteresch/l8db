@@ -1,8 +1,10 @@
+import { motion } from "motion/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readCommunityExtension } from "@/lib/db";
 import type { ExtensionDescriptor, Permission } from "@/lib/extensions/contracts";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 
 export function CommunityExtensionCard({
@@ -19,7 +21,11 @@ export function CommunityExtensionCard({
     JSON.stringify(extension.configuration, null, 2),
   );
   return (
-    <article className="space-y-3 rounded-lg border p-4">
+    <motion.article
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="space-y-3 rounded-lg border p-4"
+    >
       <div>
         <strong>{manifest.name}</strong>{" "}
         <span className="text-xs text-muted-foreground">
@@ -139,6 +145,6 @@ export function CommunityExtensionCard({
           </Button>
         </details>
       )}
-    </article>
+    </motion.article>
   );
 }

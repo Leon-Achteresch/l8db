@@ -1,8 +1,10 @@
 import { Pencil, Trash2 } from "lucide-react";
+import { motion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -24,7 +26,9 @@ export function SavedConnectionChip({
 }: Props) {
   const provider = providerFor(connection);
   return (
-    <div
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
       className={cn(
         "flex min-w-[12.5rem] items-center gap-2 rounded-2xl border bg-card/90 px-2.5 py-2 shadow-sm",
         active ? "border-primary ring-2 ring-primary/25" : "border-border/70",
@@ -62,6 +66,6 @@ export function SavedConnectionChip({
       >
         <Trash2 className="size-3.5" />
       </button>
-    </div>
+    </motion.div>
   );
 }

@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { ProviderLogo } from "@/components/provider-logo";
 import type { ProviderInfo } from "@/lib/db";
-import { SPRING_PRESS } from "@/lib/ease";
+import { SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -15,9 +15,10 @@ export function ProviderTile({ provider, selected, onSelect }: Props) {
   return (
     <motion.button
       type="button"
+      layout="position"
       whileHover={reduce ? undefined : { scale: 1.03 }}
       whileTap={reduce ? undefined : { scale: 0.97 }}
-      transition={SPRING_PRESS}
+      transition={{ ...SPRING_PRESS, layout: SPRING_LAYOUT }}
       onClick={onSelect}
       aria-pressed={selected}
       disabled={!provider.driver_status.available}

@@ -9,7 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
+import { Route as DriversRouteImport } from './routes/drivers'
 import { Route as ConnectionsRouteImport } from './routes/connections'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
@@ -22,10 +26,7 @@ import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace
 import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
-import { Route as AppPlainSettingsRouteImport } from './routes/_app._plain.settings'
-import { Route as AppPlainDriversRouteImport } from './routes/_app._plain.drivers'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
-import { Route as AppPlainAboutRouteImport } from './routes/_app._plain.about'
 import { Route as AppWorkspaceQueryIndexRouteImport } from './routes/_app._workspace.query.index'
 import { Route as AppWorkspaceUsersNameRouteImport } from './routes/_app._workspace.users.$name'
 import { Route as AppWorkspaceQueryIdRouteImport } from './routes/_app._workspace.query.$id'
@@ -38,9 +39,29 @@ import { Route as AppWorkspaceFunctionsSchemaNameRouteImport } from './routes/_a
 import { Route as AppWorkspaceAlterTableSchemaTableRouteImport } from './routes/_app._workspace.alter-table.$schema.$table'
 import { Route as AppWorkspaceTriggersSchemaTableTriggerRouteImport } from './routes/_app._workspace.triggers.$schema.$table.$trigger'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
+  id: '/release-notes',
+  path: '/release-notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DriversRoute = DriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -100,27 +121,12 @@ const AppWorkspaceCreateTableRoute = AppWorkspaceCreateTableRouteImport.update({
   path: '/create-table',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppPlainSettingsRoute = AppPlainSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppPlainRoute,
-} as any)
-const AppPlainDriversRoute = AppPlainDriversRouteImport.update({
-  id: '/drivers',
-  path: '/drivers',
-  getParentRoute: () => AppPlainRoute,
-} as any)
 const AppPlainAvailableExtensionsRoute =
   AppPlainAvailableExtensionsRouteImport.update({
     id: '/available-extensions',
     path: '/available-extensions',
     getParentRoute: () => AppPlainRoute,
   } as any)
-const AppPlainAboutRoute = AppPlainAboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => AppPlainRoute,
-} as any)
 const AppWorkspaceQueryIndexRoute = AppWorkspaceQueryIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -187,11 +193,12 @@ const AppWorkspaceTriggersSchemaTableTriggerRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
+  '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
-  '/about': typeof AppPlainAboutRoute
+  '/drivers': typeof DriversRoute
+  '/release-notes': typeof ReleaseNotesRoute
+  '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
-  '/drivers': typeof AppPlainDriversRoute
-  '/settings': typeof AppPlainSettingsRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
@@ -214,11 +221,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
+  '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
-  '/about': typeof AppPlainAboutRoute
+  '/drivers': typeof DriversRoute
+  '/release-notes': typeof ReleaseNotesRoute
+  '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
-  '/drivers': typeof AppPlainDriversRoute
-  '/settings': typeof AppPlainSettingsRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
@@ -241,13 +249,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/drivers': typeof DriversRoute
+  '/release-notes': typeof ReleaseNotesRoute
+  '/settings': typeof SettingsRoute
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
-  '/_app/_plain/about': typeof AppPlainAboutRoute
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
-  '/_app/_plain/drivers': typeof AppPlainDriversRoute
-  '/_app/_plain/settings': typeof AppPlainSettingsRoute
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
   '/_app/_workspace/er-diagram': typeof AppWorkspaceErDiagramRoute
@@ -273,11 +282,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/connections'
     | '/about'
-    | '/available-extensions'
+    | '/connections'
     | '/drivers'
+    | '/release-notes'
     | '/settings'
+    | '/available-extensions'
     | '/create-table'
     | '/enums'
     | '/er-diagram'
@@ -300,11 +310,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/connections'
     | '/about'
-    | '/available-extensions'
+    | '/connections'
     | '/drivers'
+    | '/release-notes'
     | '/settings'
+    | '/available-extensions'
     | '/create-table'
     | '/enums'
     | '/er-diagram'
@@ -326,13 +337,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/about'
     | '/connections'
+    | '/drivers'
+    | '/release-notes'
+    | '/settings'
     | '/_app/_plain'
     | '/_app/_workspace'
-    | '/_app/_plain/about'
     | '/_app/_plain/available-extensions'
-    | '/_app/_plain/drivers'
-    | '/_app/_plain/settings'
     | '/_app/_workspace/create-table'
     | '/_app/_workspace/enums'
     | '/_app/_workspace/er-diagram'
@@ -357,16 +369,48 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  AboutRoute: typeof AboutRoute
   ConnectionsRoute: typeof ConnectionsRoute
+  DriversRoute: typeof DriversRoute
+  ReleaseNotesRoute: typeof ReleaseNotesRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/release-notes': {
+      id: '/release-notes'
+      path: '/release-notes'
+      fullPath: '/release-notes'
+      preLoaderRoute: typeof ReleaseNotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/drivers': {
+      id: '/drivers'
+      path: '/drivers'
+      fullPath: '/drivers'
+      preLoaderRoute: typeof DriversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connections': {
       id: '/connections'
       path: '/connections'
       fullPath: '/connections'
       preLoaderRoute: typeof ConnectionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -453,32 +497,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceCreateTableRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
-    '/_app/_plain/settings': {
-      id: '/_app/_plain/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AppPlainSettingsRouteImport
-      parentRoute: typeof AppPlainRoute
-    }
-    '/_app/_plain/drivers': {
-      id: '/_app/_plain/drivers'
-      path: '/drivers'
-      fullPath: '/drivers'
-      preLoaderRoute: typeof AppPlainDriversRouteImport
-      parentRoute: typeof AppPlainRoute
-    }
     '/_app/_plain/available-extensions': {
       id: '/_app/_plain/available-extensions'
       path: '/available-extensions'
       fullPath: '/available-extensions'
       preLoaderRoute: typeof AppPlainAvailableExtensionsRouteImport
-      parentRoute: typeof AppPlainRoute
-    }
-    '/_app/_plain/about': {
-      id: '/_app/_plain/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AppPlainAboutRouteImport
       parentRoute: typeof AppPlainRoute
     }
     '/_app/_workspace/query/': {
@@ -562,17 +585,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppPlainRouteChildren {
-  AppPlainAboutRoute: typeof AppPlainAboutRoute
   AppPlainAvailableExtensionsRoute: typeof AppPlainAvailableExtensionsRoute
-  AppPlainDriversRoute: typeof AppPlainDriversRoute
-  AppPlainSettingsRoute: typeof AppPlainSettingsRoute
 }
 
 const AppPlainRouteChildren: AppPlainRouteChildren = {
-  AppPlainAboutRoute: AppPlainAboutRoute,
   AppPlainAvailableExtensionsRoute: AppPlainAvailableExtensionsRoute,
-  AppPlainDriversRoute: AppPlainDriversRoute,
-  AppPlainSettingsRoute: AppPlainSettingsRoute,
 }
 
 const AppPlainRouteWithChildren = AppPlainRoute._addFileChildren(
@@ -654,7 +671,11 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  AboutRoute: AboutRoute,
   ConnectionsRoute: ConnectionsRoute,
+  DriversRoute: DriversRoute,
+  ReleaseNotesRoute: ReleaseNotesRoute,
+  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
