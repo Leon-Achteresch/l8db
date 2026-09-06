@@ -146,16 +146,20 @@ impl OracleAdapter {
                     .to_string(),
             );
         }
-        let host = url.host_str().ok_or("Host fehlt")?;
+        let host = url.host_str().ok_or("Host fehlt")?.to_owned();
         let service = percent(url.path().trim_start_matches('/'));
-        if service.is_empty() {
-            return Err("Service-Name fehlt in der URL".to_string());
-        }
-        let mut connect_string = format!("//{host}:{}/{service}", url.port().unwrap_or(1521));
+        let mut connect_string = if service.is_empty() {
+            String::new()
+        } else {
+            format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
+        };
         for (k, v) in url.query_pairs() {
             if k == "connect_string" || k == "tns" {
                 connect_string = v.into_owned();
             }
+        }
+        if connect_string.is_empty() {
+            return Err("Service-Name fehlt in der URL".to_string());
         }
         Ok(Self {
             user: percent(url.username()),
@@ -925,6 +929,15 @@ mod tests {
             "k".into()
         )
         .is_err());
+        let alias = OracleAdapter::new(
+            "oracle://scott:tiger@ORCL/?connect_string=ORCL",
+            crate::db::pool::create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        assert_eq!(alias.user, "scott");
+        assert_eq!(alias.password, "tiger");
+        assert_eq!(alias.connect_string, "ORCL");
         assert!(is_query("  with x as (select 1 from dual) select * from x"));
     }
 }

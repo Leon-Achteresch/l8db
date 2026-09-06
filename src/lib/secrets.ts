@@ -24,7 +24,24 @@ export async function deleteSecret(account: string): Promise<void> {
   await removeSecret(account);
 }
 
+function unquoteOracleSecret(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  )
+    return trimmed.slice(1, -1);
+  return trimmed;
+}
+
 export function extractUrlPassword(url: string): string | null {
+  if (!url.includes("://")) {
+    const match = /(?:password|pwd)\s*=\s*("[^"]*"|'[^']*'|[^;]*)/i.exec(url);
+    if (!match) return null;
+    const password = unquoteOracleSecret(match[1]);
+    return password ? password : null;
+  }
   const scheme = url.indexOf("://");
   if (scheme < 0) return null;
   const rest = url.slice(scheme + 3);
@@ -43,6 +60,8 @@ export function extractUrlPassword(url: string): string | null {
 }
 
 export function scrubUrlPassword(url: string): string {
+  if (!url.includes("://"))
+    return url.replace(/((?:password|pwd)\s*=\s*)("[^"]*"|'[^']*'|[^;]*)/gi, "$1***");
   const scheme = url.indexOf("://");
   if (scheme < 0) return url;
   const prefix = url.slice(0, scheme + 3);

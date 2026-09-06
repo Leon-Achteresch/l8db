@@ -12,6 +12,7 @@ import { SlideActionButton } from "@/components/motion/slide-action-button";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { withTimeout } from "@/lib/async";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,7 @@ type TestResult = {
   message?: string;
   ms?: number;
 };
+const TEST_TIMEOUT_MS = 30_000;
 
 function placeholderDefaults(info: ProviderInfo) {
   try {
@@ -111,6 +113,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [sshPassword, setSshPassword] = useState("");
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [step, setStep] = useState<1 | 2 | 3>(connection ? 2 : 1);
   const reduce = useReducedMotion();
   const setPreview = useDbThemeStore((state) => state.setPreview);
@@ -133,6 +136,17 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     setSetupMode(next);
     setResult({ status: "idle" });
   }
+
+  useEffect(() => {
+    if (result.status !== "testing") return;
+    setElapsed(0);
+    const startedAt = Date.now();
+    const timer = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt) / 1000)),
+      500,
+    );
+    return () => clearInterval(timer);
+  }, [result.status]);
 
   function selectProvider(id: string) {
     const next = providers.find((entry) => entry.id === id);
@@ -253,34 +267,41 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     operation.current = true;
     setResult({ status: "testing" });
     const started = performance.now();
-    const tunnelId = `test-${crypto.randomUUID()}`;
-    let tunnelOpened = false;
     try {
-      const config = await configuration();
-      let url = config.connectionString;
-      if (config.ssh) {
-        const tunnel = await openSshTunnel({
-          id: tunnelId,
-          host: config.ssh.host,
-          port: config.ssh.port,
-          user: config.ssh.user,
-          auth:
-            sshAuth === "key"
-              ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
-              : { password: config.secret },
-          remote_host: config.ssh.remoteHost,
-          remote_port: config.ssh.remotePort,
-          accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
-        });
-        tunnelOpened = true;
-        url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+      const tunnelId = `test-${crypto.randomUUID()}`;
+      let tunnelOpened = false;
+      try {
+        const config = await configuration();
+        let url = config.connectionString;
+        if (config.ssh) {
+          const tunnel = await openSshTunnel({
+            id: tunnelId,
+            host: config.ssh.host,
+            port: config.ssh.port,
+            user: config.ssh.user,
+            auth:
+              sshAuth === "key"
+                ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
+                : { password: config.secret },
+            remote_host: config.ssh.remoteHost,
+            remote_port: config.ssh.remotePort,
+            accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
+          });
+          tunnelOpened = true;
+          url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+        }
+        await withTimeout(
+          testConnectionString(config.kind, url),
+          TEST_TIMEOUT_MS,
+          `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
+        );
+        setResult({ status: "success", ms: Math.round(performance.now() - started) });
+      } finally {
+        if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
       }
-      await testConnectionString(config.kind, url);
-      setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });
     } finally {
-      if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
       operation.current = false;
     }
   }
@@ -516,7 +537,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
               <div aria-live="polite" className="min-h-8">
                 {result.status === "testing" && (
                   <AnimatedBadge status="loading" size="sm">
-                    Verbindung wird geprüft
+                    Verbindung wird geprüft{elapsed > 0 ? ` · ${elapsed} s` : ""}
                   </AnimatedBadge>
                 )}
                 {result.status === "success" && (
@@ -870,7 +891,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                     <div aria-live="polite" className="min-h-8">
                       {result.status === "testing" && (
                         <AnimatedBadge status="loading" size="sm">
-                          Verbindung wird geprüft
+                          Verbindung wird geprüft{elapsed > 0 ? ` · ${elapsed} s` : ""}
                         </AnimatedBadge>
                       )}
                       {result.status === "success" && (
