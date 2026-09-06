@@ -1,9 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { motion } from "motion/react";
 import { type CSSProperties, useEffect } from "react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
+import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
@@ -42,33 +45,42 @@ export function AppHeader() {
       )}
     >
       <nav
+        data-tour="header-nav"
         className="flex items-center gap-1 px-3"
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Bereiche"
       >
         <Link
           to="/"
-          aria-label="l8db"
-          className="mr-1 inline-flex h-7 shrink-0 items-center overflow-hidden"
+          className="mr-1 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
         >
-          <img src="/logo.png" alt="" className="h-5 w-[4.75rem] object-cover object-center" />
+          l8db
         </Link>
         {appSidebarData.navMain.map((item) => {
           const active = isNavActive(item.url, pathname);
           return (
             <Tooltip key={item.title} content={item.title} side="bottom">
-              <Link
-                to={item.url}
-                aria-label={item.title}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-                  "hover:bg-muted hover:text-foreground",
-                  active && "bg-primary/12 text-foreground",
+              <motion.div layout="position" transition={{ layout: SPRING_LAYOUT }} className="relative">
+                {active && (
+                  <motion.span
+                    layoutId="header-nav-active"
+                    transition={SPRING_LAYOUT}
+                    className="absolute inset-0 rounded-full bg-primary/12"
+                  />
                 )}
-              >
-                <item.icon className="size-4" strokeWidth={2} />
-              </Link>
+                <Link
+                  to={item.url}
+                  aria-label={item.title}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                    "hover:bg-muted hover:text-foreground",
+                    active && "text-foreground",
+                  )}
+                >
+                  <item.icon className="size-4" strokeWidth={2} />
+                </Link>
+              </motion.div>
             </Tooltip>
           );
         })}
@@ -80,14 +92,18 @@ export function AppHeader() {
         className="flex min-w-0 flex-1 justify-center px-4"
       >
         <div
-          className="w-full max-w-[460px]"
+          className="flex w-full max-w-[640px] items-center gap-2"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <AppHeaderSearch />
+          <ConnectionColorBadge variant="header" />
+          <div className="min-w-0 flex-1">
+            <AppHeaderSearch />
+          </div>
         </div>
       </div>
 
       <nav
+        data-tour="header-actions"
         className="flex items-center gap-1 px-3"
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
@@ -115,6 +131,7 @@ export function AppHeader() {
           <button
             type="button"
             onClick={togglePanel}
+            data-tour="header-tx"
             aria-label="Transaktionen"
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",

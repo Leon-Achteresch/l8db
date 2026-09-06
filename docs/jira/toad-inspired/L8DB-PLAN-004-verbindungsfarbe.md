@@ -1,7 +1,7 @@
 # L8DB-PLAN-004: Verbindungsfarbe im Arbeitsplatz anzeigen
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Verbindungen
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
