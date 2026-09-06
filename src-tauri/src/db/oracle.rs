@@ -17,6 +17,7 @@ pub struct OracleAdapter {
     user: String,
     password: String,
     connect_string: String,
+    tcp: Option<(String, u16)>,
     pool_state: PoolState,
     key: String,
 }
@@ -153,24 +154,63 @@ impl OracleAdapter {
         } else {
             format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
         };
+        let mut from_override = false;
         for (k, v) in url.query_pairs() {
             if k == "connect_string" || k == "tns" {
                 connect_string = v.into_owned();
+                from_override = true;
             }
         }
         if connect_string.is_empty() {
             return Err("Service-Name fehlt in der URL".to_string());
         }
+        let tcp = if from_override {
+            ezconnect_endpoint(&connect_string)
+        } else {
+            Some((host, url.port().unwrap_or(1521)))
+        };
         Ok(Self {
             user: percent(url.username()),
             password: percent(url.password().unwrap_or("")),
             connect_string,
+            tcp,
             pool_state,
             key,
         })
     }
 
+    async fn ensure_reachable(&self) -> Result<(), String> {
+        let Some((host, port)) = self.tcp.clone() else {
+            return Ok(());
+        };
+        let target = format!("{host}:{port}");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            tokio::net::TcpStream::connect(target.as_str()),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "Oracle-Host {host}:{port} antwortet nicht (TCP-Timeout nach 8 s). Prüfe VPN, Firewall und Hostnamen."
+            )
+        })?
+        .map_err(|e| {
+            let detail = e.to_string();
+            if detail.contains("lookup")
+                || detail.contains("resolve")
+                || detail.contains("nodename")
+                || detail.contains("Name or service not known")
+            {
+                format!("Oracle-Host {host} kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN.")
+            } else {
+                format!("Oracle-Host {host}:{port} ist nicht erreichbar: {detail}")
+            }
+        })?;
+        Ok(())
+    }
+
     pub async fn open_connection(&self) -> Result<Mutex<Connection>, String> {
+        self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
             self.password.clone(),
@@ -241,6 +281,36 @@ fn percent(value: &str) -> String {
         .next()
         .map(|(_, v)| v.into_owned())
         .unwrap_or_else(|| value.to_string())
+}
+
+fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
+    let rest = value.trim().strip_prefix("//").unwrap_or(value.trim());
+    if rest.is_empty() || rest.starts_with('(') {
+        return None;
+    }
+    let (head, service) = match rest.rfind('/') {
+        Some(slash) => (&rest[..slash], rest[slash + 1..].trim()),
+        None => {
+            let mut parts = rest.split(':');
+            match (parts.next(), parts.next(), parts.next(), parts.next()) {
+                (Some(host), Some(port), Some(_), None) => {
+                    return Some((host.trim().to_string(), port.trim().parse().ok()?));
+                }
+                _ => return None,
+            }
+        }
+    };
+    if head.trim().is_empty() || service.is_empty() {
+        return None;
+    }
+    let (host, port) = match head.trim().rsplit_once(':') {
+        Some((host, port)) => (host.trim(), port.trim().parse().ok()?),
+        None => (head.trim(), 1521),
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), port))
 }
 
 #[async_trait]
@@ -923,6 +993,7 @@ mod tests {
         .unwrap();
         assert_eq!(a.connect_string, "//db.example.com:1522/FREEPDB1");
         assert_eq!(a.password, "p@ss");
+        assert_eq!(a.tcp, Some(("db.example.com".to_string(), 1522)));
         assert!(OracleAdapter::new(
             "oracle://x@host",
             crate::db::pool::create_pool_state(),
@@ -938,7 +1009,56 @@ mod tests {
         assert_eq!(alias.user, "scott");
         assert_eq!(alias.password, "tiger");
         assert_eq!(alias.connect_string, "ORCL");
+        assert_eq!(alias.tcp, None);
+        let corporate = OracleAdapter::new(
+            "oracle://DEV_ACHTERESCH:XXX@csorastby.rzhit.win:1521/sltest.rzhit.win",
+            crate::db::pool::create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            corporate.connect_string,
+            "//csorastby.rzhit.win:1521/sltest.rzhit.win"
+        );
+        assert_eq!(
+            corporate.tcp,
+            Some(("csorastby.rzhit.win".to_string(), 1521))
+        );
         assert!(is_query("  with x as (select 1 from dual) select * from x"));
+    }
+
+    #[test]
+    fn parses_ezconnect_endpoints() {
+        assert_eq!(
+            ezconnect_endpoint("//db.example.com:1521/ORCLPDB"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(
+            ezconnect_endpoint("db.example.com/ORCLPDB"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(
+            ezconnect_endpoint("db.example.com:1521:ORCL"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(ezconnect_endpoint("ORCL"), None);
+        assert_eq!(
+            ezconnect_endpoint("(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=h)(PORT=1521)))"),
+            None
+        );
+        assert_eq!(ezconnect_endpoint("//db.example.com:99999/ORCLPDB"), None);
+    }
+
+    #[tokio::test]
+    async fn unreachable_tcp_fails_fast() {
+        let adapter = OracleAdapter::new(
+            "oracle://scott:tiger@127.0.0.1:1/ORCL",
+            crate::db::pool::create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        let error = adapter.ensure_reachable().await.unwrap_err();
+        assert!(error.contains("127.0.0.1:1"), "{error}");
     }
 }
 

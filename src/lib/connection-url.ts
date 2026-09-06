@@ -399,6 +399,14 @@ export function connectionError(error: unknown): string {
     )
   )
     return "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
+  if (/Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(message))
+    return message.replace(/^Error:\s*/, "");
+  if (/ORA-12514/i.test(message))
+    return "Der Service-Name ist dem Listener unbekannt (ORA-12514). Prüfe Service-Name und Listener.";
+  if (/ORA-12541/i.test(message))
+    return "Kein Oracle-Listener auf Host und Port (ORA-12541). Prüfe Host, Port und ob die Datenbank läuft.";
+  if (/ORA-12545/i.test(message))
+    return "Der Ziel-Host existiert nicht (ORA-12545). Prüfe Hostnamen, DNS und VPN.";
   if (/certificate|tls|ssl/i.test(message))
     return "TLS-Verbindung fehlgeschlagen. Prüfe SSL-Modus, Servername und das Zertifikat im System-Zertifikatsspeicher.";
   if (/timeout|timed out/i.test(message))

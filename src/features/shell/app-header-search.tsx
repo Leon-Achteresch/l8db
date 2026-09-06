@@ -4,7 +4,7 @@ import { type CSSProperties, useCallback, useMemo, useState } from "react";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useTablesQuery } from "@/lib/queries";
-import { activateConnectionWithToast } from "@/lib/ssh";
+import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
@@ -15,10 +15,13 @@ export function AppHeaderSearch() {
   const [open, setOpen] = useState(false);
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
+  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
+  const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const { data: tables } = useTablesQuery();
 
   const onSelectConnection = useCallback(
     async (id: string) => {
+      if (useConnectionSwitch.getState().isSwitching) return;
       setOpen(false);
       if (await activateConnectionWithToast(id)) await navigate({ to: "/" });
     },
@@ -32,7 +35,12 @@ export function AppHeaderSearch() {
       group: "Verbindungen",
       icon: Database,
       keywords: [connection.kind],
-      badge: connection.id === activeConnection?.id ? "aktiv" : undefined,
+      badge:
+        isSwitching && switchTargetId === connection.id
+          ? "verbinde…"
+          : connection.id === activeConnection?.id
+            ? "aktiv"
+            : undefined,
       onSelect: () => void onSelectConnection(connection.id),
     }));
     const tableItems = (tables ?? []).slice(0, 40).map((table) => ({
@@ -51,7 +59,7 @@ export function AppHeaderSearch() {
       },
     }));
     return [...connectionItems, ...tableItems];
-  }, [activeConnection?.id, connections, navigate, onSelectConnection, tables]);
+  }, [activeConnection?.id, connections, navigate, onSelectConnection, tables, isSwitching, switchTargetId]);
 
   return (
     <>
