@@ -461,6 +461,7 @@ type DataTableProps = {
   currentTable?: string;
   onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
   onDuplicateRow?: (ctid: string) => void;
+  onDuplicateRowToEdit?: (ctid: string, values: Record<string, unknown>) => void;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];
@@ -485,6 +486,7 @@ export function DataTable({
   currentTable,
   onNavigateToTable,
   onDuplicateRow,
+  onDuplicateRowToEdit,
   onDeleteRow,
   onRefresh,
   columnDetails,
@@ -1233,7 +1235,8 @@ export function DataTable({
                     const rowIndex = row.index;
                     const rowCtid = row.original.__ctid__ as string | undefined;
                     const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
-                    const hasRowActions = !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
+                    const hasRowActions =
+                      !!rowCtid && (!!onDuplicateRow || !!onDuplicateRowToEdit || !!onDeleteRow);
 
                     const rowEl = (
                       <tr
@@ -1420,6 +1423,14 @@ export function DataTable({
                             <ContextMenuItem onClick={() => onDuplicateRow(rowCtid!)}>
                               <CopyPlusIcon />
                               Zeile duplizieren
+                            </ContextMenuItem>
+                          )}
+                          {onDuplicateRowToEdit && (
+                            <ContextMenuItem
+                              onClick={() => onDuplicateRowToEdit(rowCtid!, row.original)}
+                            >
+                              <CopyPlusIcon />
+                              Als neue Zeile duplizieren
                             </ContextMenuItem>
                           )}
                           {onDeleteRow && (
