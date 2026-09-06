@@ -588,6 +588,10 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = req;
         Err(unsupported("CREATE TABLE"))
     }
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        let _ = req;
+        Err(unsupported("CREATE TABLE Vorschau"))
+    }
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
         let _ = sql;
         let _ = analyze;
