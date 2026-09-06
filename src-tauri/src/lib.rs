@@ -28,6 +28,8 @@ pub fn run() {
             db::commands::count_table_rows,
             db::commands::update_row,
             db::commands::list_all_columns,
+            db::commands::search_columns,
+            db::commands::search_source,
             db::commands::execute_query,
             db::commands::list_views,
             db::commands::get_view_definition,

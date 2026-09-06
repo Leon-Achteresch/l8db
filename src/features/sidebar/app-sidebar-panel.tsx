@@ -19,6 +19,8 @@ import {
   SearchIcon,
   SettingsIcon,
   SquareTerminalIcon,
+  StarIcon,
+  StarOffIcon,
   TableIcon,
   TrashIcon,
   UploadIcon,
@@ -93,6 +95,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
+import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
+import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -394,6 +398,7 @@ export function AppSidebarPanel() {
             </Tabs>
           </div>
         ) : null}
+        <SidebarFavorites />
         <SidebarGroup>
           <SidebarGroupLabel>
             {sidebarTab === "tables"
@@ -575,6 +580,8 @@ function SidebarEntityList({
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
+  const favorites = useObjectFavoritesStore((state) => state.favorites);
+  const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
   const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
 
   const columnsByTable = useMemo(() => {
@@ -666,6 +673,32 @@ function SidebarEntityList({
     const id = openQueryTabWithSql(`SELECT * FROM ${itemSchema}."${itemName}";`);
     navigate({ to: "/query/$id", params: { id } });
   };
+
+  const toggleFavoriteObject = (itemSchema: string, itemName: string) => {
+    if (!activeConnection) return;
+    toggleObjectFavorite({
+      connectionId: activeConnection.id,
+      database: activeDatabase ?? null,
+      schema: itemSchema,
+      name: itemName,
+      type: type === "view" ? "view" : "table",
+    });
+  };
+
+  const isFavorite = (itemSchema: string, itemName: string) =>
+    activeConnection
+      ? favorites.some(
+          (favorite) =>
+            favoriteId(favorite) ===
+            favoriteId({
+              connectionId: activeConnection.id,
+              database: activeDatabase ?? null,
+              schema: itemSchema,
+              name: itemName,
+              type: type === "view" ? "view" : "table",
+            }),
+        )
+      : false;
 
   const handleAlterTable = (itemSchema: string, itemName: string) => {
     openAlterTableTab({ schema: itemSchema, table: itemName });
@@ -774,6 +807,11 @@ function SidebarEntityList({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem onSelect={() => toggleFavoriteObject(item.schema, item.name)}>
+                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
                       <ContextMenuItem onSelect={() => handleOpenInEditor(item.schema, item.name)}>
                         <SquareTerminalIcon />
                         Im Editor öffnen
@@ -809,7 +847,15 @@ function SidebarEntityList({
                     </ContextMenuContent>
                   </ContextMenu>
                 ) : (
-                  menuButton
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onSelect={() => toggleFavoriteObject(item.schema, item.name)}>
+                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )}
                 {item.matchingColumns.length > 0 && (
                   <SidebarMenuSub>

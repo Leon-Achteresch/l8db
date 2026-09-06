@@ -39,6 +39,8 @@ import {
   listTables,
   listTriggers,
   listViews,
+  searchColumns,
+  searchSource,
   rollbackTransaction,
   type TableData,
   type TableRowSort,
@@ -179,6 +181,67 @@ export function useViewsQuery() {
         schema,
       ),
     enabled: supports(connection, "views"),
+  });
+}
+
+export function useAllSchemaObjectsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["all-objects", connection?.id, database],
+    queryFn: async () => {
+      const kind = connection!.kind;
+      const connectionString = effectiveConnectionString(connection!);
+      const db = database ?? undefined;
+      const [tables, views, functions] = await Promise.all([
+        listTables(kind, connectionString, db),
+        supports(connection, "views")
+          ? listViews(kind, connectionString, db)
+          : Promise.resolve([]),
+        supports(connection, "functions")
+          ? listFunctions(kind, connectionString, db)
+          : Promise.resolve([]),
+      ]);
+      return { tables, views, functions };
+    },
+    enabled: Boolean(connection),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useColumnSearchQuery(term: string, schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const enabled = supports(connection, "column_search") && term.trim().length >= 2;
+  return useQuery({
+    queryKey: ["column-search", connection?.id, database, schema ?? "", term.trim()],
+    queryFn: () =>
+      searchColumns(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        term.trim(),
+        database ?? undefined,
+        schema,
+      ),
+    enabled,
+  });
+}
+
+export function useSourceSearchQuery(term: string, schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const enabled = supports(connection, "source_search") && term.trim().length >= 2;
+  return useQuery({
+    queryKey: ["source-search", connection?.id, database, schema ?? "", term.trim()],
+    queryFn: () =>
+      searchSource(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        term.trim(),
+        database ?? undefined,
+        schema,
+      ),
+    enabled,
   });
 }
 

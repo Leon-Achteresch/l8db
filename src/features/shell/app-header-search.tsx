@@ -1,12 +1,22 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Database, Search, Sparkles, Table } from "lucide-react";
+import { Braces, Database, Eye, Search, Sparkles, Table, TextSearch } from "lucide-react";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
+import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { useTablesQuery } from "@/lib/queries";
+import {
+  buildObjectEntries,
+  OBJECT_TYPE_PLURAL,
+  objectEntryHint,
+  objectEntryKeywords,
+} from "@/lib/object-search";
+import { supports } from "@/lib/providers";
+import { useAllSchemaObjectsQuery } from "@/lib/queries";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
+
+const MAX_VISIBLE_RESULTS = 60;
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
@@ -18,7 +28,10 @@ export function AppHeaderSearch() {
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
-  const { data: tables } = useTablesQuery();
+  const [objectSearchOpen, setObjectSearchOpen] = useState(false);
+  const { data: objects } = useAllSchemaObjectsQuery();
+  const canSearchColumns = supports(activeConnection, "column_search");
+  const canSearchSource = supports(activeConnection, "source_search");
 
   const onSelectConnection = useCallback(
     async (id: string) => {
@@ -44,21 +57,52 @@ export function AppHeaderSearch() {
             : undefined,
       onSelect: () => void onSelectConnection(connection.id),
     }));
-    const tableItems = (tables ?? []).slice(0, 40).map((table) => ({
-      id: `table:${table.schema}.${table.name}`,
-      label: table.name,
-      group: "Tabellen",
-      icon: Table,
-      hint: table.schema,
-      keywords: [table.schema, `${table.schema}.${table.name}`],
+    const objectItems = buildObjectEntries(objects ?? {}).map((entry) => ({
+      id: entry.key,
+      label: entry.name,
+      group: OBJECT_TYPE_PLURAL[entry.type],
+      icon: entry.type === "table" ? Table : entry.type === "view" ? Eye : Braces,
+      hint: objectEntryHint(entry),
+      keywords: objectEntryKeywords(entry),
       onSelect: () => {
         setOpen(false);
+        if (entry.type === "routine") {
+          void navigate({
+            to: "/functions/$schema/$name",
+            params: { schema: entry.schema, name: entry.name },
+            search: { oid: entry.oid },
+          });
+          return;
+        }
+        if (entry.type === "view") {
+          void navigate({
+            to: "/view-editor/$schema/$view",
+            params: { schema: entry.schema, view: entry.name },
+          });
+          return;
+        }
         void navigate({
           to: "/tables/$schema/$table",
-          params: { schema: table.schema, table: table.name },
+          params: { schema: entry.schema, table: entry.name },
         });
       },
     }));
+    const deepSearchItem: CommandItem[] =
+      canSearchColumns || canSearchSource
+        ? [
+            {
+              id: "objects:deep-search",
+              label: "Spalten und Quelltext durchsuchen",
+              group: "Objekte",
+              icon: TextSearch,
+              keywords: ["spalte", "column", "quelltext", "source", "suche"],
+              onSelect: () => {
+                setOpen(false);
+                setObjectSearchOpen(true);
+              },
+            },
+          ]
+        : [];
     const tourItem: CommandItem = {
       id: "tour:start",
       label: "Produkttour von vorn",
@@ -70,8 +114,18 @@ export function AppHeaderSearch() {
         useTourStore.getState().startFromBeginning();
       },
     };
-    return [...connectionItems, ...tableItems, tourItem];
-  }, [activeConnection?.id, connections, navigate, onSelectConnection, tables, isSwitching, switchTargetId]);
+    return [...connectionItems, ...deepSearchItem, ...objectItems, tourItem];
+  }, [
+    activeConnection?.id,
+    canSearchColumns,
+    canSearchSource,
+    connections,
+    navigate,
+    objects,
+    onSelectConnection,
+    isSwitching,
+    switchTargetId,
+  ]);
 
   return (
     <>
@@ -98,9 +152,11 @@ export function AppHeaderSearch() {
         items={items}
         open={open}
         onOpenChange={setOpen}
-        placeholder="Tabellen und Verbindungen…"
+        placeholder="Objekte und Verbindungen…"
         emptyMessage="Keine Treffer"
+        maxVisible={MAX_VISIBLE_RESULTS}
       />
+      <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
     </>
   );
 }

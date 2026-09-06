@@ -4,7 +4,8 @@ import { FunctionView } from "@/features/functions/function-view";
 
 export const Route = createFileRoute("/_app/_workspace/functions/$schema/$name")({
   component: FunctionView,
-  validateSearch: (search: Record<string, unknown>): { oid?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { oid?: string; line?: number } => ({
     oid: typeof search["oid"] === "string" ? search["oid"] : undefined,
+    line: typeof search["line"] === "number" ? search["line"] : undefined,
   }),
 });

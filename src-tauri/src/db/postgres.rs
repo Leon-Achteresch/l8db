@@ -14,11 +14,45 @@ use super::{
     AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions,
     DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
-    RolePrivileges, SchemaPrivileges, SequenceInfo, SslMode, TableData, TableInfo, TablePrivileges,
-    TriggerInfo,
+    ColumnMatch, RolePrivileges, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode, TableData,
+    TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+const SEARCH_SNIPPET_LEN: usize = 240;
+
+pub fn like_pattern(term: &str) -> String {
+    let mut escaped = String::with_capacity(term.len() + 2);
+    for ch in term.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    format!("%{escaped}%")
+}
+
+pub fn source_snippet(source: &str, term: &str) -> Option<(i32, String, i32)> {
+    let needle = term.to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    let mut first: Option<(i32, String)> = None;
+    let mut occurrences = 0;
+    for (index, line) in source.lines().enumerate() {
+        let hits = line.to_lowercase().matches(&needle).count() as i32;
+        if hits == 0 {
+            continue;
+        }
+        occurrences += hits;
+        if first.is_none() {
+            let text: String = line.trim().chars().take(SEARCH_SNIPPET_LEN).collect();
+            first = Some(((index + 1) as i32, text));
+        }
+    }
+    first.map(|(line, snippet)| (line, snippet, occurrences))
+}
 
 pub struct PostgresAdapter {
     config: Config,
@@ -281,6 +315,97 @@ impl DatabaseAdapter for PostgresAdapter {
             })
         })
         .await
+    }
+
+    async fn search_columns(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<ColumnMatch>, String> {
+        let conn = self.get_meta().await?;
+        let pattern = like_pattern(term);
+        self.timed(async {
+            conn.query(
+                "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, t.table_type \
+                 FROM information_schema.columns c \
+                 JOIN information_schema.tables t \
+                   ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
+                 WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                   AND ($2::text IS NULL OR c.table_schema = $2) \
+                   AND c.column_name ILIKE $1 \
+                 ORDER BY c.table_schema, c.table_name, c.ordinal_position \
+                 LIMIT $3",
+                &[&pattern, &schema, &limit],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ColumnMatch {
+                        schema: row.get(0),
+                        table: row.get(1),
+                        column: row.get(2),
+                        data_type: row.get(3),
+                        object_type: row.get(4),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn search_source(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<SourceMatch>, String> {
+        let conn = self.get_meta().await?;
+        let pattern = like_pattern(term);
+        let rows = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, p.proname, p.oid::text, \
+                            pg_get_function_identity_arguments(p.oid), 'routine'::text, p.prosrc \
+                     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                       AND ($2::text IS NULL OR n.nspname = $2) \
+                       AND p.prosrc ILIKE $1 \
+                     UNION ALL \
+                     SELECT n.nspname, c.relname, c.oid::text, ''::text, \
+                            CASE WHEN c.relkind = 'm' THEN 'materialized_view'::text \
+                                 ELSE 'view'::text END, \
+                            pg_get_viewdef(c.oid, true) \
+                     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE c.relkind IN ('v', 'm') \
+                       AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                       AND ($2::text IS NULL OR n.nspname = $2) \
+                       AND pg_get_viewdef(c.oid, true) ILIKE $1 \
+                     ORDER BY 1, 2 \
+                     LIMIT $3",
+                    &[&pattern, &schema, &limit],
+                )
+                .await
+                .map_err(map_pg_err)
+            })
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let source: String = row.get(5);
+                source_snippet(&source, term).map(|(line, snippet, occurrences)| SourceMatch {
+                    schema: row.get(0),
+                    name: row.get(1),
+                    oid: row.get(2),
+                    identity: row.get(3),
+                    object_type: row.get(4),
+                    line,
+                    snippet,
+                    occurrences,
+                })
+            })
+            .collect())
     }
 
     async fn fetch_rows(
@@ -2877,7 +3002,24 @@ impl PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::PostgresAdapter;
+    use super::{like_pattern, source_snippet, PostgresAdapter};
+
+    #[test]
+    fn like_pattern_escapes_wildcards() {
+        assert_eq!(like_pattern("a_b%c"), "%a\\_b\\%c%");
+        assert_eq!(like_pattern("name"), "%name%");
+    }
+
+    #[test]
+    fn source_snippet_reports_line_and_occurrences() {
+        let src = "BEGIN\n  SELECT kunde_id FROM kunde WHERE kunde_id = 1;\n  RETURN kunde_id;\nEND";
+        let (line, snippet, occurrences) = source_snippet(src, "KUNDE_ID").expect("match");
+        assert_eq!(line, 2);
+        assert_eq!(occurrences, 3);
+        assert!(snippet.starts_with("SELECT kunde_id"));
+        assert!(source_snippet(src, "fehlt").is_none());
+    }
+
     use crate::db::{pool::create_pool_state, DatabaseAdapter};
 
     fn lab_connection_string() -> String {
