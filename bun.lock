@@ -91,9 +91,9 @@
       "name": "@l8db/extension-sdk",
       "version": "1.0.0",
       "bin": {
-        "l8db-extension": "src/cli.ts",
+        "l8db-extension": "dist/cli.js",
       },
-      "dependencies": {
+      "devDependencies": {
         "@l8db/extension-api": "^1.0.0",
       },
     },

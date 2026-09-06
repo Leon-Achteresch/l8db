@@ -1,4 +1,6 @@
 import { RefreshCw } from "lucide-react";
+import { motion } from "motion/react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -50,7 +52,7 @@ export function UpdateSection() {
   const pending = getPendingUpdate();
 
   return (
-    <div className="space-y-3">
+    <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="space-y-3">
       <SettingsRow
         title="Installierte Version"
         description={version ? `l8db ${version}` : "Version wird ermittelt …"}
@@ -103,6 +105,6 @@ export function UpdateSection() {
           <Button onClick={() => presentUpdate(pending)}>Anzeigen</Button>
         </SettingsRow>
       ) : null}
-    </div>
+    </motion.div>
   );
 }

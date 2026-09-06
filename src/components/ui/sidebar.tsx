@@ -1,7 +1,9 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { Slot } from "radix-ui";
 import * as React from "react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -433,14 +435,17 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   );
 }
 
-function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
+function SidebarMenuItem({ className, children }: React.ComponentProps<"li">) {
   return (
-    <li
+    <motion.li
+      layout="position"
+      transition={{ layout: SPRING_LAYOUT }}
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
       className={cn("group/menu-item relative", className)}
-      {...props}
-    />
+    >
+      {children}
+    </motion.li>
   );
 }
 

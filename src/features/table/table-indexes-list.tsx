@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { KeyRoundIcon, LayersIcon, LinkIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +18,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TableIndexesListProps {
@@ -194,7 +196,12 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
               </div>
               <div className="divide-y">
                 {constraints!.map((con) => (
-                  <div key={con.name} className="px-4 py-3 hover:bg-muted/30 transition-colors">
+                  <motion.div
+                    key={con.name}
+                    layout
+                    transition={{ layout: SPRING_LAYOUT }}
+                    className="px-4 py-3 hover:bg-muted/30 transition-colors"
+                  >
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 shrink-0">
                         <ConstraintTypeIcon type={con.constraint_type} />
@@ -228,7 +235,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </section>
@@ -245,7 +252,12 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
               </div>
               <div className="divide-y">
                 {indexes!.map((idx) => (
-                  <div key={idx.name} className="px-4 py-3 hover:bg-muted/30 transition-colors">
+                  <motion.div
+                    key={idx.name}
+                    layout
+                    transition={{ layout: SPRING_LAYOUT }}
+                    className="px-4 py-3 hover:bg-muted/30 transition-colors"
+                  >
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 shrink-0">
                         {idx.is_primary ? (
@@ -298,7 +310,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </section>

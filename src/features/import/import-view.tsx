@@ -1,11 +1,13 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { CheckCircle2Icon, FileUpIcon, XCircleIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useActiveConnection } from "@/lib/connections";
 import { executeScript, type ScriptStatementResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -123,7 +125,12 @@ export function ImportView() {
           <ScrollArea className="min-h-0 flex-1 rounded-md border">
             <div className="divide-y">
               {results.map((r, i) => (
-                <div key={i} className="flex gap-3 px-3 py-2">
+                <motion.div
+                  key={i}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
+                  className="flex gap-3 px-3 py-2"
+                >
                   {r.success ? (
                     <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-500" />
                   ) : (
@@ -142,7 +149,7 @@ export function ImportView() {
                       <p className="mt-1 font-mono text-xs text-destructive">{r.error}</p>
                     )}
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </ScrollArea>

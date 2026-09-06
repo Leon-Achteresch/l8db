@@ -9,7 +9,9 @@ import {
   TrashIcon,
   XIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { toast } from "sonner";
 
 import {
@@ -510,8 +512,10 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
           )}
 
           {columns?.map((col) => (
-            <div
+            <motion.div
               key={col.name}
+              layout
+              transition={{ layout: SPRING_LAYOUT }}
               className="group grid grid-cols-[1fr_1fr_80px_1fr_auto] gap-px border-b bg-muted text-sm"
             >
               {editingColumn === col.name ? (
@@ -608,7 +612,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                   </div>
                 </>
               )}
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>

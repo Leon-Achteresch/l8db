@@ -1,4 +1,6 @@
 import { Outlet } from "@tanstack/react-router";
+import { motion } from "motion/react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
@@ -22,9 +24,13 @@ export function AppLayout() {
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <motion.div
+            layout
+            transition={{ layout: SPRING_LAYOUT }}
+            className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          >
             <Outlet />
-          </div>
+          </motion.div>
           {panelOpen && <TransactionPanel />}
         </div>
         <WorkspaceStatus />

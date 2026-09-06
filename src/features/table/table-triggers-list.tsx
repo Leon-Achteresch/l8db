@@ -1,10 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ZapIcon } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { useTriggersQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface TableTriggersListProps {
@@ -53,9 +55,11 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <div className="flex flex-col gap-0.5">
           {triggers!.map((trigger) => (
-            <button
+            <motion.button
               key={trigger.trigger_name}
               type="button"
+              layout
+              transition={{ layout: SPRING_LAYOUT }}
               onClick={() => handleNavigate(trigger.trigger_name)}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
@@ -81,7 +85,7 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
               >
                 {trigger.enabled}
               </Badge>
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>
