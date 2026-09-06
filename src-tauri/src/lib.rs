@@ -14,6 +14,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db::commands::list_providers,
             db::commands::driver_status,
+            db::commands::install_driver,
             db::commands::test_connection,
             db::commands::test_connection_string,
             db::commands::list_databases,

@@ -15,7 +15,13 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
@@ -185,54 +191,66 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
                         {index === 0 ? (
                           "Wo"
                         ) : (
-                          <NativeSelect
-                            size="sm"
+                          <Select
                             value={combinator}
-                            onChange={(event) => setCombinator(event.target.value as Combinator)}
-                            className="w-24 sm:w-full"
+                            onValueChange={(value) => setCombinator(value as Combinator)}
                           >
-                            <NativeSelectOption value="AND">und</NativeSelectOption>
-                            <NativeSelectOption value="OR">oder</NativeSelectOption>
-                          </NativeSelect>
+                            <SelectTrigger size="sm" className="w-24 sm:w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent position="popper">
+                              <SelectItem value="AND">und</SelectItem>
+                              <SelectItem value="OR">oder</SelectItem>
+                            </SelectContent>
+                          </Select>
                         )}
                       </div>
 
-                      <NativeSelect
-                        size="sm"
+                      <Select
                         value={condition.column}
-                        onChange={(event) =>
+                        onValueChange={(value) =>
                           updateCondition(condition.id, {
-                            column: event.target.value,
+                            column: value,
                           })
                         }
-                        className="w-full min-w-0 sm:min-w-40 sm:flex-1"
                       >
-                        <NativeSelectOption value="" disabled>
-                          Spalte wählen…
-                        </NativeSelectOption>
-                        {columns.map((column) => (
-                          <NativeSelectOption key={column} value={column}>
-                            {column}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
+                        <SelectTrigger
+                          size="sm"
+                          className="w-full min-w-0 sm:min-w-40 sm:flex-1"
+                        >
+                          <SelectValue placeholder="Spalte wählen…" />
+                        </SelectTrigger>
+                        <SelectContent position="popper">
+                          {columns.map((column) => (
+                            <SelectItem key={column} value={column}>
+                              {column}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
 
-                      <NativeSelect
-                        size="sm"
+                      <Select
                         value={condition.operator}
-                        onChange={(event) =>
+                        onValueChange={(value) =>
                           updateCondition(condition.id, {
-                            operator: event.target.value,
+                            operator: value,
                           })
                         }
-                        className="w-full min-w-0 sm:w-auto sm:min-w-44"
                       >
-                        {OPERATORS.map((operator) => (
-                          <NativeSelectOption key={operator.key} value={operator.key}>
-                            {operator.label}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
+                        <SelectTrigger
+                          size="sm"
+                          className="w-full min-w-0 sm:w-auto sm:min-w-44"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper">
+                          {OPERATORS.map((operator) => (
+                            <SelectItem key={operator.key} value={operator.key}>
+                              {operator.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
 
                       {operatorNeedsValue(condition.operator) ? (
                         <Input

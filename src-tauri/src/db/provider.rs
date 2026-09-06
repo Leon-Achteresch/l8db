@@ -244,6 +244,7 @@ pub struct DriverStatus {
     pub available: bool,
     pub detail: String,
     pub install: Vec<InstallHint>,
+    pub install_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -455,23 +456,27 @@ fn oracle_hints() -> Vec<InstallHint> {
     ]
 }
 
-fn driver_status(driver: Driver) -> DriverStatus {
+fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
+    let install_command = install_command(kind).ok().map(str::to_string);
     match driver {
         Driver::Builtin => DriverStatus {
             available: true,
             detail: "Eingebetteter Treiber".to_string(),
             install: vec![],
+            install_command,
         },
         Driver::RuntimeLibrary { .. } => match oracle::Version::client() {
             Ok(version) => DriverStatus {
                 available: true,
                 detail: format!("Oracle Client {version}"),
                 install: vec![],
+                install_command,
             },
             Err(e) => DriverStatus {
                 available: false,
                 detail: format!("Oracle Instant Client nicht gefunden: {e}"),
                 install: oracle_hints(),
+                install_command,
             },
         },
         Driver::Odbc { driver } => {
@@ -491,6 +496,7 @@ fn driver_status(driver: Driver) -> DriverStatus {
                                 }
                             ),
                             install: vec![],
+                            install_command,
                         }
                     } else {
                         install.retain(|h| h.os == "all");
@@ -505,6 +511,7 @@ fn driver_status(driver: Driver) -> DriverStatus {
                                 }
                             ),
                             install,
+                            install_command,
                         }
                     }
                 }
@@ -512,6 +519,7 @@ fn driver_status(driver: Driver) -> DriverStatus {
                     available: false,
                     detail,
                     install,
+                    install_command,
                 },
             }
         }
@@ -536,6 +544,7 @@ fn driver_status(driver: Driver) -> DriverStatus {
                         url: "https://duckdb.org",
                     }]
                 },
+                install_command,
             }
         }
     }
@@ -574,7 +583,7 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             hosts: p.hosts,
             driver: p.driver,
             capabilities: p.kind.capabilities(),
-            driver_status: driver_status(p.driver),
+            driver_status: driver_status(p.kind, p.driver),
         })
         .collect()
 }
@@ -585,7 +594,77 @@ pub fn kind_driver_status(kind: DatabaseKind) -> DriverStatus {
         .find(|p| p.kind == kind)
         .map(|p| p.driver)
         .unwrap_or(Driver::Builtin);
-    driver_status(driver)
+    driver_status(kind, driver)
+}
+
+pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
+    match kind {
+        DatabaseKind::Oracle => match std::env::consts::OS {
+            "macos" => Ok("brew tap InstantClientTap/instantclient && brew install instantclient-basic"),
+            "linux" => Err("Der Oracle Instant Client lässt sich unter Linux nicht automatisch installieren. Lade ihn von https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html, entpacke ihn nach /opt/oracle und führe ldconfig aus.".to_string()),
+            "windows" => Err("Der Oracle Instant Client lässt sich unter Windows nicht automatisch installieren. Entpacke ihn von https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html und füge den Ordner zur PATH-Variable hinzu.".to_string()),
+            os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.oracle.com/database/technologies/instant-client/")),
+        },
+        DatabaseKind::Odbc => match std::env::consts::OS {
+            "macos" => Ok("brew install unixodbc"),
+            "linux" => Ok("sudo -n apt-get install -y unixodbc unixodbc-dev"),
+            "windows" => Err("Der ODBC-Datenquellen-Administrator ist Teil von Windows. Hersteller-Treiber zusätzlich installieren, siehe https://learn.microsoft.com/sql/odbc/admin/odbc-data-source-administrator".to_string()),
+            os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.unixodbc.org")),
+        },
+        DatabaseKind::Duckdb => Err("DuckDB ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features duckdb".to_string()),
+        _ => Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string()),
+    }
+}
+
+pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
+    let command = install_command(kind)?;
+    if std::env::consts::OS == "macos" {
+        let brew = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg("command -v brew")
+            .output()
+            .await
+            .map_err(|e| format!("Homebrew-Prüfung fehlgeschlagen: {e}"))?;
+        if !brew.status.success() {
+            return Err(
+                "Homebrew wurde nicht gefunden. Installiere Homebrew von https://brew.sh und versuche es erneut.".to_string(),
+            );
+        }
+    }
+    let (shell, flag) = if std::env::consts::OS == "windows" {
+        ("cmd", "/C")
+    } else {
+        ("sh", "-c")
+    };
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(600),
+        tokio::process::Command::new(shell)
+            .arg(flag)
+            .arg(command)
+            .output(),
+    )
+    .await
+    .map_err(|_| "Die Installation hat das Zeitlimit von 10 Minuten überschritten.".to_string())?
+    .map_err(|e| format!("Installation konnte nicht gestartet werden: {e}"))?;
+    let mut log = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.trim().is_empty() {
+        log.push_str(&stderr);
+    }
+    let trimmed = log.trim().to_string();
+    let mut start = trimmed.len().saturating_sub(6000);
+    while start < trimmed.len() && !trimmed.is_char_boundary(start) {
+        start += 1;
+    }
+    let short = trimmed[start..].to_string();
+    if output.status.success() {
+        Ok(short)
+    } else {
+        Err(format!(
+            "Installation fehlgeschlagen ({}):\n{}",
+            output.status, short
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -625,5 +704,50 @@ mod tests {
                 assert!(p.driver_status.available, "{}", p.id);
             }
         }
+    }
+
+    #[test]
+    fn builtin_kinds_have_no_install_command() {
+        assert!(install_command(DatabaseKind::Postgres).is_err());
+        assert!(install_command(DatabaseKind::Sqlite).is_err());
+        assert!(install_command(DatabaseKind::Mongodb).is_err());
+        assert!(kind_driver_status(DatabaseKind::Postgres).install_command.is_none());
+    }
+
+    #[test]
+    fn duckdb_reports_rebuild() {
+        let err = install_command(DatabaseKind::Duckdb).unwrap_err();
+        assert!(err.contains("duckdb"), "{err}");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_install_commands_use_brew() {
+        assert!(
+            install_command(DatabaseKind::Oracle)
+                .unwrap()
+                .contains("brew install instantclient-basic")
+        );
+        assert!(
+            install_command(DatabaseKind::Odbc)
+                .unwrap()
+                .contains("brew install unixodbc")
+        );
+        assert!(
+            kind_driver_status(DatabaseKind::Oracle)
+                .install_command
+                .is_some_and(|command| command.contains("brew"))
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_odbc_install_command_targets_unixodbc() {
+        assert!(
+            install_command(DatabaseKind::Odbc)
+                .unwrap()
+                .contains("unixodbc")
+        );
+        assert!(install_command(DatabaseKind::Oracle).is_err());
     }
 }

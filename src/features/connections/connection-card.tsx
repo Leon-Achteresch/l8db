@@ -1,6 +1,7 @@
-import { ArrowUpRight, Database, LockKeyhole, Pencil, Trash2, Unplug } from "lucide-react";
+import { ArrowUpRight, LockKeyhole, Pencil, Trash2, Unplug } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
+import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
@@ -38,9 +39,13 @@ export function ConnectionCard({
     >
       <div className="flex items-start gap-3">
         <div
-          className={`grid size-10 shrink-0 place-items-center rounded-xl ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+          className={`grid size-10 shrink-0 place-items-center rounded-xl border bg-white p-1.5 shadow-sm ${active ? "border-primary/40 ring-1 ring-primary/10" : ""}`}
         >
-          <Database className="size-5" />
+          <ProviderLogo
+            providerId={provider.id}
+            kind={connection.kind}
+            className="size-6"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold">{connection.name}</h3>

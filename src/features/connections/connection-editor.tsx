@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUpRight,
@@ -17,11 +18,16 @@ import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { ProviderLogo } from "@/components/provider-logo";
 import {
-  NativeSelect,
-  NativeSelectOptGroup,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   connectionError,
   detectProvider,
@@ -329,7 +335,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           : "Datenbank";
 
   return (
-    <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <section className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card shadow-sm">
       <header className="flex items-center justify-between border-b px-6 py-5">
         <div>
           <p className="eyebrow">Verbindung einrichten</p>
@@ -353,43 +359,52 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           void save();
         }}
         onChange={() => setResult({ status: "idle" })}
+        className="min-w-0 max-w-full"
       >
-        <fieldset disabled={busy} className="space-y-5 p-6 disabled:opacity-70">
+        <fieldset disabled={busy} className="min-w-0 space-y-5 p-6 disabled:opacity-70">
           <div className="grid gap-2">
             <Label htmlFor="connection-provider" className="text-xs text-muted-foreground">
               Datenbank
             </Label>
-            <NativeSelect
-              id="connection-provider"
-              value={provider}
-              onChange={(event) => selectProvider(event.target.value)}
-              className="w-full"
-            >
-              {groups.map((group) => (
-                <NativeSelectOptGroup key={group} label={group}>
-                  {providers
-                    .filter((entry) => entry.group === group)
-                    .map((entry) => (
-                      <NativeSelectOption key={entry.id} value={entry.id}>
-                        {entry.name}
-                        {entry.driver_status.available ? "" : " · Treiber fehlt"}
-                      </NativeSelectOption>
-                    ))}
-                </NativeSelectOptGroup>
-              ))}
-            </NativeSelect>
-            <p className="text-xs leading-relaxed text-muted-foreground">{info.hint}</p>
+            <Select value={provider} onValueChange={selectProvider}>
+              <SelectTrigger id="connection-provider" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {groups.map((group) => (
+                  <SelectGroup key={group}>
+                    <SelectLabel>{group}</SelectLabel>
+                    {providers
+                      .filter((entry) => entry.group === group)
+                      .map((entry) => (
+                        <SelectItem key={entry.id} value={entry.id}>
+                          <ProviderLogo providerId={entry.id} kind={entry.kind} />
+                          <span className="truncate">
+                            {entry.name}
+                            {entry.driver_status.available ? "" : " · Treiber fehlt"}
+                          </span>
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+              {info.hint}
+            </p>
           </div>
           {!info.driver_status.available && (
             <div
               role="status"
-              className="space-y-2 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
+              className="min-w-0 max-w-full space-y-2 overflow-hidden rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
             >
-              <p>{info.driver_status.detail}</p>
+              <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {info.driver_status.detail}
+              </p>
               {info.driver_status.install.map((hint) => (
                 <div
                   key={`${hint.os}${hint.command}${hint.url}`}
-                  className="flex items-center gap-2"
+                  className="flex min-w-0 items-center gap-2"
                 >
                   <span className="w-16 shrink-0 font-medium">{hint.os}</span>
                   {hint.command ? (
@@ -423,7 +438,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                 onClick={() => void refreshDriverStatus(kind).catch(() => undefined)}
               >
                 Erneut prüfen
-              </button>
+              </button>{" "}
+              <Link to="/drivers" className="underline">
+                Treiber verwalten
+              </Link>
             </div>
           )}
           <ConnectionField
@@ -548,7 +566,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           {provider === "supabase" && /:6543(?:\/|$)/.test(value) && (
             <p
               role="status"
-              className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
+              className="min-w-0 break-words rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 [overflow-wrap:anywhere] dark:text-amber-300"
             >
               Du nutzt einen Transaction Pooler. Für den vollständigen SQL-Arbeitsplatz nutze eine
               direkte Verbindung oder den Session Pooler auf Port 5432.
@@ -559,26 +577,20 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
               <Label htmlFor="connection-ssl" className="text-xs text-muted-foreground">
                 SSL / TLS
               </Label>
-              <NativeSelect
-                id="connection-ssl"
-                value={ssl}
-                onChange={(event) => setSsl(event.target.value as SslMode)}
-                className="w-full"
-              >
-                <NativeSelectOption value="prefer">
-                  Bevorzugen · für lokale Server
-                </NativeSelectOption>
-                <NativeSelectOption value="require">
-                  Erforderlich · System-Zertifikate prüfen
-                </NativeSelectOption>
-                <NativeSelectOption value="verify-full">
-                  Zertifikat und Hostname prüfen
-                </NativeSelectOption>
-                <NativeSelectOption value="verify-ca">
-                  Zertifizierungsstelle prüfen
-                </NativeSelectOption>
-                <NativeSelectOption value="disable">Deaktiviert</NativeSelectOption>
-              </NativeSelect>
+              <Select value={ssl} onValueChange={(value) => setSsl(value as SslMode)}>
+                <SelectTrigger id="connection-ssl" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="prefer">Bevorzugen · für lokale Server</SelectItem>
+                  <SelectItem value="require">
+                    Erforderlich · System-Zertifikate prüfen
+                  </SelectItem>
+                  <SelectItem value="verify-full">Zertifikat und Hostname prüfen</SelectItem>
+                  <SelectItem value="verify-ca">Zertifizierungsstelle prüfen</SelectItem>
+                  <SelectItem value="disable">Deaktiviert</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
           {caps.ssh && (
@@ -621,14 +633,18 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                   />
                   <div className="grid gap-2">
                     <Label htmlFor="ssh-auth">Authentifizierung</Label>
-                    <NativeSelect
-                      id="ssh-auth"
+                    <Select
                       value={sshAuth}
-                      onChange={(event) => setSshAuth(event.target.value as SshAuth)}
+                      onValueChange={(value) => setSshAuth(value as SshAuth)}
                     >
-                      <NativeSelectOption value="key">SSH-Key</NativeSelectOption>
-                      <NativeSelectOption value="password">Passwort</NativeSelectOption>
-                    </NativeSelect>
+                      <SelectTrigger id="ssh-auth" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        <SelectItem value="key">SSH-Key</SelectItem>
+                        <SelectItem value="password">Passwort</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   {sshAuth === "key" && (
                     <ConnectionField
@@ -676,7 +692,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
             {result.status === "error" && (
               <p
                 role="alert"
-                className="rounded-lg bg-destructive/10 p-3 text-xs leading-relaxed text-destructive"
+                className="break-words rounded-lg bg-destructive/10 p-3 text-xs leading-relaxed text-destructive [overflow-wrap:anywhere]"
               >
                 {result.message}
               </p>

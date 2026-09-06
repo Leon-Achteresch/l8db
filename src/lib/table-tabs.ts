@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { useConnectionsStore } from "@/lib/connections";
+
 export type TableTab = {
   kind: "table";
   schema: string;
@@ -35,11 +37,32 @@ export function tabKey(tab: Tab): string {
   return `extension:${tab.name}`;
 }
 
+const NONE_KEY = "__none__";
+
+function keyForConnection(id: string | null | undefined): string {
+  return id ?? NONE_KEY;
+}
+
+function readPersistedActiveConnectionId(): string | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem("l8db.connections");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { activeId?: string | null } };
+    return parsed?.state?.activeId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface TabsState {
   tabs: Tab[];
+  tabsByConnection: Record<string, Tab[]>;
   queryCounter: number;
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
+  openQueryTabWithSql: (sql: string, title?: string) => string;
+  openSavedQueryTab: (tab: { id: string; title: string; sql: string }) => void;
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
   openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
@@ -50,14 +73,29 @@ interface TabsState {
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;
+  clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
+}
+
+function storeFor(
+  tabs: Tab[],
+  state: { tabsByConnection: Record<string, Tab[]> },
+): Pick<TabsState, "tabs" | "tabsByConnection"> {
+  return {
+    tabs,
+    tabsByConnection: {
+      ...state.tabsByConnection,
+      [keyForConnection(useConnectionsStore.getState().activeId)]: tabs,
+    },
+  };
 }
 
 export const useTableTabs = create<TabsState>()(
   persist(
     (set, get) => ({
       tabs: [],
+      tabsByConnection: {},
       queryCounter: 0,
 
       openTab: (tab) => {
@@ -71,7 +109,7 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           const index = state.tabs.findIndex((t) => tabKey(t) === key);
           if (index === -1) {
-            return { tabs: [...state.tabs, tableTab] };
+            return storeFor([...state.tabs, tableTab], state);
           }
           const existing = state.tabs[index];
           if (
@@ -82,7 +120,7 @@ export const useTableTabs = create<TabsState>()(
           }
           const tabs = [...state.tabs];
           tabs[index] = tableTab;
-          return { tabs };
+          return storeFor(tabs, state);
         });
       },
 
@@ -94,8 +132,27 @@ export const useTableTabs = create<TabsState>()(
           title: `Query ${counter}`,
           sql: "",
         };
-        set((state) => ({ tabs: [...state.tabs, qt], queryCounter: counter }));
+        set((state) => ({ ...storeFor([...state.tabs, qt], state), queryCounter: counter }));
         return qt.id;
+      },
+
+      openQueryTabWithSql: (sql, title) => {
+        const counter = get().queryCounter + 1;
+        const qt: QueryTab = {
+          kind: "query",
+          id: crypto.randomUUID(),
+          title: title ?? `Query ${counter}`,
+          sql,
+        };
+        set((state) => ({ ...storeFor([...state.tabs, qt], state), queryCounter: counter }));
+        return qt.id;
+      },
+
+      openSavedQueryTab: (tab) => {
+        set((state) => {
+          if (state.tabs.some((t) => t.kind === "query" && t.id === tab.id)) return state;
+          return storeFor([...state.tabs, { kind: "query", ...tab }], state);
+        });
       },
 
       openFunctionTab: (tab) => {
@@ -103,7 +160,7 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(ft);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, ft] };
+          return storeFor([...state.tabs, ft], state);
         });
       },
 
@@ -112,7 +169,7 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(et);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, et] };
+          return storeFor([...state.tabs, et], state);
         });
       },
 
@@ -121,7 +178,7 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(rt);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, rt] };
+          return storeFor([...state.tabs, rt], state);
         });
       },
 
@@ -130,7 +187,7 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(tt);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, tt] };
+          return storeFor([...state.tabs, tt], state);
         });
       },
 
@@ -139,7 +196,7 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(vt);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, vt] };
+          return storeFor([...state.tabs, vt], state);
         });
       },
 
@@ -148,68 +205,141 @@ export const useTableTabs = create<TabsState>()(
         const key = tabKey(at);
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
-          return { tabs: [...state.tabs, at] };
+          return storeFor([...state.tabs, at], state);
         });
       },
 
       closeTab: (key) =>
-        set((state) => ({
-          tabs: state.tabs.filter((t) => tabKey(t) !== key),
-        })),
+        set((state) => storeFor(state.tabs.filter((t) => tabKey(t) !== key), state)),
 
       closeOtherTabs: (key) =>
-        set((state) => ({
-          tabs: state.tabs.filter((t) => tabKey(t) === key),
-        })),
+        set((state) => storeFor(state.tabs.filter((t) => tabKey(t) === key), state)),
 
       closeTabsToRight: (key) =>
         set((state) => {
           const index = state.tabs.findIndex((t) => tabKey(t) === key);
-          return index === -1 ? state : { tabs: state.tabs.slice(0, index + 1) };
+          return index === -1 ? state : storeFor(state.tabs.slice(0, index + 1), state);
         }),
 
-      closeAllTabs: () => set({ tabs: [] }),
+      closeAllTabs: () => set((state) => storeFor([], state)),
+
+      clearTabsForConnection: (connectionId) =>
+        set((state) => {
+          if (state.tabsByConnection[connectionId] === undefined) {
+            if (
+              keyForConnection(useConnectionsStore.getState().activeId) !== connectionId ||
+              state.tabs.length === 0
+            ) {
+              return state;
+            }
+            return { tabs: [] };
+          }
+          const tabsByConnection = { ...state.tabsByConnection };
+          delete tabsByConnection[connectionId];
+          if (keyForConnection(useConnectionsStore.getState().activeId) === connectionId) {
+            return { tabs: [], tabsByConnection };
+          }
+          return { tabsByConnection };
+        }),
 
       reorderTabs: (fromIndex, toIndex) =>
         set((state) => {
           const tabs = [...state.tabs];
           const [item] = tabs.splice(fromIndex, 1);
           tabs.splice(toIndex, 0, item);
-          return { tabs };
+          return storeFor(tabs, state);
         }),
 
       updateQuerySql: (id, sql) =>
-        set((state) => ({
-          tabs: state.tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, sql } : t)),
-        })),
+        set((state) =>
+          storeFor(
+            state.tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, sql } : t)),
+            state,
+          ),
+        ),
     }),
     {
       name: "l8db.table-tabs",
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {
           const old = persistedState as { tabs: { schema: string; table: string }[] };
+          const tabs: Tab[] = (old.tabs ?? []).map((t) => ({
+            kind: "table" as const,
+            ...t,
+            entityType: "table" as const,
+          }));
+          const activeId = readPersistedActiveConnectionId();
           return {
-            tabs: (old.tabs ?? []).map((t) => ({
-              kind: "table" as const,
-              ...t,
-              entityType: "table" as const,
-            })),
+            tabs,
+            tabsByConnection: activeId ? { [activeId]: tabs } : {},
             queryCounter: 0,
           };
         }
         if (version === 1) {
           const old = persistedState as { tabs: TableTab[]; queryCounter: number };
+          const tabs: Tab[] = (old.tabs ?? []).map((t) =>
+            t.kind === "table" ? { ...t, entityType: t.entityType ?? "table" } : t,
+          );
+          const activeId = readPersistedActiveConnectionId();
           return {
-            tabs: (old.tabs ?? []).map((t) =>
-              t.kind === "table" ? { ...t, entityType: t.entityType ?? "table" } : t,
-            ),
+            tabs,
+            tabsByConnection: activeId ? { [activeId]: tabs } : {},
+            queryCounter: old.queryCounter ?? 0,
+          };
+        }
+        if (version === 2) {
+          const old = persistedState as { tabs: Tab[]; queryCounter: number };
+          const tabs = old.tabs ?? [];
+          const activeId = readPersistedActiveConnectionId();
+          return {
+            tabs,
+            tabsByConnection: activeId ? { [activeId]: tabs } : {},
             queryCounter: old.queryCounter ?? 0,
           };
         }
         return persistedState;
       },
-      partialize: (state) => ({ tabs: state.tabs, queryCounter: state.queryCounter }),
+      partialize: (state) => ({
+        tabs: state.tabs,
+        tabsByConnection: state.tabsByConnection,
+        queryCounter: state.queryCounter,
+      }),
+      onRehydrateStorage: () => (rehydratedState) => {
+        if (!rehydratedState) return;
+        if (!useConnectionsStore.persist.hasHydrated()) return;
+        const key = keyForConnection(useConnectionsStore.getState().activeId);
+        const stored = rehydratedState.tabsByConnection[key];
+        if (stored === undefined) {
+          useTableTabs.setState({
+            tabsByConnection: { ...rehydratedState.tabsByConnection, [key]: rehydratedState.tabs },
+          });
+        } else if (stored !== rehydratedState.tabs) {
+          useTableTabs.setState({ tabs: stored });
+        }
+      },
     },
   ),
 );
+
+useConnectionsStore.subscribe((state, previous) => {
+  const nextId = state.activeId;
+  const previousId = previous.activeId;
+  if (nextId === previousId) return;
+  const tabsState = useTableTabs.getState();
+  const nextKey = keyForConnection(nextId);
+  if (!useConnectionsStore.persist.hasHydrated() || !useTableTabs.persist.hasHydrated()) {
+    const stored = tabsState.tabsByConnection[nextKey];
+    if (stored !== undefined && stored !== tabsState.tabs) {
+      useTableTabs.setState({ tabs: stored });
+    }
+    return;
+  }
+  useTableTabs.setState({
+    tabsByConnection: {
+      ...tabsState.tabsByConnection,
+      [keyForConnection(previousId)]: tabsState.tabs,
+    },
+    tabs: tabsState.tabsByConnection[nextKey] ?? [],
+  });
+});

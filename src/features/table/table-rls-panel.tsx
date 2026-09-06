@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
@@ -108,13 +114,18 @@ function CreatePolicyDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Befehl</Label>
-              <NativeSelect value={command} onChange={(e) => setCommand(e.target.value)}>
-                {POLICY_COMMANDS.map((cmd) => (
-                  <NativeSelectOption key={cmd} value={cmd}>
-                    {cmd}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+              <Select value={command} onValueChange={setCommand}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {POLICY_COMMANDS.map((cmd) => (
+                    <SelectItem key={cmd} value={cmd}>
+                      {cmd}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="space-y-1.5">

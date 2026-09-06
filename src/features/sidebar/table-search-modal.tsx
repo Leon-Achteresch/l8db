@@ -24,7 +24,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
@@ -431,53 +437,64 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                               {index === 0 ? (
                                 "Wo"
                               ) : (
-                                <NativeSelect
-                                  size="sm"
+                                <Select
                                   value={combinator}
-                                  onChange={(e) => setCombinator(e.target.value as Combinator)}
-                                  className="w-20"
+                                  onValueChange={(value) =>
+                                    setCombinator(value as Combinator)
+                                  }
                                 >
-                                  <NativeSelectOption value="AND">und</NativeSelectOption>
-                                  <NativeSelectOption value="OR">oder</NativeSelectOption>
-                                </NativeSelect>
+                                  <SelectTrigger size="sm" className="w-20">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent position="popper">
+                                    <SelectItem value="AND">und</SelectItem>
+                                    <SelectItem value="OR">oder</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <NativeSelect
-                                size="sm"
+                              <Select
                                 value={condition.column}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                   updateCondition(condition.id, {
-                                    column: e.target.value,
+                                    column: value,
                                   })
                                 }
-                                className="min-w-0 flex-1"
                               >
-                                <NativeSelectOption value="" disabled>
-                                  Spalte...
-                                </NativeSelectOption>
-                                {selectedColumns.map((col) => (
-                                  <NativeSelectOption key={col} value={col}>
-                                    {col}
-                                  </NativeSelectOption>
-                                ))}
-                              </NativeSelect>
-                              <NativeSelect
-                                size="sm"
+                                <SelectTrigger size="sm" className="min-w-0 flex-1">
+                                  <SelectValue placeholder="Spalte..." />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  {selectedColumns.map((col) => (
+                                    <SelectItem key={col} value={col}>
+                                      {col}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select
                                 value={condition.operator}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                   updateCondition(condition.id, {
-                                    operator: e.target.value,
+                                    operator: value,
                                   })
                                 }
-                                className="w-auto min-w-0 shrink-0"
                               >
-                                {OPERATORS.map((op) => (
-                                  <NativeSelectOption key={op.key} value={op.key}>
-                                    {op.label}
-                                  </NativeSelectOption>
-                                ))}
-                              </NativeSelect>
+                                <SelectTrigger
+                                  size="sm"
+                                  className="w-auto min-w-0 shrink-0"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  {OPERATORS.map((op) => (
+                                    <SelectItem key={op.key} value={op.key}>
+                                      {op.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               <Button
                                 type="button"
                                 variant="ghost"

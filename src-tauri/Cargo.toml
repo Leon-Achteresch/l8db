@@ -31,7 +31,7 @@ native-tls = "0.2"
 russh = "0.63"
 bb8 = "0.9"
 bb8-postgres = "0.9"
-tokio = { version = "1", features = ["time", "macros", "rt"] }
+tokio = { version = "1", features = ["time", "macros", "rt", "process", "io-util"] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-updater = "2"

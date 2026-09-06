@@ -126,6 +126,7 @@ export function AppSidebarPanel() {
   const activeConnection = useActiveConnection();
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
+  const navigate = useNavigate();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const activeDatabase = useActiveDatabase();
@@ -230,7 +231,11 @@ export function AppSidebarPanel() {
               connections.map((connection) => (
                 <DropdownMenuItem
                   key={connection.id}
-                  onSelect={() => void activateConnectionWithToast(connection.id)}
+                  onSelect={() => {
+                    void activateConnectionWithToast(connection.id).then((ok) => {
+                      if (ok) void navigate({ to: "/" });
+                    });
+                  }}
                 >
                   <DatabaseIcon className="text-muted-foreground" />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -495,6 +500,7 @@ function SidebarEntityList({
   const navigate = useNavigate();
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
   const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
+  const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -586,21 +592,7 @@ function SidebarEntityList({
   };
 
   const handleOpenInEditor = (itemSchema: string, itemName: string) => {
-    const id = crypto.randomUUID();
-    const sql = `SELECT * FROM ${itemSchema}."${itemName}";`;
-    const counter = useTableTabs.getState().queryCounter + 1;
-    useTableTabs.setState((state) => ({
-      tabs: [
-        ...state.tabs,
-        {
-          kind: "query" as const,
-          id,
-          title: `Query ${counter}`,
-          sql,
-        },
-      ],
-      queryCounter: counter,
-    }));
+    const id = openQueryTabWithSql(`SELECT * FROM ${itemSchema}."${itemName}";`);
     navigate({ to: "/query/$id", params: { id } });
   };
 
@@ -1213,6 +1205,7 @@ function SavedQueriesList() {
   const deleteQuery = useSavedQueriesStore((state) => state.deleteQuery);
   const navigate = useNavigate();
   const tabs = useTableTabs((state) => state.tabs);
+  const openSavedQueryTab = useTableTabs((state) => state.openSavedQueryTab);
 
   if (queries.length === 0) {
     return <p className="px-2 py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
@@ -1228,17 +1221,7 @@ function SavedQueriesList() {
               isActive={Boolean(existingTab)}
               onClick={() => {
                 if (!existingTab) {
-                  useTableTabs.setState((state) => ({
-                    tabs: [
-                      ...state.tabs,
-                      {
-                        kind: "query",
-                        id: query.id,
-                        title: query.name,
-                        sql: query.sql,
-                      },
-                    ],
-                  }));
+                  openSavedQueryTab({ id: query.id, title: query.name, sql: query.sql });
                 }
                 navigate({ to: "/query/$id", params: { id: query.id } });
               }}

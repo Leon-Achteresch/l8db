@@ -20,6 +20,7 @@ import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppImportRouteImport } from './routes/_app.import'
 import { Route as AppErDiagramRouteImport } from './routes/_app.er-diagram'
 import { Route as AppEnumsRouteImport } from './routes/_app.enums'
+import { Route as AppDriversRouteImport } from './routes/_app.drivers'
 import { Route as AppCreateTableRouteImport } from './routes/_app.create-table'
 import { Route as AppAvailableExtensionsRouteImport } from './routes/_app.available-extensions'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
@@ -86,6 +87,11 @@ const AppErDiagramRoute = AppErDiagramRouteImport.update({
 const AppEnumsRoute = AppEnumsRouteImport.update({
   id: '/enums',
   path: '/enums',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversRoute = AppDriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCreateTableRoute = AppCreateTableRouteImport.update({
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AppAboutRoute
   '/available-extensions': typeof AppAvailableExtensionsRoute
   '/create-table': typeof AppCreateTableRoute
+  '/drivers': typeof AppDriversRoute
   '/enums': typeof AppEnumsRoute
   '/er-diagram': typeof AppErDiagramRoute
   '/import': typeof AppImportRoute
@@ -186,6 +193,7 @@ export interface FileRoutesByTo {
   '/about': typeof AppAboutRoute
   '/available-extensions': typeof AppAvailableExtensionsRoute
   '/create-table': typeof AppCreateTableRoute
+  '/drivers': typeof AppDriversRoute
   '/enums': typeof AppEnumsRoute
   '/er-diagram': typeof AppErDiagramRoute
   '/import': typeof AppImportRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/_app/about': typeof AppAboutRoute
   '/_app/available-extensions': typeof AppAvailableExtensionsRoute
   '/_app/create-table': typeof AppCreateTableRoute
+  '/_app/drivers': typeof AppDriversRoute
   '/_app/enums': typeof AppEnumsRoute
   '/_app/er-diagram': typeof AppErDiagramRoute
   '/_app/import': typeof AppImportRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/available-extensions'
     | '/create-table'
+    | '/drivers'
     | '/enums'
     | '/er-diagram'
     | '/import'
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/available-extensions'
     | '/create-table'
+    | '/drivers'
     | '/enums'
     | '/er-diagram'
     | '/import'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/_app/about'
     | '/_app/available-extensions'
     | '/_app/create-table'
+    | '/_app/drivers'
     | '/_app/enums'
     | '/_app/er-diagram'
     | '/_app/import'
@@ -392,6 +404,13 @@ declare module '@tanstack/react-router' {
       path: '/enums'
       fullPath: '/enums'
       preLoaderRoute: typeof AppEnumsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/drivers': {
+      id: '/_app/drivers'
+      path: '/drivers'
+      fullPath: '/drivers'
+      preLoaderRoute: typeof AppDriversRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/create-table': {
@@ -506,6 +525,7 @@ interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
   AppAvailableExtensionsRoute: typeof AppAvailableExtensionsRoute
   AppCreateTableRoute: typeof AppCreateTableRoute
+  AppDriversRoute: typeof AppDriversRoute
   AppEnumsRoute: typeof AppEnumsRoute
   AppErDiagramRoute: typeof AppErDiagramRoute
   AppImportRoute: typeof AppImportRoute
@@ -529,6 +549,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
   AppAvailableExtensionsRoute: AppAvailableExtensionsRoute,
   AppCreateTableRoute: AppCreateTableRoute,
+  AppDriversRoute: AppDriversRoute,
   AppEnumsRoute: AppEnumsRoute,
   AppErDiagramRoute: AppErDiagramRoute,
   AppImportRoute: AppImportRoute,

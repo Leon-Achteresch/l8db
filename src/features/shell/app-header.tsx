@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { GitBranchIcon, RefreshCw, Settings } from "lucide-react";
+import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { type CSSProperties, useEffect } from "react";
 
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
@@ -91,6 +91,19 @@ export function AppHeader() {
         </button>
 
         <div className="mx-0.5 h-5 w-px bg-border/60" aria-hidden />
+
+        <Link
+          to="/drivers"
+          aria-label="Treiber"
+          title="Treiber"
+          className={cn(
+            "inline-flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150",
+            "hover:bg-muted hover:text-foreground",
+            pathname.startsWith("/drivers") && "bg-muted text-foreground",
+          )}
+        >
+          <PlugZap className="size-4" strokeWidth={2} />
+        </Link>
 
         <Link
           to="/settings"

@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { connectionSummary } from "@/lib/connection-url";
 import { useConnectionsStore } from "@/lib/connections";
 import { activateConnectionWithToast } from "@/lib/ssh";
+import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { ConnectionCard } from "./connection-card";
 import { ConnectionEditor } from "./connection-editor";
@@ -51,7 +52,7 @@ export function ConnectionsView() {
     setConnectingId(id ?? "disconnect");
     try {
       if (await activateConnectionWithToast(id)) {
-        if (id) await navigate({ to: "/" });
+        await navigate({ to: "/" });
       }
     } finally {
       setConnectingId(null);
@@ -236,6 +237,7 @@ export function ConnectionsView() {
                     return;
                   }
                   useConnectionsStore.getState().removeConnection(deleteId);
+                  useTableTabs.getState().clearTabsForConnection(deleteId);
                   if (editorId === deleteId) setEditorId(null);
                   toast.success("Verbindung entfernt");
                   setDeleteId(null);

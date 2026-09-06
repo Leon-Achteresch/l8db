@@ -21,6 +21,11 @@ pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
 }
 
 #[tauri::command]
+pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
+    super::provider::install_driver(kind).await
+}
+
+#[tauri::command]
 pub async fn test_connection(
     config: ConnectionConfig,
     pool_state: tauri::State<'_, PoolState>,

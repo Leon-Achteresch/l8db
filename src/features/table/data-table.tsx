@@ -50,7 +50,13 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useActiveConnection } from "@/lib/connections";
 import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
@@ -825,18 +831,21 @@ export function DataTable({
                                 <span className="shrink-0 text-xs text-muted-foreground w-6">
                                   Wo
                                 </span>
-                                <NativeSelect
-                                  size="sm"
+                                <Select
                                   value={filterOperator}
-                                  onChange={(e) => setFilterOperator(e.target.value)}
-                                  className="min-w-44 flex-1"
+                                  onValueChange={setFilterOperator}
                                 >
-                                  {OPERATORS.map((op) => (
-                                    <NativeSelectOption key={op.key} value={op.key}>
-                                      {op.label}
-                                    </NativeSelectOption>
-                                  ))}
-                                </NativeSelect>
+                                  <SelectTrigger size="sm" className="min-w-44 flex-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent position="popper">
+                                    {OPERATORS.map((op) => (
+                                      <SelectItem key={op.key} value={op.key}>
+                                        {op.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                                 {operatorNeedsValue(filterOperator) ? (
                                   <Input
                                     value={filterValue}

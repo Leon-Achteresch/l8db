@@ -63,6 +63,7 @@ export interface DriverStatus {
   available: boolean;
   detail: string;
   install: InstallHint[];
+  install_command: string | null;
 }
 
 export interface ProviderInfo {
@@ -87,6 +88,10 @@ export function listProviders(): Promise<ProviderInfo[]> {
 
 export function driverStatus(kind: DatabaseKind): Promise<DriverStatus> {
   return invoke("driver_status", { kind });
+}
+
+export async function installDriver(kind: DatabaseKind): Promise<string> {
+  return invoke("install_driver", { kind });
 }
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";

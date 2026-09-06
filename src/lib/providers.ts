@@ -56,7 +56,12 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hosts: ["localhost", "127.0.0.1"],
     driver: { type: "builtin" },
     capabilities: POSTGRES_CAPABILITIES,
-    driver_status: { available: true, detail: "Eingebetteter Treiber", install: [] },
+    driver_status: {
+      available: true,
+      detail: "Eingebetteter Treiber",
+      install: [],
+      install_command: null,
+    },
   },
 ];
 
