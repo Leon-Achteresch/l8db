@@ -9,6 +9,7 @@ import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,8 @@ export function AppHeader() {
   const togglePanel = useTransactionStore((s) => s.togglePanel);
   const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
+
+  useWindowTitle();
 
   useEffect(() => {
     syncWithBackend();
