@@ -86,35 +86,18 @@ function NotificationCardContent({
   classNames?: NotificationStackClassNames;
 }) {
   return (
-    <span
-      className={cn(
-        "flex min-w-0 flex-col gap-1.5 py-4",
-        classNames?.content,
-      )}
-    >
+    <span className={cn("flex min-w-0 flex-col gap-1.5 py-4", classNames?.content)}>
       <span className="flex min-w-0 items-start justify-between gap-3">
-        <span
-          className={cn(
-            "min-w-0 text-sm font-medium leading-snug",
-            classNames?.title,
-          )}
-        >
+        <span className={cn("min-w-0 text-sm font-medium leading-snug", classNames?.title)}>
           {item.title}
         </span>
         {item.trailing ? (
-          <span
-            className={cn("shrink-0 text-xs", classNames?.trailing)}
-          >
-            {item.trailing}
-          </span>
+          <span className={cn("shrink-0 text-xs", classNames?.trailing)}>{item.trailing}</span>
         ) : null}
       </span>
       {item.description ? (
         <span
-          className={cn(
-            "text-xs leading-relaxed text-muted-foreground",
-            classNames?.description,
-          )}
+          className={cn("text-xs leading-relaxed text-muted-foreground", classNames?.description)}
         >
           {item.description}
         </span>
@@ -170,9 +153,7 @@ export function NotificationStack({
   const visibleItems = items.slice(0, Math.max(1, maxVisible));
   const primaryItem = visibleItems[0];
   const transition: Transition = reduce ? { duration: 0 } : SPRING_LAYOUT;
-  const cardTransition: Transition = reduce
-    ? { duration: 0 }
-    : { duration: 0.32, ease: EASE_OUT };
+  const cardTransition: Transition = reduce ? { duration: 0 } : { duration: 0.32, ease: EASE_OUT };
   const backgroundTransition: Transition = reduce
     ? { duration: 0 }
     : { duration: 0.26, ease: EASE_OUT };
@@ -273,15 +254,9 @@ export function NotificationStack({
       <span aria-hidden="true" className="invisible block p-3">
         <span className="block">
           <span
-            className={cn(
-              "block rounded-2xl border border-transparent px-4",
-              classNames?.card,
-            )}
+            className={cn("block rounded-2xl border border-transparent px-4", classNames?.card)}
           >
-            <NotificationCardContent
-              item={primaryItem}
-              classNames={classNames}
-            />
+            <NotificationCardContent item={primaryItem} classNames={classNames} />
           </span>
         </span>
         <span className="mt-2 block h-9" />
@@ -295,13 +270,7 @@ export function NotificationStack({
           transition={backgroundTransition}
           className="absolute inset-0 rounded-3xl bg-muted"
         />
-        <span
-          className={cn(
-            "relative z-10 grid gap-1",
-            !isExpanded && "pb-2",
-            classNames?.stack,
-          )}
-        >
+        <span className={cn("relative z-10 grid gap-1", !isExpanded && "pb-2", classNames?.stack)}>
           {visibleItems.map((item, index) => {
             const isPrimary = index === 0;
 
@@ -327,16 +296,8 @@ export function NotificationStack({
                   gridRow: isExpanded ? index + 1 : 1,
                 }}
               >
-                <span
-                  className={cn(
-                    "block",
-                    !isPrimary && !isExpanded && "invisible",
-                  )}
-                >
-                  <NotificationCardContent
-                    item={item}
-                    classNames={classNames}
-                  />
+                <span className={cn("block", !isPrimary && !isExpanded && "invisible")}>
+                  <NotificationCardContent item={item} classNames={classNames} />
                 </span>
               </motion.span>
             );
@@ -360,10 +321,7 @@ export function NotificationStack({
             {items.length}
           </span>
           <span className="flex items-center text-sm font-medium">
-            <ActionSwapText
-              value={isExpanded ? "expanded" : "collapsed"}
-              animation="roll"
-            >
+            <ActionSwapText value={isExpanded ? "expanded" : "collapsed"} animation="roll">
               {isExpanded ? (
                 <span className="inline-flex items-center gap-1">
                   {expandedLabel}

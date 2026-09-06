@@ -1,7 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-
 import { Accordion as AccordionPrimitive } from "radix-ui";
+import { useEffect, useState } from "react";
 
 import { Accordion, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";

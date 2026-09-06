@@ -29,8 +29,7 @@ type CenterMorphModalContextValue = {
   contentId: string;
 };
 
-const CenterMorphModalContext =
-  createContext<CenterMorphModalContextValue | null>(null);
+const CenterMorphModalContext = createContext<CenterMorphModalContextValue | null>(null);
 
 function useCenterMorphModalContext(component: string) {
   const context = useContext(CenterMorphModalContext);
@@ -83,9 +82,7 @@ export function CenterMorphModal({
   );
 
   return (
-    <CenterMorphModalContext.Provider value={value}>
-      {children}
-    </CenterMorphModalContext.Provider>
+    <CenterMorphModalContext.Provider value={value}>{children}</CenterMorphModalContext.Provider>
   );
 }
 
@@ -94,9 +91,7 @@ export interface CenterMorphModalTriggerProps {
 }
 
 /** Wraps one interactive element and opens or closes the modal. */
-export function CenterMorphModalTrigger({
-  children,
-}: CenterMorphModalTriggerProps) {
+export function CenterMorphModalTrigger({ children }: CenterMorphModalTriggerProps) {
   const context = useCenterMorphModalContext("CenterMorphModalTrigger");
   if (!isValidElement(children)) return children;
 
@@ -122,9 +117,7 @@ export interface CenterMorphModalCloseProps {
 }
 
 /** Wraps one interactive element and closes the modal. */
-export function CenterMorphModalClose({
-  children,
-}: CenterMorphModalCloseProps) {
+export function CenterMorphModalClose({ children }: CenterMorphModalCloseProps) {
   const context = useCenterMorphModalContext("CenterMorphModalClose");
   if (!isValidElement(children)) return children;
 
@@ -165,8 +158,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-const CENTER_FOLDED_CLIP =
-  "inset(48% 48% 48% 48% round 30px)";
+const CENTER_FOLDED_CLIP = "inset(48% 48% 48% 48% round 30px)";
 const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 30px)";
 
 // Complex clip-path strings can snap when a spring resolves its final distance.
@@ -180,9 +172,9 @@ const CENTER_UNFOLD_TRANSITION = {
 
 function getFocusableElements(root: HTMLElement | null) {
   if (!root) return [];
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((element) => element.tabIndex >= 0);
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => element.tabIndex >= 0,
+  );
 }
 
 export function CenterMorphModalContent({
@@ -317,9 +309,7 @@ export function CenterMorphModalContent({
                     }
                     {...gate}
                     transition={
-                      reduce
-                        ? { duration: 0.14, ease: EASE_OUT }
-                        : CENTER_UNFOLD_TRANSITION
+                      reduce ? { duration: 0.14, ease: EASE_OUT } : CENTER_UNFOLD_TRANSITION
                     }
                     className={cn(
                       "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-[30px] border border-border bg-background will-change-[clip-path]",
@@ -333,11 +323,7 @@ export function CenterMorphModalContent({
                         type="button"
                         aria-label={closeButtonLabel}
                         onClick={() => context.setOpen(false)}
-                        initial={
-                          reduce
-                            ? { opacity: 0 }
-                            : { opacity: 0, scale: 0.8 }
-                        }
+                        initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{
                           opacity: 0,
