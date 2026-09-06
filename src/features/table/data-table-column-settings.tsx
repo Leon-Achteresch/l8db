@@ -1,7 +1,7 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { EyeIcon, RotateCcwIcon } from "lucide-react";
+import { ClipboardCopyIcon, EyeIcon, PinOffIcon, RotateCcwIcon } from "lucide-react";
 
 import {
   ContextMenuItem,
@@ -21,21 +21,27 @@ const sensors = [
 type DataTableColumnSettingsProps = {
   columns: string[];
   hidden: string[];
+  pinned: string[];
   isCustomized: boolean;
   onToggle: (column: string) => void;
   onReorder: (order: string[]) => void;
   onReset: () => void;
   onShowAll: () => void;
+  onUnpinAll: () => void;
+  onCopyColumnNames: () => void;
 };
 
 export function DataTableColumnSettings({
   columns,
   hidden,
+  pinned,
   isCustomized,
   onToggle,
   onReorder,
   onReset,
   onShowAll,
+  onUnpinAll,
+  onCopyColumnNames,
 }: DataTableColumnSettingsProps) {
   const hiddenSet = new Set(hidden);
   const visibleCount = columns.length - hidden.length;
@@ -77,6 +83,22 @@ export function DataTableColumnSettings({
           Alle einblenden
         </ContextMenuItem>
       )}
+      {pinned.length > 0 && (
+        <ContextMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            onUnpinAll();
+          }}
+        >
+          <PinOffIcon />
+          Fixierungen aufheben
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator />
+      <ContextMenuItem onSelect={onCopyColumnNames}>
+        <ClipboardCopyIcon />
+        Spaltennamen kopieren
+      </ContextMenuItem>
       {isCustomized && (
         <>
           <ContextMenuSeparator />

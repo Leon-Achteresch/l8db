@@ -1,7 +1,7 @@
 # L8DB-PLAN-020: Text in geladenen Grid-Zellen suchen
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Grid
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
