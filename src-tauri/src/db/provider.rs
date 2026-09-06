@@ -46,6 +46,7 @@ pub struct Capabilities {
     pub overview: bool,
     pub sql_filter: bool,
     pub read_only_mode: bool,
+    pub csv_import: bool,
     pub ssl: bool,
     pub ssh: bool,
     pub query_language: &'static str,
@@ -81,6 +82,7 @@ const NONE: Capabilities = Capabilities {
     overview: false,
     sql_filter: true,
     read_only_mode: false,
+    csv_import: false,
     ssl: true,
     ssh: true,
     query_language: "sql",
@@ -122,6 +124,7 @@ impl DatabaseKind {
         match self {
             DatabaseKind::Postgres => Capabilities {
                 read_only_mode: true,
+                csv_import: true,
                 materialized_views: true,
                 extensions: true,
                 roles: true,

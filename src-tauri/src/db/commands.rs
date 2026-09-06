@@ -665,6 +665,43 @@ pub async fn list_table_columns_detailed(
 }
 
 #[tauri::command]
+pub async fn list_import_columns(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<crate::db::ImportColumnInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_import_columns(&schema, &table)
+    .await
+}
+
+#[tauri::command]
+pub async fn csv_import(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: crate::db::CsvImportRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<crate::db::CsvImportOutcome, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .csv_import(&request)
+    .await
+}
+
+#[tauri::command]
 pub async fn add_column(
     kind: DatabaseKind,
     connection_string: String,

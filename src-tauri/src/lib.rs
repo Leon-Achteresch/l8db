@@ -57,6 +57,8 @@ pub fn run() {
             db::commands::drop_table,
             db::commands::truncate_table,
             db::commands::list_table_columns_detailed,
+            db::commands::list_import_columns,
+            db::commands::csv_import,
             db::commands::add_column,
             db::commands::alter_column,
             db::commands::drop_column,

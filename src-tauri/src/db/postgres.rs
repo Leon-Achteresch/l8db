@@ -993,6 +993,172 @@ impl DatabaseAdapter for PostgresAdapter {
         }).await
     }
 
+    async fn list_import_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ImportColumnInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT a.attname AS name, \
+                            format_type(a.atttypid, a.atttypmod) AS data_type, \
+                            NOT a.attnotnull AS is_nullable, \
+                            (a.atthasdef AND a.attgenerated = '') AS has_default, \
+                            (a.attidentity <> '') AS is_identity, \
+                            (a.attgenerated <> '') AS is_generated, \
+                            a.attnum::int AS ordinal_position \
+                     FROM pg_attribute a \
+                     JOIN pg_class c ON c.oid = a.attrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 \
+                       AND a.attnum > 0 AND NOT a.attisdropped \
+                     ORDER BY a.attnum",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            if rows.is_empty() {
+                return Err(format!("Tabelle {schema}.{table} wurde nicht gefunden."));
+            }
+            Ok(rows
+                .iter()
+                .map(|r| super::ImportColumnInfo {
+                    name: r.get("name"),
+                    data_type: r.get("data_type"),
+                    is_nullable: r.get("is_nullable"),
+                    has_default: r.get("has_default"),
+                    is_identity: r.get("is_identity"),
+                    is_generated: r.get("is_generated"),
+                    ordinal_position: r.get("ordinal_position"),
+                })
+                .collect())
+        })
+        .await
+    }
+
+    async fn csv_import(
+        &self,
+        request: &super::CsvImportRequest,
+    ) -> Result<super::CsvImportOutcome, String> {
+        self.ensure_writable()?;
+        if request.columns.is_empty() {
+            return Err("Keine Zielspalten zugeordnet.".to_string());
+        }
+        if request.rows.is_empty() {
+            return Err("Keine Datenzeilen zum Import.".to_string());
+        }
+        if request.rows.len() > super::CSV_IMPORT_MAX_ROWS {
+            return Err(format!(
+                "Zu viele Zeilen: {} (Maximum {}).",
+                request.rows.len(),
+                super::CSV_IMPORT_MAX_ROWS
+            ));
+        }
+        let available = self
+            .list_import_columns(&request.schema, &request.table)
+            .await?;
+        let mut types: Vec<String> = Vec::with_capacity(request.columns.len());
+        for column in &request.columns {
+            let found = available
+                .iter()
+                .find(|c| &c.name == column)
+                .ok_or_else(|| format!("Unbekannte Spalte: {column}"))?;
+            if found.is_generated {
+                return Err(format!(
+                    "Generierte Spalte {column} kann nicht befüllt werden."
+                ));
+            }
+            types.push(found.data_type.clone());
+        }
+        for (index, row) in request.rows.iter().enumerate() {
+            if row.len() != request.columns.len() {
+                return Err(format!(
+                    "Zeile {} hat {} Werte, erwartet werden {}.",
+                    index + 1,
+                    row.len(),
+                    request.columns.len()
+                ));
+            }
+        }
+
+        let column_list = request
+            .columns
+            .iter()
+            .map(|c| quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholders = types
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| format!("${}::text::{}", i + 1, ty))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "INSERT INTO {}.{} ({}) VALUES ({})",
+            quote_ident(&request.schema),
+            quote_ident(&request.table),
+            column_list,
+            placeholders
+        );
+
+        let conn = self.get_conn().await?;
+        let statement = conn.prepare(&sql).await.map_err(map_pg_err)?;
+        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+
+        let mut inserted: u64 = 0;
+        for (index, row) in request.rows.iter().enumerate() {
+            let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = row
+                .iter()
+                .map(|v| v as &(dyn tokio_postgres::types::ToSql + Sync))
+                .collect();
+            match conn.execute(&statement, &params).await {
+                Ok(n) => inserted += n,
+                Err(err) => {
+                    let failed_column = err
+                        .as_db_error()
+                        .and_then(|d| d.column())
+                        .map(|c| c.to_string())
+                        .or_else(|| {
+                            let message = err.to_string();
+                            request
+                                .columns
+                                .iter()
+                                .find(|c| message.contains(c.as_str()))
+                                .cloned()
+                        });
+                    let message = map_pg_err(err);
+                    let _ = conn.simple_query("ROLLBACK").await;
+                    return Ok(super::CsvImportOutcome {
+                        inserted_rows: 0,
+                        failed_row: Some((index + 1) as u32),
+                        failed_column,
+                        error: Some(message),
+                    });
+                }
+            }
+        }
+
+        if let Err(err) = conn.simple_query("COMMIT").await {
+            let message = map_pg_err(err);
+            let _ = conn.simple_query("ROLLBACK").await;
+            return Ok(super::CsvImportOutcome {
+                inserted_rows: 0,
+                failed_row: None,
+                failed_column: None,
+                error: Some(message),
+            });
+        }
+
+        Ok(super::CsvImportOutcome {
+            inserted_rows: inserted,
+            failed_row: None,
+            failed_column: None,
+            error: None,
+        })
+    }
+
     async fn add_column(
         &self,
         schema: &str,
