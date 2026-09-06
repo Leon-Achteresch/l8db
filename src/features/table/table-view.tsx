@@ -158,6 +158,20 @@ export function TableView() {
     });
   }, [data, exportColumns]);
 
+  const fullExportSource = useMemo(
+    () => ({
+      schema,
+      table,
+      filter,
+      filterRaw,
+      orderBy: sorting[0]?.id ?? null,
+      orderDesc: sorting[0]?.desc ?? false,
+      isView,
+      totalRows: totalCount ?? null,
+    }),
+    [schema, table, filter, filterRaw, sorting, isView, totalCount],
+  );
+
   const handleExport = async (format: "json" | "sql") => {
     if (!data) return;
     setExporting(true);
@@ -375,6 +389,7 @@ export function TableView() {
           columns={exportColumns}
           rows={exportRows}
           defaultFileName={`${table}.csv`}
+          fullExport={fullExportSource}
         />
       </Tabs>
     );
@@ -511,6 +526,7 @@ export function TableView() {
         columns={exportColumns}
         rows={exportRows}
         defaultFileName={`${table}.csv`}
+        fullExport={fullExportSource}
       />
     </Tabs>
   );

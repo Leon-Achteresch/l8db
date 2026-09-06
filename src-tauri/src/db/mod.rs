@@ -2,6 +2,7 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod export;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod mongodb;
@@ -446,6 +447,15 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn csv_import(&self, request: &CsvImportRequest) -> Result<CsvImportOutcome, String> {
         let _ = request;
         Err(unsupported("CSV-Import"))
+    }
+    async fn export_table_csv(
+        &self,
+        request: &export::TableExportRequest,
+        progress: &(dyn Fn(i64) + Send + Sync),
+    ) -> Result<export::TableExportOutcome, String> {
+        let _ = request;
+        let _ = progress;
+        Err(unsupported("Vollständiger Tabellenexport"))
     }
     async fn add_column(
         &self,
