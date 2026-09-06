@@ -1,8 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Braces, Database, Eye, Search, Sparkles, Table, TextSearch } from "lucide-react";
-import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import { Braces, Database, Eye, Keyboard, Search, Sparkles, Table, TextSearch } from "lucide-react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
+import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
   buildObjectEntries,
@@ -29,9 +30,20 @@ export function AppHeaderSearch() {
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const [objectSearchOpen, setObjectSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { data: objects } = useAllSchemaObjectsQuery();
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== "/") return;
+      event.preventDefault();
+      setShortcutsOpen((previous) => !previous);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const onSelectConnection = useCallback(
     async (id: string) => {
@@ -114,7 +126,19 @@ export function AppHeaderSearch() {
         useTourStore.getState().startFromBeginning();
       },
     };
-    return [...connectionItems, ...deepSearchItem, ...objectItems, tourItem];
+    const shortcutsItem: CommandItem = {
+      id: "help:shortcuts",
+      label: "Tastenkürzel anzeigen",
+      group: "Hilfe",
+      icon: Keyboard,
+      hint: "Cmd/Ctrl+/",
+      keywords: ["tastenkürzel", "shortcut", "tastatur", "hilfe", "keyboard"],
+      onSelect: () => {
+        setOpen(false);
+        setShortcutsOpen(true);
+      },
+    };
+    return [...connectionItems, ...deepSearchItem, ...objectItems, tourItem, shortcutsItem];
   }, [
     activeConnection?.id,
     canSearchColumns,
@@ -157,6 +181,7 @@ export function AppHeaderSearch() {
         maxVisible={MAX_VISIBLE_RESULTS}
       />
       <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </>
   );
 }
