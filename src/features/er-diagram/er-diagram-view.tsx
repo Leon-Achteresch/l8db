@@ -1,3 +1,4 @@
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Background,
   BackgroundVariant,
@@ -24,11 +25,26 @@ import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 import { toPng, toSvg } from "html-to-image";
 import { jsPDF } from "jspdf";
-import { FileCode, FileText, Image, KeyRound, Loader2 } from "lucide-react";
+import { FileCode, FileText, Image, KeyRound, Loader2, XIcon } from "lucide-react";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useActiveConnection } from "@/lib/connections";
 import type { ERTable, ForeignKeyInfo } from "@/lib/db";
 import { useActiveSchema } from "@/lib/db-selection";
+import {
+  ER_FOCUS_DEPTHS,
+  type ErFocusDepth,
+  erTableKey,
+  erTableKeyOf,
+  filterErSchema,
+  parseErFocusDepth,
+} from "@/lib/er-focus";
 import { useErSchemaQuery } from "@/lib/queries";
 
 type TableNodeData = {
@@ -375,10 +391,113 @@ function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
   );
 }
 
+function ErFocusPanel({
+  tables,
+  focusKey,
+  depth,
+  onFocusChange,
+  onDepthChange,
+  onClear,
+}: {
+  tables: ERTable[];
+  focusKey: string | null;
+  depth: ErFocusDepth;
+  onFocusChange: (key: string) => void;
+  onDepthChange: (depth: ErFocusDepth) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border bg-card px-3 py-2 shadow-sm">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Fokus
+      </span>
+      <Select value={focusKey ?? ""} onValueChange={onFocusChange}>
+        <SelectTrigger size="sm" className="w-56">
+          <SelectValue placeholder="Tabelle wählen…" />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          {tables.map((table) => (
+            <SelectItem key={erTableKeyOf(table)} value={erTableKeyOf(table)}>
+              {erTableKeyOf(table)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="flex items-center gap-1.5">
+        <Select
+          value={String(depth)}
+          onValueChange={(value) => onDepthChange(parseErFocusDepth(value))}
+        >
+          <SelectTrigger size="sm" className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {ER_FOCUS_DEPTHS.map((value) => (
+              <SelectItem key={value} value={String(value)}>
+                Tiefe {value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={!focusKey}
+          className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          title="Fokus aufheben"
+        >
+          <XIcon className="size-3.5" />
+          Aufheben
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ERDiagramInner() {
   const connection = useActiveConnection();
   const activeSchema = useActiveSchema();
-  const { data: erSchema, isLoading, error } = useErSchemaQuery(activeSchema);
+  const { data: fullSchema, isLoading, error } = useErSchemaQuery(activeSchema);
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/_app/_workspace/er-diagram" });
+
+  const focus = useMemo(() => {
+    if (!search.focusSchema || !search.focusTable) return null;
+    return {
+      schema: search.focusSchema,
+      table: search.focusTable,
+      depth: parseErFocusDepth(search.depth),
+    };
+  }, [search.focusSchema, search.focusTable, search.depth]);
+
+  const focusKey = focus ? erTableKey(focus.schema, focus.table) : null;
+  const focusMissing = Boolean(
+    focus && fullSchema && !fullSchema.tables.some((table) => erTableKeyOf(table) === focusKey),
+  );
+
+  const setFocus = useCallback(
+    (key: string | null, depth: ErFocusDepth) => {
+      if (!key) {
+        void navigate({ to: "/er-diagram", search: {} });
+        return;
+      }
+      const separator = key.indexOf(".");
+      void navigate({
+        to: "/er-diagram",
+        search: {
+          focusSchema: key.slice(0, separator),
+          focusTable: key.slice(separator + 1),
+          depth,
+        },
+      });
+    },
+    [navigate],
+  );
+
+  const erSchema = useMemo(
+    () => (fullSchema ? filterErSchema(fullSchema, focus) : fullSchema),
+    [fullSchema, focus],
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -436,10 +555,29 @@ function ERDiagramInner() {
     );
   }
 
-  if (!erSchema || erSchema.tables.length === 0) {
+  if (!fullSchema || fullSchema.tables.length === 0 || !erSchema) {
     return (
       <main className="flex flex-1 items-center justify-center">
         <p className="text-muted-foreground">Keine Tabellen im Schema "{activeSchema}" gefunden.</p>
+      </main>
+    );
+  }
+
+  if (erSchema.tables.length === 0) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="text-muted-foreground">
+          {focusMissing
+            ? `Tabelle "${focusKey}" ist im Schema "${activeSchema}" nicht vorhanden.`
+            : "Kein Ausschnitt für den gewählten Fokus."}
+        </p>
+        <button
+          type="button"
+          onClick={() => setFocus(null, 1)}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          Fokus aufheben
+        </button>
       </main>
     );
   }
@@ -474,6 +612,14 @@ function ERDiagramInner() {
               <span className="font-medium text-foreground">{erSchema.foreign_keys.length}</span>{" "}
               Foreign Keys
             </div>
+            <ErFocusPanel
+              tables={fullSchema.tables}
+              focusKey={focusKey}
+              depth={focus?.depth ?? 1}
+              onFocusChange={(key) => setFocus(key, focus?.depth ?? 1)}
+              onDepthChange={(depth) => setFocus(focusKey, depth)}
+              onClear={() => setFocus(null, 1)}
+            />
             <ExportButtons nodes={nodes} />
             <div className="rounded-md bg-card border border-border px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">

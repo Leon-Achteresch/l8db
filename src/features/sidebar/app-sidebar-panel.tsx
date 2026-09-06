@@ -13,6 +13,7 @@ import {
   LayersIcon,
   ListIcon,
   ListOrderedIcon,
+  NetworkIcon,
   PackageIcon,
   PlusIcon,
   RadioIcon,
@@ -94,9 +95,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
-import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
+import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -113,6 +113,7 @@ import {
   useActiveSchema,
   useDbSelectionStore,
 } from "@/lib/db-selection";
+import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
 import {
   useColumnsQuery,
   useDatabasesQuery,
@@ -127,7 +128,11 @@ import {
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
-import { activateConnectionWithToast, effectiveConnectionString, useConnectionSwitch } from "@/lib/ssh";
+import {
+  activateConnectionWithToast,
+  effectiveConnectionString,
+  useConnectionSwitch,
+} from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export function AppSidebarPanel() {
@@ -700,6 +705,13 @@ function SidebarEntityList({
         )
       : false;
 
+  const handleFocusInErDiagram = (itemSchema: string, itemName: string) => {
+    navigate({
+      to: "/er-diagram",
+      search: { focusSchema: itemSchema, focusTable: itemName, depth: 1 },
+    });
+  };
+
   const handleAlterTable = (itemSchema: string, itemName: string) => {
     openAlterTableTab({ schema: itemSchema, table: itemName });
     navigate({
@@ -807,7 +819,9 @@ function SidebarEntityList({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem onSelect={() => toggleFavoriteObject(item.schema, item.name)}>
+                      <ContextMenuItem
+                        onSelect={() => toggleFavoriteObject(item.schema, item.name)}
+                      >
                         {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
@@ -819,6 +833,12 @@ function SidebarEntityList({
                       <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
                         <WrenchIcon />
                         Alter Table
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => handleFocusInErDiagram(item.schema, item.name)}
+                      >
+                        <NetworkIcon />
+                        Im ER-Diagramm fokussieren
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem
@@ -850,7 +870,9 @@ function SidebarEntityList({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem onSelect={() => toggleFavoriteObject(item.schema, item.name)}>
+                      <ContextMenuItem
+                        onSelect={() => toggleFavoriteObject(item.schema, item.name)}
+                      >
                         {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
