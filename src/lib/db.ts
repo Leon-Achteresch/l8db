@@ -112,6 +112,7 @@ export interface Capabilities {
   source_search: boolean;
   schema_snapshot: boolean;
   full_table_export: boolean;
+  data_compare: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
