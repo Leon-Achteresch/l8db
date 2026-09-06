@@ -5,7 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsSqlPreview } from "@/features/settings/settings-sql-preview";
+import { useActiveConnection } from "@/lib/connections";
+import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore, type SqlKeywordCase } from "@/lib/settings";
+import { sqlDialectForKind, sqlDialectLabel, supportsSqlFormatting } from "@/lib/sql-format";
 
 export function SettingsEditorTab() {
   const {
@@ -22,6 +25,12 @@ export function SettingsEditorTab() {
     setEditorLineNumbers,
     setEditorMinimap,
   } = useSettingsStore();
+
+  const connection = useActiveConnection();
+  const dialect = sqlDialectForKind(connection?.kind);
+  const formattingAvailable = connection
+    ? supportsSqlFormatting(capabilitiesFor(connection.kind).query_language)
+    : true;
 
   const adjustFontSize = (delta: number) => {
     const next = Math.max(10, Math.min(24, editorFontSize + delta));
@@ -77,6 +86,17 @@ export function SettingsEditorTab() {
               <Plus className="size-3.5" />
             </Button>
           </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Formatter-Dialekt"
+          description="Wird aus der aktiven Verbindung abgeleitet und für Dokument- und Auswahlformatierung genutzt."
+        >
+          <span className="text-xs text-muted-foreground">
+            {formattingAvailable
+              ? sqlDialectLabel(dialect)
+              : "Keine SQL-Formatierung für diesen Provider"}
+          </span>
         </SettingsRow>
 
         <SettingsRow
