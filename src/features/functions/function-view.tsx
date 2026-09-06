@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import {
   CheckCircleIcon,
+  HammerIcon,
   LoaderIcon,
   PencilIcon,
   PlayIcon,
@@ -15,9 +16,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCompileObject } from "@/features/functions/use-compile-object";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -48,6 +50,8 @@ export function FunctionView() {
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
+  const capabilities = useActiveCapabilities();
+  const { compile, state: compileState } = useCompileObject();
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
 
   const [editing, setEditing] = useState(false);
@@ -153,6 +157,7 @@ export function FunctionView() {
   }
 
   const feedbackState = execution.status !== "idle" ? execution : validation;
+  const compileResult = compileState.status === "done" ? compileState.result : null;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -161,10 +166,27 @@ export function FunctionView() {
           {schema}.{name}
         </span>
         {!editing ? (
-          <Button variant="outline" size="xs" onClick={handleEdit}>
-            <PencilIcon data-icon="inline-start" />
-            Bearbeiten
-          </Button>
+          <>
+            {capabilities.compile_objects && oid ? (
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => void compile(oid, "function", `${schema}.${name}`)}
+                disabled={compileState.status === "loading"}
+              >
+                {compileState.status === "loading" ? (
+                  <LoaderIcon data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <HammerIcon data-icon="inline-start" />
+                )}
+                Kompilieren
+              </Button>
+            ) : null}
+            <Button variant="outline" size="xs" onClick={handleEdit}>
+              <PencilIcon data-icon="inline-start" />
+              Bearbeiten
+            </Button>
+          </>
         ) : (
           <>
             <Button variant="ghost" size="xs" onClick={handleCancel}>
@@ -205,8 +227,21 @@ export function FunctionView() {
         value={editing ? editedSql : (data ?? "")}
         readOnly={!editing}
         onChange={editing ? setEditedSql : undefined}
-        revealLine={line}
+        revealLine={compileResult?.line ?? line}
       />
+
+      {compileResult && compileResult.status !== "VALID" ? (
+        <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">
+          <span className="text-xs font-semibold text-destructive">
+            Kompilierfehler
+            {compileResult.line ? ` in Zeile ${compileResult.line}` : ""}
+            {compileResult.position ? `, Position ${compileResult.position}` : ""}
+          </span>
+          <pre className="whitespace-pre-wrap break-all text-xs font-mono text-destructive select-text">
+            {compileResult.message}
+          </pre>
+        </div>
+      ) : null}
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
         <FeedbackPanel state={feedbackState} />

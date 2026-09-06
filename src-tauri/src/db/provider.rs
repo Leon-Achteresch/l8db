@@ -52,6 +52,10 @@ pub struct Capabilities {
     pub schema_snapshot: bool,
     pub full_table_export: bool,
     pub data_compare: bool,
+    pub procedures: bool,
+    pub compile_objects: bool,
+    pub debugger: bool,
+    pub bind_parameters: bool,
     pub ssl: bool,
     pub ssh: bool,
     pub query_language: &'static str,
@@ -93,6 +97,10 @@ const NONE: Capabilities = Capabilities {
     schema_snapshot: false,
     full_table_export: false,
     data_compare: false,
+    procedures: false,
+    compile_objects: false,
+    debugger: false,
+    bind_parameters: false,
     ssl: true,
     ssh: true,
     query_language: "sql",
@@ -133,6 +141,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                bind_parameters: true,
                 read_only_mode: true,
                 csv_import: true,
                 column_search: true,
@@ -140,6 +149,8 @@ impl DatabaseKind {
                 schema_snapshot: true,
                 full_table_export: true,
                 data_compare: true,
+                procedures: true,
+                compile_objects: true,
                 materialized_views: true,
                 extensions: true,
                 roles: true,
@@ -198,6 +209,9 @@ impl DatabaseKind {
             DatabaseKind::Oracle => Capabilities {
                 databases: false,
                 ssl: false,
+                procedures: true,
+                compile_objects: true,
+                debugger: true,
                 sequences: true,
                 sessions: true,
                 transactions: true,

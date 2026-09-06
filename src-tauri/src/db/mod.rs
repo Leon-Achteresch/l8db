@@ -203,6 +203,20 @@ pub struct FunctionInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CompileResult {
+    pub status: String,
+    pub message: Option<String>,
+    pub line: Option<i32>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DebugSessionInfo {
+    pub available: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ExtensionInfo {
     pub name: String,
     pub version: Option<String>,
@@ -350,6 +364,15 @@ pub trait DatabaseAdapter: Send + Sync {
         Err(unsupported("Direkte Zeilenänderung"))
     }
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
+    async fn execute_query_with_params(
+        &self,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let _ = sql;
+        let _ = params;
+        Err(unsupported("Bind-Parameter"))
+    }
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let _ = schema;
         Err(unsupported("Views"))
@@ -379,6 +402,26 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let _ = oid;
         Err(unsupported("Funktionsdefinitionen"))
+    }
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Prozeduren"))
+    }
+    async fn compile_object(
+        &self,
+        oid: &str,
+        object_type: &str,
+    ) -> Result<CompileResult, String> {
+        let _ = (oid, object_type);
+        Err(unsupported("Objekte kompilieren"))
+    }
+    async fn start_debug_session(
+        &self,
+        oid: &str,
+        object_type: &str,
+    ) -> Result<DebugSessionInfo, String> {
+        let _ = (oid, object_type);
+        Err(unsupported("PL/SQL-Debugger"))
     }
     async fn search_columns(
         &self,

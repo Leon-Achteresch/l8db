@@ -26,6 +26,7 @@ export function isQueryTabDirty(tab: QueryTab): boolean {
   return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
 }
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
+export type ProcedureTab = { kind: "procedure"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
 export type RoleTab = { kind: "role"; name: string };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
@@ -36,6 +37,7 @@ export type Tab =
   | TableTab
   | QueryTab
   | FunctionTab
+  | ProcedureTab
   | ExtensionTab
   | RoleTab
   | TriggerTab
@@ -47,6 +49,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
+  if (tab.kind === "procedure") return `procedure:${tab.oid}`;
   if (tab.kind === "role") return `role:${tab.name}`;
   if (tab.kind === "trigger") return `trigger:${tab.schema}.${tab.table}.${tab.trigger}`;
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
@@ -82,6 +85,7 @@ interface TabsState {
   openQueryTabWithSql: (sql: string, title?: string) => string;
   openSavedQueryTab: (tab: { id: string; title: string; sql: string }) => void;
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
+  openProcedureTab: (tab: Omit<ProcedureTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
   openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
   openTriggerTab: (tab: Omit<TriggerTab, "kind">) => void;
@@ -194,6 +198,15 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => t.kind === "query" && t.id === tab.id)) return state;
           return storeFor([...state.tabs, { kind: "query", ...tab }], state);
+        });
+      },
+
+      openProcedureTab: (tab) => {
+        const pr: ProcedureTab = { kind: "procedure", ...tab };
+        const key = tabKey(pr);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return storeFor([...state.tabs, pr], state);
         });
       },
 

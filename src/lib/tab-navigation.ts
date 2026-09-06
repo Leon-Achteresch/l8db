@@ -27,6 +27,14 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab) {
     });
     return;
   }
+  if (tab.kind === "procedure") {
+    void navigate({
+      to: "/procedures/$schema/$name",
+      params: { schema: tab.schema, name: tab.name },
+      search: { oid: tab.oid },
+    });
+    return;
+  }
   if (tab.kind === "role") {
     void navigate({ to: "/users/$name", params: { name: tab.name } });
     return;
@@ -66,6 +74,7 @@ export function tabLabel(tab: Tab): string {
   if (tab.kind === "table") return tab.table;
   if (tab.kind === "query") return tab.title;
   if (tab.kind === "function") return tab.name;
+  if (tab.kind === "procedure") return tab.name;
   if (tab.kind === "trigger") return tab.trigger;
   if (tab.kind === "view-editor") return tab.view;
   if (tab.kind === "alter-table") return tab.table;

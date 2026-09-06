@@ -8,6 +8,7 @@ const WRITE_COMMANDS = new Set([
   "attach_partition",
   "begin_transaction",
   "cancel_session",
+  "compile_object",
   "create_materialized_view",
   "create_policy",
   "create_publication",
@@ -28,6 +29,7 @@ const WRITE_COMMANDS = new Set([
   "drop_table",
   "duplicate_row_in_transaction",
   "execute_in_transaction",
+  "execute_in_transaction_with_params",
   "insert_row_in_transaction",
   "install_extension",
   "modify_privilege",
@@ -113,6 +115,10 @@ export interface Capabilities {
   schema_snapshot: boolean;
   full_table_export: boolean;
   data_compare: boolean;
+  procedures: boolean;
+  compile_objects: boolean;
+  debugger: boolean;
+  bind_parameters: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -507,6 +513,16 @@ export async function executeQuery(
   return invoke("execute_query", { kind, connectionString, database, sql });
 }
 
+export async function executeQueryWithParams(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  params: (string | null)[],
+  database?: string,
+): Promise<QueryResult> {
+  return invoke("execute_query_with_params", { kind, connectionString, database, sql, params });
+}
+
 export interface ExplainPlan {
   Plan?: ExplainNode;
   [key: string]: unknown;
@@ -604,6 +620,14 @@ export async function executeInTransaction(txId: string, sql: string): Promise<Q
   return invoke("execute_in_transaction", { txId, sql });
 }
 
+export async function executeInTransactionWithParams(
+  txId: string,
+  sql: string,
+  params: (string | null)[],
+): Promise<QueryResult> {
+  return invoke("execute_in_transaction_with_params", { txId, sql, params });
+}
+
 export async function updateRowInTransaction(
   txId: string,
   schema: string,
@@ -674,6 +698,47 @@ export async function getFunctionDefinition(
     database,
     oid,
   });
+}
+
+export interface CompileResult {
+  status: string;
+  message: string | null;
+  line: number | null;
+  position: number | null;
+}
+
+export interface DebugSessionInfo {
+  available: boolean;
+  message: string;
+}
+
+export async function listProcedures(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<FunctionInfo[]> {
+  return invoke("list_procedures", { kind, connectionString, database, schema });
+}
+
+export async function compileObject(
+  kind: DatabaseKind,
+  connectionString: string,
+  oid: string,
+  objectType: string,
+  database?: string,
+): Promise<CompileResult> {
+  return invoke("compile_object", { kind, connectionString, database, oid, objectType });
+}
+
+export async function startDebugSession(
+  kind: DatabaseKind,
+  connectionString: string,
+  oid: string,
+  objectType: string,
+  database?: string,
+): Promise<DebugSessionInfo> {
+  return invoke("start_debug_session", { kind, connectionString, database, oid, objectType });
 }
 
 export async function listExtensions(

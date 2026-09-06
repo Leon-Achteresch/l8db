@@ -25,6 +25,7 @@ import {
   listExtensions,
   listForeignKeys,
   listFunctions,
+  listProcedures,
   listIndexes,
   listLocks,
   listMaterializedViews,
@@ -66,6 +67,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "columns",
   "view-definition",
   "functions",
+  "procedures",
   "function-definition",
   "extensions",
   "available-extensions",
@@ -193,16 +195,17 @@ export function useAllSchemaObjectsQuery() {
       const kind = connection!.kind;
       const connectionString = effectiveConnectionString(connection!);
       const db = database ?? undefined;
-      const [tables, views, functions] = await Promise.all([
+      const [tables, views, functions, procedures] = await Promise.all([
         listTables(kind, connectionString, db),
-        supports(connection, "views")
-          ? listViews(kind, connectionString, db)
-          : Promise.resolve([]),
+        supports(connection, "views") ? listViews(kind, connectionString, db) : Promise.resolve([]),
         supports(connection, "functions")
           ? listFunctions(kind, connectionString, db)
           : Promise.resolve([]),
+        supports(connection, "procedures")
+          ? listProcedures(kind, connectionString, db)
+          : Promise.resolve([]),
       ]);
-      return { tables, views, functions };
+      return { tables, views, functions, procedures };
     },
     enabled: Boolean(connection),
     staleTime: 60 * 1000,
@@ -298,6 +301,23 @@ export function useFunctionsQuery() {
   });
 }
 
+export function useProceduresQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["procedures", connection?.id, database, schema],
+    queryFn: () =>
+      listProcedures(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "procedures"),
+  });
+}
+
 export function useFunctionDefinitionQuery(oid: string) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -310,7 +330,8 @@ export function useFunctionDefinitionQuery(oid: string) {
         oid,
         database ?? undefined,
       ),
-    enabled: supports(connection, "functions") && Boolean(oid),
+    enabled:
+      (supports(connection, "functions") || supports(connection, "procedures")) && Boolean(oid),
   });
 }
 

@@ -11,7 +11,8 @@ use super::pool::{PoolState, PoolUse};
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
     AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions,
+    AvailableExtensionInfo, ColumnInfo, CompileResult, ConnectionConfig, ConstraintInfo,
+    CreateRoleOptions,
     DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
     ColumnMatch, RolePrivileges, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode, TableData,
@@ -31,6 +32,19 @@ pub fn like_pattern(term: &str) -> String {
         escaped.push(ch);
     }
     format!("%{escaped}%")
+}
+
+pub fn line_of_position(source: &str, position: i32) -> i32 {
+    if position <= 1 {
+        return 1;
+    }
+    let take = (position as usize).saturating_sub(1);
+    source
+        .chars()
+        .take(take)
+        .filter(|c| *c == '\n')
+        .count() as i32
+        + 1
 }
 
 pub fn source_snippet(source: &str, term: &str) -> Option<(i32, String, i32)> {
@@ -367,7 +381,9 @@ impl DatabaseAdapter for PostgresAdapter {
             .timed(async {
                 conn.query(
                     "SELECT n.nspname, p.proname, p.oid::text, \
-                            pg_get_function_identity_arguments(p.oid), 'routine'::text, p.prosrc \
+                            pg_get_function_identity_arguments(p.oid), \
+                            CASE WHEN p.prokind = 'p' THEN 'procedure'::text \
+                                 ELSE 'routine'::text END, p.prosrc \
                      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
                      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
                        AND ($2::text IS NULL OR n.nspname = $2) \
@@ -778,6 +794,24 @@ impl DatabaseAdapter for PostgresAdapter {
         outcome
     }
 
+    async fn execute_query_with_params(
+        &self,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let conn = self.get_conn().await?;
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
+        let outcome = self.timed(run_params_query(&conn, sql, params)).await;
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
+        }
+        outcome
+    }
+
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
@@ -877,7 +911,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          FROM pg_catalog.pg_proc p \
                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
                          JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
-                         WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+                         WHERE n.nspname = $1 AND p.prokind <> 'p' \
                          ORDER BY p.proname",
                         &[&schema],
                     )
@@ -894,7 +928,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
                          JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
                          WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
-                               AND p.prokind IN ('f', 'p') \
+                               AND p.prokind <> 'p' \
                          ORDER BY n.nspname, p.proname",
                         &[],
                     )
@@ -925,6 +959,104 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map_err(map_pg_err)
                 .map(|row| row.get::<_, String>(0))
+        })
+        .await
+    }
+
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(schema) => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                l.lanname, p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname = $1 AND p.prokind = 'p' \
+                         ORDER BY p.proname",
+                        &[&schema],
+                    )
+                    .await
+                }
+                None => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                l.lanname, p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                               AND p.prokind = 'p' \
+                         ORDER BY n.nspname, p.proname",
+                        &[],
+                    )
+                    .await
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| FunctionInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                        identity_args: row.get(2),
+                        return_type: "PROCEDURE".to_string(),
+                        language: row.get(3),
+                        oid: row.get(4),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        self.ensure_writable()?;
+        if !matches!(object_type, "function" | "procedure" | "routine") {
+            return Err(format!(
+                "Objekttyp {object_type} kann in PostgreSQL nicht kompiliert werden"
+            ));
+        }
+        let oid_val: u32 = oid.parse().map_err(|_| format!("Ungültige OID: {oid}"))?;
+        let mut conn = self.get_meta().await?;
+        self.timed(async move {
+            let definition: String = conn
+                .query_one("SELECT pg_get_functiondef($1::oid)", &[&oid_val])
+                .await
+                .map_err(map_pg_err)?
+                .get(0);
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            match tx.batch_execute(&definition).await {
+                Ok(()) => {
+                    tx.commit().await.map_err(map_pg_err)?;
+                    Ok(CompileResult {
+                        status: "VALID".to_string(),
+                        message: None,
+                        line: None,
+                        position: None,
+                    })
+                }
+                Err(err) => {
+                    let position = err.as_db_error().and_then(|db| match db.position() {
+                        Some(tokio_postgres::error::ErrorPosition::Original(p)) => Some(*p as i32),
+                        Some(tokio_postgres::error::ErrorPosition::Internal { position, .. }) => {
+                            Some(*position as i32)
+                        }
+                        None => None,
+                    });
+                    let message = map_pg_err(err);
+                    let _ = tx.rollback().await;
+                    Ok(CompileResult {
+                        status: "INVALID".to_string(),
+                        line: position.map(|p| line_of_position(&definition, p)),
+                        position,
+                        message: Some(message),
+                    })
+                }
+            }
         })
         .await
     }
@@ -3143,6 +3275,55 @@ impl PostgresAdapter {
             parts.join(",\n  "),
         )
     }
+}
+
+pub async fn run_params_query(
+    client: &tokio_postgres::Client,
+    sql: &str,
+    params: &[Option<String>],
+) -> Result<QueryResult, String> {
+    use tokio_postgres::types::{ToSql, Type};
+
+    let trimmed = sql.trim().trim_end_matches(';').trim();
+    if trimmed.is_empty() {
+        return Err("Leere Abfrage".to_string());
+    }
+    let start = std::time::Instant::now();
+    let types: Vec<Type> = params.iter().map(|_| Type::TEXT).collect();
+    let values: Vec<&(dyn ToSql + Sync)> =
+        params.iter().map(|value| value as &(dyn ToSql + Sync)).collect();
+
+    let statement = client.prepare_typed(trimmed, &types).await.map_err(map_pg_err)?;
+    if statement.columns().is_empty() {
+        let affected = client.execute(&statement, &values).await.map_err(map_pg_err)?;
+        return Ok(QueryResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected: Some(affected),
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        });
+    }
+
+    let columns: Vec<String> = statement
+        .columns()
+        .iter()
+        .map(|column| column.name().to_string())
+        .collect();
+    let wrapped = format!(
+        "WITH __l8_bind AS ({}) SELECT to_jsonb(__l8_bind) FROM __l8_bind",
+        trimmed
+    );
+    let wrapped_statement = client.prepare_typed(&wrapped, &types).await.map_err(map_pg_err)?;
+    let data = client.query(&wrapped_statement, &values).await.map_err(map_pg_err)?;
+    let rows: Vec<serde_json::Value> = data.iter().map(|row| row.get(0)).collect();
+    let count = rows.len() as u64;
+
+    Ok(QueryResult {
+        columns,
+        rows,
+        rows_affected: Some(count),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+    })
 }
 
 #[cfg(test)]

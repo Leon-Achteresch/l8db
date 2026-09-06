@@ -78,6 +78,14 @@ export function AppHeaderSearch() {
       keywords: objectEntryKeywords(entry),
       onSelect: () => {
         setOpen(false);
+        if (entry.type === "procedure") {
+          void navigate({
+            to: "/procedures/$schema/$name",
+            params: { schema: entry.schema, name: entry.name },
+            search: { oid: entry.oid },
+          });
+          return;
+        }
         if (entry.type === "routine") {
           void navigate({
             to: "/functions/$schema/$name",
