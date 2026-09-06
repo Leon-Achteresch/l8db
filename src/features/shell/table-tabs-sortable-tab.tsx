@@ -22,7 +22,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SPRING } from "@/lib/ease";
-import { type Tab, tabKey } from "@/lib/table-tabs";
+import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
@@ -106,8 +106,10 @@ export function TableTabsSortableTab({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div
+        <motion.div
           ref={ref}
+          layout={!isDragging ? "position" : false}
+          transition={{ layout: SPRING }}
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
@@ -138,6 +140,12 @@ export function TableTabsSortableTab({
           >
             <Icon className={cn("size-3.5 shrink-0", iconColor)} />
             <span className="truncate font-medium">{label}</span>
+            {tab.kind === "query" && tab.externalChange && (
+              <span className="shrink-0 text-amber-500" title="Datei extern geändert">!</span>
+            )}
+            {tab.kind === "query" && isQueryTabDirty(tab) && (
+              <span className="shrink-0 text-amber-500" title="Ungespeicherte Änderungen">●</span>
+            )}
           </button>
           <button
             type="button"
@@ -152,7 +160,7 @@ export function TableTabsSortableTab({
           >
             <XIcon className="size-3.5" />
           </button>
-        </div>
+        </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuItem onSelect={onClose}>
