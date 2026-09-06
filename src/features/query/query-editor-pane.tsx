@@ -1,10 +1,16 @@
 import { useTheme } from "next-themes";
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { toMonacoSnippet, useSnippetsStore } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
 import { useSettingsStore } from "@/lib/settings";
+
+export interface QueryEditorApi {
+  insertSnippet: (body: string) => void;
+  focus: () => void;
+}
 
 interface SchemaRegistry {
   schemas: string[];
@@ -28,6 +34,7 @@ interface QueryEditorPaneProps {
   onCursorChange?: (offset: number) => void;
   highlight?: EditorHighlight | null;
   registry: SchemaRegistry;
+  ref?: Ref<QueryEditorApi>;
   className?: string;
 }
 
@@ -503,6 +510,21 @@ function buildCompletions(
     }
   }
 
+  for (const snippet of useSnippetsStore.getState().snippets) {
+    if (!snippet.shortcut.trim() || !snippet.body.trim()) continue;
+    suggestions.push({
+      label: snippet.shortcut,
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: snippet.category ? `${snippet.name} · ${snippet.category}` : snippet.name,
+      documentation: snippet.description || undefined,
+      filterText: `${snippet.shortcut} ${snippet.name}`,
+      insertText: toMonacoSnippet(snippet.body),
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      range,
+      sortText: `0_${snippet.shortcut}`,
+    });
+  }
+
   for (const kw of SQL_KEYWORDS) {
     suggestions.push({
       label: kw,
@@ -566,6 +588,7 @@ export function QueryEditorPane({
   highlight,
   registry,
   className,
+  ref,
 }: QueryEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -692,6 +715,22 @@ export function QueryEditorPane({
       editorRef.current = null;
     };
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertSnippet: (body: string) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+        editor.focus();
+        editor.trigger("l8db-snippets", "editor.action.insertSnippet", {
+          snippet: toMonacoSnippet(body),
+        });
+      },
+      focus: () => editorRef.current?.focus(),
+    }),
+    [],
+  );
 
   useEffect(() => {
     const editor = editorRef.current;

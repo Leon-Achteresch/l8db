@@ -26,10 +26,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
-import { QueryEditorPane } from "@/features/query/query-editor-pane";
+import { QueryEditorPane, type QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
+import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
+import { SnippetMenu } from "@/features/query/snippet-menu";
 import { useActiveConnection } from "@/lib/connections";
 import {
   beginTransaction,
@@ -126,6 +128,8 @@ export function QueryView({ tabId }: QueryViewProps) {
   const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
   const recordHistory = useQueryHistoryStore((state) => state.record);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
+  const editorApiRef = useRef<QueryEditorApi | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -458,6 +462,10 @@ export function QueryView({ tabId }: QueryViewProps) {
             <BookmarkIcon className="size-3" />
             Speichern
           </Button>
+          <SnippetMenu
+            onInsert={(snippet) => editorApiRef.current?.insertSnippet(snippet.body)}
+            onManage={() => setSnippetDialogOpen(true)}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -612,6 +620,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
         <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
           <QueryEditorPane
+            ref={editorApiRef}
             value={sql}
             onChange={(v) => {
               setStatementRange(null);
@@ -660,6 +669,16 @@ export function QueryView({ tabId }: QueryViewProps) {
           open={saveDialogOpen}
           onOpenChange={setSaveDialogOpen}
           onSave={(name) => saveQuery(name, sql)}
+        />
+
+        <SnippetManagerDialog
+          open={snippetDialogOpen}
+          onOpenChange={setSnippetDialogOpen}
+          initialBody={selectedSql}
+          onInsert={(snippet) => {
+            setSnippetDialogOpen(false);
+            editorApiRef.current?.insertSnippet(snippet.body);
+          }}
         />
       </motion.div>
       {historyOpen && (
