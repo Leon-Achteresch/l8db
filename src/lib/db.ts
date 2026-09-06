@@ -110,6 +110,7 @@ export interface Capabilities {
   csv_import: boolean;
   column_search: boolean;
   source_search: boolean;
+  schema_snapshot: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";

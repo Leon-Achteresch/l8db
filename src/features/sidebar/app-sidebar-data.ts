@@ -1,4 +1,12 @@
-import { FileText, Home, Info, type LucideIcon, Network, SquareTerminalIcon } from "lucide-react";
+import {
+  FileText,
+  GitCompare,
+  Home,
+  Info,
+  type LucideIcon,
+  Network,
+  SquareTerminalIcon,
+} from "lucide-react";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 
@@ -13,6 +21,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     { title: "Übersicht", url: "/", icon: Home },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
+    { title: "Vergleich", url: "/compare", icon: GitCompare },
     { title: "Über", url: "/about", icon: Info },
     { title: "Release Notes", url: "/release-notes", icon: FileText },
   ],
