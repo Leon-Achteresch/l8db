@@ -31,7 +31,7 @@
         "https://github.com/Leon-Achteresch/l8db/releases/latest/download/latest.json"
       ],
       "dialog": true,
-      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY_SEE_docs_RELEASE_md"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCQ0E1MjBEMzUzREExMjIKUldRaW9UMDFEVkxLcXhrRE15cGsvRlFJaU5keTk1SXRsVy9Ib3RqVlROenZZTm5LVW9kZGZsdDMK"
     }
   },
   "bundle": {
