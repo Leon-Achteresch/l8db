@@ -20,6 +20,7 @@ import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
 import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
 import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
+import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._workspace.saved-plan'
 import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
@@ -91,6 +92,11 @@ const AppWorkspaceSessionsRoute = AppWorkspaceSessionsRouteImport.update({
 const AppWorkspaceSequencesRoute = AppWorkspaceSequencesRouteImport.update({
   id: '/sequences',
   path: '/sequences',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceSavedPlanRoute = AppWorkspaceSavedPlanRouteImport.update({
+  id: '/saved-plan',
+  path: '/saved-plan',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceReplicationRoute = AppWorkspaceReplicationRouteImport.update({
@@ -220,6 +226,7 @@ export interface FileRoutesByFullPath {
   '/query': typeof AppWorkspaceQueryRouteWithChildren
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
+  '/saved-plan': typeof AppWorkspaceSavedPlanRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByTo {
   '/import': typeof AppWorkspaceImportRoute
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
+  '/saved-plan': typeof AppWorkspaceSavedPlanRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/extensions/$name': typeof AppWorkspaceExtensionsNameRoute
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   '/_app/_workspace/query': typeof AppWorkspaceQueryRouteWithChildren
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/_app/_workspace/replication': typeof AppWorkspaceReplicationRoute
+  '/_app/_workspace/saved-plan': typeof AppWorkspaceSavedPlanRoute
   '/_app/_workspace/sequences': typeof AppWorkspaceSequencesRoute
   '/_app/_workspace/sessions': typeof AppWorkspaceSessionsRoute
   '/_app/_workspace/': typeof AppWorkspaceIndexRoute
@@ -315,6 +324,7 @@ export interface FileRouteTypes {
     | '/query'
     | '/query-builder'
     | '/replication'
+    | '/saved-plan'
     | '/sequences'
     | '/sessions'
     | '/extensions/$name'
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/query-builder'
     | '/replication'
+    | '/saved-plan'
     | '/sequences'
     | '/sessions'
     | '/extensions/$name'
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/query'
     | '/_app/_workspace/query-builder'
     | '/_app/_workspace/replication'
+    | '/_app/_workspace/saved-plan'
     | '/_app/_workspace/sequences'
     | '/_app/_workspace/sessions'
     | '/_app/_workspace/'
@@ -478,6 +490,13 @@ declare module '@tanstack/react-router' {
       path: '/sequences'
       fullPath: '/sequences'
       preLoaderRoute: typeof AppWorkspaceSequencesRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/saved-plan': {
+      id: '/_app/_workspace/saved-plan'
+      path: '/saved-plan'
+      fullPath: '/saved-plan'
+      preLoaderRoute: typeof AppWorkspaceSavedPlanRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/replication': {
@@ -657,6 +676,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceQueryRoute: typeof AppWorkspaceQueryRouteWithChildren
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
   AppWorkspaceReplicationRoute: typeof AppWorkspaceReplicationRoute
+  AppWorkspaceSavedPlanRoute: typeof AppWorkspaceSavedPlanRoute
   AppWorkspaceSequencesRoute: typeof AppWorkspaceSequencesRoute
   AppWorkspaceSessionsRoute: typeof AppWorkspaceSessionsRoute
   AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
@@ -680,6 +700,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceQueryRoute: AppWorkspaceQueryRouteWithChildren,
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,
   AppWorkspaceReplicationRoute: AppWorkspaceReplicationRoute,
+  AppWorkspaceSavedPlanRoute: AppWorkspaceSavedPlanRoute,
   AppWorkspaceSequencesRoute: AppWorkspaceSequencesRoute,
   AppWorkspaceSessionsRoute: AppWorkspaceSessionsRoute,
   AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,

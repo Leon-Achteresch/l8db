@@ -5,6 +5,7 @@ import {
   Info,
   type LucideIcon,
   Network,
+  Route as RouteIcon,
   SquareTerminalIcon,
   Table2,
 } from "lucide-react";
@@ -24,6 +25,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     { title: "Query Builder", url: "/query-builder", icon: Table2 },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
+    { title: "Gespeicherte Pläne", url: "/saved-plan", icon: RouteIcon },
     { title: "Über", url: "/about", icon: Info },
     { title: "Release Notes", url: "/release-notes", icon: FileText },
   ],
