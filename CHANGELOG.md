@@ -16,7 +16,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Database administration: extensions, sequences, functions, triggers, enums, schemas, roles and privileges, partitioning, logical replication (publications/subscriptions), sessions and locks, database overview
 - Query power: history and saved queries, EXPLAIN visualization, SQL lint markers, CSV/JSON export
 - Auto-updater backed by GitHub Releases with manual check in Settings
-- CI (lint, typecheck, tests, Rust checks) and tag-triggered releases for macOS, Windows and Linux
+- CI (lint, typecheck, tests, Rust checks) and push-triggered releases for macOS, Windows and Linux
 - Community Extensions host (API v1): sandboxed packages, settings UI, SDK and hello-extension example
 - PL/SQL package browser and split workspace panes
 - Table column preferences: hide, reorder and pin columns
