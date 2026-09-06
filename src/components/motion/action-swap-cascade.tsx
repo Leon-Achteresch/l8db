@@ -3,10 +3,10 @@
 
 import {
   ActionSwapButton,
-  ActionSwapIcon,
-  ActionSwapText,
   type ActionSwapButtonProps,
+  ActionSwapIcon,
   type ActionSwapIconProps,
+  ActionSwapText,
   type ActionSwapTextProps,
 } from "./action-swap";
 

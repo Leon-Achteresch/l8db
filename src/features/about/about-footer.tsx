@@ -25,7 +25,11 @@ export function AboutFooter() {
     <footer className="rounded-3xl border bg-card px-6 py-6 sm:px-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="" className="size-8 rounded-lg object-contain ring-1 ring-border" />
+          <img
+            src="/logo.png"
+            alt=""
+            className="size-8 rounded-lg object-contain ring-1 ring-border"
+          />
           <div>
             <p className="text-sm font-medium leading-tight">l8db · v0.1.0</p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">

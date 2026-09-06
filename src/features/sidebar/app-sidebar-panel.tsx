@@ -87,10 +87,10 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {

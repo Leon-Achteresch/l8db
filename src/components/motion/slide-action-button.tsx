@@ -1,30 +1,21 @@
 "use client";
 // beui.dev/components/motion/expanding-arrow-button
 
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useTransform,
-} from "motion/react";
-import {
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  type HTMLAttributes,
-  type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import { EASE_OUT, SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
 import { TOUCH_GESTURE_CLASS, TOUCH_GESTURE_CONTENT_CLASS } from "@/lib/touch";
 import { cn } from "@/lib/utils";
 
-export interface SlideActionButtonProps extends Omit<
-  HTMLAttributes<HTMLDivElement>,
-  "children"
-> {
+export interface SlideActionButtonProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
   children: ReactNode;
   completeLabel?: ReactNode;
   threshold?: number;
@@ -56,19 +47,11 @@ export function SlideActionButton({
   const safeDistance = Math.max(maxDistance, 1);
   const dragProgress = useTransform(x, [0, safeDistance], [0, 1]);
   const fillProgress = useTransform(x, [0, safeDistance], [0, 1]);
-  const labelOpacity = useTransform(
-    x,
-    [0, safeDistance * 0.35, safeDistance * 0.65],
-    [1, 0.75, 0],
-  );
+  const labelOpacity = useTransform(x, [0, safeDistance * 0.35, safeDistance * 0.65], [1, 0.75, 0]);
   const iconPath = useTransform(
     dragProgress,
     [0, 0.5, 1],
-    [
-      "M 8 5 L 15 12 L 8 19",
-      "M 7 8 L 12 14 L 17 10",
-      "M 5 12 L 10 17 L 19 7",
-    ],
+    ["M 8 5 L 15 12 L 8 19", "M 7 8 L 12 14 L 17 10", "M 5 12 L 10 17 L 19 7"],
   );
 
   useLayoutEffect(() => {
@@ -129,10 +112,8 @@ export function SlideActionButton({
     <div
       ref={trackRef}
       className={cn(
-        "relative h-16 w-72 overflow-hidden rounded-[22px] bg-primary/10 p-1",
+        "relative flex h-16 w-72 items-center overflow-hidden rounded-2xl bg-primary/10 p-1",
         "ring-1 ring-primary/10",
-        // The track only carries the label — the slide starts on the thumb,
-        // which suppresses selection for the whole gesture on its own.
         TOUCH_GESTURE_CONTENT_CLASS,
         className,
       )}
@@ -181,7 +162,7 @@ export function SlideActionButton({
         whileTap={reduce || completed ? undefined : { scale: 0.94 }}
         transition={SPRING_PRESS}
         className={cn(
-          "relative z-10 grid size-14 touch-none cursor-grab place-items-center rounded-[18px] bg-primary text-primary-foreground shadow-sm",
+          "relative z-10 grid h-full w-auto shrink-0 aspect-square touch-none cursor-grab place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm",
           TOUCH_GESTURE_CLASS,
           "outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           completed && "cursor-default bg-background text-foreground",

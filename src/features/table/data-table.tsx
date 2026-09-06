@@ -766,7 +766,15 @@ export function DataTable({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeCell, visibleDataColumns, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
+  }, [
+    activeCell,
+    visibleDataColumns,
+    rows,
+    editingCell,
+    handleSaveCell,
+    onSaveRow,
+    handleCellEdit,
+  ]);
 
   const handleCellCopy = (val: unknown) => {
     if (val === undefined || val === null) return;
@@ -800,253 +808,254 @@ export function DataTable({
               setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
             }}
           >
-          <table
-            className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-            style={{ width: table.getTotalSize() }}
-          >
-            <thead className="sticky top-0 z-10 select-none">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers
-                    .filter((header) => header.column.getIsVisible())
-                    .map((header) => {
-                      if (header.id === INDEX_COLUMN) {
+            <table
+              className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
+              style={{ width: table.getTotalSize() }}
+            >
+              <thead className="sticky top-0 z-10 select-none">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers
+                      .filter((header) => header.column.getIsVisible())
+                      .map((header) => {
+                        if (header.id === INDEX_COLUMN) {
+                          return (
+                            <ContextMenu key={header.id}>
+                              <ContextMenuTrigger asChild>
+                                <th
+                                  title="Rechtsklick: Spalten"
+                                  className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted/95 px-3 py-2 text-center align-middle backdrop-blur-md shadow-xs"
+                                  style={{ width: header.getSize() }}
+                                >
+                                  {header.isPlaceholder
+                                    ? null
+                                    : flexRender(
+                                        header.column.columnDef.header,
+                                        header.getContext(),
+                                      )}
+                                </th>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent className="w-64">
+                                <DataTableColumnSettings
+                                  columns={order}
+                                  hidden={hidden}
+                                  isCustomized={isCustomized}
+                                  onToggle={(column) =>
+                                    setHidden(toggleHiddenColumn(order, hidden, column))
+                                  }
+                                  onReorder={setOrder}
+                                  onReset={reset}
+                                  onShowAll={() => setHidden([])}
+                                />
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          );
+                        }
                         return (
-                          <ContextMenu key={header.id}>
-                            <ContextMenuTrigger asChild>
-                              <th
-                                title="Rechtsklick: Spalten"
-                                className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted/95 px-3 py-2 text-center align-middle backdrop-blur-md shadow-xs"
-                                style={{ width: header.getSize() }}
-                              >
-                                {header.isPlaceholder
-                                  ? null
-                                  : flexRender(header.column.columnDef.header, header.getContext())}
-                              </th>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent className="w-64">
-                              <DataTableColumnSettings
-                                columns={order}
-                                hidden={hidden}
-                                isCustomized={isCustomized}
-                                onToggle={(column) =>
-                                  setHidden(toggleHiddenColumn(order, hidden, column))
-                                }
-                                onReorder={setOrder}
-                                onReset={reset}
-                                onShowAll={() => setHidden([])}
-                              />
-                            </ContextMenuContent>
-                          </ContextMenu>
+                          <DataTableHeaderCell
+                            key={header.id}
+                            header={header}
+                            sortableIndex={visibleDataColumns.indexOf(header.id)}
+                            isFetching={isFetching}
+                            sorting={sorting}
+                            onSortingChange={onSortingChange}
+                            filterOpen={filterColumn === header.id}
+                            onFilterOpenChange={(open) => {
+                              if (open) setFilterColumn(header.id);
+                              else setFilterColumn(null);
+                            }}
+                            filterOperator={filterOperator}
+                            onFilterOperatorChange={setFilterOperator}
+                            filterValue={filterValue}
+                            onFilterValueChange={setFilterValue}
+                            compiledFilter={filterColumn === header.id ? compiledFilter : ""}
+                            onApplyFilter={onApplyFilter}
+                            onApplyColumnFilter={applyColumnFilter}
+                            onHideColumn={() =>
+                              setHidden(toggleHiddenColumn(order, hidden, header.id))
+                            }
+                            canHide={visibleDataColumns.length > 1}
+                          />
                         );
-                      }
-                      return (
-                        <DataTableHeaderCell
-                          key={header.id}
-                          header={header}
-                          sortableIndex={visibleDataColumns.indexOf(header.id)}
-                          isFetching={isFetching}
-                          sorting={sorting}
-                          onSortingChange={onSortingChange}
-                          filterOpen={filterColumn === header.id}
-                          onFilterOpenChange={(open) => {
-                            if (open) setFilterColumn(header.id);
-                            else setFilterColumn(null);
-                          }}
-                          filterOperator={filterOperator}
-                          onFilterOperatorChange={setFilterOperator}
-                          filterValue={filterValue}
-                          onFilterValueChange={setFilterValue}
-                          compiledFilter={
-                            filterColumn === header.id ? compiledFilter : ""
-                          }
-                          onApplyFilter={onApplyFilter}
-                          onApplyColumnFilter={applyColumnFilter}
-                          onHideColumn={() =>
-                            setHidden(toggleHiddenColumn(order, hidden, header.id))
-                          }
-                          canHide={visibleDataColumns.length > 1}
-                        />
-                      );
-                    })}
-                </tr>
-              ))}
-            </thead>
-            <tbody ref={tbodyRef}>
-              {rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={colSpan}
-                    className="px-3 py-16 text-center text-muted-foreground bg-background"
-                  >
-                    {emptyMessage}
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => {
-                  const rowIndex = row.index;
-                  const rowCtid = row.original.__ctid__ as string | undefined;
-                  const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
-                  const hasRowActions = !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
-
-                  const rowEl = (
-                    <tr
-                      key={rowCtid ?? row.id}
-                      data-row-index={rowIndex}
-                      data-ctid={rowCtid}
-                      className={cn(
-                        "group/row",
-                        isRowEditing ? "bg-primary/[0.03]" : "bg-background hover:bg-muted/15",
-                      )}
+                      })}
+                  </tr>
+                ))}
+              </thead>
+              <tbody ref={tbodyRef}>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={colSpan}
+                      className="px-3 py-16 text-center text-muted-foreground bg-background"
                     >
-                      {row.getVisibleCells().map((cell, cellIndex) => {
-                        const columnId = cell.column.id;
-                        const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
-                        const isCellEditing = isRowEditing && editingCell?.columnId === columnId;
-                        const isActive =
-                          !isRowEditing &&
-                          activeCell?.rowIndex === rowIndex &&
-                          activeCell.columnId === columnId;
+                      {emptyMessage}
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => {
+                    const rowIndex = row.index;
+                    const rowCtid = row.original.__ctid__ as string | undefined;
+                    const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
+                    const hasRowActions = !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
 
-                        if (isCellEditing && editingCell) {
+                    const rowEl = (
+                      <tr
+                        key={rowCtid ?? row.id}
+                        data-row-index={rowIndex}
+                        data-ctid={rowCtid}
+                        className={cn(
+                          "group/row",
+                          isRowEditing ? "bg-primary/[0.03]" : "bg-background hover:bg-muted/15",
+                        )}
+                      >
+                        {row.getVisibleCells().map((cell, cellIndex) => {
+                          const columnId = cell.column.id;
+                          const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+                          const isCellEditing = isRowEditing && editingCell?.columnId === columnId;
+                          const isActive =
+                            !isRowEditing &&
+                            activeCell?.rowIndex === rowIndex &&
+                            activeCell.columnId === columnId;
+
+                          if (isCellEditing && editingCell) {
+                            return (
+                              <td
+                                key={cell.id}
+                                style={{ width: cell.column.getSize() }}
+                                className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
+                              >
+                                <div className="flex flex-col">
+                                  <input
+                                    type="text"
+                                    value={editingCell.value}
+                                    onChange={(e) =>
+                                      setEditingCell((prev) =>
+                                        prev ? { ...prev, value: e.target.value } : prev,
+                                      )
+                                    }
+                                    disabled={isSaving}
+                                    placeholder="NULL"
+                                    className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
+                                  />
+                                  <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
+                                    <span className="flex items-center gap-1">
+                                      <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+                                        ↵
+                                      </kbd>
+                                      <span>Speichern</span>
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+                                        esc
+                                      </kbd>
+                                      <span>Abbrechen</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          }
+
                           return (
                             <td
                               key={cell.id}
+                              onClick={() => {
+                                if (editingCell) setEditingCell(null);
+                                setActiveCell({ rowIndex, columnId });
+                              }}
+                              onDoubleClick={
+                                onSaveRow && cellIndex > 0
+                                  ? (e) => {
+                                      e.stopPropagation();
+                                      handleCellEdit(row, columnId);
+                                    }
+                                  : undefined
+                              }
                               style={{ width: cell.column.getSize() }}
-                              className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
+                              className={cn(
+                                "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
+                                cellIndex === 0 &&
+                                  "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
+                                isActive &&
+                                  "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
+                                !isActive && cellIndex > 0 && "hover:bg-muted/10",
+                              )}
                             >
-                              <div className="flex flex-col">
-                                <input
-                                  type="text"
-                                  value={editingCell.value}
-                                  onChange={(e) =>
-                                    setEditingCell((prev) =>
-                                      prev ? { ...prev, value: e.target.value } : prev,
-                                    )
-                                  }
-                                  disabled={isSaving}
-                                  placeholder="NULL"
-                                  className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
-                                />
-                                <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
-                                  <span className="flex items-center gap-1">
-                                    <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                                      ↵
-                                    </kbd>
-                                    <span>Speichern</span>
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                                      esc
-                                    </kbd>
-                                    <span>Abbrechen</span>
-                                  </span>
+                              <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
+                                <div className="min-w-0 flex-1 truncate text-left">
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </div>
+                                {isActive && cellIndex > 0 && (
+                                  <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCellCopy(value);
+                                      }}
+                                      title="Kopieren"
+                                      className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                                    >
+                                      <CopyIcon className="size-3" />
+                                    </button>
+                                    {value !== null &&
+                                      (typeof value === "object" ||
+                                        (typeof value === "string" && value.length > 50)) && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setInspectCell({ columnName: columnId, value });
+                                          }}
+                                          title="Anzeigen"
+                                          className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                                        >
+                                          <Maximize2Icon className="size-3" />
+                                        </button>
+                                      )}
+                                  </div>
+                                )}
                               </div>
                             </td>
                           );
-                        }
+                        })}
+                      </tr>
+                    );
 
-                        return (
-                          <td
-                            key={cell.id}
-                            onClick={() => {
-                              if (editingCell) setEditingCell(null);
-                              setActiveCell({ rowIndex, columnId });
-                            }}
-                            onDoubleClick={
-                              onSaveRow && cellIndex > 0
-                                ? (e) => {
-                                    e.stopPropagation();
-                                    handleCellEdit(row, columnId);
-                                  }
-                                : undefined
-                            }
-                            style={{ width: cell.column.getSize() }}
-                            className={cn(
-                              "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
-                              cellIndex === 0 &&
-                                "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
-                              isActive &&
-                                "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-                              !isActive && cellIndex > 0 && "hover:bg-muted/10",
-                            )}
-                          >
-                            <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
-                              <div className="min-w-0 flex-1 truncate text-left">
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </div>
-                              {isActive && cellIndex > 0 && (
-                                <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCellCopy(value);
-                                    }}
-                                    title="Kopieren"
-                                    className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                  >
-                                    <CopyIcon className="size-3" />
-                                  </button>
-                                  {value !== null &&
-                                    (typeof value === "object" ||
-                                      (typeof value === "string" && value.length > 50)) && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setInspectCell({ columnName: columnId, value });
-                                        }}
-                                        title="Anzeigen"
-                                        className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                      >
-                                        <Maximize2Icon className="size-3" />
-                                      </button>
-                                    )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
+                    if (!hasRowActions) {
+                      return rowEl;
+                    }
 
-                  if (!hasRowActions) {
-                    return rowEl;
-                  }
-
-                  return (
-                    <ContextMenu key={rowCtid ?? row.id}>
-                      <ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuLabel className="font-mono text-[11px]">
-                          Zeile {rowIndex + 1 + page * pageSize}
-                        </ContextMenuLabel>
-                        <ContextMenuSeparator />
-                        {onDuplicateRow && (
-                          <ContextMenuItem onClick={() => onDuplicateRow(rowCtid!)}>
-                            <CopyPlusIcon />
-                            Zeile duplizieren
-                          </ContextMenuItem>
-                        )}
-                        {onDeleteRow && (
-                          <ContextMenuItem
-                            variant="destructive"
-                            onClick={() => onDeleteRow(rowCtid!, row.original)}
-                          >
-                            <Trash2Icon />
-                            Zeile löschen
-                          </ContextMenuItem>
-                        )}
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                    return (
+                      <ContextMenu key={rowCtid ?? row.id}>
+                        <ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuLabel className="font-mono text-[11px]">
+                            Zeile {rowIndex + 1 + page * pageSize}
+                          </ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          {onDuplicateRow && (
+                            <ContextMenuItem onClick={() => onDuplicateRow(rowCtid!)}>
+                              <CopyPlusIcon />
+                              Zeile duplizieren
+                            </ContextMenuItem>
+                          )}
+                          {onDeleteRow && (
+                            <ContextMenuItem
+                              variant="destructive"
+                              onClick={() => onDeleteRow(rowCtid!, row.original)}
+                            >
+                              <Trash2Icon />
+                              Zeile löschen
+                            </ContextMenuItem>
+                          )}
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </DragDropProvider>
         </div>
       </div>

@@ -67,8 +67,8 @@ export function AboutHero() {
           className="mt-4 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base"
         >
           l8db ist ein schneller, nativer Desktop-Client für PostgreSQL und viele weitere
-          Datenbanken — lokal, sicher und tastaturgetrieben. Tabellen durchstöbern, SQL
-          schreiben, Schema verstehen.
+          Datenbanken — lokal, sicher und tastaturgetrieben. Tabellen durchstöbern, SQL schreiben,
+          Schema verstehen.
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -83,11 +83,7 @@ export function AboutHero() {
             </Link>
           </Button>
           <Button asChild variant="outline" size="lg" className="rounded-full px-5">
-            <a
-              href="https://github.com/Leon-Achteresch/l8db"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href="https://github.com/Leon-Achteresch/l8db" target="_blank" rel="noreferrer">
               <Star data-icon="inline-start" />
               GitHub
             </a>

@@ -1,12 +1,7 @@
 "use client";
 // beui.dev/components/motion/tooltip
 
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-  type Variants,
-} from "motion/react";
+import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
 import {
   cloneElement,
   isValidElement,
@@ -123,9 +118,7 @@ export function Tooltip({
   wrapperClassName,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
-    null,
-  );
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const id = useId();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -207,10 +200,7 @@ export function Tooltip({
     };
   }, [open, place]);
 
-  const variants = useMemo(
-    () => (reduce ? REDUCED_VARIANTS : buildVariants(side)),
-    [reduce, side],
-  );
+  const variants = useMemo(() => (reduce ? REDUCED_VARIANTS : buildVariants(side)), [reduce, side]);
 
   if (!isValidElement(children)) return children;
 

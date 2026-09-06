@@ -166,10 +166,15 @@ useConnectionsStore.subscribe((state, previous) => {
     }
     return;
   }
+  const prevKey = keyForConnection(previousId);
+  const prevSnapshot = current.byConnection[prevKey];
+  const keepPrevSnapshot = current.panes.length === 0 && (prevSnapshot?.panes.length ?? 0) > 0;
   useSplitView.setState({
     byConnection: {
       ...current.byConnection,
-      [keyForConnection(previousId)]: { panes: current.panes, focusedPane: current.focusedPane },
+      ...(keepPrevSnapshot
+        ? {}
+        : { [prevKey]: { panes: current.panes, focusedPane: current.focusedPane } }),
     },
     panes: current.byConnection[nextKey]?.panes ?? [],
     focusedPane: current.byConnection[nextKey]?.focusedPane ?? 0,

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { DriverCard } from "@/features/drivers/driver-card";
-import { installDriver, type DatabaseKind } from "@/lib/db";
+import { type DatabaseKind, installDriver } from "@/lib/db";
 import { summarizeDrivers } from "@/lib/drivers";
 import { loadProviders, refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 import { cn } from "@/lib/utils";
@@ -34,8 +34,7 @@ export function DriversView() {
   };
 
   const handleInstall = async (kind: DatabaseKind, title: string) => {
-    if (!window.confirm(`„${title}" jetzt installieren? Das kann einige Minuten dauern.`))
-      return;
+    if (!window.confirm(`„${title}" jetzt installieren? Das kann einige Minuten dauern.`)) return;
     setInstalling(kind);
     try {
       const log = await installDriver(kind);
@@ -76,8 +75,8 @@ export function DriversView() {
         </Button>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {ready} von {summaries.length} Treiberfamilien bereit. Fehlende Treiber lassen sich
-        direkt installieren oder manuell nach Anleitung einrichten.
+        {ready} von {summaries.length} Treiberfamilien bereit. Fehlende Treiber lassen sich direkt
+        installieren oder manuell nach Anleitung einrichten.
       </p>
 
       {refreshing && summaries.length === 0 ? (

@@ -4,12 +4,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { StartupView } from "@/features/shell/startup-view";
 import { initConnectionSecrets } from "@/lib/connections";
+import { createExtensionHost } from "@/lib/extensions/host";
+import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { loadProviders } from "@/lib/providers";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { checkForUpdates } from "@/lib/updater";
 import { router } from "./router";
-import { createExtensionHost } from "@/lib/extensions/host";
-import { ExtensionHostContext } from "@/lib/extensions/react-context";
 
 const queryClient = new QueryClient();
 const extensionHost = createExtensionHost();
@@ -33,7 +33,7 @@ Promise.all([loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
   .catch(() => undefined)
   .then(() => extensionHost.start())
-  .catch(error => extensionHost.manager.log("host", "error", String(error)))
+  .catch((error) => extensionHost.manager.log("host", "error", String(error)))
   .finally(render);
 
 if (!import.meta.env.DEV) {

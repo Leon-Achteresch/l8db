@@ -1,7 +1,7 @@
 import { ArrowUpRight, LockKeyhole, Pencil, Trash2, Unplug } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { DriverDetail } from "@/components/driver-detail";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
@@ -42,11 +42,7 @@ export function ConnectionCard({
         <div
           className={`grid size-10 shrink-0 place-items-center rounded-xl border bg-white p-1.5 shadow-sm ${active ? "border-primary/40 ring-1 ring-primary/10" : ""}`}
         >
-          <ProviderLogo
-            providerId={provider.id}
-            kind={connection.kind}
-            className="size-6"
-          />
+          <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-6" />
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold">{connection.name}</h3>

@@ -24,7 +24,9 @@ export function ConnectionAddTile({ onAdd }: Props) {
       </span>
       <span>
         <span className="block text-lg font-semibold tracking-tight">Neu</span>
-        <span className="mt-1 block text-xs text-muted-foreground">Engine wählen und verbinden</span>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          Engine wählen und verbinden
+        </span>
       </span>
     </motion.button>
   );
