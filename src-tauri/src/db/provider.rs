@@ -450,7 +450,7 @@ fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
 
 fn oracle_hints() -> Vec<InstallHint> {
     vec![
-        InstallHint { os: "macos", command: "brew tap InstantClientTap/instantclient && brew install instantclient-basic", url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
+        InstallHint { os: "macos", command: "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic", url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
         InstallHint { os: "linux", command: "sudo apt install libaio1 && unzip instantclient-basic-linux.x64-*.zip -d /opt/oracle && echo /opt/oracle/instantclient_* | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig", url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },
         InstallHint { os: "windows", command: "Instant Client Basic entpacken und den Ordner zur PATH-Variable hinzufügen", url: "https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html" },
     ]
@@ -600,17 +600,22 @@ pub fn kind_driver_status(kind: DatabaseKind) -> DriverStatus {
 pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
     match kind {
         DatabaseKind::Oracle => match std::env::consts::OS {
-            "macos" => Ok("brew tap InstantClientTap/instantclient && brew install instantclient-basic"),
+            "macos" => Ok("brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic"),
             "linux" => Err("Der Oracle Instant Client lässt sich unter Linux nicht automatisch installieren. Lade ihn von https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html, entpacke ihn nach /opt/oracle und führe ldconfig aus.".to_string()),
             "windows" => Err("Der Oracle Instant Client lässt sich unter Windows nicht automatisch installieren. Entpacke ihn von https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html und füge den Ordner zur PATH-Variable hinzu.".to_string()),
             os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.oracle.com/database/technologies/instant-client/")),
         },
-        DatabaseKind::Odbc => match std::env::consts::OS {
-            "macos" => Ok("brew install unixodbc"),
-            "linux" => Ok("sudo -n apt-get install -y unixodbc unixodbc-dev"),
-            "windows" => Err("Der ODBC-Datenquellen-Administrator ist Teil von Windows. Hersteller-Treiber zusätzlich installieren, siehe https://learn.microsoft.com/sql/odbc/admin/odbc-data-source-administrator".to_string()),
-            os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.unixodbc.org")),
-        },
+        DatabaseKind::Odbc => {
+            if !cfg!(feature = "odbc") {
+                return Err("ODBC ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features odbc (benötigt unixODBC)".to_string());
+            }
+            match std::env::consts::OS {
+                "macos" => Ok("brew install unixodbc"),
+                "linux" => Ok("sudo -n apt-get install -y unixodbc unixodbc-dev"),
+                "windows" => Err("Der ODBC-Datenquellen-Administrator ist Teil von Windows. Hersteller-Treiber zusätzlich installieren, siehe https://learn.microsoft.com/sql/odbc/admin/odbc-data-source-administrator".to_string()),
+                os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.unixodbc.org")),
+            }
+        }
         DatabaseKind::Duckdb => Err("DuckDB ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features duckdb".to_string()),
         _ => Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string()),
     }
@@ -641,6 +646,9 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
         tokio::process::Command::new(shell)
             .arg(flag)
             .arg(command)
+            .stdin(std::process::Stdio::null())
+            .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .env("HOMEBREW_NO_ENV_HINTS", "1")
             .output(),
     )
     .await
@@ -658,7 +666,19 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     }
     let short = trimmed[start..].to_string();
     if output.status.success() {
-        Ok(short)
+        let mut result = short;
+        let still_missing = !kind_driver_status(kind).available
+            && match kind {
+                DatabaseKind::Oracle => true,
+                DatabaseKind::Odbc => cfg!(feature = "odbc"),
+                _ => false,
+            };
+        if still_missing {
+            result.push_str(
+                "\n\nHinweis: Die Installation war erfolgreich, der Treiber wird aber noch nicht erkannt. Starte l8db neu und prüfe den Status danach erneut.",
+            );
+        }
+        Ok(result)
     } else {
         Err(format!(
             "Installation fehlgeschlagen ({}):\n{}",
@@ -723,15 +743,13 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_install_commands_use_brew() {
+        let oracle = install_command(DatabaseKind::Oracle).unwrap();
+        assert!(oracle.contains("brew tap InstantClientTap/instantclient"));
+        assert!(oracle.contains("brew trust instantclienttap/instantclient"));
+        assert!(oracle.contains("brew install instantclient-basic"));
         assert!(
-            install_command(DatabaseKind::Oracle)
-                .unwrap()
-                .contains("brew install instantclient-basic")
-        );
-        assert!(
-            install_command(DatabaseKind::Odbc)
-                .unwrap()
-                .contains("brew install unixodbc")
+            oracle.find("trust") < oracle.find("brew install"),
+            "{oracle}"
         );
         assert!(
             kind_driver_status(DatabaseKind::Oracle)
@@ -740,7 +758,17 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "macos", feature = "odbc"))]
+    #[test]
+    fn macos_odbc_install_command_targets_unixodbc() {
+        assert!(
+            install_command(DatabaseKind::Odbc)
+                .unwrap()
+                .contains("brew install unixodbc")
+        );
+    }
+
+    #[cfg(all(target_os = "linux", feature = "odbc"))]
     #[test]
     fn linux_odbc_install_command_targets_unixodbc() {
         assert!(
@@ -749,5 +777,13 @@ mod tests {
                 .contains("unixodbc")
         );
         assert!(install_command(DatabaseKind::Oracle).is_err());
+    }
+
+    #[cfg(not(feature = "odbc"))]
+    #[test]
+    fn odbc_without_feature_reports_rebuild() {
+        let err = install_command(DatabaseKind::Odbc).unwrap_err();
+        assert!(err.contains("--features odbc"), "{err}");
+        assert!(kind_driver_status(DatabaseKind::Odbc).install_command.is_none());
     }
 }

@@ -1,5 +1,6 @@
 import { Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
 
+import { DriverDetail } from "@/components/driver-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -20,7 +21,7 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
   const available = summary.status.available;
   const command = summary.installCommand ?? summary.hint?.command;
   return (
-    <section className="rounded-lg border border-border p-4">
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">{summary.title}</h2>
         <Badge variant="secondary">{summary.typeLabel}</Badge>
@@ -33,9 +34,10 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
         </span>
       </div>
 
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        {summary.status.detail}
-      </p>
+      <DriverDetail
+        detail={summary.status.detail}
+        className="mt-2 block text-xs leading-relaxed text-muted-foreground"
+      />
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {summary.providers.map((provider) => (
@@ -79,9 +81,24 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
       )}
 
       {log && (
-        <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-black/5 p-2 font-mono text-[11px] whitespace-pre-wrap dark:bg-white/10">
-          {log}
-        </pre>
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="font-medium">Protokoll</span>
+            <button
+              type="button"
+              aria-label="Protokoll kopieren"
+              title="Protokoll kopieren"
+              className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
+              onClick={() => void navigator.clipboard.writeText(log)}
+            >
+              <Copy className="size-3" />
+              Kopieren
+            </button>
+          </div>
+          <pre className="max-h-40 overflow-auto rounded-md bg-black/5 p-2 font-mono text-[11px] whitespace-pre-wrap dark:bg-white/10">
+            {log}
+          </pre>
+        </div>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -13,7 +13,7 @@ export function DashboardMetric({ label, value, loading, error, icon: Icon }: Pr
   return (
     <div className="min-w-0 px-5 py-5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon className="size-3.5" />
+        <Icon className="size-3.5 text-primary" />
         {label}
       </div>
       {loading ? (

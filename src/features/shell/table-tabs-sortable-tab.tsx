@@ -109,10 +109,10 @@ export function TableTabsSortableTab({
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-lg border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
+            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-full border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
             isActive
-              ? "border-border bg-card text-foreground shadow-sm"
-              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/50 hover:text-foreground",
+              ? "border-primary/30 bg-card text-foreground shadow-sm"
+              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >

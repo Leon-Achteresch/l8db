@@ -1,11 +1,10 @@
-import { Monitor, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
-
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { useSettingsStore } from "@/lib/settings";
+import { useTheme } from "next-themes";
 
 export function SettingsView() {
   const { theme, setTheme } = useTheme();
@@ -21,111 +20,88 @@ export function SettingsView() {
   } = useSettingsStore();
 
   return (
-    <main className="mx-auto w-full max-w-2xl p-8">
-      <h1 className="text-2xl font-semibold">Einstellungen</h1>
-
-      <div className="mt-8 space-y-6">
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div>
-            <p className="text-sm font-medium">Erscheinungsbild</p>
-            <p className="text-sm text-muted-foreground">Wähle ein Theme für die Anwendung</p>
-          </div>
-          <ToggleGroup
-            type="single"
-            value={theme}
-            onValueChange={(val) => {
-              if (val) setTheme(val);
-            }}
-            variant="outline"
-            spacing={0}
+    <main className="workspace-canvas h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-2xl px-6 py-8">
+        <h1 className="text-2xl font-semibold tracking-tight">Einstellungen</h1>
+        <div className="mt-6 space-y-3">
+          <SettingsRow title="Erscheinungsbild" description="Hell, dunkel oder dem System folgen.">
+            <SegmentedControl
+              value={(theme ?? "system") as "light" | "system" | "dark"}
+              onChange={setTheme}
+              label="Erscheinungsbild"
+              options={[
+                { value: "light", label: "Hell" },
+                { value: "system", label: "System" },
+                { value: "dark", label: "Dunkel" },
+              ]}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title="Zeilenlimit"
+            description="Maximale Zeilen pro Seite, 10 bis 5000."
           >
-            <ToggleGroupItem value="light" aria-label="Hell">
-              <Sun className="size-4" />
-              <span>Hell</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem value="system" aria-label="System">
-              <Monitor className="size-4" />
-              <span>System</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem value="dark" aria-label="Dunkel">
-              <Moon className="size-4" />
-              <span>Dunkel</span>
-            </ToggleGroupItem>
-          </ToggleGroup>
+            <Input
+              type="number"
+              min={10}
+              max={5000}
+              step={50}
+              aria-label="Zeilenlimit"
+              value={rowLimit}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10);
+                if (!Number.isNaN(value) && value >= 10 && value <= 5000) setRowLimit(value);
+              }}
+              className="h-9 w-[4.5rem] text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title="Editor-Schriftgröße"
+            description="Schriftgröße im Abfrage-Editor, 10 bis 24 Pixel."
+          >
+            <Input
+              type="number"
+              min={10}
+              max={24}
+              step={1}
+              aria-label="Editor-Schriftgröße"
+              value={editorFontSize}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10);
+                if (!Number.isNaN(value) && value >= 10 && value <= 24) setEditorFontSize(value);
+              }}
+              className="h-9 w-[4.5rem] text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title="Query-Timeout"
+            description="Maximale Ausführungszeit, 5 bis 300 Sekunden."
+          >
+            <Input
+              type="number"
+              min={5}
+              max={300}
+              step={5}
+              aria-label="Query-Timeout"
+              value={queryTimeout}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10);
+                if (!Number.isNaN(value) && value >= 5 && value <= 300) setQueryTimeout(value);
+              }}
+              className="h-9 w-[4.5rem] text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title="Neue SSH-Host-Keys akzeptieren"
+            description="Unbekannte Server-Keys beim ersten Verbinden speichern."
+          >
+            <Switch
+              checked={sshTrustNewHosts}
+              onCheckedChange={setSshTrustNewHosts}
+              aria-label="Neue SSH-Host-Keys akzeptieren"
+            />
+          </SettingsRow>
+          <UpdateSection />
         </div>
-
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div>
-            <p className="text-sm font-medium">Zeilenlimit</p>
-            <p className="text-sm text-muted-foreground">
-              Maximale Anzahl Zeilen pro Seite (10 – 5000)
-            </p>
-          </div>
-          <Input
-            type="number"
-            min={10}
-            max={5000}
-            step={50}
-            value={rowLimit}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (!Number.isNaN(v) && v >= 10 && v <= 5000) setRowLimit(v);
-            }}
-            className="w-24 text-right"
-          />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div>
-            <p className="text-sm font-medium">Editor-Schriftgröße</p>
-            <p className="text-sm text-muted-foreground">
-              Schriftgröße im SQL-Editor in Pixeln (10 – 24)
-            </p>
-          </div>
-          <Input
-            type="number"
-            min={10}
-            max={24}
-            step={1}
-            value={editorFontSize}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (!Number.isNaN(v) && v >= 10 && v <= 24) setEditorFontSize(v);
-            }}
-            className="w-24 text-right"
-          />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div>
-            <p className="text-sm font-medium">Query-Timeout</p>
-            <p className="text-sm text-muted-foreground">
-              Maximale Ausführungszeit für Abfragen in Sekunden (5 – 300)
-            </p>
-          </div>
-          <Input
-            type="number"
-            min={5}
-            max={300}
-            step={5}
-            value={queryTimeout}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (!Number.isNaN(v) && v >= 5 && v <= 300) setQueryTimeout(v);
-            }}
-            className="w-24 text-right"
-          />
-        </div>
-        <div className="flex items-center justify-between rounded-lg border border-border p-4">
-          <div>
-            <p className="text-sm font-medium">Neue SSH-Host-Keys akzeptieren</p>
-            <p className="text-sm text-muted-foreground">
-              Unbekannte Server-Keys beim ersten Verbinden in known_hosts speichern (TOFU)
-            </p>
-          </div>
-          <Switch checked={sshTrustNewHosts} onCheckedChange={setSshTrustNewHosts} />
-        </div>
-        <UpdateSection />
       </div>
     </main>
   );

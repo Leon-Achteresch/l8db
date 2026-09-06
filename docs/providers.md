@@ -16,7 +16,7 @@ Die Registry lebt in `src-tauri/src/db/provider.rs` und ist die einzige Quelle d
 | `mongodb` | MongoDB, Atlas, DocumentDB, Cosmos DB (Mongo), FerretDB | `mongodb` (eingebettet) | keine |
 | `redis` | Redis, Valkey, KeyDB, Dragonfly | `redis` (eingebettet) | keine |
 | `cassandra` | Cassandra, ScyllaDB | `scylla` (eingebettet) | keine |
-| `oracle` | Oracle Database | `oracle` (ODPI-C, lädt den Instant Client zur Laufzeit) | Instant Client: `brew install instantclient-basic` bzw. Download, siehe Hinweis im Editor |
+| `oracle` | Oracle Database | `oracle` (ODPI-C, lädt den Instant Client zur Laufzeit) | Instant Client: `brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic` bzw. Download, siehe Hinweis im Editor |
 | `duckdb` | DuckDB | `duckdb` (bundled), Cargo-Feature `duckdb` | Build mit `cargo tauri build --features duckdb` |
 | `odbc` | DB2, Firebird, Informix, Sybase, HANA, Teradata, Snowflake, BigQuery, Databricks, Athena, Vertica, Exasol, Trino, Hive, Netezza, Access, generisch | `odbc-api`, Cargo-Feature `odbc` | unixODBC (`brew install unixodbc` / `apt install unixodbc`) plus Hersteller-Treiber |
 
@@ -49,6 +49,10 @@ Eine neue Familie:
 3. Dispatch-Arm in `create_adapter_from_string` in `mod.rs`. Verbindungen oder Clients werden über `PoolManager::shared::<T>(key, init)` pro Verbindungsschlüssel gecacht; synchrone Treiber laufen in `spawn_blocking`.
 4. `DatabaseKind` im Frontend (`src/lib/db.ts`) erweitern. Weitere Frontend-Änderungen sind nicht nötig.
 5. Treiber, der zur Laufzeit geladen oder als Feature gebaut wird: `Driver::RuntimeLibrary` / `Driver::CargoFeature` verwenden und in `driver_status` erkennen, damit der Editor Installationshinweise anzeigt.
+
+## Treiber-Seite
+
+Die Seite `/drivers` listet alle Treiberfamilien mit Status. Fehlende Treiber mit `install_command` lassen sich per `install_driver` direkt installieren (nur allowlistete Befehle, 10-Minuten-Limit). Auf macOS wird der Oracle-Tap vorher per `brew trust` freigegeben. Wird der Treiber nach erfolgreicher Installation noch nicht erkannt, weist das Ergebnis auf einen App-Neustart hin.
 
 ## Smoke-Tests
 

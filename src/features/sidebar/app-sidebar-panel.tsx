@@ -200,9 +200,9 @@ export function AppSidebarPanel() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              <DatabaseIcon className="size-4 shrink-0 text-muted-foreground" />
+              <DatabaseIcon className="size-4 shrink-0 text-primary" />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="truncate">
                   {activeConnection ? activeConnection.name : "Keine Verbindung"}

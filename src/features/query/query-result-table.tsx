@@ -10,7 +10,7 @@ interface QueryResultTableProps {
 export function QueryResultTable({ result, isLoading, error }: QueryResultTableProps) {
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-card/40">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <svg
             className="size-4 animate-spin"
@@ -42,8 +42,10 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
 
   if (error) {
     return (
-      <div className="flex h-full flex-col items-start gap-2 overflow-auto p-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-destructive">Fehler</span>
+      <div className="flex h-full flex-col items-start gap-2 overflow-auto p-5">
+        <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive">
+          Fehler
+        </span>
         <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">{error}</pre>
       </div>
     );
@@ -51,11 +53,11 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
 
   if (!result) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-card/30">
         <p className="text-sm text-muted-foreground">
           Drücke{" "}
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">⌘ Enter</kbd> um
-          die Abfrage auszuführen.
+          <kbd className="rounded-full border bg-muted px-2 py-0.5 font-mono text-xs">⌘ Enter</kbd>{" "}
+          um die Abfrage auszuführen.
         </p>
       </div>
     );
@@ -63,7 +65,7 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
 
   if (result.columns.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-card/30">
         <p className="text-sm text-muted-foreground">
           {result.rows_affected !== null && result.rows_affected !== undefined
             ? `${result.rows_affected} Zeile${result.rows_affected === 1 ? "" : "n"} betroffen`
@@ -84,7 +86,7 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
             {result.columns.map((col) => (
               <th
                 key={col}
-                className="border-b border-r bg-muted px-3 py-1.5 text-left text-xs font-medium text-foreground"
+                className="border-b border-r bg-muted/90 px-3 py-1.5 text-left text-xs font-semibold text-foreground"
               >
                 {col}
               </th>

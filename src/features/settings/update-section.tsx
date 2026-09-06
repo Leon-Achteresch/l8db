@@ -2,6 +2,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SettingsRow } from "@/features/settings/settings-row";
 import { checkForUpdates, installUpdateAndRelaunch } from "@/lib/updater";
 
 type Status =
@@ -36,21 +37,21 @@ export function UpdateSection() {
     }
   }
 
+  const description =
+    status.kind === "available"
+      ? `Version ${status.update.version} ist verfügbar`
+      : status.kind === "current"
+        ? "Du nutzt die aktuelle Version"
+        : status.kind === "downloading"
+          ? `Update wird installiert … ${status.percent} %`
+          : status.kind === "failed"
+            ? status.message
+            : "Automatisch über GitHub Releases";
+
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
-      <div>
-        <p className="text-sm font-medium">Updates</p>
-        <p className="text-sm text-muted-foreground">
-          {status.kind === "available" && `Version ${status.update.version} ist verfügbar`}
-          {status.kind === "current" && "Du nutzt die aktuelle Version"}
-          {status.kind === "downloading" && `Update wird installiert … ${status.percent} %`}
-          {status.kind === "failed" && status.message}
-          {(status.kind === "idle" || status.kind === "checking") &&
-            "Automatisch über GitHub Releases"}
-        </p>
-      </div>
+    <SettingsRow title="Updates" description={description}>
       {status.kind === "available" ? (
-        <Button onClick={() => onInstall(status.update)}>Installieren & neu starten</Button>
+        <Button onClick={() => onInstall(status.update)}>Installieren</Button>
       ) : (
         <Button
           variant="outline"
@@ -61,6 +62,6 @@ export function UpdateSection() {
           <span>{status.kind === "checking" ? "Prüfe …" : "Nach Updates suchen"}</span>
         </Button>
       )}
-    </div>
+    </SettingsRow>
   );
 }

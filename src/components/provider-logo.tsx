@@ -171,14 +171,15 @@ export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps)
   const slug = (providerId ? PROVIDER_SLUG[providerId] : undefined) ?? (kind ? KIND_SLUG[kind] : null) ?? null;
   const icon = slug ? ICONS[slug] : undefined;
   if (!icon) return <Database className={cn("size-4 shrink-0", className)} aria-hidden />;
+  const svg = icon.svg.replace(/fill="#(?:fff|ffffff)"/gi, 'fill="currentColor"');
   return (
     <span
       aria-hidden
       className={cn(
-        "inline-flex size-4 shrink-0 items-center justify-center [&_svg]:h-full [&_svg]:w-full",
+        "inline-flex size-4 shrink-0 items-center justify-center text-foreground [&_svg]:h-full [&_svg]:w-full",
         className,
       )}
-      dangerouslySetInnerHTML={{ __html: icon.svg }}
+      dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
 }

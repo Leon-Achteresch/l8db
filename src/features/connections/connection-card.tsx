@@ -1,6 +1,7 @@
 import { ArrowUpRight, LockKeyhole, Pencil, Trash2, Unplug } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
+import { DriverDetail } from "@/components/driver-detail";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
@@ -82,11 +83,13 @@ export function ConnectionCard({
       <div className="flex items-center justify-between border-t pt-3">
         <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
           <LockKeyhole className="size-3" />
-          {!provider.capabilities.ssl
-            ? provider.driver_status.detail
-            : connection.sslMode === "disable"
-              ? "TLS deaktiviert"
-              : `TLS · ${connection.sslMode}`}
+          {!provider.capabilities.ssl ? (
+            <DriverDetail detail={provider.driver_status.detail} iconClassName="size-3" />
+          ) : connection.sslMode === "disable" ? (
+            "TLS deaktiviert"
+          ) : (
+            `TLS · ${connection.sslMode}`
+          )}
         </span>
         <div className="flex items-center gap-1">
           <Button

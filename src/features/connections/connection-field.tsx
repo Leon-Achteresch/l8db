@@ -8,11 +8,11 @@ interface Props extends ComponentProps<typeof Input> {
 
 export function ConnectionField({ label, id, ...props }: Props) {
   return (
-    <div className="grid min-w-0 gap-2">
+    <div className="grid min-w-0 gap-1">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
       </Label>
-      <Input id={id} className="h-10 rounded-lg bg-background/70" {...props} />
+      <Input id={id} className="h-9 rounded-xl bg-background/70" {...props} />
     </div>
   );
 }
