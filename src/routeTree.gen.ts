@@ -36,6 +36,7 @@ import { Route as AppWorkspaceQueryIdRouteImport } from './routes/_app._workspac
 import { Route as AppWorkspaceExtensionsNameRouteImport } from './routes/_app._workspace.extensions.$name'
 import { Route as AppWorkspaceViewEditorSchemaViewRouteImport } from './routes/_app._workspace.view-editor.$schema.$view'
 import { Route as AppWorkspaceTablesSchemaTableRouteImport } from './routes/_app._workspace.tables.$schema.$table'
+import { Route as AppWorkspaceProceduresSchemaNameRouteImport } from './routes/_app._workspace.procedures.$schema.$name'
 import { Route as AppWorkspacePackagesSchemaNameRouteImport } from './routes/_app._workspace.packages.$schema.$name'
 import { Route as AppWorkspaceMatviewsSchemaNameRouteImport } from './routes/_app._workspace.matviews.$schema.$name'
 import { Route as AppWorkspaceFunctionsSchemaNameRouteImport } from './routes/_app._workspace.functions.$schema.$name'
@@ -179,6 +180,12 @@ const AppWorkspaceTablesSchemaTableRoute =
     path: '/tables/$schema/$table',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
+const AppWorkspaceProceduresSchemaNameRoute =
+  AppWorkspaceProceduresSchemaNameRouteImport.update({
+    id: '/procedures/$schema/$name',
+    path: '/procedures/$schema/$name',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
 const AppWorkspacePackagesSchemaNameRoute =
   AppWorkspacePackagesSchemaNameRouteImport.update({
     id: '/packages/$schema/$name',
@@ -237,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
+  '/procedures/$schema/$name': typeof AppWorkspaceProceduresSchemaNameRoute
   '/tables/$schema/$table': typeof AppWorkspaceTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppWorkspaceViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppWorkspaceTriggersSchemaTableTriggerRoute
@@ -267,6 +275,7 @@ export interface FileRoutesByTo {
   '/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
+  '/procedures/$schema/$name': typeof AppWorkspaceProceduresSchemaNameRoute
   '/tables/$schema/$table': typeof AppWorkspaceTablesSchemaTableRoute
   '/view-editor/$schema/$view': typeof AppWorkspaceViewEditorSchemaViewRoute
   '/triggers/$schema/$table/$trigger': typeof AppWorkspaceTriggersSchemaTableTriggerRoute
@@ -302,6 +311,7 @@ export interface FileRoutesById {
   '/_app/_workspace/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/_app/_workspace/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/_app/_workspace/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
+  '/_app/_workspace/procedures/$schema/$name': typeof AppWorkspaceProceduresSchemaNameRoute
   '/_app/_workspace/tables/$schema/$table': typeof AppWorkspaceTablesSchemaTableRoute
   '/_app/_workspace/view-editor/$schema/$view': typeof AppWorkspaceViewEditorSchemaViewRoute
   '/_app/_workspace/triggers/$schema/$table/$trigger': typeof AppWorkspaceTriggersSchemaTableTriggerRoute
@@ -335,6 +345,7 @@ export interface FileRouteTypes {
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
     | '/packages/$schema/$name'
+    | '/procedures/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -365,6 +376,7 @@ export interface FileRouteTypes {
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
     | '/packages/$schema/$name'
+    | '/procedures/$schema/$name'
     | '/tables/$schema/$table'
     | '/view-editor/$schema/$view'
     | '/triggers/$schema/$table/$trigger'
@@ -399,6 +411,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/functions/$schema/$name'
     | '/_app/_workspace/matviews/$schema/$name'
     | '/_app/_workspace/packages/$schema/$name'
+    | '/_app/_workspace/procedures/$schema/$name'
     | '/_app/_workspace/tables/$schema/$table'
     | '/_app/_workspace/view-editor/$schema/$view'
     | '/_app/_workspace/triggers/$schema/$table/$trigger'
@@ -604,6 +617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceTablesSchemaTableRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/procedures/$schema/$name': {
+      id: '/_app/_workspace/procedures/$schema/$name'
+      path: '/procedures/$schema/$name'
+      fullPath: '/procedures/$schema/$name'
+      preLoaderRoute: typeof AppWorkspaceProceduresSchemaNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/packages/$schema/$name': {
       id: '/_app/_workspace/packages/$schema/$name'
       path: '/packages/$schema/$name'
@@ -686,6 +706,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceFunctionsSchemaNameRoute: typeof AppWorkspaceFunctionsSchemaNameRoute
   AppWorkspaceMatviewsSchemaNameRoute: typeof AppWorkspaceMatviewsSchemaNameRoute
   AppWorkspacePackagesSchemaNameRoute: typeof AppWorkspacePackagesSchemaNameRoute
+  AppWorkspaceProceduresSchemaNameRoute: typeof AppWorkspaceProceduresSchemaNameRoute
   AppWorkspaceTablesSchemaTableRoute: typeof AppWorkspaceTablesSchemaTableRoute
   AppWorkspaceViewEditorSchemaViewRoute: typeof AppWorkspaceViewEditorSchemaViewRoute
   AppWorkspaceTriggersSchemaTableTriggerRoute: typeof AppWorkspaceTriggersSchemaTableTriggerRoute
@@ -711,6 +732,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceFunctionsSchemaNameRoute: AppWorkspaceFunctionsSchemaNameRoute,
   AppWorkspaceMatviewsSchemaNameRoute: AppWorkspaceMatviewsSchemaNameRoute,
   AppWorkspacePackagesSchemaNameRoute: AppWorkspacePackagesSchemaNameRoute,
+  AppWorkspaceProceduresSchemaNameRoute: AppWorkspaceProceduresSchemaNameRoute,
   AppWorkspaceTablesSchemaTableRoute: AppWorkspaceTablesSchemaTableRoute,
   AppWorkspaceViewEditorSchemaViewRoute: AppWorkspaceViewEditorSchemaViewRoute,
   AppWorkspaceTriggersSchemaTableTriggerRoute:

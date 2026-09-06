@@ -8,7 +8,8 @@ use oracle::{Connector, Row};
 use super::pool::PoolState;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
-    ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter, DatabaseOverview,
+    ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
+    DatabaseOverview, DebugSessionInfo,
     DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult, SchemaSize,
     SequenceInfo, SessionInfo, TableData, TableInfo, TriggerInfo,
 };
@@ -526,7 +527,7 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
-        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type IN ('FUNCTION', 'PROCEDURE', 'PACKAGE') AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type IN ('FUNCTION', 'PACKAGE') AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
         Ok(self
             .rows(sql)
             .await?
@@ -553,6 +554,108 @@ impl DatabaseAdapter for OracleAdapter {
             return Err("Quelltext nicht verfügbar".to_string());
         }
         Ok(rows.iter().map(|r| s(r, 0)).collect::<String>())
+    }
+
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type = 'PROCEDURE' AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| FunctionInfo {
+                oid: format!("{}\u{1f}{}\u{1f}{}", s(r, 0), s(r, 1), s(r, 2)),
+                schema: s(r, 0),
+                name: s(r, 1),
+                identity_args: String::new(),
+                return_type: "PROCEDURE".to_string(),
+                language: "PL/SQL".to_string(),
+            })
+            .collect())
+    }
+
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        let parts: Vec<&str> = oid.split('\u{1f}').collect();
+        if parts.len() != 3 {
+            return Err("Ungültige Objektreferenz".to_string());
+        }
+        let (owner, name) = (parts[0], parts[1]);
+        let (compile_kind, error_type) = match object_type {
+            "package_spec" => ("PACKAGE".to_string(), "PACKAGE".to_string()),
+            "package_body" => ("PACKAGE BODY".to_string(), "PACKAGE BODY".to_string()),
+            other => (other.to_uppercase(), other.to_uppercase()),
+        };
+        let compile_error = self
+            .exec(format!(
+                "ALTER {} {}.{} COMPILE",
+                compile_kind,
+                quote(owner),
+                quote(name)
+            ))
+            .await
+            .err();
+        let errors = self
+            .rows(format!(
+                "SELECT line, position, text FROM all_errors WHERE owner = {} AND name = {} AND type = {} ORDER BY sequence",
+                lit(owner),
+                lit(name),
+                lit(&error_type)
+            ))
+            .await?;
+        if errors.is_empty() {
+            if let Some(message) = compile_error {
+                return Err(message);
+            }
+            return Ok(CompileResult {
+                status: "VALID".to_string(),
+                message: None,
+                line: None,
+                position: None,
+            });
+        }
+        let line = s(&errors[0], 0).parse::<i32>().ok();
+        let position = s(&errors[0], 1).parse::<i32>().ok();
+        let message = errors
+            .iter()
+            .map(|r| format!("Zeile {}, Spalte {}: {}", s(r, 0), s(r, 1), s(r, 2)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(CompileResult {
+            status: "INVALID".to_string(),
+            message: Some(message),
+            line,
+            position,
+        })
+    }
+
+    async fn start_debug_session(
+        &self,
+        oid: &str,
+        object_type: &str,
+    ) -> Result<DebugSessionInfo, String> {
+        let _ = object_type;
+        let parts: Vec<&str> = oid.split('\u{1f}').collect();
+        if parts.len() != 3 {
+            return Err("Ungültige Objektreferenz".to_string());
+        }
+        let privileges = self
+            .rows(
+                "SELECT privilege FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'"
+                    .to_string(),
+            )
+            .await?;
+        if privileges.is_empty() {
+            return Ok(DebugSessionInfo {
+                available: false,
+                message: "Keine Debug-Rechte: DEBUG CONNECT SESSION fehlt. Ohne dieses Recht ist keine Debug-Sitzung möglich; eine direkte Ausführung erfolgt nicht.".to_string(),
+            });
+        }
+        Ok(DebugSessionInfo {
+            available: false,
+            message: format!(
+                "Debug-Rechte vorhanden. Die schrittweise Ausführung von {}.{} über DBMS_DEBUG ist noch nicht verfügbar.",
+                parts[0], parts[1]
+            ),
+        })
     }
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {

@@ -19,6 +19,7 @@ import {
   RadioIcon,
   SearchIcon,
   SettingsIcon,
+  SquareFunctionIcon,
   SquareTerminalIcon,
   StarIcon,
   StarOffIcon,
@@ -95,8 +96,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCompileObject } from "@/features/functions/use-compile-object";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
+import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -114,11 +117,13 @@ import {
   useDbSelectionStore,
 } from "@/lib/db-selection";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
+import { packageOid } from "@/lib/plsql";
 import {
   useColumnsQuery,
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useProceduresQuery,
   useMaterializedViewsQuery,
   useRolesQuery,
   useSchemasQuery,
@@ -169,6 +174,12 @@ export function AppSidebarPanel() {
     error: functionsErrorValue,
   } = useFunctionsQuery();
   const {
+    data: procedures,
+    isLoading: proceduresLoading,
+    isError: proceduresError,
+    error: proceduresErrorValue,
+  } = useProceduresQuery();
+  const {
     data: extensions,
     isLoading: extensionsLoading,
     isError: extensionsError,
@@ -191,7 +202,15 @@ export function AppSidebarPanel() {
   const { data: matviews } = useMaterializedViewsQuery();
 
   const [selectedTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "packages" | "extensions" | "roles" | "sequences"
+    | "tables"
+    | "views"
+    | "queries"
+    | "functions"
+    | "procedures"
+    | "packages"
+    | "extensions"
+    | "roles"
+    | "sequences"
   >("tables");
   const caps = useActiveCapabilities();
   const packages = functions?.filter((f) => f.return_type === "PACKAGE");
@@ -200,6 +219,12 @@ export function AppSidebarPanel() {
     { value: "tables", label: "Tabellen", icon: TableIcon, enabled: true },
     { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
     { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
+    {
+      value: "procedures",
+      label: "Prozeduren",
+      icon: SquareFunctionIcon,
+      enabled: caps.procedures,
+    },
     {
       value: "packages",
       label: "Packages",
@@ -412,15 +437,17 @@ export function AppSidebarPanel() {
                 ? "Views"
                 : sidebarTab === "functions"
                   ? "Funktionen"
-                  : sidebarTab === "packages"
-                    ? "Packages"
-                    : sidebarTab === "extensions"
+                  : sidebarTab === "procedures"
+                    ? "Prozeduren"
+                    : sidebarTab === "packages"
                       ? "Packages"
-                      : sidebarTab === "roles"
-                        ? "Benutzer & Rollen"
-                        : sidebarTab === "sequences"
-                          ? "Sequenzen"
-                          : "Gespeicherte Queries"}
+                      : sidebarTab === "extensions"
+                        ? "Packages"
+                        : sidebarTab === "roles"
+                          ? "Benutzer & Rollen"
+                          : sidebarTab === "sequences"
+                            ? "Sequenzen"
+                            : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction
@@ -463,6 +490,13 @@ export function AppSidebarPanel() {
                 isLoading={functionsLoading}
                 isError={functionsError}
                 error={functionsErrorValue}
+              />
+            ) : sidebarTab === "procedures" ? (
+              <SidebarProcedureList
+                items={procedures}
+                isLoading={proceduresLoading}
+                isError={proceduresError}
+                error={proceduresErrorValue}
               />
             ) : sidebarTab === "packages" ? (
               <SidebarPackageList
@@ -944,6 +978,8 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
+  const caps = useActiveCapabilities();
+  const { compile } = useCompileObject();
 
   if (isLoading) {
     return (
@@ -966,42 +1002,86 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
     <SidebarMenu>
       {items.map((item) => (
         <SidebarMenuItem key={item.oid}>
-          <SidebarMenuButton
-            onClick={() => {
-              if (item.return_type === "PACKAGE") {
-                openPackageTab({ schema: item.schema, name: item.name });
-                navigate({
-                  to: "/packages/$schema/$name",
-                  params: { schema: item.schema, name: item.name },
-                });
-                return;
-              }
-              openFunctionTab({
-                schema: item.schema,
-                name: item.name,
-                oid: item.oid,
-              });
-              navigate({
-                to: "/functions/$schema/$name",
-                params: { schema: item.schema, name: item.name },
-                search: { oid: item.oid },
-              });
-            }}
-          >
-            {item.return_type === "PACKAGE" ? (
-              <PackageIcon className="text-muted-foreground" />
-            ) : (
-              <BracesIcon className="text-muted-foreground" />
-            )}
-            <span className="truncate">
-              {item.name}
-              {item.return_type === "PACKAGE"
-                ? ""
-                : item.identity_args
-                  ? `(${item.identity_args})`
-                  : "()"}
-            </span>
-          </SidebarMenuButton>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <SidebarMenuButton
+                onClick={() => {
+                  if (item.return_type === "PACKAGE") {
+                    openPackageTab({ schema: item.schema, name: item.name });
+                    navigate({
+                      to: "/packages/$schema/$name",
+                      params: { schema: item.schema, name: item.name },
+                    });
+                    return;
+                  }
+                  openFunctionTab({
+                    schema: item.schema,
+                    name: item.name,
+                    oid: item.oid,
+                  });
+                  navigate({
+                    to: "/functions/$schema/$name",
+                    params: { schema: item.schema, name: item.name },
+                    search: { oid: item.oid },
+                  });
+                }}
+              >
+                {item.return_type === "PACKAGE" ? (
+                  <PackageIcon className="text-muted-foreground" />
+                ) : (
+                  <BracesIcon className="text-muted-foreground" />
+                )}
+                <span className="truncate">
+                  {item.name}
+                  {item.return_type === "PACKAGE"
+                    ? ""
+                    : item.identity_args
+                      ? `(${item.identity_args})`
+                      : "()"}
+                </span>
+              </SidebarMenuButton>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              {caps.compile_objects ? (
+                item.return_type === "PACKAGE" ? (
+                  <>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(
+                          packageOid(item.schema, item.name, "spec"),
+                          "package_spec",
+                          `${item.schema}.${item.name} (Spec)`,
+                        );
+                      }}
+                    >
+                      Spec kompilieren
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(
+                          packageOid(item.schema, item.name, "body"),
+                          "package_body",
+                          `${item.schema}.${item.name} (Body)`,
+                        );
+                      }}
+                    >
+                      Body kompilieren
+                    </ContextMenuItem>
+                  </>
+                ) : (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      void compile(item.oid, "function", `${item.schema}.${item.name}`);
+                    }}
+                  >
+                    Kompilieren
+                  </ContextMenuItem>
+                )
+              ) : (
+                <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         </SidebarMenuItem>
       ))}
     </SidebarMenu>

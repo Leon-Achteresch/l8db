@@ -163,6 +163,14 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
                       className="flex w-full flex-col gap-1 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                       onClick={() => {
                         close();
+                        if (match.object_type === "procedure") {
+                          void navigate({
+                            to: "/procedures/$schema/$name",
+                            params: { schema: match.schema, name: match.name },
+                            search: { oid: match.oid, line: match.line },
+                          });
+                          return;
+                        }
                         if (match.object_type === "routine") {
                           void navigate({
                             to: "/functions/$schema/$name",
@@ -178,7 +186,7 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
                       }}
                     >
                       <span className="flex items-center gap-2">
-                        {match.object_type === "routine" ? (
+                        {match.object_type === "routine" || match.object_type === "procedure" ? (
                           <BracesIcon className="size-4 shrink-0 text-muted-foreground" />
                         ) : (
                           <EyeIcon className="size-4 shrink-0 text-muted-foreground" />

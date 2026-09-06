@@ -48,6 +48,8 @@ function tabVisual(tab: Tab) {
       return { Icon: SquareTerminalIcon, iconColor: "text-sky-500" };
     case "function":
       return { Icon: BracesIcon, iconColor: "text-violet-500" };
+    case "procedure":
+      return { Icon: BracesIcon, iconColor: "text-fuchsia-500" };
     case "extension":
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
     case "package":
@@ -93,7 +95,7 @@ export function TableTabsSortableTab({
       ? tab.table
       : tab.kind === "query"
         ? tab.title
-        : tab.kind === "function"
+        : tab.kind === "function" || tab.kind === "procedure"
           ? tab.name
           : tab.kind === "trigger"
             ? tab.trigger
