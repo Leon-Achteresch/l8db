@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseInline, parseMarkdown } from "../src/lib/markdown";
+import { extractHighlights, parseInline, parseMarkdown } from "../src/lib/markdown";
 
 describe("parseMarkdown", () => {
   test("wandelt Changelog-Markdown in Überschriften und Listen um", () => {
@@ -15,6 +15,12 @@ describe("parseMarkdown", () => {
         items: [[{ t: "text", v: "custom icons" }], [{ t: "text", v: "Speichern per Slide-Button" }]],
       },
     ]);
+  });
+
+  test("zieht die ersten Changelog-Punkte als Highlights", () => {
+    expect(
+      extractHighlights("## Changelog\n- custom icons\n- Speichern per Slide-Button\n- dritter\n- vierter"),
+    ).toEqual(["custom icons", "Speichern per Slide-Button", "dritter"]);
   });
 
   test("parst Links nur mit Ziel-URL", () => {
