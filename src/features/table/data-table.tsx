@@ -49,6 +49,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
 import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
+import { DataTableHeaderName } from "@/features/table/data-table-header-name";
 import { useActiveConnection } from "@/lib/connections";
 import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -512,9 +513,7 @@ export function DataTable({
                   disabled={isFetching}
                   className="group flex items-center gap-1 rounded-sm px-1 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink"
                 >
-                  <span className="truncate font-mono font-semibold text-[12px] tracking-tight text-foreground/80">
-                    {column}
-                  </span>
+                  <DataTableHeaderName name={column} />
                   <span
                     className={cn(
                       "shrink-0 text-muted-foreground transition-colors",
