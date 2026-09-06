@@ -32,7 +32,9 @@ export function ProviderTile({ provider, selected, onSelect }: Props) {
       <span className="grid size-8 place-items-center rounded-xl bg-background shadow-sm ring-1 ring-border/70">
         <ProviderLogo providerId={provider.id} kind={provider.kind} className="size-5" />
       </span>
-      <span className="w-full truncate text-[11px] font-semibold leading-tight">{provider.name}</span>
+      <span className="w-full truncate text-[11px] font-semibold leading-tight">
+        {provider.name}
+      </span>
       {!provider.driver_status.available && (
         <span className="absolute right-2 top-2 text-[9px] font-medium text-amber-700 dark:text-amber-300">
           Treiber

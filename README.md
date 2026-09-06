@@ -145,7 +145,8 @@ src-tauri/src/
 ## Operations
 
 - `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).
-- Releases: push a `v*` tag — GitHub Actions builds installers for macOS, Windows, and Linux plus `latest.json` for the in-app auto-updater. Full runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+- Releases: every push to `main` auto-publishes installers for macOS (Universal DMG), Windows (MSI/NSIS), and Linux (deb/AppImage) plus `latest.json` for the in-app auto-updater — version (`<major>.<minor>.<commit-count>`) and changelog are generated from Conventional Commits. Full runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+- OS package managers (Homebrew, winget, AUR, Flatpak): templates in [`packaging/`](packaging/), guide in [`packaging/README.md`](packaging/README.md).
 - `SECURITY.md` describes supported versions and how to report vulnerabilities.
 
 ---

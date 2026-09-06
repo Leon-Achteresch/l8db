@@ -18,20 +18,11 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  EASE_IN_OUT,
-  EASE_OUT,
-  SPRING_PANEL,
-  SPRING_SWAP,
-} from "@/lib/ease";
+import { EASE_IN_OUT, EASE_OUT, SPRING_PANEL, SPRING_SWAP } from "@/lib/ease";
 import { capturePointer, TOUCH_GESTURE_CONTENT_CLASS } from "@/lib/touch";
 import { cn } from "@/lib/utils";
 
-export type PullToRefreshStatus =
-  | "idle"
-  | "pulling"
-  | "ready"
-  | "refreshing";
+export type PullToRefreshStatus = "idle" | "pulling" | "ready" | "refreshing";
 
 export interface PullToRefreshProps {
   /** Runs after the user pulls beyond the threshold and releases. */
@@ -149,14 +140,7 @@ function RefreshBuddy({
           <circle cx="31.3" cy="10.2" r="2.2" className="fill-foreground" />
         </motion.g>
 
-        <rect
-          x="7"
-          y="7"
-          width="22"
-          height="22"
-          rx="9"
-          className="fill-foreground"
-        />
+        <rect x="7" y="7" width="22" height="22" rx="9" className="fill-foreground" />
 
         <motion.g
           style={{ opacity: 1, transformOrigin: "18px 16px" }}
@@ -237,17 +221,10 @@ export function PullToRefresh({
   const reduce = useReducedMotion();
   const pullThreshold = Math.max(24, threshold);
   const pullLimit = Math.max(maxPull, pullThreshold + 24);
-  const restingDistance = Math.min(
-    Math.max(0, holdDistance),
-    pullThreshold,
-  );
+  const restingDistance = Math.min(Math.max(0, holdDistance), pullThreshold);
   const y = useMotionValue(0);
   const progress = useTransform(y, [0, pullThreshold], [0, 1]);
-  const indicatorOpacity = useTransform(
-    y,
-    [0, 10, pullThreshold],
-    [0, 0.45, 1],
-  );
+  const indicatorOpacity = useTransform(y, [0, 10, pullThreshold], [0, 0.45, 1]);
   const indicatorScale = useTransform(y, [0, pullThreshold], [0.86, 1]);
   const isRefreshing = refreshing || internalRefreshing;
 
@@ -310,9 +287,7 @@ export function PullToRefresh({
 
   const finishPull = useCallback(() => {
     const shouldRefresh =
-      y.get() >= pullThreshold &&
-      !disabledRef.current &&
-      !refreshingRef.current;
+      y.get() >= pullThreshold && !disabledRef.current && !refreshingRef.current;
 
     gestureRef.current = { ...EMPTY_GESTURE };
 
@@ -437,11 +412,7 @@ export function PullToRefresh({
   };
 
   const label =
-    status === "refreshing"
-      ? refreshingLabel
-      : status === "ready"
-        ? releaseLabel
-        : pullingLabel;
+    status === "refreshing" ? refreshingLabel : status === "ready" ? releaseLabel : pullingLabel;
 
   return (
     <section
@@ -468,9 +439,7 @@ export function PullToRefresh({
         // only the pull itself suppresses selection, and only while it runs,
         // so dragging the page down cannot highlight it on the way.
         TOUCH_GESTURE_CONTENT_CLASS,
-        status === "pulling" || status === "ready"
-          ? "cursor-grabbing select-none"
-          : "cursor-grab",
+        status === "pulling" || status === "ready" ? "cursor-grabbing select-none" : "cursor-grab",
         (disabled || isRefreshing) && "cursor-default",
         className,
       )}
@@ -488,11 +457,7 @@ export function PullToRefresh({
           indicatorClassName,
         )}
       >
-        <RefreshBuddy
-          progress={progress}
-          status={status}
-          reduce={Boolean(reduce)}
-        />
+        <RefreshBuddy progress={progress} status={status} reduce={Boolean(reduce)} />
         <span className="relative h-4 min-w-24 text-center">
           <AnimatePresence initial={false} mode="wait">
             <motion.span

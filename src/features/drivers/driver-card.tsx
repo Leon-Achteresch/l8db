@@ -29,8 +29,7 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
           {available ? "Bereit" : "Fehlt"}
         </Badge>
         <span className="ml-auto text-xs text-muted-foreground">
-          {summary.providers.length}{" "}
-          {summary.providers.length === 1 ? "Anbieter" : "Anbieter"}
+          {summary.providers.length} {summary.providers.length === 1 ? "Anbieter" : "Anbieter"}
         </span>
       </div>
 
@@ -109,11 +108,7 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
             disabled={busy}
             onClick={() => onInstall(summary.kind)}
           >
-            {installing ? (
-              <Spinner className="size-3" />
-            ) : (
-              <Download className="size-3" />
-            )}
+            {installing ? <Spinner className="size-3" /> : <Download className="size-3" />}
             {installing ? "Installieren …" : "Installieren"}
           </Button>
         )}

@@ -214,10 +214,7 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
                           })
                         }
                       >
-                        <SelectTrigger
-                          size="sm"
-                          className="w-full min-w-0 sm:min-w-40 sm:flex-1"
-                        >
+                        <SelectTrigger size="sm" className="w-full min-w-0 sm:min-w-40 sm:flex-1">
                           <SelectValue placeholder="Spalte wählen…" />
                         </SelectTrigger>
                         <SelectContent position="popper">
@@ -237,10 +234,7 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
                           })
                         }
                       >
-                        <SelectTrigger
-                          size="sm"
-                          className="w-full min-w-0 sm:w-auto sm:min-w-44"
-                        >
+                        <SelectTrigger size="sm" className="w-full min-w-0 sm:w-auto sm:min-w-44">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent position="popper">

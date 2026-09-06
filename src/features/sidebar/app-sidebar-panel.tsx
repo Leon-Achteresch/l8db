@@ -28,6 +28,8 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
+import { ProviderLogo } from "@/components/provider-logo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,11 +89,12 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
+import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
   createMaterializedView,
@@ -213,7 +216,15 @@ export function AppSidebarPanel() {
               type="button"
               className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              <DatabaseIcon className="size-4 shrink-0 text-primary" />
+              {activeConnection ? (
+                <ProviderLogo
+                  providerId={providerFor(activeConnection).id}
+                  kind={activeConnection.kind}
+                  className="size-4"
+                />
+              ) : (
+                <DatabaseIcon className="size-4 shrink-0 text-primary" />
+              )}
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="truncate">
                   {activeConnection ? activeConnection.name : "Keine Verbindung"}
@@ -248,7 +259,7 @@ export function AppSidebarPanel() {
                     });
                   }}
                 >
-                  <DatabaseIcon className="text-muted-foreground" />
+                  <ProviderLogo providerId={providerFor(connection).id} kind={connection.kind} />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
                     <span className="truncate">{connection.name}</span>
                     {connection.tags?.map((tag, index) => (
@@ -285,13 +296,18 @@ export function AppSidebarPanel() {
                   disabled={databasesLoading}
                 >
                   <SelectTrigger size="sm" className="w-full">
-                    <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    {activeDatabase && databases?.includes(activeDatabase) ? null : (
+                      <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
                   <SelectContent>
                     {(databases ?? []).map((database) => (
                       <SelectItem key={database} value={database}>
-                        {database}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <DatabaseLogo name={database} kind={activeConnection.kind} />
+                          <span className="truncate">{database}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -317,13 +333,18 @@ export function AppSidebarPanel() {
                   disabled={schemasLoading}
                 >
                   <SelectTrigger size="sm" className="w-full">
-                    <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    {schemas?.includes(activeSchema) ? null : (
+                      <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
                   <SelectContent>
                     {(schemas ?? []).map((schema) => (
                       <SelectItem key={schema} value={schema}>
-                        {schema}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <SchemaLogo name={schema} />
+                          <span className="truncate">{schema}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

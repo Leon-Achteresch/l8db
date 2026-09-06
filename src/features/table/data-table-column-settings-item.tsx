@@ -39,11 +39,7 @@ export function DataTableColumnSettingsItem({
         <GripVerticalIcon className="size-3.5" />
       </button>
       <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-        <Checkbox
-          checked={checked}
-          disabled={disabled}
-          onCheckedChange={() => onToggle()}
-        />
+        <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => onToggle()} />
         <span className="truncate font-mono text-[12px]">{id}</span>
       </label>
     </div>

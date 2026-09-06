@@ -19,8 +19,8 @@ export function AboutStack() {
           Modern gebaut, bewusst schlank
         </h2>
         <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
-          Ein schlanker Rust-Kern für Verbindungen und Pools, ein schnelles React-Frontend
-          für alles andere. Keine Electron-Schwere, keine Cloud-Abhängigkeit.
+          Ein schlanker Rust-Kern für Verbindungen und Pools, ein schnelles React-Frontend für alles
+          andere. Keine Electron-Schwere, keine Cloud-Abhängigkeit.
         </p>
       </div>
       <div className="flex flex-wrap gap-2 px-6 py-6 sm:px-8 sm:pb-8">
@@ -32,10 +32,7 @@ export function AboutStack() {
             viewport={{ once: true, margin: "-30px" }}
             transition={{ duration: 0.35, delay: index * 0.05 }}
           >
-            <Badge
-              variant="secondary"
-              className="h-auto gap-2 rounded-2xl px-3.5 py-2 text-[13px]"
-            >
+            <Badge variant="secondary" className="h-auto gap-2 rounded-2xl px-3.5 py-2 text-[13px]">
               <span className="font-semibold text-foreground">{item.name}</span>
               <span className="font-normal text-muted-foreground">{item.detail}</span>
             </Badge>

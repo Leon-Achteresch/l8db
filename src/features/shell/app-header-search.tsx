@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Database, Search, Table } from "lucide-react";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
-import { CommandPalette, type CommandItem } from "@/components/motion/command-palette";
+import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useTablesQuery } from "@/lib/queries";
 import { activateConnectionWithToast } from "@/lib/ssh";

@@ -1,10 +1,4 @@
-import type {
-  DatabaseKind,
-  Driver,
-  DriverStatus,
-  InstallHint,
-  ProviderInfo,
-} from "@/lib/db";
+import type { DatabaseKind, Driver, DriverStatus, InstallHint, ProviderInfo } from "@/lib/db";
 
 export type PlatformOs = "macos" | "linux" | "windows" | "all";
 
@@ -34,9 +28,7 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
 };
 
 export function platformOs(platform?: string): PlatformOs {
-  const value =
-    platform ??
-    (typeof navigator !== "undefined" ? navigator.platform : "");
+  const value = platform ?? (typeof navigator !== "undefined" ? navigator.platform : "");
   if (/Mac|iPhone|iPad|iPod/i.test(value)) return "macos";
   if (/Win/i.test(value)) return "windows";
   if (/Linux/i.test(value)) return "linux";
@@ -90,8 +82,7 @@ export function summarizeDrivers(
   }
   for (const summary of summaries) {
     summary.hint = hintForPlatform(summary.status, os);
-    summary.installable =
-      !summary.status.available && summary.installCommand !== null;
+    summary.installable = !summary.status.available && summary.installCommand !== null;
   }
   return summaries;
 }

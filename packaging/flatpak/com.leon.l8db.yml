@@ -1,0 +1,108 @@
+# Flatpak-Manifest fuer l8db (App-ID = tauri.conf.json identifier: com.leon.l8db)
+#
+# Lokaler Bau/Test (nicht in dieser Umgebung durchgefuehrt, siehe LUECKEN):
+#   flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47
+#   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/com.leon.l8db.yml
+#   flatpak run com.leon.l8db
+#
+# PRO RELEASE ZU AKTUALISIEREN: url + sha256 der .deb-Quelle unten.
+#
+# ============================ BEKANNTE LUECKEN ============================
+# Dieses Manifest ist NICHT verifiziert - es gibt in dieser Umgebung weder
+# Linux-Runtime noch Netzzugriff. Vor einer Flathub-Submission muss Folgendes
+# geklaert werden:
+#
+# 1) WEBKIT-VERSION. Tauri 2 linkt auf Linux gegen webkit2gtk-4.1 (GTK3).
+#    Welche org.gnome.Platform-Version libwebkit2gtk-4.1.so noch mitbringt,
+#    muss geprueft werden, bevor die runtime-version festgezurrt wird:
+#      flatpak run --command=sh org.gnome.Sdk//47 -c \
+#        'ls /usr/lib/*/libwebkit2gtk-4.1.so* /usr/lib/*/libwebkitgtk-6.0.so* 2>/dev/null'
+#    Faellt 4.1 in 47 weg, auf //46 (oder //45) zuruecksetzen. Alternativ
+#    org.freedesktop.Platform + eigenes webkit-Modul, was den Build stark
+#    aufblaeht.
+#
+# 2) NETZWERK. Die App oeffnet TCP-Verbindungen zu Datenbankservern
+#    (--share=network unten) und lokale SSH-Tunnel-Loops (127.0.0.1:<port>).
+#    Beides funktioniert in der Sandbox, muss aber im Flathub-Review begruendet
+#    werden (Datenbankclient ohne Netzwerk ist nutzlos).
+#
+# 3) SECRET SERVICE. Passwoerter liegen im OS-Keychain (keyring-Crate,
+#    Linux: Secret-Service via D-Bus). Dafuer sind
+#    --talk-name=org.freedesktop.secrets und --filesystem=xdg-run/keyring
+#    gesetzt. SSH-Agent wird per --socket=ssh-auth durchgereicht.
+#
+# 4) AUTO-UPDATER. plugins.updater in tauri.conf.json zeigt auf latest.json.
+#    Im Flatpak muss der Updater deaktiviert sein (Flatpak aktualisiert selbst,
+#    das Bundle ist read-only). Erfordert einen Build-Schalter in der App.
+#
+# 5) APPSTREAM. Flathub verlangt com.leon.l8db.metainfo.xml inkl. Screenshots
+#    und Release-Eintraegen. Existiert im Repo nicht, muss also erst
+#    geschrieben werden. Der Build-Schritt unten installiert die Datei nur,
+#    wenn sie neben diesem Manifest liegt.
+#
+# 6) DATEISYSTEM. --filesystem=home deckt Exporte/CSVs im Home ab.
+#    SQLite-Dateien ausserhalb von $HOME (z.B. /srv, /mnt, externe Platten)
+#    brauchen --filesystem=host, was im Flathub-Review kritisch gesehen wird.
+#
+# 7) VORKOMPILIERTES BINARY. Ein aus dem .deb entpacktes Binary ist fuer
+#    Flathub nur eingeschraenkt akzeptabel; bevorzugt wird ein Build aus den
+#    Quellen (cargo- und node-Offline-Sources via flatpak-cargo-generator /
+#    flatpak-node-generator). Das ist der eigentliche Ausbauschritt.
+# =========================================================================
+
+app-id: com.leon.l8db
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: l8db
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+  - --filesystem=xdg-run/keyring
+  - --socket=ssh-auth
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: l8db
+    buildsystem: simple
+    build-commands:
+      - ar x l8db.deb
+      - tar -xf data.tar.* -C .
+      - install -Dm755 usr/bin/l8db /app/bin/l8db
+      - install -Dm644 usr/share/applications/l8db.desktop
+        /app/share/applications/com.leon.l8db.desktop
+      - desktop-file-edit --set-icon=com.leon.l8db
+        /app/share/applications/com.leon.l8db.desktop
+      - for size in 32 128 256 512; do
+        src="usr/share/icons/hicolor/${size}x${size}/apps/l8db.png";
+        test -f "$src" && install -Dm644 "$src"
+        "/app/share/icons/hicolor/${size}x${size}/apps/com.leon.l8db.png" || true;
+        done
+      - test -f com.leon.l8db.metainfo.xml && install -Dm644 com.leon.l8db.metainfo.xml
+        /app/share/metainfo/com.leon.l8db.metainfo.xml || true
+    sources:
+      # PLATZHALTER: sha256 muss durch den Hash des echten Release-Artefakts
+      # ersetzt werden (siehe packaging/README.md, Abschnitt "sha256 ermitteln").
+      - type: file
+        url: https://github.com/Leon-Achteresch/l8db/releases/download/v0.1.0/l8db_0.1.0_amd64.deb
+        sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+        dest-filename: l8db.deb
+      # Sobald vorhanden, hier die AppStream-Datei aus dem Repo einbinden:
+      # - type: file
+      #   path: com.leon.l8db.metainfo.xml

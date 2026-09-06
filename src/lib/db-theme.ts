@@ -29,7 +29,10 @@ const PROVIDER_THEMES: Record<string, DbThemeTokens> = {
   planetscale: { hue: 270, chroma: 0.08, glow: 0.12, shader: ["#1c1228", "#b48cff", "#efe6ff"] },
 };
 
-export function resolveDbTheme(kind?: DatabaseKind | null, providerId?: string | null): DbThemeTokens {
+export function resolveDbTheme(
+  kind?: DatabaseKind | null,
+  providerId?: string | null,
+): DbThemeTokens {
   if (providerId && PROVIDER_THEMES[providerId]) return PROVIDER_THEMES[providerId];
   return KIND_THEMES[kind ?? "postgres"];
 }
