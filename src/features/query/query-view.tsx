@@ -156,7 +156,9 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
-  const [plan, setPlan] = useState<{ node: ExplainNode; analyzed: boolean } | null>(null);
+  const [plan, setPlan] = useState<{ node: ExplainNode; analyzed: boolean; sql: string } | null>(
+    null,
+  );
   const [planError, setPlanError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
 
@@ -522,7 +524,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           setPlanError("Kein Ausführungsplan erhalten.");
           setPlan(null);
         } else {
-          setPlan({ node, analyzed: analyze });
+          setPlan({ node, analyzed: analyze, sql });
         }
       } catch (err) {
         setPlanError(String(err));
@@ -915,6 +917,10 @@ export function QueryView({ tabId }: QueryViewProps) {
           <ExplainPlanView
             plan={plan.node}
             analyzed={plan.analyzed}
+            sql={plan.sql}
+            connectionName={connection?.name ?? ""}
+            databaseKind={connection?.kind ?? ""}
+            database={database}
             onClose={() => setPlan(null)}
           />
         )}

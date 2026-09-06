@@ -1,82 +1,82 @@
-import { XIcon } from "lucide-react";
-import { motion } from "motion/react";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { SaveIcon, XIcon } from "lucide-react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { ExplainNodeCard } from "@/features/query/explain-node-card";
 import type { ExplainNode } from "@/lib/db";
+import {
+  buildSavedExplainPlan,
+  defaultExplainFileName,
+  EXPLAIN_EXPORT_HINT,
+  serializeExplainPlan,
+} from "@/lib/explain-file";
+
+const PLAN_FILTERS = [{ name: "l8db-Plan", extensions: ["json"] }];
 
 interface ExplainPlanViewProps {
   plan: ExplainNode;
   analyzed: boolean;
+  sql: string;
+  connectionName: string;
+  databaseKind: string;
+  database?: string | null;
   onClose: () => void;
 }
 
-function formatMs(value: number): string {
-  return value < 10 ? `${value.toFixed(2)} ms` : `${Math.round(value)} ms`;
-}
+export function ExplainPlanView({
+  plan,
+  analyzed,
+  sql,
+  connectionName,
+  databaseKind,
+  database,
+  onClose,
+}: ExplainPlanViewProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-function NodeCard({ node, depth }: { node: ExplainNode; depth: number }) {
-  const children = node.Plans ?? [];
-  const costShare =
-    node["Actual Total Time"] != null && node["Actual Loops"]
-      ? node["Actual Total Time"] * node["Actual Loops"]
-      : null;
-  return (
-    <motion.div
-      layout
-      transition={{ layout: SPRING_LAYOUT }}
-      className={depth === 0 ? "" : "ml-4 border-l border-border/60 pl-3"}
-    >
-      <details open={depth < 2} className="group py-1">
-        <summary className="cursor-pointer list-none">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
-              {node["Node Type"]}
-            </span>
-            {node["Relation Name"] && (
-              <span className="font-mono font-medium">{node["Relation Name"]}</span>
-            )}
-            {node["Alias"] && node["Alias"] !== node["Relation Name"] && (
-              <span className="text-muted-foreground">als {node["Alias"]}</span>
-            )}
-            {node["Index Name"] && (
-              <span className="font-mono text-muted-foreground">auf {node["Index Name"]}</span>
-            )}
-            <span className="text-muted-foreground">
-              Kosten {Math.round(node["Startup Cost"])}…{Math.round(node["Total Cost"])} ·{" "}
-              {node["Plan Rows"]} Zeilen
-            </span>
-            {costShare != null && (
-              <span className="tabular-nums text-muted-foreground">
-                · real {formatMs(costShare)}
-                {node["Actual Rows"] != null && ` · ${node["Actual Rows"]} Zeilen`}
-              </span>
-            )}
-            {node["Join Type"] && (
-              <span className="text-muted-foreground">· {node["Join Type"]}</span>
-            )}
-          </div>
-          {(node["Index Cond"] || node["Filter"] || node["Hash Cond"]) && (
-            <div className="mt-0.5 space-y-0.5 font-mono text-[11px] text-muted-foreground">
-              {node["Index Cond"] && <p>Bedingung: {node["Index Cond"]}</p>}
-              {node["Hash Cond"] && <p>Hash: {node["Hash Cond"]}</p>}
-              {node["Filter"] && <p>Filter: {node["Filter"]}</p>}
-            </div>
-          )}
-        </summary>
-        {children.map((child, index) => (
-          <NodeCard
-            key={`${child["Node Type"]}-${child["Relation Name"] ?? ""}-${index}`}
-            node={child}
-            depth={depth + 1}
-          />
-        ))}
-      </details>
-    </motion.div>
-  );
-}
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const capturedAt = new Date();
+      const path = await save({
+        defaultPath: defaultExplainFileName({ connectionName, analyzed, capturedAt }),
+        filters: PLAN_FILTERS,
+      });
+      if (!path) return;
+      const saved = buildSavedExplainPlan(plan, {
+        sql,
+        connectionName,
+        databaseKind,
+        database,
+        analyzed,
+        capturedAt,
+      });
+      await writeTextFile(path, serializeExplainPlan(saved));
+      toast.success("Ausführungsplan gespeichert.");
+    } catch (error) {
+      toast.error(
+        `Plan konnte nicht gespeichert werden: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setSaving(false);
+      setConfirmOpen(false);
+    }
+  }, [plan, sql, connectionName, databaseKind, database, analyzed]);
 
-export function ExplainPlanView({ plan, analyzed, onClose }: ExplainPlanViewProps) {
   return (
     <div className="flex min-h-0 w-full flex-col border-b bg-muted/20">
       <div className="flex shrink-0 items-center gap-2 px-3 py-1.5">
@@ -85,8 +85,19 @@ export function ExplainPlanView({ plan, analyzed, onClose }: ExplainPlanViewProp
         </span>
         <Button
           variant="ghost"
+          size="sm"
+          className="ml-auto h-7 gap-1.5 px-2 text-xs"
+          onClick={() => setConfirmOpen(true)}
+          disabled={saving}
+          title="Plan mit SQL und Kontext als Datei speichern (führt nichts aus)"
+        >
+          <SaveIcon className="size-3.5" />
+          Plan speichern
+        </Button>
+        <Button
+          variant="ghost"
           size="icon"
-          className="ml-auto size-7"
+          className="size-7"
           onClick={onClose}
           title="Plan schließen"
         >
@@ -94,8 +105,22 @@ export function ExplainPlanView({ plan, analyzed, onClose }: ExplainPlanViewProp
         </Button>
       </div>
       <div className="max-h-64 min-h-0 overflow-y-auto px-3 pb-2">
-        <NodeCard node={plan} depth={0} />
+        <ExplainNodeCard node={plan} depth={0} />
       </div>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ausführungsplan speichern?</AlertDialogTitle>
+            <AlertDialogDescription>{EXPLAIN_EXPORT_HINT}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleSave()} disabled={saving}>
+              Speichern
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
