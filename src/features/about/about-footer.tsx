@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { FileText, FolderGit, Heart, Scale, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -7,11 +8,6 @@ const LINKS = [
     icon: FolderGit,
     label: "Repository",
     href: "https://github.com/Leon-Achteresch/l8db",
-  },
-  {
-    icon: FileText,
-    label: "Changelog",
-    href: "https://github.com/Leon-Achteresch/l8db/blob/main/CHANGELOG.md",
   },
   {
     icon: ShieldCheck,
@@ -39,6 +35,12 @@ export function AboutFooter() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="rounded-full">
+            <Link to="/release-notes">
+              <FileText data-icon="inline-start" />
+              Release Notes
+            </Link>
+          </Button>
           {LINKS.map((link) => (
             <Button key={link.label} variant="outline" size="sm" asChild className="rounded-full">
               <a href={link.href} target="_blank" rel="noreferrer">

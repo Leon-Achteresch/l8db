@@ -1,4 +1,5 @@
 import { Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
+import { motion } from "motion/react";
 
 import { DriverDetail } from "@/components/driver-detail";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { DatabaseKind } from "@/lib/db";
 import type { DriverSummary } from "@/lib/drivers";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -21,7 +23,11 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
   const available = summary.status.available;
   const command = summary.installCommand ?? summary.hint?.command;
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <motion.section
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold">{summary.title}</h2>
         <Badge variant="secondary">{summary.typeLabel}</Badge>
@@ -125,6 +131,6 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
           Erneut prüfen
         </button>
       </div>
-    </section>
+    </motion.section>
   );
 }

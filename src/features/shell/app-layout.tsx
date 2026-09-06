@@ -14,7 +14,7 @@ export function AppLayout() {
     <SidebarProvider
       style={
         {
-          "--sidebar-width": `calc(var(--sidebar-width-icon) + 1px + ${panelWidth}px)`,
+          "--sidebar-width": `${panelWidth}px`,
         } as React.CSSProperties
       }
       className="min-h-0 flex-1"

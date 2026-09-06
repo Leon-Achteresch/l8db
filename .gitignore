@@ -41,3 +41,6 @@ coverage/
 *.njsproj
 *.sln
 *.sw?
+
+# Agent chat scratch
+chat/
