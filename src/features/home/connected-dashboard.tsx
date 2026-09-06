@@ -33,9 +33,9 @@ import {
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useTableTabs } from "@/lib/table-tabs";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { DashboardMetric } from "./dashboard-metric";
 
 function formatBytes(bytes: number) {
@@ -86,7 +86,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   }
 
   return (
-    <main className="workspace-canvas flex-1 overflow-auto">
+    <main className="workspace-canvas flex-1 overflow-auto" data-tour="dashboard">
       <motion.div
         layout
         initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -114,7 +114,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               <span className="max-w-72 truncate">{endpoint.host}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour="dashboard-actions">
             <Button
               variant="outline"
               size="sm"

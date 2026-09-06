@@ -217,6 +217,7 @@ export function AppSidebarPanel() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              data-tour="sidebar-connection"
               className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               {isSwitching ? (
@@ -306,7 +307,7 @@ export function AppSidebarPanel() {
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tour="sidebar-scope">
             {caps.databases && (
               <div className="grid min-w-0 flex-1 gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
@@ -376,7 +377,7 @@ export function AppSidebarPanel() {
       </SidebarHeader>
       <SidebarContent>
         {activeConnection ? (
-          <div className="px-2 pt-2">
+          <div className="px-2 pt-2" data-tour="sidebar-tabs">
             <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
               <TabsList className="w-full">
                 {sidebarTabs.map((tab) => (
@@ -676,7 +677,7 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative">
+      <div className="relative" data-tour="sidebar-search">
         <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <SidebarInput
           placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
@@ -717,7 +718,7 @@ function SidebarEntityList({
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
         <SidebarMenu>
-          {filtered?.map((item) => {
+          {filtered?.map((item, index) => {
             const isActive =
               type === "view"
                 ? Boolean(
@@ -757,6 +758,9 @@ function SidebarEntityList({
                     to="/tables/$schema/$table"
                     params={{ schema: item.schema, table: item.name }}
                     search={{ type }}
+                    data-tour={index === 0 && type === "table" ? "sidebar-table" : undefined}
+                    data-schema={item.schema}
+                    data-name={item.name}
                   >
                     <TableIcon className="text-muted-foreground" />
                     <span className="truncate">{item.name}</span>

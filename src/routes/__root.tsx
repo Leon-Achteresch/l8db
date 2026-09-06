@@ -6,6 +6,7 @@ import "../index.css";
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/features/shell/app-header";
+import { AppTour } from "@/features/tour/app-tour";
 import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
 
 function RootComponent() {
@@ -19,6 +20,7 @@ function RootComponent() {
           </div>
         </DbThemeRoot>
         <UpdateAvailableDialog />
+        <AppTour />
         <Toaster />
       </ThemeProvider>
     </MotionConfig>
