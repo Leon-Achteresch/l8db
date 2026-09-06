@@ -96,6 +96,35 @@ pub struct DetailedColumnInfo {
     pub character_maximum_length: Option<i32>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: bool,
+    pub has_default: bool,
+    pub is_identity: bool,
+    pub is_generated: bool,
+    pub ordinal_position: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CsvImportRequest {
+    pub schema: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Option<String>>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CsvImportOutcome {
+    pub inserted_rows: u64,
+    pub failed_row: Option<u32>,
+    pub failed_column: Option<String>,
+    pub error: Option<String>,
+}
+
+pub const CSV_IMPORT_MAX_ROWS: usize = 10_000;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AddColumnRequest {
     pub name: String,
@@ -365,6 +394,19 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Spaltendetails"))
+    }
+    async fn list_import_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ImportColumnInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("CSV-Import"))
+    }
+    async fn csv_import(&self, request: &CsvImportRequest) -> Result<CsvImportOutcome, String> {
+        let _ = request;
+        Err(unsupported("CSV-Import"))
     }
     async fn add_column(
         &self,
