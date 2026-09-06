@@ -11,11 +11,21 @@ interface SchemaRegistry {
   columns: ColumnInfo[];
 }
 
+interface EditorHighlight {
+  start: number;
+  end: number;
+}
+
 interface QueryEditorPaneProps {
   value: string;
   onChange: (value: string) => void;
   onRun: () => void;
   onSave?: () => void;
+  onRunSelection?: () => void;
+  onRunStatement?: () => void;
+  onSelectionChange?: (selectedText: string) => void;
+  onCursorChange?: (offset: number) => void;
+  highlight?: EditorHighlight | null;
   registry: SchemaRegistry;
   className?: string;
 }
@@ -548,20 +558,34 @@ export function QueryEditorPane({
   onChange,
   onRun,
   onSave,
+  onRunSelection,
+  onRunStatement,
+  onSelectionChange,
+  onCursorChange,
+  highlight,
   registry,
   className,
 }: QueryEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const onSaveRef = useRef(onSave);
+  const onRunSelectionRef = useRef(onRunSelection);
+  const onRunStatementRef = useRef(onRunStatement);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onCursorChangeRef = useRef(onCursorChange);
   const registryRef = useRef(registry);
   const { resolvedTheme } = useTheme();
 
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
   onSaveRef.current = onSave;
+  onRunSelectionRef.current = onRunSelection;
+  onRunStatementRef.current = onRunStatement;
+  onSelectionChangeRef.current = onSelectionChange;
+  onCursorChangeRef.current = onCursorChange;
   registryRef.current = registry;
 
   useEffect(() => {
@@ -609,7 +633,15 @@ export function QueryEditorPane({
     });
 
     editorRef.current = editor;
+    decorationsRef.current = editor.createDecorationsCollection([]);
     refreshLintMarkers(editor, registryRef.current);
+
+    const selectionSub = editor.onDidChangeCursorSelection((event) => {
+      const model = editor.getModel();
+      if (!model) return;
+      onSelectionChangeRef.current?.(model.getValueInRange(event.selection));
+      onCursorChangeRef.current?.(model.getOffsetAt(event.selection.getPosition()));
+    });
 
     let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
@@ -629,6 +661,14 @@ export function QueryEditorPane({
       onSaveRef.current?.();
     });
 
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
+      onRunSelectionRef.current?.();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
+      onRunStatementRef.current?.();
+    });
+
     const formatAction = addSqlFormatAction(editor);
 
     const completionProvider = monaco.languages.registerCompletionItemProvider("sql", {
@@ -641,12 +681,36 @@ export function QueryEditorPane({
     return () => {
       if (lintTimer) clearTimeout(lintTimer);
       changeSub.dispose();
+      selectionSub.dispose();
       completionProvider.dispose();
       formatAction.dispose();
+      decorationsRef.current = null;
       editor.dispose();
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const decorations = decorationsRef.current;
+    const model = editor?.getModel();
+    if (!decorations || !model) return;
+    if (!highlight || highlight.end <= highlight.start || highlight.end > model.getValueLength()) {
+      decorations.clear();
+      return;
+    }
+    const start = model.getPositionAt(highlight.start);
+    const end = model.getPositionAt(highlight.end);
+    decorations.set([
+      {
+        range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+        options: {
+          className: "l8db-statement-highlight",
+          isWholeLine: false,
+        },
+      },
+    ]);
+  }, [highlight]);
 
   useEffect(() => {
     const editor = editorRef.current;

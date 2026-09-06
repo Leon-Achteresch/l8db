@@ -1,7 +1,7 @@
 # L8DB-PLAN-010: PostgreSQL-Statement unter dem Cursor ausführen
 
 Typ: Story · Priorität: **P1** · Schätzung: **3 SP** · Bereich: Editor
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
