@@ -6,12 +6,13 @@ pub use oracle::Connection;
 use oracle::{Connector, Row};
 
 use super::pool::PoolState;
+use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
     ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DebugSessionInfo,
+    DatabaseOverview, DebugSessionInfo, DependencyInfo,
     DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult, SchemaSize,
-    SequenceInfo, SessionInfo, TableData, TableInfo, TriggerInfo,
+    SchedulerJobInfo, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -472,6 +473,42 @@ impl DatabaseAdapter for OracleAdapter {
         })
     }
 
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        let sql = if enabled {
+            "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;"
+        } else {
+            "BEGIN DBMS_OUTPUT.DISABLE; END;"
+        };
+        self.run(move |c| c.execute(sql, &[]).map(|_| ()).map_err(map_err))
+            .await
+    }
+
+    async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
+        self.run(move |c| {
+            let mut stmt = c
+                .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
+                .build()
+                .map_err(map_err)?;
+            let mut lines = Vec::new();
+            while lines.len() < 2000 {
+                stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
+                    .map_err(map_err)?;
+                let status: i64 = stmt.bind_value(2).map_err(map_err)?;
+                if status != 0 {
+                    break;
+                }
+                let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
+                lines.push(ServerMessage {
+                    level: "OUTPUT".to_string(),
+                    message: line.unwrap_or_default(),
+                    detail: None,
+                });
+            }
+            Ok(lines)
+        })
+        .await
+    }
+
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let sql = format!(
             "SELECT owner, view_name FROM all_views WHERE {} ORDER BY view_name",
@@ -571,6 +608,156 @@ impl DatabaseAdapter for OracleAdapter {
                 language: "PL/SQL".to_string(),
             })
             .collect())
+    }
+
+    async fn list_used_by(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<DependencyInfo>, String> {
+        let deps = self
+            .rows(format!(
+                "SELECT d.owner, d.name, d.type, NVL(o.status, 'UNKNOWN') \
+                 FROM all_dependencies d \
+                 LEFT JOIN all_objects o ON o.owner = d.owner AND o.object_name = d.name \
+                   AND o.object_type = d.type \
+                 WHERE d.referenced_owner = {} AND d.referenced_name = {} \
+                 ORDER BY d.owner, d.type, d.name",
+                lit(schema),
+                lit(name)
+            ))
+            .await
+            .map_err(|e| {
+                format!("ALL_DEPENDENCIES ist nicht lesbar (fehlende Leserechte?): {e}")
+            })?;
+        let mut out: Vec<DependencyInfo> = deps
+            .iter()
+            .filter(|r| !(s(r, 0) == schema && s(r, 1) == name))
+            .map(|r| DependencyInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                object_type: s(r, 2).to_lowercase(),
+                status: s(r, 3),
+                relation: "Abhängigkeit".to_string(),
+                oid: format!("{}\u{1f}{}\u{1f}{}", s(r, 0), s(r, 1), s(r, 2)),
+                detail: String::new(),
+            })
+            .collect();
+
+        let fks = self
+            .rows(format!(
+                "SELECT c.owner, c.table_name, c.constraint_name, NVL(c.status, 'UNKNOWN') \
+                 FROM all_constraints c \
+                 JOIN all_constraints r ON r.owner = c.r_owner \
+                   AND r.constraint_name = c.r_constraint_name \
+                 WHERE c.constraint_type = 'R' AND r.owner = {} AND r.table_name = {} \
+                 ORDER BY c.owner, c.table_name",
+                lit(schema),
+                lit(name)
+            ))
+            .await
+            .unwrap_or_default();
+        for r in fks.iter() {
+            out.push(DependencyInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                object_type: "table".to_string(),
+                status: s(r, 3),
+                relation: "Fremdschlüssel".to_string(),
+                oid: String::new(),
+                detail: s(r, 2),
+            });
+        }
+        Ok(out)
+    }
+
+    async fn list_synonyms(&self, schema: Option<&str>) -> Result<Vec<SynonymInfo>, String> {
+        let rows = self
+            .rows(format!(
+                "SELECT s.owner, s.synonym_name, s.table_owner, s.table_name, s.db_link, \
+                        NVL(o.object_type, 'UNKNOWN'), NVL(o.status, 'INVALID') \
+                 FROM all_synonyms s \
+                 LEFT JOIN all_objects o ON o.owner = s.table_owner \
+                   AND o.object_name = s.table_name \
+                 WHERE {} \
+                 ORDER BY s.synonym_name",
+                Self::owner_filter(schema, "s.owner")
+            ))
+            .await
+            .map_err(|e| format!("ALL_SYNONYMS ist nicht lesbar (fehlende Leserechte?): {e}"))?;
+        Ok(rows
+            .iter()
+            .map(|r| SynonymInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                target_owner: s(r, 2),
+                target_name: s(r, 3),
+                target_type: s(r, 5).to_lowercase(),
+                db_link: s_opt(r, 4),
+                status: s(r, 6),
+            })
+            .collect())
+    }
+
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        let rows = self
+            .rows(
+                "SELECT j.owner, j.job_name, j.enabled, j.state, \
+                        NVL(j.repeat_interval, NVL(j.schedule_name, ' ')), NVL(j.job_action, ' '), \
+                        TO_CHAR(j.last_start_date, 'YYYY-MM-DD HH24:MI:SS'), \
+                        TO_CHAR(j.next_run_date, 'YYYY-MM-DD HH24:MI:SS'), \
+                        (SELECT status FROM (SELECT d.status FROM all_scheduler_job_run_details d \
+                           WHERE d.owner = j.owner AND d.job_name = j.job_name \
+                           ORDER BY d.log_date DESC) WHERE ROWNUM = 1), \
+                        (SELECT additional_info FROM (SELECT d.additional_info FROM \
+                           all_scheduler_job_run_details d \
+                           WHERE d.owner = j.owner AND d.job_name = j.job_name \
+                             AND d.status <> 'SUCCEEDED' \
+                           ORDER BY d.log_date DESC) WHERE ROWNUM = 1) \
+                 FROM all_scheduler_jobs j ORDER BY j.owner, j.job_name"
+                    .to_string(),
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Scheduler-Jobs sind nicht lesbar (Recht auf ALL_SCHEDULER_JOBS fehlt?): {e}"
+                )
+            })?;
+        Ok(rows
+            .iter()
+            .map(|r| SchedulerJobInfo {
+                id: format!("{}.{}", s(r, 0), s(r, 1)),
+                owner: s(r, 0),
+                name: s(r, 1),
+                enabled: s(r, 2).eq_ignore_ascii_case("TRUE"),
+                state: s(r, 3),
+                schedule: s(r, 4).trim().to_string(),
+                command: s(r, 5).trim().to_string(),
+                last_run: s_opt(r, 6),
+                last_status: s_opt(r, 8),
+                last_error: s_opt(r, 9),
+                next_run: s_opt(r, 7),
+            })
+            .collect())
+    }
+
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        let action = if enabled { "ENABLE" } else { "DISABLE" };
+        self.exec(format!(
+            "BEGIN DBMS_SCHEDULER.{action}({}); END;",
+            lit(job_id)
+        ))
+        .await
+        .map(|_| ())
+    }
+
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        self.exec(format!(
+            "BEGIN DBMS_SCHEDULER.RUN_JOB({}, FALSE); END;",
+            lit(job_id)
+        ))
+        .await
+        .map(|_| ())
     }
 
     async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {

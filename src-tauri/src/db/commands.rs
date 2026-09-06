@@ -6,10 +6,10 @@ use super::{
     ConnectionConfig,
     ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest, CreatePublicationRequest,
     CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind,
-    CompileResult, DebugSessionInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
+    CompileResult, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo,
     PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
-    SourceMatch, TableData, TableInfo, TriggerInfo,
+    SchedulerJobInfo, SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 #[tauri::command]
@@ -279,6 +279,97 @@ pub async fn search_source(
         pool_state.inner().clone(),
     )?
     .search_source(schema.as_deref(), &term, limit.unwrap_or(200).clamp(1, 1000))
+    .await
+}
+
+#[tauri::command]
+pub async fn list_used_by(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<DependencyInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_used_by(&schema, &name)
+    .await
+}
+
+#[tauri::command]
+pub async fn list_synonyms(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<SynonymInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_synonyms(schema.as_deref())
+    .await
+}
+
+#[tauri::command]
+pub async fn list_scheduler_jobs(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<SchedulerJobInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_scheduler_jobs()
+    .await
+}
+
+#[tauri::command]
+pub async fn set_scheduler_job_enabled(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    job_id: String,
+    enabled: bool,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .set_scheduler_job_enabled(&job_id, enabled)
+    .await
+}
+
+#[tauri::command]
+pub async fn run_scheduler_job(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    job_id: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .run_scheduler_job(&job_id)
     .await
 }
 
@@ -1605,5 +1696,40 @@ pub async fn get_database_overview(
         pool_state.inner().clone(),
     )?
     .get_database_overview()
+    .await
+}
+
+#[tauri::command]
+pub async fn set_server_output(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    enabled: bool,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .set_server_output(enabled)
+    .await
+}
+
+#[tauri::command]
+pub async fn take_server_output(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::server_output::ServerMessage>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .take_server_output()
     .await
 }
