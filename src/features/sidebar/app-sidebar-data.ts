@@ -6,6 +6,7 @@ import {
   type LucideIcon,
   Network,
   SquareTerminalIcon,
+  Table2,
 } from "lucide-react";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
@@ -20,6 +21,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     { title: "Übersicht", url: "/", icon: Home },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
+    { title: "Query Builder", url: "/query-builder", icon: Table2 },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
     { title: "Über", url: "/about", icon: Info },
