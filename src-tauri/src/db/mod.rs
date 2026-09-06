@@ -69,6 +69,8 @@ pub struct ConnectionConfig {
     pub database: String,
     #[serde(default)]
     pub ssl_mode: Option<SslMode>,
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

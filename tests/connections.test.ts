@@ -25,7 +25,7 @@ function provider(
     hint: "",
     hosts,
     driver: { type: "builtin" },
-    capabilities: { ssl: true, ssh: true, views: true },
+    capabilities: { ssl: true, ssh: true, views: true, read_only_mode: kind === "postgres" },
     driver_status: { available: true, detail: "", install: [] },
     ...extra,
   };
@@ -98,6 +98,7 @@ const {
 const { effectiveConnectionString, activateConnection, tunneledConnectionString } = await import(
   "../src/lib/ssh"
 );
+const { truncateTable, executeQuery } = await import("../src/lib/db");
 
 const direct = {
   id: "direct",
@@ -479,5 +480,43 @@ describe("Favorites and profile color", () => {
     const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
     expect(stored.state.connections[0].color).toBe("#3b82f6");
     expect(stored.state.connections[0].connectionString).not.toContain("p%40ss");
+  });
+});
+
+describe("Lesemodus", () => {
+  test("read-only postgres connections carry the server-side option", () => {
+    const readOnly = { ...direct, readOnly: true };
+    const url = new URL(effectiveConnectionString(readOnly));
+    expect(url.searchParams.get("options")).toBe("-c default_transaction_read_only=on");
+    expect(effectiveConnectionString({ ...direct, readOnly: false })).toBe(direct.connectionString);
+  });
+
+  test("providers without the capability ignore the flag", () => {
+    const mysql = {
+      ...direct,
+      id: "mysql-ro",
+      kind: "mysql" as const,
+      connectionString: "mysql://root:pw@localhost:3306/app",
+      readOnly: true,
+    };
+    expect(effectiveConnectionString(mysql)).toBe(mysql.connectionString);
+  });
+
+  test("write commands are blocked while a read-only connection is active", async () => {
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }],
+      activeId: "direct",
+    });
+    calls.length = 0;
+    await expect(
+      truncateTable("postgres", direct.connectionString, "public", "t"),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("truncate_table");
+    await executeQuery("postgres", direct.connectionString, "SELECT 1").catch(() => undefined);
+    expect(calls).toContain("execute_query");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: false }],
+      activeId: null,
+    });
   });
 });

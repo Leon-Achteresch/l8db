@@ -1,4 +1,68 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+const WRITE_COMMANDS = new Set([
+  "add_column",
+  "alter_column",
+  "alter_role",
+  "alter_sequence",
+  "attach_partition",
+  "begin_transaction",
+  "cancel_session",
+  "create_materialized_view",
+  "create_policy",
+  "create_publication",
+  "create_role",
+  "create_schema",
+  "create_subscription",
+  "create_table",
+  "delete_row_in_transaction",
+  "detach_partition",
+  "drop_column",
+  "drop_materialized_view",
+  "drop_policy",
+  "drop_publication",
+  "drop_role",
+  "drop_schema",
+  "drop_subscription",
+  "drop_table",
+  "duplicate_row_in_transaction",
+  "execute_in_transaction",
+  "insert_row_in_transaction",
+  "install_extension",
+  "modify_privilege",
+  "refresh_materialized_view",
+  "set_table_rls",
+  "terminate_session",
+  "truncate_table",
+  "uninstall_extension",
+  "update_row",
+  "update_row_in_transaction",
+  "update_view_definition",
+]);
+
+export const READ_ONLY_MESSAGE =
+  "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden.";
+
+let readOnlyResolver: () => boolean = () => false;
+
+export function registerReadOnlyResolver(resolver: () => boolean): void {
+  readOnlyResolver = resolver;
+}
+
+export function isReadOnlyActive(): boolean {
+  try {
+    return readOnlyResolver();
+  } catch {
+    return false;
+  }
+}
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (WRITE_COMMANDS.has(command) && isReadOnlyActive()) {
+    return Promise.reject(new Error(READ_ONLY_MESSAGE));
+  }
+  return tauriInvoke<T>(command, args);
+}
 
 export type DatabaseKind =
   | "postgres"
@@ -41,6 +105,7 @@ export interface Capabilities {
   explain: boolean;
   overview: boolean;
   sql_filter: boolean;
+  read_only_mode: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -104,6 +169,7 @@ export interface ConnectionConfig {
   password: string;
   database: string;
   ssl_mode?: SslMode;
+  read_only?: boolean;
 }
 
 export async function testConnection(config: ConnectionConfig): Promise<void> {

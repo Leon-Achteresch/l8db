@@ -36,6 +36,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   explain: true,
   overview: true,
   sql_filter: true,
+  read_only_mode: true,
   ssl: true,
   ssh: true,
   query_language: "sql",
@@ -77,7 +78,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "Klassisches MySQL oder kompatible Hosts.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: POSTGRES_CAPABILITIES,
+    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -92,7 +93,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "MariaDB mit eigener visueller Identität.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: POSTGRES_CAPABILITIES,
+    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -107,7 +108,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "Dokumentenspeicher, lokal oder Atlas.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: { ...POSTGRES_CAPABILITIES, ssl: false, ssh: false },
+    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false, ssl: false, ssh: false },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -122,7 +123,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "Eine Datei. Kein Server.",
     hosts: [],
     driver: { type: "builtin" },
-    capabilities: { ...POSTGRES_CAPABILITIES, ssl: false, ssh: false },
+    capabilities: { ...POSTGRES_CAPABILITIES, read_only_mode: false, ssl: false, ssh: false },
     driver_status: FALLBACK_DRIVER,
   },
 ];
