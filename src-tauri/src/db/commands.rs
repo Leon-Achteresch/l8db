@@ -969,6 +969,24 @@ pub async fn create_table(
 }
 
 #[tauri::command]
+pub async fn preview_create_table_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: CreateTableRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .preview_create_table_ddl(&request)
+    .await
+}
+
+#[tauri::command]
 pub async fn explain_query(
     kind: DatabaseKind,
     connection_string: String,

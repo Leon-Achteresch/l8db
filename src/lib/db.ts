@@ -1121,6 +1121,15 @@ export async function createTable(
   await invoke("create_table", { kind, connectionString, database, request });
 }
 
+export async function previewCreateTableDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CreateTableRequest,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_create_table_ddl", { kind, connectionString, database, request });
+}
+
 export interface MatviewInfo {
   schema: string;
   name: string;

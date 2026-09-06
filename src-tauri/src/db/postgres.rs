@@ -1925,6 +1925,13 @@ impl DatabaseAdapter for PostgresAdapter {
         self.execute_script_impl(sql).await
     }
 
+    async fn preview_create_table_ddl(
+        &self,
+        req: &super::CreateTableRequest,
+    ) -> Result<String, String> {
+        Ok(Self::build_create_table_sql(req))
+    }
+
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
         self.ensure_writable()?;
         let ddl = Self::build_create_table_sql(req);
@@ -3018,6 +3025,51 @@ mod tests {
         assert_eq!(occurrences, 3);
         assert!(snippet.starts_with("SELECT kunde_id"));
         assert!(source_snippet(src, "fehlt").is_none());
+    }
+
+    #[test]
+    fn build_create_table_sql_renders_columns_and_primary_key() {
+        use crate::db::{ColumnDefinition, CreateTableRequest};
+
+        let req = CreateTableRequest {
+            schema: "public".to_string(),
+            name: "kunde".to_string(),
+            if_not_exists: true,
+            columns: vec![
+                ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "bigserial".to_string(),
+                    is_nullable: false,
+                    default_value: None,
+                    is_primary_key: true,
+                    is_unique: false,
+                },
+                ColumnDefinition {
+                    name: "email".to_string(),
+                    data_type: "text".to_string(),
+                    is_nullable: false,
+                    default_value: None,
+                    is_primary_key: false,
+                    is_unique: true,
+                },
+                ColumnDefinition {
+                    name: "created_at".to_string(),
+                    data_type: "timestamptz".to_string(),
+                    is_nullable: true,
+                    default_value: Some("now()".to_string()),
+                    is_primary_key: false,
+                    is_unique: false,
+                },
+            ],
+        };
+
+        let ddl = PostgresAdapter::build_create_table_sql(&req);
+        assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS \"public\".\"kunde\" ("));
+        assert!(ddl.contains("\"id\" bigserial NOT NULL"));
+        assert!(ddl.contains("\"email\" text NOT NULL UNIQUE"));
+        assert!(ddl.contains("\"created_at\" timestamptz DEFAULT now()"));
+        assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+        assert!(!ddl.contains("\"id\" bigserial NOT NULL UNIQUE"));
     }
 
     use crate::db::{pool::create_pool_state, DatabaseAdapter};
