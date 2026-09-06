@@ -167,11 +167,13 @@ interface ProviderLogoProps {
   className?: string;
 }
 
-export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps) {
-  const slug = (providerId ? PROVIDER_SLUG[providerId] : undefined) ?? (kind ? KIND_SLUG[kind] : null) ?? null;
-  const icon = slug ? ICONS[slug] : undefined;
-  if (!icon) return <Database className={cn("size-4 shrink-0", className)} aria-hidden />;
-  const svg = icon.svg.replace(/fill="#(?:fff|ffffff)"/gi, 'fill="currentColor"');
+export function thesvgSvgForSlug(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  return ICONS[slug]?.svg ?? null;
+}
+
+export function ThesvgIcon({ svg, className }: { svg: string; className?: string }) {
+  const normalized = svg.replace(/fill="#(?:fff|ffffff)"/gi, 'fill="currentColor"');
   return (
     <span
       aria-hidden
@@ -179,7 +181,16 @@ export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps)
         "inline-flex size-4 shrink-0 items-center justify-center text-foreground [&_svg]:h-full [&_svg]:w-full",
         className,
       )}
-      dangerouslySetInnerHTML={{ __html: svg }}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: static SVG from the bundled thesvg icon set, no user input
+      dangerouslySetInnerHTML={{ __html: normalized }}
     />
   );
+}
+
+export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps) {
+  const slug =
+    (providerId ? PROVIDER_SLUG[providerId] : undefined) ?? (kind ? KIND_SLUG[kind] : null) ?? null;
+  const svg = thesvgSvgForSlug(slug);
+  if (!svg) return <Database className={cn("size-4 shrink-0", className)} aria-hidden />;
+  return <ThesvgIcon svg={svg} className={className} />;
 }

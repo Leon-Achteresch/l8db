@@ -1,8 +1,8 @@
-import { useActiveConnection } from "@/lib/connections";
+import { type ReactNode, useEffect } from "react";
 import { detectProvider } from "@/lib/connection-url";
+import { useActiveConnection } from "@/lib/connections";
 import { resolveDbTheme, themeCssVars, useDbThemeStore } from "@/lib/db-theme";
 import { cn } from "@/lib/utils";
-import { useEffect, type ReactNode } from "react";
 
 export function DbThemeRoot({ children, className }: { children: ReactNode; className?: string }) {
   const connection = useActiveConnection();

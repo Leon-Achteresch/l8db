@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -31,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
 import { SqlEditor } from "@/features/table/sql-editor";
@@ -439,9 +439,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                               ) : (
                                 <Select
                                   value={combinator}
-                                  onValueChange={(value) =>
-                                    setCombinator(value as Combinator)
-                                  }
+                                  onValueChange={(value) => setCombinator(value as Combinator)}
                                 >
                                   <SelectTrigger size="sm" className="w-20">
                                     <SelectValue />
@@ -481,10 +479,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                   })
                                 }
                               >
-                                <SelectTrigger
-                                  size="sm"
-                                  className="w-auto min-w-0 shrink-0"
-                                >
+                                <SelectTrigger size="sm" className="w-auto min-w-0 shrink-0">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent position="popper">

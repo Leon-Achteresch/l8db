@@ -1,8 +1,8 @@
 import { useTheme } from "next-themes";
-import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { useSettingsStore } from "@/lib/settings";

@@ -2,36 +2,153 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-jobs:
-  check-version:
-    name: Tag matches sources
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - run: node scripts/version.mjs check-tag ${{ github.ref_name }}
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
-  release:
-    name: Build and publish
-    needs: check-version
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Berechne Release-Version
+        id: version
+        shell: bash
+        run: |
+          version="$(node .github/scripts/compute-release-version.mjs)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Erzeuge Changelog
+        id: changelog
+        shell: bash
+        run: |
+          last_tag="$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || true)"
+          LAST_TAG="$last_tag" node <<'EOF'
+          const { execSync } = require('node:child_process')
+          const { appendFileSync } = require('node:fs')
+
+          const lastTag = process.env.LAST_TAG || ''
+          const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
+          const raw = execSync(`git log ${range} --pretty=format:%s --no-merges`, { encoding: 'utf8' }).trim()
+          const commits = raw ? raw.split('\n').filter(Boolean) : []
+          const sections = [
+            ['feat', 'Features'],
+            ['fix', 'Fixes'],
+            ['refactor', 'Refactorings'],
+            ['perf', 'Performance'],
+            ['docs', 'Docs'],
+            ['test', 'Tests'],
+            ['build', 'Build'],
+            ['ci', 'CI'],
+            ['style', 'Style'],
+            ['chore', 'Chore']
+          ]
+          const grouped = new Map(sections.map(([type]) => [type, []]))
+          const other = []
+
+          for (const subject of commits) {
+            const match = subject.match(/^([a-z]+)(\([^)]+\))?!?:\s+(.+)$/)
+            if (!match) {
+              other.push(subject)
+              continue
+            }
+
+            const [, type, , message] = match
+            if (grouped.has(type)) {
+              grouped.get(type).push(message)
+              continue
+            }
+
+            other.push(subject)
+          }
+
+          const lines = ['## Changelog', '']
+          if (lastTag) {
+            lines.push(`Aenderungen seit \`${lastTag}\``, '')
+          } else {
+            lines.push('Erstes Release mit allen bisherigen Aenderungen', '')
+          }
+
+          let hasEntries = false
+
+          for (const [type, title] of sections) {
+            const entries = grouped.get(type)
+            if (!entries.length) {
+              continue
+            }
+
+            hasEntries = true
+            lines.push(`### ${title}`)
+            for (const entry of entries) {
+              lines.push(`- ${entry}`)
+            }
+            lines.push('')
+          }
+
+          if (other.length) {
+            hasEntries = true
+            lines.push('### Weitere Aenderungen')
+            for (const entry of other) {
+              lines.push(`- ${entry}`)
+            }
+            lines.push('')
+          }
+
+          if (!hasEntries) {
+            lines.push('- Keine Aenderungen seit dem letzten Tag.')
+          }
+
+          const body = `${lines.join('\n').trim()}\n`
+          appendFileSync(process.env.GITHUB_OUTPUT, `changelog<<EOF\n${body}EOF\n`)
+          EOF
+
+  publish:
+    needs: [prepare, checks]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: ubuntu-22.04
             args: ""
-          - os: ubuntu-22.04
+          - platform: windows-latest
             args: ""
-          - os: windows-latest
-            args: ""
-    runs-on: ${{ matrix.os }}
+
+    runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setze Release-Version
+        run: node .github/scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+
       - name: Install Tauri system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -46,24 +163,40 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
-      - uses: oven-sh/setup-bun@v2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          workspaces: src-tauri
-      - run: bun install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v1
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build und veroeffentliche Tauri App
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "l8db ${{ github.ref_name }}"
-          releaseBody: "See CHANGELOG.md for details."
+          tauriScript: bun run tauri
+          tagName: v__VERSION__
+          releaseName: l8db v__VERSION__
+          releaseBody: ${{ needs.prepare.outputs.changelog }}
           releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: false
           includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          updaterJsonKeepUniversal: true
+          appVersion: ${{ needs.prepare.outputs.version }}
           args: ${{ matrix.args }}

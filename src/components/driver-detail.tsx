@@ -15,11 +15,7 @@ export function DriverDetail({ detail, className, iconClassName }: Props) {
   }
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <Tooltip
-        content={detail}
-        side="bottom"
-        className="max-w-md whitespace-normal break-words"
-      >
+      <Tooltip content={detail} side="bottom" className="max-w-md whitespace-normal break-words">
         <span
           role="img"
           aria-label="Treiber-Details anzeigen"

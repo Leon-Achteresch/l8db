@@ -13,11 +13,7 @@ interface TableColumnPrefsState {
   resetPref: (key: string) => void;
 }
 
-export function tableColumnPrefKey(
-  connectionId: string,
-  schema: string,
-  table: string,
-): string {
+export function tableColumnPrefKey(connectionId: string, schema: string, table: string): string {
   return `${connectionId}:${schema}.${table}`;
 }
 
