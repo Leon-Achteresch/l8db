@@ -20,6 +20,7 @@ use super::{
     SslMode, TableData,
     TableInfo, TablePrivileges, TriggerInfo,
 };
+use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -2502,6 +2503,198 @@ impl DatabaseAdapter for PostgresAdapter {
         Ok(())
     }
 
+    async fn list_schema_copy_objects(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<super::SchemaObjectEntry>, String> {
+        let source = self
+            .schema_copy_definitions(source_schema, object_type)
+            .await?;
+        let target = self
+            .schema_copy_definitions(target_schema, object_type)
+            .await?;
+        let mut entries: Vec<super::SchemaObjectEntry> = Vec::with_capacity(source.len());
+        for (name, definition) in source {
+            let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+            let existing = target
+                .iter()
+                .find(|(other, _)| other == &name)
+                .map(|(_, def)| def.clone());
+            let (status, target_definition) = match existing {
+                None => ("missing".to_string(), String::new()),
+                Some(def) => {
+                    let same = normalize_definition(&rewritten) == normalize_definition(&def);
+                    let status = if same { "identical" } else { "different" };
+                    (status.to_string(), def)
+                }
+            };
+            entries.push(super::SchemaObjectEntry {
+                name,
+                object_type: object_type.to_string(),
+                status,
+                source_definition: rewritten,
+                target_definition,
+            });
+        }
+        Ok(entries)
+    }
+
+    async fn preview_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.schema_copy_ddl(source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn execute_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.ensure_writable()?;
+        let existing = self
+            .schema_copy_definitions(target_schema, object_type)
+            .await?;
+        if existing.iter().any(|(other, _)| other == name) {
+            return Err(format!(
+                "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
+            ));
+        }
+        let ddl = self
+            .schema_copy_ddl(source_schema, target_schema, object_type, name)
+            .await?;
+        let conn = self.get_conn().await?;
+        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+        if let Err(err) = conn.simple_query(ddl.as_str()).await {
+            let _ = conn.simple_query("ROLLBACK").await;
+            return Err(map_pg_err(err));
+        }
+        conn.simple_query("COMMIT").await.map_err(map_pg_err)?;
+        Ok(ddl)
+    }
+
+    async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
+        build_object_ddl(req)
+    }
+
+    async fn execute_object_ddl(&self, req: &ObjectDdlRequest) -> Result<(), String> {
+        self.ensure_writable()?;
+        let ddl = build_object_ddl(req)?;
+        let mut conn = self.get_conn().await?;
+        self.timed(async move {
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            tx.batch_execute(&ddl).await.map_err(map_pg_err)?;
+            tx.commit().await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn object_audit_info(
+        &self,
+        schema: &str,
+        name: &str,
+        object_type: &str,
+    ) -> Result<ObjectAuditInfo, String> {
+        let conn = self.get_meta().await?;
+        let schema = schema.to_string();
+        let name = name.to_string();
+        let object_type = object_type.to_string();
+        self.timed(async move {
+            let base = conn
+                .query_opt(
+                    "SELECT c.oid, pg_get_userbyid(c.relowner)::text AS owner,                      pg_size_pretty(pg_total_relation_size(c.oid))::text AS size,                      c.reltuples::bigint AS row_estimate, c.relkind::text AS relkind                      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace                      WHERE n.nspname = $1 AND c.relname = $2",
+                    &[&schema, &name],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            let Some(base) = base else {
+                return Err(format!("Objekt {schema}.{name} wurde nicht gefunden."));
+            };
+            let oid: u32 = base.get("oid");
+            let relkind: String = base.get("relkind");
+            let resolved_type = match relkind.as_str() {
+                "r" | "p" => "table".to_string(),
+                "v" => "view".to_string(),
+                "m" => "materialized_view".to_string(),
+                _ => object_type.clone(),
+            };
+            let mut info = ObjectAuditInfo {
+                schema: schema.clone(),
+                name: name.clone(),
+                object_type: resolved_type,
+                owner: base.get("owner"),
+                size: base.get("size"),
+                row_estimate: base.get("row_estimate"),
+                ..ObjectAuditInfo::default()
+            };
+            info.notes.push(
+                "PostgreSQL protokolliert keine Erstell- oder Änderungszeit für Relationen;                  stattdessen werden die Statistikzeitpunkte angezeigt."
+                    .to_string(),
+            );
+
+            match conn
+                .query_opt(
+                    "SELECT n_live_tup, last_vacuum::text AS last_vacuum,                      last_autovacuum::text AS last_autovacuum, last_analyze::text AS last_analyze,                      last_autoanalyze::text AS last_autoanalyze                      FROM pg_stat_all_tables WHERE schemaname = $1 AND relname = $2",
+                    &[&schema, &name],
+                )
+                .await
+            {
+                Ok(Some(row)) => {
+                    let live: Option<i64> = row.get("n_live_tup");
+                    if let Some(live) = live {
+                        info.row_estimate = Some(live);
+                    }
+                    info.last_vacuum = row.get("last_vacuum");
+                    info.last_autovacuum = row.get("last_autovacuum");
+                    info.last_analyze = row.get("last_analyze");
+                    info.last_autoanalyze = row.get("last_autoanalyze");
+                    info.changed_at = info
+                        .last_analyze
+                        .clone()
+                        .or_else(|| info.last_autoanalyze.clone());
+                }
+                Ok(None) => {}
+                Err(err) => info
+                    .notes
+                    .push(format!("Statistiken nicht lesbar: {}", map_pg_err(err))),
+            }
+
+            match conn
+                .query(
+                    "SELECT dn.nspname::text AS schema, dc.relname::text AS name,                      CASE dc.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized_view'                      ELSE 'table' END AS object_type                      FROM pg_depend d                      JOIN pg_rewrite r ON r.oid = d.objid AND d.classid = 'pg_rewrite'::regclass                      JOIN pg_class dc ON dc.oid = r.ev_class                      JOIN pg_namespace dn ON dn.oid = dc.relnamespace                      WHERE d.refobjid = $1 AND dc.oid <> $1                      UNION                      SELECT fn.nspname::text, fc.relname::text, 'foreign_key'                      FROM pg_constraint con                      JOIN pg_class fc ON fc.oid = con.conrelid                      JOIN pg_namespace fn ON fn.oid = fc.relnamespace                      WHERE con.contype = 'f' AND con.confrelid = $1 AND fc.oid <> $1                      ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+            {
+                Ok(rows) => {
+                    info.dependents = rows
+                        .iter()
+                        .map(|row| ObjectDependent {
+                            schema: row.get("schema"),
+                            name: row.get("name"),
+                            object_type: row.get("object_type"),
+                        })
+                        .collect();
+                }
+                Err(err) => info
+                    .notes
+                    .push(format!("Abhängigkeiten nicht lesbar: {}", map_pg_err(err))),
+            }
+
+            Ok(info)
+        })
+        .await
+    }
+
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
         let trimmed = sql.trim();
         if trimmed.is_empty() {
@@ -3394,6 +3587,150 @@ impl DatabaseAdapter for PostgresAdapter {
             })
         })
         .await
+    }
+}
+
+fn normalize_definition(definition: &str) -> String {
+    definition
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+impl PostgresAdapter {
+    async fn schema_copy_definitions(
+        &self,
+        schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<(String, String)>, String> {
+        let sql = match object_type {
+            "table" => {
+                "SELECT c.relname AS name, \
+                        COALESCE((SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod) \
+                            || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END, E'\\n' ORDER BY a.attnum) \
+                            FROM pg_attribute a \
+                            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped), '') AS definition \
+                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname"
+            }
+            "view" => {
+                "SELECT c.relname AS name, pg_get_viewdef(c.oid, true) AS definition \
+                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relkind = 'v' ORDER BY c.relname"
+            }
+            "routine" => {
+                "SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS name, \
+                        pg_get_functiondef(p.oid) AS definition \
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') ORDER BY 1"
+            }
+            other => return Err(format!("Unbekannter Objekttyp: {other}")),
+        };
+        if schema.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn.query(sql, &[&schema]).await.map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let name: String = row.get("name");
+                    let definition: Option<String> = row.get("definition");
+                    (name, definition.unwrap_or_default())
+                })
+                .collect())
+        })
+        .await
+    }
+
+    async fn routine_definition(&self, schema: &str, signature: &str) -> Result<String, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT pg_get_functiondef(p.oid) AS definition \
+                     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                     WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+                       AND p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' = $2",
+                    &[&schema, &signature],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            let row = rows
+                .first()
+                .ok_or_else(|| format!("Routine {schema}.{signature} nicht gefunden."))?;
+            Ok(row.get::<_, String>("definition"))
+        })
+        .await
+    }
+
+    async fn schema_copy_ddl(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        if source_schema == target_schema {
+            return Err("Quell- und Zielschema sind identisch.".to_string());
+        }
+        match object_type {
+            "table" => {
+                let columns = self.list_table_columns_detailed(source_schema, name).await?;
+                if columns.is_empty() {
+                    return Err(format!(
+                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+                    ));
+                }
+                let request = super::CreateTableRequest {
+                    schema: target_schema.to_string(),
+                    name: name.to_string(),
+                    if_not_exists: false,
+                    columns: columns
+                        .iter()
+                        .map(|column| super::ColumnDefinition {
+                            name: column.name.clone(),
+                            data_type: column.data_type.clone(),
+                            is_nullable: column.is_nullable,
+                            default_value: column.column_default.as_ref().map(|value| {
+                                super::requalify_schema(value, source_schema, target_schema)
+                            }),
+                            is_primary_key: column.is_primary_key,
+                            is_unique: false,
+                        })
+                        .collect(),
+                };
+                Ok(Self::build_create_table_sql(&request))
+            }
+            "view" => {
+                let definition = self.get_view_definition(source_schema, name).await?;
+                let body = super::requalify_schema(
+                    definition.trim().trim_end_matches(';'),
+                    source_schema,
+                    target_schema,
+                );
+                Ok(format!(
+                    "CREATE VIEW {}.{} AS\n{}",
+                    quote_ident(target_schema),
+                    quote_ident(name),
+                    body
+                ))
+            }
+            "routine" => {
+                let definition = self.routine_definition(source_schema, name).await?;
+                Ok(super::requalify_schema(
+                    &definition,
+                    source_schema,
+                    target_schema,
+                ))
+            }
+            other => Err(format!("Unbekannter Objekttyp: {other}")),
+        }
     }
 }
 
