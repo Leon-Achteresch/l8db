@@ -1,6 +1,5 @@
 import { BugIcon, HammerIcon, LoaderIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,7 +16,8 @@ import {
 import { useActiveConnection } from "@/lib/connections";
 import { type DebugSessionInfo, startDebugSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import { useFunctionDefinitionQuery, useProceduresQuery } from "@/lib/queries";
+import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { useFunctionDefinitionQuery, useInvalidObjectsQuery, useProceduresQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -36,6 +36,9 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
   const procedures = useProceduresQuery();
   const { compile, state: compileState } = useCompileObject();
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const isInvalid = isProcedureInvalid(invalidSet, schema, name);
   const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "");
 
   const [runOpen, setRunOpen] = useState(false);
@@ -126,6 +129,8 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
           <Badge variant={compileResult.status === "VALID" ? "outline" : "destructive"}>
             {compileResult.status}
           </Badge>
+        ) : isInvalid ? (
+          <Badge variant="destructive">INVALID</Badge>
         ) : null}
         <span className="flex-1" />
         {!edit.editing ? (

@@ -14,11 +14,12 @@ use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
     AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileResult, ConnectionConfig,
-    ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo, DetailedColumnInfo,
-    ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
-    PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges,
-    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
+    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo, CompileResult,
+    ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
+    DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
+    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, QueryResult, RoleInfo,
+    RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode,
+    TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1342,6 +1343,27 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         })
         .await
+    }
+
+    async fn list_invalid_objects(
+        &self,
+        _schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        Ok(Vec::new())
+    }
+
+    async fn list_compile_errors(
+        &self,
+        _schema: Option<&str>,
+    ) -> Result<Vec<CompileErrorInfo>, String> {
+        Ok(Vec::new())
+    }
+
+    async fn compile_invalid_objects(
+        &self,
+        _schema: Option<&str>,
+    ) -> Result<Vec<InvalidCompileOutcome>, String> {
+        Ok(Vec::new())
     }
 
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
