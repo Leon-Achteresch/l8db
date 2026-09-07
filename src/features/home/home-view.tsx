@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, Plus } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect } from "react";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
@@ -55,7 +56,10 @@ export function HomeView() {
                   />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{connection.name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <ConnectionStatusIndicator connectionId={connection.id} />
+                    <span className="truncate text-sm font-medium">{connection.name}</span>
+                  </span>
                   <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {connectingId === connection.id
                       ? "Verbindung wird geprüft…"
