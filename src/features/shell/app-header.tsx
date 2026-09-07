@@ -1,11 +1,11 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { GitBranchIcon, Minus, PlugZap, RefreshCw, Settings, Square, X } from "lucide-react";
 import { motion } from "motion/react";
 import { type CSSProperties, useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
-import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -17,6 +17,43 @@ import { cn } from "@/lib/utils";
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 
 const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
+
+function WindowControls() {
+  const win = getCurrentWindow();
+  const base =
+    "inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground";
+  return (
+    <div
+      className="absolute right-0 top-0 flex h-full items-stretch"
+      style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+    >
+      <button
+        type="button"
+        aria-label="Minimieren"
+        className={base}
+        onClick={() => void win.minimize()}
+      >
+        <Minus className="size-4" strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        aria-label="Maximieren"
+        className={base}
+        onClick={() => void win.toggleMaximize()}
+      >
+        <Square className="size-3.5" strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        aria-label="Schließen"
+        className={cn(base, "hover:bg-destructive hover:text-white")}
+        onClick={() => void win.close()}
+      >
+        <X className="size-4" strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
 
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
@@ -103,7 +140,6 @@ export function AppHeader() {
           className="flex w-full max-w-[640px] items-center gap-2"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <ConnectionColorBadge variant="header" />
           <ReadOnlyBadge />
           <div className="min-w-0 flex-1">
             <AppHeaderSearch />
@@ -196,6 +232,8 @@ export function AppHeader() {
           </Link>
         </Tooltip>
       </nav>
+
+      {IS_WINDOWS ? <WindowControls /> : null}
     </header>
   );
 }
