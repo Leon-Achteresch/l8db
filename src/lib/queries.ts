@@ -1026,7 +1026,7 @@ export function useEnumsQuery(schema?: string) {
   });
 }
 
-export function useDatabaseOverviewQuery() {
+export function useDatabaseOverviewQuery(refetchInterval?: number) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -1038,6 +1038,7 @@ export function useDatabaseOverviewQuery() {
         database ?? undefined,
       ),
     enabled: supports(connection, "overview"),
+    refetchInterval,
     staleTime: 60_000,
   });
 }
