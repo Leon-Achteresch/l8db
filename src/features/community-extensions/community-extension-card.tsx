@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,24 @@ export function CommunityExtensionCard({
         >
           Neu laden
         </Button>
+        {!extension.developmentPath && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              run(async () => {
+                const path = await open({
+                  multiple: false,
+                  filters: [{ name: "l8db Extension", extensions: ["l8db-extension"] }],
+                });
+                if (typeof path !== "string") return;
+                await host.updateExtension(await readCommunityExtension(path, false));
+              })
+            }
+          >
+            Aktualisieren
+          </Button>
+        )}
         <Button
           size="sm"
           variant="destructive"

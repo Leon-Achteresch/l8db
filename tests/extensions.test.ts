@@ -12,6 +12,7 @@ class MemoryStorage implements ExtensionStorage {
   values = new Map<string, Json>();
   async list() { return structuredClone([...this.entries.values()]) }
   async install(value: ExtensionArchive) { this.entries.set(value.manifest.id, { archive: value, enabled: false, grants: [], configuration: {} }) }
+  async replace(id: string, value: ExtensionArchive) { const entry = this.entries.get(id)!; entry.archive = value; entry.grants = entry.grants.filter(grant => value.manifest.permissions?.includes(grant) ?? false) }
   async remove(id: string) { this.entries.delete(id) }
   async update(id: string, enabled: boolean, grants: Permission[], configuration: Record<string, Json>) { Object.assign(this.entries.get(id)!, { enabled, grants, configuration }) }
   async get(id: string, key: string) { return this.values.get(`${id}:${key}`) ?? null }
@@ -198,4 +199,23 @@ test("a new manager discovers persisted enablement and activates on startup", as
   const runtime = new TestRuntime(); const restored = new ExtensionManager(storage, runtime, { database: () => null, notify: () => undefined }, "0.1.0");
   await restored.discover(); await restored.trigger("onStartup");
   expect(restored.registry.get("test.persisted").state).toBe("activated");
+});
+test("updateExtension keeps grants and configuration and rejects non-newer versions", async () => {
+  const { manager, storage } = setup();
+  await storage.install(archive("test.example", ["onStartup"]));
+  await manager.discover();
+  await manager.enableExtension("test.example", ["database:read"]);
+  await manager.setConfiguration("test.example", { "test.enabled": false });
+  const next = archive("test.example", ["onStartup"]);
+  next.manifest.version = "2.0.0";
+  await manager.updateExtension(next);
+  const updated = manager.listExtensions()[0];
+  expect(updated.archive.manifest.version).toBe("2.0.0");
+  expect(updated.grants).toEqual(["database:read"]);
+  expect(updated.configuration).toEqual({ "test.enabled": false });
+  expect(updated.enabled).toBe(true);
+  expect(updated.state).toBe("activated");
+  expect(storage.entries.get("test.example")!.archive.manifest.version).toBe("2.0.0");
+  await expect(manager.updateExtension(archive("test.example", ["onStartup"]))).rejects.toThrow();
+  expect(manager.listExtensions()[0].archive.manifest.version).toBe("2.0.0");
 });
