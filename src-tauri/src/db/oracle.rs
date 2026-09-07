@@ -58,6 +58,103 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
+fn code_bounds(sql: &str) -> (usize, usize) {
+    let b = sql.as_bytes();
+    let n = b.len();
+    let mut i = 0;
+    let mut first: Option<usize> = None;
+    let mut last = 0;
+    let mut line_start = true;
+    while i < n {
+        let c = b[i];
+        if c == b'-' && b.get(i + 1) == Some(&b'-') {
+            i = sql[i..].find('\n').map(|k| i + k).unwrap_or(n);
+            continue;
+        }
+        if c == b'/' && b.get(i + 1) == Some(&b'*') {
+            i = sql[i + 2..].find("*/").map(|k| i + k + 4).unwrap_or(n);
+            continue;
+        }
+        if c == b'\n' {
+            line_start = true;
+            i += 1;
+            continue;
+        }
+        if c.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if c == b'/' && line_start {
+            let rest = &sql[i + 1..];
+            let eol = rest.find('\n').unwrap_or(rest.len());
+            if rest[..eol].trim().is_empty() {
+                i += 1 + eol;
+                continue;
+            }
+        }
+        line_start = false;
+        if c == b'\'' || c == b'"' {
+            let mut j = i + 1;
+            while j < n {
+                if b[j] == c {
+                    if b.get(j + 1) == Some(&c) {
+                        j += 2;
+                        continue;
+                    }
+                    break;
+                }
+                j += 1;
+            }
+            first.get_or_insert(i);
+            i = (j + 1).min(n);
+            last = i;
+            continue;
+        }
+        if c == b';' {
+            i += 1;
+            continue;
+        }
+        first.get_or_insert(i);
+        i += 1;
+        last = i;
+    }
+    let first = first.unwrap_or(0);
+    (first, last.max(first))
+}
+
+fn is_plsql(sql: &str) -> bool {
+    let mut words = sql
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_uppercase());
+    match words.next().as_deref() {
+        Some("BEGIN") | Some("DECLARE") => true,
+        Some("CREATE") => words
+            .find(|w| {
+                !matches!(
+                    w.as_str(),
+                    "OR" | "REPLACE" | "EDITIONABLE" | "NONEDITIONABLE"
+                )
+            })
+            .is_some_and(|w| {
+                matches!(
+                    w.as_str(),
+                    "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE" | "LIBRARY"
+                )
+            }),
+        _ => false,
+    }
+}
+
+fn prepare(sql: &str) -> String {
+    let (start, end) = code_bounds(sql);
+    let mut out = sql[start..end].to_string();
+    if is_plsql(&out) {
+        out.push(';');
+    }
+    out
+}
+
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     let text: Option<String> = match row.get(index) {
         Ok(v) => v,
@@ -454,7 +551,7 @@ impl DatabaseAdapter for OracleAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let statement = sql.trim().trim_end_matches(';').to_string();
+        let statement = prepare(sql);
         if is_query(&statement) {
             let (columns, rows) = self.run(move |c| run_query(c, &statement)).await?;
             return Ok(QueryResult {
@@ -1271,6 +1368,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prepares_statements() {
+        assert_eq!(prepare("SELECT 1 FROM DUAL;"), "SELECT 1 FROM DUAL");
+        assert_eq!(
+            prepare("SELECT 1 FROM DUAL; -- hinweis"),
+            "SELECT 1 FROM DUAL"
+        );
+        assert_eq!(
+            prepare("-- kopf\nSELECT 1 FROM DUAL;\n/* ende */\n"),
+            "SELECT 1 FROM DUAL"
+        );
+        assert_eq!(prepare("SELECT ';' FROM DUAL;"), "SELECT ';' FROM DUAL");
+        assert_eq!(
+            prepare("SELECT 'it''s;' FROM DUAL;;"),
+            "SELECT 'it''s;' FROM DUAL"
+        );
+        assert_eq!(prepare("BEGIN NULL; END;\n/\n"), "BEGIN NULL; END;");
+        assert_eq!(prepare("begin null; end"), "begin null; end;");
+        assert_eq!(
+            prepare("CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/"),
+            "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"
+        );
+        assert_eq!(
+            prepare("CREATE TABLE t (TYPE NUMBER);"),
+            "CREATE TABLE t (TYPE NUMBER)"
+        );
+        assert_eq!(prepare("SELECT 4/2 FROM DUAL;"), "SELECT 4/2 FROM DUAL");
+        assert!(is_query(&prepare("/* x */ SELECT 1 FROM DUAL")));
+        assert_eq!(prepare("   "), "");
+    }
+
+    #[test]
     fn parses_url() {
         let a = OracleAdapter::new(
             "oracle://system:p%40ss@db.example.com:1522/FREEPDB1",
@@ -1406,7 +1534,8 @@ pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
 
 pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    let statement = sql.trim().trim_end_matches(';');
+    let statement = prepare(sql);
+    let statement = statement.as_str();
     if is_query(statement) {
         let (columns, rows) = run_query(c, statement)?;
         return Ok(QueryResult {
