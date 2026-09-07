@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
 import { TourSection } from "@/features/settings/tour-section";
 import { type UiDensity, useSettingsStore } from "@/lib/settings";
 
@@ -55,6 +56,8 @@ export function SettingsGeneralTab() {
             ]}
           />
         </SettingsRow>
+
+        <SettingsTableTabs />
 
         <TourSection />
 

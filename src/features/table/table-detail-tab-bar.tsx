@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/context-menu";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettingsStore } from "@/lib/settings";
-import { TABLE_DETAIL_TABS, type TableDetailTab } from "@/lib/table-detail-tabs";
+import { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
 
 const icons = {
   data: TableIcon, columns: Columns2Icon, definition: CodeIcon, triggers: ZapIcon,
@@ -25,13 +25,13 @@ export function TableDetailTabBar({ tabs }: { tabs: typeof TABLE_DETAIL_TABS }) 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="min-w-0 flex-1 overflow-x-auto" aria-label="Tabbar anpassen per Rechtsklick">
+        <div className="h-9 min-w-0 flex-1 overflow-x-auto overflow-y-hidden" aria-label="Tabbar anpassen per Rechtsklick">
           {visible.length ? (
             <TabsList variant="line" className="h-9" aria-label="Tabellenansichten">
               {visible.map((tab) => {
-                const Icon = icons[tab.id as TableDetailTab];
+                const Icon = icons[tab.id];
                 return (
-                  <TabsTrigger key={tab.id} value={tab.id}>
+                  <TabsTrigger key={tab.id} value={tab.id} className="group-data-horizontal/tabs:after:bottom-0">
                     <Icon className="size-3.5" />
                     {tab.label}
                   </TabsTrigger>
