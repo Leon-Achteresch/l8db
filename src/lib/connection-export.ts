@@ -49,6 +49,7 @@ export interface ExportedConnection {
   tags: ConnectionTag[];
   favorite: boolean;
   color: string | null;
+  schemas: string[] | null;
 }
 
 export interface ConnectionExportFile {
@@ -118,6 +119,7 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
     tags: (connection.tags ?? []).map((tag) => ({ name: tag.name, color: tag.color })),
     favorite: Boolean(connection.favorite),
     color: connection.color ?? null,
+    schemas: connection.schemas?.length ? [...connection.schemas] : null,
   };
 }
 
@@ -213,6 +215,9 @@ function parseProfile(value: unknown): ExportedConnection | string {
     tags,
     favorite: value.favorite === true,
     color: typeof value.color === "string" && value.color ? value.color : null,
+    schemas: Array.isArray(value.schemas)
+      ? value.schemas.filter((entry): entry is string => typeof entry === "string" && entry !== "")
+      : null,
   };
 }
 
@@ -288,6 +293,7 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     tags: profile.tags,
     favorite: profile.favorite,
     color: profile.color,
+    schemas: profile.schemas?.length ? profile.schemas : null,
   };
 }
 

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useState } from "react";
 import type { SavedConnection } from "@/lib/connections";
-import { useActiveConnection } from "@/lib/connections";
+import { useActiveConnection, visibleSchemas } from "@/lib/connections";
 import {
   beginTransaction,
   commitTransaction,
@@ -110,6 +110,7 @@ export function useSchemasQuery() {
     queryKey: ["schemas", connection?.id, database],
     queryFn: () =>
       listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    select: (schemas) => visibleSchemas(connection, schemas),
     enabled: supports(connection, "schemas"),
   });
 }
