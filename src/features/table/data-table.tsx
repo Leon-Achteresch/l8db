@@ -47,14 +47,6 @@ import {
 } from "@/components/ui/context-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { CellValueDialog } from "@/features/table/cell-value-dialog";
-import { DataTableRow } from "./data-table-row";
-import type {
-  DataTableProps,
-  EditingCell,
-  FkPickerCell,
-  InspectCell,
-  TableRow,
-} from "./data-table-types";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
 import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
@@ -66,7 +58,6 @@ import {
   shouldAutoRefresh,
 } from "@/lib/auto-refresh";
 import { buildRowUpdates } from "@/lib/cell-editor";
-import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useActiveConnection } from "@/lib/connections";
 import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -80,6 +71,7 @@ import {
   selectionToTsv,
   summarizeSelection,
 } from "@/lib/grid-selection";
+import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { compileSingleCondition } from "@/lib/sql-filter";
@@ -93,6 +85,14 @@ import {
 } from "@/lib/table-column-prefs";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { DataTableRow } from "./data-table-row";
+import type {
+  DataTableProps,
+  EditingCell,
+  FkPickerCell,
+  InspectCell,
+  TableRow,
+} from "./data-table-types";
 
 const headerSensors = [
   PointerSensor.configure({

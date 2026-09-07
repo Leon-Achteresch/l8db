@@ -51,8 +51,8 @@ import {
   updateRowInTransaction,
 } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
-import { isConnectionQuery, sameTableSource } from "@/lib/query-client";
 import { supports } from "@/lib/providers";
+import { isConnectionQuery, sameTableSource } from "@/lib/query-client";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {

@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/react";
-import { Suspense } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { GripVerticalIcon, XIcon } from "lucide-react";
+import { Suspense } from "react";
 
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";

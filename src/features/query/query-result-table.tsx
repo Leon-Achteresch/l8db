@@ -15,8 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import type { QueryResult } from "@/lib/db";
+import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import {
   activeFilterCount,
   applyResultView,
