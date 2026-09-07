@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { splitSqlStatements, statementAtOffset } from "../src/lib/sql-statements";
+import { splitSqlStatements, sqlToRun, statementAtOffset } from "../src/lib/sql-statements";
 
 describe("splitSqlStatements", () => {
   test("splits simple statements and keeps offsets", () => {
@@ -109,4 +109,10 @@ describe("statementAtOffset", () => {
   test("clamps out-of-range offsets", () => {
     expect(statementAtOffset("SELECT 1;", 999)?.text).toBe("SELECT 1;");
   });
+});
+
+test("sqlToRun runs only the selection when one exists", () => {
+  expect(sqlToRun("SELECT 1; SELECT 2;", "SELECT 2;")).toBe("SELECT 2;");
+  expect(sqlToRun("SELECT 1; SELECT 2;", "   \n ")).toBe("SELECT 1; SELECT 2;");
+  expect(sqlToRun("SELECT 1;", "")).toBe("SELECT 1;");
 });

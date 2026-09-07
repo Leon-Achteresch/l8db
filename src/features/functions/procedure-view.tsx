@@ -7,6 +7,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SqlEditorPane } from "@/features/functions/function-view";
 import { ProcedureRunDialog } from "@/features/functions/procedure-run-dialog";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import {
+  OpenInQueryEditorButton,
+  SqlEditActions,
+  SqlEditFeedback,
+  SqlEditHint,
+  useSqlObjectEdit,
+} from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { type DebugSessionInfo, startDebugSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -29,6 +36,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
   const procedures = useProceduresQuery();
   const { compile, state: compileState } = useCompileObject();
+  const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "");
 
   const [runOpen, setRunOpen] = useState(false);
   const [debugInfo, setDebugInfo] = useState<DebugSessionInfo | null>(null);
@@ -120,11 +128,18 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
           </Badge>
         ) : null}
         <span className="flex-1" />
-        <Button variant="outline" size="xs" onClick={() => setRunOpen(true)}>
-          <PlayIcon data-icon="inline-start" />
-          Ausführen
-        </Button>
-        {capabilities.compile_objects ? (
+        {!edit.editing ? (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => setRunOpen(true)}
+            title="Ruft die gespeicherte Prozedur auf."
+          >
+            <PlayIcon data-icon="inline-start" />
+            Ausführen
+          </Button>
+        ) : null}
+        {!edit.editing && capabilities.compile_objects ? (
           <Button
             variant="outline"
             size="xs"
@@ -139,7 +154,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
             Kompilieren
           </Button>
         ) : null}
-        {capabilities.debugger ? (
+        {!edit.editing && capabilities.debugger ? (
           <Button variant="outline" size="xs" onClick={handleDebug} disabled={debugLoading || !oid}>
             {debugLoading ? (
               <LoaderIcon data-icon="inline-start" className="animate-spin" />
@@ -149,9 +164,20 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
             Debug-Sitzung starten
           </Button>
         ) : null}
+        <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
+        <SqlEditActions edit={edit} />
       </div>
 
-      <SqlEditorPane value={data ?? ""} readOnly revealLine={revealLine} />
+      {edit.editing ? <SqlEditHint /> : null}
+
+      <SqlEditorPane
+        value={edit.editing ? edit.sql : (data ?? "")}
+        readOnly={!edit.editing}
+        onChange={edit.editing ? edit.setSql : undefined}
+        revealLine={revealLine}
+      />
+
+      <SqlEditFeedback state={edit.state} />
 
       {compileState.status === "error" ? (
         <div className="flex items-start gap-2 border-t bg-destructive/5 px-4 py-2.5">
