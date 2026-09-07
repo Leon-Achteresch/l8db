@@ -1,4 +1,4 @@
-import { satisfies } from "semver";
+import { gt, satisfies } from "semver";
 import type { ExtensionEvents } from "../../../packages/extension-api/src";
 import { safePath, validateArchive } from "../../../packages/extension-api/src/manifest";
 import type {
@@ -151,6 +151,50 @@ export class ExtensionManager {
       this.release(id);
       this.registry.remove(id);
       this.changed();
+    });
+  }
+  updateExtension(archive: ExtensionArchive, developmentPath?: string) {
+    return this.serial(async () => {
+      const validated = validateArchive(archive);
+      const id = validated.manifest.id;
+      const extension = this.registry.get(id);
+      const previous = extension.archive.manifest.version;
+      if (!gt(validated.manifest.version, previous))
+        throw new ExtensionError(
+          "ManifestValidationError",
+          `Version ${validated.manifest.version} is not newer than ${previous}`,
+        );
+      const wasEnabled = extension.enabled;
+      await this.stop(id);
+      this.release(id);
+      const declared = validated.manifest.permissions ?? [];
+      const settings = validated.manifest.contributes?.configuration ?? {};
+      const restore = structuredClone(extension);
+      extension.archive = validated;
+      extension.developmentPath = developmentPath;
+      extension.grants = extension.grants.filter((grant) => declared.includes(grant));
+      extension.configuration = Object.fromEntries(
+        Object.entries(extension.configuration).filter(([key]) => Object.hasOwn(settings, key)),
+      );
+      extension.state = wasEnabled ? "validated" : "discovered";
+      extension.error = undefined;
+      try {
+        this.prepare(extension);
+        await this.storage.replace(id, validated, developmentPath);
+      } catch (error) {
+        this.release(id);
+        Object.assign(extension, restore);
+        this.prepare(extension);
+        throw error;
+      }
+      this.log(id, "info", `updated ${previous} -> ${validated.manifest.version}`);
+      this.changed();
+      if (
+        wasEnabled &&
+        (validated.manifest.activationEvents.includes("onStartup") ||
+          (this.core.database() && validated.manifest.activationEvents.includes("onDatabaseOpen")))
+      )
+        await this.activate(id);
     });
   }
   reloadExtension(id: string, archive?: ExtensionArchive) {
