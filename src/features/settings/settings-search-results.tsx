@@ -12,6 +12,14 @@ interface SearchItem {
 
 const SEARCH_ITEMS: SearchItem[] = [
   {
+    id: "table-tabs",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Tabbar für Tabellen & Views",
+    description: "Sichtbare Tabs global oder per Kontextmenü anpassen.",
+    keywords: ["tabs", "tabbar", "sichtbar", "ausblenden", "einblenden", "kontextmenü", "daten", "columns", "trigger", "indexes", "rls", "partitionen", "used by", "performance", "audit", "definition"],
+  },
+  {
     id: "theme",
     tabId: "general",
     tabLabel: "Allgemein",
