@@ -1354,11 +1354,11 @@ pub(crate) fn create_table_sql(
     let mut pk_cols: Vec<String> = Vec::new();
     for col in &req.columns {
         let mut def = format!("{} {}", quote(&col.name), col.data_type);
-        if !col.is_nullable {
-            def.push_str(" NOT NULL");
-        }
         if let Some(d) = col.default_value.as_deref().filter(|d| !d.is_empty()) {
             def.push_str(&format!(" DEFAULT {d}"));
+        }
+        if !col.is_nullable {
+            def.push_str(" NOT NULL");
         }
         if col.is_unique && !col.is_primary_key {
             def.push_str(" UNIQUE");
