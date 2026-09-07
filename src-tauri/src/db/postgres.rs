@@ -1,3 +1,4 @@
+use futures_util::TryStreamExt;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -1031,14 +1032,14 @@ impl DatabaseAdapter for PostgresAdapter {
 
         let outcome = self
             .timed(async {
-                let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
-                let elapsed = start.elapsed().as_millis() as u64;
+                let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
+                futures_util::pin_mut!(messages);
 
                 let mut columns: Vec<String> = Vec::new();
                 let mut rows: Vec<serde_json::Value> = Vec::new();
                 let mut rows_affected: Option<u64> = None;
 
-                for msg in messages {
+                while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
                     match msg {
                         SimpleQueryMessage::Row(row) => {
                             if columns.is_empty() {
@@ -1066,7 +1067,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     columns,
                     rows,
                     rows_affected,
-                    execution_time_ms: elapsed,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
                 })
             })
             .await;
@@ -4117,6 +4118,58 @@ mod tests {
     fn lab_adapter() -> PostgresAdapter {
         PostgresAdapter::from_connection_string(&lab_connection_string(), None, create_pool_state())
             .expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn streamed_query_results_preserve_rows_across_execution_paths() {
+        let adapter = lab_adapter();
+        let sql = "SELECT n, NULL::text AS missing, repeat('row-', 32) AS payload FROM generate_series(1, 10000) n";
+        let direct = adapter.execute_query(sql).await.expect("direct query");
+        assert_eq!(direct.rows.len(), 10000);
+        assert_eq!(direct.columns, vec!["n", "missing", "payload"]);
+        assert_eq!(direct.rows[0]["n"], "1");
+        assert_eq!(direct.rows[9999]["n"], "10000");
+        assert!(direct.rows[0]["missing"].is_null());
+        assert_eq!(direct.rows_affected, Some(10000));
+
+        let connection = adapter.get_conn().await.expect("connection");
+        let output = super::super::server_output::pg_run_query(&connection, sql, false)
+            .await
+            .expect("output query");
+        assert_eq!(direct.columns, output.columns);
+        assert_eq!(direct.rows, output.rows);
+        drop(connection);
+
+        let transactions = super::super::transaction::create_transaction_state();
+        let tx = transactions
+            .begin(
+                super::super::provider::DatabaseKind::Postgres,
+                &lab_connection_string(),
+                None,
+                &create_pool_state(),
+            )
+            .await
+            .expect("begin");
+        let transactional = transactions
+            .execute(&tx, sql)
+            .await
+            .expect("transaction query");
+        assert_eq!(direct.rows, transactional.rows);
+        transactions.rollback(&tx).await.expect("rollback");
+
+        assert!(adapter
+            .execute_query("SELECT * FROM l8db_missing_stream_table")
+            .await
+            .is_err());
+        assert_eq!(
+            adapter
+                .execute_query("SELECT 'ok' AS status")
+                .await
+                .expect("query after error")
+                .rows[0]["status"],
+            "ok"
+        );
     }
 
     async fn lab_execute(adapter: &PostgresAdapter, sql: &str) {

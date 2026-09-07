@@ -1,4 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/react";
+import { Suspense } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { GripVerticalIcon, XIcon } from "lucide-react";
 
@@ -75,7 +76,15 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {tab ? (
-            <TabPaneContent tab={tab} />
+            <Suspense
+              fallback={
+                <div role="status" className="p-4 text-sm text-muted-foreground">
+                  Ansicht wird geladen…
+                </div>
+              }
+            >
+              <TabPaneContent tab={tab} />
+            </Suspense>
           ) : (
             <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
               <p className="max-w-56 text-center text-sm text-muted-foreground">

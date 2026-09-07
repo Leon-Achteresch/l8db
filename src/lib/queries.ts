@@ -51,6 +51,7 @@ import {
   updateRowInTransaction,
 } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { isConnectionQuery, sameTableSource } from "@/lib/query-client";
 import { supports } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -60,51 +61,6 @@ import {
   type TransactionChange,
   useTransactionStore,
 } from "@/lib/transactions";
-
-const CONNECTION_QUERY_ROOTS = new Set([
-  "databases",
-  "schemas",
-  "tables",
-  "views",
-  "matviews",
-  "columns",
-  "view-definition",
-  "functions",
-  "procedures",
-  "function-definition",
-  "extensions",
-  "available-extensions",
-  "roles",
-  "role-privileges",
-  "foreign-keys",
-  "triggers",
-  "er-schema",
-  "rows",
-  "count",
-  "all-tables",
-  "all-columns",
-  "sequences",
-  "indexes",
-  "constraints",
-  "rls",
-  "partitions",
-  "publications",
-  "subscriptions",
-  "sessions",
-  "locks",
-  "enums",
-  "overview",
-  "used-by",
-  "synonyms",
-  "scheduler-jobs",
-]);
-
-function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
-  const root = queryKey[0];
-  return (
-    typeof root === "string" && CONNECTION_QUERY_ROOTS.has(root) && queryKey[1] === connectionId
-  );
-}
 
 export function useRefreshConnection() {
   const connection = useActiveConnection();
@@ -192,7 +148,7 @@ export function useViewsQuery() {
   });
 }
 
-export function useAllSchemaObjectsQuery() {
+export function useAllSchemaObjectsQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -213,7 +169,7 @@ export function useAllSchemaObjectsQuery() {
       ]);
       return { tables, views, functions, procedures };
     },
-    enabled: Boolean(connection),
+    enabled: enabled && Boolean(connection),
     staleTime: 60 * 1000,
   });
 }
@@ -573,9 +529,19 @@ export function useTableRowsQuery(
         return undefined;
       }
       const previousKey = previousQuery.queryKey;
-      const previousSchema = previousKey[3];
-      const previousTable = previousKey[4];
-      if (previousSchema === schema && previousTable === table) {
+      if (
+        sameTableSource(previousKey, [
+          "rows",
+          connection?.id,
+          database,
+          schema,
+          table,
+          "",
+          "",
+          false,
+          isView,
+        ])
+      ) {
         return previousData;
       }
       return undefined;
@@ -622,6 +588,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
       updates: Record<string, string | null>;
       oldValues: Record<string, unknown>;
     }) => {
+      const queryKey = ["rows", connection?.id, database, schema, table];
       const changedUpdates: Record<string, string | null> = {};
       const changedOld: Record<string, unknown> = {};
       for (const [col, newVal] of Object.entries(updates)) {
@@ -641,7 +608,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
       }
 
       if (Object.keys(changedUpdates).length === 0) {
-        return { newCtid: ctid };
+        return { newCtid: ctid, queryKey };
       }
 
       const newCtid = await runInTransaction(
@@ -658,10 +625,10 @@ export function useUpdateRowMutation(schema: string, table: string) {
         }),
       );
 
-      return { newCtid };
+      return { newCtid, queryKey };
     },
     onSuccess: (result, { ctid, updates }) => {
-      queryClient.setQueriesData<TableData>({ queryKey: ["rows"] }, (old) => {
+      queryClient.setQueriesData<TableData>({ queryKey: result.queryKey }, (old) => {
         if (!old) return old;
         const idx = old.rows.findIndex((r) => (r as Record<string, unknown>).__ctid__ === ctid);
         if (idx === -1) return old;

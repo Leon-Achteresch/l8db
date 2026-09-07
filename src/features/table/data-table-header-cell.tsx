@@ -87,8 +87,8 @@ export function DataTableHeaderCell({
             <th
               ref={ref}
               className={cn(
-                "relative border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
-                pinnedOffset !== null && "sticky z-30 bg-muted/95 shadow-[1px_0_0_0_var(--border)]",
+                "relative border-b border-r border-border bg-muted px-3 py-2 text-left align-middle",
+                pinnedOffset !== null && "sticky z-30 bg-muted shadow-[1px_0_0_0_var(--border)]",
                 isDragging && "z-40 opacity-80",
               )}
               style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}

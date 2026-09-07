@@ -804,6 +804,7 @@ export function QueryEditorPane({
     const completionProvider = monaco.languages.registerCompletionItemProvider("sql", {
       triggerCharacters: ["."],
       provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+        if (model !== editor.getModel()) return { suggestions: [] };
         return buildCompletions(registryRef.current, model, position);
       },
     });

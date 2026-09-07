@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SqlEditor } from "@/features/table/sql-editor";
+
 import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+
+const SqlEditor = lazy(() =>
+  import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
+);
 
 type FilterMode = "simple" | "sql";
 type Combinator = "AND" | "OR";
@@ -290,14 +294,22 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <SqlEditor
-                    value={sql}
-                    onChange={setSql}
-                    onSubmit={apply}
-                    columns={columns}
-                    placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
-                    className="h-36"
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="h-36" role="status">
+                        Editor wird geladen…
+                      </div>
+                    }
+                  >
+                    <SqlEditor
+                      value={sql}
+                      onChange={setSql}
+                      onSubmit={apply}
+                      columns={columns}
+                      placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
+                      className="h-36"
+                    />
+                  </Suspense>
                 </div>
               )}
             </div>
