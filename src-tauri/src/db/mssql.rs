@@ -46,13 +46,17 @@ impl PooledClient {
 impl Deref for PooledClient {
     type Target = MsClient;
     fn deref(&self) -> &MsClient {
-        self.client.as_ref().expect("pooled client already released")
+        self.client
+            .as_ref()
+            .expect("pooled client already released")
     }
 }
 
 impl DerefMut for PooledClient {
     fn deref_mut(&mut self) -> &mut MsClient {
-        self.client.as_mut().expect("pooled client already released")
+        self.client
+            .as_mut()
+            .expect("pooled client already released")
     }
 }
 
