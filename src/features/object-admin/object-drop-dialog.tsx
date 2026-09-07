@@ -67,19 +67,9 @@ export function ObjectDropDialog({
   };
 
   const preview = useQuery({
-    queryKey: [
-      "object-ddl",
-      connection?.id,
-      database,
-      schema,
-      name,
-      objectType,
-      "drop",
-      cascade,
-    ],
+    queryKey: ["object-ddl", connection?.id, database, schema, name, objectType, "drop", cascade],
     enabled: open && Boolean(kind && connectionString),
-    queryFn: () =>
-      previewObjectDdl(kind!, connectionString!, request, database ?? undefined),
+    queryFn: () => previewObjectDdl(kind!, connectionString!, request, database ?? undefined),
   });
 
   const audit = useQuery({

@@ -7,6 +7,7 @@ import {
   Columns2Icon,
   DownloadIcon,
   GaugeIcon,
+  HistoryIcon,
   LayersIcon,
   LoaderIcon,
   NetworkIcon,
@@ -27,6 +28,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
@@ -62,7 +65,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
-type ViewTab = "data" | "definition" | "columns" | "used-by" | "performance";
+type ViewTab = "data" | "definition" | "columns" | "used-by" | "performance" | "audit";
 type TableTab =
   | "data"
   | "triggers"
@@ -71,7 +74,8 @@ type TableTab =
   | "rls"
   | "partitions"
   | "used-by"
-  | "performance";
+  | "performance"
+  | "audit";
 
 export function TableView() {
   const { schema, table } = routeApi.useParams();
@@ -386,37 +390,46 @@ export function TableView() {
                 Performance
               </TabsTrigger>
             )}
+            {caps.object_admin && (
+              <TabsTrigger value="audit">
+                <HistoryIcon className="size-3.5" />
+                Audit
+              </TabsTrigger>
+            )}
           </TabsList>
-          {viewTab === "data" && data && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
-                  disabled={exporting}
-                >
-                  {exporting ? (
-                    <LoaderIcon className="size-3.5 animate-spin" />
-                  ) : (
-                    <DownloadIcon className="size-3.5" />
-                  )}
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-                  Als CSV exportieren…
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport("json")}>
-                  Als JSON exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport("sql")}>
-                  Als INSERT-SQL exportieren
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
+            {viewTab === "data" && data && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <LoaderIcon className="size-3.5 animate-spin" />
+                    ) : (
+                      <DownloadIcon className="size-3.5" />
+                    )}
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                    Als CSV exportieren…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExport("json")}>
+                    Als JSON exportieren
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                    Als INSERT-SQL exportieren
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -439,6 +452,10 @@ export function TableView() {
           {caps.explain && (
             <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
           )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="view" />}
         </TabsContent>
 
         <CsvExportDialog
@@ -508,8 +525,15 @@ export function TableView() {
               Performance
             </TabsTrigger>
           )}
+          {caps.object_admin && (
+            <TabsTrigger value="audit">
+              <HistoryIcon className="size-3.5" />
+              Audit
+            </TabsTrigger>
+          )}
         </TabsList>
         <div className="ml-auto flex items-center gap-1">
+          <ObjectAdminMenu schema={schema} name={table} objectType="table" />
           {tableTab === "data" && caps.row_edit && (
             <Button
               size="sm"
@@ -592,6 +616,10 @@ export function TableView() {
         {caps.explain && (
           <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
         )}
+      </TabsContent>
+
+      <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="table" />}
       </TabsContent>
 
       <NewRowDialog
