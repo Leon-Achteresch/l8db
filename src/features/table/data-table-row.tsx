@@ -1,13 +1,13 @@
 import {
-  flexRender,
   type ColumnDef,
-  type ColumnSizingState,
   type ColumnPinningState,
+  type ColumnSizingState,
+  flexRender,
   type Row,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
-import { memo, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, memo, type SetStateAction } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { gridMatchKey } from "@/lib/grid-search";

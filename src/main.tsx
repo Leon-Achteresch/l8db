@@ -8,8 +8,8 @@ import { initConnectionSecrets } from "@/lib/connections";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
-import { createAppQueryClient } from "@/lib/query-client";
 import { loadProviders } from "@/lib/providers";
+import { createAppQueryClient } from "@/lib/query-client";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { router } from "./router";
 
