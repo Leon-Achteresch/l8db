@@ -24,6 +24,7 @@ import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._worksp
 import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
+import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
 import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
 import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
@@ -114,6 +115,11 @@ const AppWorkspaceQueryBuilderRoute =
 const AppWorkspaceQueryRoute = AppWorkspaceQueryRouteImport.update({
   id: '/query',
   path: '/query',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceImportRoute = AppWorkspaceImportRouteImport.update({
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/import': typeof AppWorkspaceImportRoute
+  '/monitor': typeof AppWorkspaceMonitorRoute
   '/query': typeof AppWorkspaceQueryRouteWithChildren
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
@@ -262,6 +269,7 @@ export interface FileRoutesByTo {
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/import': typeof AppWorkspaceImportRoute
+  '/monitor': typeof AppWorkspaceMonitorRoute
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
   '/saved-plan': typeof AppWorkspaceSavedPlanRoute
@@ -296,6 +304,7 @@ export interface FileRoutesById {
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
   '/_app/_workspace/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/_app/_workspace/import': typeof AppWorkspaceImportRoute
+  '/_app/_workspace/monitor': typeof AppWorkspaceMonitorRoute
   '/_app/_workspace/query': typeof AppWorkspaceQueryRouteWithChildren
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/_app/_workspace/replication': typeof AppWorkspaceReplicationRoute
@@ -331,6 +340,7 @@ export interface FileRouteTypes {
     | '/enums'
     | '/er-diagram'
     | '/import'
+    | '/monitor'
     | '/query'
     | '/query-builder'
     | '/replication'
@@ -363,6 +373,7 @@ export interface FileRouteTypes {
     | '/enums'
     | '/er-diagram'
     | '/import'
+    | '/monitor'
     | '/query-builder'
     | '/replication'
     | '/saved-plan'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/enums'
     | '/_app/_workspace/er-diagram'
     | '/_app/_workspace/import'
+    | '/_app/_workspace/monitor'
     | '/_app/_workspace/query'
     | '/_app/_workspace/query-builder'
     | '/_app/_workspace/replication'
@@ -531,6 +543,13 @@ declare module '@tanstack/react-router' {
       path: '/query'
       fullPath: '/query'
       preLoaderRoute: typeof AppWorkspaceQueryRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/monitor': {
+      id: '/_app/_workspace/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/import': {
@@ -693,6 +712,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
   AppWorkspaceErDiagramRoute: typeof AppWorkspaceErDiagramRoute
   AppWorkspaceImportRoute: typeof AppWorkspaceImportRoute
+  AppWorkspaceMonitorRoute: typeof AppWorkspaceMonitorRoute
   AppWorkspaceQueryRoute: typeof AppWorkspaceQueryRouteWithChildren
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
   AppWorkspaceReplicationRoute: typeof AppWorkspaceReplicationRoute
@@ -718,6 +738,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,
   AppWorkspaceErDiagramRoute: AppWorkspaceErDiagramRoute,
   AppWorkspaceImportRoute: AppWorkspaceImportRoute,
+  AppWorkspaceMonitorRoute: AppWorkspaceMonitorRoute,
   AppWorkspaceQueryRoute: AppWorkspaceQueryRouteWithChildren,
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,
   AppWorkspaceReplicationRoute: AppWorkspaceReplicationRoute,
