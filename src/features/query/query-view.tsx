@@ -17,6 +17,7 @@ import {
   SearchIcon,
   TerminalIcon,
   TextSelectIcon,
+  TimerIcon,
   Trash2Icon,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -34,6 +35,7 @@ import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
 import { QueryEditorPane, type QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
+import { QueryPerfPanel } from "@/features/query/query-perf-panel";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
@@ -179,6 +181,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
   const [planError, setPlanError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [perfOpen, setPerfOpen] = useState(false);
 
   const [selectedSql, setSelectedSql] = useState("");
   const [cursorOffset, setCursorOffset] = useState(0);
@@ -923,6 +926,17 @@ export function QueryView({ tabId }: QueryViewProps) {
                 )}
                 Explain Analyze
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-3 text-xs"
+                onClick={() => setPerfOpen((open) => !open)}
+                disabled={isRunning || !sql.trim()}
+                title="Laufzeit der aktuellen Abfrage mehrfach messen und Läufe vergleichen"
+              >
+                <TimerIcon className="size-3" />
+                Performance-Test
+              </Button>
             </>
           )}
           {!connection && (
@@ -1029,6 +1043,13 @@ export function QueryView({ tabId }: QueryViewProps) {
             {statementError}
           </p>
         )}
+        {perfOpen && caps.explain && (
+          <QueryPerfPanel
+            sql={selectedSql.trim() ? selectedSql : sql}
+            onClose={() => setPerfOpen(false)}
+          />
+        )}
+
         {planError && (
           <p className="shrink-0 border-b px-3 py-1.5 text-xs text-destructive">{planError}</p>
         )}

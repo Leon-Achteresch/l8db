@@ -6,6 +6,7 @@ import {
   buildSavedPerfTest,
   defaultPerfFileName,
   normalizeRepeats,
+  isReadOnlyStatement,
   parsePerfTestFile,
   PERF_FILE_KIND,
   PERF_FILE_VERSION,
@@ -15,6 +16,7 @@ import {
   type PerfTestDefinition,
   runMetricsFromPlan,
   serializePerfTest,
+  stripSqlNoise,
   summarize,
   summarizeRuns,
 } from "../src/lib/perf-test";
@@ -220,5 +222,39 @@ describe("Perf-Datei", () => {
       capturedAt: new Date(2026, 1, 3, 8, 9, 10),
     });
     expect(name).toBe("kunde-daten-perf-20260203-080910.l8perf.json");
+  });
+});
+
+describe("Freie Abfrage als Performance-Test", () => {
+  test("erkennt lesende Einzelanweisungen", () => {
+    expect(isReadOnlyStatement("select * from kunde")).toBe(true);
+    expect(isReadOnlyStatement("WITH t AS (SELECT 1) SELECT * FROM t;")).toBe(true);
+    expect(isReadOnlyStatement("-- Kommentar\nSELECT 1")).toBe(true);
+  });
+
+  test("lehnt schreibende oder mehrteilige Anweisungen ab", () => {
+    expect(isReadOnlyStatement("delete from kunde")).toBe(false);
+    expect(isReadOnlyStatement("with t as (insert into k values (1) returning *) select * from t")).toBe(
+      false,
+    );
+    expect(isReadOnlyStatement("select 1; select 2")).toBe(false);
+    expect(isReadOnlyStatement("   ")).toBe(false);
+  });
+
+  test("entfernt Kommentare und abschließendes Semikolon", () => {
+    expect(stripSqlNoise("/* x */ select 1 ;")).toBe("select 1");
+  });
+
+  test("speichert Läufe ohne Tabellendefinition und liest sie zurück", () => {
+    const saved = buildSavedPerfTest(null, [run(1, 5, 10)], "select 1", {
+      connectionName: "lokal",
+      databaseKind: "postgres",
+      analyze: true,
+    });
+    expect(saved.definition).toBeNull();
+    expect(saved.mode).toBe("ANALYZE");
+    const parsed = parsePerfTestFile(serializePerfTest(saved));
+    expect(parsed.definition).toBeNull();
+    expect(parsed.runs).toHaveLength(1);
   });
 });
