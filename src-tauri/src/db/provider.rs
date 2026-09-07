@@ -551,20 +551,23 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             install: vec![],
             install_command,
         },
-        Driver::RuntimeLibrary { .. } => match oracle::Version::client() {
-            Ok(version) => DriverStatus {
-                available: true,
-                detail: format!("Oracle Client {version}"),
-                install: vec![],
-                install_command,
-            },
-            Err(e) => DriverStatus {
-                available: false,
-                detail: format!("Oracle Instant Client nicht gefunden: {e}"),
-                install: oracle_hints(),
-                install_command,
-            },
-        },
+        Driver::RuntimeLibrary { .. } => {
+            super::oracle::ensure_client_lib();
+            match oracle::Version::client() {
+                Ok(version) => DriverStatus {
+                    available: true,
+                    detail: format!("Oracle Client {version}"),
+                    install: vec![],
+                    install_command,
+                },
+                Err(e) => DriverStatus {
+                    available: false,
+                    detail: format!("Oracle Instant Client nicht gefunden: {e}"),
+                    install: oracle_hints(),
+                    install_command,
+                },
+            }
+        }
         Driver::Odbc { driver } => {
             let status = odbc_environment_status();
             let mut install = odbc_driver_hints(driver);

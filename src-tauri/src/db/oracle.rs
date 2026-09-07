@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -5,7 +6,7 @@ use oracle::sql_type::OracleType;
 pub use oracle::Connection;
 use oracle::{Connector, Row};
 
-use super::pool::PoolState;
+use super::pool::{BlockingPool, PoolState};
 use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
@@ -310,6 +311,11 @@ impl OracleAdapter {
     }
 
     pub async fn open_connection(&self) -> Result<Mutex<Connection>, String> {
+        self.open_raw().await.map(Mutex::new)
+    }
+
+    async fn open_raw(&self) -> Result<Connection, String> {
+        ensure_client_lib();
         self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
@@ -327,7 +333,7 @@ impl OracleAdapter {
             conn.set_autocommit(true);
             conn.execute(NLS_SESSION, &[])
                 .map_err(|e| format!("Oracle-Sitzungsformat fehlgeschlagen: {e}"))?;
-            Ok(Mutex::new(conn))
+            Ok(conn)
         })
         .await
         .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
@@ -355,8 +361,38 @@ impl OracleAdapter {
         .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
+    async fn run_pooled<T, F>(&self, suffix: &str, capacity: usize, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        let pool = self
+            .pool_state
+            .shared(&format!("{}#{suffix}", self.key), || async {
+                Ok(BlockingPool::<Connection>::new(capacity))
+            })
+            .await?;
+        pool.run(|| self.open_raw(), f).await
+    }
+
+    async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        self.run_pooled("meta", 3, f).await
+    }
+
+    async fn run_browse<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        self.run_pooled("browse", 2, f).await
+    }
+
     async fn rows(&self, sql: String) -> Result<Vec<Row>, String> {
-        self.run(move |c| fetch(c, &sql)).await
+        self.run_meta(move |c| fetch(c, &sql)).await
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
@@ -416,6 +452,7 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
 #[async_trait]
 impl DatabaseAdapter for OracleAdapter {
     async fn test_connection(&self) -> Result<(), String> {
+        ensure_client_lib();
         oracle::Version::client()
             .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
         self.rows("SELECT 1 FROM dual".to_string())
@@ -499,31 +536,33 @@ impl DatabaseAdapter for OracleAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
-            .collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => String::new(),
-        };
-        let sql = format!(
-            "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
-            if is_view { "t.*" } else { ROWID_SELECT },
-            quote(schema),
-            quote(table),
-            where_sql,
-            order_sql,
-            offset.max(0),
-            limit.max(1)
-        );
-        let (cols, rows) = self.run(move |c| run_query(c, &sql)).await?;
+        let (schema, table) = (schema.to_string(), table.to_string());
+        let order_by = order_by.map(str::to_string);
+        let (columns, cols, rows) = self
+            .run_browse(move |c| {
+                let columns = table_columns(c, &schema, &table, false)?;
+                let order_sql = match order_by {
+                    Some(col) if columns.iter().any(|c| *c == col) => format!(
+                        " ORDER BY {} {}",
+                        quote(&col),
+                        if order_desc { "DESC" } else { "ASC" }
+                    ),
+                    _ => String::new(),
+                };
+                let sql = format!(
+                    "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+                    if is_view { "t.*" } else { ROWID_SELECT },
+                    quote(&schema),
+                    quote(&table),
+                    where_sql,
+                    order_sql,
+                    offset.max(0),
+                    limit.max(1)
+                );
+                let (cols, rows) = run_query(c, &sql)?;
+                Ok((columns, cols, rows))
+            })
+            .await?;
         Ok(TableData {
             columns: if columns.is_empty() {
                 cols.clone()
@@ -547,7 +586,12 @@ impl DatabaseAdapter for OracleAdapter {
             quote(table),
             where_clause(filter, allow_raw_filter)?
         );
-        Ok(self.rows(sql).await?.first().map(|r| i(r, 0)).unwrap_or(0))
+        Ok(self
+            .run_browse(move |c| fetch(c, &sql))
+            .await?
+            .first()
+            .map(|r| i(r, 0))
+            .unwrap_or(0))
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
@@ -1485,9 +1529,127 @@ impl DatabaseAdapter for OracleAdapter {
     }
 }
 
+pub fn ensure_client_lib() {
+    if oracle::InitParams::is_initialized() {
+        return;
+    }
+    if let Some(dir) = find_client_lib_dir() {
+        let mut params = oracle::InitParams::new();
+        if let Ok(params) = params.oracle_client_lib_dir(dir) {
+            let _ = params.init();
+        }
+    }
+}
+
+fn is_client_lib(file: &str) -> bool {
+    if cfg!(target_os = "windows") {
+        file.eq_ignore_ascii_case("oci.dll")
+    } else if cfg!(target_os = "macos") {
+        file == "libclntsh.dylib"
+    } else {
+        file.starts_with("libclntsh.so")
+    }
+}
+
+fn has_client_lib(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| is_client_lib(&e.file_name().to_string_lossy()))
+        })
+        .unwrap_or(false)
+}
+
+fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(parent)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with("instantclient"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    dirs.sort();
+    dirs.reverse();
+    dirs
+}
+
+fn client_lib_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = std::env::var_os("ORACLE_HOME") {
+        dirs.push(PathBuf::from(&home).join("lib"));
+        dirs.push(PathBuf::from(home));
+    }
+    let path_vars: &[&str] = if cfg!(target_os = "windows") {
+        &["PATH"]
+    } else if cfg!(target_os = "macos") {
+        &["DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"]
+    } else {
+        &["LD_LIBRARY_PATH"]
+    };
+    for var in path_vars {
+        if let Some(paths) = std::env::var_os(var) {
+            dirs.extend(std::env::split_paths(&paths));
+        }
+    }
+    dirs.extend(["/opt/homebrew/lib", "/usr/local/lib"].map(PathBuf::from));
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
+        dirs.push(home.join("lib"));
+        dirs.extend(instant_client_dirs(&home));
+        dirs.extend(instant_client_dirs(&home.join("Downloads")));
+    }
+    for parent in [
+        "/opt/oracle",
+        "/opt",
+        "/usr/lib/oracle",
+        "C:\\oracle",
+        "C:\\",
+    ] {
+        dirs.extend(instant_client_dirs(Path::new(parent)));
+    }
+    dirs
+}
+
+pub fn find_client_lib_dir() -> Option<PathBuf> {
+    find_client_lib_in(&client_lib_candidates())
+}
+
+fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|dir| has_client_lib(dir)).cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_client_lib_dir_in_candidates() {
+        let dir = std::env::temp_dir().join(format!("l8db-oracle-{}", std::process::id()));
+        let empty = dir.join("leer");
+        std::fs::create_dir_all(&empty).unwrap();
+        let name = if cfg!(target_os = "windows") {
+            "oci.dll"
+        } else if cfg!(target_os = "macos") {
+            "libclntsh.dylib"
+        } else {
+            "libclntsh.so.21.1"
+        };
+        std::fs::write(dir.join(name), b"").unwrap();
+        assert_eq!(
+            find_client_lib_in(&[empty.clone(), dir.clone()]),
+            Some(dir.clone())
+        );
+        assert_eq!(find_client_lib_in(&[empty]), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn prepares_statements() {
