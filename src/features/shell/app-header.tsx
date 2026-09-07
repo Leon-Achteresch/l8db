@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { GitBranchIcon, Minus, PlugZap, RefreshCw, Settings, Square, X } from "lucide-react";
 import { motion } from "motion/react";
-import { type CSSProperties, useEffect } from "react";
+import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
@@ -32,7 +32,6 @@ function WindowControls() {
     <div
       data-tauri-drag-region="false"
       className="absolute right-0 top-0 z-30 flex h-full items-stretch"
-      style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
       onMouseDown={(event) => event.stopPropagation()}
     >
       <button
@@ -83,8 +82,7 @@ export function AppHeader() {
 
   return (
     <header
-      data-tauri-drag-region
-      style={{ WebkitAppRegion: "drag" } as CSSProperties}
+      data-tauri-drag-region="deep"
       className={cn(
         "relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
         "border-b border-border/60",
@@ -96,7 +94,6 @@ export function AppHeader() {
       <nav
         data-tour="header-nav"
         className="flex items-center gap-1 px-3"
-        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Bereiche"
       >
         <Link
@@ -139,15 +136,8 @@ export function AppHeader() {
         })}
       </nav>
 
-      <div
-        data-tauri-drag-region
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
-        className="flex min-w-0 flex-1 justify-center px-4"
-      >
-        <div
-          className="flex w-full max-w-[640px] items-center gap-2"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
+      <div className="flex min-w-0 flex-1 justify-center px-4">
+        <div className="flex w-full max-w-[640px] items-center gap-2">
           <ReadOnlyBadge />
           <div className="min-w-0 flex-1">
             <AppHeaderSearch />
@@ -155,10 +145,11 @@ export function AppHeader() {
         </div>
       </div>
 
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-2" />
+
       <nav
         data-tour="header-actions"
         className="flex items-center gap-1 px-3"
-        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
       >
         {import.meta.env.DEV && (
@@ -188,7 +179,6 @@ export function AppHeader() {
                 "hover:bg-muted hover:text-foreground",
                 "disabled:pointer-events-none disabled:opacity-50",
               )}
-              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
             >
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} strokeWidth={2} />
             </button>
@@ -206,7 +196,6 @@ export function AppHeader() {
               "hover:bg-muted hover:text-foreground",
               panelOpen && "bg-primary/12 text-foreground",
             )}
-            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           >
             <GitBranchIcon className="size-4" strokeWidth={2} />
             {txCount > 0 && (
@@ -224,7 +213,6 @@ export function AppHeader() {
           start="top-right"
           className="size-7 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
           iconClassName="size-4"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         />
 
         <Tooltip content="Treiber" side="bottom">
