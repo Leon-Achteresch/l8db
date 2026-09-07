@@ -26,8 +26,8 @@ fn environment() -> Result<&'static Environment, String> {
             Environment::set_connection_pooling(odbc_api::sys::AttrConnectionPooling::DriverAware)
                 .ok();
         }
-        let mut env = Environment::new()
-            .map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))?;
+        let mut env =
+            Environment::new().map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))?;
         env.set_connection_pooling_matching(odbc_api::sys::AttrCpMatch::Strict)
             .ok();
         Ok(env)

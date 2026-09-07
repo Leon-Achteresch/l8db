@@ -255,8 +255,13 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
                 return Err("Update must keep the extension id".into());
             }
             let mut installed = read_installed(root, id)?;
-            let declared = archive["manifest"]["permissions"].as_array().cloned().unwrap_or_default();
-            installed.grants.retain(|grant| declared.contains(&json!(grant)));
+            let declared = archive["manifest"]["permissions"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            installed
+                .grants
+                .retain(|grant| declared.contains(&json!(grant)));
             installed.archive = archive.clone();
             installed.development_path = value["developmentPath"].as_str().map(str::to_string);
             write_json(
