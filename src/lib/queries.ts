@@ -135,7 +135,7 @@ export function useTablesQuery() {
   });
 }
 
-export function useViewsQuery() {
+export function useViewsQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -148,7 +148,7 @@ export function useViewsQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "views"),
+    enabled: enabled && supports(connection, "views"),
   });
 }
 
@@ -214,7 +214,7 @@ export function useSourceSearchQuery(term: string, schema?: string) {
   });
 }
 
-export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW") {
+export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW", enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -228,7 +228,7 @@ export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW") {
         schema,
         tableType,
       ),
-    enabled: Boolean(connection),
+    enabled: enabled && Boolean(connection),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -267,7 +267,7 @@ export function useFunctionsQuery() {
   });
 }
 
-export function useProceduresQuery() {
+export function useProceduresQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -280,7 +280,7 @@ export function useProceduresQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "procedures"),
+    enabled: enabled && supports(connection, "procedures"),
   });
 }
 
@@ -362,7 +362,7 @@ export function useCompileInvalidObjectsMutation() {
   });
 }
 
-export function useExtensionsQuery() {
+export function useExtensionsQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -373,18 +373,18 @@ export function useExtensionsQuery() {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: supports(connection, "extensions"),
+    enabled: enabled && supports(connection, "extensions"),
   });
 }
 
-export function useRolesQuery() {
+export function useRolesQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
     queryKey: ["roles", connection?.id, database],
     queryFn: () =>
       listRoles(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: supports(connection, "roles"),
+    enabled: enabled && supports(connection, "roles"),
   });
 }
 
@@ -475,7 +475,7 @@ export function useErSchemaQuery(schema?: string) {
   });
 }
 
-export function useSequencesQuery() {
+export function useSequencesQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -488,7 +488,7 @@ export function useSequencesQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "sequences"),
+    enabled: enabled && supports(connection, "sequences"),
   });
 }
 
@@ -888,7 +888,7 @@ export function useDeleteRowMutation(schema: string, table: string) {
   });
 }
 
-export function useMaterializedViewsQuery(schema?: string) {
+export function useMaterializedViewsQuery(schema?: string, enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -900,7 +900,7 @@ export function useMaterializedViewsQuery(schema?: string) {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "materialized_views"),
+    enabled: enabled && supports(connection, "materialized_views"),
   });
 }
 
@@ -1009,7 +1009,7 @@ export function useUsedByQuery(schema: string, name: string) {
   });
 }
 
-export function useSynonymsQuery(schema?: string) {
+export function useSynonymsQuery(schema?: string, enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -1021,7 +1021,7 @@ export function useSynonymsQuery(schema?: string) {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "synonyms"),
+    enabled: enabled && supports(connection, "synonyms"),
   });
 }
 
