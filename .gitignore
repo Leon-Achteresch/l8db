@@ -49,3 +49,6 @@ docs/
 
 # Nested website repo (separates Projekt)
 l8db-website/
+
+# TanStack Router temp
+.tanstack/
