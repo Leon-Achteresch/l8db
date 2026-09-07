@@ -77,7 +77,7 @@ export function useActiveSchema(): string {
   const selected = useDbSelectionStore((state) =>
     connection ? (state.schemaByConnection[connection.id] ?? null) : null,
   );
-  if (selected) return selected;
+  if (selected && (!schemas || schemas.includes(selected))) return selected;
   if (database && schemas?.includes(database)) return database;
   if (!schemas?.length || schemas.includes("public")) return "public";
   return schemas[0];
