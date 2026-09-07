@@ -140,6 +140,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
   const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
   const [scannedSchemas, setScannedSchemas] = useState<string[] | null>(null);
+  const [scannedUser, setScannedUser] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const busy = saving || result.status === "testing";
@@ -337,7 +338,10 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     setScanning(true);
     setScanError(null);
     try {
-      const list = await withLiveUrl((liveKind, url) => listSchemas(liveKind, url));
+      const list = await withLiveUrl((liveKind, url) => {
+        setScannedUser(decodeURIComponent(new URL(url).username));
+        return listSchemas(liveKind, url);
+      });
       setScannedSchemas(list);
     } catch (error) {
       setScanError(connectionError(error));
@@ -981,6 +985,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                       <SchemaPicker
                         selected={schemaFilter}
                         scanned={scannedSchemas}
+                        userName={scannedUser}
                         scanning={scanning}
                         error={scanError}
                         onScan={() => void scanSchemas()}
