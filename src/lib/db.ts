@@ -29,7 +29,9 @@ const WRITE_COMMANDS = new Set([
   "drop_table",
   "duplicate_row_in_transaction",
   "execute_in_transaction",
+  "copy_schema_table_data",
   "execute_object_ddl",
+  "execute_schema_object_copy",
   "execute_in_transaction_with_params",
   "insert_row_in_transaction",
   "install_extension",
@@ -126,6 +128,7 @@ export interface Capabilities {
   synonyms: boolean;
   scheduler_jobs: boolean;
   object_admin: boolean;
+  schema_object_copy: boolean;
   server_output: boolean;
   ssl: boolean;
   ssh: boolean;
@@ -1871,5 +1874,95 @@ export async function objectAuditInfo(
     schema,
     name,
     objectType,
+  });
+}
+
+export type SchemaCopyObjectType = "table" | "view" | "routine";
+
+export type SchemaCopyStatus = "missing" | "different" | "identical";
+
+export interface SchemaObjectEntry {
+  name: string;
+  object_type: string;
+  status: SchemaCopyStatus;
+  source_definition: string;
+  target_definition: string;
+}
+
+export async function listSchemaCopyObjects(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  database?: string,
+): Promise<SchemaObjectEntry[]> {
+  return invoke("list_schema_copy_objects", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+  });
+}
+
+export async function previewSchemaObjectCopy(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  name: string,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_schema_object_copy", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+    name,
+  });
+}
+
+export async function executeSchemaObjectCopy(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  name: string,
+  database?: string,
+): Promise<string> {
+  return invoke("execute_schema_object_copy", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+    name,
+  });
+}
+
+export async function copySchemaTableData(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  name: string,
+  limit: number,
+  database?: string,
+): Promise<number> {
+  return invoke("copy_schema_table_data", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    name,
+    limit,
   });
 }

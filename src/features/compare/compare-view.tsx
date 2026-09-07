@@ -1,6 +1,7 @@
 import { GitCompareIcon } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SchemaCopyView } from "@/features/schema-copy/schema-copy-view";
 import { useActiveConnection } from "@/lib/connections";
 import { supports } from "@/lib/providers";
 
@@ -12,6 +13,7 @@ export function CompareView() {
   const connection = useActiveConnection();
   const snapshotEnabled = supports(connection, "schema_snapshot");
   const dataCompareEnabled = supports(connection, "data_compare");
+  const schemaCopyEnabled = supports(connection, "schema_object_copy");
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -33,6 +35,11 @@ export function CompareView() {
                 Tabellendaten
               </TabsTrigger>
             )}
+            {schemaCopyEnabled && (
+              <TabsTrigger value="schema-copy" className="text-xs">
+                Schema-Kopie
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -47,6 +54,11 @@ export function CompareView() {
         {dataCompareEnabled && (
           <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <DataCompareView />
+          </TabsContent>
+        )}
+        {schemaCopyEnabled && (
+          <TabsContent value="schema-copy" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <SchemaCopyView />
           </TabsContent>
         )}
       </Tabs>
