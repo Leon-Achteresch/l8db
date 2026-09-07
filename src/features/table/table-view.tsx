@@ -16,7 +16,7 @@ import {
   TableIcon,
   ZapIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -39,12 +39,12 @@ import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
-import { TablePerfPanel } from "@/features/table/table-perf-panel";
+
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
-import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
+
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
@@ -64,6 +64,17 @@ import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate"
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 import { useWorkspacePane } from "@/lib/workspace-pane";
+
+const ViewDefinitionPanel = lazy(() =>
+  import("@/features/table/view-definition-panel").then((module) => ({
+    default: module.ViewDefinitionPanel,
+  })),
+);
+const TablePerfPanel = lazy(() =>
+  import("@/features/table/table-perf-panel").then((module) => ({
+    default: module.TablePerfPanel,
+  })),
+);
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
@@ -196,7 +207,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
     [data],
   );
 
-  const exportRows = useMemo(() => {
+  const getExportRows = useCallback(() => {
     const cols = exportColumns;
     return (data?.rows ?? []).map((row) => {
       const source = row as Record<string, unknown>;
@@ -205,6 +216,10 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
       return obj;
     });
   }, [data, exportColumns]);
+  const exportRows = useMemo(
+    () => (csvExportOpen || xlsxExportOpen ? getExportRows() : []),
+    [csvExportOpen, xlsxExportOpen, getExportRows],
+  );
 
   const fullExportSource = useMemo(
     () => ({
@@ -224,6 +239,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
     if (!data) return;
     setExporting(true);
     try {
+      const exportRows = getExportRows();
       const ext = format === "json" ? "json" : "sql";
       let content: string;
       if (format === "json") {
@@ -454,7 +470,15 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
         </TabsContent>
 
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ViewDefinitionPanel schema={schema} view={table} />
+          <Suspense
+            fallback={
+              <div role="status" className="p-4 text-sm text-muted-foreground">
+                Ansicht wird geladen…
+              </div>
+            }
+          >
+            <ViewDefinitionPanel schema={schema} view={table} />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -463,7 +487,15 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
 
         <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {caps.explain && (
-            <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
+            <Suspense
+              fallback={
+                <div role="status" className="p-4 text-sm text-muted-foreground">
+                  Ansicht wird geladen…
+                </div>
+              }
+            >
+              <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
+            </Suspense>
           )}
         </TabsContent>
 
@@ -638,7 +670,15 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
 
       <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.explain && (
-          <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+          <Suspense
+            fallback={
+              <div role="status" className="p-4 text-sm text-muted-foreground">
+                Ansicht wird geladen…
+              </div>
+            }
+          >
+            <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+          </Suspense>
         )}
       </TabsContent>
 

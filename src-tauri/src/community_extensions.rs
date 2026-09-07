@@ -248,6 +248,28 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             fs::rename(staging, directory).map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
+        "replace" => {
+            let archive = &value["archive"];
+            let extension_id = validate_archive(archive)?;
+            if extension_id != id {
+                return Err("Update must keep the extension id".into());
+            }
+            let mut installed = read_installed(root, id)?;
+            let declared = archive["manifest"]["permissions"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            installed
+                .grants
+                .retain(|grant| declared.contains(&json!(grant)));
+            installed.archive = archive.clone();
+            installed.development_path = value["developmentPath"].as_str().map(str::to_string);
+            write_json(
+                &location(root, id)?.join("package.json"),
+                &serde_json::to_value(installed).map_err(|e| e.to_string())?,
+            )?;
+            Ok(Value::Null)
+        }
         "remove" => {
             read_installed(root, id)?;
             fs::remove_dir_all(location(root, id)?).map_err(|e| e.to_string())?;
@@ -316,7 +338,7 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
         _ => Err("Unknown extension store operation".into()),
     }
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn community_extension_store(
     app: tauri::AppHandle,
     lock: tauri::State<'_, ExtensionStoreLock>,
@@ -332,7 +354,7 @@ pub fn community_extension_store(
         .join("community-extensions");
     operate(&root, &operation, &id, value)
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_community_extension(path: String, development: bool) -> Result<Value, String> {
     if development {
         import_directory(Path::new(&path))

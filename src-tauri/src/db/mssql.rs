@@ -1,8 +1,13 @@
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use async_trait::async_trait;
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+use super::pool::PoolState;
 use super::{
     attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
@@ -12,9 +17,59 @@ use super::{
 };
 
 type MsClient = Client<Compat<TcpStream>>;
+type IdleClients = Mutex<Vec<(MsClient, Instant)>>;
+
+const IDLE_MAX: usize = 8;
+const IDLE_TTL: Duration = Duration::from_secs(300);
 
 pub struct MssqlAdapter {
     config: Config,
+    pool_state: PoolState,
+    key: String,
+}
+
+struct PooledClient {
+    client: Option<MsClient>,
+    idle: Arc<IdleClients>,
+}
+
+impl PooledClient {
+    fn discard(mut self) {
+        self.client = None;
+    }
+
+    fn into_inner(mut self) -> Option<MsClient> {
+        self.client.take()
+    }
+}
+
+impl Deref for PooledClient {
+    type Target = MsClient;
+    fn deref(&self) -> &MsClient {
+        self.client
+            .as_ref()
+            .expect("pooled client already released")
+    }
+}
+
+impl DerefMut for PooledClient {
+    fn deref_mut(&mut self) -> &mut MsClient {
+        self.client
+            .as_mut()
+            .expect("pooled client already released")
+    }
+}
+
+impl Drop for PooledClient {
+    fn drop(&mut self) {
+        let Some(client) = self.client.take() else {
+            return;
+        };
+        let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
+        if idle.len() < IDLE_MAX {
+            idle.push((client, Instant::now()));
+        }
+    }
 }
 
 pub fn quote(ident: &str) -> String {
@@ -156,7 +211,12 @@ fn is_result_statement(sql: &str) -> bool {
 }
 
 impl MssqlAdapter {
-    pub fn new(connection_string: &str, database: Option<&str>) -> Result<Self, String> {
+    pub fn new(
+        connection_string: &str,
+        database: Option<&str>,
+        pool_state: PoolState,
+        key: String,
+    ) -> Result<Self, String> {
         let url = url::Url::parse(connection_string.trim())
             .map_err(|_| "Ungültige SQL-Server-URL".to_string())?;
         if !matches!(url.scheme(), "mssql" | "sqlserver") {
@@ -211,41 +271,80 @@ impl MssqlAdapter {
         if trust {
             config.trust_cert();
         }
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            pool_state,
+            key,
+        })
     }
 
-    async fn connect(&self) -> Result<MsClient, String> {
-        timed(async {
-            let tcp = TcpStream::connect(self.config.get_addr())
-                .await
-                .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
-            tcp.set_nodelay(true).ok();
-            Client::connect(self.config.clone(), tcp.compat_write())
-                .await
-                .map_err(map_err)
+    async fn connect(&self) -> Result<PooledClient, String> {
+        let idle = self
+            .pool_state
+            .shared(&self.key, || async {
+                Ok::<IdleClients, String>(Mutex::new(Vec::new()))
+            })
+            .await?;
+        let reused = {
+            let mut list = idle.lock().unwrap_or_else(|e| e.into_inner());
+            list.retain(|(_, since)| since.elapsed() < IDLE_TTL);
+            list.pop().map(|(client, _)| client)
+        };
+        let client = match reused {
+            Some(client) => client,
+            None => {
+                timed(async {
+                    let tcp = TcpStream::connect(self.config.get_addr())
+                        .await
+                        .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
+                    tcp.set_nodelay(true).ok();
+                    Client::connect(self.config.clone(), tcp.compat_write())
+                        .await
+                        .map_err(map_err)
+                })
+                .await?
+            }
+        };
+        Ok(PooledClient {
+            client: Some(client),
+            idle,
         })
-        .await
+    }
+
+    async fn dedicated(&self) -> Result<MsClient, String> {
+        self.connect()
+            .await?
+            .into_inner()
+            .ok_or_else(|| "SQL Server: Verbindung nicht verfügbar".to_string())
     }
 
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
         let mut client = self.connect().await?;
-        timed(async {
+        let result = timed(async {
             let stream = client.simple_query(sql).await.map_err(map_err)?;
             stream.into_first_result().await.map_err(map_err)
         })
-        .await
+        .await;
+        if result.is_err() {
+            client.discard();
+        }
+        result
     }
 
     async fn exec(&self, sql: &str) -> Result<u64, String> {
         let mut client = self.connect().await?;
-        timed(async {
+        let result = timed(async {
             client
                 .execute(sql, &[])
                 .await
                 .map_err(map_err)
                 .map(|r| r.total())
         })
-        .await
+        .await;
+        if result.is_err() {
+            client.discard();
+        }
+        result
     }
 
     fn object(schema: &str, name: &str) -> String {
@@ -477,14 +576,18 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
-        let mut client = self.connect().await?;
+        let mut client = self.dedicated().await?;
         run_query(&mut client, "BEGIN TRANSACTION").await?;
         Ok(Box::new(MssqlTx { client }))
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let mut client = self.connect().await?;
-        run_query(&mut client, sql).await
+        let result = run_query(&mut client, sql).await;
+        if result.is_err() || is_tx_control(sql) {
+            client.discard();
+        }
+        result
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -528,7 +631,7 @@ impl DatabaseAdapter for MssqlAdapter {
             Self::object(schema, view),
             body
         );
-        let mut client = self.connect().await?;
+        let mut client = self.dedicated().await?;
         timed(async {
             client
                 .simple_query("BEGIN TRANSACTION")
@@ -896,7 +999,7 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn explain_query(&self, sql: &str, _analyze: bool) -> Result<serde_json::Value, String> {
-        let mut client = self.connect().await?;
+        let mut client = self.dedicated().await?;
         timed(async {
             client
                 .simple_query("SET SHOWPLAN_ALL ON")
@@ -1004,9 +1107,10 @@ mod tests {
 
     #[test]
     fn parses_url_options() {
-        let adapter = MssqlAdapter::new("mssql://sa:P%40ss@db.example.com:1434/master?encrypt=true&trust_server_certificate=true", Some("other")).unwrap();
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new("mssql://sa:P%40ss@db.example.com:1434/master?encrypt=true&trust_server_certificate=true", Some("other"), pool.clone(), "k".into()).unwrap();
         assert_eq!(adapter.config.get_addr(), "db.example.com:1434");
-        assert!(MssqlAdapter::new("mysql://x@y/z", None).is_err());
+        assert!(MssqlAdapter::new("mysql://x@y/z", None, pool, "k".into()).is_err());
         assert!(is_result_statement("  select 1"));
         assert!(!is_result_statement("UPDATE t SET a = 1"));
         assert!(is_result_statement(

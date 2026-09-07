@@ -17,7 +17,7 @@ pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
     super::provider::list_providers()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
     super::provider::kind_driver_status(kind)
 }

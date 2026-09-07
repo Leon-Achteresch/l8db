@@ -13,6 +13,9 @@ export class TauriExtensionStorage implements ExtensionStorage {
   install(archive: ExtensionArchive, developmentPath?: string) {
     return communityExtensionStore<void>("install", "", { archive, developmentPath });
   }
+  replace(id: string, archive: ExtensionArchive, developmentPath?: string) {
+    return communityExtensionStore<void>("replace", id, { archive, developmentPath });
+  }
   remove(id: string) {
     return communityExtensionStore<void>("remove", id);
   }

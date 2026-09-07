@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -5,7 +6,7 @@ import {
   FilterIcon,
   FilterXIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useDeferredValue, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { QueryResult } from "@/lib/db";
+import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import {
   activeFilterCount,
   applyResultView,
@@ -30,6 +32,8 @@ import {
 } from "@/lib/result-grid";
 import { cn } from "@/lib/utils";
 
+const PINNED_COLUMNS = [0];
+
 const FILTER_OPERATORS: ResultFilterOperator[] = ["contains", "equals", "is_null", "not_null"];
 
 interface QueryResultTableProps {
@@ -38,7 +42,11 @@ interface QueryResultTableProps {
   error: string | null;
 }
 
-export function QueryResultTable({ result, isLoading, error }: QueryResultTableProps) {
+export const QueryResultTable = memo(function QueryResultTable({
+  result,
+  isLoading,
+  error,
+}: QueryResultTableProps) {
   const [sorts, setSorts] = useState<ResultSort[]>([]);
   const [filters, setFilters] = useState<ResultFilters>({});
   const [filterRowOpen, setFilterRowOpen] = useState(false);
@@ -53,10 +61,27 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
 
   const columns = useMemo(() => result?.columns ?? [], [result]);
   const rows = useMemo(() => result?.rows ?? [], [result]);
+  const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
-    () => applyResultView(rows, columns, sorts, filters),
-    [rows, columns, sorts, filters],
+    () => applyResultView(rows, columns, sorts, deferredFilters),
+    [rows, columns, sorts, deferredFilters],
   );
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const columnWidths = useMemo(() => [48, ...columns.map(() => 200)], [columns]);
+  const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
+  const dataColumnWindow = useMemo(
+    () => columnWindow.items.filter((item) => item.index !== 0),
+    [columnWindow.items],
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 29,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows[0]?.start ?? 0;
+  const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
 
   const filterCount = activeFilterCount(filters);
   const viewActive = filterCount > 0 || sorts.length > 0;
@@ -177,14 +202,38 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
           )}
         </div>
       </div>
-      <div className="relative min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-separate border-spacing-0 text-sm">
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto">
+        <table
+          className="w-full border-separate border-spacing-0 text-sm"
+          style={
+            columnWindow.enabled
+              ? { tableLayout: "fixed", width: 48 + columns.length * 200 }
+              : undefined
+          }
+        >
+          {columnWindow.enabled && (
+            <colgroup>
+              {columnWidths.map((width, index) => (
+                <col key={index} style={{ width }} />
+              ))}
+            </colgroup>
+          )}
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
                 #
               </th>
-              {columns.map((col) => {
+              {dataColumnWindow.map((item) => {
+                if (item.spacer)
+                  return (
+                    <th
+                      key={`gap-${item.index}`}
+                      aria-hidden
+                      colSpan={item.span}
+                      style={{ width: item.width, padding: 0 }}
+                    />
+                  );
+                const col = columns[item.index - 1];
                 const direction = sortDirectionFor(sorts, col);
                 const rank = sortRankFor(sorts, col);
                 return (
@@ -224,7 +273,17 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
             {filterRowOpen && (
               <tr>
                 <th className="sticky left-0 z-20 border-b border-r bg-muted px-1 py-1" />
-                {columns.map((col) => {
+                {dataColumnWindow.map((item) => {
+                  if (item.spacer)
+                    return (
+                      <th
+                        key={`gap-${item.index}`}
+                        aria-hidden
+                        colSpan={item.span}
+                        style={{ width: item.width, padding: 0 }}
+                      />
+                    );
+                  const col = columns[item.index - 1];
                   const filter = filters[col] ?? {
                     operator: "contains" as ResultFilterOperator,
                     value: "",
@@ -275,40 +334,67 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
             )}
           </thead>
           <tbody>
-            {visibleRows.map((row, rowIdx) => (
-              <tr
-                key={rowIdx}
-                className={cn(
-                  "group hover:bg-muted/50",
-                  rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
-                )}
-              >
-                <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
-                  {rowIdx + 1}
-                </td>
-                {columns.map((col) => {
-                  const raw = row[col];
-                  const isNull = raw === null || raw === undefined;
-                  const display = isNull
-                    ? "NULL"
-                    : String(raw).length > 200
-                      ? `${String(raw).slice(0, 200)}…`
-                      : String(raw);
-                  return (
-                    <td
-                      key={col}
-                      title={isNull ? undefined : String(raw)}
-                      className={cn(
-                        "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
-                        isNull && "text-muted-foreground/50 italic",
-                      )}
-                    >
-                      {display}
-                    </td>
-                  );
-                })}
+            {paddingTop > 0 && (
+              <tr aria-hidden style={{ height: paddingTop }}>
+                <td colSpan={columns.length + 1} className="p-0" />
               </tr>
-            ))}
+            )}
+            {virtualRows.map((virtualRow) => {
+              const rowIdx = virtualRow.index;
+              const row = visibleRows[rowIdx];
+              return (
+                <tr
+                  key={rowIdx}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={rowIdx}
+                  className={cn(
+                    "group hover:bg-muted/50",
+                    rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
+                  )}
+                >
+                  <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
+                    {rowIdx + 1}
+                  </td>
+                  {dataColumnWindow.map((item) => {
+                    if (item.spacer)
+                      return (
+                        <td
+                          key={`gap-${item.index}`}
+                          aria-hidden
+                          colSpan={item.span}
+                          style={{ width: item.width, padding: 0 }}
+                        />
+                      );
+                    const col = columns[item.index - 1];
+                    const raw = row[col];
+                    const isNull = raw === null || raw === undefined;
+                    const display = isNull
+                      ? "NULL"
+                      : String(raw).length > 200
+                        ? `${String(raw).slice(0, 200)}…`
+                        : String(raw);
+                    return (
+                      <td
+                        key={col}
+                        data-col={col}
+                        title={isNull ? undefined : String(raw)}
+                        className={cn(
+                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
+                          isNull && "text-muted-foreground/50 italic",
+                        )}
+                      >
+                        {display}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && (
+              <tr aria-hidden style={{ height: paddingBottom }}>
+                <td colSpan={columns.length + 1} className="p-0" />
+              </tr>
+            )}
           </tbody>
         </table>
         {visibleRows.length === 0 && rows.length > 0 && (
@@ -319,4 +405,4 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
       </div>
     </div>
   );
-}
+});

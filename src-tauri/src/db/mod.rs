@@ -1442,8 +1442,10 @@ pub(crate) fn pretty_bytes(bytes: i64) -> String {
 pub(crate) fn hex_blob(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(2 + bytes.len() * 2);
     out.push_str("\\x");
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     for b in bytes {
-        out.push_str(&format!("{b:02x}"));
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
     }
     out
 }
@@ -1509,7 +1511,12 @@ pub fn create_adapter_from_string(
             pool_state,
             key,
         )?),
-        DatabaseKind::Mssql => Box::new(mssql::MssqlAdapter::new(connection_string, database)?),
+        DatabaseKind::Mssql => Box::new(mssql::MssqlAdapter::new(
+            connection_string,
+            database,
+            pool_state,
+            key,
+        )?),
         DatabaseKind::Clickhouse => Box::new(clickhouse::ClickhouseAdapter::new(
             connection_string,
             database,
@@ -1607,7 +1614,13 @@ pub fn build_object_ddl(req: &ObjectDdlRequest) -> Result<String, String> {
 mod tests {
     use super::{redact_connection_string, split_statements, validate_table_filter};
 
-    use super::{build_object_ddl, validate_object_name, ObjectDdlRequest};
+    use super::{build_object_ddl, hex_blob, validate_object_name, ObjectDdlRequest};
+
+    #[test]
+    fn hex_blob_encodes_bytes() {
+        assert_eq!(hex_blob(&[]), "\\x");
+        assert_eq!(hex_blob(&[0x00, 0x0f, 0xa5, 0xff]), "\\x000fa5ff");
+    }
 
     fn ddl_req(object_type: &str, action: &str) -> ObjectDdlRequest {
         ObjectDdlRequest {

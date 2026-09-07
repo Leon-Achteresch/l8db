@@ -1,3 +1,4 @@
+use futures_util::TryStreamExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -130,14 +131,14 @@ pub async fn pg_run_query(
             .map_err(map_pg_err)?;
     }
     let outcome = async {
-        let messages = client.simple_query(sql).await.map_err(map_pg_err)?;
-        let elapsed = start.elapsed().as_millis() as u64;
+        let messages = client.simple_query_raw(sql).await.map_err(map_pg_err)?;
+        futures_util::pin_mut!(messages);
 
         let mut columns: Vec<String> = Vec::new();
         let mut rows: Vec<serde_json::Value> = Vec::new();
         let mut rows_affected: Option<u64> = None;
 
-        for msg in messages {
+        while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
             match msg {
                 SimpleQueryMessage::Row(row) => {
                     if columns.is_empty() {
@@ -164,7 +165,7 @@ pub async fn pg_run_query(
             columns,
             rows,
             rows_affected,
-            execution_time_ms: elapsed,
+            execution_time_ms: start.elapsed().as_millis() as u64,
         })
     }
     .await;

@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   LockIcon,
 } from "lucide-react";
-import { motion } from "motion/react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
 import {
   type BlockingInfo,
@@ -296,10 +294,8 @@ export function SessionsView() {
             </thead>
             <tbody className="divide-y divide-border/50">
               {(locks ?? []).map((lock, index) => (
-                <motion.tr
+                <tr
                   key={`${lock.pid}-${lock.lock_type}-${lock.relation ?? ""}-${lock.mode}-${index}`}
-                  layout="position"
-                  transition={{ layout: SPRING_LAYOUT }}
                   className="hover:bg-muted/40"
                 >
                   <td className="px-3 py-2 font-mono tabular-nums">{lock.pid}</td>
@@ -314,7 +310,7 @@ export function SessionsView() {
                       {lock.granted ? "gewährt" : "wartet"}
                     </Badge>
                   </td>
-                </motion.tr>
+                </tr>
               ))}
             </tbody>
           </table>

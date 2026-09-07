@@ -1,33 +1,38 @@
 import {
+  clampSidebarWidth,
   SIDEBAR_PANEL_MAX_WIDTH,
   SIDEBAR_PANEL_MIN_WIDTH,
-  selectSidebarPanelWidth,
   useSidebarPanel,
 } from "@/lib/sidebar-panel";
 
 export function AppSidebarResizeHandle() {
-  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
+  const panelWidth = useSidebarPanel((state) => state.width);
   const setWidth = useSidebarPanel((state) => state.setWidth);
-  const setDragWidth = useSidebarPanel((state) => state.setDragWidth);
   const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    const wrapper = event.currentTarget.closest<HTMLElement>("[data-slot=sidebar-wrapper]");
     const startX = event.clientX;
     const startWidth = useSidebarPanel.getState().width;
+    let nextWidth = startWidth;
+    let frame = 0;
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      setDragWidth(startWidth + (moveEvent.clientX - startX));
+      nextWidth = clampSidebarWidth(startWidth + (moveEvent.clientX - startX));
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        wrapper?.style.setProperty("--sidebar-width", `${nextWidth}px`);
+      });
     };
 
     const handlePointerUp = () => {
-      const { dragWidth } = useSidebarPanel.getState();
-      if (dragWidth !== null) {
-        setWidth(dragWidth);
-      } else {
-        setDragWidth(null);
-      }
+      cancelAnimationFrame(frame);
+      frame = 0;
+      wrapper?.style.setProperty("--sidebar-width", `${nextWidth}px`);
+      setWidth(nextWidth);
       setIsResizing(false);
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");

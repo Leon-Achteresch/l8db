@@ -30,7 +30,7 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -102,7 +102,7 @@ import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
-import { TableSearchModal } from "@/features/sidebar/table-search-modal";
+
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
@@ -135,7 +135,6 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import {
   activateConnectionWithToast,
   effectiveConnectionString,
@@ -143,13 +142,18 @@ import {
 } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
+const TableSearchModal = lazy(() =>
+  import("@/features/sidebar/table-search-modal").then((module) => ({
+    default: module.TableSearchModal,
+  })),
+);
+
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
-  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
@@ -250,11 +254,12 @@ export function AppSidebarPanel() {
   const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [searchModalMounted, setSearchModalMounted] = useState(false);
 
   return (
     <Sidebar
       collapsible="none"
-      style={{ width: panelWidth }}
+      style={{ width: "var(--sidebar-width)" }}
       className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
@@ -464,7 +469,10 @@ export function AppSidebarPanel() {
           </SidebarGroupLabel>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction
-              onClick={() => setSearchModalOpen(true)}
+              onClick={() => {
+                setSearchModalMounted(true);
+                setSearchModalOpen(true);
+              }}
               aria-label="Erweiterte Suche"
               title="Erweiterte Suche mit Regex & SQL WHERE"
             >
@@ -551,7 +559,11 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
-        <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+        {searchModalMounted && (
+          <Suspense fallback={null}>
+            <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+          </Suspense>
+        )}
         {activeConnection ? (
           <SidebarGroup className="mt-auto border-t pt-2">
             <SidebarGroupContent>
@@ -658,9 +670,10 @@ function SidebarEntityList({
     return map;
   }, [columns]);
 
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
     if (!items) return undefined;
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (!q) return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
     return items
       .map((item) => {
@@ -677,7 +690,7 @@ function SidebarEntityList({
         (item): item is { schema: string; name: string; matchingColumns: string[] } =>
           item !== null,
       );
-  }, [items, search, columnsByTable]);
+  }, [items, deferredSearch, columnsByTable]);
 
   if (isLoading) {
     return (

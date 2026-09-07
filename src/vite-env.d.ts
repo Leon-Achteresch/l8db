@@ -5,3 +5,7 @@ declare module "monaco-editor/esm/vs/basic-languages/sql/sql" {
   export const conf: languages.LanguageConfiguration;
   export const language: languages.IMonarchLanguage;
 }
+
+declare module "monaco-editor/esm/vs/editor/editor.api" {
+  export * from "monaco-editor";
+}
