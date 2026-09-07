@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
 import { QueryEditorPane, type QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
@@ -176,6 +177,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
+  const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
   const [plan, setPlan] = useState<{ node: ExplainNode; analyzed: boolean; sql: string } | null>(
     null,
   );
@@ -971,6 +973,9 @@ export function QueryView({ tabId }: QueryViewProps) {
                 <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
                   Als CSV exportieren…
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                  Als XLSX exportieren…
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleExportJson()}>
                   Als JSON exportieren
                 </DropdownMenuItem>
@@ -1143,6 +1148,14 @@ export function QueryView({ tabId }: QueryViewProps) {
           columns={result?.columns ?? []}
           rows={exportRows}
           defaultFileName="query-result.csv"
+        />
+
+        <XlsxExportDialog
+          open={xlsxExportOpen}
+          onOpenChange={setXlsxExportOpen}
+          columns={result?.columns ?? []}
+          rows={exportRows}
+          defaultFileName="query-result.xlsx"
         />
       </motion.div>
       {historyOpen && (
