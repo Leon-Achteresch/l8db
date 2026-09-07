@@ -7,13 +7,22 @@ import { Input } from "@/components/ui/input";
 interface Props {
   selected: string[];
   scanned: string[] | null;
+  userName: string;
   scanning: boolean;
   error: string | null;
   onScan: () => void;
   onChange: (next: string[]) => void;
 }
 
-export function SchemaPicker({ selected, scanned, scanning, error, onScan, onChange }: Props) {
+export function SchemaPicker({
+  selected,
+  scanned,
+  userName,
+  scanning,
+  error,
+  onScan,
+  onChange,
+}: Props) {
   const [search, setSearch] = useState("");
   const all = useMemo(
     () => [...new Set([...(scanned ?? []), ...selected])].sort((a, b) => a.localeCompare(b)),
@@ -23,6 +32,7 @@ export function SchemaPicker({ selected, scanned, scanning, error, onScan, onCha
   const visible = needle ? all.filter((name) => name.toLowerCase().includes(needle)) : all;
   const selectedSet = new Set(selected);
   const missing = scanned ? selected.filter((name) => !scanned.includes(name)) : [];
+  const userSchema = scanned?.find((name) => name.toLowerCase() === userName.toLowerCase());
 
   function toggle(name: string, checked: boolean) {
     if (checked) onChange([...selected, name]);
@@ -58,6 +68,15 @@ export function SchemaPicker({ selected, scanned, scanning, error, onScan, onCha
               : "Alle sichtbar"
             : `${selected.length} von ${all.length} ausgewählt`}
         </span>
+        {userSchema && (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline"
+            onClick={() => onChange([userSchema])}
+          >
+            Nur Schema „{userSchema}“
+          </button>
+        )}
         {selected.length > 0 && (
           <button
             type="button"
