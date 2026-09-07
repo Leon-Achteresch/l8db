@@ -182,6 +182,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     setDatabase(nextDefaults.database);
     setUser(nextDefaults.user);
     if (!value) setSsl(next.hosts.includes("localhost") ? "prefer" : "require");
+    setStep(2);
   }
 
   function makeUrl() {

@@ -36,6 +36,7 @@ import { toast } from "sonner";
 
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -354,17 +355,13 @@ export function AppSidebarPanel() {
                         });
                       }}
                     >
-                      {grouped ? (
-                        <span
-                          className="size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: connection.color ?? "var(--border)" }}
-                        />
-                      ) : (
+                      <ConnectionStatusIndicator connectionId={connection.id} />
+                      {!grouped ? (
                         <ProviderLogo
                           providerId={providerFor(connection).id}
                           kind={connection.kind}
                         />
-                      )}
+                      ) : null}
                       <span className="flex min-w-0 flex-1 items-center gap-1.5">
                         <span className="truncate">{connection.name}</span>
                         {grouped && connectionUser(connection) && (
