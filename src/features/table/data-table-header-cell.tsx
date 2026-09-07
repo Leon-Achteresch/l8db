@@ -6,6 +6,8 @@ import {
   EyeOffIcon,
   FilterIcon,
   GripVerticalIcon,
+  PinIcon,
+  PinOffIcon,
   PlayIcon,
   RotateCcwIcon,
   XIcon,
@@ -49,6 +51,8 @@ type DataTableHeaderCellProps = {
   onApplyColumnFilter: () => void;
   onHideColumn: () => void;
   canHide: boolean;
+  isPinned: boolean;
+  onTogglePin: () => void;
 };
 
 export function DataTableHeaderCell({
@@ -68,8 +72,12 @@ export function DataTableHeaderCell({
   onApplyColumnFilter,
   onHideColumn,
   canHide,
+  isPinned,
+  onTogglePin,
 }: DataTableHeaderCellProps) {
   const { ref, handleRef, isDragging } = useSortable({ id: header.id, index: sortableIndex });
+  const pinnedOffset =
+    header.column.getIsPinned() === "left" ? header.column.getStart("left") : null;
 
   return (
     <ContextMenu>
@@ -80,9 +88,10 @@ export function DataTableHeaderCell({
               ref={ref}
               className={cn(
                 "relative border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
+                pinnedOffset !== null && "sticky z-30 bg-muted/95 shadow-[1px_0_0_0_var(--border)]",
                 isDragging && "z-40 opacity-80",
               )}
-              style={{ width: header.getSize() }}
+              style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}
             >
               <div className="flex min-w-0 items-center gap-1">
                 <button
@@ -232,6 +241,10 @@ export function DataTableHeaderCell({
           </>
         )}
         <ContextMenuSeparator />
+        <ContextMenuItem onClick={onTogglePin}>
+          {isPinned ? <PinOffIcon /> : <PinIcon />}
+          {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}
+        </ContextMenuItem>
         <ContextMenuItem disabled={!canHide} onClick={onHideColumn}>
           <EyeOffIcon />
           Spalte ausblenden

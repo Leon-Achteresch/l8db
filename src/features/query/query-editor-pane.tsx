@@ -1,9 +1,19 @@
 import { useTheme } from "next-themes";
-import { useEffect, useRef } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { useSettingsStore } from "@/lib/settings";
+import { toMonacoSnippet, useSnippetsStore } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
+
+export interface QueryEditorApi {
+  insertSnippet: (body: string) => void;
+  focus: () => void;
+  revealMatch: (line: number, column?: number, length?: number) => void;
+  toggleBookmark: () => void;
+  gotoBookmark: (direction: "next" | "previous") => void;
+}
 
 interface SchemaRegistry {
   schemas: string[];
@@ -11,11 +21,26 @@ interface SchemaRegistry {
   columns: ColumnInfo[];
 }
 
+interface EditorHighlight {
+  start: number;
+  end: number;
+}
+
 interface QueryEditorPaneProps {
   value: string;
   onChange: (value: string) => void;
   onRun: () => void;
+  onSave?: () => void;
+  onRunSelection?: () => void;
+  onRunStatement?: () => void;
+  onSelectionChange?: (selectedText: string) => void;
+  onCursorChange?: (offset: number) => void;
+  highlight?: EditorHighlight | null;
+  bookmarks?: number[];
+  onBookmarksChange?: (lines: number[]) => void;
+  onSearchTabs?: () => void;
   registry: SchemaRegistry;
+  ref?: Ref<QueryEditorApi>;
   className?: string;
 }
 
@@ -491,6 +516,21 @@ function buildCompletions(
     }
   }
 
+  for (const snippet of useSnippetsStore.getState().snippets) {
+    if (!snippet.shortcut.trim() || !snippet.body.trim()) continue;
+    suggestions.push({
+      label: snippet.shortcut,
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: snippet.category ? `${snippet.name} · ${snippet.category}` : snippet.name,
+      documentation: snippet.description || undefined,
+      filterText: `${snippet.shortcut} ${snippet.name}`,
+      insertText: toMonacoSnippet(snippet.body),
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      range,
+      sortText: `0_${snippet.shortcut}`,
+    });
+  }
+
   for (const kw of SQL_KEYWORDS) {
     suggestions.push({
       label: kw,
@@ -546,19 +586,115 @@ export function QueryEditorPane({
   value,
   onChange,
   onRun,
+  onSave,
+  onRunSelection,
+  onRunStatement,
+  onSelectionChange,
+  onCursorChange,
+  highlight,
+  bookmarks,
+  onBookmarksChange,
+  onSearchTabs,
   registry,
   className,
+  ref,
 }: QueryEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const bookmarkDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const bookmarksRef = useRef<number[]>(bookmarks ?? []);
+  const suppressPublishRef = useRef(false);
+  const onBookmarksChangeRef = useRef(onBookmarksChange);
+  const onSearchTabsRef = useRef(onSearchTabs);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const onSaveRef = useRef(onSave);
+  const onRunSelectionRef = useRef(onRunSelection);
+  const onRunStatementRef = useRef(onRunStatement);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onCursorChangeRef = useRef(onCursorChange);
   const registryRef = useRef(registry);
   const { resolvedTheme } = useTheme();
 
   onChangeRef.current = onChange;
   onRunRef.current = onRun;
+  onSaveRef.current = onSave;
+  onRunSelectionRef.current = onRunSelection;
+  onRunStatementRef.current = onRunStatement;
+  onSelectionChangeRef.current = onSelectionChange;
+  onCursorChangeRef.current = onCursorChange;
+  onBookmarksChangeRef.current = onBookmarksChange;
+  onSearchTabsRef.current = onSearchTabs;
   registryRef.current = registry;
+  const { editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap } =
+    useSettingsStore();
+
+  const readBookmarkLines = (): number[] => {
+    const collection = bookmarkDecorationsRef.current;
+    if (!collection) return [];
+    const lines = new Set<number>();
+    for (const range of collection.getRanges()) lines.add(range.startLineNumber);
+    return [...lines].sort((a, b) => a - b);
+  };
+
+  const applyBookmarks = (lines: number[]) => {
+    const collection = bookmarkDecorationsRef.current;
+    const model = editorRef.current?.getModel();
+    if (!collection || !model) return;
+    const maxLine = model.getLineCount();
+    const valid = [...new Set(lines.filter((line) => line >= 1 && line <= maxLine))].sort(
+      (a, b) => a - b,
+    );
+    collection.set(
+      valid.map((line) => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: true,
+          glyphMarginClassName: "l8db-bookmark-glyph",
+          glyphMarginHoverMessage: { value: "Lesezeichen" },
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        },
+      })),
+    );
+  };
+
+  const publishBookmarks = () => {
+    if (suppressPublishRef.current) return;
+    const lines = readBookmarkLines();
+    const previous = bookmarksRef.current;
+    if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
+    bookmarksRef.current = lines;
+    onBookmarksChangeRef.current?.(lines);
+  };
+
+  const toggleBookmarkAtCursor = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const line = editor.getPosition()?.lineNumber;
+    if (!line) return;
+    const current = readBookmarkLines();
+    const next = current.includes(line)
+      ? current.filter((entry) => entry !== line)
+      : [...current, line].sort((a, b) => a - b);
+    applyBookmarks(next);
+    publishBookmarks();
+  };
+
+  const gotoBookmarkLine = (direction: "next" | "previous") => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const lines = readBookmarkLines();
+    if (lines.length === 0) return;
+    const current = editor.getPosition()?.lineNumber ?? 1;
+    const target =
+      direction === "next"
+        ? (lines.find((line) => line > current) ?? lines[0])
+        : ([...lines].reverse().find((line) => line < current) ?? lines[lines.length - 1]);
+    editor.setPosition({ lineNumber: target, column: 1 });
+    editor.revealLineInCenterIfOutsideViewport(target);
+    editor.focus();
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -569,16 +705,16 @@ export function QueryEditorPane({
       language: "sql",
       theme: themeFor(resolvedTheme),
       automaticLayout: true,
-      minimap: { enabled: false },
-      lineNumbers: "on",
-      glyphMargin: false,
+      minimap: { enabled: editorMinimap },
+      lineNumbers: editorLineNumbers ? "on" : "off",
+      glyphMargin: true,
       folding: false,
       lineDecorationsWidth: 0,
       lineNumbersMinChars: 3,
       scrollBeyondLastLine: false,
-      wordWrap: "on",
-      fontSize: 13,
-      lineHeight: 24,
+      wordWrap: editorWordWrap ? "on" : "off",
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.8),
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
@@ -592,7 +728,7 @@ export function QueryEditorPane({
         verticalScrollbarSize: 8,
         horizontalScrollbarSize: 8,
       },
-      tabSize: 2,
+      tabSize: editorTabSize,
       fixedOverflowWidgets: true,
       suggestOnTriggerCharacters: true,
       quickSuggestions: {
@@ -605,11 +741,22 @@ export function QueryEditorPane({
     });
 
     editorRef.current = editor;
+    decorationsRef.current = editor.createDecorationsCollection([]);
+    bookmarkDecorationsRef.current = editor.createDecorationsCollection([]);
+    applyBookmarks(bookmarksRef.current);
     refreshLintMarkers(editor, registryRef.current);
+
+    const selectionSub = editor.onDidChangeCursorSelection((event) => {
+      const model = editor.getModel();
+      if (!model) return;
+      onSelectionChangeRef.current?.(model.getValueInRange(event.selection));
+      onCursorChangeRef.current?.(model.getOffsetAt(event.selection.getPosition()));
+    });
 
     let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
       onChangeRef.current(editor.getValue());
+      publishBookmarks();
       if (lintTimer) clearTimeout(lintTimer);
       lintTimer = setTimeout(() => {
         const current = editorRef.current;
@@ -619,6 +766,34 @@ export function QueryEditorPane({
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       onRunRef.current();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      onSaveRef.current?.();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
+      onRunSelectionRef.current?.();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
+      onRunStatementRef.current?.();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyB, () => {
+      toggleBookmarkAtCursor();
+    });
+
+    editor.addCommand(monaco.KeyCode.F2, () => {
+      gotoBookmarkLine("next");
+    });
+
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F2, () => {
+      gotoBookmarkLine("previous");
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+      onSearchTabsRef.current?.();
     });
 
     const formatAction = addSqlFormatAction(editor);
@@ -633,17 +808,86 @@ export function QueryEditorPane({
     return () => {
       if (lintTimer) clearTimeout(lintTimer);
       changeSub.dispose();
+      selectionSub.dispose();
       completionProvider.dispose();
       formatAction.dispose();
+      decorationsRef.current = null;
+      bookmarkDecorationsRef.current = null;
       editor.dispose();
       editorRef.current = null;
     };
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertSnippet: (body: string) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+        editor.focus();
+        editor.trigger("l8db-snippets", "editor.action.insertSnippet", {
+          snippet: toMonacoSnippet(body),
+        });
+      },
+      focus: () => editorRef.current?.focus(),
+      revealMatch: (line: number, column = 1, length = 0) => {
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        if (!editor || !model) return;
+        const targetLine = Math.max(1, Math.min(line, model.getLineCount()));
+        const maxColumn = model.getLineMaxColumn(targetLine);
+        const startColumn = Math.max(1, Math.min(column, maxColumn));
+        const endColumn = Math.max(startColumn, Math.min(startColumn + length, maxColumn));
+        editor.setSelection(new monaco.Range(targetLine, startColumn, targetLine, endColumn));
+        editor.revealLineInCenter(targetLine);
+        editor.focus();
+      },
+      toggleBookmark: () => toggleBookmarkAtCursor(),
+      gotoBookmark: (direction: "next" | "previous") => gotoBookmarkLine(direction),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    const next = bookmarks ?? [];
+    const current = readBookmarkLines();
+    if (next.length === current.length && next.every((line, i) => line === current[i])) {
+      bookmarksRef.current = current;
+      return;
+    }
+    bookmarksRef.current = next;
+    applyBookmarks(next);
+  }, [bookmarks]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const decorations = decorationsRef.current;
+    const model = editor?.getModel();
+    if (!decorations || !model) return;
+    if (!highlight || highlight.end <= highlight.start || highlight.end > model.getValueLength()) {
+      decorations.clear();
+      return;
+    }
+    const start = model.getPositionAt(highlight.start);
+    const end = model.getPositionAt(highlight.end);
+    decorations.set([
+      {
+        range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+        options: {
+          className: "l8db-statement-highlight",
+          isWholeLine: false,
+        },
+      },
+    ]);
+  }, [highlight]);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (editor && editor.getValue() !== value) {
+      suppressPublishRef.current = true;
       editor.setValue(value);
+      suppressPublishRef.current = false;
+      applyBookmarks(bookmarksRef.current);
     }
   }, [value]);
 
@@ -655,6 +899,19 @@ export function QueryEditorPane({
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.updateOptions({
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.8),
+      tabSize: editorTabSize,
+      wordWrap: editorWordWrap ? "on" : "off",
+      lineNumbers: editorLineNumbers ? "on" : "off",
+      minimap: { enabled: editorMinimap },
+    });
+  }, [editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap]);
 
   return <div ref={containerRef} className={className ?? "size-full"} />;
 }

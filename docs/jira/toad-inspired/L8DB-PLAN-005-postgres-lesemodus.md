@@ -1,7 +1,7 @@
 # L8DB-PLAN-005: PostgreSQL-Verbindungen im Lesemodus öffnen
 
 Typ: Story · Priorität: **P2** · Schätzung: **5 SP** · Bereich: Verbindungen
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

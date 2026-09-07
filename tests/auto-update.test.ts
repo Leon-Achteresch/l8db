@@ -17,7 +17,13 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { useSettingsStore } = await import("../src/lib/settings");
-const { getPendingUpdate, setPendingUpdate } = await import("../src/lib/updater");
+const {
+  closeUpdatePrompt,
+  getPendingUpdate,
+  getUpdatePromptState,
+  presentUpdate,
+  setPendingUpdate,
+} = await import("../src/lib/updater");
 
 beforeEach(() => {
   storage.clear();
@@ -67,5 +73,17 @@ describe("pending update cache", () => {
     expect(getPendingUpdate()?.version).toBe("9.9.9");
     setPendingUpdate(null);
     expect(getPendingUpdate()).toBeNull();
+  });
+});
+
+describe("update prompt", () => {
+  test("öffnet das Popup für ein gefundenes Update und schließt es wieder", () => {
+    const fake = { version: "0.1.99" } as unknown as Update;
+    presentUpdate(fake);
+    expect(getUpdatePromptState()).toEqual({ update: fake, open: true });
+    closeUpdatePrompt();
+    expect(getUpdatePromptState()).toEqual({ update: fake, open: false });
+    setPendingUpdate(null);
+    expect(getUpdatePromptState()).toEqual({ update: null, open: false });
   });
 });

@@ -1,9 +1,11 @@
 import { BookmarkPlusIcon, XIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useTableRowCountQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { type SavedView, useViewsStore, VIEW_COLORS } from "@/lib/views";
@@ -38,8 +40,10 @@ function ViewChip({
   const countQuery = useTableRowCountQuery(schema, table, filter);
 
   return (
-    <button
+    <motion.button
       type="button"
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
       onClick={onSelect}
       className={cn(
         "group flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
@@ -66,7 +70,7 @@ function ViewChip({
           <XIcon className="size-3" />
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }
 

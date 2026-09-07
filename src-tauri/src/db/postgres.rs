@@ -8,23 +8,71 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, SimpleQueryMessage};
 
 use super::pool::{PoolState, PoolUse};
+use super::server_output::{self, ServerMessage};
+use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
     AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions,
-    DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
-    RolePrivileges, SchemaPrivileges, SequenceInfo, SslMode, TableData, TableInfo, TablePrivileges,
-    TriggerInfo,
+    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileResult, ConnectionConfig,
+    ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo, DetailedColumnInfo,
+    ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
+    PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges,
+    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+
+const SEARCH_SNIPPET_LEN: usize = 240;
+
+const PG_CRON_MISSING: &str =
+    "Die Erweiterung pg_cron ist in dieser Datenbank nicht installiert. Scheduler-Jobs stehen daher nicht zur Verfügung.";
+
+pub fn like_pattern(term: &str) -> String {
+    let mut escaped = String::with_capacity(term.len() + 2);
+    for ch in term.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    format!("%{escaped}%")
+}
+
+pub fn line_of_position(source: &str, position: i32) -> i32 {
+    if position <= 1 {
+        return 1;
+    }
+    let take = (position as usize).saturating_sub(1);
+    source.chars().take(take).filter(|c| *c == '\n').count() as i32 + 1
+}
+
+pub fn source_snippet(source: &str, term: &str) -> Option<(i32, String, i32)> {
+    let needle = term.to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    let mut first: Option<(i32, String)> = None;
+    let mut occurrences = 0;
+    for (index, line) in source.lines().enumerate() {
+        let hits = line.to_lowercase().matches(&needle).count() as i32;
+        if hits == 0 {
+            continue;
+        }
+        occurrences += hits;
+        if first.is_none() {
+            let text: String = line.trim().chars().take(SEARCH_SNIPPET_LEN).collect();
+            first = Some(((index + 1) as i32, text));
+        }
+    }
+    first.map(|(line, snippet)| (line, snippet, occurrences))
+}
 
 pub struct PostgresAdapter {
     config: Config,
     pool_state: PoolState,
     pool_key: String,
     ssl: SslMode,
+    read_only: bool,
 }
 
 impl PostgresAdapter {
@@ -38,6 +86,9 @@ impl PostgresAdapter {
             .dbname(&config.database)
             .ssl_mode(ssl.to_pg())
             .connect_timeout(Duration::from_secs(10));
+        if config.read_only {
+            pg.options(super::connection::READ_ONLY_OPTION);
+        }
         let pool_key = super::connection::connection_key(
             &format!("{pg:?}{:?}{}", config.password, ssl.as_url_param()),
             None,
@@ -47,6 +98,7 @@ impl PostgresAdapter {
             pool_state,
             pool_key,
             ssl,
+            read_only: config.read_only,
         }
     }
 
@@ -57,11 +109,13 @@ impl PostgresAdapter {
     ) -> Result<Self, String> {
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
         let pool_key = super::connection::connection_key(connection_string, database);
+        let read_only = super::connection::options_are_read_only(config.get_options());
         Ok(Self {
             config,
             pool_state,
             pool_key,
             ssl,
+            read_only,
         })
     }
 
@@ -99,6 +153,16 @@ impl PostgresAdapter {
         pool.get_owned()
             .await
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
+    }
+
+    fn ensure_writable(&self) -> Result<(), String> {
+        if self.read_only {
+            return Err(
+                "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden."
+                    .to_string(),
+            );
+        }
+        Ok(())
     }
 
     async fn timed<F, T>(&self, future: F) -> Result<T, String>
@@ -266,6 +330,369 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn search_columns(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<ColumnMatch>, String> {
+        let conn = self.get_meta().await?;
+        let pattern = like_pattern(term);
+        self.timed(async {
+            conn.query(
+                "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, t.table_type \
+                 FROM information_schema.columns c \
+                 JOIN information_schema.tables t \
+                   ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
+                 WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                   AND ($2::text IS NULL OR c.table_schema = $2) \
+                   AND c.column_name ILIKE $1 \
+                 ORDER BY c.table_schema, c.table_name, c.ordinal_position \
+                 LIMIT $3",
+                &[&pattern, &schema, &limit],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ColumnMatch {
+                        schema: row.get(0),
+                        table: row.get(1),
+                        column: row.get(2),
+                        data_type: row.get(3),
+                        object_type: row.get(4),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn search_source(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<SourceMatch>, String> {
+        let conn = self.get_meta().await?;
+        let pattern = like_pattern(term);
+        let rows = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, p.proname, p.oid::text, \
+                            pg_get_function_identity_arguments(p.oid), \
+                            CASE WHEN p.prokind = 'p' THEN 'procedure'::text \
+                                 ELSE 'routine'::text END, p.prosrc \
+                     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                       AND ($2::text IS NULL OR n.nspname = $2) \
+                       AND p.prosrc ILIKE $1 \
+                     UNION ALL \
+                     SELECT n.nspname, c.relname, c.oid::text, ''::text, \
+                            CASE WHEN c.relkind = 'm' THEN 'materialized_view'::text \
+                                 ELSE 'view'::text END, \
+                            pg_get_viewdef(c.oid, true) \
+                     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE c.relkind IN ('v', 'm') \
+                       AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                       AND ($2::text IS NULL OR n.nspname = $2) \
+                       AND pg_get_viewdef(c.oid, true) ILIKE $1 \
+                     ORDER BY 1, 2 \
+                     LIMIT $3",
+                    &[&pattern, &schema, &limit],
+                )
+                .await
+                .map_err(map_pg_err)
+            })
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let source: String = row.get(5);
+                source_snippet(&source, term).map(|(line, snippet, occurrences)| SourceMatch {
+                    schema: row.get(0),
+                    name: row.get(1),
+                    oid: row.get(2),
+                    identity: row.get(3),
+                    object_type: row.get(4),
+                    line,
+                    snippet,
+                    occurrences,
+                })
+            })
+            .collect())
+    }
+
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
+        let conn = self.get_meta().await?;
+        let oid_row = conn
+            .query_opt(
+                "SELECT c.oid::text FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2",
+                &[&schema, &name],
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Systemkatalog nicht lesbar (fehlende Leserechte?): {}",
+                    map_pg_err(e)
+                )
+            })?;
+        let Some(oid_row) = oid_row else {
+            return Err(format!(
+                "Objekt {schema}.{name} wurde nicht gefunden oder ist für diesen Benutzer nicht sichtbar."
+            ));
+        };
+        let oid: String = oid_row.get(0);
+
+        let mut out: Vec<DependencyInfo> = Vec::new();
+
+        let views = self
+            .timed(async {
+                conn.query(
+                    "SELECT DISTINCT dn.nspname, dc.relname, dc.oid::text, \
+                            CASE dc.relkind WHEN 'm' THEN 'materialized_view'::text \
+                                 ELSE 'view'::text END \
+                     FROM pg_depend d \
+                     JOIN pg_rewrite r ON r.oid = d.objid \
+                     JOIN pg_class dc ON dc.oid = r.ev_class \
+                     JOIN pg_namespace dn ON dn.oid = dc.relnamespace \
+                     WHERE d.refobjid = $1::text::oid \
+                       AND d.classid = 'pg_rewrite'::regclass \
+                       AND dc.relkind IN ('v', 'm') \
+                       AND dc.oid <> $1::text::oid \
+                     ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Abhängige Views nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in views {
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: row.get(3),
+                status: "gültig".to_string(),
+                relation: "View-Definition".to_string(),
+                oid: row.get(2),
+                detail: String::new(),
+            });
+        }
+
+        let fks = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, c.relname, c.oid::text, con.conname \
+                     FROM pg_constraint con \
+                     JOIN pg_class c ON c.oid = con.conrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE con.contype = 'f' AND con.confrelid = $1::text::oid \
+                     ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Fremdschlüssel nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in fks {
+            let constraint: String = row.get(3);
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: "table".to_string(),
+                status: "gültig".to_string(),
+                relation: "Fremdschlüssel".to_string(),
+                oid: row.get(2),
+                detail: constraint,
+            });
+        }
+
+        let triggers = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, t.tgname, np.nspname, p.proname \
+                     FROM pg_trigger t \
+                     JOIN pg_class c ON c.oid = t.tgrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     JOIN pg_proc p ON p.oid = t.tgfoid \
+                     JOIN pg_namespace np ON np.oid = p.pronamespace \
+                     WHERE t.tgrelid = $1::text::oid AND NOT t.tgisinternal \
+                     ORDER BY 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Trigger nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in triggers {
+            let fn_schema: String = row.get(2);
+            let fn_name: String = row.get(3);
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: "trigger".to_string(),
+                status: "gültig".to_string(),
+                relation: "Trigger".to_string(),
+                oid: String::new(),
+                detail: format!("{fn_schema}.{fn_name}()"),
+            });
+        }
+
+        drop(conn);
+        let matches = self
+            .search_source(None, name, 200)
+            .await
+            .unwrap_or_default();
+        for m in matches {
+            if m.schema == schema && m.name == name {
+                continue;
+            }
+            if out
+                .iter()
+                .any(|dep| dep.owner == m.schema && dep.name == m.name)
+            {
+                continue;
+            }
+            out.push(DependencyInfo {
+                owner: m.schema,
+                name: m.name,
+                object_type: m.object_type,
+                status: "gültig".to_string(),
+                relation: "Quelltext".to_string(),
+                oid: m.oid,
+                detail: format!("Zeile {}: {}", m.line, m.snippet.trim()),
+            });
+        }
+
+        Ok(out)
+    }
+
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        let conn = self.get_meta().await?;
+        let installed = conn
+            .query_opt("SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'", &[])
+            .await
+            .map_err(map_pg_err)?;
+        if installed.is_none() {
+            return Err(PG_CRON_MISSING.to_string());
+        }
+        let with_details = conn
+            .query(
+                "SELECT j.jobid::text, j.jobname, j.schedule, j.command, j.active, \
+                        to_char(r.start_time, 'YYYY-MM-DD HH24:MI:SS'), r.status, r.return_message \
+                 FROM cron.job j \
+                 LEFT JOIN LATERAL ( \
+                     SELECT d.start_time, d.status, d.return_message \
+                     FROM cron.job_run_details d \
+                     WHERE d.jobid = j.jobid \
+                     ORDER BY d.start_time DESC LIMIT 1 \
+                 ) r ON true \
+                 ORDER BY j.jobid",
+                &[],
+            )
+            .await;
+        let rows = match with_details {
+            Ok(rows) => rows,
+            Err(_) => conn
+                .query(
+                    "SELECT jobid::text, jobname, schedule, command, active, \
+                            NULL::text, NULL::text, NULL::text \
+                     FROM cron.job ORDER BY jobid",
+                    &[],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "pg_cron-Jobs sind nicht lesbar (fehlende Rechte auf cron.job?): {}",
+                        map_pg_err(e)
+                    )
+                })?,
+        };
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let id: String = row.get(0);
+                let name: Option<String> = row.get(1);
+                let status: Option<String> = row.get(6);
+                let message: Option<String> = row.get(7);
+                let failed = status
+                    .as_deref()
+                    .map(|s| !s.eq_ignore_ascii_case("succeeded"))
+                    .unwrap_or(false);
+                SchedulerJobInfo {
+                    owner: String::new(),
+                    name: name.unwrap_or_else(|| format!("job {id}")),
+                    enabled: row.get(4),
+                    state: if row.get::<_, bool>(4) {
+                        "AKTIV".to_string()
+                    } else {
+                        "INAKTIV".to_string()
+                    },
+                    schedule: row.get(2),
+                    command: row.get(3),
+                    last_run: row.get(5),
+                    last_status: status,
+                    last_error: if failed { message } else { None },
+                    next_run: None,
+                    id,
+                }
+            })
+            .collect())
+    }
+
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        conn.execute(
+            "SELECT cron.alter_job(job_id := $1::text::bigint, active := $2)",
+            &[&job_id, &enabled],
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "Job konnte nicht geändert werden (pg_cron vorhanden und Rechte gesetzt?): {}",
+                map_pg_err(e)
+            )
+        })?;
+        Ok(())
+    }
+
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        let row = conn
+            .query_opt(
+                "SELECT command FROM cron.job WHERE jobid = $1::text::bigint",
+                &[&job_id],
+            )
+            .await
+            .map_err(map_pg_err)?;
+        let Some(row) = row else {
+            return Err(format!("pg_cron-Job {job_id} existiert nicht mehr."));
+        };
+        let command: String = row.get(0);
+        conn.batch_execute(&command)
+            .await
+            .map_err(|e| format!("Job-Kommando fehlgeschlagen: {}", map_pg_err(e)))
+    }
+
     async fn fetch_rows(
         &self,
         schema: &str,
@@ -343,6 +770,148 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
+    async fn export_table_csv(
+        &self,
+        request: &super::export::TableExportRequest,
+        progress: &(dyn Fn(i64) + Send + Sync),
+    ) -> Result<super::export::TableExportOutcome, String> {
+        use super::export;
+
+        export::validate_csv_options(&request.options)?;
+        let trimmed = request
+            .filter
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty());
+        if !request.allow_raw_filter {
+            if let Some(expression) = trimmed {
+                validate_table_filter(expression)?;
+            }
+        }
+
+        let conn = self.get_conn().await?;
+        let column_rows = conn
+            .query(
+                "SELECT column_name \
+                 FROM information_schema.columns \
+                 WHERE table_schema = $1 AND table_name = $2 \
+                 ORDER BY ordinal_position",
+                &[&request.schema.as_str(), &request.table.as_str()],
+            )
+            .await
+            .map_err(map_pg_err)?;
+        let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+        if columns.is_empty() {
+            return Err("Keine Spalten für den Export gefunden.".to_string());
+        }
+
+        let where_clause = match trimmed {
+            Some(expression) => format!(" WHERE {expression}"),
+            None => String::new(),
+        };
+        let mut order_parts: Vec<String> = Vec::new();
+        if let Some(column) = request.order_by.as_deref() {
+            if columns.iter().any(|name| name == column) {
+                let direction = if request.order_desc { "DESC" } else { "ASC" };
+                order_parts.push(format!("t.{} {}", quote_ident(column), direction));
+            }
+        }
+        if !request.is_view {
+            order_parts.push("t.ctid".to_string());
+        }
+        let order_clause = if order_parts.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", order_parts.join(", "))
+        };
+        let sql = format!(
+            "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
+            quote_ident(&request.schema),
+            quote_ident(&request.table),
+            where_clause,
+            order_clause,
+        );
+
+        conn.batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await
+            .map_err(map_pg_err)?;
+
+        let max_rows = export::effective_max_rows(request.max_rows);
+        let mut writer = match export::CsvFileWriter::create(&request.path, &request.options) {
+            Ok(writer) => writer,
+            Err(e) => {
+                let _ = conn.batch_execute("COMMIT").await;
+                return Err(e);
+            }
+        };
+
+        let mut total: i64 = 0;
+        let mut offset: i64 = 0;
+        let mut truncated = false;
+        let mut failure: Option<String> = None;
+        let mut cancelled = false;
+
+        if let Err(e) = writer.write_header(&columns) {
+            failure = Some(e);
+        }
+
+        while failure.is_none() && !cancelled {
+            if export::is_cancelled(&request.job_id) {
+                cancelled = true;
+                break;
+            }
+            let remaining = max_rows - total;
+            if remaining <= 0 {
+                truncated = true;
+                break;
+            }
+            let batch = remaining.min(export::EXPORT_BATCH_ROWS);
+            let data_rows = match conn.query(&sql, &[&batch, &offset]).await {
+                Ok(rows) => rows,
+                Err(e) => {
+                    failure = Some(map_pg_err(e));
+                    break;
+                }
+            };
+            let fetched = data_rows.len() as i64;
+            for row in &data_rows {
+                let value: serde_json::Value = row.get(0);
+                let line = export::csv_row_line(&columns, &value, &request.masks, &request.options);
+                if let Err(e) = writer.write_line(&line) {
+                    failure = Some(e);
+                    break;
+                }
+            }
+            if failure.is_some() {
+                break;
+            }
+            total += fetched;
+            offset += fetched;
+            progress(total);
+            if fetched < batch {
+                break;
+            }
+        }
+
+        let _ = conn.batch_execute("COMMIT").await;
+
+        if cancelled {
+            writer.abort();
+            export::clear_cancel(&request.job_id);
+            return Err("Export abgebrochen.".to_string());
+        }
+        if let Some(message) = failure {
+            writer.abort();
+            return Err(message);
+        }
+        writer.finish()?;
+        Ok(export::TableExportOutcome {
+            rows: total,
+            path: request.path.clone(),
+            truncated,
+        })
+    }
+
     async fn count_rows(
         &self,
         schema: &str,
@@ -385,6 +954,7 @@ impl DatabaseAdapter for PostgresAdapter {
         ctid: &str,
         updates: &std::collections::HashMap<String, Option<String>>,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let ctid = ctid.trim();
         let ctid_valid = ctid.starts_with('(') && ctid.ends_with(')') && {
             let inner = &ctid[1..ctid.len() - 1];
@@ -444,48 +1014,84 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(client) =
+            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
+        {
+            return self
+                .timed(server_output::pg_run_query(&client, sql, self.read_only))
+                .await;
+        }
         let conn = self.get_conn().await?;
         let start = std::time::Instant::now();
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
 
-        self.timed(async {
-            let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
-            let elapsed = start.elapsed().as_millis() as u64;
+        let outcome = self
+            .timed(async {
+                let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
+                let elapsed = start.elapsed().as_millis() as u64;
 
-            let mut columns: Vec<String> = Vec::new();
-            let mut rows: Vec<serde_json::Value> = Vec::new();
-            let mut rows_affected: Option<u64> = None;
+                let mut columns: Vec<String> = Vec::new();
+                let mut rows: Vec<serde_json::Value> = Vec::new();
+                let mut rows_affected: Option<u64> = None;
 
-            for msg in messages {
-                match msg {
-                    SimpleQueryMessage::Row(row) => {
-                        if columns.is_empty() {
-                            columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                for msg in messages {
+                    match msg {
+                        SimpleQueryMessage::Row(row) => {
+                            if columns.is_empty() {
+                                columns =
+                                    row.columns().iter().map(|c| c.name().to_string()).collect();
+                            }
+                            let mut obj = serde_json::Map::new();
+                            for (i, col) in columns.iter().enumerate() {
+                                let val = row
+                                    .get(i)
+                                    .map(|v| serde_json::Value::String(v.to_string()))
+                                    .unwrap_or(serde_json::Value::Null);
+                                obj.insert(col.clone(), val);
+                            }
+                            rows.push(serde_json::Value::Object(obj));
                         }
-                        let mut obj = serde_json::Map::new();
-                        for (i, col) in columns.iter().enumerate() {
-                            let val = row
-                                .get(i)
-                                .map(|v| serde_json::Value::String(v.to_string()))
-                                .unwrap_or(serde_json::Value::Null);
-                            obj.insert(col.clone(), val);
+                        SimpleQueryMessage::CommandComplete(count) => {
+                            rows_affected = Some(count);
                         }
-                        rows.push(serde_json::Value::Object(obj));
+                        _ => {}
                     }
-                    SimpleQueryMessage::CommandComplete(count) => {
-                        rows_affected = Some(count);
-                    }
-                    _ => {}
                 }
-            }
 
-            Ok(QueryResult {
-                columns,
-                rows,
-                rows_affected,
-                execution_time_ms: elapsed,
+                Ok(QueryResult {
+                    columns,
+                    rows,
+                    rows_affected,
+                    execution_time_ms: elapsed,
+                })
             })
-        })
-        .await
+            .await;
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
+        }
+        outcome
+    }
+
+    async fn execute_query_with_params(
+        &self,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let conn = self.get_conn().await?;
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
+        let outcome = self.timed(run_params_query(&conn, sql, params)).await;
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
+        }
+        outcome
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -549,6 +1155,7 @@ impl DatabaseAdapter for PostgresAdapter {
         body: &str,
         dry_run: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         let ddl = format!(
             "CREATE OR REPLACE VIEW {}.{} AS {}",
@@ -586,7 +1193,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          FROM pg_catalog.pg_proc p \
                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
                          JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
-                         WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+                         WHERE n.nspname = $1 AND p.prokind <> 'p' \
                          ORDER BY p.proname",
                         &[&schema],
                     )
@@ -603,7 +1210,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
                          JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
                          WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
-                               AND p.prokind IN ('f', 'p') \
+                               AND p.prokind <> 'p' \
                          ORDER BY n.nspname, p.proname",
                         &[],
                     )
@@ -634,6 +1241,104 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map_err(map_pg_err)
                 .map(|row| row.get::<_, String>(0))
+        })
+        .await
+    }
+
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(schema) => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                l.lanname, p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname = $1 AND p.prokind = 'p' \
+                         ORDER BY p.proname",
+                        &[&schema],
+                    )
+                    .await
+                }
+                None => {
+                    conn.query(
+                        "SELECT n.nspname, p.proname, \
+                                pg_catalog.pg_get_function_identity_arguments(p.oid), \
+                                l.lanname, p.oid::text \
+                         FROM pg_catalog.pg_proc p \
+                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+                         JOIN pg_catalog.pg_language l ON l.oid = p.prolang \
+                         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') \
+                               AND p.prokind = 'p' \
+                         ORDER BY n.nspname, p.proname",
+                        &[],
+                    )
+                    .await
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| FunctionInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                        identity_args: row.get(2),
+                        return_type: "PROCEDURE".to_string(),
+                        language: row.get(3),
+                        oid: row.get(4),
+                    })
+                    .collect()
+            })
+        })
+        .await
+    }
+
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        self.ensure_writable()?;
+        if !matches!(object_type, "function" | "procedure" | "routine") {
+            return Err(format!(
+                "Objekttyp {object_type} kann in PostgreSQL nicht kompiliert werden"
+            ));
+        }
+        let oid_val: u32 = oid.parse().map_err(|_| format!("Ungültige OID: {oid}"))?;
+        let mut conn = self.get_meta().await?;
+        self.timed(async move {
+            let definition: String = conn
+                .query_one("SELECT pg_get_functiondef($1::oid)", &[&oid_val])
+                .await
+                .map_err(map_pg_err)?
+                .get(0);
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            match tx.batch_execute(&definition).await {
+                Ok(()) => {
+                    tx.commit().await.map_err(map_pg_err)?;
+                    Ok(CompileResult {
+                        status: "VALID".to_string(),
+                        message: None,
+                        line: None,
+                        position: None,
+                    })
+                }
+                Err(err) => {
+                    let position = err.as_db_error().and_then(|db| match db.position() {
+                        Some(tokio_postgres::error::ErrorPosition::Original(p)) => Some(*p as i32),
+                        Some(tokio_postgres::error::ErrorPosition::Internal {
+                            position, ..
+                        }) => Some(*position as i32),
+                        None => None,
+                    });
+                    let message = map_pg_err(err);
+                    let _ = tx.rollback().await;
+                    Ok(CompileResult {
+                        status: "INVALID".to_string(),
+                        line: position.map(|p| line_of_position(&definition, p)),
+                        position,
+                        message: Some(message),
+                    })
+                }
+            }
         })
         .await
     }
@@ -748,6 +1453,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
@@ -811,6 +1517,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut with_opts = Vec::new();
@@ -882,6 +1589,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_role(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP ROLE {}", quote_ident(name));
@@ -892,6 +1600,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -906,6 +1615,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -960,12 +1670,179 @@ impl DatabaseAdapter for PostgresAdapter {
         }).await
     }
 
+    async fn list_import_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ImportColumnInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT a.attname AS name, \
+                            format_type(a.atttypid, a.atttypmod) AS data_type, \
+                            NOT a.attnotnull AS is_nullable, \
+                            (a.atthasdef AND a.attgenerated = '') AS has_default, \
+                            (a.attidentity <> '') AS is_identity, \
+                            (a.attgenerated <> '') AS is_generated, \
+                            a.attnum::int AS ordinal_position \
+                     FROM pg_attribute a \
+                     JOIN pg_class c ON c.oid = a.attrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 \
+                       AND a.attnum > 0 AND NOT a.attisdropped \
+                     ORDER BY a.attnum",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            if rows.is_empty() {
+                return Err(format!("Tabelle {schema}.{table} wurde nicht gefunden."));
+            }
+            Ok(rows
+                .iter()
+                .map(|r| super::ImportColumnInfo {
+                    name: r.get("name"),
+                    data_type: r.get("data_type"),
+                    is_nullable: r.get("is_nullable"),
+                    has_default: r.get("has_default"),
+                    is_identity: r.get("is_identity"),
+                    is_generated: r.get("is_generated"),
+                    ordinal_position: r.get("ordinal_position"),
+                })
+                .collect())
+        })
+        .await
+    }
+
+    async fn csv_import(
+        &self,
+        request: &super::CsvImportRequest,
+    ) -> Result<super::CsvImportOutcome, String> {
+        self.ensure_writable()?;
+        if request.columns.is_empty() {
+            return Err("Keine Zielspalten zugeordnet.".to_string());
+        }
+        if request.rows.is_empty() {
+            return Err("Keine Datenzeilen zum Import.".to_string());
+        }
+        if request.rows.len() > super::CSV_IMPORT_MAX_ROWS {
+            return Err(format!(
+                "Zu viele Zeilen: {} (Maximum {}).",
+                request.rows.len(),
+                super::CSV_IMPORT_MAX_ROWS
+            ));
+        }
+        let available = self
+            .list_import_columns(&request.schema, &request.table)
+            .await?;
+        let mut types: Vec<String> = Vec::with_capacity(request.columns.len());
+        for column in &request.columns {
+            let found = available
+                .iter()
+                .find(|c| &c.name == column)
+                .ok_or_else(|| format!("Unbekannte Spalte: {column}"))?;
+            if found.is_generated {
+                return Err(format!(
+                    "Generierte Spalte {column} kann nicht befüllt werden."
+                ));
+            }
+            types.push(found.data_type.clone());
+        }
+        for (index, row) in request.rows.iter().enumerate() {
+            if row.len() != request.columns.len() {
+                return Err(format!(
+                    "Zeile {} hat {} Werte, erwartet werden {}.",
+                    index + 1,
+                    row.len(),
+                    request.columns.len()
+                ));
+            }
+        }
+
+        let column_list = request
+            .columns
+            .iter()
+            .map(|c| quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholders = types
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| format!("${}::text::{}", i + 1, ty))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "INSERT INTO {}.{} ({}) VALUES ({})",
+            quote_ident(&request.schema),
+            quote_ident(&request.table),
+            column_list,
+            placeholders
+        );
+
+        let conn = self.get_conn().await?;
+        let statement = conn.prepare(&sql).await.map_err(map_pg_err)?;
+        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+
+        let mut inserted: u64 = 0;
+        for (index, row) in request.rows.iter().enumerate() {
+            let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = row
+                .iter()
+                .map(|v| v as &(dyn tokio_postgres::types::ToSql + Sync))
+                .collect();
+            match conn.execute(&statement, &params).await {
+                Ok(n) => inserted += n,
+                Err(err) => {
+                    let failed_column = err
+                        .as_db_error()
+                        .and_then(|d| d.column())
+                        .map(|c| c.to_string())
+                        .or_else(|| {
+                            let message = err.to_string();
+                            request
+                                .columns
+                                .iter()
+                                .find(|c| message.contains(c.as_str()))
+                                .cloned()
+                        });
+                    let message = map_pg_err(err);
+                    let _ = conn.simple_query("ROLLBACK").await;
+                    return Ok(super::CsvImportOutcome {
+                        inserted_rows: 0,
+                        failed_row: Some((index + 1) as u32),
+                        failed_column,
+                        error: Some(message),
+                    });
+                }
+            }
+        }
+
+        if let Err(err) = conn.simple_query("COMMIT").await {
+            let message = map_pg_err(err);
+            let _ = conn.simple_query("ROLLBACK").await;
+            return Ok(super::CsvImportOutcome {
+                inserted_rows: 0,
+                failed_row: None,
+                failed_column: None,
+                error: Some(message),
+            });
+        }
+
+        Ok(super::CsvImportOutcome {
+            inserted_rows: inserted,
+            failed_row: None,
+            failed_column: None,
+            error: None,
+        })
+    }
+
     async fn add_column(
         &self,
         schema: &str,
         table: &str,
         column: &AddColumnRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut sql = format!(
@@ -993,6 +1870,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
@@ -1032,6 +1910,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -1119,6 +1998,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String> {
+        self.ensure_writable()?;
         let valid_privileges = [
             "SELECT",
             "INSERT",
@@ -1489,6 +2369,7 @@ impl DatabaseAdapter for PostgresAdapter {
         name: &str,
         changes: &AlterSequenceRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut parts: Vec<String> = Vec::new();
@@ -1545,6 +2426,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = match schema {
@@ -1562,6 +2444,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
@@ -1594,11 +2477,285 @@ impl DatabaseAdapter for PostgresAdapter {
         self.execute_script_impl(sql).await
     }
 
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        server_output::set_enabled(&self.pool_key, enabled);
+        Ok(())
+    }
+
+    async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
+        Ok(server_output::take(&self.pool_key))
+    }
+
+    async fn preview_create_table_ddl(
+        &self,
+        req: &super::CreateTableRequest,
+    ) -> Result<String, String> {
+        Ok(Self::build_create_table_sql(req))
+    }
+
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
+        self.ensure_writable()?;
         let ddl = Self::build_create_table_sql(req);
         let conn = self.get_conn().await?;
         conn.execute(&ddl as &str, &[]).await.map_err(map_pg_err)?;
         Ok(())
+    }
+
+    async fn list_schema_copy_objects(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<super::SchemaObjectEntry>, String> {
+        let source = self
+            .schema_copy_definitions(source_schema, object_type)
+            .await?;
+        let target = self
+            .schema_copy_definitions(target_schema, object_type)
+            .await?;
+        let mut entries: Vec<super::SchemaObjectEntry> = Vec::with_capacity(source.len());
+        for (name, definition) in source {
+            let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+            let existing = target
+                .iter()
+                .find(|(other, _)| other == &name)
+                .map(|(_, def)| def.clone());
+            let (status, target_definition) = match existing {
+                None => ("missing".to_string(), String::new()),
+                Some(def) => {
+                    let same = normalize_definition(&rewritten) == normalize_definition(&def);
+                    let status = if same { "identical" } else { "different" };
+                    (status.to_string(), def)
+                }
+            };
+            entries.push(super::SchemaObjectEntry {
+                name,
+                object_type: object_type.to_string(),
+                status,
+                source_definition: rewritten,
+                target_definition,
+            });
+        }
+        Ok(entries)
+    }
+
+    async fn preview_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.schema_copy_ddl(source_schema, target_schema, object_type, name)
+            .await
+    }
+
+    async fn execute_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.ensure_writable()?;
+        let existing = self
+            .schema_copy_definitions(target_schema, object_type)
+            .await?;
+        if existing.iter().any(|(other, _)| other == name) {
+            return Err(format!(
+                "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
+            ));
+        }
+        let ddl = self
+            .schema_copy_ddl(source_schema, target_schema, object_type, name)
+            .await?;
+        let conn = self.get_conn().await?;
+        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+        if let Err(err) = conn.simple_query(ddl.as_str()).await {
+            let _ = conn.simple_query("ROLLBACK").await;
+            return Err(map_pg_err(err));
+        }
+        conn.simple_query("COMMIT").await.map_err(map_pg_err)?;
+        Ok(ddl)
+    }
+
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<u64, String> {
+        self.ensure_writable()?;
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        if source_schema == target_schema {
+            return Err("Quell- und Zielschema sind identisch.".to_string());
+        }
+        if limit <= 0 {
+            return Err("Die Zeilenbegrenzung muss größer als 0 sein.".to_string());
+        }
+        let limit = limit.min(SCHEMA_COPY_MAX_ROWS);
+        let source_columns = self
+            .list_table_columns_detailed(source_schema, name)
+            .await?;
+        if source_columns.is_empty() {
+            return Err(format!(
+                "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+            ));
+        }
+        let target_columns = self
+            .list_table_columns_detailed(target_schema, name)
+            .await?;
+        if target_columns.is_empty() {
+            return Err(format!(
+                "Tabelle {target_schema}.{name} existiert nicht. Zuerst die Struktur kopieren."
+            ));
+        }
+        let shared: Vec<String> = source_columns
+            .iter()
+            .filter(|column| target_columns.iter().any(|other| other.name == column.name))
+            .map(|column| quote_ident(&column.name))
+            .collect();
+        if shared.is_empty() {
+            return Err(format!(
+                "Keine gemeinsamen Spalten zwischen {source_schema}.{name} und {target_schema}.{name}."
+            ));
+        }
+        let columns = shared.join(", ");
+        let sql = format!(
+            "INSERT INTO {}.{} ({}) SELECT {} FROM {}.{} LIMIT {}",
+            quote_ident(target_schema),
+            quote_ident(name),
+            columns,
+            columns,
+            quote_ident(source_schema),
+            quote_ident(name),
+            limit
+        );
+        let mut conn = self.get_conn().await?;
+        self.timed(async move {
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            let affected = tx.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            tx.commit().await.map_err(map_pg_err)?;
+            Ok(affected)
+        })
+        .await
+    }
+
+    async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
+        build_object_ddl(req)
+    }
+
+    async fn execute_object_ddl(&self, req: &ObjectDdlRequest) -> Result<(), String> {
+        self.ensure_writable()?;
+        let ddl = build_object_ddl(req)?;
+        let mut conn = self.get_conn().await?;
+        self.timed(async move {
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            tx.batch_execute(&ddl).await.map_err(map_pg_err)?;
+            tx.commit().await.map_err(map_pg_err)?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn object_audit_info(
+        &self,
+        schema: &str,
+        name: &str,
+        object_type: &str,
+    ) -> Result<ObjectAuditInfo, String> {
+        let conn = self.get_meta().await?;
+        let schema = schema.to_string();
+        let name = name.to_string();
+        let object_type = object_type.to_string();
+        self.timed(async move {
+            let base = conn
+                .query_opt(
+                    "SELECT c.oid, pg_get_userbyid(c.relowner)::text AS owner,                      pg_size_pretty(pg_total_relation_size(c.oid))::text AS size,                      c.reltuples::bigint AS row_estimate, c.relkind::text AS relkind                      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace                      WHERE n.nspname = $1 AND c.relname = $2",
+                    &[&schema, &name],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            let Some(base) = base else {
+                return Err(format!("Objekt {schema}.{name} wurde nicht gefunden."));
+            };
+            let oid: u32 = base.get("oid");
+            let relkind: String = base.get("relkind");
+            let resolved_type = match relkind.as_str() {
+                "r" | "p" => "table".to_string(),
+                "v" => "view".to_string(),
+                "m" => "materialized_view".to_string(),
+                _ => object_type.clone(),
+            };
+            let mut info = ObjectAuditInfo {
+                schema: schema.clone(),
+                name: name.clone(),
+                object_type: resolved_type,
+                owner: base.get("owner"),
+                size: base.get("size"),
+                row_estimate: base.get("row_estimate"),
+                ..ObjectAuditInfo::default()
+            };
+            info.notes.push(
+                "PostgreSQL protokolliert keine Erstell- oder Änderungszeit für Relationen;                  stattdessen werden die Statistikzeitpunkte angezeigt."
+                    .to_string(),
+            );
+
+            match conn
+                .query_opt(
+                    "SELECT n_live_tup, last_vacuum::text AS last_vacuum,                      last_autovacuum::text AS last_autovacuum, last_analyze::text AS last_analyze,                      last_autoanalyze::text AS last_autoanalyze                      FROM pg_stat_all_tables WHERE schemaname = $1 AND relname = $2",
+                    &[&schema, &name],
+                )
+                .await
+            {
+                Ok(Some(row)) => {
+                    let live: Option<i64> = row.get("n_live_tup");
+                    if let Some(live) = live {
+                        info.row_estimate = Some(live);
+                    }
+                    info.last_vacuum = row.get("last_vacuum");
+                    info.last_autovacuum = row.get("last_autovacuum");
+                    info.last_analyze = row.get("last_analyze");
+                    info.last_autoanalyze = row.get("last_autoanalyze");
+                    info.changed_at = info
+                        .last_analyze
+                        .clone()
+                        .or_else(|| info.last_autoanalyze.clone());
+                }
+                Ok(None) => {}
+                Err(err) => info
+                    .notes
+                    .push(format!("Statistiken nicht lesbar: {}", map_pg_err(err))),
+            }
+
+            match conn
+                .query(
+                    "SELECT dn.nspname::text AS schema, dc.relname::text AS name,                      CASE dc.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized_view'                      ELSE 'table' END AS object_type                      FROM pg_depend d                      JOIN pg_rewrite r ON r.oid = d.objid AND d.classid = 'pg_rewrite'::regclass                      JOIN pg_class dc ON dc.oid = r.ev_class                      JOIN pg_namespace dn ON dn.oid = dc.relnamespace                      WHERE d.refobjid = $1 AND dc.oid <> $1                      UNION                      SELECT fn.nspname::text, fc.relname::text, 'foreign_key'                      FROM pg_constraint con                      JOIN pg_class fc ON fc.oid = con.conrelid                      JOIN pg_namespace fn ON fn.oid = fc.relnamespace                      WHERE con.contype = 'f' AND con.confrelid = $1 AND fc.oid <> $1                      ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+            {
+                Ok(rows) => {
+                    info.dependents = rows
+                        .iter()
+                        .map(|row| ObjectDependent {
+                            schema: row.get("schema"),
+                            name: row.get("name"),
+                            object_type: row.get("object_type"),
+                        })
+                        .collect();
+                }
+                Err(err) => info
+                    .notes
+                    .push(format!("Abhängigkeiten nicht lesbar: {}", map_pg_err(err))),
+            }
+
+            Ok(info)
+        })
+        .await
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
@@ -1672,6 +2829,7 @@ impl DatabaseAdapter for PostgresAdapter {
         name: &str,
         concurrently: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let modifier = if concurrently { " CONCURRENTLY" } else { "" };
@@ -1688,6 +2846,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_materialized_view(&self, schema: &str, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -1705,6 +2864,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateMatviewRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let query = req.query.trim();
         if query.is_empty() {
             return Err("Die SELECT-Abfrage darf nicht leer sein.".to_string());
@@ -1829,6 +2989,7 @@ impl DatabaseAdapter for PostgresAdapter {
         enabled: bool,
         force: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
@@ -1857,6 +3018,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         policy: &super::CreatePolicyRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = policy.name.trim();
         if name.is_empty() {
             return Err("Der Policy-Name darf nicht leer sein.".to_string());
@@ -1930,6 +3092,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_policy(&self, schema: &str, table: &str, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -2008,6 +3171,7 @@ impl DatabaseAdapter for PostgresAdapter {
         child_schema: &str,
         child_table: &str,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -2031,6 +3195,7 @@ impl DatabaseAdapter for PostgresAdapter {
         child_table: &str,
         bound: &str,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let trimmed = bound.trim();
         if trimmed.len() < 10 || !trimmed[..10].eq_ignore_ascii_case("for values") {
             return Err("Die Partition-Bindung muss mit FOR VALUES beginnen.".to_string());
@@ -2103,6 +3268,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreatePublicationRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Publikations-Name darf nicht leer sein.".to_string());
@@ -2156,6 +3322,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_publication(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP PUBLICATION {}", quote_ident(name));
@@ -2197,6 +3364,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateSubscriptionRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Subskriptions-Name darf nicht leer sein.".to_string());
@@ -2249,6 +3417,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_subscription(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP SUBSCRIPTION {}", quote_ident(name));
@@ -2264,7 +3433,7 @@ impl DatabaseAdapter for PostgresAdapter {
             conn.query(
                 "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
                         state, COALESCE(left(query, 500), ''), query_start::text, xact_start::text, \
-                        wait_event, pid = pg_backend_pid() \
+                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid) \
                  FROM pg_stat_activity WHERE datname IS NOT NULL \
                  ORDER BY query_start NULLS LAST",
                 &[],
@@ -2285,6 +3454,7 @@ impl DatabaseAdapter for PostgresAdapter {
                         transaction_start: row.get(8),
                         wait_event: row.get(9),
                         is_self: row.get(10),
+                        blocked_by: row.get(11),
                     })
                     .collect()
             })
@@ -2293,6 +3463,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
+        self.ensure_writable()?;
         if pid <= 0 {
             return Err("Ungültige Prozess-ID.".to_string());
         }
@@ -2307,6 +3478,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
+        self.ensure_writable()?;
         if pid <= 0 {
             return Err("Ungültige Prozess-ID.".to_string());
         }
@@ -2410,6 +3582,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_schema(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = name.trim();
         if name.is_empty() {
             return Err("Der Schema-Name darf nicht leer sein.".to_string());
@@ -2424,6 +3597,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_schema(&self, name: &str, cascade: bool) -> Result<(), String> {
+        self.ensure_writable()?;
         let lowered = name.trim().to_lowercase();
         if ["pg_catalog", "information_schema", "public", "pg_toast"].contains(&lowered.as_str()) {
             return Err(format!("Das Schema {name} darf nicht gelöscht werden."));
@@ -2476,6 +3650,154 @@ impl DatabaseAdapter for PostgresAdapter {
             })
         })
         .await
+    }
+}
+
+const SCHEMA_COPY_MAX_ROWS: i64 = 100_000;
+
+fn normalize_definition(definition: &str) -> String {
+    definition
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+impl PostgresAdapter {
+    async fn schema_copy_definitions(
+        &self,
+        schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<(String, String)>, String> {
+        let sql = match object_type {
+            "table" => {
+                "SELECT c.relname AS name, \
+                        COALESCE((SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod) \
+                            || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END, E'\\n' ORDER BY a.attnum) \
+                            FROM pg_attribute a \
+                            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped), '') AS definition \
+                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname"
+            }
+            "view" => {
+                "SELECT c.relname AS name, pg_get_viewdef(c.oid, true) AS definition \
+                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relkind = 'v' ORDER BY c.relname"
+            }
+            "routine" => {
+                "SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS name, \
+                        pg_get_functiondef(p.oid) AS definition \
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') ORDER BY 1"
+            }
+            other => return Err(format!("Unbekannter Objekttyp: {other}")),
+        };
+        if schema.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn.query(sql, &[&schema]).await.map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|row| {
+                    let name: String = row.get("name");
+                    let definition: Option<String> = row.get("definition");
+                    (name, definition.unwrap_or_default())
+                })
+                .collect())
+        })
+        .await
+    }
+
+    async fn routine_definition(&self, schema: &str, signature: &str) -> Result<String, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT pg_get_functiondef(p.oid) AS definition \
+                     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                     WHERE n.nspname = $1 AND p.prokind IN ('f', 'p') \
+                       AND p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' = $2",
+                    &[&schema, &signature],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            let row = rows
+                .first()
+                .ok_or_else(|| format!("Routine {schema}.{signature} nicht gefunden."))?;
+            Ok(row.get::<_, String>("definition"))
+        })
+        .await
+    }
+
+    async fn schema_copy_ddl(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        if source_schema == target_schema {
+            return Err("Quell- und Zielschema sind identisch.".to_string());
+        }
+        match object_type {
+            "table" => {
+                let columns = self
+                    .list_table_columns_detailed(source_schema, name)
+                    .await?;
+                if columns.is_empty() {
+                    return Err(format!(
+                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+                    ));
+                }
+                let request = super::CreateTableRequest {
+                    schema: target_schema.to_string(),
+                    name: name.to_string(),
+                    if_not_exists: false,
+                    columns: columns
+                        .iter()
+                        .map(|column| super::ColumnDefinition {
+                            name: column.name.clone(),
+                            data_type: column.data_type.clone(),
+                            is_nullable: column.is_nullable,
+                            default_value: column.column_default.as_ref().map(|value| {
+                                super::requalify_schema(value, source_schema, target_schema)
+                            }),
+                            is_primary_key: column.is_primary_key,
+                            is_unique: false,
+                        })
+                        .collect(),
+                };
+                Ok(Self::build_create_table_sql(&request))
+            }
+            "view" => {
+                let definition = self.get_view_definition(source_schema, name).await?;
+                let body = super::requalify_schema(
+                    definition.trim().trim_end_matches(';'),
+                    source_schema,
+                    target_schema,
+                );
+                Ok(format!(
+                    "CREATE VIEW {}.{} AS\n{}",
+                    quote_ident(target_schema),
+                    quote_ident(name),
+                    body
+                ))
+            }
+            "routine" => {
+                let definition = self.routine_definition(source_schema, name).await?;
+                Ok(super::requalify_schema(
+                    &definition,
+                    source_schema,
+                    target_schema,
+                ))
+            }
+            other => Err(format!("Unbekannter Objekttyp: {other}")),
+        }
     }
 }
 
@@ -2573,6 +3895,11 @@ impl PostgresAdapter {
         sql: &str,
     ) -> Result<Vec<super::ScriptStatementResult>, String> {
         use super::ScriptStatementResult;
+        if let Some(client) =
+            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
+        {
+            return server_output::pg_run_script(&client, sql, self.read_only).await;
+        }
         let statements: Vec<&str> = sql
             .split(';')
             .map(|s| s.trim())
@@ -2580,6 +3907,11 @@ impl PostgresAdapter {
             .collect();
 
         let conn = self.get_conn().await?;
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
         let mut results = Vec::new();
         for stmt in statements {
             let full = format!("{};", stmt);
@@ -2597,6 +3929,9 @@ impl PostgresAdapter {
                     error: Some(map_pg_err(e)),
                 }),
             }
+        }
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
         }
         Ok(results)
     }
@@ -2643,9 +3978,135 @@ impl PostgresAdapter {
     }
 }
 
+pub async fn run_params_query(
+    client: &tokio_postgres::Client,
+    sql: &str,
+    params: &[Option<String>],
+) -> Result<QueryResult, String> {
+    use tokio_postgres::types::{ToSql, Type};
+
+    let trimmed = sql.trim().trim_end_matches(';').trim();
+    if trimmed.is_empty() {
+        return Err("Leere Abfrage".to_string());
+    }
+    let start = std::time::Instant::now();
+    let types: Vec<Type> = params.iter().map(|_| Type::TEXT).collect();
+    let values: Vec<&(dyn ToSql + Sync)> = params
+        .iter()
+        .map(|value| value as &(dyn ToSql + Sync))
+        .collect();
+
+    let statement = client
+        .prepare_typed(trimmed, &types)
+        .await
+        .map_err(map_pg_err)?;
+    if statement.columns().is_empty() {
+        let affected = client
+            .execute(&statement, &values)
+            .await
+            .map_err(map_pg_err)?;
+        return Ok(QueryResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected: Some(affected),
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        });
+    }
+
+    let columns: Vec<String> = statement
+        .columns()
+        .iter()
+        .map(|column| column.name().to_string())
+        .collect();
+    let wrapped = format!(
+        "WITH __l8_bind AS ({}) SELECT to_jsonb(__l8_bind) FROM __l8_bind",
+        trimmed
+    );
+    let wrapped_statement = client
+        .prepare_typed(&wrapped, &types)
+        .await
+        .map_err(map_pg_err)?;
+    let data = client
+        .query(&wrapped_statement, &values)
+        .await
+        .map_err(map_pg_err)?;
+    let rows: Vec<serde_json::Value> = data.iter().map(|row| row.get(0)).collect();
+    let count = rows.len() as u64;
+
+    Ok(QueryResult {
+        columns,
+        rows,
+        rows_affected: Some(count),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::PostgresAdapter;
+    use super::{like_pattern, source_snippet, PostgresAdapter};
+
+    #[test]
+    fn like_pattern_escapes_wildcards() {
+        assert_eq!(like_pattern("a_b%c"), "%a\\_b\\%c%");
+        assert_eq!(like_pattern("name"), "%name%");
+    }
+
+    #[test]
+    fn source_snippet_reports_line_and_occurrences() {
+        let src =
+            "BEGIN\n  SELECT kunde_id FROM kunde WHERE kunde_id = 1;\n  RETURN kunde_id;\nEND";
+        let (line, snippet, occurrences) = source_snippet(src, "KUNDE_ID").expect("match");
+        assert_eq!(line, 2);
+        assert_eq!(occurrences, 3);
+        assert!(snippet.starts_with("SELECT kunde_id"));
+        assert!(source_snippet(src, "fehlt").is_none());
+    }
+
+    #[test]
+    fn build_create_table_sql_renders_columns_and_primary_key() {
+        use crate::db::{ColumnDefinition, CreateTableRequest};
+
+        let req = CreateTableRequest {
+            schema: "public".to_string(),
+            name: "kunde".to_string(),
+            if_not_exists: true,
+            columns: vec![
+                ColumnDefinition {
+                    name: "id".to_string(),
+                    data_type: "bigserial".to_string(),
+                    is_nullable: false,
+                    default_value: None,
+                    is_primary_key: true,
+                    is_unique: false,
+                },
+                ColumnDefinition {
+                    name: "email".to_string(),
+                    data_type: "text".to_string(),
+                    is_nullable: false,
+                    default_value: None,
+                    is_primary_key: false,
+                    is_unique: true,
+                },
+                ColumnDefinition {
+                    name: "created_at".to_string(),
+                    data_type: "timestamptz".to_string(),
+                    is_nullable: true,
+                    default_value: Some("now()".to_string()),
+                    is_primary_key: false,
+                    is_unique: false,
+                },
+            ],
+        };
+
+        let ddl = PostgresAdapter::build_create_table_sql(&req);
+        assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS \"public\".\"kunde\" ("));
+        assert!(ddl.contains("\"id\" bigserial NOT NULL"));
+        assert!(ddl.contains("\"email\" text NOT NULL UNIQUE"));
+        assert!(ddl.contains("\"created_at\" timestamptz DEFAULT now()"));
+        assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+        assert!(!ddl.contains("\"id\" bigserial NOT NULL UNIQUE"));
+    }
+
     use crate::db::{pool::create_pool_state, DatabaseAdapter};
 
     fn lab_connection_string() -> String {
@@ -2691,6 +4152,66 @@ mod tests {
                 "SELECT pg_drop_replication_slot('{sub}') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '{sub}' AND NOT active)"
             ))
             .await;
+    }
+
+    fn lab_read_only_adapter() -> PostgresAdapter {
+        let base = lab_connection_string();
+        let separator = if base.contains('?') { "&" } else { "?" };
+        let url = format!("{base}{separator}options=-c%20default_transaction_read_only%3Don");
+        PostgresAdapter::from_connection_string(&url, None, create_pool_state()).expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn read_only_connection_rejects_writes() {
+        let writer = lab_adapter();
+        lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_probe").await;
+        lab_execute(&writer, "CREATE TABLE l8db_read_only_probe (id int)").await;
+        lab_execute(&writer, "INSERT INTO l8db_read_only_probe VALUES (1)").await;
+
+        let reader = lab_read_only_adapter();
+        assert!(reader.execute_query("SELECT 1").await.is_ok());
+        assert!(reader
+            .execute_query("INSERT INTO l8db_read_only_probe VALUES (2)")
+            .await
+            .is_err());
+        assert!(reader
+            .execute_query(
+                "WITH w AS (INSERT INTO l8db_read_only_probe VALUES (3) RETURNING id) SELECT * FROM w"
+            )
+            .await
+            .is_err());
+        let _ = reader
+            .execute_query("SET default_transaction_read_only = off")
+            .await;
+        assert!(reader
+            .execute_query("INSERT INTO l8db_read_only_probe VALUES (4)")
+            .await
+            .is_err());
+        assert!(reader
+            .drop_table("public", "l8db_read_only_probe")
+            .await
+            .is_err());
+        assert!(reader
+            .truncate_table("public", "l8db_read_only_probe")
+            .await
+            .is_err());
+        assert!(reader
+            .update_row(
+                "public",
+                "l8db_read_only_probe",
+                "(0,1)",
+                &std::collections::HashMap::from([("id".to_string(), Some("9".to_string()))]),
+            )
+            .await
+            .is_err());
+
+        let rows = reader
+            .execute_query("SELECT count(*) AS c FROM l8db_read_only_probe")
+            .await
+            .expect("count");
+        assert_eq!(rows.rows.len(), 1);
+        lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_probe").await;
     }
 
     #[tokio::test]

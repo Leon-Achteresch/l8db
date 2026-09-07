@@ -23,8 +23,10 @@ export function SetupStepper({ step, onStep }: Props) {
         const active = step === item.id;
         return (
           <li key={item.id}>
-            <button
+            <motion.button
               type="button"
+              layout
+              transition={{ layout: SPRING }}
               disabled={!onStep || item.id > step}
               onClick={() => onStep?.(item.id)}
               className={cn(
@@ -57,7 +59,7 @@ export function SetupStepper({ step, onStep }: Props) {
                   className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-primary/30"
                 />
               )}
-            </button>
+            </motion.button>
           </li>
         );
       })}

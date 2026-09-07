@@ -6,6 +6,7 @@ import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 interface Props {
   connection: SavedConnection;
@@ -34,8 +35,10 @@ export function ConnectionCard({
   const reduce = useReducedMotion();
   return (
     <motion.article
+      layout
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ layout: SPRING_LAYOUT }}
       className={`group rounded-2xl border bg-card p-5 transition-colors ${active ? "border-primary/40 ring-1 ring-primary/10" : "hover:border-foreground/20"}`}
     >
       <div className="flex items-start gap-3">
