@@ -1,4 +1,3 @@
-import { getRouteApi } from "@tanstack/react-router";
 import { BugIcon, HammerIcon, LoaderIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -15,11 +14,14 @@ import { useFunctionDefinitionQuery, useProceduresQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/_workspace/procedures/$schema/$name");
+export interface ProcedureViewProps {
+  schema: string;
+  name: string;
+  oid?: string;
+  line?: number;
+}
 
-export function ProcedureView() {
-  const { schema, name } = routeApi.useParams();
-  const { oid, line } = routeApi.useSearch();
+export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();

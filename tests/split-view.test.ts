@@ -130,4 +130,40 @@ describe("split view", () => {
     useConnectionsStore.getState().setActiveId(a.id);
     expect(useSplitView.getState().panes).toEqual([users, null]);
   });
+
+  test("setPane legt Tab per Drop in ein Pane und tauscht Duplikate", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    useTableTabs.getState().openTab({ schema: "public", table: "orders" });
+    useTableTabs.getState().openTab({ schema: "public", table: "items" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    const orders = tabKey({ kind: "table", schema: "public", table: "orders" });
+    const items = tabKey({ kind: "table", schema: "public", table: "items" });
+
+    useSplitView.getState().addPane(users);
+    useSplitView.getState().setPane(0, items);
+    expect(useSplitView.getState().panes).toEqual([items, orders]);
+    expect(useSplitView.getState().focusedPane).toBe(0);
+
+    useSplitView.getState().setPane(1, items);
+    expect(useSplitView.getState().panes).toEqual([orders, items]);
+    expect(useSplitView.getState().focusedPane).toBe(1);
+  });
+
+  test("swapPanes vertauscht zwei Panes", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    useTableTabs.getState().openTab({ schema: "public", table: "orders" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    const orders = tabKey({ kind: "table", schema: "public", table: "orders" });
+
+    useSplitView.getState().addPane(users);
+    useSplitView.getState().swapPanes(0, 1);
+    expect(useSplitView.getState().panes).toEqual([orders, users]);
+    expect(useSplitView.getState().focusedPane).toBe(1);
+    useSplitView.getState().swapPanes(0, 5);
+    expect(useSplitView.getState().panes).toEqual([orders, users]);
+  });
 });

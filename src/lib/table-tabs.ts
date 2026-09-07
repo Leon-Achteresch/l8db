@@ -96,7 +96,6 @@ interface TabsState {
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;
-  replaceTabs: (tabs: Tab[]) => void;
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
@@ -296,8 +295,6 @@ export const useTableTabs = create<TabsState>()(
         }),
 
       closeAllTabs: () => set((state) => storeFor([], state)),
-
-      replaceTabs: (tabs) => set((state) => storeFor(tabs, state)),
 
       clearTabsForConnection: (connectionId) =>
         set((state) => {

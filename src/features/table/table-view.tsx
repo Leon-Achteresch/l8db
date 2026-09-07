@@ -63,6 +63,7 @@ import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
@@ -78,11 +79,18 @@ type TableTab =
   | "performance"
   | "audit";
 
-export function TableView() {
-  const { schema, table } = routeApi.useParams();
-  const { type, fkFilter, fkRaw } = routeApi.useSearch();
+export interface TableViewProps {
+  schema: string;
+  table: string;
+  type?: "table" | "view";
+  fkFilter?: string;
+  fkRaw?: boolean;
+}
+
+export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewProps) {
   const navigate = useNavigate();
   const routeNavigate = routeApi.useNavigate();
+  const pane = useWorkspacePane();
   const { data: views } = useViewsQuery();
   const { data: foreignKeys } = useForeignKeysQuery(schema, table);
   const tabEntityType = useTableTabs((state) => {
@@ -270,7 +278,7 @@ export function TableView() {
   }, [schema, table, isView, openTab]);
 
   useEffect(() => {
-    if (!isView || type === "view") return;
+    if (!isView || type === "view" || (pane && !pane.focused)) return;
     void routeNavigate({
       search: { type: "view" },
       replace: true,

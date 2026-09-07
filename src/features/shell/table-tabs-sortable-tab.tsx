@@ -22,6 +22,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SPRING } from "@/lib/ease";
+import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,8 @@ export interface TableTabsSortableTabProps {
   tab: Tab;
   index: number;
   isActive: boolean;
+  isInPane?: boolean;
+  canSplit?: boolean;
   hasTabsToRight: boolean;
   tabsCount: number;
   onNavigate: () => void;
@@ -40,6 +43,7 @@ export interface TableTabsSortableTabProps {
   onMouseDown: (event: React.MouseEvent) => void;
   onCopyTable?: () => void;
   onCopyFull?: () => void;
+  onSplit?: () => void;
 }
 
 function tabVisual(tab: Tab) {
@@ -73,6 +77,8 @@ export function TableTabsSortableTab({
   tab,
   index,
   isActive,
+  isInPane = false,
+  canSplit = true,
   hasTabsToRight,
   tabsCount,
   onNavigate,
@@ -84,26 +90,20 @@ export function TableTabsSortableTab({
   onMouseDown,
   onCopyTable,
   onCopyFull,
+  onSplit,
 }: TableTabsSortableTabProps) {
   const reduce = useReducedMotion();
-  const { ref, isDragging } = useSortable({ id: tabKey(tab), index });
+  const { ref, isDragging } = useSortable({
+    id: tabKey(tab),
+    index,
+    type: "tab",
+    accept: ["tab"],
+    data: { key: tabKey(tab) },
+  });
 
   const { Icon, iconColor } = tabVisual(tab);
 
-  const label =
-    tab.kind === "table"
-      ? tab.table
-      : tab.kind === "query"
-        ? tab.title
-        : tab.kind === "function" || tab.kind === "procedure"
-          ? tab.name
-          : tab.kind === "trigger"
-            ? tab.trigger
-            : tab.kind === "view-editor"
-              ? tab.view
-              : tab.kind === "alter-table"
-                ? tab.table
-                : tab.name;
+  const label = tabLabel(tab);
 
   return (
     <ContextMenu>
@@ -118,7 +118,9 @@ export function TableTabsSortableTab({
             "group relative flex h-8 shrink-0 cursor-grab items-center rounded-full border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
             isActive
               ? "border-primary/30 bg-card text-foreground shadow-sm"
-              : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground",
+              : isInPane
+                ? "border-border/70 bg-accent/40 text-foreground"
+                : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
@@ -182,6 +184,11 @@ export function TableTabsSortableTab({
           Tabs rechts schließen
         </ContextMenuItem>
         <ContextMenuItem onSelect={onCloseAll}>Alle schließen</ContextMenuItem>
+        {onSplit && (
+          <ContextMenuItem disabled={!canSplit} onSelect={onSplit}>
+            Rechts teilen
+          </ContextMenuItem>
+        )}
         {tab.kind === "table" && onCopyTable && onCopyFull && (
           <>
             <ContextMenuSeparator />

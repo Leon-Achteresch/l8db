@@ -1,4 +1,3 @@
-import { getRouteApi } from "@tanstack/react-router";
 import { HammerIcon, LoaderIcon } from "lucide-react";
 import { Accordion as AccordionPrimitive } from "radix-ui";
 import { useEffect, useState } from "react";
@@ -15,11 +14,14 @@ import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/_workspace/packages/$schema/$name");
+export interface PackageViewProps {
+  schema: string;
+  name: string;
+  part?: PackagePart;
+  member?: string;
+}
 
-export function PackageView() {
-  const { schema, name } = routeApi.useParams();
-  const { part, member } = routeApi.useSearch();
+export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const connection = useActiveConnection();
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const [open, setOpen] = useState<string[]>(part ? [part] : ["spec", "body"]);

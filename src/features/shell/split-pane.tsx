@@ -1,0 +1,90 @@
+import { useDraggable, useDroppable } from "@dnd-kit/react";
+import { useNavigate } from "@tanstack/react-router";
+import { GripVerticalIcon, XIcon } from "lucide-react";
+
+import { TabPaneContent } from "@/features/shell/tab-pane-content";
+import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
+import type { Tab } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
+import { WorkspacePaneContext } from "@/lib/workspace-pane";
+
+interface SplitPaneProps {
+  index: number;
+  focused: boolean;
+  tab: Tab | undefined;
+  onFocus: () => void;
+  onClose: () => void;
+}
+
+export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPaneProps) {
+  const navigate = useNavigate();
+  const { ref: dropRef, isDropTarget } = useDroppable({
+    id: `pane:${index}`,
+    type: "pane",
+    accept: ["tab", "pane"],
+  });
+  const { ref: dragRef, handleRef } = useDraggable({
+    id: `pane-drag:${index}`,
+    type: "pane",
+    data: { index },
+  });
+
+  return (
+    <WorkspacePaneContext.Provider value={{ index, focused }}>
+      <div
+        ref={dropRef}
+        onMouseDown={() => {
+          if (!focused && tab) navigateToTab(navigate, tab);
+          onFocus();
+        }}
+        className={cn(
+          "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
+          isDropTarget
+            ? "ring-2 ring-inset ring-primary bg-primary/5"
+            : focused
+              ? "ring-2 ring-inset ring-primary"
+              : "ring-1 ring-inset ring-border/80",
+        )}
+      >
+        <div
+          ref={dragRef}
+          className="flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40 px-1"
+        >
+          <span
+            ref={handleRef}
+            title="Bereich verschieben"
+            className="grid size-5 shrink-0 cursor-grab place-items-center text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+          >
+            <GripVerticalIcon className="size-3.5" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+            {tab ? tabLabel(tab) : "Leer"}
+          </span>
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            aria-label="Bereich schließen"
+            className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {tab ? (
+            <TabPaneContent tab={tab} />
+          ) : (
+            <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
+              <p className="max-w-56 text-center text-sm text-muted-foreground">
+                Tab hierher ziehen oder in der Sidebar öffnen.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </WorkspacePaneContext.Provider>
+  );
+}

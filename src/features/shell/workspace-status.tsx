@@ -18,7 +18,7 @@ export function WorkspaceStatus() {
         <Link to="/connections" className="flex min-w-0 items-center gap-1.5 hover:text-foreground">
           <Database className="size-3 shrink-0" />
           {connection ? (
-            <ConnectionColorBadge variant="status" />
+            <ConnectionColorBadge />
           ) : (
             <span className="max-w-40 truncate">Keine Verbindung</span>
           )}
