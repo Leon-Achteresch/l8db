@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas, listTables } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
@@ -84,7 +84,7 @@ export function DataCompareSidePicker({ title, value, onChange }: DataCompareSid
     listSchemas(connection.kind, effectiveConnectionString(connection), value.database ?? undefined)
       .then((list) => {
         if (!active) return;
-        setSchemas(list);
+        setSchemas(visibleSchemas(connection, list));
         setLoadError(null);
       })
       .catch((error) => {
