@@ -6,6 +6,8 @@ import {
   CodeIcon,
   Columns2Icon,
   DownloadIcon,
+  GaugeIcon,
+  HistoryIcon,
   LayersIcon,
   LoaderIcon,
   NetworkIcon,
@@ -25,6 +27,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
+import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
@@ -33,14 +39,18 @@ import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
+import { TablePerfPanel } from "@/features/table/table-perf-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
+import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import {
   useDeleteRowMutation,
+  useDetailedColumnsQuery,
   useDuplicateRowMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
@@ -49,19 +59,38 @@ import {
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
+import type { DuplicatePrefill } from "@/lib/row-duplicate";
+import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 
-const routeApi = getRouteApi("/_app/tables/$schema/$table");
+const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
-type ViewTab = "data" | "definition" | "columns";
-type TableTab = "data" | "triggers" | "columns" | "indexes" | "rls" | "partitions";
+type ViewTab = "data" | "definition" | "columns" | "used-by" | "performance" | "audit";
+type TableTab =
+  | "data"
+  | "triggers"
+  | "columns"
+  | "indexes"
+  | "rls"
+  | "partitions"
+  | "used-by"
+  | "performance"
+  | "audit";
 
-export function TableView() {
-  const { schema, table } = routeApi.useParams();
-  const { type, fkFilter, fkRaw } = routeApi.useSearch();
+export interface TableViewProps {
+  schema: string;
+  table: string;
+  type?: "table" | "view";
+  fkFilter?: string;
+  fkRaw?: boolean;
+}
+
+export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewProps) {
   const navigate = useNavigate();
   const routeNavigate = routeApi.useNavigate();
+  const pane = useWorkspacePane();
   const { data: views } = useViewsQuery();
   const { data: foreignKeys } = useForeignKeysQuery(schema, table);
   const tabEntityType = useTableTabs((state) => {
@@ -88,8 +117,12 @@ export function TableView() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [duplicatePrefill, setDuplicatePrefill] = useState<DuplicatePrefill | null>(null);
+  const [insertError, setInsertError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
+  const [csvExportOpen, setCsvExportOpen] = useState(false);
+  const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
+  const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,
     filter,
@@ -99,6 +132,7 @@ export function TableView() {
     filterRaw,
   );
   const { data: totalCount } = useTableRowCountQuery(schema, table, filter, filterRaw);
+  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
   const updateRowMutation = useUpdateRowMutation(schema, table);
   const insertRowMutation = useInsertRowMutation(schema, table);
   const duplicateRowMutation = useDuplicateRowMutation(schema, table);
@@ -111,13 +145,32 @@ export function TableView() {
   };
 
   const handleInsertRow = async (values: Record<string, string | null>) => {
+    const wasDuplicate = duplicatePrefill !== null;
     try {
       await insertRowMutation.mutateAsync(values);
-      toast.success("Neue Zeile hinzugefügt.");
+      toast.success(wasDuplicate ? "Zeile als neue Zeile eingefügt." : "Neue Zeile hinzugefügt.");
+      setInsertError(null);
+      setDuplicatePrefill(null);
       setAddRowOpen(false);
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      const message = describeInsertError(err);
+      setInsertError(message);
+      toast.error(message);
     }
+  };
+
+  const handleRowDialogOpenChange = (open: boolean) => {
+    setAddRowOpen(open);
+    if (!open) {
+      setInsertError(null);
+      setDuplicatePrefill(null);
+    }
+  };
+
+  const handleDuplicateRowToEdit = (_ctid: string, values: Record<string, unknown>) => {
+    setInsertError(null);
+    setDuplicatePrefill(buildDuplicatePrefill(data?.columns ?? [], values, columnDetails));
+    setAddRowOpen(true);
   };
 
   const handleDuplicateRow = async (ctid: string) => {
@@ -138,51 +191,76 @@ export function TableView() {
     }
   };
 
-  const handleExport = async (format: "csv" | "json") => {
+  const exportColumns = useMemo(
+    () => (data?.columns ?? []).filter((c) => c !== "__ctid__"),
+    [data],
+  );
+
+  const exportRows = useMemo(() => {
+    const cols = exportColumns;
+    return (data?.rows ?? []).map((row) => {
+      const source = row as Record<string, unknown>;
+      const obj: Record<string, unknown> = {};
+      for (const c of cols) obj[c] = source[c] ?? null;
+      return obj;
+    });
+  }, [data, exportColumns]);
+
+  const fullExportSource = useMemo(
+    () => ({
+      schema,
+      table,
+      filter,
+      filterRaw,
+      orderBy: sorting[0]?.id ?? null,
+      orderDesc: sorting[0]?.desc ?? false,
+      isView,
+      totalRows: totalCount ?? null,
+    }),
+    [schema, table, filter, filterRaw, sorting, isView, totalCount],
+  );
+
+  const handleExport = async (format: "json" | "sql") => {
     if (!data) return;
     setExporting(true);
     try {
-      const ext = format === "csv" ? "csv" : "json";
+      const ext = format === "json" ? "json" : "sql";
+      let content: string;
+      if (format === "json") {
+        content = JSON.stringify(exportRows, null, 2);
+      } else {
+        content = buildInsertStatements({
+          schema,
+          table,
+          columns: exportColumns,
+          rows: exportRows,
+          kind: connection?.kind,
+        });
+      }
       const filePath = await save({
         defaultPath: `${table}.${ext}`,
-        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
       });
       if (!filePath) return;
-
-      let content: string;
-      if (format === "csv") {
-        const cols = data.columns.filter((c) => c !== "__ctid__");
-        const header = cols.map((c) => JSON.stringify(c)).join(",");
-        const rows = data.rows.map((row) => {
-          const r = row as Record<string, unknown>;
-          return cols
-            .map((c) => {
-              const v = r[c];
-              if (v === null || v === undefined) return "";
-              const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-              return `"${s.replace(/"/g, '""')}"`;
-            })
-            .join(",");
-        });
-        content = [header, ...rows].join("\n");
-      } else {
-        const cols = data.columns.filter((c) => c !== "__ctid__");
-        const rows = data.rows.map((row) => {
-          const r = row as Record<string, unknown>;
-          const obj: Record<string, unknown> = {};
-          for (const c of cols) obj[c] = r[c] ?? null;
-          return obj;
-        });
-        content = JSON.stringify(rows, null, 2);
-      }
       await writeTextFile(filePath, content);
       toast.success(`Exportiert nach ${filePath.split("/").pop()}`);
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      if (err instanceof UnsupportedValueError) {
+        toast.error(`Export abgebrochen – ${err.message}`);
+      } else {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setExporting(false);
     }
   };
+
+  const handleRefresh = useMemo(() => {
+    return async () => {
+      const result = await refetch();
+      if (result.error) throw result.error;
+    };
+  }, [refetch]);
 
   const handleNavigateToTable = useMemo(() => {
     return (targetSchema: string, targetTable: string, filterWhere?: string) => {
@@ -200,7 +278,7 @@ export function TableView() {
   }, [schema, table, isView, openTab]);
 
   useEffect(() => {
-    if (!isView || type === "view") return;
+    if (!isView || type === "view" || (pane && !pane.focused)) return;
     void routeNavigate({
       search: { type: "view" },
       replace: true,
@@ -240,7 +318,10 @@ export function TableView() {
             activeFilter={filter}
             onSelectView={handleFilterChange}
           />
-          <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+          <div
+            className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
+            data-tour="table-filter"
+          >
             <TableFilterPanel
               key={`${schema}.${table}`}
               columns={data?.columns ?? []}
@@ -275,7 +356,10 @@ export function TableView() {
         currentTable={table}
         onNavigateToTable={handleNavigateToTable}
         onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
+        onDuplicateRowToEdit={isView || !caps.row_edit ? undefined : handleDuplicateRowToEdit}
         onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
+        columnDetails={columnDetails}
+        onRefresh={handleRefresh}
       />
     </div>
   );
@@ -287,7 +371,10 @@ export function TableView() {
         onValueChange={(v) => setViewTab(v as ViewTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+        <div
+          className="flex shrink-0 items-center border-b bg-muted/30 px-3"
+          data-tour="table-toolbar"
+        >
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="data">
               <TableIcon className="size-3.5" />
@@ -301,34 +388,61 @@ export function TableView() {
               <CodeIcon className="size-3.5" />
               Definition
             </TabsTrigger>
+            {caps.used_by && (
+              <TabsTrigger value="used-by">
+                <NetworkIcon className="size-3.5" />
+                Used By
+              </TabsTrigger>
+            )}
+            {caps.explain && (
+              <TabsTrigger value="performance">
+                <GaugeIcon className="size-3.5" />
+                Performance
+              </TabsTrigger>
+            )}
+            {caps.object_admin && (
+              <TabsTrigger value="audit">
+                <HistoryIcon className="size-3.5" />
+                Audit
+              </TabsTrigger>
+            )}
           </TabsList>
-          {viewTab === "data" && data && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
-                  disabled={exporting}
-                >
-                  {exporting ? (
-                    <LoaderIcon className="size-3.5 animate-spin" />
-                  ) : (
-                    <DownloadIcon className="size-3.5" />
-                  )}
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                  Als CSV exportieren
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport("json")}>
-                  Als JSON exportieren
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
+            {viewTab === "data" && data && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <LoaderIcon className="size-3.5 animate-spin" />
+                    ) : (
+                      <DownloadIcon className="size-3.5" />
+                    )}
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                    Als CSV exportieren…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                    Als XLSX exportieren…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExport("json")}>
+                    Als JSON exportieren
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                    Als INSERT-SQL exportieren
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -342,6 +456,37 @@ export function TableView() {
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ViewDefinitionPanel schema={schema} view={table} />
         </TabsContent>
+
+        <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableUsedByPanel schema={schema} name={table} />
+        </TabsContent>
+
+        <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.explain && (
+            <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="view" />}
+        </TabsContent>
+
+        <CsvExportDialog
+          open={csvExportOpen}
+          onOpenChange={setCsvExportOpen}
+          columns={exportColumns}
+          rows={exportRows}
+          defaultFileName={`${table}.csv`}
+          fullExport={fullExportSource}
+        />
+        <XlsxExportDialog
+          open={xlsxExportOpen}
+          onOpenChange={setXlsxExportOpen}
+          columns={exportColumns}
+          rows={exportRows}
+          defaultFileName={`${table}.xlsx`}
+          defaultSheetName={table}
+        />
       </Tabs>
     );
   }
@@ -352,7 +497,10 @@ export function TableView() {
       onValueChange={(v) => setTableTab(v as TableTab)}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+      <div
+        className="flex shrink-0 items-center border-b bg-muted/30 px-3"
+        data-tour="table-toolbar"
+      >
         <TabsList variant="line" className="h-9">
           <TabsTrigger value="data">
             <TableIcon className="size-3.5" />
@@ -386,14 +534,38 @@ export function TableView() {
               Partitionen
             </TabsTrigger>
           )}
+          {caps.used_by && (
+            <TabsTrigger value="used-by">
+              <NetworkIcon className="size-3.5" />
+              Used By
+            </TabsTrigger>
+          )}
+          {caps.explain && (
+            <TabsTrigger value="performance">
+              <GaugeIcon className="size-3.5" />
+              Performance
+            </TabsTrigger>
+          )}
+          {caps.object_admin && (
+            <TabsTrigger value="audit">
+              <HistoryIcon className="size-3.5" />
+              Audit
+            </TabsTrigger>
+          )}
         </TabsList>
         <div className="ml-auto flex items-center gap-1">
+          <ObjectAdminMenu schema={schema} name={table} objectType="table" />
           {tableTab === "data" && caps.row_edit && (
             <Button
               size="sm"
               variant="ghost"
               className="h-7 gap-1.5 px-2.5 text-xs"
-              onClick={() => setAddRowOpen(true)}
+              data-tour="table-add"
+              onClick={() => {
+                setInsertError(null);
+                setDuplicatePrefill(null);
+                setAddRowOpen(true);
+              }}
               disabled={insertRowMutation.isPending}
             >
               <PlusIcon className="size-3.5" />
@@ -418,11 +590,17 @@ export function TableView() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                  Als CSV exportieren
+                <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                  Als CSV exportieren…
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                  Als XLSX exportieren…
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleExport("json")}>
                   Als JSON exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                  Als INSERT-SQL exportieren
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -454,14 +632,47 @@ export function TableView() {
         <TablePartitionsPanel schema={schema} table={table} />
       </TabsContent>
 
+      <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableUsedByPanel schema={schema} name={table} />
+      </TabsContent>
+
+      <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {caps.explain && (
+          <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="table" />}
+      </TabsContent>
+
       <NewRowDialog
         open={addRowOpen}
-        onOpenChange={setAddRowOpen}
+        onOpenChange={handleRowDialogOpenChange}
         schema={schema}
         table={table}
         columns={data?.columns ?? []}
         isPending={insertRowMutation.isPending}
         onSubmit={handleInsertRow}
+        prefill={duplicatePrefill}
+        errorMessage={insertError}
+      />
+
+      <CsvExportDialog
+        open={csvExportOpen}
+        onOpenChange={setCsvExportOpen}
+        columns={exportColumns}
+        rows={exportRows}
+        defaultFileName={`${table}.csv`}
+        fullExport={fullExportSource}
+      />
+      <XlsxExportDialog
+        open={xlsxExportOpen}
+        onOpenChange={setXlsxExportOpen}
+        columns={exportColumns}
+        rows={exportRows}
+        defaultFileName={`${table}.xlsx`}
+        defaultSheetName={table}
       />
     </Tabs>
   );

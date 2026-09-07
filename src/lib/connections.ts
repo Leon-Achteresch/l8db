@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { sslModeFromUrl } from "@/lib/connection-url";
-import { closeSshTunnel, type DatabaseKind, type SslMode } from "@/lib/db";
+import {
+  closeSshTunnel,
+  type DatabaseKind,
+  registerReadOnlyResolver,
+  type SslMode,
+} from "@/lib/db";
+import { capabilitiesFor } from "@/lib/providers";
 import {
   deleteSecret,
   extractUrlPassword,
@@ -29,6 +35,26 @@ export const TAG_COLORS = [
   "#06b6d4",
 ];
 
+export interface ConnectionColor {
+  value: string;
+  label: string;
+}
+
+export const CONNECTION_COLORS: ConnectionColor[] = [
+  { value: "#ef4444", label: "Rot" },
+  { value: "#f97316", label: "Orange" },
+  { value: "#eab308", label: "Gelb" },
+  { value: "#22c55e", label: "Grün" },
+  { value: "#3b82f6", label: "Blau" },
+  { value: "#a855f7", label: "Violett" },
+  { value: "#64748b", label: "Grau" },
+];
+
+export function connectionColorLabel(color: string | null | undefined): string | null {
+  if (!color) return null;
+  return CONNECTION_COLORS.find((entry) => entry.value === color)?.label ?? color;
+}
+
 export type SshAuth = "password" | "key";
 
 export interface SshConnection {
@@ -50,6 +76,9 @@ export interface SavedConnection {
   ssh?: SshConnection | null;
   tunnelPort?: number | null;
   tags?: ConnectionTag[];
+  favorite?: boolean;
+  color?: string | null;
+  readOnly?: boolean;
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;
@@ -60,7 +89,13 @@ interface ConnectionsState {
   addConnection: (input: ConnectionInput) => SavedConnection;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
+  toggleFavorite: (id: string) => void;
+  addImported: (connections: SavedConnection[]) => void;
   setActiveId: (id: string | null) => void;
+}
+
+export function createConnectionId(): string {
+  return createId();
 }
 
 function createId(): string {
@@ -123,6 +158,18 @@ export const useConnectionsStore = create<ConnectionsState>()(
           activeId: state.activeId === id ? null : state.activeId,
         }));
       },
+      toggleFavorite: (id) =>
+        set((state) => ({
+          connections: state.connections.map((connection) =>
+            connection.id === id ? { ...connection, favorite: !connection.favorite } : connection,
+          ),
+        })),
+      addImported: (imported) =>
+        set((state) => {
+          const known = new Set(state.connections.map((connection) => connection.id));
+          const fresh = imported.filter((connection) => !known.has(connection.id));
+          return { connections: [...state.connections, ...fresh] };
+        }),
       setActiveId: (id) => set({ activeId: id }),
     }),
     {
@@ -182,6 +229,27 @@ export async function initConnectionSecrets(): Promise<void> {
   if (changed) {
     useConnectionsStore.setState({ connections: next });
   }
+}
+
+export function isReadOnlyConnection(
+  connection: Pick<SavedConnection, "kind" | "readOnly"> | null | undefined,
+): boolean {
+  if (!connection?.readOnly) return false;
+  return capabilitiesFor(connection.kind).read_only_mode;
+}
+
+registerReadOnlyResolver(() => {
+  const state = useConnectionsStore.getState();
+  const active = state.connections.find((connection) => connection.id === state.activeId);
+  return isReadOnlyConnection(active);
+});
+
+export function useReadOnlyConnection(): boolean {
+  return useConnectionsStore((state) =>
+    isReadOnlyConnection(
+      state.connections.find((connection) => connection.id === state.activeId) ?? null,
+    ),
+  );
 }
 
 export function useActiveConnection(): SavedConnection | null {

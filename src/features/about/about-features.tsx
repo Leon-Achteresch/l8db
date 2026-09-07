@@ -1,6 +1,7 @@
 import { FileDown, GitBranch, Network, ShieldCheck, SquareTerminal, Table2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 const FEATURES = [
   {
@@ -57,6 +58,7 @@ export function AboutFeatures() {
         {FEATURES.map((feature, index) => (
           <motion.div
             key={feature.title}
+            layout
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
@@ -64,6 +66,7 @@ export function AboutFeatures() {
               duration: 0.45,
               delay: (index % 4) * 0.06,
               ease: [0.22, 1, 0.36, 1],
+              layout: SPRING_LAYOUT,
             }}
             className={feature.span ? "sm:col-span-1 lg:col-span-2" : undefined}
           >

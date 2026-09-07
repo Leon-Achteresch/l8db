@@ -5,12 +5,29 @@ import { persist } from "zustand/middleware";
 export type TableColumnPref = {
   order: string[];
   hidden: string[];
+  pinned?: string[];
+};
+
+export type ResolvedColumnPref = {
+  order: string[];
+  hidden: string[];
+  pinned: string[];
+};
+
+export type TableLayoutProfile = {
+  id: string;
+  name: string;
+  order: string[];
+  hidden: string[];
+  pinned: string[];
 };
 
 interface TableColumnPrefsState {
   prefs: Record<string, TableColumnPref>;
+  profiles: Record<string, TableLayoutProfile[]>;
   setPref: (key: string, pref: TableColumnPref) => void;
   resetPref: (key: string) => void;
+  setProfiles: (key: string, profiles: TableLayoutProfile[]) => void;
 }
 
 export function tableColumnPrefKey(connectionId: string, schema: string, table: string): string {
@@ -20,16 +37,33 @@ export function tableColumnPrefKey(connectionId: string, schema: string, table: 
 export function resolveColumnPrefs(
   columns: string[],
   saved: TableColumnPref | undefined,
-): TableColumnPref {
+): ResolvedColumnPref {
   const known = new Set(columns);
   const savedOrder = saved?.order?.filter((column) => known.has(column)) ?? [];
   const savedSet = new Set(savedOrder);
-  const order = [...savedOrder, ...columns.filter((column) => !savedSet.has(column))];
+  const baseOrder = [...savedOrder, ...columns.filter((column) => !savedSet.has(column))];
+  const pinned: string[] = [];
+  for (const column of saved?.pinned ?? []) {
+    if (known.has(column) && !pinned.includes(column)) pinned.push(column);
+  }
+  const pinnedSet = new Set(pinned);
+  const order = [...pinned, ...baseOrder.filter((column) => !pinnedSet.has(column))];
   const hidden = (saved?.hidden ?? []).filter((column) => known.has(column));
   if (order.length > 0 && hidden.length >= order.length) {
-    return { order, hidden: hidden.filter((column) => column !== order[0]) };
+    return { order, hidden: hidden.filter((column) => column !== order[0]), pinned };
   }
-  return { order, hidden };
+  return { order, hidden, pinned };
+}
+
+export function togglePinnedColumn(order: string[], pinned: string[], column: string): string[] {
+  if (!order.includes(column)) return pinned;
+  if (pinned.includes(column)) return pinned.filter((entry) => entry !== column);
+  return [...pinned, column];
+}
+
+export function formatVisibleColumnNames(order: string[], hidden: string[]): string {
+  const hiddenSet = new Set(hidden);
+  return order.filter((column) => !hiddenSet.has(column) && !/^__.*__$/.test(column)).join(", ");
 }
 
 export function reorderVisibleColumns(
@@ -79,10 +113,77 @@ export function toggleHiddenColumn(order: string[], hidden: string[], column: st
   return [...hidden, column];
 }
 
+export function normalizeLayoutProfileName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+export function createLayoutProfile(
+  id: string,
+  name: string,
+  pref: TableColumnPref,
+): TableLayoutProfile {
+  return {
+    id,
+    name: normalizeLayoutProfileName(name),
+    order: [...pref.order],
+    hidden: [...pref.hidden],
+    pinned: [...(pref.pinned ?? [])],
+  };
+}
+
+export function upsertLayoutProfile(
+  profiles: TableLayoutProfile[],
+  profile: TableLayoutProfile,
+): TableLayoutProfile[] {
+  if (profile.name === "") return profiles;
+  const key = profile.name.toLowerCase();
+  const existing = profiles.findIndex(
+    (entry) => entry.id === profile.id || entry.name.toLowerCase() === key,
+  );
+  if (existing === -1) return [...profiles, profile];
+  const next = [...profiles];
+  next[existing] = { ...profile, id: next[existing].id };
+  return next;
+}
+
+export function renameLayoutProfile(
+  profiles: TableLayoutProfile[],
+  id: string,
+  name: string,
+): TableLayoutProfile[] {
+  const nextName = normalizeLayoutProfileName(name);
+  if (nextName === "") return profiles;
+  const taken = profiles.some(
+    (entry) => entry.id !== id && entry.name.toLowerCase() === nextName.toLowerCase(),
+  );
+  if (taken) return profiles;
+  return profiles.map((entry) => (entry.id === id ? { ...entry, name: nextName } : entry));
+}
+
+export function removeLayoutProfile(
+  profiles: TableLayoutProfile[],
+  id: string,
+): TableLayoutProfile[] {
+  return profiles.filter((entry) => entry.id !== id);
+}
+
+export function applyLayoutProfile(
+  columns: string[],
+  profile: TableLayoutProfile,
+): TableColumnPref {
+  const resolved = resolveColumnPrefs(columns, {
+    order: profile.order,
+    hidden: profile.hidden,
+    pinned: profile.pinned,
+  });
+  return { order: resolved.order, hidden: resolved.hidden, pinned: resolved.pinned };
+}
+
 export const useTableColumnPrefs = create<TableColumnPrefsState>()(
   persist(
     (set) => ({
       prefs: {},
+      profiles: {},
       setPref: (key, pref) =>
         set((state) => ({
           prefs: { ...state.prefs, [key]: pref },
@@ -93,10 +194,23 @@ export const useTableColumnPrefs = create<TableColumnPrefsState>()(
           delete prefs[key];
           return { prefs };
         }),
+      setProfiles: (key, profiles) =>
+        set((state) => ({
+          profiles: { ...(state.profiles ?? {}), [key]: profiles },
+        })),
     }),
     { name: "l8db.table-column-prefs" },
   ),
 );
+
+const EMPTY_PROFILES: TableLayoutProfile[] = [];
+
+function newProfileId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `layout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export function useTableColumnLayout(
   connectionId: string | null | undefined,
@@ -109,6 +223,8 @@ export function useTableColumnLayout(
   const saved = useTableColumnPrefs((state) => (key ? state.prefs[key] : undefined));
   const setPref = useTableColumnPrefs((state) => state.setPref);
   const resetPref = useTableColumnPrefs((state) => state.resetPref);
+  const setProfilesFor = useTableColumnPrefs((state) => state.setProfiles);
+  const storedProfiles = useTableColumnPrefs((state) => (key ? state.profiles?.[key] : undefined));
   const [ephemeral, setEphemeral] = useState<TableColumnPref | undefined>();
   const source = key ? saved : ephemeral;
   const resolved = useMemo(() => resolveColumnPrefs(columns, source), [columns, source]);
@@ -126,16 +242,60 @@ export function useTableColumnLayout(
 
   const setOrder = useCallback(
     (order: string[]) => {
-      write({ order, hidden: resolved.hidden });
+      write({ order, hidden: resolved.hidden, pinned: resolved.pinned });
     },
-    [write, resolved.hidden],
+    [write, resolved.hidden, resolved.pinned],
   );
 
   const setHidden = useCallback(
     (hidden: string[]) => {
-      write({ order: resolved.order, hidden });
+      write({ order: resolved.order, hidden, pinned: resolved.pinned });
     },
-    [write, resolved.order],
+    [write, resolved.order, resolved.pinned],
+  );
+
+  const setPinned = useCallback(
+    (pinned: string[]) => {
+      write({ order: resolved.order, hidden: resolved.hidden, pinned });
+    },
+    [write, resolved.order, resolved.hidden],
+  );
+
+  const profiles = useMemo(() => storedProfiles ?? EMPTY_PROFILES, [storedProfiles]);
+
+  const saveProfile = useCallback(
+    (name: string) => {
+      if (!key) return;
+      const profile = createLayoutProfile(newProfileId(), name, resolved);
+      if (profile.name === "") return;
+      setProfilesFor(key, upsertLayoutProfile(profiles, profile));
+    },
+    [key, profiles, resolved, setProfilesFor],
+  );
+
+  const applyProfile = useCallback(
+    (id: string) => {
+      const profile = profiles.find((entry) => entry.id === id);
+      if (!profile) return;
+      write(applyLayoutProfile(columns, profile));
+    },
+    [profiles, columns, write],
+  );
+
+  const renameProfile = useCallback(
+    (id: string, name: string) => {
+      if (!key) return;
+      setProfilesFor(key, renameLayoutProfile(profiles, id, name));
+    },
+    [key, profiles, setProfilesFor],
+  );
+
+  const deleteProfile = useCallback(
+    (id: string) => {
+      if (!key) return;
+      setProfilesFor(key, removeLayoutProfile(profiles, id));
+    },
+    [key, profiles, setProfilesFor],
   );
 
   const reset = useCallback(() => {
@@ -149,9 +309,17 @@ export function useTableColumnLayout(
   return {
     order: resolved.order,
     hidden: resolved.hidden,
+    pinned: resolved.pinned,
     setOrder,
     setHidden,
+    setPinned,
     reset,
+    profiles,
+    saveProfile,
+    applyProfile,
+    renameProfile,
+    deleteProfile,
+    canUseProfiles: key !== null,
     isCustomized: source !== undefined,
   };
 }

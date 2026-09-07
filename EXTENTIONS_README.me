@@ -1,0 +1,331 @@
+# l8db Community Extensions
+
+Mit Community Extensions können externe Entwickler l8db erweitern, ohne den Anwendungscode zu ändern. Diese Anleitung beschreibt die implementierte Extension API v1. Community Extensions sind unabhängig von PostgreSQL-Servererweiterungen.
+
+## Schnellstart
+
+Voraussetzungen: Bun ab Version 1.3 und eine l8db-Version mit dem Community-Extension-Host.
+
+Im l8db-Repository:
+
+```sh
+bun install
+bun run extension pack examples/hello-extension ./community.hello-1.0.0.l8db-extension
+```
+
+In den Einstellungen den Bereich für Community Extensions öffnen:
+
+1. **Paket installieren** auswählen und die erzeugte `.l8db-extension`-Datei öffnen.
+2. Herausgeber und angeforderte Berechtigungen prüfen.
+3. Für das Beispiel `database:read` freigeben und **Aktivieren** anklicken.
+4. **Hello: Greet** ausführen. Die Extension wird bei Bedarf geladen und zeigt eine Benachrichtigung.
+5. Eine Datenbank auswählen. Das Beispiel protokolliert das Ereignis in den Extension-Logs.
+
+Mit **Deaktivieren** werden Ressourcen freigegeben. **Neu laden** erzeugt eine frische Runtime. **Deinstallieren** entfernt Paket, Einstellungen und eigenen Extension-Speicher.
+
+## Eigenes Projekt erstellen
+
+```text
+my-extension/
+  src/extension.ts
+  package.json
+  l8db-extension.json
+  tsconfig.json
+  assets/
+  dist/extension.js
+```
+
+`assets/` ist optional. `dist/extension.js` wird vom SDK erzeugt. Ein vollständiges Beispiel liegt unter [examples/hello-extension](examples/hello-extension).
+
+Die öffentlichen Pakete sind:
+
+- `@l8db/extension-api@1.0.0`: TypeScript-Typen, Manifest-Validierung und JSON Schema.
+- `@l8db/extension-sdk@1.0.0`: CLI für Build, Validierung, Entwicklung und Paketierung.
+
+Die Implementierung veröffentlicht diese Pakete nicht automatisch bei npm. Bis zur Veröffentlichung können Maintainer aus den Verzeichnissen `packages/extension-api` und `packages/extension-sdk` jeweils `npm pack` ausführen und die Tarballs verteilen. Beim SDK führt `prepack` den Build aus; die ausgelieferte CLI enthält die gemeinsame Validierungslogik und hat keine Runtime-Abhängigkeit auf das unveröffentlichte API-Paket.
+
+In einem unabhängigen Projekt:
+
+```sh
+bun add -d /pfad/l8db-extension-api-1.0.0.tgz /pfad/l8db-extension-sdk-1.0.0.tgz typescript
+```
+
+Nach einer Veröffentlichung in einer npm-Registry können stattdessen die Paketnamen verwendet werden:
+
+```sh
+bun add -d @l8db/extension-api@^1 @l8db/extension-sdk@^1 typescript
+```
+
+Für `package.json` eignen sich diese Scripts:
+
+```json
+{
+  "scripts": {
+    "build": "l8db-extension build .",
+    "typecheck": "tsc --noEmit",
+    "dev": "l8db-extension dev .",
+    "pack": "l8db-extension pack ."
+  }
+}
+```
+
+Die lokalen `file:`-Abhängigkeiten des Repository-Beispiels müssen beim Kopieren in ein unabhängiges Projekt durch Tarball-Pfade oder veröffentlichte Paketversionen ersetzt werden.
+
+Eine passende `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
+```
+
+## Manifest
+
+Jede Extension benötigt eine `l8db-extension.json`:
+
+```json
+{
+  "id": "community.hello",
+  "name": "Hello l8db",
+  "version": "1.0.0",
+  "description": "Beispiel für Commands, Events und Konfiguration",
+  "publisher": "community",
+  "engines": {
+    "l8db": ">=0.1.0 <1.0.0",
+    "api": "^1.0.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": ["onCommand:hello.greet", "onDatabaseOpen"],
+  "permissions": ["database:read"],
+  "contributes": {
+    "commands": [{ "id": "hello.greet", "title": "Hello: Greet" }],
+    "configuration": {
+      "hello.enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Begrüßung anzeigen"
+      }
+    }
+  }
+}
+```
+
+Die ID hat das Format `publisher.name`, verwendet Kleinbuchstaben, Ziffern und Bindestriche und ist höchstens 160 Zeichen lang. Der Herausgeber muss zum ID-Präfix passen. `main` bezeichnet einen sicheren relativen JavaScript-Pfad.
+
+`version`, `engines.l8db` und optionale `dependencies` verwenden SemVer beziehungsweise npm-SemVer-Bereiche. `engines.api` verwendet in API v1 `^1.0.0`; ohne Angabe wird dieser Wert ergänzt. Inkompatible Extensions werden nicht aktiviert. Die App-Version kommt aus der bestehenden Versionsverwaltung des Projekts; API und SDK sind unabhängig davon versioniert.
+
+Abhängigkeiten werden als ID-Version-Mapping angegeben:
+
+```json
+{
+  "dependencies": {
+    "community.helper": "^1.0.0"
+  }
+}
+```
+
+Abhängigkeiten müssen installiert und aktiviert sein. Sie werden vor der abhängigen Extension geladen. Fehlende oder inkompatible Abhängigkeiten und Zyklen führen zu einem Fehler der betroffenen Extension. Die Installation von Abhängigkeiten erfolgt ausdrücklich, nicht automatisch.
+
+Das [JSON Schema](packages/extension-api/schema.json) unterstützt Editoren. Die [Runtime-Validierung](packages/extension-api/src/manifest.ts) prüft zusätzlich SemVer, Pfade, doppelte IDs und Command-Verweise. Ein `onCommand:`-Ereignis muss auf einen deklarierten Command zeigen.
+
+## Entry Point und Extension Context
+
+`src/extension.ts`:
+
+```ts
+import type { ExtensionContext, L8dbApi } from '@l8db/extension-api'
+
+export function activate(context: ExtensionContext, api: L8dbApi) {
+  context.subscriptions.push(
+    api.commands.registerCommand('hello.greet', async () => {
+      if (await api.configuration.get<boolean>('hello.enabled')) {
+        await api.notifications.showInfo('Hello l8db')
+      }
+    })
+  )
+
+  context.subscriptions.push(
+    api.events.onDatabaseOpened(database => {
+      api.logger.info(`Datenbank geöffnet: ${database.name}`)
+    })
+  )
+}
+
+export function deactivate() {}
+```
+
+`activate(context, api)` ist erforderlich, `deactivate()` optional. Der Context enthält `extensionId`, `extensionPath`, `storagePath` und `subscriptions`. Die beiden Pfade sind virtuelle Identitäten und geben keinen nativen Dateisystemzugriff frei.
+
+Commands und Event-Abonnements werden automatisch nachverfolgt. Eigene Ressourcen können über `context.subscriptions` ergänzt werden. Ein Disposable hat eine synchrone Methode `dispose()` und sollte mehrfach aufgerufen werden können, ohne unerwünschte Nebenwirkungen auszulösen.
+
+Das SDK bündelt TypeScript und browserfähige Abhängigkeiten in einen einzelnen CommonJS-Entry-Point. Entwickler schreiben normale ES-Modul-Exports. Der Import der API-Typen wird beim Build entfernt. Node-Built-ins, ungebündelte Module und nachzuladende Chunks werden nicht unterstützt.
+
+## Öffentliche API
+
+Die vollständigen Verträge stehen in [packages/extension-api/src/index.ts](packages/extension-api/src/index.ts).
+
+| API | Funktion |
+| --- | --- |
+| `commands.registerCommand(id, handler)` | Einen im Manifest deklarierten Command registrieren; liefert ein Disposable. |
+| `commands.executeCommand(id, payload?)` | Einen Command einer aktiven Extension ausführen. Fremde Extensions müssen als Abhängigkeit deklariert sein. |
+| `events.onDatabaseOpened(listener)` | Öffnen einer aktiven Datenbankauswahl abonnieren; benötigt `database:read`. |
+| `events.onDatabaseClosed(listener)` | Schließen der vorherigen Datenbankauswahl abonnieren; benötigt `database:read`. |
+| `database.getActive()` | `{ connectionId, name, kind }` oder `null` lesen; benötigt `database:read`. |
+| `configuration.get<T>(key)` | Eigene deklarierte Einstellung lesen, mit Manifest-Default als Rückfallwert. |
+| `notifications.showInfo(message)` | Eine Informationsmeldung in l8db anzeigen. |
+| `assets.readText(path)` | Eine UTF-8-Datei aus dem eigenen Paket lesen. |
+| `storage.get(key)` / `storage.set(key, value)` | Eigenen persistenten JSON-Speicher verwenden; benötigt `filesystem:extension-storage`. |
+| `logger.info/warn/error(message)` | Der Extension zugeordnete Logs schreiben. |
+
+Command- und Konfigurations-IDs sind global eindeutig und werden bereits bei der Discovery reserviert. Doppelte Registrierungen werden abgewiesen. Die Aktivierung wartet auf die Bestätigung der API-Registrierungen durch den Host.
+
+Transportwerte müssen JSON-kompatibel sein. Verbindungsstrings, Passwörter, interne Singleton-Instanzen, Datenbankadapter und Tauri-Handles werden nicht ausgegeben. `database:read` erlaubt in API v1 Auswahlmetadaten und Events, keine SQL-Abfragen.
+
+Datenbankereignisse beschreiben die aktive Auswahl im Workspace, nicht den Zustand einer Serververbindung oder externe Datenänderungen. Record-Created/Updated/Deleted-Events sind nicht implementiert, weil dafür zunächst ein einheitlicher Core-Vertrag für bestätigte Änderungen über Provider, Transaktionen und rohe SQL-Abfragen benötigt wird.
+
+## Konfiguration
+
+`contributes.configuration` unterstützt `boolean`, `string` und `number` mit einem Default desselben Typs. Im Extension-Bereich der Einstellungen werden Overrides als JSON gespeichert:
+
+```json
+{"hello.enabled": false}
+```
+
+Unbekannte Schlüssel und falsche Typen werden abgewiesen. Extensions lesen ausschließlich ihre eigenen deklarierten Einstellungen.
+
+## Lifecycle und Aktivierung
+
+```text
+discovered → validated → loaded → activated → deactivated
+                        ↘ failed
+```
+
+Fehler können auch bei Validierung, Aktivierung oder Runtime-Ausfällen zum Zustand `failed` führen. Status und Fehler sind über den Manager abfragbar und im Extension-Bereich sichtbar.
+
+- `onStartup`: Aktivierung nach dem Core-Start.
+- `onDatabaseOpen`: Aktivierung beim Wechsel der aktiven Datenbankauswahl.
+- `onCommand:<commandId>`: Deklaration einer verzögerten Command-Aktivierung.
+
+Führt der Host einen Command einer noch nicht aktiven Extension aus, aktiviert er zuerst dessen Eigentümer. Gleichzeitige Aktivierungsanforderungen teilen sich einen laufenden Vorgang. Während `activate()` dürfen Extensions ihre eigenen Commands noch nicht über `executeCommand()` aufrufen.
+
+Neue Installationen sind deaktiviert und haben keine Freigaben. Beim App-Neustart werden Pakete, Aktivierungsflags, Freigaben und Einstellungen wiederhergestellt. Beim Deaktivieren werden `deactivate()` aufgerufen, Ressourcen freigegeben und der Worker beendet. Das gilt auch bei fehlerhafter oder hängender Bereinigung. Beim Stoppen einer Abhängigkeit werden deren aktive abhängige Extensions ebenfalls gestoppt.
+
+## Berechtigungen und Isolation
+
+Eine Manifest-Anforderung ist keine Freigabe. Nutzer wählen unterstützte Berechtigungen beim Aktivieren aus. Änderungen der Freigaben stoppen die laufende Runtime. Jeder API-Aufruf wird im Host geprüft; Speicherzugriffe werden zusätzlich in Rust anhand der gespeicherten Freigaben geprüft.
+
+| Berechtigung | API v1 |
+| --- | --- |
+| `database:read` | Datenbankauswahl-Metadaten und Auswahlereignisse |
+| `filesystem:extension-storage` | Eigener JSON-Speicher |
+| `database:write` | Reserviert, nicht freigebbar |
+| `network` | Reserviert, nicht freigebbar; Netzwerkzugriffe durch CSP gesperrt |
+| `filesystem` | Reserviert, kein allgemeiner Dateisystemzugriff |
+| `clipboard:read` / `clipboard:write` | Reserviert, keine Clipboard-API |
+| `process:execute` | Reserviert, keine Prozess-API |
+
+Extensions laufen in einem eigenen Worker innerhalb eines Sandbox-Iframes mit isoliertem Ursprung. Sie erhalten weder DOM- noch Node- oder Tauri-Zugriff. Der Host stellt eine private RPC-Verbindung mit einer expliziten Methodenliste bereit. Pro Aufruf gilt ein Timeout von zehn Sekunden; die Runtime begrenzt eingehende Nachrichten auf 500 pro Sekunde und Extension. Logs werden mit der Extension-ID versehen; die letzten 300 Einträge bleiben im Speicher.
+
+Diese Lösung bietet Browser-Isolation, keine OS-Prozesssandbox. Hoher Speicherverbrauch und Fehler der Browser-Engine können die Anwendung weiterhin beeinträchtigen. Harte CPU-/Speicherquoten und ein nativer Hostprozess sind nicht implementiert. Das Runtime-Interface ermöglicht einen späteren Austausch der Implementierung.
+
+Herausgeberangaben sind selbst deklariert. Es gibt keine Paketsignaturen, verifizierten Publisher, automatische Extension-Updates oder Marketplace-Moderation. Herkunft und gegebenenfalls separat veröffentlichte Prüfsummen sollten vor der Installation geprüft werden.
+
+## Lokale Entwicklung
+
+Im l8db-Repository:
+
+```sh
+bun run extension dev examples/hello-extension
+```
+
+Im unabhängigen Projekt:
+
+```sh
+bunx l8db-extension dev .
+```
+
+Der Befehl baut und validiert die Extension. Anschließend in l8db **Entwicklungsordner laden** auswählen. Nach einer Codeänderung erneut bauen und **Neu laden** anklicken. Das liest Code und Assets direkt aus dem Entwicklungsordner, ohne ein neues Paket zu installieren.
+
+Manifest-Änderungen erfordern eine Neuinstallation, damit Contributions und Berechtigungen erneut geprüft werden. Beim App-Neustart wird der installierte Snapshot verwendet; **Neu laden** aktualisiert die Entwicklungsdateien. Ein automatischer Dateiwächter ist nicht enthalten.
+
+Wer die Scripts direkt im Repository-Beispiel verwendet, baut zuerst die SDK-Binärdatei:
+
+```sh
+bun --cwd packages/extension-sdk run build
+```
+
+Der Root-Befehl `bun run extension` führt den SDK-Quellcode direkt aus und benötigt diesen vorbereitenden Schritt nicht. Verwaltungsvorgänge wie Installation und Deinstallation erfolgen in der Desktop-Oberfläche; eine zusätzliche native App-CLI wurde nicht eingeführt.
+
+## Paketierung, Installation und Updates
+
+```sh
+bunx l8db-extension build .
+bunx l8db-extension validate .
+bunx l8db-extension pack .
+```
+
+`.l8db-extension` ist ein unkomprimiertes UTF-8-JSON-Paket mit `format: 1`, einem Manifest und einem `files`-Mapping aus relativen Pfaden auf Dateiinhalte. Es unterstützt höchstens 256 Dateien und 8 MiB Paketgröße. Assets sind UTF-8-Text, etwa JSON, SVG oder Hilfetexte; beliebige Binärdateien sind in Format 1 nicht unterstützt.
+
+Die Paketdateien werden nicht in frei wählbare native Pfade entpackt. Absolute Pfade, Parent-Traversal und reservierte Windows-Pfade werden abgewiesen. Entwicklungsimporte verhindern ein Entkommen aus dem Projektverzeichnis über Symlinks.
+
+Die Ablage erfolgt im Tauri-App-Data-Verzeichnis unter:
+
+```text
+community-extensions/<publisher.name>/
+  package.json
+  storage.json
+```
+
+`package.json` enthält Paket, Einstellungen und Freigaben. `storage.json` wird bei Speicherzugriffen angelegt. Der eigene Speicher ist auf 1 MiB begrenzt; Schlüssel verwenden Buchstaben, Ziffern, `_` und `-` und sind höchstens 80 Zeichen lang. Installation und Dateiersetzung verwenden temporäre Ablagen und Rename; Schreibvorgänge werden serialisiert.
+
+Installationen über eine vorhandene ID werden abgewiesen. Ein Versionswechsel erfordert in API v1 Deinstallation und Neuinstallation. Dabei werden Extension-Daten gelöscht und Freigaben erneut geprüft. Datenbewahrende Updates und Migrationen sind nicht implementiert.
+
+## Veröffentlichung
+
+1. Eine stabile Publisher-/Extension-ID wählen und die Extension-Version nach SemVer erhöhen.
+2. App-/API-Kompatibilität, Abhängigkeiten und tatsächlich benötigte Berechtigungen deklarieren.
+3. Typecheck, Validierung und Tests ausführen; Installation, Aktivierung und Deaktivierung in l8db prüfen.
+4. Mit `l8db-extension pack .` das Paket erzeugen.
+5. Das Paket beispielsweise als GitHub-Release mit Quellcode, Lizenz, Changelog und Prüfsumme veröffentlichen.
+6. Nutzer laden die Datei herunter und installieren sie lokal in l8db.
+
+Eine Veröffentlichung der SDK-/API-Pakete in npm erfolgt separat durch den Registry-Inhaber, beispielsweise mit `npm publish --access public` aus dem jeweiligen Paketverzeichnis. Die Implementierung nimmt keine Veröffentlichung vor.
+
+Ein öffentlicher Marketplace ist nicht enthalten. Die öffentliche Schnittstelle `ExtensionRegistryProvider` definiert `search`, `get` und `download`. Künftige Registry-Provider können Pakete an `installExtension()` liefern, ohne den lokalen Manager an ein bestimmtes Backend zu koppeln.
+
+## Architektur und Kompatibilität
+
+```text
+l8db Core
+  → ExtensionManager / Registries / PermissionManager
+    → ExtensionLoader → ExtensionRuntime
+      → SandboxRuntime → Worker → Public API v1 → Extension
+    → ExtensionStorage → zentrale Tauri-Bridge → Rust-App-Data-Speicher
+```
+
+Die Infrastruktur liegt unter [src/lib/extensions](src/lib/extensions), der native Speicher in [src-tauri/src/community_extensions.rs](src-tauri/src/community_extensions.rs). Die bestehende Tauri-Bridge, React-Kontext, Zustand-Auswahlabonnements und Sonner-Meldungen verbinden den Host mit l8db. Community Extensions importieren ausschließlich die öffentliche API und ihre eigenen gebündelten Abhängigkeiten.
+
+Änderungen innerhalb API v1 sollen additiv bleiben. Inkompatible Änderungen benötigen eine neue API-Hauptversion, passende Manifest-Kompatibilität und eine entsprechende Runtime. Interne Host-Klassen dürfen nicht über das öffentliche Paket exportiert werden.
+
+## Tests
+
+```sh
+bun run test
+npx tsc -p tsconfig.app.json --noEmit
+cargo test --manifest-path src-tauri/Cargo.toml --lib community_extensions::tests
+L8DB_EXTENSION_BROWSER=chrome bun test tests/extension-browser.test.ts
+bunx playwright install webkit
+L8DB_EXTENSION_BROWSER=webkit bun test tests/extension-browser.test.ts
+```
+
+Die reguläre Suite prüft Domain-Logik und SDK; der Browser-Test ist standardmäßig übersprungen und wird mit der Umgebungsvariable aktiviert. `chrome` verwendet eine installierte Google-Chrome-Version, `webkit` die Playwright-WebKit-Installation.
+
+Die Tests prüfen unter anderem Discovery, Validierung, Installation, Deinstallation, Aktivierung, Commands, Events, Berechtigungen, Versionsbereiche, Ressourcenfreigabe, Fehlerisolation sowie das SDK außerhalb des Repositories. Die echten Browser-Tests prüfen außerdem CSP-Sperren und das Beenden einer Endlosschleife. Das ersetzt keine Zertifizierung aller Tauri-/WebView-Versionen und Betriebssysteme.

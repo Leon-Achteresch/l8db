@@ -17,7 +17,8 @@
         "height": 820,
         "minWidth": 760,
         "minHeight": 560,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
@@ -30,7 +31,7 @@
       "endpoints": [
         "https://github.com/Leon-Achteresch/l8db/releases/latest/download/latest.json"
       ],
-      "dialog": true,
+      "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCQ0E1MjBEMzUzREExMjIKUldRaW9UMDFEVkxLcXhrRE15cGsvRlFJaU5keTk1SXRsVy9Ib3RqVlROenZZTm5LVW9kZGZsdDMK"
     }
   },

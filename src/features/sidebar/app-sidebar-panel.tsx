@@ -11,14 +11,19 @@ import {
   FileCodeIcon,
   FilterIcon,
   LayersIcon,
+  LinkIcon,
   ListIcon,
   ListOrderedIcon,
+  NetworkIcon,
   PackageIcon,
   PlusIcon,
   RadioIcon,
   SearchIcon,
   SettingsIcon,
+  SquareFunctionIcon,
   SquareTerminalIcon,
+  StarIcon,
+  StarOffIcon,
   TableIcon,
   TrashIcon,
   UploadIcon,
@@ -92,7 +97,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCompileObject } from "@/features/functions/use-compile-object";
+import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
+import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
+import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -109,26 +118,37 @@ import {
   useActiveSchema,
   useDbSelectionStore,
 } from "@/lib/db-selection";
+import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
+import { packageOid } from "@/lib/plsql";
 import {
   useColumnsQuery,
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
   useMaterializedViewsQuery,
+  useProceduresQuery,
   useRolesQuery,
   useSchemasQuery,
   useSequencesQuery,
+  useSynonymsQuery,
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
-import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
+import {
+  activateConnectionWithToast,
+  effectiveConnectionString,
+  useConnectionSwitch,
+} from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
+  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
+  const switchTargetId = useConnectionSwitch((state) => state.targetId);
+  const switchTarget = connections.find((connection) => connection.id === switchTargetId);
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
@@ -157,6 +177,18 @@ export function AppSidebarPanel() {
     error: functionsErrorValue,
   } = useFunctionsQuery();
   const {
+    data: procedures,
+    isLoading: proceduresLoading,
+    isError: proceduresError,
+    error: proceduresErrorValue,
+  } = useProceduresQuery();
+  const {
+    data: synonyms,
+    isLoading: synonymsLoading,
+    isError: synonymsError,
+    error: synonymsErrorValue,
+  } = useSynonymsQuery();
+  const {
     data: extensions,
     isLoading: extensionsLoading,
     isError: extensionsError,
@@ -179,7 +211,16 @@ export function AppSidebarPanel() {
   const { data: matviews } = useMaterializedViewsQuery();
 
   const [selectedTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "packages" | "extensions" | "roles" | "sequences"
+    | "tables"
+    | "views"
+    | "queries"
+    | "functions"
+    | "procedures"
+    | "packages"
+    | "synonyms"
+    | "extensions"
+    | "roles"
+    | "sequences"
   >("tables");
   const caps = useActiveCapabilities();
   const packages = functions?.filter((f) => f.return_type === "PACKAGE");
@@ -189,11 +230,18 @@ export function AppSidebarPanel() {
     { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
     { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
     {
+      value: "procedures",
+      label: "Prozeduren",
+      icon: SquareFunctionIcon,
+      enabled: caps.procedures,
+    },
+    {
       value: "packages",
       label: "Packages",
       icon: PackageIcon,
       enabled: Boolean(packages?.length),
     },
+    { value: "synonyms", label: "Synonyme", icon: LinkIcon, enabled: caps.synonyms },
     { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
     { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
     { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
@@ -214,9 +262,12 @@ export function AppSidebarPanel() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              data-tour="sidebar-connection"
               className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              {activeConnection ? (
+              {isSwitching ? (
+                <Spinner className="size-4 shrink-0" />
+              ) : activeConnection ? (
                 <ProviderLogo
                   providerId={providerFor(activeConnection).id}
                   kind={activeConnection.kind}
@@ -227,17 +278,25 @@ export function AppSidebarPanel() {
               )}
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="truncate">
-                  {activeConnection ? activeConnection.name : "Keine Verbindung"}
+                  {isSwitching
+                    ? switchTarget
+                      ? `Verbinde… ${switchTarget.name}`
+                      : "Verbinde…"
+                    : activeConnection
+                      ? activeConnection.name
+                      : "Keine Verbindung"}
                 </span>
-                {activeConnection?.tags?.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                    style={{ backgroundColor: tag.color }}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+                {isSwitching
+                  ? null
+                  : activeConnection?.tags?.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
               </span>
               <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -253,7 +312,10 @@ export function AppSidebarPanel() {
               connections.map((connection) => (
                 <DropdownMenuItem
                   key={connection.id}
+                  disabled={isSwitching}
                   onSelect={() => {
+                    if (useConnectionSwitch.getState().isSwitching) return;
+                    if (connection.id === activeConnection?.id) return;
                     void activateConnectionWithToast(connection.id).then((ok) => {
                       if (ok) void navigate({ to: "/" });
                     });
@@ -272,7 +334,11 @@ export function AppSidebarPanel() {
                       </span>
                     ))}
                   </span>
-                  {connection.id === activeConnection?.id ? <CheckIcon className="size-4" /> : null}
+                  {isSwitching && switchTargetId === connection.id ? (
+                    <Spinner className="size-4" />
+                  ) : connection.id === activeConnection?.id ? (
+                    <CheckIcon className="size-4" />
+                  ) : null}
                 </DropdownMenuItem>
               ))
             )}
@@ -286,7 +352,7 @@ export function AppSidebarPanel() {
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tour="sidebar-scope">
             {caps.databases && (
               <div className="grid min-w-0 flex-1 gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
@@ -356,7 +422,7 @@ export function AppSidebarPanel() {
       </SidebarHeader>
       <SidebarContent>
         {activeConnection ? (
-          <div className="px-2 pt-2">
+          <div className="px-2 pt-2" data-tour="sidebar-tabs">
             <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
               <TabsList className="w-full">
                 {sidebarTabs.map((tab) => (
@@ -373,6 +439,7 @@ export function AppSidebarPanel() {
             </Tabs>
           </div>
         ) : null}
+        <SidebarFavorites />
         <SidebarGroup>
           <SidebarGroupLabel>
             {sidebarTab === "tables"
@@ -381,15 +448,19 @@ export function AppSidebarPanel() {
                 ? "Views"
                 : sidebarTab === "functions"
                   ? "Funktionen"
-                  : sidebarTab === "packages"
-                    ? "Packages"
-                    : sidebarTab === "extensions"
+                  : sidebarTab === "procedures"
+                    ? "Prozeduren"
+                    : sidebarTab === "packages"
                       ? "Packages"
-                      : sidebarTab === "roles"
-                        ? "Benutzer & Rollen"
-                        : sidebarTab === "sequences"
-                          ? "Sequenzen"
-                          : "Gespeicherte Queries"}
+                      : sidebarTab === "synonyms"
+                        ? "Synonyme"
+                        : sidebarTab === "extensions"
+                          ? "Packages"
+                          : sidebarTab === "roles"
+                            ? "Benutzer & Rollen"
+                            : sidebarTab === "sequences"
+                              ? "Sequenzen"
+                              : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction
@@ -433,12 +504,26 @@ export function AppSidebarPanel() {
                 isError={functionsError}
                 error={functionsErrorValue}
               />
+            ) : sidebarTab === "procedures" ? (
+              <SidebarProcedureList
+                items={procedures}
+                isLoading={proceduresLoading}
+                isError={proceduresError}
+                error={proceduresErrorValue}
+              />
             ) : sidebarTab === "packages" ? (
               <SidebarPackageList
                 items={packages}
                 isLoading={functionsLoading}
                 isError={functionsError}
                 error={functionsErrorValue}
+              />
+            ) : sidebarTab === "synonyms" ? (
+              <SidebarSynonymList
+                items={synonyms}
+                isLoading={synonymsLoading}
+                isError={synonymsError}
+                error={synonymsErrorValue}
               />
             ) : sidebarTab === "extensions" ? (
               <SidebarExtensionList
@@ -554,6 +639,8 @@ function SidebarEntityList({
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
+  const favorites = useObjectFavoritesStore((state) => state.favorites);
+  const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
   const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
 
   const columnsByTable = useMemo(() => {
@@ -646,6 +733,39 @@ function SidebarEntityList({
     navigate({ to: "/query/$id", params: { id } });
   };
 
+  const toggleFavoriteObject = (itemSchema: string, itemName: string) => {
+    if (!activeConnection) return;
+    toggleObjectFavorite({
+      connectionId: activeConnection.id,
+      database: activeDatabase ?? null,
+      schema: itemSchema,
+      name: itemName,
+      type: type === "view" ? "view" : "table",
+    });
+  };
+
+  const isFavorite = (itemSchema: string, itemName: string) =>
+    activeConnection
+      ? favorites.some(
+          (favorite) =>
+            favoriteId(favorite) ===
+            favoriteId({
+              connectionId: activeConnection.id,
+              database: activeDatabase ?? null,
+              schema: itemSchema,
+              name: itemName,
+              type: type === "view" ? "view" : "table",
+            }),
+        )
+      : false;
+
+  const handleFocusInErDiagram = (itemSchema: string, itemName: string) => {
+    navigate({
+      to: "/er-diagram",
+      search: { focusSchema: itemSchema, focusTable: itemName, depth: 1 },
+    });
+  };
+
   const handleAlterTable = (itemSchema: string, itemName: string) => {
     openAlterTableTab({ schema: itemSchema, table: itemName });
     navigate({
@@ -656,7 +776,7 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative">
+      <div className="relative" data-tour="sidebar-search">
         <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <SidebarInput
           placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
@@ -697,7 +817,7 @@ function SidebarEntityList({
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
         <SidebarMenu>
-          {filtered?.map((item) => {
+          {filtered?.map((item, index) => {
             const isActive =
               type === "view"
                 ? Boolean(
@@ -737,6 +857,9 @@ function SidebarEntityList({
                     to="/tables/$schema/$table"
                     params={{ schema: item.schema, table: item.name }}
                     search={{ type }}
+                    data-tour={index === 0 && type === "table" ? "sidebar-table" : undefined}
+                    data-schema={item.schema}
+                    data-name={item.name}
                   >
                     <TableIcon className="text-muted-foreground" />
                     <span className="truncate">{item.name}</span>
@@ -750,6 +873,13 @@ function SidebarEntityList({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem
+                        onSelect={() => toggleFavoriteObject(item.schema, item.name)}
+                      >
+                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
                       <ContextMenuItem onSelect={() => handleOpenInEditor(item.schema, item.name)}>
                         <SquareTerminalIcon />
                         Im Editor öffnen
@@ -757,6 +887,12 @@ function SidebarEntityList({
                       <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
                         <WrenchIcon />
                         Alter Table
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => handleFocusInErDiagram(item.schema, item.name)}
+                      >
+                        <NetworkIcon />
+                        Im ER-Diagramm fokussieren
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem
@@ -785,7 +921,17 @@ function SidebarEntityList({
                     </ContextMenuContent>
                   </ContextMenu>
                 ) : (
-                  menuButton
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        onSelect={() => toggleFavoriteObject(item.schema, item.name)}
+                      >
+                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )}
                 {item.matchingColumns.length > 0 && (
                   <SidebarMenuSub>
@@ -852,6 +998,8 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
+  const caps = useActiveCapabilities();
+  const { compile } = useCompileObject();
 
   if (isLoading) {
     return (
@@ -874,42 +1022,86 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
     <SidebarMenu>
       {items.map((item) => (
         <SidebarMenuItem key={item.oid}>
-          <SidebarMenuButton
-            onClick={() => {
-              if (item.return_type === "PACKAGE") {
-                openPackageTab({ schema: item.schema, name: item.name });
-                navigate({
-                  to: "/packages/$schema/$name",
-                  params: { schema: item.schema, name: item.name },
-                });
-                return;
-              }
-              openFunctionTab({
-                schema: item.schema,
-                name: item.name,
-                oid: item.oid,
-              });
-              navigate({
-                to: "/functions/$schema/$name",
-                params: { schema: item.schema, name: item.name },
-                search: { oid: item.oid },
-              });
-            }}
-          >
-            {item.return_type === "PACKAGE" ? (
-              <PackageIcon className="text-muted-foreground" />
-            ) : (
-              <BracesIcon className="text-muted-foreground" />
-            )}
-            <span className="truncate">
-              {item.name}
-              {item.return_type === "PACKAGE"
-                ? ""
-                : item.identity_args
-                  ? `(${item.identity_args})`
-                  : "()"}
-            </span>
-          </SidebarMenuButton>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <SidebarMenuButton
+                onClick={() => {
+                  if (item.return_type === "PACKAGE") {
+                    openPackageTab({ schema: item.schema, name: item.name });
+                    navigate({
+                      to: "/packages/$schema/$name",
+                      params: { schema: item.schema, name: item.name },
+                    });
+                    return;
+                  }
+                  openFunctionTab({
+                    schema: item.schema,
+                    name: item.name,
+                    oid: item.oid,
+                  });
+                  navigate({
+                    to: "/functions/$schema/$name",
+                    params: { schema: item.schema, name: item.name },
+                    search: { oid: item.oid },
+                  });
+                }}
+              >
+                {item.return_type === "PACKAGE" ? (
+                  <PackageIcon className="text-muted-foreground" />
+                ) : (
+                  <BracesIcon className="text-muted-foreground" />
+                )}
+                <span className="truncate">
+                  {item.name}
+                  {item.return_type === "PACKAGE"
+                    ? ""
+                    : item.identity_args
+                      ? `(${item.identity_args})`
+                      : "()"}
+                </span>
+              </SidebarMenuButton>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              {caps.compile_objects ? (
+                item.return_type === "PACKAGE" ? (
+                  <>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(
+                          packageOid(item.schema, item.name, "spec"),
+                          "package_spec",
+                          `${item.schema}.${item.name} (Spec)`,
+                        );
+                      }}
+                    >
+                      Spec kompilieren
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(
+                          packageOid(item.schema, item.name, "body"),
+                          "package_body",
+                          `${item.schema}.${item.name} (Body)`,
+                        );
+                      }}
+                    >
+                      Body kompilieren
+                    </ContextMenuItem>
+                  </>
+                ) : (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      void compile(item.oid, "function", `${item.schema}.${item.name}`);
+                    }}
+                  >
+                    Kompilieren
+                  </ContextMenuItem>
+                )
+              ) : (
+                <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         </SidebarMenuItem>
       ))}
     </SidebarMenu>

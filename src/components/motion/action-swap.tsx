@@ -312,6 +312,7 @@ export function ActionSwapButton({
   return (
     <motion.button
       type="button"
+      layout
       disabled={disabled}
       whileTap={reduce || disabled ? undefined : { scale: 0.97 }}
       transition={SPRING_PRESS}

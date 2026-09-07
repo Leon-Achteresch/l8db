@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getRouteApi } from "@tanstack/react-router";
 import {
   CheckCircleIcon,
   LoaderIcon,
@@ -23,8 +22,6 @@ import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/triggers/$schema/$table/$trigger");
-
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }
@@ -41,8 +38,13 @@ type ExecutionState =
   | { status: "success"; time: number }
   | { status: "error"; message: string };
 
-export function TriggerView() {
-  const { schema, table, trigger: triggerName } = routeApi.useParams();
+export interface TriggerViewProps {
+  schema: string;
+  table: string;
+  trigger: string;
+}
+
+export function TriggerView({ schema, table, trigger: triggerName }: TriggerViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -311,7 +313,7 @@ function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language: "plsql",
       theme: themeFor(resolvedTheme),
       automaticLayout: true,
       minimap: { enabled: false },

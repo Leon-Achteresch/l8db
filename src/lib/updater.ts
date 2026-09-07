@@ -1,12 +1,68 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
-export async function checkForUpdates(): Promise<Update | null> {
+export const UPDATE_CHECK_TIMEOUT_MS = 20_000;
+
+export type UpdatePromptState = {
+  update: Update | null;
+  open: boolean;
+};
+
+let pendingUpdate: Update | null = null;
+let promptOpen = false;
+let snapshot: UpdatePromptState = { update: null, open: false };
+const listeners = new Set<() => void>();
+
+function emit(): void {
+  snapshot = { update: pendingUpdate, open: promptOpen };
+  for (const listener of listeners) listener();
+}
+
+export function getPendingUpdate(): Update | null {
+  return pendingUpdate;
+}
+
+export function getUpdatePromptState(): UpdatePromptState {
+  return snapshot;
+}
+
+export function subscribeUpdatePrompt(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function setPendingUpdate(update: Update | null): void {
+  pendingUpdate = update;
+  if (!update) promptOpen = false;
+  emit();
+}
+
+export function presentUpdate(update: Update): void {
+  pendingUpdate = update;
+  promptOpen = true;
+  emit();
+}
+
+export function closeUpdatePrompt(): void {
+  promptOpen = false;
+  emit();
+}
+
+export async function getAppVersion(): Promise<string | null> {
   try {
-    return await check();
+    return await getVersion();
   } catch {
     return null;
   }
+}
+
+export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Promise<Update | null> {
+  const update = await check({ timeout: timeoutMs });
+  if (update) setPendingUpdate(update);
+  return update;
 }
 
 export async function installUpdateAndRelaunch(
@@ -24,5 +80,6 @@ export async function installUpdateAndRelaunch(
     }
     if (total > 0) onProgress?.(Math.min(100, Math.round((downloaded / total) * 100)));
   });
+  setPendingUpdate(null);
   await relaunch();
 }

@@ -2,9 +2,21 @@
   "name": "@l8db/extension-sdk",
   "version": "1.0.0",
   "type": "module",
-  "bin": { "l8db-extension": "src/cli.ts" },
-  "files": ["src"],
-  "dependencies": { "@l8db/extension-api": "^1.0.0" },
-  "engines": { "bun": ">=1.3.0" },
-  "license": "MIT"
+  "bin": {
+    "l8db-extension": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@l8db/extension-api": "^1.0.0"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=bun --outdir=dist",
+    "prepack": "bun run build"
+  }
 }
