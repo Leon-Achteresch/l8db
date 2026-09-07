@@ -26,6 +26,8 @@ import {
 } from "@/lib/schema-snapshot";
 import { effectiveConnectionString } from "@/lib/ssh";
 
+import { MigrationScriptPanel } from "./migration-script-panel";
+
 const JSON_FILTERS = [{ name: "Snapshot", extensions: ["json"] }];
 
 function errorMessage(error: unknown): string {
@@ -62,6 +64,7 @@ export function SchemaSnapshotView() {
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   const enabled = supports(connection, "schema_snapshot");
+  const migrationEnabled = supports(connection, "migration_script");
 
   const [tables, setTables] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -70,6 +73,7 @@ export function SchemaSnapshotView() {
   const [incomplete, setIncomplete] = useState<string[]>([]);
   const [loaded, setLoaded] = useState<SchemaSnapshot | null>(null);
   const [diff, setDiff] = useState<SnapshotDiffEntry[] | null>(null);
+  const [currentSnapshot, setCurrentSnapshot] = useState<SchemaSnapshot | null>(null);
   const requestRef = useRef(0);
 
   const loadTables = useCallback(async () => {
@@ -112,6 +116,7 @@ export function SchemaSnapshotView() {
     if (!connection || selected.length === 0) return;
     setBusy(true);
     setDiff(null);
+    setCurrentSnapshot(null);
     try {
       const collected = await collectTables(connection, database, schema, selected);
       const snapshot = buildSnapshot(
@@ -179,6 +184,7 @@ export function SchemaSnapshotView() {
         .map((table) => table.name);
       setIncomplete(failed);
       setLoaded(snapshot);
+      setCurrentSnapshot(current);
       setDiff(diffSnapshots(snapshot, current));
       setStatus(
         `Snapshot vom ${new Date(snapshot.captured_at).toLocaleString()} (${snapshot.scope.connection_name}, ${snapshot.scope.database ?? "—"}, ${snapshot.scope.schema}) verglichen.`,
@@ -186,6 +192,7 @@ export function SchemaSnapshotView() {
     } catch (error) {
       setDiff(null);
       setLoaded(null);
+      setCurrentSnapshot(null);
       setStatus(`Vergleich fehlgeschlagen: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
@@ -320,6 +327,15 @@ export function SchemaSnapshotView() {
             </div>
           )}
         </div>
+      )}
+
+      {migrationEnabled && diff !== null && diff.length > 0 && loaded && currentSnapshot && (
+        <MigrationScriptPanel
+          kind={connection.kind}
+          base={loaded}
+          current={currentSnapshot}
+          entries={diff}
+        />
       )}
     </div>
   );

@@ -129,6 +129,7 @@ export interface Capabilities {
   scheduler_jobs: boolean;
   object_admin: boolean;
   schema_object_copy: boolean;
+  migration_script: boolean;
   server_output: boolean;
   ssl: boolean;
   ssh: boolean;
