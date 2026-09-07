@@ -11,7 +11,7 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type * as React from "react";
 import {
   ContextMenu,
@@ -92,7 +92,6 @@ export function TableTabsSortableTab({
   onCopyFull,
   onSplit,
 }: TableTabsSortableTabProps) {
-  const reduce = useReducedMotion();
   const { ref, isDragging } = useSortable({
     id: tabKey(tab),
     index,
@@ -110,39 +109,36 @@ export function TableTabsSortableTab({
       <ContextMenuTrigger asChild>
         <motion.div
           ref={ref}
+          data-tab-key={tabKey(tab)}
           layout={!isDragging ? "position" : false}
           transition={{ layout: SPRING }}
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group relative flex h-8 shrink-0 cursor-grab items-center rounded-full border pl-2.5 pr-1 text-sm transition-all active:cursor-grabbing",
+            "group relative flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
             isActive
-              ? "border-primary/30 bg-card text-foreground shadow-sm"
+              ? "bg-card text-foreground shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
               : isInPane
-                ? "border-border/70 bg-accent/40 text-foreground"
-                : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground",
+                ? "bg-accent/40 text-foreground ring-1 ring-inset ring-border/70"
+                : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
-          {isActive && (
-            <motion.span
-              layoutId={reduce ? undefined : "workspace-active-tab"}
-              transition={SPRING}
-              className="pointer-events-none absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"
-            />
-          )}
-          <span
-            className={cn(
-              "mr-2 size-1.5 shrink-0 rounded-full transition-colors",
-              isActive ? "bg-primary" : "bg-transparent",
-            )}
-          />
           <button
             type="button"
             onClick={onNavigate}
-            className="flex max-w-44 items-center gap-2 truncate py-1 text-left"
+            title={label}
+            aria-pressed={isActive}
+            className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <Icon className={cn("size-3.5 shrink-0", iconColor)} />
+            <span
+              className={cn(
+                "relative grid size-5 shrink-0 place-items-center rounded-full before:absolute before:inset-0 before:rounded-full before:bg-current before:opacity-10",
+                iconColor,
+              )}
+            >
+              <Icon className="relative size-3" />
+            </span>
             <span className="truncate font-medium">{label}</span>
             {tab.kind === "query" && tab.externalChange && (
               <span className="shrink-0 text-amber-500" title="Datei extern geändert">
@@ -160,13 +156,13 @@ export function TableTabsSortableTab({
             onClick={onClose}
             aria-label={`${label} schließen`}
             className={cn(
-              "ml-1.5 grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-all hover:bg-foreground/10 hover:text-foreground",
+              "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isActive
                 ? "opacity-100"
                 : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
             )}
           >
-            <XIcon className="size-3.5" />
+            <XIcon className="size-3" />
           </button>
         </motion.div>
       </ContextMenuTrigger>
@@ -174,7 +170,7 @@ export function TableTabsSortableTab({
         <ContextMenuItem onSelect={onClose}>
           Schließen
           <ContextMenuShortcut>
-            <XIcon className="size-3.5" />
+            <XIcon className="size-3" />
           </ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem disabled={tabsCount <= 1} onSelect={onCloseOthers}>

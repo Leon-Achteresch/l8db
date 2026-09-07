@@ -161,6 +161,21 @@ export function AppHeader() {
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
       >
+        {import.meta.env.DEV && (
+          <Tooltip content="DEV · Design Lab" side="bottom">
+            <Link
+              to="/dev"
+              aria-label="DEV · Design Lab"
+              aria-current={pathname === "/dev" ? "page" : undefined}
+              className={cn(
+                "inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 font-mono text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                pathname === "/dev" && "bg-primary/12 text-foreground",
+              )}
+            >
+              DEV
+            </Link>
+          </Tooltip>
+        )}
         {canRefresh ? (
           <Tooltip content="Objekte neu laden" side="bottom">
             <button
