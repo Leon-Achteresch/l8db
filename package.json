@@ -12,6 +12,7 @@
     "format": "biome format --write ./src",
     "check": "biome check ./src",
     "test": "bun test tests",
+    "test:perf": "L8DB_PERF_BROWSER=1 bun test tests/perf-browser.test.ts",
     "version:check": "node scripts/version.mjs check",
     "extension": "bun packages/extension-sdk/src/cli.ts"
   },

@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -5,7 +6,7 @@ import {
   FilterIcon,
   FilterXIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,6 +58,16 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
     () => applyResultView(rows, columns, sorts, filters),
     [rows, columns, sorts, filters],
   );
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 29,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows[0]?.start ?? 0;
+  const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
 
   const filterCount = activeFilterCount(filters);
   const viewActive = filterCount > 0 || sorts.length > 0;
@@ -177,7 +188,7 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
           )}
         </div>
       </div>
-      <div className="relative min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto">
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10">
             <tr>
@@ -275,40 +286,56 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
             )}
           </thead>
           <tbody>
-            {visibleRows.map((row, rowIdx) => (
-              <tr
-                key={rowIdx}
-                className={cn(
-                  "group hover:bg-muted/50",
-                  rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
-                )}
-              >
-                <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
-                  {rowIdx + 1}
-                </td>
-                {columns.map((col) => {
-                  const raw = row[col];
-                  const isNull = raw === null || raw === undefined;
-                  const display = isNull
-                    ? "NULL"
-                    : String(raw).length > 200
-                      ? `${String(raw).slice(0, 200)}…`
-                      : String(raw);
-                  return (
-                    <td
-                      key={col}
-                      title={isNull ? undefined : String(raw)}
-                      className={cn(
-                        "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
-                        isNull && "text-muted-foreground/50 italic",
-                      )}
-                    >
-                      {display}
-                    </td>
-                  );
-                })}
+            {paddingTop > 0 && (
+              <tr aria-hidden style={{ height: paddingTop }}>
+                <td colSpan={columns.length + 1} className="p-0" />
               </tr>
-            ))}
+            )}
+            {virtualRows.map((virtualRow) => {
+              const rowIdx = virtualRow.index;
+              const row = visibleRows[rowIdx];
+              return (
+                <tr
+                  key={rowIdx}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={rowIdx}
+                  className={cn(
+                    "group hover:bg-muted/50",
+                    rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
+                  )}
+                >
+                  <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
+                    {rowIdx + 1}
+                  </td>
+                  {columns.map((col) => {
+                    const raw = row[col];
+                    const isNull = raw === null || raw === undefined;
+                    const display = isNull
+                      ? "NULL"
+                      : String(raw).length > 200
+                        ? `${String(raw).slice(0, 200)}…`
+                        : String(raw);
+                    return (
+                      <td
+                        key={col}
+                        title={isNull ? undefined : String(raw)}
+                        className={cn(
+                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
+                          isNull && "text-muted-foreground/50 italic",
+                        )}
+                      >
+                        {display}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && (
+              <tr aria-hidden style={{ height: paddingBottom }}>
+                <td colSpan={columns.length + 1} className="p-0" />
+              </tr>
+            )}
           </tbody>
         </table>
         {visibleRows.length === 0 && rows.length > 0 && (

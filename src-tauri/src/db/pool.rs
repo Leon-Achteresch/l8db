@@ -61,7 +61,7 @@ impl PoolManager {
                     .max_size(if pool_use == PoolUse::Query { 8 } else { 4 })
                     .min_idle(Some(0))
                     .connection_timeout(Duration::from_secs(10))
-                    .idle_timeout(Some(Duration::from_secs(60)))
+                    .idle_timeout(Some(Duration::from_secs(600)))
                     .build(manager)
                     .await
                     .map_err(|e| format!("Connection Pool konnte nicht erstellt werden: {e}"))
