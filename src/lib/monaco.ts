@@ -1,4 +1,6 @@
-import * as monaco from "monaco-editor";
+import "monaco-editor/esm/vs/editor/edcore.main";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
 import {
   conf as sqlConf,
   language as sqlLanguage,

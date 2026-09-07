@@ -1,15 +1,13 @@
 import { Outlet } from "@tanstack/react-router";
-import { motion } from "motion/react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
-import { SPRING_LAYOUT } from "@/lib/ease";
-import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
+import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { WorkspaceStatus } from "./workspace-status";
 
 export function AppLayout() {
-  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
+  const panelWidth = useSidebarPanel((s) => s.width);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
 
   return (
@@ -24,13 +22,9 @@ export function AppLayout() {
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <motion.div
-            layout
-            transition={{ layout: SPRING_LAYOUT }}
-            className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          >
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Outlet />
-          </motion.div>
+          </div>
           {panelOpen && <TransactionPanel />}
         </div>
         <WorkspaceStatus />

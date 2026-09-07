@@ -316,7 +316,7 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
         _ => Err("Unknown extension store operation".into()),
     }
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn community_extension_store(
     app: tauri::AppHandle,
     lock: tauri::State<'_, ExtensionStoreLock>,
@@ -332,7 +332,7 @@ pub fn community_extension_store(
         .join("community-extensions");
     operate(&root, &operation, &id, value)
 }
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_community_extension(path: String, development: bool) -> Result<Value, String> {
     if development {
         import_directory(Path::new(&path))

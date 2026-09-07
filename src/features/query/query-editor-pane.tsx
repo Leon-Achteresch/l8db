@@ -627,8 +627,11 @@ export function QueryEditorPane({
   onBookmarksChangeRef.current = onBookmarksChange;
   onSearchTabsRef.current = onSearchTabs;
   registryRef.current = registry;
-  const { editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap } =
-    useSettingsStore();
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const editorTabSize = useSettingsStore((s) => s.editorTabSize);
+  const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);
+  const editorLineNumbers = useSettingsStore((s) => s.editorLineNumbers);
+  const editorMinimap = useSettingsStore((s) => s.editorMinimap);
 
   const readBookmarkLines = (): number[] => {
     const collection = bookmarkDecorationsRef.current;
