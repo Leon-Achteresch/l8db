@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Virtualizer } from "@tanstack/react-virtual";
+import { applyResultView } from "../src/lib/result-grid";
 import { runGridSearch } from "../src/lib/grid-search";
 
 const VIEWPORT_HEIGHT = 600;
@@ -31,7 +32,8 @@ function rows(count: number, columns: string[]) {
     const record: Record<string, unknown> = {};
     for (const [index, column] of columns.entries()) {
       const n = row * 7 + index;
-      record[column] = n % 4 === 0 ? null : n % 4 === 1 ? n : n % 4 === 2 ? { nested: n } : `text ${n}`;
+      record[column] =
+        n % 4 === 0 ? null : n % 4 === 1 ? n : n % 4 === 2 ? { nested: n } : `text ${n}`;
     }
     return record;
   });
@@ -78,4 +80,16 @@ describe("Performancebudget: Grid-Suche", () => {
     expect(result.matches.length).toBeGreaterThan(0);
     expect(elapsed).toBeLessThan(400);
   });
+});
+
+test("lokale Textsortierung über 20.000 Zeilen bleibt unter 250 ms", () => {
+  const rows = Array.from({ length: 20_000 }, (_, i) => ({
+    name: `Eintrag ${((i * 7919) % 20000).toString(36)}`,
+  }));
+  const start = performance.now();
+  const sorted = applyResultView(rows, ["name"], [{ column: "name", direction: "asc" }], {});
+  expect(performance.now() - start).toBeLessThan(250);
+  expect(sorted).toHaveLength(rows.length);
+  expect(sorted).not.toBe(rows);
+  expect(sorted[0].name).toBe("Eintrag 0");
 });

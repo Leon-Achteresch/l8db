@@ -91,6 +91,7 @@ export function SqlEditor({
 
     const completion = monaco.languages.registerCompletionItemProvider("sql", {
       provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+        if (model !== editor.getModel()) return { suggestions: [] };
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
