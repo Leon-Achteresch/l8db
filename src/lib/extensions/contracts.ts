@@ -31,6 +31,7 @@ export interface ExtensionDescriptor extends InstalledExtension {
 export interface ExtensionStorage {
   list(): Promise<InstalledExtension[]>;
   install(archive: ExtensionArchive, developmentPath?: string): Promise<void>;
+  replace(id: string, archive: ExtensionArchive, developmentPath?: string): Promise<void>;
   remove(id: string): Promise<void>;
   update(
     id: string,

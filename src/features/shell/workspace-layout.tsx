@@ -2,12 +2,10 @@ import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { Outlet, useNavigate } from "@tanstack/react-router";
-import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -69,11 +67,7 @@ export function WorkspaceLayout() {
           <SidebarTrigger className="-ml-1" />
           <TableTabs />
         </header>
-        <motion.div
-          layout
-          transition={{ layout: SPRING_LAYOUT }}
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-        >
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {split && activeTab ? (
             <SplitWorkspace />
           ) : (
@@ -82,7 +76,7 @@ export function WorkspaceLayout() {
               {activeTab && <NewPaneDropZone />}
             </>
           )}
-        </motion.div>
+        </div>
       </div>
     </DragDropProvider>
   );

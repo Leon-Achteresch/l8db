@@ -627,8 +627,11 @@ export function QueryEditorPane({
   onBookmarksChangeRef.current = onBookmarksChange;
   onSearchTabsRef.current = onSearchTabs;
   registryRef.current = registry;
-  const { editorFontSize, editorTabSize, editorWordWrap, editorLineNumbers, editorMinimap } =
-    useSettingsStore();
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const editorTabSize = useSettingsStore((s) => s.editorTabSize);
+  const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);
+  const editorLineNumbers = useSettingsStore((s) => s.editorLineNumbers);
+  const editorMinimap = useSettingsStore((s) => s.editorMinimap);
 
   const readBookmarkLines = (): number[] => {
     const collection = bookmarkDecorationsRef.current;
@@ -801,6 +804,7 @@ export function QueryEditorPane({
     const completionProvider = monaco.languages.registerCompletionItemProvider("sql", {
       triggerCharacters: ["."],
       provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+        if (model !== editor.getModel()) return { suggestions: [] };
         return buildCompletions(registryRef.current, model, position);
       },
     });

@@ -18,6 +18,8 @@ export type ResultFilters = Record<string, ResultFilter>;
 
 export type ResultValueKind = "number" | "date" | "text";
 
+const textCollator = new Intl.Collator("de", { sensitivity: "base" });
+
 const NUMBER_PATTERN = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}([ T][\d:.]+([+-][\d:]+|Z)?)?$/;
 
@@ -104,7 +106,7 @@ export function compareResultValues(
     if (leftValid) return -1;
     if (rightValid) return 1;
   }
-  return left.localeCompare(right, "de", { sensitivity: "base" });
+  return textCollator.compare(left, right);
 }
 
 export function toggleResultSort(
@@ -215,7 +217,14 @@ export function applyResultView(
 ): ResultRow[] {
   const filtered = filterResultRows(rows, filters);
   if (sorts.length === 0) return filtered;
-  return sortResultRows(filtered, sorts, detectColumnKinds(rows, columns));
+  return sortResultRows(
+    filtered,
+    sorts,
+    detectColumnKinds(
+      rows,
+      sorts.map((sort) => sort.column).filter((column) => columns.includes(column)),
+    ),
+  );
 }
 
 export function describeResultCount(visible: number, total: number): string {

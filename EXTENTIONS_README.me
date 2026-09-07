@@ -236,7 +236,7 @@ Extensions laufen in einem eigenen Worker innerhalb eines Sandbox-Iframes mit is
 
 Diese Lösung bietet Browser-Isolation, keine OS-Prozesssandbox. Hoher Speicherverbrauch und Fehler der Browser-Engine können die Anwendung weiterhin beeinträchtigen. Harte CPU-/Speicherquoten und ein nativer Hostprozess sind nicht implementiert. Das Runtime-Interface ermöglicht einen späteren Austausch der Implementierung.
 
-Herausgeberangaben sind selbst deklariert. Es gibt keine Paketsignaturen, verifizierten Publisher, automatische Extension-Updates oder Marketplace-Moderation. Herkunft und gegebenenfalls separat veröffentlichte Prüfsummen sollten vor der Installation geprüft werden.
+Herausgeberangaben sind selbst deklariert. Es gibt keine Paketsignaturen, verifizierten Publisher, automatischen Update-Abruf oder Marketplace-Moderation. Herkunft und gegebenenfalls separat veröffentlichte Prüfsummen sollten vor der Installation geprüft werden.
 
 ## Lokale Entwicklung
 
@@ -286,7 +286,7 @@ community-extensions/<publisher.name>/
 
 `package.json` enthält Paket, Einstellungen und Freigaben. `storage.json` wird bei Speicherzugriffen angelegt. Der eigene Speicher ist auf 1 MiB begrenzt; Schlüssel verwenden Buchstaben, Ziffern, `_` und `-` und sind höchstens 80 Zeichen lang. Installation und Dateiersetzung verwenden temporäre Ablagen und Rename; Schreibvorgänge werden serialisiert.
 
-Installationen über eine vorhandene ID werden abgewiesen. Ein Versionswechsel erfordert in API v1 Deinstallation und Neuinstallation. Dabei werden Extension-Daten gelöscht und Freigaben erneut geprüft. Datenbewahrende Updates und Migrationen sind nicht implementiert.
+Installationen über eine vorhandene ID werden abgewiesen. Für einen Versionswechsel gibt es **Aktualisieren** auf der Extension-Karte: Es nimmt ein `.l8db-extension`-Paket mit derselben ID und einer höheren Version. `storage.json`, Freigaben und Konfiguration bleiben erhalten; Freigaben und Konfigurationswerte, die das neue Manifest nicht mehr deklariert, werden verworfen. Neu angeforderte Berechtigungen sind nach dem Update nicht automatisch erteilt und müssen über **Freigaben anwenden** bestätigt werden. Downgrades und gleiche Versionen werden abgewiesen; für Entwicklungsordner gilt weiterhin **Neu laden**. Automatische Update-Prüfungen und Datenmigrationen sind nicht implementiert.
 
 ## Veröffentlichung
 
