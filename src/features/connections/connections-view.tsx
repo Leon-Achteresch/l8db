@@ -22,7 +22,6 @@ import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
-import { ConnectionAddTile } from "./connection-add-tile";
 import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
@@ -90,7 +89,7 @@ export function ConnectionsView() {
       data-tour="connections-page"
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
-      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[1100px] flex-col px-5 py-5">
+      <div className="relative mx-auto flex h-full min-h-0 w-full flex-col px-5 py-5">
         <header className="mb-5 flex shrink-0 items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-muted-foreground">l8db</p>
@@ -139,7 +138,7 @@ export function ConnectionsView() {
           </div>
         </header>
         {!editorId && connections.length > 0 && (
-          <div className="mb-3 flex shrink-0 items-center gap-2">
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
             <Button
               variant={favoritesOnly ? "default" : "outline"}
               size="sm"
@@ -149,6 +148,15 @@ export function ConnectionsView() {
               <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
               Nur Favoriten
               {favoriteCount > 0 && <span className="text-xs opacity-70">({favoriteCount})</span>}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-tour="connection-add"
+              onClick={() => openEditor("new")}
+            >
+              <Plus className="size-4" />
+              Neu
             </Button>
           </div>
         )}
@@ -232,11 +240,6 @@ export function ConnectionsView() {
                       </motion.div>
                     </section>
                   ))}
-                  {!favoritesOnly && (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      <ConnectionAddTile onAdd={() => openEditor("new")} />
-                    </div>
-                  )}
                 </div>
               ) : (
                 <motion.div
@@ -245,7 +248,6 @@ export function ConnectionsView() {
                   className="grid w-full grid-cols-1 gap-4 py-2 sm:grid-cols-2 xl:grid-cols-3"
                 >
                   {visible.map(renderCard)}
-                  {!favoritesOnly && <ConnectionAddTile onAdd={() => openEditor("new")} />}
                 </motion.div>
               )}
             </section>
