@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { BracesIcon, ChevronRightIcon, PackageIcon } from "lucide-react";
-
+import { useMemo } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   SidebarMenu,
@@ -11,8 +11,10 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { buildInvalidSet, isPackageInvalid, isPackagePartInvalid } from "@/lib/invalid-objects";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
-import { useFunctionDefinitionQuery } from "@/lib/queries";
+import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 interface SidebarPackageListProps {
@@ -61,6 +63,9 @@ function usePackageNavigate(schema: string, name: string) {
 
 function PackageNode({ schema, name }: { schema: string; name: string }) {
   const go = usePackageNavigate(schema, name);
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const invalid = isPackageInvalid(invalidSet, schema, name);
   return (
     <Collapsible asChild className="group/pkg">
       <SidebarMenuItem>
@@ -70,6 +75,7 @@ function PackageNode({ schema, name }: { schema: string; name: string }) {
           </CollapsibleTrigger>
           <PackageIcon className="text-muted-foreground" />
           <span className="truncate">{name}</span>
+          {invalid ? <InvalidMarker /> : null}
         </SidebarMenuButton>
         <CollapsibleContent>
           <SidebarMenuSub>
@@ -95,6 +101,9 @@ function PartNode({
 }) {
   const go = usePackageNavigate(schema, name);
   const { data, isLoading, isError } = useFunctionDefinitionQuery(packageOid(schema, name, part));
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const invalid = isPackagePartInvalid(invalidSet, schema, name, part);
   const members = data ? parsePlsqlMembers(data) : [];
   return (
     <Collapsible asChild defaultOpen className="group/part">
@@ -105,6 +114,7 @@ function PartNode({
               <ChevronRightIcon className="transition-transform group-data-[state=open]/part:rotate-90" />
             </CollapsibleTrigger>
             <span className="truncate">{title}</span>
+            {invalid ? <InvalidMarker /> : null}
             {isLoading ? <Spinner className="ml-auto" /> : null}
           </button>
         </SidebarMenuSubButton>

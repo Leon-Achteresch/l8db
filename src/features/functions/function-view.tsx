@@ -1,7 +1,7 @@
 import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useRef } from "react";
-
+import { useEffect, useMemo, useRef } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -14,8 +14,9 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
-import { useFunctionDefinitionQuery } from "@/lib/queries";
+import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 function themeFor(resolved: string | undefined): string {
@@ -35,6 +36,9 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   const capabilities = useActiveCapabilities();
   const { compile, state: compileState } = useCompileObject();
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const isInvalid = isFunctionInvalid(invalidSet, schema, name);
   const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "");
 
   useEffect(() => {
@@ -90,6 +94,9 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         <span className="text-xs font-medium text-muted-foreground flex-1">
           {schema}.{name}
         </span>
+        {isInvalid && !compileResult ? (
+          <Badge variant="destructive">INVALID</Badge>
+        ) : null}
         {!edit.editing && capabilities.compile_objects && oid ? (
           <Button
             variant="outline"

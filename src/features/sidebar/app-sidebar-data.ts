@@ -2,6 +2,7 @@ import {
   FileText,
   GaugeIcon,
   GitCompare,
+  HammerIcon,
   Home,
   Info,
   type LucideIcon,
@@ -23,6 +24,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     { title: "Übersicht", url: "/", icon: Home },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
+    { title: "Invalid Objects", url: "/invalid-objects", icon: HammerIcon },
     { title: "Monitor", url: "/monitor", icon: GaugeIcon },
     { title: "Query Builder", url: "/query-builder", icon: Table2 },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },

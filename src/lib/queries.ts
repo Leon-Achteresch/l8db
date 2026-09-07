@@ -6,6 +6,7 @@ import { useActiveConnection, visibleSchemas } from "@/lib/connections";
 import {
   beginTransaction,
   commitTransaction,
+  compileInvalidObjects,
   countTableRows,
   deleteRowInTransaction,
   duplicateRowInTransaction,
@@ -19,6 +20,7 @@ import {
   insertRowInTransaction,
   listAllColumns,
   listAvailableExtensions,
+  listCompileErrors,
   listConstraints,
   listDatabases,
   listEnums,
@@ -26,6 +28,7 @@ import {
   listForeignKeys,
   listFunctions,
   listIndexes,
+  listInvalidObjects,
   listLocks,
   listMaterializedViews,
   listProcedures,
@@ -295,6 +298,67 @@ export function useFunctionDefinitionQuery(oid: string) {
       ),
     enabled:
       (supports(connection, "functions") || supports(connection, "procedures")) && Boolean(oid),
+  });
+}
+
+export function useInvalidObjectsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["invalid-objects", connection?.id, database, schema],
+    queryFn: () =>
+      listInvalidObjects(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "compile_objects"),
+    staleTime: 15_000,
+  });
+}
+
+export function useCompileErrorsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["compile-errors", connection?.id, database, schema],
+    queryFn: () =>
+      listCompileErrors(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "compile_objects"),
+    staleTime: 15_000,
+  });
+}
+
+export function useCompileInvalidObjectsMutation() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      compileInvalidObjects(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invalid-objects"] });
+      queryClient.invalidateQueries({ queryKey: ["compile-errors"] });
+      queryClient.invalidateQueries({ queryKey: ["functions"] });
+      queryClient.invalidateQueries({ queryKey: ["procedures"] });
+      queryClient.invalidateQueries({ queryKey: ["views"] });
+      queryClient.invalidateQueries({ queryKey: ["synonyms"] });
+      queryClient.invalidateQueries({ queryKey: ["function-definition"] });
+    },
   });
 }
 

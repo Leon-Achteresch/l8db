@@ -9,6 +9,7 @@ const WRITE_COMMANDS = new Set([
   "begin_transaction",
   "cancel_session",
   "compile_object",
+  "compile_invalid_objects",
   "create_materialized_view",
   "create_policy",
   "create_publication",
@@ -805,6 +806,34 @@ export interface CompileResult {
   position: number | null;
 }
 
+export interface InvalidObjectInfo {
+  schema: string;
+  name: string;
+  object_type: string;
+  status: string;
+  oid: string;
+}
+
+export interface CompileErrorInfo {
+  schema: string;
+  name: string;
+  object_type: string;
+  line: number | null;
+  position: number | null;
+  message: string;
+}
+
+export interface InvalidCompileOutcome {
+  schema: string;
+  name: string;
+  object_type: string;
+  oid: string;
+  status: string;
+  message: string | null;
+  line: number | null;
+  position: number | null;
+}
+
 export interface DebugSessionInfo {
   available: boolean;
   message: string;
@@ -827,6 +856,33 @@ export async function compileObject(
   database?: string,
 ): Promise<CompileResult> {
   return invoke("compile_object", { kind, connectionString, database, oid, objectType });
+}
+
+export async function listInvalidObjects(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<InvalidObjectInfo[]> {
+  return invoke("list_invalid_objects", { kind, connectionString, database, schema });
+}
+
+export async function listCompileErrors(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<CompileErrorInfo[]> {
+  return invoke("list_compile_errors", { kind, connectionString, database, schema });
+}
+
+export async function compileInvalidObjects(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<InvalidCompileOutcome[]> {
+  return invoke("compile_invalid_objects", { kind, connectionString, database, schema });
 }
 
 export async function startDebugSession(

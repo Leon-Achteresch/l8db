@@ -1,6 +1,5 @@
 import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,13 +16,14 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { buildInvalidSet, isPackagePartInvalid } from "@/lib/invalid-objects";
 import {
   PACKAGE_OUTLINE_DEFAULT_WIDTH,
   packageOutlinePrefKey,
   usePackageViewPrefs,
 } from "@/lib/package-view-prefs";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
-import { useFunctionDefinitionQuery } from "@/lib/queries";
+import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export interface PackageViewProps {
@@ -47,6 +47,9 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const oid = packageOid(schema, name, activePart);
   const edit = useSqlObjectEdit(label, source);
   const { compile, state: compileState, reset: resetCompile } = useCompileObject();
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
   const compileResult = compileState.status === "done" ? compileState.result : null;
   const members = parsePlsqlMembers(edit.editing ? edit.sql : source);
   const revealLine = activeMember
@@ -107,6 +110,8 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
           <Badge variant={compileResult.status === "VALID" ? "outline" : "destructive"}>
             {compileResult.status}
           </Badge>
+        ) : isInvalid ? (
+          <Badge variant="destructive">INVALID</Badge>
         ) : null}
         <span className="ml-auto" />
         <OpenInQueryEditorButton sql={source} title={label} />

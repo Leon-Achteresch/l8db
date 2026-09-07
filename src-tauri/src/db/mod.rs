@@ -249,6 +249,37 @@ pub struct CompileResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct InvalidObjectInfo {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+    pub status: String,
+    pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompileErrorInfo {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+    pub line: Option<i32>,
+    pub position: Option<i32>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InvalidCompileOutcome {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+    pub oid: String,
+    pub status: String,
+    pub message: Option<String>,
+    pub line: Option<i32>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DebugSessionInfo {
     pub available: bool,
     pub message: String,
@@ -448,6 +479,27 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
         let _ = (oid, object_type);
         Err(unsupported("Objekte kompilieren"))
+    }
+    async fn list_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Invalide Objekte"))
+    }
+    async fn list_compile_errors(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<CompileErrorInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Kompilierfehler"))
+    }
+    async fn compile_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidCompileOutcome>, String> {
+        let _ = schema;
+        Err(unsupported("Invalide Objekte kompilieren"))
     }
     async fn start_debug_session(
         &self,
