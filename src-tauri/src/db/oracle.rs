@@ -10,9 +10,9 @@ use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
     ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DebugSessionInfo, DependencyInfo,
-    DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult, SchemaSize,
-    SchedulerJobInfo, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ForeignKeyInfo,
+    FunctionInfo, IndexInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -610,11 +610,7 @@ impl DatabaseAdapter for OracleAdapter {
             .collect())
     }
 
-    async fn list_used_by(
-        &self,
-        schema: &str,
-        name: &str,
-    ) -> Result<Vec<DependencyInfo>, String> {
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let deps = self
             .rows(format!(
                 "SELECT d.owner, d.name, d.type, NVL(o.status, 'UNKNOWN') \

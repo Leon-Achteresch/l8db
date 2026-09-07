@@ -17,8 +17,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TableIndexesListProps {

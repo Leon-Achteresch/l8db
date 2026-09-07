@@ -130,7 +130,9 @@ export function PlanComparisonPanel({
                 {STATUS_LABEL[node.status]}
               </Badge>
               <span className="font-medium">{node.nodeType}</span>
-              {node.target && <span className="font-mono text-muted-foreground">{node.target}</span>}
+              {node.target && (
+                <span className="font-mono text-muted-foreground">{node.target}</span>
+              )}
               <span className="ml-auto tabular-nums text-muted-foreground">
                 {node.leftCount} × / {node.rightCount} ×
               </span>

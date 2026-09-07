@@ -36,8 +36,7 @@ export function sheetNameError(name: string): string | null {
   if (trimmed.length > XLSX_SHEET_NAME_MAX)
     return `Blattname darf höchstens ${XLSX_SHEET_NAME_MAX} Zeichen haben.`;
   const bad = INVALID_SHEET_CHARS.filter((ch) => trimmed.includes(ch));
-  if (bad.length > 0)
-    return `Blattname darf diese Zeichen nicht enthalten: ${bad.join(" ")}`;
+  if (bad.length > 0) return `Blattname darf diese Zeichen nicht enthalten: ${bad.join(" ")}`;
   if (trimmed.startsWith("'") || trimmed.endsWith("'"))
     return "Blattname darf nicht mit einem Apostroph beginnen oder enden.";
   return null;
@@ -86,8 +85,7 @@ export function cellText(value: unknown): string | null {
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
-  if (value instanceof Date)
-    return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
   if (typeof value === "object") {
     try {
       return JSON.stringify(value);
@@ -98,7 +96,10 @@ export function cellText(value: unknown): string | null {
   return String(value);
 }
 
-export type XlsxCell = { kind: "empty" } | { kind: "number"; text: string } | { kind: "text"; text: string };
+export type XlsxCell =
+  | { kind: "empty" }
+  | { kind: "number"; text: string }
+  | { kind: "text"; text: string };
 
 export function cellFor(value: unknown, nullText = ""): XlsxCell {
   const text = cellText(value) ?? nullText;

@@ -9,18 +9,16 @@ use tokio_postgres::{Config, SimpleQueryMessage};
 
 use super::pool::{PoolState, PoolUse};
 use super::server_output::{self, ServerMessage};
+use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
     AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, CompileResult, ConnectionConfig, ConstraintInfo,
-    CreateRoleOptions,
-    DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
-    ColumnMatch, RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch,
-    SslMode, TableData,
-    TableInfo, TablePrivileges, TriggerInfo,
+    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileResult, ConnectionConfig,
+    ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo, DetailedColumnInfo,
+    ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
+    PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges,
+    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
-use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -45,12 +43,7 @@ pub fn line_of_position(source: &str, position: i32) -> i32 {
         return 1;
     }
     let take = (position as usize).saturating_sub(1);
-    source
-        .chars()
-        .take(take)
-        .filter(|c| *c == '\n')
-        .count() as i32
-        + 1
+    source.chars().take(take).filter(|c| *c == '\n').count() as i32 + 1
 }
 
 pub fn source_snippet(source: &str, term: &str) -> Option<(i32, String, i32)> {
@@ -430,11 +423,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .collect())
     }
 
-    async fn list_used_by(
-        &self,
-        schema: &str,
-        name: &str,
-    ) -> Result<Vec<DependencyInfo>, String> {
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let conn = self.get_meta().await?;
         let oid_row = conn
             .query_opt(
@@ -567,7 +556,10 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         drop(conn);
-        let matches = self.search_source(None, name, 200).await.unwrap_or_default();
+        let matches = self
+            .search_source(None, name, 200)
+            .await
+            .unwrap_or_default();
         for m in matches {
             if m.schema == schema && m.name == name {
                 continue;
@@ -786,7 +778,11 @@ impl DatabaseAdapter for PostgresAdapter {
         use super::export;
 
         export::validate_csv_options(&request.options)?;
-        let trimmed = request.filter.as_deref().map(str::trim).filter(|f| !f.is_empty());
+        let trimmed = request
+            .filter
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty());
         if !request.allow_raw_filter {
             if let Some(expression) = trimmed {
                 validate_table_filter(expression)?;
@@ -1033,45 +1029,47 @@ impl DatabaseAdapter for PostgresAdapter {
                 .map_err(map_pg_err)?;
         }
 
-        let outcome = self.timed(async {
-            let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
-            let elapsed = start.elapsed().as_millis() as u64;
+        let outcome = self
+            .timed(async {
+                let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
+                let elapsed = start.elapsed().as_millis() as u64;
 
-            let mut columns: Vec<String> = Vec::new();
-            let mut rows: Vec<serde_json::Value> = Vec::new();
-            let mut rows_affected: Option<u64> = None;
+                let mut columns: Vec<String> = Vec::new();
+                let mut rows: Vec<serde_json::Value> = Vec::new();
+                let mut rows_affected: Option<u64> = None;
 
-            for msg in messages {
-                match msg {
-                    SimpleQueryMessage::Row(row) => {
-                        if columns.is_empty() {
-                            columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                for msg in messages {
+                    match msg {
+                        SimpleQueryMessage::Row(row) => {
+                            if columns.is_empty() {
+                                columns =
+                                    row.columns().iter().map(|c| c.name().to_string()).collect();
+                            }
+                            let mut obj = serde_json::Map::new();
+                            for (i, col) in columns.iter().enumerate() {
+                                let val = row
+                                    .get(i)
+                                    .map(|v| serde_json::Value::String(v.to_string()))
+                                    .unwrap_or(serde_json::Value::Null);
+                                obj.insert(col.clone(), val);
+                            }
+                            rows.push(serde_json::Value::Object(obj));
                         }
-                        let mut obj = serde_json::Map::new();
-                        for (i, col) in columns.iter().enumerate() {
-                            let val = row
-                                .get(i)
-                                .map(|v| serde_json::Value::String(v.to_string()))
-                                .unwrap_or(serde_json::Value::Null);
-                            obj.insert(col.clone(), val);
+                        SimpleQueryMessage::CommandComplete(count) => {
+                            rows_affected = Some(count);
                         }
-                        rows.push(serde_json::Value::Object(obj));
+                        _ => {}
                     }
-                    SimpleQueryMessage::CommandComplete(count) => {
-                        rows_affected = Some(count);
-                    }
-                    _ => {}
                 }
-            }
 
-            Ok(QueryResult {
-                columns,
-                rows,
-                rows_affected,
-                execution_time_ms: elapsed,
+                Ok(QueryResult {
+                    columns,
+                    rows,
+                    rows_affected,
+                    execution_time_ms: elapsed,
+                })
             })
-        })
-        .await;
+            .await;
         if self.read_only {
             let _ = conn.simple_query("ROLLBACK").await;
         }
@@ -1326,9 +1324,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 Err(err) => {
                     let position = err.as_db_error().and_then(|db| match db.position() {
                         Some(tokio_postgres::error::ErrorPosition::Original(p)) => Some(*p as i32),
-                        Some(tokio_postgres::error::ErrorPosition::Internal { position, .. }) => {
-                            Some(*position as i32)
-                        }
+                        Some(tokio_postgres::error::ErrorPosition::Internal {
+                            position, ..
+                        }) => Some(*position as i32),
                         None => None,
                     });
                     let message = map_pg_err(err);
@@ -2599,13 +2597,17 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Die Zeilenbegrenzung muss größer als 0 sein.".to_string());
         }
         let limit = limit.min(SCHEMA_COPY_MAX_ROWS);
-        let source_columns = self.list_table_columns_detailed(source_schema, name).await?;
+        let source_columns = self
+            .list_table_columns_detailed(source_schema, name)
+            .await?;
         if source_columns.is_empty() {
             return Err(format!(
                 "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
             ));
         }
-        let target_columns = self.list_table_columns_detailed(target_schema, name).await?;
+        let target_columns = self
+            .list_table_columns_detailed(target_schema, name)
+            .await?;
         if target_columns.is_empty() {
             return Err(format!(
                 "Tabelle {target_schema}.{name} existiert nicht. Zuerst die Struktur kopieren."
@@ -2613,11 +2615,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let shared: Vec<String> = source_columns
             .iter()
-            .filter(|column| {
-                target_columns
-                    .iter()
-                    .any(|other| other.name == column.name)
-            })
+            .filter(|column| target_columns.iter().any(|other| other.name == column.name))
             .map(|column| quote_ident(&column.name))
             .collect();
         if shared.is_empty() {
@@ -3748,7 +3746,9 @@ impl PostgresAdapter {
         }
         match object_type {
             "table" => {
-                let columns = self.list_table_columns_detailed(source_schema, name).await?;
+                let columns = self
+                    .list_table_columns_detailed(source_schema, name)
+                    .await?;
                 if columns.is_empty() {
                     return Err(format!(
                         "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
@@ -3991,12 +3991,20 @@ pub async fn run_params_query(
     }
     let start = std::time::Instant::now();
     let types: Vec<Type> = params.iter().map(|_| Type::TEXT).collect();
-    let values: Vec<&(dyn ToSql + Sync)> =
-        params.iter().map(|value| value as &(dyn ToSql + Sync)).collect();
+    let values: Vec<&(dyn ToSql + Sync)> = params
+        .iter()
+        .map(|value| value as &(dyn ToSql + Sync))
+        .collect();
 
-    let statement = client.prepare_typed(trimmed, &types).await.map_err(map_pg_err)?;
+    let statement = client
+        .prepare_typed(trimmed, &types)
+        .await
+        .map_err(map_pg_err)?;
     if statement.columns().is_empty() {
-        let affected = client.execute(&statement, &values).await.map_err(map_pg_err)?;
+        let affected = client
+            .execute(&statement, &values)
+            .await
+            .map_err(map_pg_err)?;
         return Ok(QueryResult {
             columns: Vec::new(),
             rows: Vec::new(),
@@ -4014,8 +4022,14 @@ pub async fn run_params_query(
         "WITH __l8_bind AS ({}) SELECT to_jsonb(__l8_bind) FROM __l8_bind",
         trimmed
     );
-    let wrapped_statement = client.prepare_typed(&wrapped, &types).await.map_err(map_pg_err)?;
-    let data = client.query(&wrapped_statement, &values).await.map_err(map_pg_err)?;
+    let wrapped_statement = client
+        .prepare_typed(&wrapped, &types)
+        .await
+        .map_err(map_pg_err)?;
+    let data = client
+        .query(&wrapped_statement, &values)
+        .await
+        .map_err(map_pg_err)?;
     let rows: Vec<serde_json::Value> = data.iter().map(|row| row.get(0)).collect();
     let count = rows.len() as u64;
 
@@ -4039,7 +4053,8 @@ mod tests {
 
     #[test]
     fn source_snippet_reports_line_and_occurrences() {
-        let src = "BEGIN\n  SELECT kunde_id FROM kunde WHERE kunde_id = 1;\n  RETURN kunde_id;\nEND";
+        let src =
+            "BEGIN\n  SELECT kunde_id FROM kunde WHERE kunde_id = 1;\n  RETURN kunde_id;\nEND";
         let (line, snippet, occurrences) = source_snippet(src, "KUNDE_ID").expect("match");
         assert_eq!(line, 2);
         assert_eq!(occurrences, 3);
@@ -4173,8 +4188,14 @@ mod tests {
             .execute_query("INSERT INTO l8db_read_only_probe VALUES (4)")
             .await
             .is_err());
-        assert!(reader.drop_table("public", "l8db_read_only_probe").await.is_err());
-        assert!(reader.truncate_table("public", "l8db_read_only_probe").await.is_err());
+        assert!(reader
+            .drop_table("public", "l8db_read_only_probe")
+            .await
+            .is_err());
+        assert!(reader
+            .truncate_table("public", "l8db_read_only_probe")
+            .await
+            .is_err());
         assert!(reader
             .update_row(
                 "public",

@@ -12,7 +12,6 @@ import { SlideActionButton } from "@/components/motion/slide-action-button";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { withTimeout } from "@/lib/async";
 import {
   Select,
   SelectContent,
@@ -21,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { withTimeout } from "@/lib/async";
 import {
   connectionError,
   detectProvider,
@@ -148,10 +148,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     if (result.status !== "testing") return;
     setElapsed(0);
     const startedAt = Date.now();
-    const timer = setInterval(
-      () => setElapsed(Math.floor((Date.now() - startedAt) / 1000)),
-      500,
-    );
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 500);
     return () => clearInterval(timer);
   }, [result.status]);
 

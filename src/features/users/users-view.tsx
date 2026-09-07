@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -59,6 +58,7 @@ import {
   type TablePrivileges,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useRolePrivilegesQuery, useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";

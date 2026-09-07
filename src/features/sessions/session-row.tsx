@@ -124,9 +124,7 @@ export function SessionRow({
           </div>
         )}
       </td>
-      <td className="px-3 py-2 font-mono text-muted-foreground">
-        {session.wait_event ?? "—"}
-      </td>
+      <td className="px-3 py-2 font-mono text-muted-foreground">{session.wait_event ?? "—"}</td>
       <td
         className="max-w-md truncate px-3 py-2 font-mono text-muted-foreground"
         title={session.query}

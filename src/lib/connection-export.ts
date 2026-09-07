@@ -1,8 +1,8 @@
 import {
   type ConnectionTag,
+  createConnectionId,
   type SavedConnection,
   type SshConnection,
-  createConnectionId,
 } from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import { scrubUrlPassword } from "@/lib/secrets";

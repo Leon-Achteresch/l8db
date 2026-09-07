@@ -20,15 +20,15 @@ import {
   CSV_MAX_BYTES,
   CSV_MAX_IMPORT_ROWS,
   CSV_PREVIEW_ROWS,
-  parseCsv,
-  suggestMappings,
-  validateMappings,
   type CsvColumnMapping,
   type CsvEmptyFieldMode,
   type CsvParseResult,
   type ImportTargetColumn,
+  parseCsv,
+  suggestMappings,
+  validateMappings,
 } from "@/lib/csv-import";
-import { csvImport, listImportColumns, type CsvImportOutcome } from "@/lib/db";
+import { type CsvImportOutcome, csvImport, listImportColumns } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useTablesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -113,9 +113,7 @@ export function CsvImportPanel() {
     setDelimiter(detected.delimiter);
     setHasHeader(detected.hasHeader);
     setOutcome(null);
-    setMappings(
-      targetColumns.length > 0 ? suggestMappings(detected.headers, targetColumns) : [],
-    );
+    setMappings(targetColumns.length > 0 ? suggestMappings(detected.headers, targetColumns) : []);
   };
 
   const handlePickTable = async (table: string) => {
@@ -279,10 +277,7 @@ export function CsvImportPanel() {
       )}
 
       {parsed && (
-        <CsvPreviewTable
-          headers={parsed.headers}
-          rows={parsed.rows.slice(0, CSV_PREVIEW_ROWS)}
-        />
+        <CsvPreviewTable headers={parsed.headers} rows={parsed.rows.slice(0, CSV_PREVIEW_ROWS)} />
       )}
 
       {parsed && (

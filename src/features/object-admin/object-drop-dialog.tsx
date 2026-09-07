@@ -9,9 +9,9 @@ import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import {
   executeObjectDdl,
-  objectAuditInfo,
   type ObjectAdminType,
   type ObjectDdlRequest,
+  objectAuditInfo,
   previewObjectDdl,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";

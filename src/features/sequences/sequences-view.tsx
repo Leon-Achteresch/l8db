@@ -16,10 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useActiveConnection } from "@/lib/connections";
 import { type AlterSequenceRequest, alterSequence, type SequenceInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useSequencesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 

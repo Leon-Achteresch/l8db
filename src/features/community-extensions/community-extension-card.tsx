@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readCommunityExtension } from "@/lib/db";
-import type { ExtensionDescriptor, Permission } from "@/lib/extensions/contracts";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import type { ExtensionDescriptor, Permission } from "@/lib/extensions/contracts";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 
 export function CommunityExtensionCard({

@@ -178,7 +178,9 @@ export function CompareSidePicker({ title, value, onChange }: CompareSidePickerP
 
   const handleConnection = (connectionId: string) => {
     const picked = usable.find((item) => item.id === connectionId) ?? null;
-    const database = picked ? databaseFromConnectionString(effectiveConnectionString(picked)) : null;
+    const database = picked
+      ? databaseFromConnectionString(effectiveConnectionString(picked))
+      : null;
     const types = supportedObjectTypes(picked);
     const objectType = types.includes(value.objectType) ? value.objectType : (types[0] ?? "view");
     onChange({ ...EMPTY_SIDE, objectType, connectionId, database });

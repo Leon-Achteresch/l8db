@@ -1,9 +1,9 @@
 import { Blocks, CodeXml, Database, Info, ShieldCheck, Sliders } from "lucide-react";
 import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { getPendingUpdate } from "@/lib/updater";
+import { cn } from "@/lib/utils";
 
 export interface SettingsTabItem {
   id: string;

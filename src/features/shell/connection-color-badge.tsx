@@ -67,11 +67,19 @@ export function ConnectionColorBadge({ variant, className }: Props) {
           : undefined
       }
       title={title}
-      aria-label={label ? `Aktive Verbindung ${connection.name}, Farbe ${label}` : `Aktive Verbindung ${connection.name}`}
+      aria-label={
+        label
+          ? `Aktive Verbindung ${connection.name}, Farbe ${label}`
+          : `Aktive Verbindung ${connection.name}`
+      }
     >
       {dot}
       <span className="truncate">{connection.name}</span>
-      {label && <span className="hidden text-[10px] font-normal text-muted-foreground lg:inline">{label}</span>}
+      {label && (
+        <span className="hidden text-[10px] font-normal text-muted-foreground lg:inline">
+          {label}
+        </span>
+      )}
     </Link>
   );
 }

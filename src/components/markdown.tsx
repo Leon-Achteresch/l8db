@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { parseMarkdown, type MdInline } from "@/lib/markdown";
+import { type MdInline, parseMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 function renderInline(nodes: MdInline[]): ReactNode {
@@ -13,11 +13,7 @@ function renderInline(nodes: MdInline[]): ReactNode {
       );
     }
     if (node.t === "em") {
-      return (
-        <em key={index}>
-          {renderInline(node.children)}
-        </em>
-      );
+      return <em key={index}>{renderInline(node.children)}</em>;
     }
     if (node.t === "code") {
       return (
@@ -67,9 +63,7 @@ export function Markdown({ source, className }: { source: string; className?: st
           return (
             <ul key={index} className="mt-2 list-disc space-y-1 pl-5 first:mt-0">
               {block.items.map((item, itemIndex) => (
-                <li key={itemIndex}>
-                  {renderInline(item)}
-                </li>
+                <li key={itemIndex}>{renderInline(item)}</li>
               ))}
             </ul>
           );

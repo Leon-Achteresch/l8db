@@ -23,13 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import {
-  type ColumnMask,
-  DEFAULT_MASK_TEXT,
-  type MaskMode,
-  applyMasks,
-} from "@/lib/export";
-import { DEFAULT_SHEET_NAME, buildXlsx, xlsxInputError } from "@/lib/xlsx";
+import { applyMasks, type ColumnMask, DEFAULT_MASK_TEXT, type MaskMode } from "@/lib/export";
+import { buildXlsx, DEFAULT_SHEET_NAME, xlsxInputError } from "@/lib/xlsx";
 
 type XlsxExportDialogProps = {
   open: boolean;
@@ -101,9 +96,7 @@ export function XlsxExportDialog({
   };
 
   const toggleColumn = (column: string, checked: boolean) => {
-    setSelected((prev) =>
-      checked ? [...prev, column] : prev.filter((c) => c !== column),
-    );
+    setSelected((prev) => (checked ? [...prev, column] : prev.filter((c) => c !== column)));
   };
 
   const handleExport = async () => {

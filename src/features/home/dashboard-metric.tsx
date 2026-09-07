@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 interface Props {
   label: string;

@@ -16,12 +16,7 @@ interface SidebarSynonymListProps {
   error: unknown;
 }
 
-export function SidebarSynonymList({
-  items,
-  isLoading,
-  isError,
-  error,
-}: SidebarSynonymListProps) {
+export function SidebarSynonymList({ items, isLoading, isError, error }: SidebarSynonymListProps) {
   const navigate = useNavigate();
   const all = useMemo(() => items ?? [], [items]);
 

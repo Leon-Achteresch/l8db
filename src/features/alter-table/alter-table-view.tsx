@@ -11,9 +11,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { toast } from "sonner";
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,8 +34,8 @@ import {
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { Spinner } from "@/components/ui/spinner";
+import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { useActiveConnection } from "@/lib/connections";
 import {
   type AddColumnRequest,
@@ -50,6 +48,7 @@ import {
   listTableColumnsDetailed,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 

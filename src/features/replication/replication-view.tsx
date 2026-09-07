@@ -3,8 +3,6 @@ import { PlusIcon, RadioIcon, Trash2Icon } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +26,7 @@ import {
   dropSubscription,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { usePublicationsQuery, useSubscriptionsQuery, useTablesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 

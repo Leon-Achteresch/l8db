@@ -268,9 +268,7 @@ function normalizeName(value: string): string {
 }
 
 export function isRequiredColumn(column: ImportTargetColumn): boolean {
-  return (
-    !column.is_nullable && !column.has_default && !column.is_identity && !column.is_generated
-  );
+  return !column.is_nullable && !column.has_default && !column.is_identity && !column.is_generated;
 }
 
 export function suggestMappings(
@@ -337,9 +335,7 @@ export function validateMappings(
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
       const value = rows[rowIndex]?.[mapping.csvIndex] ?? null;
       if (value === null) {
-        errors.push(
-          `Zeile ${rowIndex + 1}: Spalte "${target.name}" darf nicht NULL sein.`,
-        );
+        errors.push(`Zeile ${rowIndex + 1}: Spalte "${target.name}" darf nicht NULL sein.`);
         break;
       }
     }
