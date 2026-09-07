@@ -2,11 +2,14 @@ import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
+import { FolderOpenIcon, LayersIcon, PlusIcon } from "lucide-react";
 import type * as React from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
+import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
+import { WorkspacesDialog } from "@/features/shell/workspaces-dialog";
+import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 
 const sensors = [
@@ -27,6 +30,7 @@ export function TableTabs() {
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
   const navRef = useRef<HTMLElement>(null);
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
 
   const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
     const el = navRef.current;
@@ -184,12 +188,18 @@ export function TableTabs() {
     void navigate({ to: "/query/$id", params: { id } });
   };
 
+  const handleOpenSqlFile = async () => {
+    const id = await openSqlFileAsTab();
+    if (id) void navigate({ to: "/query/$id", params: { id } });
+  };
+
   const handleCopy = (value: string) => {
     void navigator.clipboard.writeText(value);
   };
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <ConnectionColorBadge variant="tabs" />
       <DragDropProvider
         sensors={sensors}
         onDragEnd={(event) => {
@@ -241,6 +251,28 @@ export function TableTabs() {
       >
         <PlusIcon className="size-4" />
       </button>
+      <button
+        type="button"
+        onClick={() => void handleOpenSqlFile()}
+        title="SQL-Datei öffnen"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border/60 hover:bg-accent hover:text-foreground"
+      >
+        <FolderOpenIcon className="size-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setWorkspacesOpen(true)}
+        title="Arbeitsplatzstände"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border/60 hover:bg-accent hover:text-foreground"
+      >
+        <LayersIcon className="size-4" />
+      </button>
+      <WorkspacesDialog
+        open={workspacesOpen}
+        onOpenChange={setWorkspacesOpen}
+        activeTabKey={activeTab ? tabKey(activeTab) : null}
+        onNavigate={navigateToTab}
+      />
     </div>
   );
 }

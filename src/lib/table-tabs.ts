@@ -9,8 +9,24 @@ export type TableTab = {
   table: string;
   entityType?: "table" | "view";
 };
-export type QueryTab = { kind: "query"; id: string; title: string; sql: string };
+export type QueryTab = {
+  kind: "query";
+  id: string;
+  title: string;
+  sql: string;
+  filePath?: string;
+  savedSql?: string;
+  fileMtime?: number | null;
+  externalChange?: boolean;
+  bookmarks?: number[];
+};
+export type QueryFileInfo = { path: string; mtime: number | null };
+
+export function isQueryTabDirty(tab: QueryTab): boolean {
+  return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
+}
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
+export type ProcedureTab = { kind: "procedure"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
 export type RoleTab = { kind: "role"; name: string };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
@@ -21,6 +37,7 @@ export type Tab =
   | TableTab
   | QueryTab
   | FunctionTab
+  | ProcedureTab
   | ExtensionTab
   | RoleTab
   | TriggerTab
@@ -32,6 +49,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
+  if (tab.kind === "procedure") return `procedure:${tab.oid}`;
   if (tab.kind === "role") return `role:${tab.name}`;
   if (tab.kind === "trigger") return `trigger:${tab.schema}.${tab.table}.${tab.trigger}`;
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
@@ -67,6 +85,7 @@ interface TabsState {
   openQueryTabWithSql: (sql: string, title?: string) => string;
   openSavedQueryTab: (tab: { id: string; title: string; sql: string }) => void;
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
+  openProcedureTab: (tab: Omit<ProcedureTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
   openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
   openTriggerTab: (tab: Omit<TriggerTab, "kind">) => void;
@@ -77,9 +96,32 @@ interface TabsState {
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;
+  replaceTabs: (tabs: Tab[]) => void;
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
+  openFileQueryTab: (file: QueryFileInfo & { sql: string; title: string }) => string;
+  bindQueryTabFile: (id: string, file: QueryFileInfo & { title: string }) => void;
+  markQueryTabSaved: (id: string, mtime: number | null) => void;
+  setQueryTabExternalChange: (id: string, changed: boolean, mtime?: number | null) => void;
+  reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
+  toggleQueryBookmark: (id: string, line: number) => void;
+  setQueryBookmarks: (id: string, lines: number[]) => void;
+  clearQueryBookmarks: (id: string) => void;
+}
+
+export function normalizeBookmarks(lines: number[]): number[] {
+  return [...new Set(lines.filter((line) => Number.isInteger(line) && line > 0))].sort(
+    (a, b) => a - b,
+  );
+}
+
+export function queryTabBookmarks(tab: QueryTab): number[] {
+  return normalizeBookmarks(tab.bookmarks ?? []);
+}
+
+function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[] {
+  return tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, ...patch } : t));
 }
 
 function storeFor(
@@ -156,6 +198,15 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => t.kind === "query" && t.id === tab.id)) return state;
           return storeFor([...state.tabs, { kind: "query", ...tab }], state);
+        });
+      },
+
+      openProcedureTab: (tab) => {
+        const pr: ProcedureTab = { kind: "procedure", ...tab };
+        const key = tabKey(pr);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return storeFor([...state.tabs, pr], state);
         });
       },
 
@@ -246,6 +297,8 @@ export const useTableTabs = create<TabsState>()(
 
       closeAllTabs: () => set((state) => storeFor([], state)),
 
+      replaceTabs: (tabs) => set((state) => storeFor(tabs, state)),
+
       clearTabsForConnection: (connectionId) =>
         set((state) => {
           if (state.tabsByConnection[connectionId] === undefined) {
@@ -274,12 +327,104 @@ export const useTableTabs = create<TabsState>()(
         }),
 
       updateQuerySql: (id, sql) =>
+        set((state) => storeFor(patchQueryTab(state.tabs, id, { sql }), state)),
+
+      openFileQueryTab: (file) => {
+        const existing = get().tabs.find((t) => t.kind === "query" && t.filePath === file.path);
+        if (existing && existing.kind === "query") return existing.id;
+        const qt: QueryTab = {
+          kind: "query",
+          id: crypto.randomUUID(),
+          title: file.title,
+          sql: file.sql,
+          filePath: file.path,
+          savedSql: file.sql,
+          fileMtime: file.mtime,
+          externalChange: false,
+        };
+        set((state) => storeFor([...state.tabs, qt], state));
+        return qt.id;
+      },
+
+      bindQueryTabFile: (id, file) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              filePath: file.path,
+              title: file.title,
+              savedSql: tab.sql,
+              fileMtime: file.mtime,
+              externalChange: false,
+            }),
+            state,
+          );
+        }),
+
+      markQueryTabSaved: (id, mtime) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              savedSql: tab.sql,
+              fileMtime: mtime,
+              externalChange: false,
+            }),
+            state,
+          );
+        }),
+
+      setQueryTabExternalChange: (id, changed, mtime) =>
         set((state) =>
           storeFor(
-            state.tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, sql } : t)),
+            patchQueryTab(state.tabs, id, {
+              externalChange: changed,
+              ...(mtime === undefined ? {} : { fileMtime: mtime }),
+            }),
             state,
           ),
         ),
+
+      reloadQueryTabFromFile: (id, sql, mtime) =>
+        set((state) =>
+          storeFor(
+            patchQueryTab(state.tabs, id, {
+              sql,
+              savedSql: sql,
+              fileMtime: mtime,
+              externalChange: false,
+            }),
+            state,
+          ),
+        ),
+
+      toggleQueryBookmark: (id, line) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          const current = queryTabBookmarks(tab);
+          const next = current.includes(line)
+            ? current.filter((entry) => entry !== line)
+            : normalizeBookmarks([...current, line]);
+          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+        }),
+
+      setQueryBookmarks: (id, lines) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          const next = normalizeBookmarks(lines);
+          const current = queryTabBookmarks(tab);
+          if (next.length === current.length && next.every((line, i) => line === current[i])) {
+            return state;
+          }
+          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+        }),
+
+      clearQueryBookmarks: (id) =>
+        set((state) => storeFor(patchQueryTab(state.tabs, id, { bookmarks: [] }), state)),
     }),
     {
       name: "l8db.table-tabs",

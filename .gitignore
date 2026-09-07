@@ -41,3 +41,11 @@ coverage/
 *.njsproj
 *.sln
 *.sw?
+
+# Agent chat scratch
+chat/
+
+docs/
+
+# Nested website repo (separates Projekt)
+l8db-website/

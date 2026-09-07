@@ -4,6 +4,7 @@ pub mod commands;
 mod connection;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+pub mod export;
 mod mongodb;
 mod mssql;
 mod mysql;
@@ -15,6 +16,7 @@ mod postgres;
 pub mod provider;
 mod redis;
 pub mod secrets;
+pub mod server_output;
 mod sqlite;
 pub mod ssh;
 pub mod transaction;
@@ -69,6 +71,8 @@ pub struct ConnectionConfig {
     pub database: String,
     #[serde(default)]
     pub ssl_mode: Option<SslMode>,
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +98,35 @@ pub struct DetailedColumnInfo {
     pub character_maximum_length: Option<i32>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: bool,
+    pub has_default: bool,
+    pub is_identity: bool,
+    pub is_generated: bool,
+    pub ordinal_position: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CsvImportRequest {
+    pub schema: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Option<String>>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CsvImportOutcome {
+    pub inserted_rows: u64,
+    pub failed_row: Option<u32>,
+    pub failed_column: Option<String>,
+    pub error: Option<String>,
+}
+
+pub const CSV_IMPORT_MAX_ROWS: usize = 10_000;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AddColumnRequest {
     pub name: String,
@@ -118,6 +151,64 @@ pub struct ColumnInfo {
     pub table: String,
     pub name: String,
     pub data_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ColumnMatch {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub data_type: String,
+    pub object_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceMatch {
+    pub schema: String,
+    pub name: String,
+    pub oid: String,
+    pub identity: String,
+    pub object_type: String,
+    pub line: i32,
+    pub snippet: String,
+    pub occurrences: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DependencyInfo {
+    pub owner: String,
+    pub name: String,
+    pub object_type: String,
+    pub status: String,
+    pub relation: String,
+    pub oid: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SynonymInfo {
+    pub owner: String,
+    pub name: String,
+    pub target_owner: String,
+    pub target_name: String,
+    pub target_type: String,
+    pub db_link: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchedulerJobInfo {
+    pub id: String,
+    pub owner: String,
+    pub name: String,
+    pub enabled: bool,
+    pub state: String,
+    pub schedule: String,
+    pub command: String,
+    pub last_run: Option<String>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub next_run: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,6 +238,20 @@ pub struct FunctionInfo {
     pub return_type: String,
     pub language: String,
     pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompileResult {
+    pub status: String,
+    pub message: Option<String>,
+    pub line: Option<i32>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DebugSessionInfo {
+    pub available: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -297,6 +402,15 @@ pub trait DatabaseAdapter: Send + Sync {
         Err(unsupported("Direkte Zeilenänderung"))
     }
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
+    async fn execute_query_with_params(
+        &self,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let _ = sql;
+        let _ = params;
+        Err(unsupported("Bind-Parameter"))
+    }
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let _ = schema;
         Err(unsupported("Views"))
@@ -326,6 +440,59 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let _ = oid;
         Err(unsupported("Funktionsdefinitionen"))
+    }
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Prozeduren"))
+    }
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        let _ = (oid, object_type);
+        Err(unsupported("Objekte kompilieren"))
+    }
+    async fn start_debug_session(
+        &self,
+        oid: &str,
+        object_type: &str,
+    ) -> Result<DebugSessionInfo, String> {
+        let _ = (oid, object_type);
+        Err(unsupported("PL/SQL-Debugger"))
+    }
+    async fn search_columns(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<ColumnMatch>, String> {
+        let _ = (schema, term, limit);
+        Err(unsupported("Spaltensuche"))
+    }
+    async fn search_source(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<SourceMatch>, String> {
+        let _ = (schema, term, limit);
+        Err(unsupported("Quelltextsuche"))
+    }
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
+        let _ = (schema, name);
+        Err(unsupported("Verwendungsnachweis"))
+    }
+    async fn list_synonyms(&self, schema: Option<&str>) -> Result<Vec<SynonymInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Synonyme"))
+    }
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        Err(unsupported("Scheduler-Jobs"))
+    }
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        let _ = (job_id, enabled);
+        Err(unsupported("Scheduler-Jobs"))
+    }
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        let _ = job_id;
+        Err(unsupported("Scheduler-Jobs"))
     }
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
         Err(unsupported("Extensions"))
@@ -363,6 +530,28 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Spaltendetails"))
+    }
+    async fn list_import_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ImportColumnInfo>, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("CSV-Import"))
+    }
+    async fn csv_import(&self, request: &CsvImportRequest) -> Result<CsvImportOutcome, String> {
+        let _ = request;
+        Err(unsupported("CSV-Import"))
+    }
+    async fn export_table_csv(
+        &self,
+        request: &export::TableExportRequest,
+        progress: &(dyn Fn(i64) + Send + Sync),
+    ) -> Result<export::TableExportOutcome, String> {
+        let _ = request;
+        let _ = progress;
+        Err(unsupported("Vollständiger Tabellenexport"))
     }
     async fn add_column(
         &self,
@@ -501,9 +690,39 @@ pub trait DatabaseAdapter: Send + Sync {
         }
         Ok(results)
     }
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        let _ = enabled;
+        Err(unsupported("Server-Ausgabe"))
+    }
+    async fn take_server_output(&self) -> Result<Vec<server_output::ServerMessage>, String> {
+        Err(unsupported("Server-Ausgabe"))
+    }
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
         let _ = req;
         Err(unsupported("CREATE TABLE"))
+    }
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        let _ = req;
+        Err(unsupported("CREATE TABLE Vorschau"))
+    }
+    async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
+        let _ = req;
+        Err(unsupported("Objekt-DDL-Vorschau"))
+    }
+    async fn execute_object_ddl(&self, req: &ObjectDdlRequest) -> Result<(), String> {
+        let _ = req;
+        Err(unsupported("Objektverwaltung"))
+    }
+    async fn object_audit_info(
+        &self,
+        schema: &str,
+        name: &str,
+        object_type: &str,
+    ) -> Result<ObjectAuditInfo, String> {
+        let _ = schema;
+        let _ = name;
+        let _ = object_type;
+        Err(unsupported("Objekt-Audit"))
     }
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
         let _ = sql;
@@ -657,6 +876,65 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         Err(unsupported("Datenbankübersicht"))
     }
+    async fn list_schema_copy_objects(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<SchemaObjectEntry>, String> {
+        let _ = source_schema;
+        let _ = target_schema;
+        let _ = object_type;
+        Err(unsupported("Schema-Kopie"))
+    }
+    async fn preview_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let _ = source_schema;
+        let _ = target_schema;
+        let _ = object_type;
+        let _ = name;
+        Err(unsupported("Schema-Kopie"))
+    }
+    async fn execute_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let _ = source_schema;
+        let _ = target_schema;
+        let _ = object_type;
+        let _ = name;
+        Err(unsupported("Schema-Kopie"))
+    }
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<u64, String> {
+        let _ = source_schema;
+        let _ = target_schema;
+        let _ = name;
+        let _ = limit;
+        Err(unsupported("Schema-Kopie"))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchemaObjectEntry {
+    pub name: String,
+    pub object_type: String,
+    pub status: String,
+    pub source_definition: String,
+    pub target_definition: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -741,6 +1019,43 @@ pub struct ColumnDefinition {
     pub default_value: Option<String>,
     pub is_primary_key: bool,
     pub is_unique: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObjectDdlRequest {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+    pub action: String,
+    #[serde(default)]
+    pub cascade: bool,
+    #[serde(default)]
+    pub new_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ObjectDependent {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ObjectAuditInfo {
+    pub schema: String,
+    pub name: String,
+    pub object_type: String,
+    pub owner: Option<String>,
+    pub size: Option<String>,
+    pub row_estimate: Option<i64>,
+    pub created_at: Option<String>,
+    pub changed_at: Option<String>,
+    pub last_vacuum: Option<String>,
+    pub last_autovacuum: Option<String>,
+    pub last_analyze: Option<String>,
+    pub last_autoanalyze: Option<String>,
+    pub dependents: Vec<ObjectDependent>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -876,6 +1191,7 @@ pub struct SessionInfo {
     pub transaction_start: Option<String>,
     pub wait_event: Option<String>,
     pub is_self: bool,
+    pub blocked_by: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1072,6 +1388,42 @@ pub(crate) fn create_table_sql(
     )
 }
 
+fn schema_qualifier_boundary(sql: &str, idx: usize) -> bool {
+    !sql[..idx]
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '"' || c == '.' || c == '$')
+}
+
+pub(crate) fn requalify_schema(sql: &str, from_schema: &str, to_schema: &str) -> String {
+    if from_schema.is_empty() || from_schema == to_schema {
+        return sql.to_string();
+    }
+    let quoted_from = format!("\"{from_schema}\".");
+    let quoted_to = format!("\"{to_schema}\".");
+    let bare_from = format!("{from_schema}.");
+    let bare_to = format!("\"{to_schema}\".");
+    let mut out = String::with_capacity(sql.len());
+    let mut idx = 0usize;
+    while idx < sql.len() {
+        let rest = &sql[idx..];
+        if rest.starts_with(&quoted_from) {
+            out.push_str(&quoted_to);
+            idx += quoted_from.len();
+            continue;
+        }
+        if rest.starts_with(&bare_from) && schema_qualifier_boundary(sql, idx) {
+            out.push_str(&bare_to);
+            idx += bare_from.len();
+            continue;
+        }
+        let ch = rest.chars().next().unwrap_or('\0');
+        out.push(ch);
+        idx += ch.len_utf8();
+    }
+    out
+}
+
 pub(crate) fn pretty_bytes(bytes: i64) -> String {
     let units = ["B", "kB", "MB", "GB", "TB"];
     let mut value = bytes as f64;
@@ -1199,9 +1551,141 @@ pub fn create_adapter_from_string(
     })
 }
 
+pub fn validate_object_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Der neue Name darf nicht leer sein.".to_string());
+    }
+    if trimmed.chars().count() > 63 {
+        return Err("Der neue Name darf höchstens 63 Zeichen lang sein.".to_string());
+    }
+    if trimmed.contains('"') {
+        return Err("Der neue Name darf keine Anführungszeichen enthalten.".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err("Der neue Name darf keine Steuerzeichen enthalten.".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn object_keyword(object_type: &str) -> Result<&'static str, String> {
+    match object_type {
+        "table" => Ok("TABLE"),
+        "view" => Ok("VIEW"),
+        "materialized_view" => Ok("MATERIALIZED VIEW"),
+        other => Err(format!("Unbekannter Objekttyp: {other}")),
+    }
+}
+
+pub fn build_object_ddl(req: &ObjectDdlRequest) -> Result<String, String> {
+    let keyword = object_keyword(req.object_type.as_str())?;
+    let qualified = format!("{}.{}", quote_ident(&req.schema), quote_ident(&req.name));
+    match req.action.as_str() {
+        "drop" => {
+            let suffix = if req.cascade { "CASCADE" } else { "RESTRICT" };
+            Ok(format!("DROP {keyword} {qualified} {suffix};"))
+        }
+        "rename" => {
+            let new_name = req
+                .new_name
+                .as_deref()
+                .ok_or_else(|| "Kein neuer Name angegeben.".to_string())?;
+            let validated = validate_object_name(new_name)?;
+            if validated == req.name {
+                return Err("Der neue Name entspricht dem bisherigen Namen.".to_string());
+            }
+            Ok(format!(
+                "ALTER {keyword} {qualified} RENAME TO {};",
+                quote_ident(&validated)
+            ))
+        }
+        other => Err(format!("Unbekannte Aktion: {other}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{redact_connection_string, split_statements, validate_table_filter};
+
+    use super::{build_object_ddl, validate_object_name, ObjectDdlRequest};
+
+    fn ddl_req(object_type: &str, action: &str) -> ObjectDdlRequest {
+        ObjectDdlRequest {
+            schema: "public".to_string(),
+            name: "kunden".to_string(),
+            object_type: object_type.to_string(),
+            action: action.to_string(),
+            cascade: false,
+            new_name: None,
+        }
+    }
+
+    #[test]
+    fn drop_table_defaults_to_restrict() {
+        let sql = build_object_ddl(&ddl_req("table", "drop")).unwrap();
+        assert_eq!(sql, "DROP TABLE \"public\".\"kunden\" RESTRICT;");
+    }
+
+    #[test]
+    fn drop_view_with_cascade() {
+        let mut req = ddl_req("view", "drop");
+        req.cascade = true;
+        let sql = build_object_ddl(&req).unwrap();
+        assert_eq!(sql, "DROP VIEW \"public\".\"kunden\" CASCADE;");
+    }
+
+    #[test]
+    fn rename_materialized_view() {
+        let mut req = ddl_req("materialized_view", "rename");
+        req.new_name = Some("kunden_alt".to_string());
+        let sql = build_object_ddl(&req).unwrap();
+        assert_eq!(
+            sql,
+            "ALTER MATERIALIZED VIEW \"public\".\"kunden\" RENAME TO \"kunden_alt\";"
+        );
+    }
+
+    #[test]
+    fn rename_quotes_injection_attempts() {
+        let mut req = ddl_req("table", "rename");
+        req.new_name = Some("a\"; DROP TABLE x; --".to_string());
+        assert!(build_object_ddl(&req).is_err());
+    }
+
+    #[test]
+    fn rename_rejects_empty_and_same_name() {
+        let mut req = ddl_req("table", "rename");
+        req.new_name = Some("   ".to_string());
+        assert!(build_object_ddl(&req).is_err());
+        req.new_name = Some("kunden".to_string());
+        assert!(build_object_ddl(&req).is_err());
+    }
+
+    #[test]
+    fn unknown_action_and_type_rejected() {
+        assert!(build_object_ddl(&ddl_req("table", "truncate")).is_err());
+        assert!(build_object_ddl(&ddl_req("sequence", "drop")).is_err());
+    }
+
+    #[test]
+    fn validate_object_name_trims() {
+        assert_eq!(validate_object_name("  neu  ").unwrap(), "neu");
+        assert!(validate_object_name(&"x".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn requalify_schema_replaces_only_qualifiers() {
+        let sql = "SELECT alt.id, x.alt_id FROM alt.kunde JOIN \"alt\".\"adresse\" a ON a.id = alt.kunde.id WHERE alter_wert > 1";
+        let out = super::requalify_schema(sql, "alt", "neu");
+        assert!(out.contains("\"neu\".kunde"));
+        assert!(out.contains("\"neu\".\"adresse\""));
+        assert!(out.contains("\"neu\".id"));
+        assert!(out.contains("alter_wert > 1"));
+        assert!(out.contains("x.alt_id"));
+        assert!(!out.contains("alt.kunde"));
+        assert_eq!(super::requalify_schema(sql, "alt", "alt"), sql);
+        assert_eq!(super::requalify_schema(sql, "", "neu"), sql);
+    }
 
     fn smoke_query(kind: super::DatabaseKind) -> &'static str {
         match kind {

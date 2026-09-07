@@ -24,6 +24,7 @@ interface SplitState {
   addPane: (activeKey: string | null, preferredKey?: string | null) => void;
   closePane: (index: number) => void;
   collapse: () => void;
+  applySnapshot: (panes: (string | null)[], focusedPane: number) => void;
   focusPane: (index: number) => void;
   reveal: (key: string) => void;
   prune: (validKeys: Set<string>) => void;
@@ -90,6 +91,13 @@ export const useSplitView = create<SplitState>()(
         }),
 
       collapse: () => set((state) => snapshot([], 0, state)),
+
+      applySnapshot: (panes, focusedPane) =>
+        set((state) =>
+          panes.length <= 1
+            ? snapshot([], 0, state)
+            : snapshot(panes, Math.min(Math.max(focusedPane, 0), panes.length - 1), state),
+        ),
 
       focusPane: (index) =>
         set((state) => {

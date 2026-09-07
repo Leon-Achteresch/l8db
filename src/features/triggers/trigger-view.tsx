@@ -23,7 +23,7 @@ import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/triggers/$schema/$table/$trigger");
+const routeApi = getRouteApi("/_app/_workspace/triggers/$schema/$table/$trigger");
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -311,7 +311,7 @@ function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language: "plsql",
       theme: themeFor(resolvedTheme),
       automaticLayout: true,
       minimap: { enabled: false },

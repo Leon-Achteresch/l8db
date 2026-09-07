@@ -6,17 +6,20 @@ pub use oracle::Connection;
 use oracle::{Connector, Row};
 
 use super::pool::PoolState;
+use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
-    ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter, DatabaseOverview,
-    DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult, SchemaSize,
-    SequenceInfo, SessionInfo, TableData, TableInfo, TriggerInfo,
+    ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
+    DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ForeignKeyInfo,
+    FunctionInfo, IndexInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
     user: String,
     password: String,
     connect_string: String,
+    tcp: Option<(String, u16)>,
     pool_state: PoolState,
     key: String,
 }
@@ -153,24 +156,63 @@ impl OracleAdapter {
         } else {
             format!("//{host}:{}/{service}", url.port().unwrap_or(1521))
         };
+        let mut from_override = false;
         for (k, v) in url.query_pairs() {
             if k == "connect_string" || k == "tns" {
                 connect_string = v.into_owned();
+                from_override = true;
             }
         }
         if connect_string.is_empty() {
             return Err("Service-Name fehlt in der URL".to_string());
         }
+        let tcp = if from_override {
+            ezconnect_endpoint(&connect_string)
+        } else {
+            Some((host, url.port().unwrap_or(1521)))
+        };
         Ok(Self {
             user: percent(url.username()),
             password: percent(url.password().unwrap_or("")),
             connect_string,
+            tcp,
             pool_state,
             key,
         })
     }
 
+    async fn ensure_reachable(&self) -> Result<(), String> {
+        let Some((host, port)) = self.tcp.clone() else {
+            return Ok(());
+        };
+        let target = format!("{host}:{port}");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            tokio::net::TcpStream::connect(target.as_str()),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "Oracle-Host {host}:{port} antwortet nicht (TCP-Timeout nach 8 s). Prüfe VPN, Firewall und Hostnamen."
+            )
+        })?
+        .map_err(|e| {
+            let detail = e.to_string();
+            if detail.contains("lookup")
+                || detail.contains("resolve")
+                || detail.contains("nodename")
+                || detail.contains("Name or service not known")
+            {
+                format!("Oracle-Host {host} kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN.")
+            } else {
+                format!("Oracle-Host {host}:{port} ist nicht erreichbar: {detail}")
+            }
+        })?;
+        Ok(())
+    }
+
     pub async fn open_connection(&self) -> Result<Mutex<Connection>, String> {
+        self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
             self.password.clone(),
@@ -241,6 +283,36 @@ fn percent(value: &str) -> String {
         .next()
         .map(|(_, v)| v.into_owned())
         .unwrap_or_else(|| value.to_string())
+}
+
+fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
+    let rest = value.trim().strip_prefix("//").unwrap_or(value.trim());
+    if rest.is_empty() || rest.starts_with('(') {
+        return None;
+    }
+    let (head, service) = match rest.rfind('/') {
+        Some(slash) => (&rest[..slash], rest[slash + 1..].trim()),
+        None => {
+            let mut parts = rest.split(':');
+            match (parts.next(), parts.next(), parts.next(), parts.next()) {
+                (Some(host), Some(port), Some(_), None) => {
+                    return Some((host.trim().to_string(), port.trim().parse().ok()?));
+                }
+                _ => return None,
+            }
+        }
+    };
+    if head.trim().is_empty() || service.is_empty() {
+        return None;
+    }
+    let (host, port) = match head.trim().rsplit_once(':') {
+        Some((host, port)) => (host.trim(), port.trim().parse().ok()?),
+        None => (head.trim(), 1521),
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), port))
 }
 
 #[async_trait]
@@ -401,6 +473,42 @@ impl DatabaseAdapter for OracleAdapter {
         })
     }
 
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        let sql = if enabled {
+            "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;"
+        } else {
+            "BEGIN DBMS_OUTPUT.DISABLE; END;"
+        };
+        self.run(move |c| c.execute(sql, &[]).map(|_| ()).map_err(map_err))
+            .await
+    }
+
+    async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
+        self.run(move |c| {
+            let mut stmt = c
+                .statement("BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;")
+                .build()
+                .map_err(map_err)?;
+            let mut lines = Vec::new();
+            while lines.len() < 2000 {
+                stmt.execute(&[&OracleType::Varchar2(32767), &OracleType::Int64])
+                    .map_err(map_err)?;
+                let status: i64 = stmt.bind_value(2).map_err(map_err)?;
+                if status != 0 {
+                    break;
+                }
+                let line: Option<String> = stmt.bind_value(1).map_err(map_err)?;
+                lines.push(ServerMessage {
+                    level: "OUTPUT".to_string(),
+                    message: line.unwrap_or_default(),
+                    detail: None,
+                });
+            }
+            Ok(lines)
+        })
+        .await
+    }
+
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let sql = format!(
             "SELECT owner, view_name FROM all_views WHERE {} ORDER BY view_name",
@@ -456,7 +564,7 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
-        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type IN ('FUNCTION', 'PROCEDURE', 'PACKAGE') AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type IN ('FUNCTION', 'PACKAGE') AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
         Ok(self
             .rows(sql)
             .await?
@@ -483,6 +591,254 @@ impl DatabaseAdapter for OracleAdapter {
             return Err("Quelltext nicht verfügbar".to_string());
         }
         Ok(rows.iter().map(|r| s(r, 0)).collect::<String>())
+    }
+
+    async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
+        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type = 'PROCEDURE' AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| FunctionInfo {
+                oid: format!("{}\u{1f}{}\u{1f}{}", s(r, 0), s(r, 1), s(r, 2)),
+                schema: s(r, 0),
+                name: s(r, 1),
+                identity_args: String::new(),
+                return_type: "PROCEDURE".to_string(),
+                language: "PL/SQL".to_string(),
+            })
+            .collect())
+    }
+
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
+        let deps = self
+            .rows(format!(
+                "SELECT d.owner, d.name, d.type, NVL(o.status, 'UNKNOWN') \
+                 FROM all_dependencies d \
+                 LEFT JOIN all_objects o ON o.owner = d.owner AND o.object_name = d.name \
+                   AND o.object_type = d.type \
+                 WHERE d.referenced_owner = {} AND d.referenced_name = {} \
+                 ORDER BY d.owner, d.type, d.name",
+                lit(schema),
+                lit(name)
+            ))
+            .await
+            .map_err(|e| {
+                format!("ALL_DEPENDENCIES ist nicht lesbar (fehlende Leserechte?): {e}")
+            })?;
+        let mut out: Vec<DependencyInfo> = deps
+            .iter()
+            .filter(|r| !(s(r, 0) == schema && s(r, 1) == name))
+            .map(|r| DependencyInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                object_type: s(r, 2).to_lowercase(),
+                status: s(r, 3),
+                relation: "Abhängigkeit".to_string(),
+                oid: format!("{}\u{1f}{}\u{1f}{}", s(r, 0), s(r, 1), s(r, 2)),
+                detail: String::new(),
+            })
+            .collect();
+
+        let fks = self
+            .rows(format!(
+                "SELECT c.owner, c.table_name, c.constraint_name, NVL(c.status, 'UNKNOWN') \
+                 FROM all_constraints c \
+                 JOIN all_constraints r ON r.owner = c.r_owner \
+                   AND r.constraint_name = c.r_constraint_name \
+                 WHERE c.constraint_type = 'R' AND r.owner = {} AND r.table_name = {} \
+                 ORDER BY c.owner, c.table_name",
+                lit(schema),
+                lit(name)
+            ))
+            .await
+            .unwrap_or_default();
+        for r in fks.iter() {
+            out.push(DependencyInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                object_type: "table".to_string(),
+                status: s(r, 3),
+                relation: "Fremdschlüssel".to_string(),
+                oid: String::new(),
+                detail: s(r, 2),
+            });
+        }
+        Ok(out)
+    }
+
+    async fn list_synonyms(&self, schema: Option<&str>) -> Result<Vec<SynonymInfo>, String> {
+        let rows = self
+            .rows(format!(
+                "SELECT s.owner, s.synonym_name, s.table_owner, s.table_name, s.db_link, \
+                        NVL(o.object_type, 'UNKNOWN'), NVL(o.status, 'INVALID') \
+                 FROM all_synonyms s \
+                 LEFT JOIN all_objects o ON o.owner = s.table_owner \
+                   AND o.object_name = s.table_name \
+                 WHERE {} \
+                 ORDER BY s.synonym_name",
+                Self::owner_filter(schema, "s.owner")
+            ))
+            .await
+            .map_err(|e| format!("ALL_SYNONYMS ist nicht lesbar (fehlende Leserechte?): {e}"))?;
+        Ok(rows
+            .iter()
+            .map(|r| SynonymInfo {
+                owner: s(r, 0),
+                name: s(r, 1),
+                target_owner: s(r, 2),
+                target_name: s(r, 3),
+                target_type: s(r, 5).to_lowercase(),
+                db_link: s_opt(r, 4),
+                status: s(r, 6),
+            })
+            .collect())
+    }
+
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        let rows = self
+            .rows(
+                "SELECT j.owner, j.job_name, j.enabled, j.state, \
+                        NVL(j.repeat_interval, NVL(j.schedule_name, ' ')), NVL(j.job_action, ' '), \
+                        TO_CHAR(j.last_start_date, 'YYYY-MM-DD HH24:MI:SS'), \
+                        TO_CHAR(j.next_run_date, 'YYYY-MM-DD HH24:MI:SS'), \
+                        (SELECT status FROM (SELECT d.status FROM all_scheduler_job_run_details d \
+                           WHERE d.owner = j.owner AND d.job_name = j.job_name \
+                           ORDER BY d.log_date DESC) WHERE ROWNUM = 1), \
+                        (SELECT additional_info FROM (SELECT d.additional_info FROM \
+                           all_scheduler_job_run_details d \
+                           WHERE d.owner = j.owner AND d.job_name = j.job_name \
+                             AND d.status <> 'SUCCEEDED' \
+                           ORDER BY d.log_date DESC) WHERE ROWNUM = 1) \
+                 FROM all_scheduler_jobs j ORDER BY j.owner, j.job_name"
+                    .to_string(),
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Scheduler-Jobs sind nicht lesbar (Recht auf ALL_SCHEDULER_JOBS fehlt?): {e}"
+                )
+            })?;
+        Ok(rows
+            .iter()
+            .map(|r| SchedulerJobInfo {
+                id: format!("{}.{}", s(r, 0), s(r, 1)),
+                owner: s(r, 0),
+                name: s(r, 1),
+                enabled: s(r, 2).eq_ignore_ascii_case("TRUE"),
+                state: s(r, 3),
+                schedule: s(r, 4).trim().to_string(),
+                command: s(r, 5).trim().to_string(),
+                last_run: s_opt(r, 6),
+                last_status: s_opt(r, 8),
+                last_error: s_opt(r, 9),
+                next_run: s_opt(r, 7),
+            })
+            .collect())
+    }
+
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        let action = if enabled { "ENABLE" } else { "DISABLE" };
+        self.exec(format!(
+            "BEGIN DBMS_SCHEDULER.{action}({}); END;",
+            lit(job_id)
+        ))
+        .await
+        .map(|_| ())
+    }
+
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        self.exec(format!(
+            "BEGIN DBMS_SCHEDULER.RUN_JOB({}, FALSE); END;",
+            lit(job_id)
+        ))
+        .await
+        .map(|_| ())
+    }
+
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        let parts: Vec<&str> = oid.split('\u{1f}').collect();
+        if parts.len() != 3 {
+            return Err("Ungültige Objektreferenz".to_string());
+        }
+        let (owner, name) = (parts[0], parts[1]);
+        let (compile_kind, error_type) = match object_type {
+            "package_spec" => ("PACKAGE".to_string(), "PACKAGE".to_string()),
+            "package_body" => ("PACKAGE BODY".to_string(), "PACKAGE BODY".to_string()),
+            other => (other.to_uppercase(), other.to_uppercase()),
+        };
+        let compile_error = self
+            .exec(format!(
+                "ALTER {} {}.{} COMPILE",
+                compile_kind,
+                quote(owner),
+                quote(name)
+            ))
+            .await
+            .err();
+        let errors = self
+            .rows(format!(
+                "SELECT line, position, text FROM all_errors WHERE owner = {} AND name = {} AND type = {} ORDER BY sequence",
+                lit(owner),
+                lit(name),
+                lit(&error_type)
+            ))
+            .await?;
+        if errors.is_empty() {
+            if let Some(message) = compile_error {
+                return Err(message);
+            }
+            return Ok(CompileResult {
+                status: "VALID".to_string(),
+                message: None,
+                line: None,
+                position: None,
+            });
+        }
+        let line = s(&errors[0], 0).parse::<i32>().ok();
+        let position = s(&errors[0], 1).parse::<i32>().ok();
+        let message = errors
+            .iter()
+            .map(|r| format!("Zeile {}, Spalte {}: {}", s(r, 0), s(r, 1), s(r, 2)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(CompileResult {
+            status: "INVALID".to_string(),
+            message: Some(message),
+            line,
+            position,
+        })
+    }
+
+    async fn start_debug_session(
+        &self,
+        oid: &str,
+        object_type: &str,
+    ) -> Result<DebugSessionInfo, String> {
+        let _ = object_type;
+        let parts: Vec<&str> = oid.split('\u{1f}').collect();
+        if parts.len() != 3 {
+            return Err("Ungültige Objektreferenz".to_string());
+        }
+        let privileges = self
+            .rows(
+                "SELECT privilege FROM session_privs WHERE privilege = 'DEBUG CONNECT SESSION'"
+                    .to_string(),
+            )
+            .await?;
+        if privileges.is_empty() {
+            return Ok(DebugSessionInfo {
+                available: false,
+                message: "Keine Debug-Rechte: DEBUG CONNECT SESSION fehlt. Ohne dieses Recht ist keine Debug-Sitzung möglich; eine direkte Ausführung erfolgt nicht.".to_string(),
+            });
+        }
+        Ok(DebugSessionInfo {
+            available: false,
+            message: format!(
+                "Debug-Rechte vorhanden. Die schrittweise Ausführung von {}.{} über DBMS_DEBUG ist noch nicht verfügbar.",
+                parts[0], parts[1]
+            ),
+        })
     }
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
@@ -818,6 +1174,7 @@ impl DatabaseAdapter for OracleAdapter {
                 transaction_start: None,
                 wait_event: s_opt(r, 7),
                 is_self: i(r, 8) == 1,
+                blocked_by: Vec::new(),
             })
             .collect())
     }
@@ -923,6 +1280,7 @@ mod tests {
         .unwrap();
         assert_eq!(a.connect_string, "//db.example.com:1522/FREEPDB1");
         assert_eq!(a.password, "p@ss");
+        assert_eq!(a.tcp, Some(("db.example.com".to_string(), 1522)));
         assert!(OracleAdapter::new(
             "oracle://x@host",
             crate::db::pool::create_pool_state(),
@@ -938,7 +1296,56 @@ mod tests {
         assert_eq!(alias.user, "scott");
         assert_eq!(alias.password, "tiger");
         assert_eq!(alias.connect_string, "ORCL");
+        assert_eq!(alias.tcp, None);
+        let corporate = OracleAdapter::new(
+            "oracle://DEV_ACHTERESCH:XXX@csorastby.rzhit.win:1521/sltest.rzhit.win",
+            crate::db::pool::create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            corporate.connect_string,
+            "//csorastby.rzhit.win:1521/sltest.rzhit.win"
+        );
+        assert_eq!(
+            corporate.tcp,
+            Some(("csorastby.rzhit.win".to_string(), 1521))
+        );
         assert!(is_query("  with x as (select 1 from dual) select * from x"));
+    }
+
+    #[test]
+    fn parses_ezconnect_endpoints() {
+        assert_eq!(
+            ezconnect_endpoint("//db.example.com:1521/ORCLPDB"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(
+            ezconnect_endpoint("db.example.com/ORCLPDB"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(
+            ezconnect_endpoint("db.example.com:1521:ORCL"),
+            Some(("db.example.com".to_string(), 1521))
+        );
+        assert_eq!(ezconnect_endpoint("ORCL"), None);
+        assert_eq!(
+            ezconnect_endpoint("(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=h)(PORT=1521)))"),
+            None
+        );
+        assert_eq!(ezconnect_endpoint("//db.example.com:99999/ORCLPDB"), None);
+    }
+
+    #[tokio::test]
+    async fn unreachable_tcp_fails_fast() {
+        let adapter = OracleAdapter::new(
+            "oracle://scott:tiger@127.0.0.1:1/ORCL",
+            crate::db::pool::create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        let error = adapter.ensure_reachable().await.unwrap_err();
+        assert!(error.contains("127.0.0.1:1"), "{error}");
     }
 }
 

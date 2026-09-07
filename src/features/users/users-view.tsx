@@ -14,6 +14,7 @@ import {
   UndoIcon,
   UserIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -57,12 +58,13 @@ import {
   type TablePrivileges,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useRolePrivilegesQuery, useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
-const routeApi = getRouteApi("/_app/users/$name");
+const routeApi = getRouteApi("/_app/_workspace/users/$name");
 
 const TABLE_PRIVS = [
   "SELECT",
@@ -663,7 +665,7 @@ function SchemaTableGroup({
   const totalCount = tables.length * TABLE_PRIVS.length;
 
   return (
-    <div className="rounded-lg border">
+    <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="rounded-lg border">
       <button
         type="button"
         onClick={() => setCollapsed(!collapsed)}
@@ -721,7 +723,7 @@ function SchemaTableGroup({
           </table>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
