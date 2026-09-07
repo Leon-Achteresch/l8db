@@ -74,7 +74,7 @@ import { useQueryRevealStore } from "@/lib/query-reveal";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
-import { splitSqlStatements, statementAtOffset } from "@/lib/sql-statements";
+import { splitSqlStatements, sqlToRun, statementAtOffset } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
@@ -430,8 +430,8 @@ export function QueryView({ tabId }: QueryViewProps) {
   const handleRun = useCallback(() => {
     setStatementRange(null);
     setStatementError(null);
-    void runSql(sql);
-  }, [runSql, sql]);
+    void runSql(sqlToRun(sql, selectedSql));
+  }, [runSql, sql, selectedSql]);
 
   const handleRunSelection = useCallback(() => {
     if (!selectedSql.trim()) return;
@@ -457,6 +457,8 @@ export function QueryView({ tabId }: QueryViewProps) {
     setStatementRange({ start: statement.start, end: statement.end });
     void runSql(statement.text);
   }, [cursorOffset, handleRunSelection, runSql, selectedSql, sql]);
+
+  const hasSelection = selectedSql.trim().length > 0;
 
   const scriptSplit = useMemo(() => splitSqlStatements(sql), [sql]);
 
@@ -720,21 +722,14 @@ export function QueryView({ tabId }: QueryViewProps) {
             data-tour="query-run"
             onClick={handleRun}
             disabled={isRunning || !connection}
+            title={
+              hasSelection
+                ? "Nur den markierten Text ausführen (Cmd/Ctrl+Enter)"
+                : "Gesamten Editor-Inhalt ausführen (Cmd/Ctrl+Enter)"
+            }
           >
-            <PlayIcon className="size-3" />
-            Ausführen
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 px-3 text-xs"
-            data-tour="query-run-selection"
-            onClick={handleRunSelection}
-            disabled={isRunning || !connection || !selectedSql.trim()}
-            title="Nur den markierten Text ausführen (Cmd/Ctrl+Shift+Enter)"
-          >
-            <TextSelectIcon className="size-3" />
-            Auswahl
+            {hasSelection ? <TextSelectIcon className="size-3" /> : <PlayIcon className="size-3" />}
+            {hasSelection ? "Auswahl ausführen" : "Ausführen"}
           </Button>
           <Button
             size="sm"

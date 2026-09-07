@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SqlEditorPane } from "@/features/functions/function-view";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import {
+  OpenInQueryEditorButton,
+  SqlEditActions,
+  SqlEditFeedback,
+  SqlEditHint,
+  useSqlObjectEdit,
+} from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
@@ -90,6 +97,7 @@ function PackagePartPanel({
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid);
   const capabilities = useActiveCapabilities();
   const { compile, state: compileState } = useCompileObject();
+  const edit = useSqlObjectEdit(label, data ?? "");
   const compileResult = compileState.status === "done" ? compileState.result : null;
   const revealLine = member
     ? parsePlsqlMembers(data ?? "").find((m) => m.name === member.toUpperCase())?.line
@@ -103,15 +111,17 @@ function PackagePartPanel({
             {compileResult.status}
           </Badge>
         ) : null}
-        {capabilities.compile_objects ? (
+        <span className="ml-auto" />
+        <OpenInQueryEditorButton sql={data ?? ""} title={label} />
+        {!edit.editing && capabilities.compile_objects ? (
           <Button
             variant="outline"
             size="xs"
-            className="ml-auto"
             onClick={() =>
               void compile(oid, part === "spec" ? "package_spec" : "package_body", label)
             }
             disabled={compileState.status === "loading"}
+            title="Kompiliert das gespeicherte Objekt in der Datenbank neu — ohne den Quelltext zu ändern."
           >
             {compileState.status === "loading" ? (
               <LoaderIcon data-icon="inline-start" className="animate-spin" />
@@ -121,6 +131,7 @@ function PackagePartPanel({
             Kompilieren
           </Button>
         ) : null}
+        <SqlEditActions edit={edit} />
       </div>
       <AccordionPrimitive.Content className="flex min-h-0 flex-1 flex-col pb-2">
         {isLoading ? (
@@ -133,13 +144,16 @@ function PackagePartPanel({
           <p className="text-xs text-muted-foreground">{String(error)}</p>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
+            {edit.editing ? <SqlEditHint /> : null}
             <div className="min-h-0 flex-1 rounded-md border">
               <SqlEditorPane
-                value={data ?? ""}
-                readOnly
+                value={edit.editing ? edit.sql : (data ?? "")}
+                readOnly={!edit.editing}
+                onChange={edit.editing ? edit.setSql : undefined}
                 revealLine={compileResult?.line ?? revealLine}
               />
             </div>
+            <SqlEditFeedback state={edit.state} />
             {compileResult && compileResult.status !== "VALID" ? (
               <div className="flex flex-col gap-1 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
                 <span className="text-xs font-semibold text-destructive">

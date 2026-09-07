@@ -184,7 +184,12 @@ export function addSqlFormatAction(
     contextMenuGroupId: "1_modification",
     contextMenuOrder: 1.5,
     run(ed) {
-      void ed.getAction("editor.action.formatDocument")?.run();
+      const selection = ed.getSelection();
+      const action =
+        selection && !selection.isEmpty()
+          ? "editor.action.formatSelection"
+          : "editor.action.formatDocument";
+      void ed.getAction(action)?.run();
     },
   });
   return {

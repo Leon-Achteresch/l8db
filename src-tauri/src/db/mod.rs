@@ -591,7 +591,9 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn validate_sql(&self, sql: &str) -> Result<(), String> {
         let _ = sql;
-        Ok(())
+        Err(unsupported(
+            "Prüfen ohne Speichern (kein transaktionales DDL)",
+        ))
     }
     async fn list_foreign_keys(
         &self,
