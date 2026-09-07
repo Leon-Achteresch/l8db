@@ -52,6 +52,7 @@ pub struct Capabilities {
     pub schema_snapshot: bool,
     pub full_table_export: bool,
     pub data_compare: bool,
+    pub schema_object_copy: bool,
     pub procedures: bool,
     pub compile_objects: bool,
     pub debugger: bool,
@@ -60,6 +61,7 @@ pub struct Capabilities {
     pub used_by: bool,
     pub synonyms: bool,
     pub scheduler_jobs: bool,
+    pub object_admin: bool,
     pub ssl: bool,
     pub ssh: bool,
     pub query_language: &'static str,
@@ -101,6 +103,7 @@ const NONE: Capabilities = Capabilities {
     schema_snapshot: false,
     full_table_export: false,
     data_compare: false,
+    schema_object_copy: false,
     procedures: false,
     compile_objects: false,
     debugger: false,
@@ -108,6 +111,7 @@ const NONE: Capabilities = Capabilities {
     used_by: false,
     synonyms: false,
     scheduler_jobs: false,
+    object_admin: false,
     server_output: false,
     ssl: true,
     ssh: true,
@@ -149,6 +153,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                object_admin: true,
                 bind_parameters: true,
                 server_output: true,
                 used_by: true,
@@ -160,6 +165,7 @@ impl DatabaseKind {
                 schema_snapshot: true,
                 full_table_export: true,
                 data_compare: true,
+                schema_object_copy: true,
                 procedures: true,
                 compile_objects: true,
                 materialized_views: true,

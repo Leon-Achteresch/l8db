@@ -29,6 +29,7 @@ const WRITE_COMMANDS = new Set([
   "drop_table",
   "duplicate_row_in_transaction",
   "execute_in_transaction",
+  "execute_object_ddl",
   "execute_in_transaction_with_params",
   "insert_row_in_transaction",
   "install_extension",
@@ -124,6 +125,7 @@ export interface Capabilities {
   used_by: boolean;
   synonyms: boolean;
   scheduler_jobs: boolean;
+  object_admin: boolean;
   server_output: boolean;
   ssl: boolean;
   ssh: boolean;
@@ -1798,4 +1800,76 @@ export async function takeServerOutput(
   database?: string,
 ): Promise<ServerMessage[]> {
   return invoke("take_server_output", { kind, connectionString, database });
+}
+
+export type ObjectAdminType = "table" | "view" | "materialized_view";
+
+export type ObjectAdminAction = "drop" | "rename";
+
+export interface ObjectDdlRequest {
+  schema: string;
+  name: string;
+  object_type: ObjectAdminType;
+  action: ObjectAdminAction;
+  cascade: boolean;
+  new_name: string | null;
+}
+
+export interface ObjectDependent {
+  schema: string;
+  name: string;
+  object_type: string;
+}
+
+export interface ObjectAuditInfo {
+  schema: string;
+  name: string;
+  object_type: string;
+  owner: string | null;
+  size: string | null;
+  row_estimate: number | null;
+  created_at: string | null;
+  changed_at: string | null;
+  last_vacuum: string | null;
+  last_autovacuum: string | null;
+  last_analyze: string | null;
+  last_autoanalyze: string | null;
+  dependents: ObjectDependent[];
+  notes: string[];
+}
+
+export async function previewObjectDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: ObjectDdlRequest,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_object_ddl", { kind, connectionString, database, request });
+}
+
+export async function executeObjectDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: ObjectDdlRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("execute_object_ddl", { kind, connectionString, database, request });
+}
+
+export async function objectAuditInfo(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  objectType: ObjectAdminType,
+  database?: string,
+): Promise<ObjectAuditInfo> {
+  return invoke("object_audit_info", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    name,
+    objectType,
+  });
 }

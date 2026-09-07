@@ -54,7 +54,12 @@ export function AboutHero() {
           layout
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.08, ease: [0.22, 1, 0.36, 1], layout: SPRING_LAYOUT }}
+          transition={{
+            duration: 0.55,
+            delay: 0.08,
+            ease: [0.22, 1, 0.36, 1],
+            layout: SPRING_LAYOUT,
+          }}
           className="mt-6 text-balance text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl"
         >
           Datenbanken,
@@ -67,7 +72,12 @@ export function AboutHero() {
           layout
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.16, ease: [0.22, 1, 0.36, 1], layout: SPRING_LAYOUT }}
+          transition={{
+            duration: 0.55,
+            delay: 0.16,
+            ease: [0.22, 1, 0.36, 1],
+            layout: SPRING_LAYOUT,
+          }}
           className="mt-4 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-base"
         >
           l8db ist ein schneller, nativer Desktop-Client für PostgreSQL und viele weitere
@@ -78,7 +88,12 @@ export function AboutHero() {
           layout
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.24, ease: [0.22, 1, 0.36, 1], layout: SPRING_LAYOUT }}
+          transition={{
+            duration: 0.55,
+            delay: 0.24,
+            ease: [0.22, 1, 0.36, 1],
+            layout: SPRING_LAYOUT,
+          }}
           className="mt-7 flex flex-wrap items-center justify-center gap-2.5"
         >
           <Button asChild size="lg" className="rounded-full px-5">

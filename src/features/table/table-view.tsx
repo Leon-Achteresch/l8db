@@ -6,6 +6,7 @@ import {
   CodeIcon,
   Columns2Icon,
   DownloadIcon,
+  GaugeIcon,
   LayersIcon,
   LoaderIcon,
   NetworkIcon,
@@ -34,6 +35,7 @@ import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
+import { TablePerfPanel } from "@/features/table/table-perf-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
@@ -60,7 +62,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
 
-type ViewTab = "data" | "definition" | "columns" | "used-by";
+type ViewTab = "data" | "definition" | "columns" | "used-by" | "performance";
 type TableTab =
   | "data"
   | "triggers"
@@ -68,7 +70,8 @@ type TableTab =
   | "indexes"
   | "rls"
   | "partitions"
-  | "used-by";
+  | "used-by"
+  | "performance";
 
 export function TableView() {
   const { schema, table } = routeApi.useParams();
@@ -377,6 +380,12 @@ export function TableView() {
                 Used By
               </TabsTrigger>
             )}
+            {caps.explain && (
+              <TabsTrigger value="performance">
+                <GaugeIcon className="size-3.5" />
+                Performance
+              </TabsTrigger>
+            )}
           </TabsList>
           {viewTab === "data" && data && (
             <DropdownMenu>
@@ -425,6 +434,13 @@ export function TableView() {
         <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TableUsedByPanel schema={schema} name={table} />
         </TabsContent>
+
+        <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.explain && (
+            <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
+          )}
+        </TabsContent>
+
         <CsvExportDialog
           open={csvExportOpen}
           onOpenChange={setCsvExportOpen}
@@ -484,6 +500,12 @@ export function TableView() {
             <TabsTrigger value="used-by">
               <NetworkIcon className="size-3.5" />
               Used By
+            </TabsTrigger>
+          )}
+          {caps.explain && (
+            <TabsTrigger value="performance">
+              <GaugeIcon className="size-3.5" />
+              Performance
             </TabsTrigger>
           )}
         </TabsList>
@@ -564,6 +586,12 @@ export function TableView() {
 
       <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableUsedByPanel schema={schema} name={table} />
+      </TabsContent>
+
+      <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {caps.explain && (
+          <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+        )}
       </TabsContent>
 
       <NewRowDialog
