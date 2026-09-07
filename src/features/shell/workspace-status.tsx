@@ -2,6 +2,7 @@ import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
+import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 
@@ -28,8 +29,10 @@ export function WorkspaceStatus() {
             {database} / {schema}
           </span>
         )}
+        <ExtensionStatusBarItems side="left" />
       </div>
       <div className="flex shrink-0 items-center gap-3">
+        <ExtensionStatusBarItems side="right" />
         {Boolean(fetching) && <span role="status">Daten werden geladen…</span>}
         {connection && (
           <span className="hidden items-center gap-1 sm:flex">

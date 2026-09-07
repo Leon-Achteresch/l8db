@@ -1,5 +1,6 @@
 mod community_extensions;
 mod db;
+mod extension_process;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
+            extension_process::extension_process_run,
             db::commands::list_providers,
             db::commands::driver_status,
             db::commands::install_driver,

@@ -29,6 +29,12 @@ export function isQueryTabDirty(tab: QueryTab): boolean {
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ProcedureTab = { kind: "procedure"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
+export type ExtensionPanelTab = {
+  kind: "extension-panel";
+  extensionId: string;
+  panelId: string;
+  title: string;
+};
 export type RoleTab = { kind: "role"; name: string };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
@@ -40,6 +46,7 @@ export type Tab =
   | FunctionTab
   | ProcedureTab
   | ExtensionTab
+  | ExtensionPanelTab
   | RoleTab
   | TriggerTab
   | ViewEditorTab
@@ -56,6 +63,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   if (tab.kind === "alter-table") return `alter-table:${tab.schema}.${tab.table}`;
   if (tab.kind === "package") return `package:${tab.schema}.${tab.name}`;
+  if (tab.kind === "extension-panel") return `extension-panel:${tab.extensionId}:${tab.panelId}`;
   return `extension:${tab.name}`;
 }
 
@@ -88,6 +96,7 @@ interface TabsState {
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
   openProcedureTab: (tab: Omit<ProcedureTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
+  openExtensionPanel: (tab: Omit<ExtensionPanelTab, "kind">) => void;
   openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
   openTriggerTab: (tab: Omit<TriggerTab, "kind">) => void;
   openViewEditorTab: (tab: Omit<ViewEditorTab, "kind">) => void;
@@ -225,6 +234,18 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
           return storeFor([...state.tabs, et], state);
+        });
+      },
+
+      openExtensionPanel: (tab) => {
+        const et: ExtensionPanelTab = { kind: "extension-panel", ...tab };
+        const key = tabKey(et);
+        set((state) => {
+          const index = state.tabs.findIndex((t) => tabKey(t) === key);
+          if (index === -1) return storeFor([...state.tabs, et], state);
+          const tabs = [...state.tabs];
+          tabs[index] = et;
+          return storeFor(tabs, state);
         });
       },
 
@@ -427,7 +448,7 @@ export const useTableTabs = create<TabsState>()(
     {
       name: "l8db.table-tabs",
       storage: createBufferedJsonStorage(() => window.localStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {
           const old = persistedState as { tabs: { schema: string; table: string }[] };

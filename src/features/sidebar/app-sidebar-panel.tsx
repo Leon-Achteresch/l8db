@@ -104,6 +104,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
@@ -637,6 +638,7 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
+        <ExtensionSidebarViews />
         {searchModalMounted && (
           <Suspense fallback={null}>
             <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />

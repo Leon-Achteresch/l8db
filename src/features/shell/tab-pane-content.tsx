@@ -11,6 +11,11 @@ const ExtensionView = lazy(() =>
     default: module.ExtensionView,
   })),
 );
+const ExtensionPanelView = lazy(() =>
+  import("@/features/extensions/extension-panel-view").then((module) => ({
+    default: module.ExtensionPanelView,
+  })),
+);
 const FunctionView = lazy(() =>
   import("@/features/functions/function-view").then((module) => ({ default: module.FunctionView })),
 );
@@ -66,6 +71,8 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
       return <ViewEditorView schema={tab.schema} view={tab.view} />;
     case "alter-table":
       return <AlterTableView schema={tab.schema} table={tab.table} />;
+    case "extension-panel":
+      return <ExtensionPanelView extensionId={tab.extensionId} panelId={tab.panelId} />;
     default:
       return <ExtensionView name={tab.name} />;
   }
