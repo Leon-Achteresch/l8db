@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -14,6 +14,7 @@ import {
   UndoIcon,
   UserIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -57,12 +58,11 @@ import {
   type TablePrivileges,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useRolePrivilegesQuery, useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
-
-const routeApi = getRouteApi("/_app/users/$name");
 
 const TABLE_PRIVS = [
   "SELECT",
@@ -107,8 +107,7 @@ function privKey(tp: TablePrivileges, priv: string): boolean {
   }
 }
 
-export function UsersView() {
-  const { name } = routeApi.useParams();
+export function UsersView({ name }: { name: string }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -663,7 +662,7 @@ function SchemaTableGroup({
   const totalCount = tables.length * TABLE_PRIVS.length;
 
   return (
-    <div className="rounded-lg border">
+    <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="rounded-lg border">
       <button
         type="button"
         onClick={() => setCollapsed(!collapsed)}
@@ -721,7 +720,7 @@ function SchemaTableGroup({
           </table>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

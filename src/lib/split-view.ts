@@ -26,6 +26,8 @@ interface SplitState {
   collapse: () => void;
   focusPane: (index: number) => void;
   reveal: (key: string) => void;
+  setPane: (index: number, key: string) => void;
+  swapPanes: (from: number, to: number) => void;
   prune: (validKeys: Set<string>) => void;
   clearForConnection: (connectionId: string) => void;
 }
@@ -109,6 +111,28 @@ export const useSplitView = create<SplitState>()(
           const panes = [...state.panes];
           panes[state.focusedPane] = key;
           return snapshot(panes, state.focusedPane, state);
+        }),
+
+      setPane: (index, key) =>
+        set((state) => {
+          if (index < 0 || index >= state.panes.length) return state;
+          if (state.panes[index] === key) {
+            return index === state.focusedPane ? state : snapshot(state.panes, index, state);
+          }
+          const panes = [...state.panes];
+          const existing = panes.indexOf(key);
+          if (existing !== -1) panes[existing] = panes[index];
+          panes[index] = key;
+          return snapshot(panes, index, state);
+        }),
+
+      swapPanes: (from, to) =>
+        set((state) => {
+          const max = state.panes.length;
+          if (from === to || from < 0 || to < 0 || from >= max || to >= max) return state;
+          const panes = [...state.panes];
+          [panes[from], panes[to]] = [panes[to], panes[from]];
+          return snapshot(panes, to, state);
         }),
 
       prune: (validKeys) =>

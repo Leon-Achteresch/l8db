@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getRouteApi } from "@tanstack/react-router";
 import {
   CheckCircleIcon,
   LoaderIcon,
@@ -22,8 +21,6 @@ import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-
-const routeApi = getRouteApi("/_app/extensions/$name");
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -64,8 +61,7 @@ function buildExtensionSql(ext: {
     .join("\n");
 }
 
-export function ExtensionView() {
-  const { name } = routeApi.useParams();
+export function ExtensionView({ name }: { name: string }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -302,7 +298,7 @@ function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language: "plsql",
       theme: themeFor(resolvedTheme),
       readOnly,
       domReadOnly: readOnly,

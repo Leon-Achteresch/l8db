@@ -1,9 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { GitBranchIcon, Minus, PlugZap, RefreshCw, Settings, Square, X } from "lucide-react";
+import { motion } from "motion/react";
 import { type CSSProperties, useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
+import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
+import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { SPRING_LAYOUT } from "@/lib/ease";
+import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -12,6 +18,47 @@ const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(
 
 const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
 
+function WindowControls() {
+  const win = getCurrentWindow();
+  const base =
+    "inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground";
+  return (
+    <div
+      className="absolute right-0 top-0 flex h-full items-stretch"
+      style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+    >
+      <button
+        type="button"
+        aria-label="Minimieren"
+        className={base}
+        onClick={() => void win.minimize()}
+      >
+        <Minus className="size-4" strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        aria-label="Maximieren"
+        className={base}
+        onClick={() => void win.toggleMaximize()}
+      >
+        <Square className="size-3.5" strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        aria-label="Schließen"
+        className={cn(base, "hover:bg-destructive hover:text-white")}
+        onClick={() => void win.close()}
+      >
+        <X className="size-4" strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
+
+function isNavActive(url: string, pathname: string) {
+  return url === "/" ? pathname === "/" : pathname.startsWith(url);
+}
+
 export function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const txCount = useTransactionStore((s) => s.transactions.length);
@@ -19,6 +66,8 @@ export function AppHeader() {
   const togglePanel = useTransactionStore((s) => s.togglePanel);
   const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
+
+  useWindowTitle();
 
   useEffect(() => {
     syncWithBackend();
@@ -36,19 +85,70 @@ export function AppHeader() {
         IS_WINDOWS && "pr-[140px]",
       )}
     >
+      <nav
+        data-tour="header-nav"
+        className="flex items-center gap-1 px-3"
+        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        aria-label="Bereiche"
+      >
+        <Link
+          to="/"
+          className="mr-1 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
+        >
+          l8db
+        </Link>
+        {appSidebarData.navMain.map((item) => {
+          const active = isNavActive(item.url, pathname);
+          return (
+            <Tooltip key={item.title} content={item.title} side="bottom">
+              <motion.div
+                layout="position"
+                transition={{ layout: SPRING_LAYOUT }}
+                className="relative"
+              >
+                {active && (
+                  <motion.span
+                    layoutId="header-nav-active"
+                    transition={SPRING_LAYOUT}
+                    className="absolute inset-0 rounded-full bg-primary/12"
+                  />
+                )}
+                <Link
+                  to={item.url}
+                  aria-label={item.title}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                    "hover:bg-muted hover:text-foreground",
+                    active && "text-foreground",
+                  )}
+                >
+                  <item.icon className="size-4" strokeWidth={2} />
+                </Link>
+              </motion.div>
+            </Tooltip>
+          );
+        })}
+      </nav>
+
       <div
         data-tauri-drag-region
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
-        className="flex-1 self-stretch"
-      />
-
-      <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4">
-        <div className="pointer-events-auto w-full max-w-[460px]">
-          <AppHeaderSearch />
+        className="flex min-w-0 flex-1 justify-center px-4"
+      >
+        <div
+          className="flex w-full max-w-[640px] items-center gap-2"
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        >
+          <ReadOnlyBadge />
+          <div className="min-w-0 flex-1">
+            <AppHeaderSearch />
+          </div>
         </div>
       </div>
 
       <nav
+        data-tour="header-actions"
         className="flex items-center gap-1 px-3"
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
@@ -76,6 +176,7 @@ export function AppHeader() {
           <button
             type="button"
             onClick={togglePanel}
+            data-tour="header-tx"
             aria-label="Transaktionen"
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",
@@ -131,6 +232,8 @@ export function AppHeader() {
           </Link>
         </Tooltip>
       </nav>
+
+      {IS_WINDOWS ? <WindowControls /> : null}
     </header>
   );
 }

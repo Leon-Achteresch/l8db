@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, ShieldIcon, Trash2Icon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
 import { type CreatePolicyRequest, createPolicy, dropPolicy, setTableRls } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useTableRlsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -278,8 +280,10 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
         ) : (
           <div className="flex flex-col gap-0.5">
             {data.policies.map((policy) => (
-              <div
+              <motion.div
                 key={policy.name}
+                layout
+                transition={{ layout: SPRING_LAYOUT }}
                 className="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-accent/60"
               >
                 <ShieldIcon className="size-4 shrink-0 text-emerald-500" />
@@ -311,7 +315,7 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
                 >
                   <Trash2Icon className="size-3.5" />
                 </Button>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}

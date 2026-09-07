@@ -28,18 +28,24 @@ import {
   listIndexes,
   listLocks,
   listMaterializedViews,
+  listProcedures,
   listPublications,
   listRolePrivileges,
   listRoles,
+  listSchedulerJobs,
   listSchemas,
   listSequences,
   listSessions,
   listSubscriptions,
+  listSynonyms,
   listTableColumnsDetailed,
   listTables,
   listTriggers,
+  listUsedBy,
   listViews,
   rollbackTransaction,
+  searchColumns,
+  searchSource,
   type TableData,
   type TableRowSort,
   updateRowInTransaction,
@@ -64,6 +70,7 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "columns",
   "view-definition",
   "functions",
+  "procedures",
   "function-definition",
   "extensions",
   "available-extensions",
@@ -87,6 +94,9 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "locks",
   "enums",
   "overview",
+  "used-by",
+  "synonyms",
+  "scheduler-jobs",
 ]);
 
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
@@ -182,6 +192,68 @@ export function useViewsQuery() {
   });
 }
 
+export function useAllSchemaObjectsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["all-objects", connection?.id, database],
+    queryFn: async () => {
+      const kind = connection!.kind;
+      const connectionString = effectiveConnectionString(connection!);
+      const db = database ?? undefined;
+      const [tables, views, functions, procedures] = await Promise.all([
+        listTables(kind, connectionString, db),
+        supports(connection, "views") ? listViews(kind, connectionString, db) : Promise.resolve([]),
+        supports(connection, "functions")
+          ? listFunctions(kind, connectionString, db)
+          : Promise.resolve([]),
+        supports(connection, "procedures")
+          ? listProcedures(kind, connectionString, db)
+          : Promise.resolve([]),
+      ]);
+      return { tables, views, functions, procedures };
+    },
+    enabled: Boolean(connection),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useColumnSearchQuery(term: string, schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const enabled = supports(connection, "column_search") && term.trim().length >= 2;
+  return useQuery({
+    queryKey: ["column-search", connection?.id, database, schema ?? "", term.trim()],
+    queryFn: () =>
+      searchColumns(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        term.trim(),
+        database ?? undefined,
+        schema,
+      ),
+    enabled,
+  });
+}
+
+export function useSourceSearchQuery(term: string, schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const enabled = supports(connection, "source_search") && term.trim().length >= 2;
+  return useQuery({
+    queryKey: ["source-search", connection?.id, database, schema ?? "", term.trim()],
+    queryFn: () =>
+      searchSource(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        term.trim(),
+        database ?? undefined,
+        schema,
+      ),
+    enabled,
+  });
+}
+
 export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW") {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -235,6 +307,23 @@ export function useFunctionsQuery() {
   });
 }
 
+export function useProceduresQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["procedures", connection?.id, database, schema],
+    queryFn: () =>
+      listProcedures(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "procedures"),
+  });
+}
+
 export function useFunctionDefinitionQuery(oid: string) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -247,7 +336,8 @@ export function useFunctionDefinitionQuery(oid: string) {
         oid,
         database ?? undefined,
       ),
-    enabled: supports(connection, "functions") && Boolean(oid),
+    enabled:
+      (supports(connection, "functions") || supports(connection, "procedures")) && Boolean(oid),
   });
 }
 
@@ -870,6 +960,56 @@ export function useLocksQuery(refetchInterval = 5000) {
   });
 }
 
+export function useUsedByQuery(schema: string, name: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["used-by", connection?.id, database, schema, name],
+    queryFn: () =>
+      listUsedBy(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        name,
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "used_by") && schema.length > 0 && name.length > 0,
+  });
+}
+
+export function useSynonymsQuery(schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["synonyms", connection?.id, database, schema ?? ""],
+    queryFn: () =>
+      listSynonyms(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "synonyms"),
+  });
+}
+
+export function useSchedulerJobsQuery(refetchInterval = 15000) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["scheduler-jobs", connection?.id, database],
+    queryFn: () =>
+      listSchedulerJobs(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "scheduler_jobs"),
+    refetchInterval,
+    retry: false,
+  });
+}
+
 export function useEnumsQuery(schema?: string) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -886,7 +1026,7 @@ export function useEnumsQuery(schema?: string) {
   });
 }
 
-export function useDatabaseOverviewQuery() {
+export function useDatabaseOverviewQuery(refetchInterval?: number) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -898,6 +1038,7 @@ export function useDatabaseOverviewQuery() {
         database ?? undefined,
       ),
     enabled: supports(connection, "overview"),
+    refetchInterval,
     staleTime: 60_000,
   });
 }

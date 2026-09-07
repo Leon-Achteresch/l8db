@@ -380,6 +380,23 @@ impl TransactionManager {
             .await)
     }
 
+    pub async fn execute_with_params(
+        &self,
+        tx_id: &str,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let entry = self.entry(tx_id).await?;
+        let conn = match &*entry {
+            TransactionEntry::Pg(c) => c,
+            _ => {
+                return Err(super::unsupported("Bind-Parameter"));
+            }
+        };
+        let conn = conn.lock().await;
+        super::postgres::run_params_query(&conn, sql, params).await
+    }
+
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
         let conn = match &*entry {

@@ -1,17 +1,15 @@
+import { Link } from "@tanstack/react-router";
 import { FileText, FolderGit, Heart, Scale, ShieldCheck } from "lucide-react";
+import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 const LINKS = [
   {
     icon: FolderGit,
     label: "Repository",
     href: "https://github.com/Leon-Achteresch/l8db",
-  },
-  {
-    icon: FileText,
-    label: "Changelog",
-    href: "https://github.com/Leon-Achteresch/l8db/blob/main/CHANGELOG.md",
   },
   {
     icon: ShieldCheck,
@@ -22,7 +20,11 @@ const LINKS = [
 
 export function AboutFooter() {
   return (
-    <footer className="rounded-3xl border bg-card px-6 py-6 sm:px-8">
+    <motion.footer
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
+      className="rounded-3xl border bg-card px-6 py-6 sm:px-8"
+    >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <img
@@ -39,6 +41,12 @@ export function AboutFooter() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="rounded-full">
+            <Link to="/release-notes">
+              <FileText data-icon="inline-start" />
+              Release Notes
+            </Link>
+          </Button>
           {LINKS.map((link) => (
             <Button key={link.label} variant="outline" size="sm" asChild className="rounded-full">
               <a href={link.href} target="_blank" rel="noreferrer">
@@ -55,6 +63,6 @@ export function AboutFooter() {
         <Heart className="size-3.5 fill-destructive/70 text-destructive/70" />
         für alle gebaut, die täglich mit Daten arbeiten.
       </p>
-    </footer>
+    </motion.footer>
   );
 }

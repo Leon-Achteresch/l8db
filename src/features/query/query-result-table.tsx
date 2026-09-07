@@ -1,5 +1,36 @@
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronsUpDownIcon,
+  FilterIcon,
+  FilterXIcon,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import type { QueryResult } from "@/lib/db";
+import {
+  activeFilterCount,
+  applyResultView,
+  describeResultCount,
+  isFilterActive,
+  type ResultFilterOperator,
+  type ResultFilters,
+  type ResultSort,
+  resultFilterOperatorLabel,
+  sortDirectionFor,
+  sortRankFor,
+  toggleResultSort,
+} from "@/lib/result-grid";
 import { cn } from "@/lib/utils";
+
+const FILTER_OPERATORS: ResultFilterOperator[] = ["contains", "equals", "is_null", "not_null"];
 
 interface QueryResultTableProps {
   result: QueryResult | null;
@@ -8,6 +39,40 @@ interface QueryResultTableProps {
 }
 
 export function QueryResultTable({ result, isLoading, error }: QueryResultTableProps) {
+  const [sorts, setSorts] = useState<ResultSort[]>([]);
+  const [filters, setFilters] = useState<ResultFilters>({});
+  const [filterRowOpen, setFilterRowOpen] = useState(false);
+
+  const [lastResult, setLastResult] = useState(result);
+  if (result !== lastResult) {
+    setLastResult(result);
+    setSorts([]);
+    setFilters({});
+    setFilterRowOpen(false);
+  }
+
+  const columns = useMemo(() => result?.columns ?? [], [result]);
+  const rows = useMemo(() => result?.rows ?? [], [result]);
+  const visibleRows = useMemo(
+    () => applyResultView(rows, columns, sorts, filters),
+    [rows, columns, sorts, filters],
+  );
+
+  const filterCount = activeFilterCount(filters);
+  const viewActive = filterCount > 0 || sorts.length > 0;
+
+  const setFilter = (column: string, patch: Partial<ResultFilters[string]>) => {
+    setFilters((prev) => {
+      const current = prev[column] ?? { operator: "contains" as ResultFilterOperator, value: "" };
+      return { ...prev, [column]: { ...current, ...patch } };
+    });
+  };
+
+  const resetView = () => {
+    setSorts([]);
+    setFilters({});
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-card/40">
@@ -76,60 +141,182 @@ export function QueryResultTable({ result, isLoading, error }: QueryResultTableP
   }
 
   return (
-    <div className="relative h-full overflow-auto">
-      <table className="w-full border-separate border-spacing-0 text-sm">
-        <thead className="sticky top-0 z-10">
-          <tr>
-            <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
-              #
-            </th>
-            {result.columns.map((col) => (
-              <th
-                key={col}
-                className="border-b border-r bg-muted/90 px-3 py-1.5 text-left text-xs font-semibold text-foreground"
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {result.rows.map((row, rowIdx) => (
-            <tr
-              key={rowIdx}
-              className={cn(
-                "group hover:bg-muted/50",
-                rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
-              )}
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
+        <span className="text-xs font-medium tabular-nums text-foreground">
+          {describeResultCount(visibleRows.length, rows.length)}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Sortierung und Filter gelten nur für die geladenen Zeilen (lokal, keine neue Abfrage).
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            size="sm"
+            variant={filterRowOpen ? "secondary" : "ghost"}
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={() => setFilterRowOpen((open) => !open)}
+          >
+            <FilterIcon className="size-3" />
+            Filter
+            {filterCount > 0 && (
+              <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] text-primary">
+                {filterCount}
+              </span>
+            )}
+          </Button>
+          {viewActive && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={resetView}
             >
-              <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
-                {rowIdx + 1}
-              </td>
-              {result.columns.map((col) => {
-                const raw = row[col];
-                const isNull = raw === null || raw === undefined;
-                const display = isNull
-                  ? "NULL"
-                  : String(raw).length > 200
-                    ? `${String(raw).slice(0, 200)}…`
-                    : String(raw);
+              <FilterXIcon className="size-3" />
+              Zurücksetzen
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="relative min-h-0 flex-1 overflow-auto">
+        <table className="w-full border-separate border-spacing-0 text-sm">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
+                #
+              </th>
+              {columns.map((col) => {
+                const direction = sortDirectionFor(sorts, col);
+                const rank = sortRankFor(sorts, col);
                 return (
-                  <td
+                  <th
                     key={col}
-                    title={isNull ? undefined : String(raw)}
-                    className={cn(
-                      "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
-                      isNull && "text-muted-foreground/50 italic",
-                    )}
+                    aria-sort={
+                      direction === "asc"
+                        ? "ascending"
+                        : direction === "desc"
+                          ? "descending"
+                          : "none"
+                    }
+                    className="border-b border-r bg-muted/90 p-0 text-left"
                   >
-                    {display}
-                  </td>
+                    <button
+                      type="button"
+                      title={`Lokal sortieren nach ${col} (Umschalt-Klick für mehrere Spalten)`}
+                      onClick={(event) =>
+                        setSorts((prev) =>
+                          toggleResultSort(prev, col, event.shiftKey || event.altKey),
+                        )
+                      }
+                      className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted"
+                    >
+                      <span className="truncate">{col}</span>
+                      {direction === "asc" && <ArrowUpIcon className="size-3 shrink-0" />}
+                      {direction === "desc" && <ArrowDownIcon className="size-3 shrink-0" />}
+                      {!direction && <ChevronsUpDownIcon className="size-3 shrink-0 opacity-25" />}
+                      {rank !== null && sorts.length > 1 && (
+                        <span className="font-mono text-[10px] text-muted-foreground">{rank}</span>
+                      )}
+                    </button>
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+            {filterRowOpen && (
+              <tr>
+                <th className="sticky left-0 z-20 border-b border-r bg-muted px-1 py-1" />
+                {columns.map((col) => {
+                  const filter = filters[col] ?? {
+                    operator: "contains" as ResultFilterOperator,
+                    value: "",
+                  };
+                  const needsValue = filter.operator === "contains" || filter.operator === "equals";
+                  return (
+                    <th key={col} className="border-b border-r bg-muted/70 px-1 py-1">
+                      <div className="flex items-center gap-1">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className={cn(
+                                "h-6 shrink-0 px-1.5 text-[10px] font-normal",
+                                isFilterActive(filter) && "text-primary",
+                              )}
+                            >
+                              {resultFilterOperatorLabel(filter.operator)}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {FILTER_OPERATORS.map((operator) => (
+                              <DropdownMenuCheckboxItem
+                                key={operator}
+                                checked={filter.operator === operator}
+                                onCheckedChange={() => setFilter(col, { operator })}
+                              >
+                                {resultFilterOperatorLabel(operator)}
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {needsValue && (
+                          <Input
+                            value={filter.value}
+                            onChange={(event) => setFilter(col, { value: event.target.value })}
+                            placeholder="Filter"
+                            aria-label={`Filter für ${col}`}
+                            className="h-6 min-w-0 flex-1 px-1.5 font-mono text-xs"
+                          />
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {visibleRows.map((row, rowIdx) => (
+              <tr
+                key={rowIdx}
+                className={cn(
+                  "group hover:bg-muted/50",
+                  rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
+                )}
+              >
+                <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
+                  {rowIdx + 1}
+                </td>
+                {columns.map((col) => {
+                  const raw = row[col];
+                  const isNull = raw === null || raw === undefined;
+                  const display = isNull
+                    ? "NULL"
+                    : String(raw).length > 200
+                      ? `${String(raw).slice(0, 200)}…`
+                      : String(raw);
+                  return (
+                    <td
+                      key={col}
+                      title={isNull ? undefined : String(raw)}
+                      className={cn(
+                        "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
+                        isNull && "text-muted-foreground/50 italic",
+                      )}
+                    >
+                      {display}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {visibleRows.length === 0 && rows.length > 0 && (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            Keine der {rows.length} geladenen Zeilen entspricht den Filtern.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

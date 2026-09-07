@@ -871,6 +871,7 @@ impl DatabaseAdapter for MysqlAdapter {
                     transaction_start: None,
                     wait_event: None,
                     is_self: self_id == Some(pid as u64),
+                    blocked_by: Vec::new(),
                 }
             })
             .collect())
