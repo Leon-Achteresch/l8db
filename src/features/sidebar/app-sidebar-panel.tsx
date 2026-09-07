@@ -10,6 +10,7 @@ import {
   EyeIcon,
   FileCodeIcon,
   FilterIcon,
+  KeyRoundIcon,
   LayersIcon,
   LinkIcon,
   ListIcon,
@@ -63,6 +64,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -73,7 +75,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -103,6 +108,7 @@ import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 
+import { connectionUser, groupByServer, siblingConnections } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
@@ -162,6 +168,13 @@ export function AppSidebarPanel() {
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
+  const serverGroups = useMemo(() => groupByServer(connections), [connections]);
+  const grouped = serverGroups.some((group) => group.connections.length > 1);
+  const siblings = useMemo(
+    () => siblingConnections(connections, activeConnection),
+    [connections, activeConnection],
+  );
+  const activeUser = activeConnection ? connectionUser(activeConnection) : "";
   const {
     data: tables,
     isLoading: tablesLoading,
@@ -314,37 +327,69 @@ export function AppSidebarPanel() {
             {connections.length === 0 ? (
               <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
             ) : (
-              connections.map((connection) => (
-                <DropdownMenuItem
-                  key={connection.id}
-                  disabled={isSwitching}
-                  onSelect={() => {
-                    if (useConnectionSwitch.getState().isSwitching) return;
-                    if (connection.id === activeConnection?.id) return;
-                    void activateConnectionWithToast(connection.id).then((ok) => {
-                      if (ok) void navigate({ to: "/" });
-                    });
-                  }}
-                >
-                  <ProviderLogo providerId={providerFor(connection).id} kind={connection.kind} />
-                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span className="truncate">{connection.name}</span>
-                    {connection.tags?.map((tag, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.name}
+              serverGroups.map((group) => (
+                <DropdownMenuGroup key={group.key}>
+                  {grouped && (
+                    <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
+                      <ProviderLogo
+                        providerId={providerFor(group.connections[0]).id}
+                        kind={group.kind}
+                        className="size-3"
+                      />
+                      <span className="truncate">{group.label}</span>
+                      <span className="ml-auto shrink-0 tabular-nums">
+                        {group.connections.length}
                       </span>
-                    ))}
-                  </span>
-                  {isSwitching && switchTargetId === connection.id ? (
-                    <Spinner className="size-4" />
-                  ) : connection.id === activeConnection?.id ? (
-                    <CheckIcon className="size-4" />
-                  ) : null}
-                </DropdownMenuItem>
+                    </DropdownMenuLabel>
+                  )}
+                  {group.connections.map((connection) => (
+                    <DropdownMenuItem
+                      key={connection.id}
+                      disabled={isSwitching}
+                      onSelect={() => {
+                        if (useConnectionSwitch.getState().isSwitching) return;
+                        if (connection.id === activeConnection?.id) return;
+                        void activateConnectionWithToast(connection.id).then((ok) => {
+                          if (ok) void navigate({ to: "/" });
+                        });
+                      }}
+                    >
+                      {grouped ? (
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: connection.color ?? "var(--border)" }}
+                        />
+                      ) : (
+                        <ProviderLogo
+                          providerId={providerFor(connection).id}
+                          kind={connection.kind}
+                        />
+                      )}
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="truncate">{connection.name}</span>
+                        {grouped && connectionUser(connection) && (
+                          <span className="truncate font-mono text-[10px] text-muted-foreground">
+                            {connectionUser(connection)}
+                          </span>
+                        )}
+                        {connection.tags?.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                            style={{ backgroundColor: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </span>
+                      {isSwitching && switchTargetId === connection.id ? (
+                        <Spinner className="size-4" />
+                      ) : connection.id === activeConnection?.id ? (
+                        <CheckIcon className="size-4" />
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
               ))
             )}
             <DropdownMenuSeparator />
@@ -400,8 +445,17 @@ export function AppSidebarPanel() {
                 </span>
                 <Select
                   value={activeSchema}
-                  onValueChange={(value) => setSchema(activeConnection.id, value)}
-                  disabled={schemasLoading}
+                  onValueChange={(value) => {
+                    if (value.startsWith("conn:")) {
+                      if (useConnectionSwitch.getState().isSwitching) return;
+                      void activateConnectionWithToast(value.slice(5)).then((ok) => {
+                        if (ok) void navigate({ to: "/" });
+                      });
+                      return;
+                    }
+                    setSchema(activeConnection.id, value);
+                  }}
+                  disabled={schemasLoading || isSwitching}
                 >
                   <SelectTrigger size="sm" className="w-full">
                     {schemas?.includes(activeSchema) ? null : (
@@ -410,11 +464,38 @@ export function AppSidebarPanel() {
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
                   <SelectContent>
+                    {siblings.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="flex items-center gap-1.5 text-[10px]">
+                          <KeyRoundIcon className="size-3" />
+                          Mit eigenem Login
+                        </SelectLabel>
+                        {siblings.map((connection) => (
+                          <SelectItem key={connection.id} value={`conn:${connection.id}`}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              <SchemaLogo name={connectionUser(connection) || connection.name} />
+                              <span className="truncate">
+                                {connectionUser(connection) || connection.name}
+                              </span>
+                              {connectionUser(connection) && (
+                                <span className="truncate text-[10px] text-muted-foreground">
+                                  {connection.name}
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                        <SelectSeparator />
+                      </SelectGroup>
+                    )}
                     {(schemas ?? []).map((schema) => (
                       <SelectItem key={schema} value={schema}>
                         <span className="flex min-w-0 items-center gap-2">
                           <SchemaLogo name={schema} />
                           <span className="truncate">{schema}</span>
+                          {schema.toLowerCase() === activeUser.toLowerCase() && (
+                            <KeyRoundIcon className="size-3 shrink-0 text-muted-foreground" />
+                          )}
                         </span>
                       </SelectItem>
                     ))}
