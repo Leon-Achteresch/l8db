@@ -95,6 +95,34 @@ describe("tabs per connection", () => {
     useConnectionsStore.getState().setActiveId(a.id);
     expect(useTableTabs.getState().tabs).toHaveLength(0);
   });
+
+  test("gleichnamige Objekte und Query-IDs bleiben beim Bearbeiten und Schließen isoliert", () => {
+    const a = addConnection("a");
+    const b = addConnection("b");
+    for (const connection of [a, b]) {
+      useConnectionsStore.getState().setActiveId(connection.id);
+      useTableTabs.getState().openTab({ schema: "public", table: "users" });
+      useTableTabs.getState().openFunctionTab({ schema: "public", name: "lookup", oid: "42" });
+      useTableTabs.getState().openSavedQueryTab({ id: "shared", title: "Report", sql: "SELECT 1" });
+    }
+    useTableTabs.getState().updateQuerySql("shared", "SELECT 2");
+    useTableTabs.getState().reorderTabs(2, 0);
+    useTableTabs.getState().closeTab("table:public.users");
+    const bTabs = useTableTabs.getState().tabs;
+
+    useConnectionsStore.getState().setActiveId(a.id);
+    expect(useTableTabs.getState().tabs).toEqual([
+      { kind: "table", schema: "public", table: "users", entityType: "table" },
+      { kind: "function", schema: "public", name: "lookup", oid: "42" },
+      { kind: "query", id: "shared", title: "Report", sql: "SELECT 1" },
+    ]);
+    useTableTabs.getState().closeAllTabs();
+    useConnectionsStore.getState().setActiveId(b.id);
+    expect(useTableTabs.getState().tabs).toEqual(bTabs);
+    expect(bTabs[0]).toMatchObject({ kind: "query", id: "shared", sql: "SELECT 2" });
+    useConnectionsStore.getState().setActiveId(a.id);
+    expect(useTableTabs.getState().tabs).toEqual([]);
+  });
 });
 
 const { isQueryTabDirty } = await import("../src/lib/table-tabs");
