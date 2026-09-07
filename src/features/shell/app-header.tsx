@@ -18,20 +18,28 @@ const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(
 
 const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
 
-function WindowControls() {
+async function runWindowAction(action: "minimize" | "toggleMaximize" | "close") {
   const win = getCurrentWindow();
+  if (action === "minimize") await win.minimize();
+  else if (action === "toggleMaximize") await win.toggleMaximize();
+  else await win.close();
+}
+
+function WindowControls() {
   const base =
     "inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground";
   return (
     <div
-      className="absolute right-0 top-0 flex h-full items-stretch"
+      data-tauri-drag-region="false"
+      className="absolute right-0 top-0 z-30 flex h-full items-stretch"
       style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+      onMouseDown={(event) => event.stopPropagation()}
     >
       <button
         type="button"
         aria-label="Minimieren"
         className={base}
-        onClick={() => void win.minimize()}
+        onClick={() => void runWindowAction("minimize")}
       >
         <Minus className="size-4" strokeWidth={2} />
       </button>
@@ -39,7 +47,7 @@ function WindowControls() {
         type="button"
         aria-label="Maximieren"
         className={base}
-        onClick={() => void win.toggleMaximize()}
+        onClick={() => void runWindowAction("toggleMaximize")}
       >
         <Square className="size-3.5" strokeWidth={2} />
       </button>
@@ -47,7 +55,7 @@ function WindowControls() {
         type="button"
         aria-label="Schließen"
         className={cn(base, "hover:bg-destructive hover:text-white")}
-        onClick={() => void win.close()}
+        onClick={() => void runWindowAction("close")}
       >
         <X className="size-4" strokeWidth={2} />
       </button>

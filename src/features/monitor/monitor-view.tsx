@@ -162,6 +162,7 @@ export function MonitorView() {
   useEffect(() => {
     if (!connection || !capabilities.server_output || !serverOutputEnabled) return;
     const collect = () => {
+      if (document.hidden) return;
       void collectServerOutput(
         connection.kind,
         effectiveConnectionString(connection),

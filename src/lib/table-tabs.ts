@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
 
 export type TableTab = {
@@ -425,6 +426,7 @@ export const useTableTabs = create<TabsState>()(
     }),
     {
       name: "l8db.table-tabs",
+      storage: createBufferedJsonStorage(() => window.localStorage),
       version: 3,
       migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {

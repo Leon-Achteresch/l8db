@@ -1,14 +1,44 @@
-import { AlterTableView } from "@/features/alter-table/alter-table-view";
-import { ExtensionView } from "@/features/extensions/extension-view";
-import { FunctionView } from "@/features/functions/function-view";
-import { PackageView } from "@/features/functions/package-view";
-import { ProcedureView } from "@/features/functions/procedure-view";
-import { QueryView } from "@/features/query/query-view";
-import { TableView } from "@/features/table/table-view";
-import { TriggerView } from "@/features/triggers/trigger-view";
-import { UsersView } from "@/features/users/users-view";
-import { ViewEditorView } from "@/features/view-editor/view-editor-view";
+import { lazy } from "react";
 import type { Tab } from "@/lib/table-tabs";
+
+const AlterTableView = lazy(() =>
+  import("@/features/alter-table/alter-table-view").then((module) => ({
+    default: module.AlterTableView,
+  })),
+);
+const ExtensionView = lazy(() =>
+  import("@/features/extensions/extension-view").then((module) => ({
+    default: module.ExtensionView,
+  })),
+);
+const FunctionView = lazy(() =>
+  import("@/features/functions/function-view").then((module) => ({ default: module.FunctionView })),
+);
+const PackageView = lazy(() =>
+  import("@/features/functions/package-view").then((module) => ({ default: module.PackageView })),
+);
+const ProcedureView = lazy(() =>
+  import("@/features/functions/procedure-view").then((module) => ({
+    default: module.ProcedureView,
+  })),
+);
+const QueryView = lazy(() =>
+  import("@/features/query/query-view").then((module) => ({ default: module.QueryView })),
+);
+const TableView = lazy(() =>
+  import("@/features/table/table-view").then((module) => ({ default: module.TableView })),
+);
+const TriggerView = lazy(() =>
+  import("@/features/triggers/trigger-view").then((module) => ({ default: module.TriggerView })),
+);
+const UsersView = lazy(() =>
+  import("@/features/users/users-view").then((module) => ({ default: module.UsersView })),
+);
+const ViewEditorView = lazy(() =>
+  import("@/features/view-editor/view-editor-view").then((module) => ({
+    default: module.ViewEditorView,
+  })),
+);
 
 export function TabPaneContent({ tab }: { tab: Tab }) {
   switch (tab.kind) {
