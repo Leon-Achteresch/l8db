@@ -1,6 +1,7 @@
 import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
+import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 
@@ -16,7 +17,11 @@ export function WorkspaceStatus() {
       <div className="flex min-w-0 items-center gap-3">
         <Link to="/connections" className="flex min-w-0 items-center gap-1.5 hover:text-foreground">
           <Database className="size-3 shrink-0" />
-          <span className="max-w-40 truncate">{connection?.name ?? "Keine Verbindung"}</span>
+          {connection ? (
+            <ConnectionColorBadge />
+          ) : (
+            <span className="max-w-40 truncate">Keine Verbindung</span>
+          )}
         </Link>
         {connection && (
           <span className="truncate font-mono">

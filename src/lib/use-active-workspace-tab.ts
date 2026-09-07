@@ -26,6 +26,15 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab): boolean {
       }),
     );
   }
+  if (tab.kind === "procedure") {
+    return Boolean(
+      matchRoute({
+        to: "/procedures/$schema/$name",
+        params: { schema: tab.schema, name: tab.name },
+        search: { oid: tab.oid },
+      }),
+    );
+  }
   if (tab.kind === "role") {
     return Boolean(matchRoute({ to: "/users/$name", params: { name: tab.name } }));
   }

@@ -7,6 +7,28 @@ use tokio_postgres::Config;
 
 use super::SslMode;
 
+pub const READ_ONLY_OPTION: &str = "-c default_transaction_read_only=on";
+
+pub fn options_are_read_only(options: Option<&str>) -> bool {
+    options
+        .map(|value| {
+            value
+                .replace(' ', "")
+                .contains("default_transaction_read_only=on")
+        })
+        .unwrap_or(false)
+}
+
+pub fn connection_string_is_read_only(value: &str) -> bool {
+    url::Url::parse(value)
+        .ok()
+        .map(|url| {
+            url.query_pairs()
+                .any(|(key, val)| key == "options" && options_are_read_only(Some(val.as_ref())))
+        })
+        .unwrap_or(false)
+}
+
 pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, SslMode), String> {
     let mut url = url::Url::parse(value).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
     if !matches!(url.scheme(), "postgres" | "postgresql") {
@@ -91,6 +113,20 @@ mod tests {
         assert_eq!(config.get_options(), Some("-c search_path=public"));
         assert_eq!(config.get_application_name(), Some("a+b"));
         assert_eq!(config.get_password(), Some(b"p+ass".as_slice()));
+    }
+
+    #[test]
+    fn detects_read_only_connections() {
+        let url = "postgres://user@localhost/app?options=-c%20default_transaction_read_only%3Don";
+        assert!(connection_string_is_read_only(url));
+        assert!(!connection_string_is_read_only(
+            "postgres://user@localhost/app?options=-c%20search_path%3Dpublic"
+        ));
+        assert!(!connection_string_is_read_only(
+            "postgres://user@localhost/app"
+        ));
+        let (config, _) = parse_connection(url, None).unwrap();
+        assert!(options_are_read_only(config.get_options()));
     }
 
     #[test]

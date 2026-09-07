@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { withTimeout } from "@/lib/async";
 import {
   connectionError,
   detectProvider,
@@ -28,7 +29,12 @@ import {
   parseConnectionUrl,
   sslModeFromUrl,
 } from "@/lib/connection-url";
-import { type SavedConnection, type SshAuth, useConnectionsStore } from "@/lib/connections";
+import {
+  CONNECTION_COLORS,
+  type SavedConnection,
+  type SshAuth,
+  useConnectionsStore,
+} from "@/lib/connections";
 import { type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
 import { refreshDriverStatus, useProvidersStore } from "@/lib/providers";
@@ -63,6 +69,7 @@ type TestResult = {
   message?: string;
   ms?: number;
 };
+const TEST_TIMEOUT_MS = 30_000;
 
 function placeholderDefaults(info: ProviderInfo) {
   try {
@@ -111,10 +118,13 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [sshPassword, setSshPassword] = useState("");
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [step, setStep] = useState<1 | 2 | 3>(connection ? 2 : 1);
   const reduce = useReducedMotion();
   const setPreview = useDbThemeStore((state) => state.setPreview);
   const [tags, setTags] = useState(connection?.tags?.map((tag) => tag.name).join(", ") ?? "");
+  const [color, setColor] = useState<string | null>(connection?.color ?? null);
+  const [readOnly, setReadOnly] = useState(Boolean(connection?.readOnly));
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
@@ -133,6 +143,14 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     setSetupMode(next);
     setResult({ status: "idle" });
   }
+
+  useEffect(() => {
+    if (result.status !== "testing") return;
+    setElapsed(0);
+    const startedAt = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 500);
+    return () => clearInterval(timer);
+  }, [result.status]);
 
   function selectProvider(id: string) {
     const next = providers.find((entry) => entry.id === id);
@@ -253,34 +271,41 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     operation.current = true;
     setResult({ status: "testing" });
     const started = performance.now();
-    const tunnelId = `test-${crypto.randomUUID()}`;
-    let tunnelOpened = false;
     try {
-      const config = await configuration();
-      let url = config.connectionString;
-      if (config.ssh) {
-        const tunnel = await openSshTunnel({
-          id: tunnelId,
-          host: config.ssh.host,
-          port: config.ssh.port,
-          user: config.ssh.user,
-          auth:
-            sshAuth === "key"
-              ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
-              : { password: config.secret },
-          remote_host: config.ssh.remoteHost,
-          remote_port: config.ssh.remotePort,
-          accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
-        });
-        tunnelOpened = true;
-        url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+      const tunnelId = `test-${crypto.randomUUID()}`;
+      let tunnelOpened = false;
+      try {
+        const config = await configuration();
+        let url = config.connectionString;
+        if (config.ssh) {
+          const tunnel = await openSshTunnel({
+            id: tunnelId,
+            host: config.ssh.host,
+            port: config.ssh.port,
+            user: config.ssh.user,
+            auth:
+              sshAuth === "key"
+                ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
+                : { password: config.secret },
+            remote_host: config.ssh.remoteHost,
+            remote_port: config.ssh.remotePort,
+            accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
+          });
+          tunnelOpened = true;
+          url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+        }
+        await withTimeout(
+          testConnectionString(config.kind, url),
+          TEST_TIMEOUT_MS,
+          `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
+        );
+        setResult({ status: "success", ms: Math.round(performance.now() - started) });
+      } finally {
+        if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
       }
-      await testConnectionString(config.kind, url);
-      setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });
     } finally {
-      if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
       operation.current = false;
     }
   }
@@ -326,6 +351,9 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         sslMode: quickSave ? sslModeFromUrl(config.connectionString) : ssl,
         ssh: config.ssh,
         tunnelPort: null,
+        favorite: connection?.favorite ?? false,
+        readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
+        color: quickSave ? (connection?.color ?? null) : color,
         tags: quickSave
           ? (connection?.tags ?? [])
           : [
@@ -365,7 +393,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
           : "Datenbank";
 
   return (
-    <section className="shell-bezel flex max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+    <section
+      data-tour="connection-editor"
+      className="shell-bezel flex max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden"
+    >
       <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-3 pb-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-tight">
@@ -516,7 +547,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
               <div aria-live="polite" className="min-h-8">
                 {result.status === "testing" && (
                   <AnimatedBadge status="loading" size="sm">
-                    Verbindung wird geprüft
+                    Verbindung wird geprüft{elapsed > 0 ? ` · ${elapsed} s` : ""}
                   </AnimatedBadge>
                 )}
                 {result.status === "success" && (
@@ -542,6 +573,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={step}
+                layout
                 initial={reduce ? false : { opacity: 0, x: 16 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={reduce ? undefined : { opacity: 0, x: -16 }}
@@ -778,6 +810,24 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                             />
                           </label>
                         )}
+                        {caps.read_only_mode && (
+                          <label className="flex items-center justify-between gap-3 text-xs font-medium sm:col-span-2">
+                            <span className="flex flex-col gap-0.5">
+                              <span className="flex items-center gap-2">
+                                <Eye className="size-4 text-muted-foreground" /> Lesemodus
+                              </span>
+                              <span className="font-normal text-muted-foreground">
+                                Schreibzugriffe werden serverseitig blockiert. Ein Moduswechsel wird
+                                erst nach erneutem Verbinden wirksam.
+                              </span>
+                            </span>
+                            <Switch
+                              checked={readOnly}
+                              onCheckedChange={setReadOnly}
+                              aria-label="Lesemodus"
+                            />
+                          </label>
+                        )}
                       </div>
                     )}
                     {caps.ssh && sshEnabled && (
@@ -848,6 +898,39 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                       value={tags}
                       onChange={(event) => setTags(event.target.value)}
                     />
+                    <fieldset className="flex flex-col gap-2">
+                      <legend className="text-sm font-medium">Profilfarbe</legend>
+                      <p className="text-xs text-muted-foreground">
+                        Kennzeichnet die Verbindung im Header, in den Tabs und in der Statusleiste.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label="Keine Farbe"
+                          aria-pressed={color === null}
+                          onClick={() => setColor(null)}
+                          className={`rounded-full border px-2.5 py-1 text-xs ${color === null ? "border-foreground bg-muted" : "border-border text-muted-foreground"}`}
+                        >
+                          Keine
+                        </button>
+                        {CONNECTION_COLORS.map((entry) => (
+                          <button
+                            key={entry.value}
+                            type="button"
+                            title={entry.label}
+                            aria-label={entry.label}
+                            aria-pressed={color === entry.value}
+                            onClick={() => setColor(entry.value)}
+                            className={`grid size-7 place-items-center rounded-full border-2 ${color === entry.value ? "border-foreground" : "border-transparent"}`}
+                          >
+                            <span
+                              className="size-5 rounded-full"
+                              style={{ backgroundColor: entry.value }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
                   </div>
                 )}
                 {step === 3 && (
@@ -870,7 +953,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                     <div aria-live="polite" className="min-h-8">
                       {result.status === "testing" && (
                         <AnimatedBadge status="loading" size="sm">
-                          Verbindung wird geprüft
+                          Verbindung wird geprüft{elapsed > 0 ? ` · ${elapsed} s` : ""}
                         </AnimatedBadge>
                       )}
                       {result.status === "success" && (
@@ -897,7 +980,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
             </AnimatePresence>
           )}
         </fieldset>
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-card/50 px-4 py-3">
+        <footer
+          data-tour="connection-save"
+          className="flex shrink-0 items-center justify-between gap-2 border-t bg-card/50 px-4 py-3"
+        >
           {setupMode === "connection-string" ? (
             <>
               <Button type="button" variant="outline" disabled={busy} onClick={() => void test()}>

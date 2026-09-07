@@ -1,4 +1,76 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+const WRITE_COMMANDS = new Set([
+  "add_column",
+  "alter_column",
+  "alter_role",
+  "alter_sequence",
+  "attach_partition",
+  "begin_transaction",
+  "cancel_session",
+  "compile_object",
+  "create_materialized_view",
+  "create_policy",
+  "create_publication",
+  "create_role",
+  "create_schema",
+  "create_subscription",
+  "create_table",
+  "csv_import",
+  "delete_row_in_transaction",
+  "detach_partition",
+  "drop_column",
+  "drop_materialized_view",
+  "drop_policy",
+  "drop_publication",
+  "drop_role",
+  "drop_schema",
+  "drop_subscription",
+  "drop_table",
+  "duplicate_row_in_transaction",
+  "execute_in_transaction",
+  "copy_schema_table_data",
+  "execute_object_ddl",
+  "execute_schema_object_copy",
+  "execute_in_transaction_with_params",
+  "insert_row_in_transaction",
+  "install_extension",
+  "modify_privilege",
+  "refresh_materialized_view",
+  "run_scheduler_job",
+  "set_scheduler_job_enabled",
+  "set_table_rls",
+  "terminate_session",
+  "truncate_table",
+  "uninstall_extension",
+  "update_row",
+  "update_row_in_transaction",
+  "update_view_definition",
+]);
+
+export const READ_ONLY_MESSAGE =
+  "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden.";
+
+let readOnlyResolver: () => boolean = () => false;
+
+export function registerReadOnlyResolver(resolver: () => boolean): void {
+  readOnlyResolver = resolver;
+}
+
+export function isReadOnlyActive(): boolean {
+  try {
+    return readOnlyResolver();
+  } catch {
+    return false;
+  }
+}
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (WRITE_COMMANDS.has(command) && isReadOnlyActive()) {
+    return Promise.reject(new Error(READ_ONLY_MESSAGE));
+  }
+  return tauriInvoke<T>(command, args);
+}
 
 export type DatabaseKind =
   | "postgres"
@@ -41,6 +113,24 @@ export interface Capabilities {
   explain: boolean;
   overview: boolean;
   sql_filter: boolean;
+  read_only_mode: boolean;
+  csv_import: boolean;
+  column_search: boolean;
+  source_search: boolean;
+  schema_snapshot: boolean;
+  full_table_export: boolean;
+  data_compare: boolean;
+  procedures: boolean;
+  compile_objects: boolean;
+  debugger: boolean;
+  bind_parameters: boolean;
+  used_by: boolean;
+  synonyms: boolean;
+  scheduler_jobs: boolean;
+  object_admin: boolean;
+  schema_object_copy: boolean;
+  migration_script: boolean;
+  server_output: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -104,6 +194,7 @@ export interface ConnectionConfig {
   password: string;
   database: string;
   ssl_mode?: SslMode;
+  read_only?: boolean;
 }
 
 export async function testConnection(config: ConnectionConfig): Promise<void> {
@@ -310,6 +401,133 @@ export async function listAllColumns(
   return invoke("list_all_columns", { kind, connectionString, database, schema, tableType });
 }
 
+export interface ColumnMatch {
+  schema: string;
+  table: string;
+  column: string;
+  data_type: string;
+  object_type: string;
+}
+
+export interface SourceMatch {
+  schema: string;
+  name: string;
+  oid: string;
+  identity: string;
+  object_type: string;
+  line: number;
+  snippet: string;
+  occurrences: number;
+}
+
+export async function searchColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  term: string,
+  database?: string,
+  schema?: string,
+  limit?: number,
+): Promise<ColumnMatch[]> {
+  return invoke("search_columns", { kind, connectionString, database, schema, term, limit });
+}
+
+export async function searchSource(
+  kind: DatabaseKind,
+  connectionString: string,
+  term: string,
+  database?: string,
+  schema?: string,
+  limit?: number,
+): Promise<SourceMatch[]> {
+  return invoke("search_source", { kind, connectionString, database, schema, term, limit });
+}
+
+export interface DependencyInfo {
+  owner: string;
+  name: string;
+  object_type: string;
+  status: string;
+  relation: string;
+  oid: string;
+  detail: string;
+}
+
+export interface SynonymInfo {
+  owner: string;
+  name: string;
+  target_owner: string;
+  target_name: string;
+  target_type: string;
+  db_link: string | null;
+  status: string;
+}
+
+export interface SchedulerJobInfo {
+  id: string;
+  owner: string;
+  name: string;
+  enabled: boolean;
+  state: string;
+  schedule: string;
+  command: string;
+  last_run: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  next_run: string | null;
+}
+
+export async function listUsedBy(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  database?: string,
+): Promise<DependencyInfo[]> {
+  return invoke("list_used_by", { kind, connectionString, database, schema, name });
+}
+
+export async function listSynonyms(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<SynonymInfo[]> {
+  return invoke("list_synonyms", { kind, connectionString, database, schema });
+}
+
+export async function listSchedulerJobs(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<SchedulerJobInfo[]> {
+  return invoke("list_scheduler_jobs", { kind, connectionString, database });
+}
+
+export async function setSchedulerJobEnabled(
+  kind: DatabaseKind,
+  connectionString: string,
+  jobId: string,
+  enabled: boolean,
+  database?: string,
+): Promise<void> {
+  return invoke("set_scheduler_job_enabled", {
+    kind,
+    connectionString,
+    database,
+    jobId,
+    enabled,
+  });
+}
+
+export async function runSchedulerJob(
+  kind: DatabaseKind,
+  connectionString: string,
+  jobId: string,
+  database?: string,
+): Promise<void> {
+  return invoke("run_scheduler_job", { kind, connectionString, database, jobId });
+}
+
 export type TableRowSort = {
   column: string;
   desc: boolean;
@@ -391,6 +609,16 @@ export async function executeQuery(
   database?: string,
 ): Promise<QueryResult> {
   return invoke("execute_query", { kind, connectionString, database, sql });
+}
+
+export async function executeQueryWithParams(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  params: (string | null)[],
+  database?: string,
+): Promise<QueryResult> {
+  return invoke("execute_query_with_params", { kind, connectionString, database, sql, params });
 }
 
 export interface ExplainPlan {
@@ -490,6 +718,14 @@ export async function executeInTransaction(txId: string, sql: string): Promise<Q
   return invoke("execute_in_transaction", { txId, sql });
 }
 
+export async function executeInTransactionWithParams(
+  txId: string,
+  sql: string,
+  params: (string | null)[],
+): Promise<QueryResult> {
+  return invoke("execute_in_transaction_with_params", { txId, sql, params });
+}
+
 export async function updateRowInTransaction(
   txId: string,
   schema: string,
@@ -560,6 +796,47 @@ export async function getFunctionDefinition(
     database,
     oid,
   });
+}
+
+export interface CompileResult {
+  status: string;
+  message: string | null;
+  line: number | null;
+  position: number | null;
+}
+
+export interface DebugSessionInfo {
+  available: boolean;
+  message: string;
+}
+
+export async function listProcedures(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<FunctionInfo[]> {
+  return invoke("list_procedures", { kind, connectionString, database, schema });
+}
+
+export async function compileObject(
+  kind: DatabaseKind,
+  connectionString: string,
+  oid: string,
+  objectType: string,
+  database?: string,
+): Promise<CompileResult> {
+  return invoke("compile_object", { kind, connectionString, database, oid, objectType });
+}
+
+export async function startDebugSession(
+  kind: DatabaseKind,
+  connectionString: string,
+  oid: string,
+  objectType: string,
+  database?: string,
+): Promise<DebugSessionInfo> {
+  return invoke("start_debug_session", { kind, connectionString, database, oid, objectType });
 }
 
 export async function listExtensions(
@@ -728,6 +1005,95 @@ export interface DetailedColumnInfo {
   is_primary_key: boolean;
   ordinal_position: number;
   character_maximum_length: number | null;
+}
+
+export interface ImportColumnInfo {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  has_default: boolean;
+  is_identity: boolean;
+  is_generated: boolean;
+  ordinal_position: number;
+}
+
+export interface CsvImportRequest {
+  schema: string;
+  table: string;
+  columns: string[];
+  rows: (string | null)[][];
+}
+
+export interface CsvImportOutcome {
+  inserted_rows: number;
+  failed_row: number | null;
+  failed_column: string | null;
+  error: string | null;
+}
+
+export async function listImportColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<ImportColumnInfo[]> {
+  return invoke("list_import_columns", { kind, connectionString, database, schema, table });
+}
+
+export async function csvImport(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CsvImportRequest,
+  database?: string,
+): Promise<CsvImportOutcome> {
+  return invoke("csv_import", { kind, connectionString, database, request });
+}
+
+export interface TableExportRequest {
+  jobId: string;
+  schema: string;
+  table: string;
+  filter?: string | null;
+  allowRawFilter: boolean;
+  orderBy?: string | null;
+  orderDesc: boolean;
+  isView: boolean;
+  path: string;
+  options: {
+    delimiter: string;
+    quote: string;
+    header: boolean;
+    nullText: string;
+    lineEnding: string;
+    bom: boolean;
+  };
+  masks: { column: string; mode: "text" | "null"; text?: string | null }[];
+  maxRows?: number | null;
+}
+
+export interface TableExportOutcome {
+  rows: number;
+  path: string;
+  truncated: boolean;
+}
+
+export interface TableExportProgress {
+  jobId: string;
+  rows: number;
+}
+
+export async function exportTableCsv(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: TableExportRequest,
+  database?: string,
+): Promise<TableExportOutcome> {
+  return invoke("export_table_csv", { kind, connectionString, database, request });
+}
+
+export async function cancelTableExport(jobId: string): Promise<void> {
+  return invoke("cancel_table_export", { jobId });
 }
 
 export interface AddColumnRequest {
@@ -965,6 +1331,15 @@ export async function createTable(
   database?: string,
 ): Promise<void> {
   await invoke("create_table", { kind, connectionString, database, request });
+}
+
+export async function previewCreateTableDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CreateTableRequest,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_create_table_ddl", { kind, connectionString, database, request });
 }
 
 export interface MatviewInfo {
@@ -1267,6 +1642,7 @@ export interface SessionInfo {
   transaction_start: string | null;
   wait_event: string | null;
   is_self: boolean;
+  blocked_by: number[];
 }
 
 export async function listSessions(
@@ -1405,4 +1781,189 @@ export function readCommunityExtension(
   development = false,
 ): Promise<import("../../packages/extension-api/src").ExtensionArchive> {
   return invoke("read_community_extension", { path, development });
+}
+
+export interface ServerMessage {
+  level: string;
+  message: string;
+  detail?: string | null;
+}
+
+export async function setServerOutput(
+  kind: DatabaseKind,
+  connectionString: string,
+  enabled: boolean,
+  database?: string,
+): Promise<void> {
+  return invoke("set_server_output", { kind, connectionString, database, enabled });
+}
+
+export async function takeServerOutput(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<ServerMessage[]> {
+  return invoke("take_server_output", { kind, connectionString, database });
+}
+
+export type ObjectAdminType = "table" | "view" | "materialized_view";
+
+export type ObjectAdminAction = "drop" | "rename";
+
+export interface ObjectDdlRequest {
+  schema: string;
+  name: string;
+  object_type: ObjectAdminType;
+  action: ObjectAdminAction;
+  cascade: boolean;
+  new_name: string | null;
+}
+
+export interface ObjectDependent {
+  schema: string;
+  name: string;
+  object_type: string;
+}
+
+export interface ObjectAuditInfo {
+  schema: string;
+  name: string;
+  object_type: string;
+  owner: string | null;
+  size: string | null;
+  row_estimate: number | null;
+  created_at: string | null;
+  changed_at: string | null;
+  last_vacuum: string | null;
+  last_autovacuum: string | null;
+  last_analyze: string | null;
+  last_autoanalyze: string | null;
+  dependents: ObjectDependent[];
+  notes: string[];
+}
+
+export async function previewObjectDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: ObjectDdlRequest,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_object_ddl", { kind, connectionString, database, request });
+}
+
+export async function executeObjectDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: ObjectDdlRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("execute_object_ddl", { kind, connectionString, database, request });
+}
+
+export async function objectAuditInfo(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  objectType: ObjectAdminType,
+  database?: string,
+): Promise<ObjectAuditInfo> {
+  return invoke("object_audit_info", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    name,
+    objectType,
+  });
+}
+
+export type SchemaCopyObjectType = "table" | "view" | "routine";
+
+export type SchemaCopyStatus = "missing" | "different" | "identical";
+
+export interface SchemaObjectEntry {
+  name: string;
+  object_type: string;
+  status: SchemaCopyStatus;
+  source_definition: string;
+  target_definition: string;
+}
+
+export async function listSchemaCopyObjects(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  database?: string,
+): Promise<SchemaObjectEntry[]> {
+  return invoke("list_schema_copy_objects", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+  });
+}
+
+export async function previewSchemaObjectCopy(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  name: string,
+  database?: string,
+): Promise<string> {
+  return invoke("preview_schema_object_copy", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+    name,
+  });
+}
+
+export async function executeSchemaObjectCopy(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  objectType: SchemaCopyObjectType,
+  name: string,
+  database?: string,
+): Promise<string> {
+  return invoke("execute_schema_object_copy", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    objectType,
+    name,
+  });
+}
+
+export async function copySchemaTableData(
+  kind: DatabaseKind,
+  connectionString: string,
+  sourceSchema: string,
+  targetSchema: string,
+  name: string,
+  limit: number,
+  database?: string,
+): Promise<number> {
+  return invoke("copy_schema_table_data", {
+    kind,
+    connectionString,
+    database,
+    sourceSchema,
+    targetSchema,
+    name,
+    limit,
+  });
 }

@@ -9,9 +9,9 @@ import {
   TrashIcon,
   XIcon,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { useActiveConnection } from "@/lib/connections";
 import {
   type AddColumnRequest,
@@ -47,6 +48,7 @@ import {
   listTableColumnsDetailed,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 
@@ -399,18 +401,21 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
             {columns?.length ?? 0} Spalten
           </Badge>
         </div>
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => {
-            setAddingColumn(true);
-            setAddForm({ name: "", data_type: "text", is_nullable: true });
-          }}
-          disabled={addingColumn}
-        >
-          <PlusIcon data-icon="inline-start" />
-          Spalte hinzufügen
-        </Button>
+        <div className="flex items-center gap-1">
+          <ObjectAdminMenu schema={schema} name={table} objectType="table" showAlter={false} />
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              setAddingColumn(true);
+              setAddForm({ name: "", data_type: "text", is_nullable: true });
+            }}
+            disabled={addingColumn}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Spalte hinzufügen
+          </Button>
+        </div>
       </div>
 
       <AlertDialog
@@ -510,8 +515,10 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
           )}
 
           {columns?.map((col) => (
-            <div
+            <motion.div
               key={col.name}
+              layout
+              transition={{ layout: SPRING_LAYOUT }}
               className="group grid grid-cols-[1fr_1fr_80px_1fr_auto] gap-px border-b bg-muted text-sm"
             >
               {editingColumn === col.name ? (
@@ -608,7 +615,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                   </div>
                 </>
               )}
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>
