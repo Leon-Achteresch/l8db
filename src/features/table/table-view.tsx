@@ -3,18 +3,9 @@ import type { SortingState } from "@tanstack/react-table";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
-  CodeIcon,
-  Columns2Icon,
   DownloadIcon,
-  GaugeIcon,
-  HistoryIcon,
-  LayersIcon,
   LoaderIcon,
-  NetworkIcon,
   PlusIcon,
-  ShieldIcon,
-  TableIcon,
-  ZapIcon,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -26,13 +17,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
+import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
@@ -62,6 +54,7 @@ import {
 import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
+import { availableTableDetailTabs, resolveTableDetailTab, type TableDetailTab } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
@@ -77,18 +70,6 @@ const TablePerfPanel = lazy(() =>
 );
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
-
-type ViewTab = "data" | "definition" | "columns" | "used-by" | "performance" | "audit";
-type TableTab =
-  | "data"
-  | "triggers"
-  | "columns"
-  | "indexes"
-  | "rls"
-  | "partitions"
-  | "used-by"
-  | "performance"
-  | "audit";
 
 export interface TableViewProps {
   schema: string;
@@ -120,9 +101,19 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
-  const [viewTab, setViewTab] = useState<ViewTab>("data");
-  const [tableTab, setTableTab] = useState<TableTab>("data");
+  const [selectedViewTab, setViewTab] = useState<TableDetailTab>("data");
+  const [selectedTableTab, setTableTab] = useState<TableDetailTab>("data");
   const caps = useActiveCapabilities();
+  const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
+  const availableTabs = availableTableDetailTabs(isView, caps);
+  const visibleTabs = availableTabs.filter((tab) => !hiddenTabs.includes(tab.id));
+  const viewTab = resolveTableDetailTab(selectedViewTab, visibleTabs);
+  const tableTab = resolveTableDetailTab(selectedTableTab, visibleTabs);
+
+  useEffect(() => {
+    if (isView && viewTab) setViewTab(viewTab);
+    if (!isView && tableTab) setTableTab(tableTab);
+  }, [isView, viewTab, tableTab]);
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [filterRaw, setFilterRaw] = useState(fkRaw ?? false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -384,45 +375,14 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
     return (
       <Tabs
         value={viewTab}
-        onValueChange={(v) => setViewTab(v as ViewTab)}
+        onValueChange={(v) => setViewTab(v as TableDetailTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
         <div
           className="flex shrink-0 items-center border-b bg-muted/30 px-3"
           data-tour="table-toolbar"
         >
-          <TabsList variant="line" className="h-9">
-            <TabsTrigger value="data">
-              <TableIcon className="size-3.5" />
-              Daten
-            </TabsTrigger>
-            <TabsTrigger value="columns">
-              <Columns2Icon className="size-3.5" />
-              Columns
-            </TabsTrigger>
-            <TabsTrigger value="definition">
-              <CodeIcon className="size-3.5" />
-              Definition
-            </TabsTrigger>
-            {caps.used_by && (
-              <TabsTrigger value="used-by">
-                <NetworkIcon className="size-3.5" />
-                Used By
-              </TabsTrigger>
-            )}
-            {caps.explain && (
-              <TabsTrigger value="performance">
-                <GaugeIcon className="size-3.5" />
-                Performance
-              </TabsTrigger>
-            )}
-            {caps.object_admin && (
-              <TabsTrigger value="audit">
-                <HistoryIcon className="size-3.5" />
-                Audit
-              </TabsTrigger>
-            )}
-          </TabsList>
+          <TableDetailTabBar tabs={availableTabs} />
           <div className="ml-auto flex items-center gap-1">
             <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
             {viewTab === "data" && data && (
@@ -526,65 +486,14 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
   return (
     <Tabs
       value={tableTab}
-      onValueChange={(v) => setTableTab(v as TableTab)}
+      onValueChange={(v) => setTableTab(v as TableDetailTab)}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"
         data-tour="table-toolbar"
       >
-        <TabsList variant="line" className="h-9">
-          <TabsTrigger value="data">
-            <TableIcon className="size-3.5" />
-            Daten
-          </TabsTrigger>
-          <TabsTrigger value="columns">
-            <Columns2Icon className="size-3.5" />
-            Columns
-          </TabsTrigger>
-          {caps.triggers && (
-            <TabsTrigger value="triggers">
-              <ZapIcon className="size-3.5" />
-              Trigger
-            </TabsTrigger>
-          )}
-          {caps.indexes && (
-            <TabsTrigger value="indexes">
-              <LayersIcon className="size-3.5" />
-              Indexes
-            </TabsTrigger>
-          )}
-          {caps.rls && (
-            <TabsTrigger value="rls">
-              <ShieldIcon className="size-3.5" />
-              RLS
-            </TabsTrigger>
-          )}
-          {caps.partitions && (
-            <TabsTrigger value="partitions">
-              <NetworkIcon className="size-3.5" />
-              Partitionen
-            </TabsTrigger>
-          )}
-          {caps.used_by && (
-            <TabsTrigger value="used-by">
-              <NetworkIcon className="size-3.5" />
-              Used By
-            </TabsTrigger>
-          )}
-          {caps.explain && (
-            <TabsTrigger value="performance">
-              <GaugeIcon className="size-3.5" />
-              Performance
-            </TabsTrigger>
-          )}
-          {caps.object_admin && (
-            <TabsTrigger value="audit">
-              <HistoryIcon className="size-3.5" />
-              Audit
-            </TabsTrigger>
-          )}
-        </TabsList>
+        <TableDetailTabBar tabs={availableTabs} />
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="table" />
           {tableTab === "data" && caps.row_edit && (
