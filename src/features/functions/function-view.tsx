@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getRouteApi } from "@tanstack/react-router";
 import {
   CheckCircleIcon,
   HammerIcon,
@@ -25,8 +24,6 @@ import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/_app/_workspace/functions/$schema/$name");
-
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }
@@ -43,9 +40,14 @@ type ExecutionState =
   | { status: "success"; time: number }
   | { status: "error"; message: string };
 
-export function FunctionView() {
-  const { schema, name } = routeApi.useParams();
-  const { oid, line } = routeApi.useSearch();
+export interface FunctionViewProps {
+  schema: string;
+  name: string;
+  oid?: string;
+  line?: number;
+}
+
+export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
