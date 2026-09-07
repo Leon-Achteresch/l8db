@@ -1,10 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Braces, Database, Eye, Keyboard, Search, Sparkles, Table, TextSearch } from "lucide-react";
+import { Braces, Database, Eye, Keyboard, Puzzle, Search, Sparkles, Table, TextSearch } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
   buildObjectEntries,
   OBJECT_TYPE_PLURAL,
@@ -16,6 +17,7 @@ import { useAllSchemaObjectsQuery } from "@/lib/queries";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const MAX_VISIBLE_RESULTS = 60;
 
@@ -34,6 +36,15 @@ export function AppHeaderSearch() {
   const { data: objects } = useAllSchemaObjectsQuery(open);
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
+  const extensionHost = useExtensionHost();
+  const [extensionVersion, setExtensionVersion] = useState(0);
+
+  useEffect(() => {
+    const subscription = extensionHost.changes.on("change", () =>
+      setExtensionVersion((value) => value + 1),
+    );
+    return () => subscription.dispose();
+  }, [extensionHost]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -52,6 +63,24 @@ export function AppHeaderSearch() {
       if (await activateConnectionWithToast(id)) await navigate({ to: "/" });
     },
     [navigate],
+  );
+
+  const extensionItems = useMemo<CommandItem[]>(
+    () => {
+      void extensionVersion;
+      return extensionHost.commands.paletteCommands().map((command) => ({
+        id: `extension:${command.id}`,
+        label: command.title,
+        group: "Extensions",
+        icon: Puzzle,
+        keywords: [command.id, command.owner],
+        onSelect: () => {
+          setOpen(false);
+          void extensionHost.executeCommand(command.id).catch((error) => toast.error(String(error)));
+        },
+      }));
+    },
+    [extensionHost, extensionVersion],
   );
 
   const items = useMemo<CommandItem[]>(() => {
@@ -146,12 +175,13 @@ export function AppHeaderSearch() {
         setShortcutsOpen(true);
       },
     };
-    return [...connectionItems, ...deepSearchItem, ...objectItems, tourItem, shortcutsItem];
+    return [...connectionItems, ...deepSearchItem, ...objectItems, ...extensionItems, tourItem, shortcutsItem];
   }, [
     activeConnection?.id,
     canSearchColumns,
     canSearchSource,
     connections,
+    extensionItems,
     navigate,
     objects,
     onSelectConnection,

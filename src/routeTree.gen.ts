@@ -42,6 +42,7 @@ import { Route as AppWorkspaceProceduresSchemaNameRouteImport } from './routes/_
 import { Route as AppWorkspacePackagesSchemaNameRouteImport } from './routes/_app._workspace.packages.$schema.$name'
 import { Route as AppWorkspaceMatviewsSchemaNameRouteImport } from './routes/_app._workspace.matviews.$schema.$name'
 import { Route as AppWorkspaceFunctionsSchemaNameRouteImport } from './routes/_app._workspace.functions.$schema.$name'
+import { Route as AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport } from './routes/_app._workspace.extension-panels.$extensionId.$panelId'
 import { Route as AppWorkspaceAlterTableSchemaTableRouteImport } from './routes/_app._workspace.alter-table.$schema.$table'
 import { Route as AppWorkspaceTriggersSchemaTableTriggerRouteImport } from './routes/_app._workspace.triggers.$schema.$table.$trigger'
 
@@ -216,6 +217,12 @@ const AppWorkspaceFunctionsSchemaNameRoute =
     path: '/functions/$schema/$name',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
+const AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute =
+  AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport.update({
+    id: '/extension-panels/$extensionId/$panelId',
+    path: '/extension-panels/$extensionId/$panelId',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
 const AppWorkspaceAlterTableSchemaTableRoute =
   AppWorkspaceAlterTableSchemaTableRouteImport.update({
     id: '/alter-table/$schema/$table',
@@ -255,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/users/$name': typeof AppWorkspaceUsersNameRoute
   '/query/': typeof AppWorkspaceQueryIndexRoute
   '/alter-table/$schema/$table': typeof AppWorkspaceAlterTableSchemaTableRoute
+  '/extension-panels/$extensionId/$panelId': typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute
   '/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
@@ -288,6 +296,7 @@ export interface FileRoutesByTo {
   '/users/$name': typeof AppWorkspaceUsersNameRoute
   '/query': typeof AppWorkspaceQueryIndexRoute
   '/alter-table/$schema/$table': typeof AppWorkspaceAlterTableSchemaTableRoute
+  '/extension-panels/$extensionId/$panelId': typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute
   '/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
@@ -326,6 +335,7 @@ export interface FileRoutesById {
   '/_app/_workspace/users/$name': typeof AppWorkspaceUsersNameRoute
   '/_app/_workspace/query/': typeof AppWorkspaceQueryIndexRoute
   '/_app/_workspace/alter-table/$schema/$table': typeof AppWorkspaceAlterTableSchemaTableRoute
+  '/_app/_workspace/extension-panels/$extensionId/$panelId': typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute
   '/_app/_workspace/functions/$schema/$name': typeof AppWorkspaceFunctionsSchemaNameRoute
   '/_app/_workspace/matviews/$schema/$name': typeof AppWorkspaceMatviewsSchemaNameRoute
   '/_app/_workspace/packages/$schema/$name': typeof AppWorkspacePackagesSchemaNameRoute
@@ -362,6 +372,7 @@ export interface FileRouteTypes {
     | '/users/$name'
     | '/query/'
     | '/alter-table/$schema/$table'
+    | '/extension-panels/$extensionId/$panelId'
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
     | '/packages/$schema/$name'
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | '/users/$name'
     | '/query'
     | '/alter-table/$schema/$table'
+    | '/extension-panels/$extensionId/$panelId'
     | '/functions/$schema/$name'
     | '/matviews/$schema/$name'
     | '/packages/$schema/$name'
@@ -432,6 +444,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/users/$name'
     | '/_app/_workspace/query/'
     | '/_app/_workspace/alter-table/$schema/$table'
+    | '/_app/_workspace/extension-panels/$extensionId/$panelId'
     | '/_app/_workspace/functions/$schema/$name'
     | '/_app/_workspace/matviews/$schema/$name'
     | '/_app/_workspace/packages/$schema/$name'
@@ -684,6 +697,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceFunctionsSchemaNameRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/extension-panels/$extensionId/$panelId': {
+      id: '/_app/_workspace/extension-panels/$extensionId/$panelId'
+      path: '/extension-panels/$extensionId/$panelId'
+      fullPath: '/extension-panels/$extensionId/$panelId'
+      preLoaderRoute: typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/alter-table/$schema/$table': {
       id: '/_app/_workspace/alter-table/$schema/$table'
       path: '/alter-table/$schema/$table'
@@ -743,6 +763,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceExtensionsNameRoute: typeof AppWorkspaceExtensionsNameRoute
   AppWorkspaceUsersNameRoute: typeof AppWorkspaceUsersNameRoute
   AppWorkspaceAlterTableSchemaTableRoute: typeof AppWorkspaceAlterTableSchemaTableRoute
+  AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute: typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute
   AppWorkspaceFunctionsSchemaNameRoute: typeof AppWorkspaceFunctionsSchemaNameRoute
   AppWorkspaceMatviewsSchemaNameRoute: typeof AppWorkspaceMatviewsSchemaNameRoute
   AppWorkspacePackagesSchemaNameRoute: typeof AppWorkspacePackagesSchemaNameRoute
@@ -770,6 +791,8 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceUsersNameRoute: AppWorkspaceUsersNameRoute,
   AppWorkspaceAlterTableSchemaTableRoute:
     AppWorkspaceAlterTableSchemaTableRoute,
+  AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute:
+    AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute,
   AppWorkspaceFunctionsSchemaNameRoute: AppWorkspaceFunctionsSchemaNameRoute,
   AppWorkspaceMatviewsSchemaNameRoute: AppWorkspaceMatviewsSchemaNameRoute,
   AppWorkspacePackagesSchemaNameRoute: AppWorkspacePackagesSchemaNameRoute,

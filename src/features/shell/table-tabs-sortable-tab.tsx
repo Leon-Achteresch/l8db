@@ -4,6 +4,7 @@ import {
   CopyIcon,
   EyeIcon,
   PackageIcon,
+  PanelRightIcon,
   SquareTerminalIcon,
   TableIcon,
   UsersIcon,
@@ -56,6 +57,8 @@ function tabVisual(tab: Tab) {
       return { Icon: BracesIcon, iconColor: "text-fuchsia-500" };
     case "extension":
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
+    case "extension-panel":
+      return { Icon: PanelRightIcon, iconColor: "text-teal-500" };
     case "package":
       return { Icon: PackageIcon, iconColor: "text-violet-500" };
     case "role":

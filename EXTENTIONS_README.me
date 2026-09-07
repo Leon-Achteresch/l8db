@@ -1,6 +1,6 @@
 # l8db Community Extensions
 
-Mit Community Extensions können externe Entwickler l8db erweitern, ohne den Anwendungscode zu ändern. Diese Anleitung beschreibt die implementierte Extension API v1. Community Extensions sind unabhängig von PostgreSQL-Servererweiterungen.
+Mit Community Extensions können externe Entwickler l8db erweitern, ohne den Anwendungscode zu ändern. Diese Anleitung beschreibt die implementierte Extension API v1.1. Alle v1.1-Ergänzungen sind additiv: Mit `engines.api: ^1.0.0` gebaute Extensions laufen unverändert weiter. Community Extensions sind unabhängig von PostgreSQL-Servererweiterungen.
 
 ## Schnellstart
 
@@ -96,17 +96,23 @@ Jede Extension benötigt eine `l8db-extension.json`:
   "id": "community.hello",
   "name": "Hello l8db",
   "version": "1.0.0",
-  "description": "Beispiel für Commands, Events und Konfiguration",
+  "description": "Beispiel für Commands, Events, Ansichten und Konfiguration",
   "publisher": "community",
   "engines": {
     "l8db": ">=0.1.0 <1.0.0",
     "api": "^1.0.0"
   },
   "main": "./dist/extension.js",
-  "activationEvents": ["onCommand:hello.greet", "onDatabaseOpen"],
+  "activationEvents": ["onCommand:hello.greet", "onCommand:hello.inspect", "onDatabaseOpen", "onView:hello.overview"],
   "permissions": ["database:read"],
   "contributes": {
-    "commands": [{ "id": "hello.greet", "title": "Hello: Greet" }],
+    "commands": [
+      { "id": "hello.greet", "title": "Hello: Greet" },
+      { "id": "hello.inspect", "title": "Hello: Inspect Active Database" }
+    ],
+    "views": [{ "id": "hello.overview", "title": "Hello Overview", "location": "sidebar" }],
+    "statusBar": [{ "id": "hello.status", "alignment": "right", "priority": 10 }],
+    "menus": [{ "command": "hello.inspect", "location": "view/title", "view": "hello.overview" }],
     "configuration": {
       "hello.enabled": {
         "type": "boolean",
@@ -120,7 +126,7 @@ Jede Extension benötigt eine `l8db-extension.json`:
 
 Die ID hat das Format `publisher.name`, verwendet Kleinbuchstaben, Ziffern und Bindestriche und ist höchstens 160 Zeichen lang. Der Herausgeber muss zum ID-Präfix passen. `main` bezeichnet einen sicheren relativen JavaScript-Pfad.
 
-`version`, `engines.l8db` und optionale `dependencies` verwenden SemVer beziehungsweise npm-SemVer-Bereiche. `engines.api` verwendet in API v1 `^1.0.0`; ohne Angabe wird dieser Wert ergänzt. Inkompatible Extensions werden nicht aktiviert. Die App-Version kommt aus der bestehenden Versionsverwaltung des Projekts; API und SDK sind unabhängig davon versioniert.
+`version`, `engines.l8db` und optionale `dependencies` verwenden SemVer beziehungsweise npm-SemVer-Bereiche. `engines.api` akzeptiert `^1.0.0` oder `^1.1.0`; ohne Angabe wird `^1.0.0` ergänzt. v1.1-Funktionen (Ansichten, Panels, Statusleiste, Abfragen, Netzwerk, Prozesse und Dialoge) stehen jeder Extension zur Verfügung, sobald der Host sie bereitstellt; das Manifest muss dafür keine neue API-Version deklarieren. Inkompatible Extensions werden nicht aktiviert. Die App-Version kommt aus der bestehenden Versionsverwaltung des Projekts; API und SDK sind unabhängig davon versioniert.
 
 Abhängigkeiten werden als ID-Version-Mapping angegeben:
 
@@ -134,7 +140,20 @@ Abhängigkeiten werden als ID-Version-Mapping angegeben:
 
 Abhängigkeiten müssen installiert und aktiviert sein. Sie werden vor der abhängigen Extension geladen. Fehlende oder inkompatible Abhängigkeiten und Zyklen führen zu einem Fehler der betroffenen Extension. Die Installation von Abhängigkeiten erfolgt ausdrücklich, nicht automatisch.
 
-Das [JSON Schema](packages/extension-api/schema.json) unterstützt Editoren. Die [Runtime-Validierung](packages/extension-api/src/manifest.ts) prüft zusätzlich SemVer, Pfade, doppelte IDs und Command-Verweise. Ein `onCommand:`-Ereignis muss auf einen deklarierten Command zeigen.
+Das [JSON Schema](packages/extension-api/schema.json) unterstützt Editoren. Die [Runtime-Validierung](packages/extension-api/src/manifest.ts) prüft zusätzlich SemVer, Pfade, doppelte IDs und Command-Verweise. Ein `onCommand:`-Ereignis muss auf einen deklarierten Command zeigen, ein `onView:`-Ereignis auf eine deklarierte Ansicht. Menüeinträge müssen auf deklarierte Commands zeigen; Einträge für `view/title` und `view/item` zusätzlich auf eine deklarierte Ansicht.
+
+`capabilities` deklariert Allowlisten für besonders sensible Zugriffe und wird vom Host erzwungen:
+
+```json
+{
+  "capabilities": {
+    "network": { "hosts": ["example.com", "*.example.org"] },
+    "process": { "commands": ["tool"] }
+  }
+}
+```
+
+Netzwerk-Hosts dürfen ein führendes `*.` als Wildcard und einen Port enthalten. Prozessnamen sind reine Basisnamen ohne Pfadtrennzeichen und werden ohne Shell direkt gestartet. Anforderungen ohne passende Deklaration werden abgewiesen, auch bei erteilter Berechtigung.
 
 ## Entry Point und Extension Context
 
@@ -153,8 +172,39 @@ export function activate(context: ExtensionContext, api: L8dbApi) {
   )
 
   context.subscriptions.push(
-    api.events.onDatabaseOpened(database => {
+    api.commands.registerCommand('hello.inspect', async () => {
+      const active = await api.database.getActive()
+      if (!active) {
+        await api.notifications.showWarning('Keine Datenbank ausgewählt')
+        return
+      }
+      const result = await api.database.query('SELECT 1 AS value')
+      await api.views.setTreeData('hello.overview', [{
+        id: 'database',
+        label: active.name,
+        description: active.kind,
+        children: result.rows.map((row, index) => ({ id: `row-${index}`, label: JSON.stringify(row) })),
+      }])
+      await api.statusBar.set('hello.status', { text: `${active.name}: ${result.rows.length} Zeilen` })
+    })
+  )
+
+  context.subscriptions.push(
+    api.events.onDatabaseOpened(async database => {
       api.logger.info(`Datenbank geöffnet: ${database.name}`)
+      await api.statusBar.set('hello.status', { text: database.name })
+    })
+  )
+
+  context.subscriptions.push(
+    api.events.onDatabaseClosed(async () => {
+      await api.statusBar.hide('hello.status')
+    })
+  )
+
+  context.subscriptions.push(
+    api.configuration.onDidChange(event => {
+      api.logger.info(`Konfiguration geändert: ${event.keys.join(', ')}`)
     })
   )
 }
@@ -176,24 +226,48 @@ Die vollständigen Verträge stehen in [packages/extension-api/src/index.ts](pac
 | --- | --- |
 | `commands.registerCommand(id, handler)` | Einen im Manifest deklarierten Command registrieren; liefert ein Disposable. |
 | `commands.executeCommand(id, payload?)` | Einen Command einer aktiven Extension ausführen. Fremde Extensions müssen als Abhängigkeit deklariert sein. |
+| `commands.getCommands()` | Alle registrierten Commands mit Titel und Eigentümer lesen. |
 | `events.onDatabaseOpened(listener)` | Öffnen einer aktiven Datenbankauswahl abonnieren; benötigt `database:read`. |
 | `events.onDatabaseClosed(listener)` | Schließen der vorherigen Datenbankauswahl abonnieren; benötigt `database:read`. |
+| `events.onActiveDatabaseChanged(listener)` | Wechsel der aktiven Datenbankauswahl (`DatabaseInfo` oder `null`) abonnieren; benötigt `database:read`. |
 | `database.getActive()` | `{ connectionId, name, kind }` oder `null` lesen; benötigt `database:read`. |
+| `database.query(sql, params?)` | SQL über die aktive Verbindung ausführen; benötigt `database:read`, für schreibende Statements zusätzlich `database:write`. Lesemodus-Verbindungen lehnen Schreibzugriffe ab. |
+| `network.fetch(url, options?)` | HTTP(S)-Anfrage mit Timeout und 1-MiB-Antwortlimit; benötigt `network` und einen Eintrag in `capabilities.network.hosts`. |
+| `secrets.get/set/delete(key)` | Eigene Geheimnisse im OS-Schlüsselbund speichern; benötigt `filesystem:extension-storage`. |
+| `clipboard.readText()` / `clipboard.writeText(value)` | Zwischenablage lesen oder schreiben; benötigt `clipboard:read` beziehungsweise `clipboard:write`. |
+| `workspace.showOpenDialog/showSaveDialog` | Dateidialog öffnen und den gewählten Pfad für diese Sitzung freigeben; benötigt `filesystem`. |
+| `workspace.readTextFile/writeTextFile` | Datei lesen oder schreiben, nur für per Dialog freigegebene Pfade; benötigt `filesystem`. |
+| `process.run(command, options?)` | Erlaubt gelistetes Programm ohne Shell starten, mit Timeout und Ausgabelimit; benötigt `process:execute` und einen Eintrag in `capabilities.process.commands`. |
+| `window.showQuickPick(items, options?)` | Auswahl- oder Mehrfachauswahldialog anzeigen. |
+| `window.showInputBox(options?)` | Texteingabedialog anzeigen, optional als Passwortfeld. |
+| `window.showInformationMessage/showWarningMessage/showErrorMessage(message, ...actions)` | Meldung mit Aktionsknöpfen anzeigen; liefert die gewählte Aktion. |
+| `views.setTreeData(viewId, items)` | Baum einer deklarierten Ansicht ersetzen (maximal 500 Knoten, Tiefe 8). Knoten können per `command` und `commandArguments` Commands auslösen. |
+| `views.reveal(viewId)` | Ansicht aktivieren; Extensions mit passendem `onView:`-Ereignis werden geladen. |
+| `statusBar.set(itemId, update)` / `statusBar.hide(itemId)` | Deklarierten Statusleisteneintrag setzen oder ausblenden. |
+| `panels.open(panelId, html?)` / `panels.close(panelId)` | Deklariertes Panel als Arbeitsbereich-Tab mit eigenem HTML öffnen oder schließen. |
+| `panels.postMessage(panelId, message)` / `panels.onDidReceiveMessage(panelId, listener)` | Nachrichten zwischen Extension und Panel-Webview austauschen. |
 | `configuration.get<T>(key)` | Eigene deklarierte Einstellung lesen, mit Manifest-Default als Rückfallwert. |
-| `notifications.showInfo(message)` | Eine Informationsmeldung in l8db anzeigen. |
+| `configuration.onDidChange(listener)` | Änderungen der eigenen Einstellungen abonnieren. |
+| `notifications.showInfo/showWarning/showError(message, ...actions)` | Eine Meldung in l8db anzeigen; mit Aktionen liefert sie die gewählte Aktion. |
 | `assets.readText(path)` | Eine UTF-8-Datei aus dem eigenen Paket lesen. |
 | `storage.get(key)` / `storage.set(key, value)` | Eigenen persistenten JSON-Speicher verwenden; benötigt `filesystem:extension-storage`. |
 | `logger.info/warn/error(message)` | Der Extension zugeordnete Logs schreiben. |
 
-Command- und Konfigurations-IDs sind global eindeutig und werden bereits bei der Discovery reserviert. Doppelte Registrierungen werden abgewiesen. Die Aktivierung wartet auf die Bestätigung der API-Registrierungen durch den Host.
+Command- und Konfigurations-IDs sind global eindeutig und werden bereits bei der Discovery reserviert. Das gilt auch für Ansichten, Panels und Statusleisteneinträge. Doppelte Registrierungen werden abgewiesen. Alle Commands erscheinen in der Befehlspalette, außer sie sind ausschließlich über `menus` an anderen Orten platziert. Die Aktivierung wartet auf die Bestätigung der API-Registrierungen durch den Host.
 
-Transportwerte müssen JSON-kompatibel sein. Verbindungsstrings, Passwörter, interne Singleton-Instanzen, Datenbankadapter und Tauri-Handles werden nicht ausgegeben. `database:read` erlaubt in API v1 Auswahlmetadaten und Events, keine SQL-Abfragen.
+Transportwerte müssen JSON-kompatibel sein. Verbindungsstrings, Passwörter, interne Singleton-Instanzen, Datenbankadapter und Tauri-Handles werden nicht ausgegeben. `database:read` erlaubt Auswahlmetadaten, Auswahlereignisse und lesende Abfragen; schreibende Statements erfordern zusätzlich `database:write`.
 
 Datenbankereignisse beschreiben die aktive Auswahl im Workspace, nicht den Zustand einer Serververbindung oder externe Datenänderungen. Record-Created/Updated/Deleted-Events sind nicht implementiert, weil dafür zunächst ein einheitlicher Core-Vertrag für bestätigte Änderungen über Provider, Transaktionen und rohe SQL-Abfragen benötigt wird.
 
 ## Konfiguration
 
-`contributes.configuration` unterstützt `boolean`, `string` und `number` mit einem Default desselben Typs. Im Extension-Bereich der Einstellungen werden Overrides als JSON gespeichert:
+`contributes.configuration` unterstützt `boolean`, `string` und `number` mit einem Default desselben Typs. Optional schränkt `enum` die zulässigen Werte ein:
+
+```json
+{"mode": {"type": "string", "default": "a", "enum": ["a", "b"]}}
+```
+
+Im Extension-Bereich der Einstellungen werden Overrides als JSON gespeichert:
 
 ```json
 {"hello.enabled": false}
@@ -213,6 +287,7 @@ Fehler können auch bei Validierung, Aktivierung oder Runtime-Ausfällen zum Zus
 - `onStartup`: Aktivierung nach dem Core-Start.
 - `onDatabaseOpen`: Aktivierung beim Wechsel der aktiven Datenbankauswahl.
 - `onCommand:<commandId>`: Deklaration einer verzögerten Command-Aktivierung.
+- `onView:<viewId>`: Aktivierung beim Öffnen einer deklarierten Ansicht.
 
 Führt der Host einen Command einer noch nicht aktiven Extension aus, aktiviert er zuerst dessen Eigentümer. Gleichzeitige Aktivierungsanforderungen teilen sich einen laufenden Vorgang. Während `activate()` dürfen Extensions ihre eigenen Commands noch nicht über `executeCommand()` aufrufen.
 
@@ -222,15 +297,15 @@ Neue Installationen sind deaktiviert und haben keine Freigaben. Beim App-Neustar
 
 Eine Manifest-Anforderung ist keine Freigabe. Nutzer wählen unterstützte Berechtigungen beim Aktivieren aus. Änderungen der Freigaben stoppen die laufende Runtime. Jeder API-Aufruf wird im Host geprüft; Speicherzugriffe werden zusätzlich in Rust anhand der gespeicherten Freigaben geprüft.
 
-| Berechtigung | API v1 |
+| Berechtigung | Umfang |
 | --- | --- |
-| `database:read` | Datenbankauswahl-Metadaten und Auswahlereignisse |
-| `filesystem:extension-storage` | Eigener JSON-Speicher |
-| `database:write` | Reserviert, nicht freigebbar |
-| `network` | Reserviert, nicht freigebbar; Netzwerkzugriffe durch CSP gesperrt |
-| `filesystem` | Reserviert, kein allgemeiner Dateisystemzugriff |
-| `clipboard:read` / `clipboard:write` | Reserviert, keine Clipboard-API |
-| `process:execute` | Reserviert, keine Prozess-API |
+| `database:read` | Datenbankauswahl-Metadaten, Auswahlereignisse und lesende SQL-Abfragen |
+| `database:write` | Schreibende SQL-Statements über die aktive Verbindung |
+| `network` | HTTP(S)-Anfragen an deklarierte `capabilities.network.hosts`; ohne Deklaration gesperrt |
+| `filesystem:extension-storage` | Eigener JSON-Speicher und eigene Geheimnisse im Schlüsselbund |
+| `filesystem` | Dateidialoge sowie Lese-/Schreibzugriff auf per Dialog freigegebene Pfade |
+| `clipboard:read` / `clipboard:write` | Lesen beziehungsweise Schreiben der Zwischenablage |
+| `process:execute` | Start deklarierter `capabilities.process.commands` ohne Shell, mit Timeout und Ausgabelimit |
 
 Extensions laufen in einem eigenen Worker innerhalb eines Sandbox-Iframes mit isoliertem Ursprung. Sie erhalten weder DOM- noch Node- oder Tauri-Zugriff. Der Host stellt eine private RPC-Verbindung mit einer expliziten Methodenliste bereit. Pro Aufruf gilt ein Timeout von zehn Sekunden; die Runtime begrenzt eingehende Nachrichten auf 500 pro Sekunde und Extension. Logs werden mit der Extension-ID versehen; die letzten 300 Einträge bleiben im Speicher.
 
@@ -307,13 +382,13 @@ Ein öffentlicher Marketplace ist nicht enthalten. Die öffentliche Schnittstell
 l8db Core
   → ExtensionManager / Registries / PermissionManager
     → ExtensionLoader → ExtensionRuntime
-      → SandboxRuntime → Worker → Public API v1 → Extension
+      → SandboxRuntime → Worker → Public API v1.1 → Extension
     → ExtensionStorage → zentrale Tauri-Bridge → Rust-App-Data-Speicher
 ```
 
 Die Infrastruktur liegt unter [src/lib/extensions](src/lib/extensions), der native Speicher in [src-tauri/src/community_extensions.rs](src-tauri/src/community_extensions.rs). Die bestehende Tauri-Bridge, React-Kontext, Zustand-Auswahlabonnements und Sonner-Meldungen verbinden den Host mit l8db. Community Extensions importieren ausschließlich die öffentliche API und ihre eigenen gebündelten Abhängigkeiten.
 
-Änderungen innerhalb API v1 sollen additiv bleiben. Inkompatible Änderungen benötigen eine neue API-Hauptversion, passende Manifest-Kompatibilität und eine entsprechende Runtime. Interne Host-Klassen dürfen nicht über das öffentliche Paket exportiert werden.
+Änderungen innerhalb API v1.x sollen additiv bleiben. Inkompatible Änderungen benötigen eine neue API-Hauptversion, passende Manifest-Kompatibilität und eine entsprechende Runtime. Interne Host-Klassen dürfen nicht über das öffentliche Paket exportiert werden.
 
 ## Tests
 
