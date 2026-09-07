@@ -57,7 +57,7 @@ export function SettingsAboutTab() {
 
       <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-muted-foreground">
         <a
-          href="https://github.com/leon/l8db"
+          href="https://github.com/Leon-Achteresch/l8db"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
