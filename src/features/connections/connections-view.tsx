@@ -1,8 +1,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Download, Star, Upload } from "lucide-react";
+import { ArrowLeft, Download, Plus, Star, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ProviderLogo } from "@/components/provider-logo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +15,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { useConnectionsStore } from "@/lib/connections";
+import { groupByServer } from "@/lib/connection-groups";
+import { providerFor } from "@/lib/connection-url";
+import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -30,6 +33,7 @@ export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeId = useConnectionsStore((state) => state.activeId);
   const [editorId, setEditorId] = useState<string | null>(connections.length ? null : "new");
+  const [template, setTemplate] = useState<SavedConnection | null>(null);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const connectingId = isSwitching ? (switchTargetId ?? "disconnect") : null;
@@ -45,6 +49,31 @@ export function ConnectionsView() {
   const visible = favoritesOnly
     ? connections.filter((connection) => connection.favorite)
     : connections;
+  const groups = groupByServer(visible);
+  const grouped = groups.some((group) => group.connections.length > 1);
+
+  function openEditor(id: string | null, from: SavedConnection | null = null) {
+    setTemplate(from);
+    setEditorId(id);
+  }
+
+  function renderCard(connection: SavedConnection) {
+    return (
+      <ConnectionPickCard
+        key={connection.id}
+        connection={connection}
+        active={activeId === connection.id}
+        connecting={connectingId === connection.id}
+        onOpen={() => {
+          if (activeId === connection.id) void connect(null);
+          else void connect(connection.id);
+        }}
+        onEdit={() => openEditor(connection.id)}
+        onDelete={() => setDeleteId(connection.id)}
+        onToggleFavorite={() => toggleFavorite(connection.id)}
+      />
+    );
+  }
 
   async function connect(id: string | null) {
     if (useConnectionSwitch.getState().isSwitching) return;
@@ -132,7 +161,7 @@ export function ConnectionsView() {
                   if (activeId === connection.id) void connect(null);
                   else void connect(connection.id);
                 }}
-                onEdit={() => setEditorId(connection.id)}
+                onEdit={() => openEditor(connection.id)}
                 onDelete={() => setDeleteId(connection.id)}
                 onToggleFavorite={() => toggleFavorite(connection.id)}
               />
@@ -142,10 +171,11 @@ export function ConnectionsView() {
         <div className="flex min-h-0 flex-1 flex-col">
           {editorId ? (
             <ConnectionEditor
-              key={editorId}
+              key={`${editorId}:${template?.id ?? ""}`}
               connection={selected}
-              onSaved={() => setEditorId(null)}
-              onCancel={() => setEditorId(connections.length ? null : "new")}
+              template={template ?? undefined}
+              onSaved={() => openEditor(null)}
+              onCancel={() => openEditor(connections.length ? null : "new")}
             />
           ) : (
             <section className="flex min-h-0 flex-1 items-center overflow-y-auto">
@@ -160,28 +190,59 @@ export function ConnectionsView() {
                     Alle Verbindungen anzeigen
                   </Button>
                 </div>
+              ) : grouped ? (
+                <div className="flex w-full flex-col gap-8 self-start py-2">
+                  {groups.map((group) => (
+                    <section key={group.key} className="flex flex-col gap-3">
+                      <header className="flex items-center gap-2.5 border-b pb-2">
+                        <span className="grid size-7 place-items-center rounded-md border bg-muted/50">
+                          <ProviderLogo
+                            providerId={providerFor(group.connections[0]).id}
+                            kind={group.kind}
+                            className="size-4"
+                          />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-mono text-sm font-medium">
+                            {group.label}
+                          </span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {group.connections.length}{" "}
+                            {group.connections.length === 1 ? "Schema" : "Schemas"}
+                          </span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditor("new", group.connections[0])}
+                        >
+                          <Plus className="size-4" />
+                          Schema hinzufügen
+                        </Button>
+                      </header>
+                      <motion.div
+                        layout
+                        transition={{ layout: SPRING_LAYOUT }}
+                        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                      >
+                        {group.connections.map(renderCard)}
+                      </motion.div>
+                    </section>
+                  ))}
+                  {!favoritesOnly && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <ConnectionAddTile onAdd={() => openEditor("new")} />
+                    </div>
+                  )}
+                </div>
               ) : (
                 <motion.div
                   layout
                   transition={{ layout: SPRING_LAYOUT }}
                   className="grid w-full grid-cols-1 gap-4 py-2 sm:grid-cols-2 xl:grid-cols-3"
                 >
-                  {visible.map((connection) => (
-                    <ConnectionPickCard
-                      key={connection.id}
-                      connection={connection}
-                      active={activeId === connection.id}
-                      connecting={connectingId === connection.id}
-                      onOpen={() => {
-                        if (activeId === connection.id) void connect(null);
-                        else void connect(connection.id);
-                      }}
-                      onEdit={() => setEditorId(connection.id)}
-                      onDelete={() => setDeleteId(connection.id)}
-                      onToggleFavorite={() => toggleFavorite(connection.id)}
-                    />
-                  ))}
-                  {!favoritesOnly && <ConnectionAddTile onAdd={() => setEditorId("new")} />}
+                  {visible.map(renderCard)}
+                  {!favoritesOnly && <ConnectionAddTile onAdd={() => openEditor("new")} />}
                 </motion.div>
               )}
             </section>

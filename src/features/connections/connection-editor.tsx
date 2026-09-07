@@ -21,8 +21,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { withTimeout } from "@/lib/async";
+import { serverLabel } from "@/lib/connection-groups";
 import {
   connectionError,
+  connectionSummary,
   detectProvider,
   filePath,
   kindFromUrl,
@@ -66,6 +68,7 @@ import { SetupStepper } from "./setup-stepper";
 
 interface Props {
   connection?: SavedConnection;
+  template?: SavedConnection;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -92,22 +95,25 @@ function placeholderDefaults(info: ProviderInfo) {
   }
 }
 
-export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
+export function ConnectionEditor({ connection, template, onSaved, onCancel }: Props) {
   const queryClient = useQueryClient();
   const providers = useProvidersStore((state) => state.providers);
   const groups = [...new Set(providers.map((entry) => entry.group))];
+  const seed = connection ?? template;
   const [name, setName] = useState(connection?.name ?? "");
   const [value, setValue] = useState(connection?.connectionString ?? "");
-  const [mode, setMode] = useState<Mode>("string");
+  const [mode, setMode] = useState<Mode>(template ? "fields" : "string");
   const [setupMode, setSetupMode] = useState<SetupMode>("simple");
   const [provider, setProvider] = useState(
-    connection ? detectProvider(connection.connectionString, connection.kind) : "postgres",
+    seed ? detectProvider(seed.connectionString, seed.kind) : "postgres",
   );
   const info = providers.find((entry) => entry.id === provider) ?? providers[0];
   const kind = info.kind;
   const caps = info.capabilities;
-  const defaults = placeholderDefaults(info);
-  const [ssl, setSsl] = useState<SslMode>(connection?.sslMode ?? sslModeFromUrl(value));
+  const defaults = template
+    ? { ...connectionSummary(template.connectionString, template.kind), user: "" }
+    : placeholderDefaults(info);
+  const [ssl, setSsl] = useState<SslMode>(seed?.sslMode ?? sslModeFromUrl(value));
   const [showPassword, setShowPassword] = useState(false);
   const [host, setHost] = useState(defaults.host);
   const [port, setPort] = useState(defaults.port);
@@ -116,23 +122,23 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [password, setPassword] = useState("");
   const [file, setFile] = useState("");
   const [extraParams, setExtraParams] = useState("");
-  const [sshEnabled, setSshEnabled] = useState(Boolean(connection?.ssh?.host));
-  const [sshHost, setSshHost] = useState(connection?.ssh?.host ?? "");
-  const [sshPort, setSshPort] = useState(String(connection?.ssh?.port ?? 22));
-  const [sshUser, setSshUser] = useState(connection?.ssh?.user ?? "");
-  const [sshAuth, setSshAuth] = useState<SshAuth>(connection?.ssh?.auth ?? "key");
-  const [sshKey, setSshKey] = useState(connection?.ssh?.keyFile ?? "");
+  const [sshEnabled, setSshEnabled] = useState(Boolean(seed?.ssh?.host));
+  const [sshHost, setSshHost] = useState(seed?.ssh?.host ?? "");
+  const [sshPort, setSshPort] = useState(String(seed?.ssh?.port ?? 22));
+  const [sshUser, setSshUser] = useState(seed?.ssh?.user ?? "");
+  const [sshAuth, setSshAuth] = useState<SshAuth>(seed?.ssh?.auth ?? "key");
+  const [sshKey, setSshKey] = useState(seed?.ssh?.keyFile ?? "");
   const [sshPassword, setSshPassword] = useState("");
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [step, setStep] = useState<1 | 2 | 3>(connection ? 2 : 1);
+  const [step, setStep] = useState<1 | 2 | 3>(seed ? 2 : 1);
   const reduce = useReducedMotion();
   const setPreview = useDbThemeStore((state) => state.setPreview);
-  const [tags, setTags] = useState(connection?.tags?.map((tag) => tag.name).join(", ") ?? "");
-  const [color, setColor] = useState<string | null>(connection?.color ?? null);
-  const [readOnly, setReadOnly] = useState(Boolean(connection?.readOnly));
-  const [schemaFilter, setSchemaFilter] = useState<string[]>(connection?.schemas ?? []);
+  const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");
+  const [color, setColor] = useState<string | null>(seed?.color ?? null);
+  const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
+  const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
   const [scannedSchemas, setScannedSchemas] = useState<string[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -436,7 +442,11 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
       <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-3 pb-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-tight">
-            {connection ? connection.name : "Neue Verbindung"}
+            {connection
+              ? connection.name
+              : template
+                ? `Weiteres Schema auf ${serverLabel(template)}`
+                : "Neue Verbindung"}
           </h2>
           <p className="truncate text-xs text-muted-foreground">
             {setupMode === "connection-string" ? quickInfo.name : info.name}

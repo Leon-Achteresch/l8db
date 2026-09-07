@@ -1,4 +1,4 @@
-import { Pencil, Star, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Star, Trash2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -105,6 +105,12 @@ export function ConnectionPickCard({
         className="mt-6 flex w-full items-end justify-between gap-3 text-left"
       >
         <span className="min-w-0">
+          {endpoint.user ? (
+            <span className="mb-1 flex items-center gap-1 truncate font-mono text-xs text-foreground/80">
+              <KeyRound className="size-3 shrink-0 text-muted-foreground" />
+              {endpoint.user}
+            </span>
+          ) : null}
           <span className="block truncate font-mono text-[11px] text-muted-foreground">{host}</span>
           {endpoint.database ? (
             <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
