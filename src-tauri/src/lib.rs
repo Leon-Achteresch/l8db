@@ -91,6 +91,7 @@ pub fn run() {
             db::commands::list_schema_copy_objects,
             db::commands::preview_schema_object_copy,
             db::commands::execute_schema_object_copy,
+            db::commands::copy_schema_table_data,
             db::commands::preview_object_ddl,
             db::commands::execute_object_ddl,
             db::commands::object_audit_info,
