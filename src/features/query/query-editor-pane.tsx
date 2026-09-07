@@ -1,11 +1,11 @@
 import { useTheme } from "next-themes";
-import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { useSettingsStore } from "@/lib/settings";
 import { toMonacoSnippet, useSnippetsStore } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
-import { useSettingsStore } from "@/lib/settings";
 
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
@@ -838,9 +838,7 @@ export function QueryEditorPane({
         const maxColumn = model.getLineMaxColumn(targetLine);
         const startColumn = Math.max(1, Math.min(column, maxColumn));
         const endColumn = Math.max(startColumn, Math.min(startColumn + length, maxColumn));
-        editor.setSelection(
-          new monaco.Range(targetLine, startColumn, targetLine, endColumn),
-        );
+        editor.setSelection(new monaco.Range(targetLine, startColumn, targetLine, endColumn));
         editor.revealLineInCenter(targetLine);
         editor.focus();
       },

@@ -1,10 +1,10 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { motion } from "motion/react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useEffect, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { readCommunityExtension } from "@/lib/db";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import { CommunityExtensionCard } from "./community-extension-card";
 

@@ -11,10 +11,10 @@ import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
 import {
   formatSqlWith,
-  sqlDialectForKind,
-  supportsSqlFormatting,
   type SqlDialect,
   type SqlFormatOptions,
+  sqlDialectForKind,
+  supportsSqlFormatting,
 } from "@/lib/sql-format";
 
 const globalScope = self as unknown as {

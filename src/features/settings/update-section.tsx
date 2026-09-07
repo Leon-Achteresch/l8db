@@ -1,11 +1,11 @@
+import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { checkForUpdates, getAppVersion, getPendingUpdate, presentUpdate } from "@/lib/updater";
 
@@ -57,7 +57,11 @@ export function UpdateSection() {
         title="Installierte Version"
         description={version ? `l8db ${version}` : "Version wird ermittelt …"}
       >
-        <Button variant="outline" onClick={() => void onCheck()} disabled={status.kind === "checking"}>
+        <Button
+          variant="outline"
+          onClick={() => void onCheck()}
+          disabled={status.kind === "checking"}
+        >
           <RefreshCw className={status.kind === "checking" ? "size-4 animate-spin" : "size-4"} />
           <span>{status.kind === "checking" ? "Prüfe …" : "Nach Updates suchen"}</span>
         </Button>
@@ -101,7 +105,10 @@ export function UpdateSection() {
         </SettingsRow>
       ) : null}
       {status.kind === "available" && pending ? (
-        <SettingsRow title="Update verfügbar" description={`Version ${pending.version} steht bereit.`}>
+        <SettingsRow
+          title="Update verfügbar"
+          description={`Version ${pending.version} steht bereit.`}
+        >
           <Button onClick={() => presentUpdate(pending)}>Anzeigen</Button>
         </SettingsRow>
       ) : null}

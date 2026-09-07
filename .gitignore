@@ -46,3 +46,6 @@ coverage/
 chat/
 
 docs/
+
+# Nested website repo (separates Projekt)
+l8db-website/

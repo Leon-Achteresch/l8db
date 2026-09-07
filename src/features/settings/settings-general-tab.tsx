@@ -5,7 +5,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { TourSection } from "@/features/settings/tour-section";
-import { useSettingsStore, type UiDensity } from "@/lib/settings";
+import { type UiDensity, useSettingsStore } from "@/lib/settings";
 
 export function SettingsGeneralTab() {
   const { theme, setTheme } = useTheme();

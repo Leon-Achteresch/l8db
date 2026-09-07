@@ -5,8 +5,8 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useTableRowCountQuery } from "@/lib/queries";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useTableRowCountQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { type SavedView, useViewsStore, VIEW_COLORS } from "@/lib/views";
 

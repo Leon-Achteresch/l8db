@@ -125,12 +125,12 @@ import {
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
-  useProceduresQuery,
-  useSynonymsQuery,
   useMaterializedViewsQuery,
+  useProceduresQuery,
   useRolesQuery,
   useSchemasQuery,
   useSequencesQuery,
+  useSynonymsQuery,
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
@@ -455,12 +455,12 @@ export function AppSidebarPanel() {
                       : sidebarTab === "synonyms"
                         ? "Synonyme"
                         : sidebarTab === "extensions"
-                        ? "Packages"
-                        : sidebarTab === "roles"
-                          ? "Benutzer & Rollen"
-                          : sidebarTab === "sequences"
-                            ? "Sequenzen"
-                            : "Gespeicherte Queries"}
+                          ? "Packages"
+                          : sidebarTab === "roles"
+                            ? "Benutzer & Rollen"
+                            : sidebarTab === "sequences"
+                              ? "Sequenzen"
+                              : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction

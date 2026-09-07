@@ -296,7 +296,10 @@ export function flattenTour() {
 }
 
 export function tourProgress(chapterIndex: number, stepIndex: number) {
-  const done = TOUR_CHAPTERS.slice(0, chapterIndex).reduce((sum, chapter) => sum + chapter.steps.length, 0);
+  const done = TOUR_CHAPTERS.slice(0, chapterIndex).reduce(
+    (sum, chapter) => sum + chapter.steps.length,
+    0,
+  );
   return {
     current: done + stepIndex + 1,
     total: flattenTour().length,

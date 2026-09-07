@@ -4,9 +4,9 @@ import { motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useTriggersQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface TableTriggersListProps {

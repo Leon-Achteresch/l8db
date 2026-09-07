@@ -30,10 +30,7 @@ export const EMPTY_SESSION_FILTERS: SessionFilters = {
 
 const UNGROUPED_LABEL = "(leer)";
 
-function matchesText(
-  value: string | null | undefined,
-  needle: string,
-): boolean {
+function matchesText(value: string | null | undefined, needle: string): boolean {
   const n = needle.trim().toLowerCase();
   if (!n) return true;
   return (value ?? "").toLowerCase().includes(n);
@@ -43,10 +40,7 @@ export function isSessionFilterActive(filters: SessionFilters): boolean {
   return Object.values(filters).some((v) => v.trim() !== "");
 }
 
-export function filterSessions(
-  sessions: SessionInfo[],
-  filters: SessionFilters,
-): SessionInfo[] {
+export function filterSessions(sessions: SessionInfo[], filters: SessionFilters): SessionInfo[] {
   const state = filters.state.trim().toLowerCase();
   return sessions.filter((s) => {
     if (!matchesText(s.user, filters.user)) return false;
@@ -63,10 +57,7 @@ export function sessionStates(sessions: SessionInfo[]): string[] {
   return [...set].sort();
 }
 
-export function groupSessions(
-  sessions: SessionInfo[],
-  grouping: SessionGrouping,
-): SessionGroup[] {
+export function groupSessions(sessions: SessionInfo[], grouping: SessionGrouping): SessionGroup[] {
   if (grouping === "none") return [{ key: "", label: "", sessions }];
   const map = new Map<string, SessionInfo[]>();
   for (const s of sessions) {
@@ -89,9 +80,7 @@ export function groupSessions(
     }));
 }
 
-export function computeBlocking(
-  sessions: SessionInfo[],
-): Map<number, BlockingInfo> {
+export function computeBlocking(sessions: SessionInfo[]): Map<number, BlockingInfo> {
   const known = new Set(sessions.map((s) => s.pid));
   const result = new Map<number, BlockingInfo>();
   const ensure = (pid: number): BlockingInfo => {
@@ -103,9 +92,7 @@ export function computeBlocking(
     return info;
   };
   for (const s of sessions) {
-    const blockers = [...new Set(s.blocked_by ?? [])].filter(
-      (pid) => pid !== s.pid,
-    );
+    const blockers = [...new Set(s.blocked_by ?? [])].filter((pid) => pid !== s.pid);
     if (blockers.length === 0) continue;
     const info = ensure(s.pid);
     for (const blocker of blockers) {

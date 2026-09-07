@@ -3,7 +3,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
-import { useSettingsStore, type SslDefaultMode } from "@/lib/settings";
+import { type SslDefaultMode, useSettingsStore } from "@/lib/settings";
 
 export function SettingsSecurityTab() {
   const {

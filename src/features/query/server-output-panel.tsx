@@ -1,12 +1,12 @@
-import { useMemo } from "react";
 import { CopyIcon, EraserIcon, TerminalIcon, XIcon } from "lucide-react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
-import { useServerOutputStore, type ServerOutputEntry } from "@/lib/server-output";
+import { type ServerOutputEntry, useServerOutputStore } from "@/lib/server-output";
 
 interface ServerOutputPanelProps {
   connectionId: string;
@@ -108,7 +108,10 @@ export function ServerOutputPanel({
                 <span className="shrink-0 tabular-nums text-muted-foreground">
                   {formatTime(entry.at)}
                 </span>
-                <Badge variant={levelVariant(entry.level)} className="shrink-0 px-1.5 py-0 text-[10px]">
+                <Badge
+                  variant={levelVariant(entry.level)}
+                  className="shrink-0 px-1.5 py-0 text-[10px]"
+                >
                   {entry.level}
                 </Badge>
                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">

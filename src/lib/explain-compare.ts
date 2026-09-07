@@ -208,7 +208,9 @@ export function planToText(root: ExplainNode): string {
     }
     const actual = numberOrNull(node["Actual Total Time"]);
     if (actual !== null) {
-      parts.push(`(actual time=${actual.toFixed(3)} rows=${numberOrNull(node["Actual Rows"]) ?? "?"})`);
+      parts.push(
+        `(actual time=${actual.toFixed(3)} rows=${numberOrNull(node["Actual Rows"]) ?? "?"})`,
+      );
     }
     lines.push(parts.join(" "));
     const cond = node["Index Cond"] ?? node["Hash Cond"] ?? node.Filter;

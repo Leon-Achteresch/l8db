@@ -11,8 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { installExtension, uninstallExtension } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { useAvailableExtensionsQuery } from "@/lib/queries";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useAvailableExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function AvailableExtensionsView() {

@@ -55,8 +55,8 @@ export function BindParamsDialog({
         <DialogHeader>
           <DialogTitle>Bind-Parameter</DialogTitle>
           <DialogDescription>
-            Werte werden gebunden und nicht in den SQL-Text eingesetzt. Der Verlauf speichert nur die
-            Abfrage mit Platzhaltern.
+            Werte werden gebunden und nicht in den SQL-Text eingesetzt. Der Verlauf speichert nur
+            die Abfrage mit Platzhaltern.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-80 pr-2">

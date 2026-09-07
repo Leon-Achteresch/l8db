@@ -10,7 +10,12 @@ export interface QueryRevealRequest {
 
 interface QueryRevealState {
   request: QueryRevealRequest | null;
-  requestReveal: (target: { tabId: string; line: number; column?: number; length?: number }) => void;
+  requestReveal: (target: {
+    tabId: string;
+    line: number;
+    column?: number;
+    length?: number;
+  }) => void;
   clearReveal: (tabId: string) => void;
 }
 

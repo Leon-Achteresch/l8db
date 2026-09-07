@@ -112,7 +112,9 @@ function validateNode(node: unknown, path: string): ExplainNode {
     if (!Array.isArray(children)) {
       throw new Error(`Ungültiger Planknoten bei ${path}: "Plans" muss eine Liste sein.`);
     }
-    children.forEach((child, index) => validateNode(child, `${path}.Plans[${index}]`));
+    for (const [index, child] of children.entries()) {
+      validateNode(child, `${path}.Plans[${index}]`);
+    }
   }
   return node as unknown as ExplainNode;
 }

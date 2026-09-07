@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSnippetsStore, type Snippet } from "@/lib/snippets";
+import { type Snippet, useSnippetsStore } from "@/lib/snippets";
 
 interface SnippetMenuProps {
   onInsert: (snippet: Snippet) => void;

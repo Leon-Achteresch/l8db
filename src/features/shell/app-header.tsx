@@ -2,13 +2,13 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { motion } from "motion/react";
 import { type CSSProperties, useEffect } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
@@ -64,7 +64,11 @@ export function AppHeader() {
           const active = isNavActive(item.url, pathname);
           return (
             <Tooltip key={item.title} content={item.title} side="bottom">
-              <motion.div layout="position" transition={{ layout: SPRING_LAYOUT }} className="relative">
+              <motion.div
+                layout="position"
+                transition={{ layout: SPRING_LAYOUT }}
+                className="relative"
+              >
                 {active && (
                   <motion.span
                     layoutId="header-nav-active"

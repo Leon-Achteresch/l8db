@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { DEFAULT_CSV_OPTIONS, type CsvOptions } from "@/lib/export";
+import { type CsvOptions, DEFAULT_CSV_OPTIONS } from "@/lib/export";
 
 export interface ExportTemplate {
   id: string;
@@ -42,10 +42,7 @@ export const useExportTemplatesStore = create<ExportTemplatesState>()(
           createdAt: existing?.createdAt ?? Date.now(),
         };
         set((state) => ({
-          templates: [
-            template,
-            ...state.templates.filter((t) => t.id !== template.id),
-          ],
+          templates: [template, ...state.templates.filter((t) => t.id !== template.id)],
         }));
         return template;
       },

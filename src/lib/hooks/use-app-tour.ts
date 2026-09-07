@@ -13,8 +13,8 @@ import {
 } from "@/lib/tour/conditions";
 import { destroySpotlight, showSpotlight } from "@/lib/tour/spotlight";
 import { currentTour, useTourStore } from "@/lib/tour/store";
-import { useTransactionStore } from "@/lib/transactions";
 import type { TourStep } from "@/lib/tour/types";
+import { useTransactionStore } from "@/lib/transactions";
 
 async function goToStepRoute(step: TourStep, navigate: ReturnType<typeof useNavigate>) {
   if (step.tableRoute) {
@@ -70,8 +70,7 @@ export function useAppTour() {
       }
       const baseline = useConnectionsStore.getState().connections.length;
       const alreadyMet =
-        Boolean(step.wait) &&
-        isWaitMet(step.wait!, baseline, false, window.location.pathname);
+        Boolean(step.wait) && isWaitMet(step.wait!, baseline, false, window.location.pathname);
       const waitingNow = Boolean(step.wait) && !alreadyMet;
       showSpotlight(step, waitingNow);
       if (step.target) await waitForSelector(step.target, 900);

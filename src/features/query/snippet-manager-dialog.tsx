@@ -15,13 +15,13 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  SNIPPET_PLACEHOLDER_HINT,
   findShortcutConflict,
+  SNIPPET_PLACEHOLDER_HINT,
+  type Snippet,
+  type SnippetInput,
   searchSnippets,
   snippetPlaceholders,
   useSnippetsStore,
-  type Snippet,
-  type SnippetInput,
 } from "@/lib/snippets";
 
 interface SnippetManagerDialogProps {

@@ -148,7 +148,9 @@ export function TableUsedByPanel({ schema, name }: TableUsedByPanelProps) {
         </div>
       ) : mode === "grid" ? (
         <div className="min-h-0 flex-1 divide-y overflow-y-auto">
-          {filtered.map((dep, index) => row(dep, `${dep.relation}-${dep.owner}-${dep.name}-${index}`))}
+          {filtered.map((dep, index) =>
+            row(dep, `${dep.relation}-${dep.owner}-${dep.name}-${index}`),
+          )}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">

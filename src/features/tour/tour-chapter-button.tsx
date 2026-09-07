@@ -21,7 +21,9 @@ export function TourChapterButton({ index, title, summary, active, done, onSelec
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors",
-        active ? "bg-primary/12 text-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+        active
+          ? "bg-primary/12 text-foreground"
+          : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
       )}
     >
       <span
@@ -36,7 +38,9 @@ export function TourChapterButton({ index, title, summary, active, done, onSelec
       </span>
       <span className="min-w-0">
         <span className="block truncate text-xs font-semibold text-foreground">{title}</span>
-        <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{summary}</span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+          {summary}
+        </span>
       </span>
     </motion.button>
   );

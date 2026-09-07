@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
-import changelog from "../../../CHANGELOG.md?raw";
 import { Markdown } from "@/components/markdown";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import changelog from "../../../CHANGELOG.md?raw";
 
 export function ReleaseNotesView() {
   return (

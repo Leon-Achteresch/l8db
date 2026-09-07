@@ -14,8 +14,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useConnectionsStore } from "@/lib/connections";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";

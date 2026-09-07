@@ -182,10 +182,7 @@ function columnChanges(before: SnapshotColumn, after: SnapshotColumn): string[] 
   return changes;
 }
 
-export function diffSnapshots(
-  base: SchemaSnapshot,
-  current: SchemaSnapshot,
-): SnapshotDiffEntry[] {
+export function diffSnapshots(base: SchemaSnapshot, current: SchemaSnapshot): SnapshotDiffEntry[] {
   const entries: SnapshotDiffEntry[] = [];
   const baseTables = new Map(base.tables.map((table) => [qualified(table), table]));
   const currentTables = new Map(current.tables.map((table) => [qualified(table), table]));

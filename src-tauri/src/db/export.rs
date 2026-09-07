@@ -210,9 +210,7 @@ impl CsvFileWriter {
 
     pub fn finish(mut self) -> Result<(), String> {
         if let Some(mut writer) = self.writer.take() {
-            writer
-                .flush()
-                .map_err(|e| format!("Schreibfehler: {e}"))?;
+            writer.flush().map_err(|e| format!("Schreibfehler: {e}"))?;
         }
         Ok(())
     }

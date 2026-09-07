@@ -1,4 +1,4 @@
-import { driver, type Driver } from "driver.js";
+import { type Driver, driver } from "driver.js";
 import type { TourStep } from "@/lib/tour/types";
 
 let instance: Driver | null = null;
@@ -31,7 +31,10 @@ export function showSpotlight(step: TourStep, waiting: boolean) {
   });
   const target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
   if (waiting && target) target.setAttribute("data-tour-wait", "true");
-  const description = waiting && step.waitHint ? `${step.body}<p class="l8db-driver-wait">${step.waitHint}</p>` : step.body;
+  const description =
+    waiting && step.waitHint
+      ? `${step.body}<p class="l8db-driver-wait">${step.waitHint}</p>`
+      : step.body;
   const popover =
     !target || step.side === "over"
       ? { title: step.title, description, align: "center" as const }

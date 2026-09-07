@@ -159,9 +159,7 @@ export const useSnippetsStore = create<SnippetsState>()(
       updateSnippet: (id, input) =>
         set((state) => ({
           snippets: state.snippets.map((snippet) =>
-            snippet.id === id
-              ? { ...snippet, ...sanitize(input), updatedAt: Date.now() }
-              : snippet,
+            snippet.id === id ? { ...snippet, ...sanitize(input), updatedAt: Date.now() } : snippet,
           ),
         })),
 

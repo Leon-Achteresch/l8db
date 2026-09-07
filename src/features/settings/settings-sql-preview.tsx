@@ -14,13 +14,8 @@ const SAMPLE_SQL =
   "select u.id, u.email, count(o.id) as order_count from users u left join orders o on u.id = o.user_id where u.active = true group by u.id, u.email having count(o.id) > 0 order by order_count desc limit 10;";
 
 export function SettingsSqlPreview() {
-  const {
-    editorFontSize,
-    editorTabSize,
-    editorKeywordCase,
-    editorLineNumbers,
-    editorWordWrap,
-  } = useSettingsStore();
+  const { editorFontSize, editorTabSize, editorKeywordCase, editorLineNumbers, editorWordWrap } =
+    useSettingsStore();
 
   const connection = useActiveConnection();
   const dialect = sqlDialectForKind(connection?.kind);

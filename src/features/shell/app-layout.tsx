@@ -1,9 +1,9 @@
 import { Outlet } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { WorkspaceStatus } from "./workspace-status";

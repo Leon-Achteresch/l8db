@@ -45,7 +45,11 @@ export function SettingsAboutTab() {
           description="Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte."
         >
           <Button variant="outline" size="sm" onClick={() => void copyDiagnosticInfo()}>
-            {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+            {copied ? (
+              <Check className="size-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
           </Button>
         </SettingsRow>

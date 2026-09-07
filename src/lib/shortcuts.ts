@@ -104,15 +104,11 @@ export const SHORTCUTS: ShortcutDefinition[] = [
 ];
 
 export function detectShortcutPlatform(platform?: string): ShortcutPlatform {
-  const value =
-    platform ?? (typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));
+  const value = platform ?? (typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));
   return /Mac|iPhone|iPad|iPod/i.test(value) ? "mac" : "other";
 }
 
-export function shortcutKeys(
-  binding: ShortcutBinding,
-  platform: ShortcutPlatform,
-): string[] {
+export function shortcutKeys(binding: ShortcutBinding, platform: ShortcutPlatform): string[] {
   const keys: string[] = [];
   if (binding.mod) keys.push(platform === "mac" ? "Cmd" : "Ctrl");
   if (binding.shift) keys.push("Shift");

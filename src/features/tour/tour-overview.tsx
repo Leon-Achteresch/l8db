@@ -3,9 +3,9 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TourChapterButton } from "@/features/tour/tour-chapter-button";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { advanceTour, jumpTourChapter, rewindTour } from "@/lib/hooks/use-app-tour";
 import { TOUR_CHAPTERS, tourProgress } from "@/lib/tour/chapters";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useTourStore } from "@/lib/tour/store";
 
 export function TourOverview() {
@@ -74,16 +74,17 @@ export function TourOverview() {
           <Switch checked={autoPilot} onCheckedChange={setAutoPilot} aria-label="Autopilot" />
         </label>
         <div className="mt-2.5 flex items-center gap-1.5">
-          <Button type="button" size="sm" variant="ghost" className="h-8 flex-1" onClick={() => rewindTour()}>
-            <ChevronLeft className="size-3.5" />
-            Zurück
-          </Button>
           <Button
             type="button"
             size="sm"
+            variant="ghost"
             className="h-8 flex-1"
-            onClick={() => advanceTour()}
+            onClick={() => rewindTour()}
           >
+            <ChevronLeft className="size-3.5" />
+            Zurück
+          </Button>
+          <Button type="button" size="sm" className="h-8 flex-1" onClick={() => advanceTour()}>
             {waiting ? "Überspringen" : "Weiter"}
             <ChevronRight className="size-3.5" />
           </Button>

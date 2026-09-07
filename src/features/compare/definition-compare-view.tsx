@@ -8,7 +8,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import { getFunctionDefinition, getViewDefinition } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
 
-import { type CompareSideSelection, CompareSidePicker, EMPTY_SIDE } from "./compare-side-picker";
+import { CompareSidePicker, type CompareSideSelection, EMPTY_SIDE } from "./compare-side-picker";
 import { type DefinitionDiffApi, DefinitionDiffEditor } from "./definition-diff-editor";
 
 interface SideState {

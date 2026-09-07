@@ -37,9 +37,7 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
 
   const invalid = candidates?.filter((candidate) => candidate.error) ?? [];
   const duplicates = candidates?.filter((candidate) => candidate.duplicateOf) ?? [];
-  const importable = candidates
-    ? resolveImport(candidates, selected, strategy).length
-    : 0;
+  const importable = candidates ? resolveImport(candidates, selected, strategy).length : 0;
 
   async function pickFile() {
     setBusy(true);
@@ -165,9 +163,7 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
           )}
           {duplicates.length > 0 && (
             <fieldset className="rounded-md border px-3 py-2">
-              <legend className="px-1 text-xs font-medium">
-                Dubletten ({duplicates.length})
-              </legend>
+              <legend className="px-1 text-xs font-medium">Dubletten ({duplicates.length})</legend>
               <RadioGroup
                 value={strategy}
                 onValueChange={(value) => setStrategy(value as DuplicateStrategy)}

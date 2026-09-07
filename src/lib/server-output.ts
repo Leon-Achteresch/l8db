@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { setServerOutput, takeServerOutput, type DatabaseKind, type ServerMessage } from "./db";
+import { type DatabaseKind, type ServerMessage, setServerOutput, takeServerOutput } from "./db";
 
 export interface ServerOutputEntry {
   id: string;
@@ -55,8 +55,7 @@ export const useServerOutputStore = create<ServerOutputState>()((set) => ({
         },
       };
     }),
-  clear: (connectionId) =>
-    set((state) => ({ entries: { ...state.entries, [connectionId]: [] } })),
+  clear: (connectionId) => set((state) => ({ entries: { ...state.entries, [connectionId]: [] } })),
 }));
 
 export function isServerOutputEnabled(connectionId: string): boolean {

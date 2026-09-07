@@ -36,7 +36,9 @@ export function SavedConnectionChip({
         "flex min-w-[12.5rem] items-center gap-2 rounded-2xl border bg-card/90 px-2.5 py-2 shadow-sm",
         active ? "border-primary ring-2 ring-primary/25" : "border-border/70",
       )}
-      style={connection.color ? { borderLeftWidth: 4, borderLeftColor: connection.color } : undefined}
+      style={
+        connection.color ? { borderLeftWidth: 4, borderLeftColor: connection.color } : undefined
+      }
     >
       <button
         type="button"

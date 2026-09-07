@@ -399,7 +399,11 @@ export function connectionError(error: unknown): string {
     )
   )
     return "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
-  if (/Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(message))
+  if (
+    /Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(
+      message,
+    )
+  )
     return message.replace(/^Error:\s*/, "");
   if (/ORA-12514/i.test(message))
     return "Der Service-Name ist dem Listener unbekannt (ORA-12514). Prüfe Service-Name und Listener.";
