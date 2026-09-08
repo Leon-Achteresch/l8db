@@ -9,7 +9,13 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -72,76 +78,71 @@ export function SidebarFavorites() {
             const Icon = iconFor(favorite.type);
             const missing =
               hasLists && !known.has(`${favorite.type}:${favorite.schema}.${favorite.name}`);
+            const open = () => {
+              if (favorite.type === "view") {
+                openViewEditorTab({ schema: favorite.schema, view: favorite.name });
+                void navigate({
+                  to: "/view-editor/$schema/$view",
+                  params: { schema: favorite.schema, view: favorite.name },
+                });
+                return;
+              }
+              if (favorite.type === "matview") {
+                void navigate({
+                  to: "/matviews/$schema/$name",
+                  params: { schema: favorite.schema, name: favorite.name },
+                });
+                return;
+              }
+              void navigate({
+                to: "/tables/$schema/$table",
+                params: { schema: favorite.schema, table: favorite.name },
+              });
+            };
             return (
-              <SidebarMenuItem key={id} className="group/favorite">
-                <SidebarMenuButton
-                  onClick={() => {
-                    if (favorite.type === "view") {
-                      openViewEditorTab({ schema: favorite.schema, view: favorite.name });
-                      void navigate({
-                        to: "/view-editor/$schema/$view",
-                        params: { schema: favorite.schema, view: favorite.name },
-                      });
-                      return;
-                    }
-                    if (favorite.type === "matview") {
-                      void navigate({
-                        to: "/matviews/$schema/$name",
-                        params: { schema: favorite.schema, name: favorite.name },
-                      });
-                      return;
-                    }
-                    void navigate({
-                      to: "/tables/$schema/$table",
-                      params: { schema: favorite.schema, table: favorite.name },
-                    });
-                  }}
-                  title={`${favorite.schema}.${favorite.name}`}
-                >
-                  {missing ? (
-                    <TriangleAlertIcon className="text-destructive" />
-                  ) : (
-                    <Icon className="text-muted-foreground" />
-                  )}
-                  <span className="truncate">{favorite.name}</span>
-                  <span className="ml-auto truncate text-xs text-muted-foreground">
-                    {favorite.schema}
-                  </span>
-                </SidebarMenuButton>
-                <div className="flex items-center gap-0.5 px-2 pb-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5"
-                    aria-label="Nach oben"
-                    disabled={index === 0}
-                    onClick={() => move(id, -1)}
-                  >
-                    <ChevronUpIcon className="size-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5"
-                    aria-label="Nach unten"
-                    disabled={index === scoped.length - 1}
-                    onClick={() => move(id, 1)}
-                  >
-                    <ChevronDownIcon className="size-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5"
-                    aria-label="Favorit entfernen"
-                    onClick={() => remove(id)}
-                  >
-                    <StarOffIcon className="size-3" />
-                  </Button>
-                  {missing ? (
-                    <span className="ml-1 text-xs text-destructive">nicht gefunden</span>
-                  ) : null}
-                </div>
+              <SidebarMenuItem key={id}>
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <SidebarMenuButton
+                      onClick={open}
+                      title={
+                        missing
+                          ? `${favorite.schema}.${favorite.name} (nicht gefunden)`
+                          : `${favorite.schema}.${favorite.name}`
+                      }
+                    >
+                      {missing ? (
+                        <TriangleAlertIcon className="text-destructive" />
+                      ) : (
+                        <Icon className="text-muted-foreground" />
+                      )}
+                      <span className="truncate">{favorite.name}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {favorite.schema}
+                      </span>
+                    </SidebarMenuButton>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onSelect={open}>Öffnen</ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem disabled={index === 0} onSelect={() => move(id, -1)}>
+                      <ChevronUpIcon />
+                      Nach oben
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      disabled={index === scoped.length - 1}
+                      onSelect={() => move(id, 1)}
+                    >
+                      <ChevronDownIcon />
+                      Nach unten
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onSelect={() => remove(id)}>
+                      <StarOffIcon />
+                      Favorit entfernen
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               </SidebarMenuItem>
             );
           })}
