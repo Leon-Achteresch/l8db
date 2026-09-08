@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { AppLogo } from "@/components/app-logo";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { extractHighlights } from "@/lib/markdown";
 import { useSettingsStore } from "@/lib/settings";
@@ -98,10 +99,9 @@ export function UpdateAvailableDialog() {
         >
           <div className="relative flex h-36 w-full select-none items-center justify-center overflow-hidden bg-gradient-to-br from-primary/90 via-primary to-chart-2">
             <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/15" />
-            <img
-              src="/logo.png"
+            <AppLogo
               alt=""
-              className="relative z-10 size-12 rounded-2xl object-contain shadow-lg ring-2 ring-white/20"
+              className="relative z-10 size-12 shadow-lg ring-2 ring-white/20"
             />
             <button
               type="button"
