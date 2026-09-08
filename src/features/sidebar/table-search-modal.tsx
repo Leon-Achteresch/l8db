@@ -38,6 +38,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
@@ -117,11 +118,13 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
   const [sql, setSql] = useState("");
 
   const [selectedEntity, setSelectedEntity] = useState<MatchedEntity | null>(null);
+  const searchIncludeColumns = useSettingsStore((state) => state.searchIncludeColumns);
+  const setSearchIncludeColumns = useSettingsStore((state) => state.setSearchIncludeColumns);
 
   const { data: tables } = useTablesQuery();
   const { data: views } = useViewsQuery();
-  const { data: tableColumns } = useColumnsQuery("BASE TABLE");
-  const { data: viewColumns } = useColumnsQuery("VIEW");
+  const { data: tableColumns } = useColumnsQuery("BASE TABLE", searchIncludeColumns);
+  const { data: viewColumns } = useColumnsQuery("VIEW", searchIncludeColumns);
 
   useEffect(() => {
     if (!open) return;
@@ -186,6 +189,12 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     for (const entity of allEntities) {
       const nameMatches = matchers.some((m) => m(entity.name));
       const fullMatches = matchers.some((m) => m(`${entity.schema}.${entity.name}`));
+      if (!searchIncludeColumns) {
+        if (nameMatches || fullMatches) {
+          results.push({ ...entity, matchingColumns: [] });
+        }
+        continue;
+      }
       const key = `${entity.type}:${entity.schema}.${entity.name}`;
       const cols = columnsByTable.get(key) ?? [];
       const matchingColumns = cols.filter((c) => matchers.some((m) => m(c)));
@@ -194,7 +203,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
       }
     }
     return results;
-  }, [tables, views, nameQuery, useRegex, columnsByTable]);
+  }, [tables, views, nameQuery, useRegex, columnsByTable, searchIncludeColumns]);
 
   const selectedColumns = useMemo(() => {
     if (!selectedEntity) return [];
@@ -316,7 +325,11 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
             <div className="flex items-center gap-2 border-b px-3 py-2.5">
               <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
               <input
-                placeholder="Tabellen & Views suchen... (mehrere mit ; trennen)"
+                placeholder={
+                  searchIncludeColumns
+                    ? "Tabellen, Views & Spalten suchen... (mehrere mit ; trennen)"
+                    : "Tabellen & Views suchen... (mehrere mit ; trennen)"
+                }
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
                 className={cn(
@@ -325,6 +338,21 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 )}
                 autoFocus
               />
+              <Toggle
+                size="sm"
+                variant="outline"
+                pressed={searchIncludeColumns}
+                onPressedChange={setSearchIncludeColumns}
+                aria-label="Spalten in Suche einbeziehen"
+                title={
+                  searchIncludeColumns
+                    ? "Spaltensuche deaktivieren"
+                    : "Spaltensuche aktivieren"
+                }
+                className="h-7 shrink-0 px-1.5"
+              >
+                <ColumnsIcon className="size-3.5" />
+              </Toggle>
               <Toggle
                 size="sm"
                 variant="outline"

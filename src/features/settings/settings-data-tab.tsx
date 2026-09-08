@@ -13,11 +13,13 @@ export function SettingsDataTab() {
     transactionsEnabled,
     confirmDestructiveQueries,
     highlightNullValues,
+    searchIncludeColumns,
     setRowLimit,
     setQueryTimeout,
     setTransactionsEnabled,
     setConfirmDestructiveQueries,
     setHighlightNullValues,
+    setSearchIncludeColumns,
   } = useSettingsStore();
 
   return (
@@ -117,6 +119,17 @@ export function SettingsDataTab() {
             checked={highlightNullValues}
             onCheckedChange={setHighlightNullValues}
             aria-label="NULL-Werte hervorheben"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Spalten in Suche einbeziehen"
+          description="Sidebar-Filter und erweiterte Suche treffen auch bei passenden Spaltennamen."
+        >
+          <Switch
+            checked={searchIncludeColumns}
+            onCheckedChange={setSearchIncludeColumns}
+            aria-label="Spalten in Suche einbeziehen"
           />
         </SettingsRow>
       </div>

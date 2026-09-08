@@ -102,6 +102,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -152,6 +153,7 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { useSettingsStore } from "@/lib/settings";
 import {
   activateConnectionWithToast,
   effectiveConnectionString,
@@ -754,9 +756,11 @@ function SidebarEntityList({
   const queryClient = useQueryClient();
   const favorites = useObjectFavoritesStore((state) => state.favorites);
   const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
+  const searchIncludeColumns = useSettingsStore((state) => state.searchIncludeColumns);
+  const setSearchIncludeColumns = useSettingsStore((state) => state.setSearchIncludeColumns);
   const { data: columns } = useColumnsQuery(
     type === "table" ? "BASE TABLE" : "VIEW",
-    search.trim().length > 0,
+    search.trim().length > 0 && searchIncludeColumns,
   );
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
@@ -784,6 +788,9 @@ function SidebarEntityList({
     return items
       .map((item) => {
         const nameMatch = item.name.toLowerCase().includes(q);
+        if (!searchIncludeColumns) {
+          return nameMatch ? { ...item, matchingColumns: [] as string[] } : null;
+        }
         const key = `${item.schema}.${item.name}`;
         const cols = columnsByTable.get(key) ?? [];
         const matchingColumns = cols.filter((c) => c.toLowerCase().includes(q));
@@ -796,7 +803,7 @@ function SidebarEntityList({
         (item): item is { schema: string; name: string; matchingColumns: string[] } =>
           item !== null,
       );
-  }, [items, deferredSearch, columnsByTable]);
+  }, [items, deferredSearch, columnsByTable, searchIncludeColumns]);
 
   if (isLoading) {
     return (
@@ -895,14 +902,37 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative" data-tour="sidebar-search">
-        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <SidebarInput
-          placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
-        />
+      <div className="flex items-center gap-1" data-tour="sidebar-search">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <SidebarInput
+            placeholder={
+              searchIncludeColumns
+                ? type === "table"
+                  ? "Tabellen & Spalten…"
+                  : "Views & Spalten…"
+                : type === "table"
+                  ? "Tabellen…"
+                  : "Views…"
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <Toggle
+          size="sm"
+          variant="outline"
+          pressed={searchIncludeColumns}
+          onPressedChange={setSearchIncludeColumns}
+          aria-label="Spalten in Suche einbeziehen"
+          title={
+            searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"
+          }
+          className="h-7 shrink-0 px-1.5"
+        >
+          <ColumnsIcon className="size-3.5" />
+        </Toggle>
       </div>
       <AlertDialog
         open={confirmAction !== null}
