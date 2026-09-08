@@ -52,22 +52,22 @@ const WRITE_COMMANDS = new Set([
 export const READ_ONLY_MESSAGE =
   "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden.";
 
-let readOnlyResolver: () => boolean = () => false;
+let readOnlyResolver: (connectionString?: unknown) => boolean = () => false;
 
-export function registerReadOnlyResolver(resolver: () => boolean): void {
+export function registerReadOnlyResolver(resolver: (connectionString?: unknown) => boolean): void {
   readOnlyResolver = resolver;
 }
 
-export function isReadOnlyActive(): boolean {
+export function isReadOnlyActive(connectionString?: unknown): boolean {
   try {
-    return readOnlyResolver();
+    return readOnlyResolver(connectionString);
   } catch {
     return false;
   }
 }
 
 function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (WRITE_COMMANDS.has(command) && isReadOnlyActive()) {
+  if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString)) {
     return Promise.reject(new Error(READ_ONLY_MESSAGE));
   }
   return tauriInvoke<T>(command, args);

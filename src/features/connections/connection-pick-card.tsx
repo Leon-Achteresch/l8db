@@ -1,4 +1,4 @@
-import { Copy, CopyPlus, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { AppWindow, Copy, CopyPlus, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
@@ -20,6 +20,7 @@ interface Props {
   active: boolean;
   connecting: boolean;
   onOpen: () => void;
+  onOpenWindow: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -32,6 +33,7 @@ export function ConnectionPickCard({
   active,
   connecting,
   onOpen,
+  onOpenWindow,
   onEdit,
   onDelete,
   onDuplicate,
@@ -68,7 +70,11 @@ export function ConnectionPickCard({
             />
           )}
           <div className="flex items-center justify-between gap-2">
-            <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+            <button
+              type="button"
+              onClick={onOpen}
+              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+            >
               <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-muted/50">
                 <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
               </span>
@@ -101,6 +107,15 @@ export function ConnectionPickCard({
                 )}
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
+              </button>
+              <button
+                type="button"
+                aria-label={`${connection.name} in neuem Fenster öffnen`}
+                title="In neuem Fenster öffnen"
+                onClick={onOpenWindow}
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <AppWindow className="size-3.5" />
               </button>
               <button
                 type="button"
@@ -145,6 +160,10 @@ export function ConnectionPickCard({
         <ContextMenuItem onSelect={onOpen}>
           <Play className="size-3.5" />
           {active ? "Trennen" : "Öffnen"}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onOpenWindow}>
+          <AppWindow className="size-3.5" />
+          In neuem Fenster öffnen
         </ContextMenuItem>
         <ContextMenuItem onSelect={onEdit}>
           <Pencil className="size-3.5" />

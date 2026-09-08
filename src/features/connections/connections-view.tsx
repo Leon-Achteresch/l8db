@@ -19,9 +19,11 @@ import { groupByServer } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { ensurePassword } from "@/lib/password-prompt";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
+import { openConnectionWindow } from "@/lib/windows";
 import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
@@ -68,6 +70,7 @@ export function ConnectionsView() {
           if (activeId === connection.id) void connect(null);
           else void connect(connection.id);
         }}
+        onOpenWindow={() => void openInWindow(connection)}
         onEdit={() => openEditor(connection.id)}
         onDelete={() => setDeleteId(connection.id)}
         onDuplicate={() => duplicateConnection(connection.id)}
@@ -75,6 +78,18 @@ export function ConnectionsView() {
         onToggleFavorite={() => toggleFavorite(connection.id)}
       />
     );
+  }
+
+  async function openInWindow(connection: SavedConnection) {
+    if (!(await ensurePassword(connection.id))) return;
+    const current = useConnectionsStore
+      .getState()
+      .connections.find((entry) => entry.id === connection.id);
+    if (!current) {
+      toast.error("Verbindung wurde entfernt.");
+      return;
+    }
+    await openConnectionWindow(current);
   }
 
   async function connect(id: string | null) {
