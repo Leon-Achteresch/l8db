@@ -89,15 +89,15 @@ export function ConnectionsView() {
       data-tour="connections-page"
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
-      <div className="relative mx-auto flex h-full min-h-0 w-full flex-col px-5 py-5">
-        <header className="mb-5 flex shrink-0 items-end justify-between gap-3">
+      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4 py-4">
+        <header className="mb-4 flex shrink-0 items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-muted-foreground">l8db</p>
-            <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">
+            <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight">
               {editorId ? "Verbindung" : "Datenbank wählen"}
             </h1>
             {!editorId && (
-              <p className="mt-1.5 text-sm text-muted-foreground">
+              <p className="mt-1 text-[13px] text-muted-foreground">
                 Verbindung öffnen oder eine neue anlegen.
               </p>
             )}
@@ -202,19 +202,19 @@ export function ConnectionsView() {
                   </Button>
                 </div>
               ) : grouped ? (
-                <div className="flex w-full flex-col gap-8 self-start py-2">
+                <div className="flex w-full flex-col gap-5 self-start py-1">
                   {groups.map((group) => (
-                    <section key={group.key} className="flex flex-col gap-3">
-                      <header className="flex items-center gap-2.5 border-b pb-2">
-                        <span className="grid size-7 place-items-center rounded-md border bg-muted/50">
+                    <section key={group.key} className="flex flex-col gap-2.5">
+                      <header className="flex items-center gap-2 border-b pb-1.5">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-muted/50">
                           <ProviderLogo
                             providerId={providerFor(group.connections[0]).id}
                             kind={group.kind}
-                            className="size-4"
+                            className="size-3.5"
                           />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-mono text-sm font-medium">
+                          <span className="block truncate font-mono text-[13px] font-medium">
                             {group.label}
                           </span>
                           <span className="block text-[11px] text-muted-foreground">
@@ -225,16 +225,17 @@ export function ConnectionsView() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-7 text-xs"
                           onClick={() => openEditor("new", group.connections[0])}
                         >
-                          <Plus className="size-4" />
+                          <Plus className="size-3.5" />
                           Schema hinzufügen
                         </Button>
                       </header>
                       <motion.div
                         layout
                         transition={{ layout: SPRING_LAYOUT }}
-                        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
                       >
                         {group.connections.map(renderCard)}
                       </motion.div>
@@ -245,7 +246,7 @@ export function ConnectionsView() {
                 <motion.div
                   layout
                   transition={{ layout: SPRING_LAYOUT }}
-                  className="grid w-full grid-cols-1 gap-4 py-2 sm:grid-cols-2 xl:grid-cols-3"
+                  className="grid w-full grid-cols-1 gap-3 py-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
                 >
                   {visible.map(renderCard)}
                 </motion.div>
