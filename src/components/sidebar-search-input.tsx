@@ -1,5 +1,5 @@
 import { RegexIcon, SearchIcon, XIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { SidebarInput } from "@/components/ui/sidebar";
 import { describeRegexError, type RegexCompileError } from "@/lib/regex-search";
@@ -24,7 +24,6 @@ export function SidebarSearchInput({
   regexError,
 }: SidebarSearchInputProps) {
   const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const entries = useSidebarSearchHistory((state) => state.entries);
   const addEntry = useSidebarSearchHistory((state) => state.add);
   const removeEntry = useSidebarSearchHistory((state) => state.remove);
@@ -39,7 +38,6 @@ export function SidebarSearchInput({
     <div className="relative min-w-0 flex-1">
       <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <SidebarInput
-        ref={inputRef}
         placeholder={placeholder}
         value={value}
         onChange={(e) => {
