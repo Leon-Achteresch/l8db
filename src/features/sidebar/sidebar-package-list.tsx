@@ -1,8 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
-import { BracesIcon, ChevronRightIcon, PackageIcon } from "lucide-react";
-import { useMemo } from "react";
+import { BracesIcon, ChevronRightIcon, PackageIcon, SearchIcon } from "lucide-react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
+  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -25,6 +26,13 @@ interface SidebarPackageListProps {
 }
 
 export function SidebarPackageList({ items, isLoading, isError, error }: SidebarPackageListProps) {
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const filtered = useMemo(() => {
+    const q = deferredSearch.trim().toLowerCase();
+    if (!q) return items;
+    return items?.filter((item) => item.name.toLowerCase().includes(q));
+  }, [items, deferredSearch]);
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
@@ -40,11 +48,30 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
     return <p className="py-1 text-sm text-muted-foreground">Keine Packages gefunden.</p>;
   }
   return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <PackageNode key={`${item.schema}.${item.name}`} schema={item.schema} name={item.name} />
-      ))}
-    </SidebarMenu>
+    <div className="flex flex-col gap-2">
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <SidebarInput
+          placeholder="Packages…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8"
+        />
+      </div>
+      {filtered && filtered.length === 0 ? (
+        <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
+      ) : (
+        <SidebarMenu>
+          {filtered?.map((item) => (
+            <PackageNode
+              key={`${item.schema}.${item.name}`}
+              schema={item.schema}
+              name={item.name}
+            />
+          ))}
+        </SidebarMenu>
+      )}
+    </div>
   );
 }
 
