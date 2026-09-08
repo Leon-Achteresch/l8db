@@ -63,6 +63,7 @@ import {
   type BindParamValue,
   buildParameterizedQuery,
   detectBindParams,
+  inlineBindValues,
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
@@ -362,11 +363,11 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery) => {
+    async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
-      if (!bound && caps.bind_parameters) {
-        const refs = detectBindParams(sql);
+      if (!bound && !skipBind) {
+        const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -481,16 +482,34 @@ export function QueryView({ tabId }: QueryViewProps) {
         setIsRunning(false);
       }
     },
-    [connection, database, recordHistory, caps.transactions, caps.bind_parameters, collectOutput],
+    [connection, database, recordHistory, caps.transactions, collectOutput],
   );
+
+  const autoRun = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? Boolean(tab.autoRun) : false;
+  });
+  useEffect(() => {
+    if (!autoRun || !connection) return;
+    useTableTabs.setState((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.kind === "query" && t.id === tabId ? { ...t, autoRun: undefined } : t,
+      ),
+    }));
+    void runSql(sql);
+  }, [autoRun, connection, runSql, sql, tabId]);
 
   const handleBindConfirm = useCallback(() => {
     const pending = bindPendingSql;
     if (!pending) return;
     setBindDialogOpen(false);
     setBindPendingSql(null);
-    void runSql(pending, buildParameterizedQuery(pending, bindValues));
-  }, [bindPendingSql, bindValues, runSql]);
+    if (caps.bind_parameters) {
+      void runSql(pending, buildParameterizedQuery(pending, bindValues));
+    } else {
+      void runSql(inlineBindValues(pending, bindValues), undefined, true);
+    }
+  }, [bindPendingSql, bindValues, runSql, caps.bind_parameters]);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);
@@ -1571,6 +1590,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           values={bindValues}
           onValuesChange={setBindValues}
           onConfirm={handleBindConfirm}
+          inline={!caps.bind_parameters}
         />
 
         <ScriptRunDialog
