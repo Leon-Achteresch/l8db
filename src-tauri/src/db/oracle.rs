@@ -335,6 +335,26 @@ impl OracleAdapter {
         self.run_meta(move |c| fetch(c, &sql)).await
     }
 
+    async fn source_script(
+        &self,
+        owner: &str,
+        name: &str,
+        object_type: &str,
+    ) -> Result<String, String> {
+        let sql = format!(
+            "SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line",
+            lit(owner),
+            lit(name),
+            lit(object_type)
+        );
+        let rows = self.rows(sql).await?;
+        if rows.is_empty() {
+            return Err("Quelltext nicht verfügbar".to_string());
+        }
+        let source = rows.iter().map(|r| s(r, 0)).collect::<String>();
+        Ok(create_script(owner, name, object_type, &source))
+    }
+
     async fn exec(&self, sql: String) -> Result<u64, String> {
         self.run(move |c| {
             c.execute(&sql, &[])
@@ -681,13 +701,7 @@ impl DatabaseAdapter for OracleAdapter {
         if parts.len() != 3 {
             return Err("Ungültige Objektreferenz".to_string());
         }
-        let sql = format!("SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line", lit(parts[0]), lit(parts[1]), lit(parts[2]));
-        let rows = self.rows(sql).await?;
-        if rows.is_empty() {
-            return Err("Quelltext nicht verfügbar".to_string());
-        }
-        let source = rows.iter().map(|r| s(r, 0)).collect::<String>();
-        Ok(create_script(parts[0], parts[1], parts[2], &source))
+        self.source_script(parts[0], parts[1], parts[2]).await
     }
 
     async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1213,36 +1227,43 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
-        Ok(self
+        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
+        let rows: Vec<Vec<String>> = self
             .rows(sql)
             .await?
             .iter()
-            .map(|r| {
-                let trigger_type = s(r, 1);
-                TriggerInfo {
-                    trigger_name: s(r, 0),
-                    table_schema: schema.to_string(),
-                    table_name: table.to_string(),
-                    event: s(r, 2).trim().to_string(),
-                    timing: trigger_type
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string(),
-                    orientation: if trigger_type.contains("EACH ROW") {
-                        "ROW"
-                    } else {
-                        "STATEMENT"
-                    }
+            .map(|r| (0..6).map(|i| s(r, i)).collect())
+            .collect();
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let definition = self
+                .source_script(&r[5], &r[0], "TRIGGER")
+                .await
+                .unwrap_or_else(|_| r[4].clone());
+            let trigger_type = r[1].clone();
+            out.push(TriggerInfo {
+                trigger_name: r[0].clone(),
+                table_schema: schema.to_string(),
+                table_name: table.to_string(),
+                event: r[2].trim().to_string(),
+                timing: trigger_type
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
                     .to_string(),
-                    function_schema: String::new(),
-                    function_name: String::new(),
-                    enabled: if s(r, 3) == "ENABLED" { "O" } else { "D" }.to_string(),
-                    definition: s(r, 4),
+                orientation: if trigger_type.contains("EACH ROW") {
+                    "ROW"
+                } else {
+                    "STATEMENT"
                 }
-            })
-            .collect())
+                .to_string(),
+                function_schema: String::new(),
+                function_name: String::new(),
+                enabled: if r[3] == "ENABLED" { "O" } else { "D" }.to_string(),
+                definition,
+            });
+        }
+        Ok(out)
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
