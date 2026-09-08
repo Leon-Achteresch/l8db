@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import { ensurePassword } from "@/lib/password-prompt";
 import { loadSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
@@ -284,6 +285,7 @@ export async function activateConnectionWithToast(
     ? useConnectionsStore.getState().connections.find((entry) => entry.id === id)
     : null;
   const label = target?.name ?? "Verbindung";
+  if (id && !(await ensurePassword(id))) return false;
   const pending = id
     ? toast.loading(`Verbinde mit „${label}“…`)
     : toast.loading("Trenne Verbindung…");
