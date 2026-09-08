@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ListFilter, Pencil, Star, Trash2 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
@@ -34,6 +34,7 @@ export function ConnectionSwitcher({
   onDelete,
   onToggleFavorite,
 }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const quickConnections = useMemo(() => {
     const active = connections.find((connection) => connection.id === activeId);
     const favorites = connections.filter(
@@ -77,7 +78,7 @@ export function ConnectionSwitcher({
           className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-card/80 to-transparent"
         />
       </div>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -131,6 +132,7 @@ export function ConnectionSwitcher({
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
+                    setMenuOpen(false);
                     onToggleFavorite(connection);
                   }}
                   className={cn(
@@ -148,6 +150,7 @@ export function ConnectionSwitcher({
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
+                    setMenuOpen(false);
                     onEdit(connection);
                   }}
                   className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -160,6 +163,7 @@ export function ConnectionSwitcher({
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
+                    setMenuOpen(false);
                     onDelete(connection);
                   }}
                   className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"

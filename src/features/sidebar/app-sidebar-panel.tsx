@@ -110,6 +110,7 @@ import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
+import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 
 import {
@@ -862,7 +863,7 @@ function SidebarEntityList({
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1225,7 +1226,7 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1365,7 +1366,7 @@ function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExten
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1752,7 +1753,7 @@ function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListPr
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1804,7 +1805,7 @@ function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequen
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {

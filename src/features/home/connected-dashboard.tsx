@@ -20,7 +20,7 @@ import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { connectionError, connectionSummary, providerFor } from "@/lib/connection-url";
+import { connectionSummary, providerFor, queryErrorMessage } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -182,7 +182,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                   />
                 </div>
               </div>
-              {tables.isPending ? (
+              {tables.isPending || (tables.isError && !queryErrorMessage(tables.error)) ? (
                 <div className="space-y-4 p-5">
                   {[0, 1, 2, 3].map((item) => (
                     <Skeleton key={item} className="h-7 w-full" />
@@ -191,7 +191,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               ) : tables.isError ? (
                 <div className="p-5">
                   <p role="alert" className="text-xs leading-relaxed text-destructive">
-                    {connectionError(tables.error)}
+                    {queryErrorMessage(tables.error)}
                   </p>
                   <Button
                     size="sm"
@@ -296,11 +296,11 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                   <h2 className="text-sm font-semibold">Speicher & Schemas</h2>
                   <Database className="size-4 text-muted-foreground" />
                 </div>
-                {overview.isPending ? (
+                {overview.isPending || (overview.isError && !queryErrorMessage(overview.error)) ? (
                   <Skeleton className="my-5 h-12 w-28" />
                 ) : overview.isError ? (
                   <p role="alert" className="mt-4 text-xs leading-relaxed text-destructive">
-                    {connectionError(overview.error)}
+                    {queryErrorMessage(overview.error)}
                   </p>
                 ) : (
                   overview.data && (
