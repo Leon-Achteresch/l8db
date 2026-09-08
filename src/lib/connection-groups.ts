@@ -9,6 +9,23 @@ export interface ServerGroup {
   connections: SavedConnection[];
 }
 
+export function sortServerGroups(
+  groups: ServerGroup[],
+  favoriteKeys: string[],
+  order: string[],
+): ServerGroup[] {
+  const favorites = new Set(favoriteKeys);
+  const positions = new Map(order.map((key, index) => [key, index]));
+  return [...groups].sort((a, b) => {
+    const favoriteDifference = Number(favorites.has(b.key)) - Number(favorites.has(a.key));
+    if (favoriteDifference !== 0) return favoriteDifference;
+    const positionA = positions.get(a.key) ?? Number.POSITIVE_INFINITY;
+    const positionB = positions.get(b.key) ?? Number.POSITIVE_INFINITY;
+    if (positionA !== positionB) return positionA - positionB;
+    return a.label.localeCompare(b.label);
+  });
+}
+
 export function connectionUser(connection: Pick<SavedConnection, "connectionString" | "kind">) {
   return connectionSummary(connection.connectionString, connection.kind).user;
 }

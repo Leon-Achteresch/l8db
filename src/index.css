@@ -396,6 +396,12 @@
   max-width: min(22rem, calc(100vw - 2rem));
 }
 
+.driver-popover.l8db-driver[data-tour-dock="top"] {
+  transition:
+    top 280ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    right 280ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
 .driver-popover.l8db-driver .driver-popover-title {
   font-size: 1rem;
   font-weight: 650;
