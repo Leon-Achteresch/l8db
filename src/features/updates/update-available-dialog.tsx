@@ -3,9 +3,12 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import { Check, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { extractHighlights } from "@/lib/markdown";
+import { useSettingsStore } from "@/lib/settings";
 import { closeUpdatePrompt, getAppVersion, installUpdateAndRelaunch } from "@/lib/updater";
 
 function publishedLabel(date: string | undefined): string | null {
@@ -17,13 +20,16 @@ function publishedLabel(date: string | undefined): string | null {
 
 export function UpdateAvailableDialog() {
   const { update, open } = useUpdatePrompt();
+  const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
+  const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
+  const visibleUpdate = update && update.version !== skippedUpdateVersion ? update : null;
   const [percent, setPercent] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const busy = percent !== null;
-  const visible = open && update !== null;
-  const highlights = update?.body ? extractHighlights(update.body) : [];
-  const published = publishedLabel(update?.date);
+  const visible = open && visibleUpdate !== null;
+  const highlights = visibleUpdate?.body ? extractHighlights(visibleUpdate.body) : [];
+  const published = publishedLabel(visibleUpdate?.date);
 
   useEffect(() => {
     if (!visible) return;
@@ -62,13 +68,28 @@ export function UpdateAvailableDialog() {
     closeUpdatePrompt();
   }
 
+  function onSkip() {
+    if (busy || !visibleUpdate) return;
+    const version = visibleUpdate.version;
+    setFailed(false);
+    setSkippedUpdateVersion(version);
+    closeUpdatePrompt();
+    toast.success(`Version ${version} wird übersprungen`, {
+      description: "Du kannst sie jederzeit in den Einstellungen installieren.",
+      action: {
+        label: "Rückgängig",
+        onClick: () => setSkippedUpdateVersion(null),
+      },
+    });
+  }
+
   return (
     <AnimatePresence>
-      {visible && update ? (
+      {visible && visibleUpdate ? (
         <motion.div
           layout
           role="region"
-          aria-label={`Version ${update.version} ist verfügbar`}
+          aria-label={`Version ${visibleUpdate.version} ist verfügbar`}
           initial={{ opacity: 0, scale: 0.94, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 12 }}
@@ -77,11 +98,7 @@ export function UpdateAvailableDialog() {
         >
           <div className="relative flex h-36 w-full select-none items-center justify-center overflow-hidden bg-gradient-to-br from-primary/90 via-primary to-chart-2">
             <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/15" />
-            <img
-              src="/logo.png"
-              alt=""
-              className="relative z-10 size-12 rounded-2xl object-contain shadow-lg ring-2 ring-white/20"
-            />
+            <AppLogo alt="" className="relative z-10 size-12 shadow-lg ring-2 ring-white/20" />
             <button
               type="button"
               onClick={onDismiss}
@@ -96,7 +113,7 @@ export function UpdateAvailableDialog() {
           <div className="space-y-3.5 p-5">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-tight">l8db v{update.version}</h2>
+                <h2 className="text-lg font-bold tracking-tight">l8db v{visibleUpdate.version}</h2>
                 <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[0.625rem] font-bold uppercase tracking-wider text-primary">
                   Neu
                 </span>
@@ -121,7 +138,7 @@ export function UpdateAvailableDialog() {
             ) : null}
 
             <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold tracking-tight">v{update.version}</span>
+              <span className="text-xl font-bold tracking-tight">v{visibleUpdate.version}</span>
               {currentVersion ? (
                 <span className="text-xs text-muted-foreground line-through">
                   v{currentVersion}
@@ -158,7 +175,7 @@ export function UpdateAvailableDialog() {
               size="lg"
               className="h-11 w-full rounded-2xl"
               disabled={busy}
-              onClick={() => void onInstall(update)}
+              onClick={() => void onInstall(visibleUpdate)}
             >
               {busy ? `Installiert … ${percent}%` : "Jetzt installieren"}
             </Button>
@@ -172,13 +189,22 @@ export function UpdateAvailableDialog() {
             </Link>
 
             {busy ? null : (
-              <button
-                type="button"
-                onClick={onDismiss}
-                className="w-full py-0.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Später
-              </button>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={onDismiss}
+                  className="py-0.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Später
+                </button>
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="py-0.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Diese Version überspringen
+                </button>
+              </div>
             )}
           </div>
         </motion.div>

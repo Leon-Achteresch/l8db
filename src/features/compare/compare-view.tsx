@@ -82,7 +82,7 @@ export function CompareView() {
     );
   }, [left.objectType]);
 
-  const setupVisible = tab === "definitions" || (tab === "data" && dataCompareEnabled);
+  const headerVisible = snapshotEnabled || dataCompareEnabled || schemaCopyEnabled;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -91,45 +91,36 @@ export function CompareView() {
         onValueChange={(value) => setTab(value as CompareTab)}
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
-        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
-          <GitCompareIcon className="size-4 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground">Vergleich</span>
-          <TabsList className="h-7">
-            <TabsTrigger value="definitions" className="gap-1 text-xs">
-              <FileCodeIcon className="size-3" />
-              Definitionen
-            </TabsTrigger>
-            {snapshotEnabled && (
-              <TabsTrigger value="snapshot" className="gap-1 text-xs">
-                <CameraIcon className="size-3" />
-                Metadaten-Snapshot
+        {headerVisible && (
+          <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
+            <GitCompareIcon className="size-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Vergleich</span>
+            <TabsList className="h-7">
+              <TabsTrigger value="definitions" className="gap-1 text-xs">
+                <FileCodeIcon className="size-3" />
+                Definitionen
               </TabsTrigger>
-            )}
-            {dataCompareEnabled && (
-              <TabsTrigger value="data" className="gap-1 text-xs">
-                <TableIcon className="size-3" />
-                Tabellendaten
-              </TabsTrigger>
-            )}
-            {schemaCopyEnabled && (
-              <TabsTrigger value="schema-copy" className="gap-1 text-xs">
-                <CopyIcon className="size-3" />
-                Schema-Kopie
-              </TabsTrigger>
-            )}
-          </TabsList>
-          {setupVisible && (
-            <div className="ml-auto">
-              {tab === "definitions" ? (
-                <CompareSetupModal
-                  mode="definitions"
-                  sourceConnection={connection}
-                  left={left}
-                  right={right}
-                  onLeftChange={setLeft}
-                  onRightChange={setRight}
-                />
-              ) : (
+              {snapshotEnabled && (
+                <TabsTrigger value="snapshot" className="gap-1 text-xs">
+                  <CameraIcon className="size-3" />
+                  Metadaten-Snapshot
+                </TabsTrigger>
+              )}
+              {dataCompareEnabled && (
+                <TabsTrigger value="data" className="gap-1 text-xs">
+                  <TableIcon className="size-3" />
+                  Tabellendaten
+                </TabsTrigger>
+              )}
+              {schemaCopyEnabled && (
+                <TabsTrigger value="schema-copy" className="gap-1 text-xs">
+                  <CopyIcon className="size-3" />
+                  Schema-Kopie
+                </TabsTrigger>
+              )}
+            </TabsList>
+            {tab === "data" && dataCompareEnabled && (
+              <div className="ml-auto">
                 <CompareSetupModal
                   mode="data"
                   sourceConnection={connection}
@@ -138,13 +129,20 @@ export function CompareView() {
                   onLeftChange={setDataLeft}
                   onRightChange={setDataRight}
                 />
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <TabsContent value="definitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DefinitionCompareView left={left} right={right} />
+          <DefinitionCompareView
+            mode="definitions"
+            sourceConnection={connection}
+            left={left}
+            right={right}
+            onLeftChange={setLeft}
+            onRightChange={setRight}
+          />
         </TabsContent>
         {snapshotEnabled && (
           <TabsContent value="snapshot" className="flex min-h-0 flex-1 flex-col overflow-hidden">

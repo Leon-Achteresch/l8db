@@ -37,6 +37,12 @@ const PROVIDERS = [
   provider("neon", "postgres", ["postgresql", "postgres"], [".neon.tech"]),
   provider("cloud-postgres", "postgres", ["postgresql", "postgres"], [".rds.amazonaws.com"]),
   provider("mysql", "mysql", ["mysql", "mariadb"], ["localhost"], { default_port: 3306 }),
+  provider("mongodb", "mongodb", ["mongodb", "mongodb+srv"], ["localhost"], {
+    default_port: 27017,
+  }),
+  provider("atlas", "mongodb", ["mongodb", "mongodb+srv"], [".mongodb.net"], {
+    default_port: null,
+  }),
   provider("sqlite", "sqlite", ["sqlite", "file"], [], { default_port: null, file_based: true }),
   provider("redis", "redis", ["redis", "rediss"], ["localhost"], { default_port: 6379 }),
   provider("oracle", "oracle", ["oracle"], ["localhost"], { default_port: 1521 }),
@@ -86,6 +92,7 @@ const {
   connectionSummary,
   kindFromUrl,
   isOracleKeyValue,
+  updateOracleConnectionEndpoint,
 } = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
@@ -172,12 +179,17 @@ describe("PostgreSQL URLs", () => {
 describe("Other providers", () => {
   test("detects the driver family from the URL scheme or a file path", () => {
     expect(kindFromUrl("mysql://root@localhost/db")).toBe("mysql");
+    const atlas = "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/";
+    expect(kindFromUrl(atlas)).toBe("mongodb");
+    expect(detectProvider(atlas)).toBe("atlas");
     expect(kindFromUrl("redis://localhost:6379/0")).toBe("redis");
     expect(kindFromUrl("/tmp/app.db")).toBe("sqlite");
     expect(kindFromUrl("C:\\data\\app.sqlite")).toBe("sqlite");
     expect(kindFromUrl("nope://x")).toBeUndefined();
   });
   test("validates per family and normalizes file paths", () => {
+    const atlas = "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/";
+    expect(parseConnectionUrl(atlas).toString()).toBe(atlas);
     expect(parseConnectionUrl("redis://localhost:6379/0").hostname).toBe("localhost");
     expect(() => parseConnectionUrl("mysql://localhost/db")).toThrow("Benutzer");
     expect(() => parseConnectionUrl("mysql://root@localhost/db", "postgres")).toThrow(
@@ -214,6 +226,14 @@ describe("Other providers", () => {
     expect(connectionError("Failed mysql://user:secret@host/app")).not.toContain("secret");
     expect(connectionError("Access denied for user 'root'@'localhost'")).toContain("Anmeldung");
     expect(connectionError("ORA-01017: invalid username/password")).toContain("Anmeldung");
+  });
+  test("keeps MongoDB server-selection details actionable", () => {
+    const message = connectionError(
+      "MongoDB: Server selection timeout: No available servers for mongodb+srv://user:secret@cluster.mongodb.net/",
+    );
+    expect(message).toContain("Atlas-IP-Allowlist");
+    expect(message).toContain("No available servers");
+    expect(message).not.toContain("secret");
   });
 });
 
@@ -326,6 +346,45 @@ describe("Oracle Key-Value", () => {
   test("keeps TNS aliases via connect_string with explicit kind", () => {
     const url = parseConnectionUrl("User Id=scott;Password=tiger;Data Source=ORCL", "oracle");
     expect(url.searchParams.get("connect_string")).toBe("ORCL");
+  });
+  test("updates the host and service name without changing credentials or parameters", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT:p%40ss@old.example.com:1521/OLD?sslmode=require",
+      "new.example.com",
+      "NEWPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT:p%40ss@new.example.com:1521/NEWPDB?sslmode=require");
+    expect(extractUrlPassword(updated)).toBe("p@ss");
+    expect(connectionSummary(updated, "oracle")).toEqual({
+      host: "new.example.com",
+      port: "1521",
+      database: "NEWPDB",
+      user: "SCOTT",
+    });
+  });
+  test("converts an Oracle alias to an explicit bulk-edit endpoint", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@ORCL/?connect_string=ORCL",
+      "db.example.com",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@db.example.com/ORCLPDB");
+  });
+  test("supports IPv6 hosts in bulk-edit endpoints", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@old.example.com:1521/ORCL",
+      "2001:db8::10",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@[2001:db8::10]:1521/ORCLPDB");
+  });
+  test("accepts a host with an explicit port", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@old.example.com:1521/ORCL",
+      "new.example.com:1541",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@new.example.com:1541/ORCLPDB");
   });
   test("rejects MSSQL-style strings and incomplete input", () => {
     expect(
@@ -523,6 +582,38 @@ describe("Lesemodus", () => {
   });
 });
 
+describe("Lesemodus pro Verbindung", () => {
+  const other = {
+    ...direct,
+    id: "other",
+    name: "Other",
+    connectionString: "postgresql://user:pw@localhost:5432/other",
+  };
+
+  test("the connection string decides, not the active connection", async () => {
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }, other],
+      activeId: "other",
+    });
+    calls.length = 0;
+    await expect(
+      truncateTable(
+        "postgres",
+        effectiveConnectionString({ ...direct, readOnly: true }),
+        "public",
+        "t",
+      ),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("truncate_table");
+    useConnectionsStore.setState({ activeId: "direct" });
+    await truncateTable("postgres", effectiveConnectionString(other), "public", "t").catch(
+      () => undefined,
+    );
+    expect(calls).toContain("truncate_table");
+    useConnectionsStore.setState({ connections: [direct], activeId: null });
+  });
+});
+
 describe("Sichtbare Schemas", () => {
   test("filter keeps only selected schemas and falls back to all without a selection", () => {
     const all = ["HR", "SCOTT", "SYS", "APP"];
@@ -589,5 +680,18 @@ describe("Server groups", () => {
       "sales",
     ]);
     expect(siblingConnections([hr], null)).toEqual([]);
+  });
+});
+
+describe("Passwort-Abfrage", () => {
+  test("fragt nur bei Benutzer ohne Passwort", async () => {
+    const { needsPassword } = await import("../src/lib/password-prompt");
+    const base = { id: "1", name: "x", kind: "postgres" } as const;
+    const withUrl = (connectionString: string) =>
+      ({ ...base, connectionString }) as Parameters<typeof needsPassword>[0];
+    expect(needsPassword(withUrl("postgresql://alice@localhost:5432/db"))).toBe(true);
+    expect(needsPassword(withUrl("postgresql://alice:pw@localhost/db"))).toBe(false);
+    expect(needsPassword(withUrl("postgresql://localhost/db"))).toBe(false);
+    expect(needsPassword(withUrl("/tmp/app.sqlite"))).toBe(false);
   });
 });

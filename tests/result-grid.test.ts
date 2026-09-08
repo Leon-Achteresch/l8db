@@ -165,3 +165,18 @@ describe("describeResultCount", () => {
     expect(resultFilterOperatorLabel("equals")).toBe("ist gleich");
   });
 });
+
+it("renders, filters and sorts MongoDB document values as JSON", async () => {
+  const { resultCellText } = await import("../src/lib/result-grid");
+  const document = { _id: { $oid: "507f1f77bcf86cd799439011" }, nested: { value: 250 } };
+  expect(resultCellText(document.nested)).toBe('{"value":250}');
+  expect(resultCellText([1, "two"])).toBe('[1,"two"]');
+  expect(resultCellText(document._id)).toBe('{"$oid":"507f1f77bcf86cd799439011"}');
+  expect(matchesResultFilter(document.nested, { operator: "contains", value: '"value":250' })).toBe(
+    true,
+  );
+  expect(
+    filterResultRows([document], { _id: { operator: "contains", value: "507f1f77" } }),
+  ).toEqual([document]);
+  expect(compareResultValues({ value: "a" }, { value: "b" }, "text")).toBeLessThan(0);
+});

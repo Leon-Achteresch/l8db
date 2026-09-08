@@ -30,6 +30,7 @@ export interface SettingsState {
   transactionsEnabled: boolean;
   autoUpdateCheck: boolean;
   autoUpdateInstall: boolean;
+  skippedUpdateVersion: string | null;
   tourFinished: boolean;
   editorTabSize: number;
   editorKeywordCase: SqlKeywordCase;
@@ -60,6 +61,7 @@ export interface SettingsState {
   editorFormatLinesBetweenQueries: number;
   confirmDestructiveQueries: boolean;
   highlightNullValues: boolean;
+  searchIncludeColumns: boolean;
   uiDensity: UiDensity;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
@@ -70,6 +72,7 @@ export interface SettingsState {
   setTransactionsEnabled: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
+  setSkippedUpdateVersion: (v: string | null) => void;
   setTourFinished: (v: boolean) => void;
   setEditorTabSize: (v: number) => void;
   setEditorKeywordCase: (v: SqlKeywordCase) => void;
@@ -100,6 +103,7 @@ export interface SettingsState {
   setEditorFormatLinesBetweenQueries: (v: number) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
+  setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
@@ -115,6 +119,7 @@ const DEFAULT_SETTINGS = {
   transactionsEnabled: true,
   autoUpdateCheck: true,
   autoUpdateInstall: false,
+  skippedUpdateVersion: null,
   tourFinished: false,
   editorTabSize: 2,
   editorKeywordCase: "upper" as SqlKeywordCase,
@@ -145,6 +150,7 @@ const DEFAULT_SETTINGS = {
   editorFormatLinesBetweenQueries: 2,
   confirmDestructiveQueries: true,
   highlightNullValues: true,
+  searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
@@ -172,6 +178,7 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
       setEditorTabSize: (editorTabSize) => set({ editorTabSize }),
       setEditorKeywordCase: (editorKeywordCase) => set({ editorKeywordCase }),
@@ -209,6 +216,7 @@ export const useSettingsStore = create<SettingsState>()(
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
+      setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
       setUiDensity: (uiDensity) => set({ uiDensity }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),

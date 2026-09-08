@@ -63,6 +63,7 @@ import {
   type BindParamValue,
   buildParameterizedQuery,
   detectBindParams,
+  inlineBindValues,
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
@@ -75,7 +76,9 @@ import {
   executeQueryWithParams,
   explainQuery,
   listAllColumns,
+  listMaterializedViews,
   listTables,
+  listViews,
   type QueryResult,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -311,16 +314,45 @@ export function QueryView({ tabId }: QueryViewProps) {
     staleTime: 60_000,
   });
 
-  const registry = useMemo(
-    () => ({ schemas: schemas ?? [], tables: tables ?? [], columns: columns ?? [] }),
-    [schemas, tables, columns],
-  );
-
   const caps = useCapabilities(connection?.kind);
 
+  const { data: views } = useQuery({
+    queryKey: ["all-views", connection?.id, database],
+    queryFn: () =>
+      listViews(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: Boolean(connection) && caps.views,
+  });
+
+  const { data: matviews } = useQuery({
+    queryKey: ["all-matviews", connection?.id, database],
+    queryFn: () =>
+      listMaterializedViews(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && caps.materialized_views,
+  });
+
+  const registry = useMemo(
+    () => ({
+      schemas: schemas ?? [],
+      tables: [
+        ...(tables ?? []),
+        ...(views ?? []),
+        ...(matviews ?? []).map(({ schema, name }) => ({ schema, name })),
+      ],
+      columns: columns ?? [],
+    }),
+    [schemas, tables, views, matviews, columns],
+  );
+
   const dialectLabel = useMemo(
-    () => sqlDialectLabel(sqlDialectForKind(connection?.kind)),
-    [connection?.kind],
+    () =>
+      caps.query_language === "json"
+        ? "MongoDB JSON"
+        : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
+    [connection?.kind, caps.query_language],
   );
 
   const collectOutput = useCallback(async () => {
@@ -359,11 +391,11 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery) => {
+    async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
-      if (!bound && caps.bind_parameters) {
-        const refs = detectBindParams(sql);
+      if (!bound && !skipBind) {
+        const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -478,16 +510,34 @@ export function QueryView({ tabId }: QueryViewProps) {
         setIsRunning(false);
       }
     },
-    [connection, database, recordHistory, caps.transactions, caps.bind_parameters, collectOutput],
+    [connection, database, recordHistory, caps.transactions, collectOutput],
   );
+
+  const autoRun = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? Boolean(tab.autoRun) : false;
+  });
+  useEffect(() => {
+    if (!autoRun || !connection) return;
+    useTableTabs.setState((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.kind === "query" && t.id === tabId ? { ...t, autoRun: undefined } : t,
+      ),
+    }));
+    void runSql(sql);
+  }, [autoRun, connection, runSql, sql, tabId]);
 
   const handleBindConfirm = useCallback(() => {
     const pending = bindPendingSql;
     if (!pending) return;
     setBindDialogOpen(false);
     setBindPendingSql(null);
-    void runSql(pending, buildParameterizedQuery(pending, bindValues));
-  }, [bindPendingSql, bindValues, runSql]);
+    if (caps.bind_parameters) {
+      void runSql(pending, buildParameterizedQuery(pending, bindValues));
+    } else {
+      void runSql(inlineBindValues(pending, bindValues), undefined, true);
+    }
+  }, [bindPendingSql, bindValues, runSql, caps.bind_parameters]);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);
@@ -1392,6 +1442,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <QueryEditorPane
+                    language={caps.query_language === "json" ? "json" : "sql"}
                     ref={editorApiRef}
                     value={sql}
                     onChange={(v) => {
@@ -1567,6 +1618,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           values={bindValues}
           onValuesChange={setBindValues}
           onConfirm={handleBindConfirm}
+          inline={!caps.bind_parameters}
         />
 
         <ScriptRunDialog

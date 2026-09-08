@@ -17,11 +17,11 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { copyText } from "@/lib/clipboard";
 import type { DetailedColumnInfo } from "@/lib/db";
 import { useDetailedColumnsQuery } from "@/lib/queries";
 
@@ -69,6 +69,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
       };
     }
     if (
+      lower === "long" ||
       lower.includes("int") ||
       lower.includes("numeric") ||
       lower.includes("double") ||
@@ -85,6 +86,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
       };
     }
     if (
+      lower === "string" ||
       lower.includes("char") ||
       lower.includes("text") ||
       lower.includes("varchar") ||
@@ -114,7 +116,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         badgeColor: "bg-teal-500/10 text-teal-500 border-teal-500/20",
       };
     }
-    if (lower.includes("json")) {
+    if (lower.includes("json") || lower === "object" || lower === "array") {
       return {
         icon: BracesIcon,
         color: "text-pink-500 bg-rose-500/10 border-rose-500/20",
@@ -158,6 +160,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
       const lower = column.data_type.toLowerCase();
       if (selectedFilter === "numeric") {
         return (
+          lower === "long" ||
           lower.includes("int") ||
           lower.includes("numeric") ||
           lower.includes("double") ||
@@ -169,6 +172,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
       }
       if (selectedFilter === "text") {
         return (
+          lower === "string" ||
           lower.includes("char") ||
           lower.includes("text") ||
           lower.includes("varchar") ||
@@ -183,7 +187,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         return lower.includes("bool");
       }
       if (selectedFilter === "json") {
-        return lower.includes("json");
+        return lower.includes("json") || lower === "object" || lower === "array";
       }
 
       return true;
@@ -518,7 +522,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                               className="h-7 gap-1.5 px-2.5 text-[11px]"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigator.clipboard.writeText(column.name);
+                                copyText(column.name);
                                 setCopiedColumn(column.name);
                                 setTimeout(() => setCopiedColumn(null), 1500);
                               }}

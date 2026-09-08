@@ -11,6 +11,7 @@ import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
 import { toMonacoSnippet } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
+import { cn } from "@/lib/utils";
 
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
@@ -43,6 +44,7 @@ interface EditorHighlight {
 
 interface QueryEditorPaneProps {
   value: string;
+  language?: "sql" | "json";
   onChange: (value: string) => void;
   onRun: () => void;
   onSave?: () => void;
@@ -67,7 +69,8 @@ function themeFor(resolved: string | undefined): string {
 function refreshLintMarkers(editor: monaco.editor.IStandaloneCodeEditor, registry: SchemaRegistry) {
   const model = editor.getModel();
   if (!model) return;
-  const findings = lintUnknownTables(model.getValue(), registry.tables);
+  const findings =
+    model.getLanguageId() === "sql" ? lintUnknownTables(model.getValue(), registry.tables) : [];
   monaco.editor.setModelMarkers(
     model,
     "l8db-sql-lint",
@@ -88,6 +91,7 @@ function refreshLintMarkers(editor: monaco.editor.IStandaloneCodeEditor, registr
 
 export function QueryEditorPane({
   value,
+  language = "sql",
   onChange,
   onRun,
   onSave,
@@ -234,7 +238,7 @@ export function QueryEditorPane({
 
     const editor = monaco.editor.create(container, {
       value,
-      language: "sql",
+      language,
       theme: themeFor(resolvedTheme),
       automaticLayout: true,
       ...buildEditorOptions({
@@ -496,8 +500,10 @@ export function QueryEditorPane({
 
   useEffect(() => {
     const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (model) monaco.editor.setModelLanguage(model, language);
     if (editor) refreshLintMarkers(editor, registry);
-  }, [registry]);
+  }, [registry, language]);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
@@ -561,5 +567,5 @@ export function QueryEditorPane({
     editorFormatOnType,
   ]);
 
-  return <div ref={containerRef} className={className ?? "size-full"} />;
+  return <div ref={containerRef} className={cn("relative", className ?? "size-full")} />;
 }

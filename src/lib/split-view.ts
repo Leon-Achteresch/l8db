@@ -21,6 +21,8 @@ interface SplitState {
   panes: (string | null)[];
   focusedPane: number;
   byConnection: Record<string, SplitSnapshot>;
+  paneConnections: Record<string, string>;
+  setPaneConnection: (tabKey: string, connectionId: string | null) => void;
   addPane: (activeKey: string | null, preferredKey?: string | null) => void;
   closePane: (index: number) => void;
   collapse: () => void;
@@ -59,6 +61,16 @@ export const useSplitView = create<SplitState>()(
       panes: [],
       focusedPane: 0,
       byConnection: {},
+      paneConnections: {},
+
+      setPaneConnection: (key, connectionId) =>
+        set((state) => {
+          const scoped = `${keyForConnection(useConnectionsStore.getState().activeId)}|${key}`;
+          const paneConnections = { ...state.paneConnections };
+          if (connectionId) paneConnections[scoped] = connectionId;
+          else delete paneConnections[scoped];
+          return { paneConnections };
+        }),
 
       addPane: (activeKey, preferredKey) =>
         set((state) => {
@@ -148,16 +160,22 @@ export const useSplitView = create<SplitState>()(
         set((state) => {
           const byConnection = { ...state.byConnection };
           delete byConnection[connectionId];
+          const paneConnections = Object.fromEntries(
+            Object.entries(state.paneConnections).filter(
+              ([key, value]) => !key.startsWith(`${connectionId}|`) && value !== connectionId,
+            ),
+          );
           if (keyForConnection(useConnectionsStore.getState().activeId) === connectionId) {
-            return { panes: [], focusedPane: 0, byConnection };
+            return { panes: [], focusedPane: 0, byConnection, paneConnections };
           }
-          return { byConnection };
+          return { byConnection, paneConnections };
         }),
     }),
     {
       name: "l8db.split-view",
       partialize: (state) => ({
         byConnection: state.byConnection,
+        paneConnections: state.paneConnections,
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<SplitState> | undefined;
@@ -166,6 +184,7 @@ export const useSplitView = create<SplitState>()(
         return {
           ...currentState,
           byConnection,
+          paneConnections: stored?.paneConnections ?? {},
           panes: byConnection[key]?.panes ?? [],
           focusedPane: byConnection[key]?.focusedPane ?? 0,
         };
@@ -173,6 +192,16 @@ export const useSplitView = create<SplitState>()(
     },
   ),
 );
+
+export function usePaneConnectionId(key: string | null): string | null {
+  const activeId = useConnectionsStore((state) => state.activeId);
+  const connections = useConnectionsStore((state) => state.connections);
+  const override = useSplitView((state) =>
+    key ? (state.paneConnections[`${keyForConnection(activeId)}|${key}`] ?? null) : null,
+  );
+  if (!override || override === activeId) return null;
+  return connections.some((entry) => entry.id === override) ? override : null;
+}
 
 let splitConnectionId = useConnectionsStore.getState().activeId;
 
