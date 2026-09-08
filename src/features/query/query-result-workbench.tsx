@@ -2,8 +2,9 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { gridCellText } from "@/lib/grid-search";
+import { copyText } from "@/lib/clipboard";
 import type { QueryResult } from "@/lib/db";
+import { gridCellText } from "@/lib/grid-search";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { QueryResultTable } from "./query-result-table";
@@ -101,7 +102,7 @@ export function QueryResultWorkbench({
             title="Suchergebnisse als JSON kopieren; lokale Spaltenfilter und Sortierung gelten nur in der Tabelle"
             onClick={async () => {
               try {
-                await navigator.clipboard.writeText(JSON.stringify(filtered?.rows ?? [], null, 2));
+                await copyText(JSON.stringify(filtered?.rows ?? [], null, 2));
                 toast.success("Suchergebnisse kopiert");
               } catch {
                 toast.error("Ergebnisse konnten nicht kopiert werden");

@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
+import { copyText } from "@/lib/clipboard";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
@@ -119,7 +120,7 @@ export function TableTabs() {
   };
 
   const handleCopy = (value: string) => {
-    void navigator.clipboard.writeText(value);
+    void copyText(value);
   };
 
   return (

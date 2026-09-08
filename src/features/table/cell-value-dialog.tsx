@@ -1,7 +1,6 @@
 import { BracesIcon, CopyIcon, DatabaseIcon, Loader2Icon, PencilIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +14,7 @@ import {
   validateCellDraft,
   valueToText,
 } from "@/lib/cell-editor";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 type CellValueDialogProps = {
@@ -47,7 +47,7 @@ export function CellValueDialog({
   const canApply = canEdit && isEditing && validation.ok && isDirty && !isSaving;
 
   const handleCopy = () => {
-    void navigator.clipboard.writeText(valueToText(value));
+    void copyText(valueToText(value));
     toast.success("Kopiert!");
   };
 

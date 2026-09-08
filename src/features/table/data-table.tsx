@@ -59,6 +59,7 @@ import {
   shouldAutoRefresh,
 } from "@/lib/auto-refresh";
 import { buildRowUpdates } from "@/lib/cell-editor";
+import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -770,7 +771,7 @@ export function DataTable({
     if (!selectedRange || selectedCount <= 1) return false;
     const tsv = selectionToTsv(data, selectedRange);
     if (tsv === "") return false;
-    void navigator.clipboard.writeText(tsv);
+    void copyText(tsv);
     toast.success(`${selectedCount} Zellen als TSV kopiert.`);
     return true;
   }, [selectedRange, selectedCount, data]);
@@ -952,7 +953,7 @@ export function DataTable({
   const copyColumnNames = useCallback(() => {
     const names = formatVisibleColumnNames(order, hidden);
     if (names === "") return;
-    void navigator.clipboard.writeText(names);
+    void copyText(names);
     toast.success("Spaltennamen kopiert.");
   }, [order, hidden]);
 
@@ -1003,7 +1004,7 @@ export function DataTable({
     const val = row?.getValue(columnId);
     if (val !== undefined) {
       const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-      void navigator.clipboard.writeText(stringVal);
+      void copyText(stringVal);
       toast.success("Wert in die Zwischenablage kopiert!");
     }
   }, [activeCell, copySelection, rows]);
@@ -1130,7 +1131,7 @@ export function DataTable({
   const handleCellCopy = useCallback((val: unknown) => {
     if (val === undefined || val === null) return;
     const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-    void navigator.clipboard.writeText(stringVal);
+    void copyText(stringVal);
     toast.success("In die Zwischenablage kopiert!");
   }, []);
 
