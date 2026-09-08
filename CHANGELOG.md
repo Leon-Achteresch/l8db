@@ -3,6 +3,57 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.3.17] - 2026-09-08
+
+### Features
+- enhance MongoDB error handling in connectionError function
+- implement automated changelog generation and PR creation
+- add bug report dialog and integrate diagnostic information collection
+- Import von Toad for Oracle Verbindungsexporten (XML)
+- implement connection window opening and enhance read-only mode handling
+- Passwort-Abfrage beim Verbinden ohne hinterlegtes Passwort mit optionalem Speichern
+- TNS-Modus im Verbindungseditor mit Alias-Auswahl aus tnsnames.ora
+- STRG+Klick auf Tabellen in PL/SQL-Selects öffnet Ergebnis-Tab, Parameter-Dialog für alle Datenbanken
+- View-Definition als vollständiges CREATE OR REPLACE FORCE VIEW mit Spaltenliste und BEQUEATH
+- vollständige CREATE-Skripte für Trigger, Typen und Routinen in allen Adaptern
+- gemeinsame Diff-Minimap und Plus/Minus-Zähler im Header
+- JSON-Abfragen, Collection-Verwaltung und Browser-Tests
+- make column search optional in sidebar and advanced search
+- red dot indicators, periodic checks and skip-version
+- open view definition as full DDL in query editor
+
+### Fixes
+- satisfy Biome checks
+- Views und Materialized Views im SQL-Linter als bekannte Tabellen behandeln
+- App-Icon im Apple-Squircle-Raster statt rundem Logo
+- Verbindungs-Toast immer schließen und Aktivierung mit Timeout absichern
+- Funktions-/Prozedur-/Package-Quelltext als CREATE OR REPLACE mit Schema liefern
+- compile simple filters per SQL dialect instead of Postgres-only ILIKE
+- derive header type badge from column metadata instead of first row value
+- offer filter/sort reset and retry in table load error state
+- add spacing between diagnose rows
+- anchor Monaco hover tooltips to the editor container
+
+### Änderungen
+- streamline authentication error handling
+
+### Weitere Änderungen
+- Fix Oracle bulk host editing
+
+## [0.2.30] - 2026-09-08
+
+### Features
+- add search filter to function and package lists
+- add bug report button that opens a prefilled mail
+
+### Fixes
+- prevent horizontal overflow in hotkey lists
+- stop re-revealing member line on every keystroke while editing
+- name new query tabs per connection instead of globally
+- render Monaco overflow widgets outside transformed ancestors
+- guard setLayout until both panels are registered after editor focus toggle
+- smooth horizontal scrolling in wide tables
+
 ## [0.2.19] - 2026-09-08
 
 ### Features
