@@ -88,7 +88,6 @@ function readPersistedActiveConnectionId(): string | null {
 interface TabsState {
   tabs: Tab[];
   tabsByConnection: Record<string, Tab[]>;
-  queryCounter: number;
   recentlyClosed: Tab[];
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
@@ -135,6 +134,13 @@ function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[]
   return tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, ...patch } : t));
 }
 
+export function nextQueryTitle(tabs: Tab[]): string {
+  const used = new Set(tabs.filter((t) => t.kind === "query").map((t) => t.title));
+  let n = 1;
+  while (used.has(`Query ${n}`)) n += 1;
+  return `Query ${n}`;
+}
+
 const MAX_RECENTLY_CLOSED = 10;
 
 function pushRecentlyClosed(current: Tab[], closed: Tab[]): Tab[] {
@@ -160,7 +166,6 @@ export const useTableTabs = create<TabsState>()(
     (set, get) => ({
       tabs: [],
       tabsByConnection: {},
-      queryCounter: 0,
       recentlyClosed: [],
 
       openTab: (tab) => {
@@ -190,26 +195,24 @@ export const useTableTabs = create<TabsState>()(
       },
 
       openQueryTab: () => {
-        const counter = get().queryCounter + 1;
         const qt: QueryTab = {
           kind: "query",
           id: crypto.randomUUID(),
-          title: `Query ${counter}`,
+          title: nextQueryTitle(get().tabs),
           sql: "",
         };
-        set((state) => ({ ...storeFor([...state.tabs, qt], state), queryCounter: counter }));
+        set((state) => storeFor([...state.tabs, qt], state));
         return qt.id;
       },
 
       openQueryTabWithSql: (sql, title) => {
-        const counter = get().queryCounter + 1;
         const qt: QueryTab = {
           kind: "query",
           id: crypto.randomUUID(),
-          title: title ?? `Query ${counter}`,
+          title: title ?? nextQueryTitle(get().tabs),
           sql,
         };
-        set((state) => ({ ...storeFor([...state.tabs, qt], state), queryCounter: counter }));
+        set((state) => storeFor([...state.tabs, qt], state));
         return qt.id;
       },
 
@@ -505,11 +508,10 @@ export const useTableTabs = create<TabsState>()(
           return {
             tabs,
             tabsByConnection: activeId ? { [activeId]: tabs } : {},
-            queryCounter: 0,
           };
         }
         if (version === 1) {
-          const old = persistedState as { tabs: TableTab[]; queryCounter: number };
+          const old = persistedState as { tabs: TableTab[] };
           const tabs: Tab[] = (old.tabs ?? []).map((t) =>
             t.kind === "table" ? { ...t, entityType: t.entityType ?? "table" } : t,
           );
@@ -517,24 +519,21 @@ export const useTableTabs = create<TabsState>()(
           return {
             tabs,
             tabsByConnection: activeId ? { [activeId]: tabs } : {},
-            queryCounter: old.queryCounter ?? 0,
           };
         }
         if (version === 2) {
-          const old = persistedState as { tabs: Tab[]; queryCounter: number };
+          const old = persistedState as { tabs: Tab[] };
           const tabs = old.tabs ?? [];
           const activeId = readPersistedActiveConnectionId();
           return {
             tabs,
             tabsByConnection: activeId ? { [activeId]: tabs } : {},
-            queryCounter: old.queryCounter ?? 0,
           };
         }
         return persistedState;
       },
       partialize: (state) => ({
         tabsByConnection: state.tabsByConnection,
-        queryCounter: state.queryCounter,
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<TabsState> | undefined;
@@ -544,7 +543,6 @@ export const useTableTabs = create<TabsState>()(
           ...currentState,
           tabsByConnection,
           tabs: tabsByConnection[key] ?? [],
-          queryCounter: stored?.queryCounter ?? 0,
         };
       },
     },
