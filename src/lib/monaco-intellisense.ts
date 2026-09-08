@@ -8,6 +8,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { monaco } from "@/lib/monaco";
 import { packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useAllSchemaObjectsQuery, useSchemasQuery } from "@/lib/queries";
+import { selectForResults } from "@/lib/select-extract";
 import { useSnippetsStore } from "@/lib/snippets";
 import {
   EMPTY_REGISTRY,
@@ -152,6 +153,11 @@ function openSymbolTarget(target: SymbolTarget): void {
   const { navigate } = ctx;
   if (!navigate) return;
   const tabs = useTableTabs.getState();
+  if (target.kind === "table" && target.sql) {
+    const id = tabs.openQueryTabWithSql(target.sql, target.name, true);
+    void navigate({ to: "/query/$id", params: { id } });
+    return;
+  }
   if (target.kind === "table") {
     tabs.openTab({ schema: target.schema, table: target.name, entityType: target.entityType });
     void navigate({
@@ -291,11 +297,16 @@ for (const language of ["sql", "plsql"]) {
           originSelectionRange: symbol.range,
         };
       }
+      let target = symbol.target;
+      if (target.kind === "table" && !target.column && language === "plsql") {
+        const sql = selectForResults(model.getValue(), model.getOffsetAt(position), ctx.registry);
+        if (sql) target = { ...target, sql };
+      }
       return {
         uri: monaco.Uri.from({
           scheme: "l8db",
           path: "/goto",
-          query: JSON.stringify(symbol.target),
+          query: JSON.stringify(target),
         }),
         range: new monaco.Range(1, 1, 1, 1),
         originSelectionRange: symbol.range,
