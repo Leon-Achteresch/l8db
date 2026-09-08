@@ -11,6 +11,7 @@ import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
 import { toMonacoSnippet } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
+import { cn } from "@/lib/utils";
 
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
@@ -561,5 +562,5 @@ export function QueryEditorPane({
     editorFormatOnType,
   ]);
 
-  return <div ref={containerRef} className={className ?? "size-full"} />;
+  return <div ref={containerRef} className={cn("relative", className ?? "size-full")} />;
 }
