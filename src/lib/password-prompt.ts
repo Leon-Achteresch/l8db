@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { connectionSummary } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { extractUrlPassword, injectUrlPassword, storeSecret } from "@/lib/secrets";
 
@@ -20,10 +21,9 @@ export const usePasswordPrompt = create<PasswordPromptState>(() => ({
 }));
 
 export function needsPassword(connection: SavedConnection): boolean {
-  if (!connection.connectionString.includes("://")) return false;
+  if (extractUrlPassword(connection.connectionString) !== null) return false;
   try {
-    const url = new URL(connection.connectionString);
-    return Boolean(url.username) && extractUrlPassword(connection.connectionString) === null;
+    return Boolean(connectionSummary(connection.connectionString, connection.kind).user);
   } catch {
     return false;
   }
