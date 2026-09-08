@@ -591,3 +591,16 @@ describe("Server groups", () => {
     expect(siblingConnections([hr], null)).toEqual([]);
   });
 });
+
+describe("Passwort-Abfrage", () => {
+  test("fragt nur bei Benutzer ohne Passwort", async () => {
+    const { needsPassword } = await import("../src/lib/password-prompt");
+    const base = { id: "1", name: "x", kind: "postgres" } as const;
+    const withUrl = (connectionString: string) =>
+      ({ ...base, connectionString }) as Parameters<typeof needsPassword>[0];
+    expect(needsPassword(withUrl("postgresql://alice@localhost:5432/db"))).toBe(true);
+    expect(needsPassword(withUrl("postgresql://alice:pw@localhost/db"))).toBe(false);
+    expect(needsPassword(withUrl("postgresql://localhost/db"))).toBe(false);
+    expect(needsPassword(withUrl("/tmp/app.sqlite"))).toBe(false);
+  });
+});
