@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { OpenInQueryEditorButton } from "@/features/functions/use-sql-object-edit";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { useActiveConnection } from "@/lib/connections";
 import { updateViewDefinition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useViewDefinitionQuery } from "@/lib/queries";
+import { buildViewDdl } from "@/lib/query-builder";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface ViewDefinitionPanelProps {
@@ -28,6 +30,7 @@ export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) 
   const { data: definition, isLoading } = useViewDefinitionQuery(schema, view);
 
   const currentValue = draft ?? definition ?? "";
+  const ddl = currentValue ? buildViewDdl(connection?.kind, schema, view, currentValue) : "";
   const isDirty = draft !== null && draft !== definition;
 
   useEffect(() => {
@@ -160,6 +163,8 @@ export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) 
           {busy ? <Spinner className="size-3" /> : <ShieldCheckIcon className="size-3.5" />}
           Kompilieren
         </Button>
+
+        <OpenInQueryEditorButton sql={ddl} title={`${schema}.${view}`} />
 
         <Button
           type="button"

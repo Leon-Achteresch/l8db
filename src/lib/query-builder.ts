@@ -214,3 +214,20 @@ export function parseColumnOptionValue(value: string): { source: QuerySource; co
   const source = value.slice(0, separator) === "join" ? "join" : "base";
   return { source, column: value.slice(separator + 1) };
 }
+
+export function buildViewDdl(
+  kind: DatabaseKind | null | undefined,
+  schema: string,
+  view: string,
+  body: string,
+): string {
+  const style = identifierStyleForKind(kind);
+  const target = schema
+    ? `${quoteIdentifier(schema, style)}.${quoteIdentifier(view, style)}`
+    : quoteIdentifier(view, style);
+  const select = body.trim().replace(/;+\s*$/, "");
+  if (kind === "mssql") return `CREATE OR ALTER VIEW ${target} AS\n${select};`;
+  if (kind === "sqlite")
+    return `DROP VIEW IF EXISTS ${target};\nCREATE VIEW ${target} AS\n${select};`;
+  return `CREATE OR REPLACE VIEW ${target} AS\n${select};`;
+}
