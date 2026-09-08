@@ -181,6 +181,19 @@ export function driverStatus(kind: DatabaseKind): Promise<DriverStatus> {
   return invoke("driver_status", { kind });
 }
 
+export interface TnsNames {
+  path: string | null;
+  aliases: string[];
+}
+
+export function oracleTnsNames(): Promise<TnsNames> {
+  return invoke("oracle_tns_names");
+}
+
+export function openTnsNames(): Promise<void> {
+  return invoke("oracle_open_tnsnames");
+}
+
 export async function installDriver(kind: DatabaseKind): Promise<string> {
   return invoke("install_driver", { kind });
 }
