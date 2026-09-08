@@ -157,49 +157,31 @@ export const useSplitView = create<SplitState>()(
     {
       name: "l8db.split-view",
       partialize: (state) => ({
-        panes: state.panes,
-        focusedPane: state.focusedPane,
         byConnection: state.byConnection,
       }),
-      onRehydrateStorage: () => (rehydratedState) => {
-        if (!rehydratedState) return;
-        if (!useConnectionsStore.persist.hasHydrated()) return;
+      merge: (persistedState, currentState) => {
+        const stored = persistedState as Partial<SplitState> | undefined;
+        const byConnection = stored?.byConnection ?? {};
         const key = keyForConnection(useConnectionsStore.getState().activeId);
-        const stored = rehydratedState.byConnection[key];
-        if (stored) {
-          useSplitView.setState({
-            panes: stored.panes,
-            focusedPane: stored.focusedPane,
-          });
-        }
+        return {
+          ...currentState,
+          byConnection,
+          panes: byConnection[key]?.panes ?? [],
+          focusedPane: byConnection[key]?.focusedPane ?? 0,
+        };
       },
     },
   ),
 );
 
+let splitConnectionId = useConnectionsStore.getState().activeId;
+
 useConnectionsStore.subscribe((state, previous) => {
-  const nextId = state.activeId;
-  const previousId = previous.activeId;
-  if (nextId === previousId) return;
+  if (state.activeId === previous.activeId) return;
+  splitConnectionId = state.activeId;
   const current = useSplitView.getState();
-  const nextKey = keyForConnection(nextId);
-  if (!useConnectionsStore.persist.hasHydrated() || !useSplitView.persist.hasHydrated()) {
-    const stored = current.byConnection[nextKey];
-    if (stored) {
-      useSplitView.setState({ panes: stored.panes, focusedPane: stored.focusedPane });
-    }
-    return;
-  }
-  const prevKey = keyForConnection(previousId);
-  const prevSnapshot = current.byConnection[prevKey];
-  const keepPrevSnapshot = current.panes.length === 0 && (prevSnapshot?.panes.length ?? 0) > 0;
+  const nextKey = keyForConnection(state.activeId);
   useSplitView.setState({
-    byConnection: {
-      ...current.byConnection,
-      ...(keepPrevSnapshot
-        ? {}
-        : { [prevKey]: { panes: current.panes, focusedPane: current.focusedPane } }),
-    },
     panes: current.byConnection[nextKey]?.panes ?? [],
     focusedPane: current.byConnection[nextKey]?.focusedPane ?? 0,
   });
@@ -207,5 +189,6 @@ useConnectionsStore.subscribe((state, previous) => {
 
 useTableTabs.subscribe((state, previous) => {
   if (state.tabs === previous.tabs) return;
+  if (splitConnectionId !== useConnectionsStore.getState().activeId) return;
   useSplitView.getState().prune(new Set(state.tabs.map(tabKey)));
 });

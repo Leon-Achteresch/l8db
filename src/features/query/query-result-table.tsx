@@ -6,7 +6,7 @@ import {
   FilterIcon,
   FilterXIcon,
 } from "lucide-react";
-import { memo, useDeferredValue, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { QueryResult } from "@/lib/db";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
   activeFilterCount,
   applyResultView,
@@ -40,13 +41,16 @@ interface QueryResultTableProps {
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
+  onInspect?: (column: string, value: unknown, row: number) => void;
 }
 
 export const QueryResultTable = memo(function QueryResultTable({
   result,
   isLoading,
   error,
+  onInspect,
 }: QueryResultTableProps) {
+  const workspace = useQueryWorkspace();
   const [sorts, setSorts] = useState<ResultSort[]>([]);
   const [filters, setFilters] = useState<ResultFilters>({});
   const [filterRowOpen, setFilterRowOpen] = useState(false);
@@ -67,7 +71,10 @@ export const QueryResultTable = memo(function QueryResultTable({
     [rows, columns, sorts, deferredFilters],
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const columnWidths = useMemo(() => [48, ...columns.map(() => 200)], [columns]);
+  const columnWidths = useMemo(
+    () => [48, ...columns.map(() => workspace.resultColumnWidth)],
+    [columns, workspace.resultColumnWidth],
+  );
   const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
   const dataColumnWindow = useMemo(
     () => columnWindow.items.filter((item) => item.index !== 0),
@@ -76,9 +83,12 @@ export const QueryResultTable = memo(function QueryResultTable({
   const rowVirtualizer = useVirtualizer({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 29,
+    estimateSize: () => Math.max(workspace.resultRowHeight, workspace.resultFontSize + 12),
     overscan: 10,
   });
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, workspace.resultFontSize, workspace.resultRowHeight, workspace.resultView]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
@@ -88,7 +98,10 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   const setFilter = (column: string, patch: Partial<ResultFilters[string]>) => {
     setFilters((prev) => {
-      const current = prev[column] ?? { operator: "contains" as ResultFilterOperator, value: "" };
+      const current = prev[column] ?? {
+        operator: "contains" as ResultFilterOperator,
+        value: "",
+      };
       return { ...prev, [column]: { ...current, ...patch } };
     });
   };
@@ -347,9 +360,12 @@ export const QueryResultTable = memo(function QueryResultTable({
                   key={rowIdx}
                   ref={rowVirtualizer.measureElement}
                   data-index={rowIdx}
+                  style={{
+                    height: Math.max(workspace.resultRowHeight, workspace.resultFontSize + 12),
+                  }}
                   className={cn(
                     "group hover:bg-muted/50",
-                    rowIdx % 2 === 0 ? "bg-background" : "bg-muted/20",
+                    workspace.stripedRows && rowIdx % 2 !== 0 ? "bg-muted/20" : "bg-background",
                   )}
                 >
                   <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
@@ -377,13 +393,25 @@ export const QueryResultTable = memo(function QueryResultTable({
                       <td
                         key={col}
                         data-col={col}
+                        style={{ fontSize: workspace.resultFontSize }}
                         title={isNull ? undefined : String(raw)}
                         className={cn(
-                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono text-xs",
+                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono",
                           isNull && "text-muted-foreground/50 italic",
                         )}
                       >
-                        {display}
+                        {onInspect ? (
+                          <button
+                            type="button"
+                            className="block w-full truncate text-left focus-visible:outline-2 focus-visible:outline-ring"
+                            title="Vollständigen Zellwert anzeigen"
+                            onClick={() => onInspect(col, raw, rowIdx + 1)}
+                          >
+                            {display}
+                          </button>
+                        ) : (
+                          display
+                        )}
                       </td>
                     );
                   })}

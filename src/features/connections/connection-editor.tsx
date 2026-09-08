@@ -21,8 +21,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { withTimeout } from "@/lib/async";
+import { serverLabel } from "@/lib/connection-groups";
 import {
   connectionError,
+  connectionSummary,
   detectProvider,
   filePath,
   kindFromUrl,
@@ -35,7 +37,13 @@ import {
   type SshAuth,
   useConnectionsStore,
 } from "@/lib/connections";
-import { type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import {
+  type DatabaseKind,
+  listSchemas,
+  type ProviderInfo,
+  type SslMode,
+  testConnectionString,
+} from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
 import { refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 import {
@@ -55,10 +63,12 @@ import {
 } from "@/lib/ssh";
 import { ConnectionField } from "./connection-field";
 import { ProviderTile } from "./provider-tile";
+import { SchemaPicker } from "./schema-picker";
 import { SetupStepper } from "./setup-stepper";
 
 interface Props {
   connection?: SavedConnection;
+  template?: SavedConnection;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -85,22 +95,25 @@ function placeholderDefaults(info: ProviderInfo) {
   }
 }
 
-export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
+export function ConnectionEditor({ connection, template, onSaved, onCancel }: Props) {
   const queryClient = useQueryClient();
   const providers = useProvidersStore((state) => state.providers);
   const groups = [...new Set(providers.map((entry) => entry.group))];
+  const seed = connection ?? template;
   const [name, setName] = useState(connection?.name ?? "");
   const [value, setValue] = useState(connection?.connectionString ?? "");
-  const [mode, setMode] = useState<Mode>("string");
+  const [mode, setMode] = useState<Mode>(template ? "fields" : "string");
   const [setupMode, setSetupMode] = useState<SetupMode>("simple");
   const [provider, setProvider] = useState(
-    connection ? detectProvider(connection.connectionString, connection.kind) : "postgres",
+    seed ? detectProvider(seed.connectionString, seed.kind) : "postgres",
   );
   const info = providers.find((entry) => entry.id === provider) ?? providers[0];
   const kind = info.kind;
   const caps = info.capabilities;
-  const defaults = placeholderDefaults(info);
-  const [ssl, setSsl] = useState<SslMode>(connection?.sslMode ?? sslModeFromUrl(value));
+  const defaults = template
+    ? { ...connectionSummary(template.connectionString, template.kind), user: "" }
+    : placeholderDefaults(info);
+  const [ssl, setSsl] = useState<SslMode>(seed?.sslMode ?? sslModeFromUrl(value));
   const [showPassword, setShowPassword] = useState(false);
   const [host, setHost] = useState(defaults.host);
   const [port, setPort] = useState(defaults.port);
@@ -109,22 +122,27 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [password, setPassword] = useState("");
   const [file, setFile] = useState("");
   const [extraParams, setExtraParams] = useState("");
-  const [sshEnabled, setSshEnabled] = useState(Boolean(connection?.ssh?.host));
-  const [sshHost, setSshHost] = useState(connection?.ssh?.host ?? "");
-  const [sshPort, setSshPort] = useState(String(connection?.ssh?.port ?? 22));
-  const [sshUser, setSshUser] = useState(connection?.ssh?.user ?? "");
-  const [sshAuth, setSshAuth] = useState<SshAuth>(connection?.ssh?.auth ?? "key");
-  const [sshKey, setSshKey] = useState(connection?.ssh?.keyFile ?? "");
+  const [sshEnabled, setSshEnabled] = useState(Boolean(seed?.ssh?.host));
+  const [sshHost, setSshHost] = useState(seed?.ssh?.host ?? "");
+  const [sshPort, setSshPort] = useState(String(seed?.ssh?.port ?? 22));
+  const [sshUser, setSshUser] = useState(seed?.ssh?.user ?? "");
+  const [sshAuth, setSshAuth] = useState<SshAuth>(seed?.ssh?.auth ?? "key");
+  const [sshKey, setSshKey] = useState(seed?.ssh?.keyFile ?? "");
   const [sshPassword, setSshPassword] = useState("");
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [step, setStep] = useState<1 | 2 | 3>(connection ? 2 : 1);
+  const [step, setStep] = useState<1 | 2 | 3>(seed ? 2 : 1);
   const reduce = useReducedMotion();
   const setPreview = useDbThemeStore((state) => state.setPreview);
-  const [tags, setTags] = useState(connection?.tags?.map((tag) => tag.name).join(", ") ?? "");
-  const [color, setColor] = useState<string | null>(connection?.color ?? null);
-  const [readOnly, setReadOnly] = useState(Boolean(connection?.readOnly));
+  const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");
+  const [color, setColor] = useState<string | null>(seed?.color ?? null);
+  const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
+  const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
+  const [scannedSchemas, setScannedSchemas] = useState<string[] | null>(null);
+  const [scannedUser, setScannedUser] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
@@ -164,6 +182,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     setDatabase(nextDefaults.database);
     setUser(nextDefaults.user);
     if (!value) setSsl(next.hosts.includes("localhost") ? "prefer" : "require");
+    setStep(2);
   }
 
   function makeUrl() {
@@ -266,46 +285,69 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     };
   }
 
+  async function withLiveUrl<T>(run: (kind: DatabaseKind, url: string) => Promise<T>) {
+    const tunnelId = `test-${crypto.randomUUID()}`;
+    let tunnelOpened = false;
+    try {
+      const config = await configuration();
+      let url = config.connectionString;
+      if (config.ssh) {
+        const tunnel = await openSshTunnel({
+          id: tunnelId,
+          host: config.ssh.host,
+          port: config.ssh.port,
+          user: config.ssh.user,
+          auth:
+            sshAuth === "key"
+              ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
+              : { password: config.secret },
+          remote_host: config.ssh.remoteHost,
+          remote_port: config.ssh.remotePort,
+          accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
+        });
+        tunnelOpened = true;
+        url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+      }
+      return await withTimeout(
+        run(config.kind, url),
+        TEST_TIMEOUT_MS,
+        `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
+      );
+    } finally {
+      if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
+    }
+  }
+
   async function test() {
     if (operation.current) return;
     operation.current = true;
     setResult({ status: "testing" });
     const started = performance.now();
     try {
-      const tunnelId = `test-${crypto.randomUUID()}`;
-      let tunnelOpened = false;
-      try {
-        const config = await configuration();
-        let url = config.connectionString;
-        if (config.ssh) {
-          const tunnel = await openSshTunnel({
-            id: tunnelId,
-            host: config.ssh.host,
-            port: config.ssh.port,
-            user: config.ssh.user,
-            auth:
-              sshAuth === "key"
-                ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
-                : { password: config.secret },
-            remote_host: config.ssh.remoteHost,
-            remote_port: config.ssh.remotePort,
-            accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
-          });
-          tunnelOpened = true;
-          url = tunneledConnectionString(url, tunnel.local_port, config.kind);
-        }
-        await withTimeout(
-          testConnectionString(config.kind, url),
-          TEST_TIMEOUT_MS,
-          `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
-        );
-        setResult({ status: "success", ms: Math.round(performance.now() - started) });
-      } finally {
-        if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
-      }
+      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url));
+      setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });
     } finally {
+      operation.current = false;
+    }
+  }
+
+  async function scanSchemas() {
+    if (operation.current) return;
+    operation.current = true;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const list = await withLiveUrl((liveKind, url) => {
+        setScannedUser(decodeURIComponent(new URL(url).username));
+        return listSchemas(liveKind, url);
+      });
+      setScannedSchemas(list);
+    } catch (error) {
+      setScanError(connectionError(error));
+    } finally {
+      setScanning(false);
       operation.current = false;
     }
   }
@@ -353,6 +395,11 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
         readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
+        schemas: quickSave
+          ? (connection?.schemas ?? null)
+          : caps.schemas && schemaFilter.length
+            ? schemaFilter
+            : null,
         color: quickSave ? (connection?.color ?? null) : color,
         tags: quickSave
           ? (connection?.tags ?? [])
@@ -400,7 +447,11 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
       <header className="flex shrink-0 items-start justify-between gap-3 px-4 pt-3 pb-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-tight">
-            {connection ? connection.name : "Neue Verbindung"}
+            {connection
+              ? connection.name
+              : template
+                ? `Weiteres Schema auf ${serverLabel(template)}`
+                : "Neue Verbindung"}
           </h2>
           <p className="truncate text-xs text-muted-foreground">
             {setupMode === "connection-string" ? quickInfo.name : info.name}
@@ -931,6 +982,17 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                         ))}
                       </div>
                     </fieldset>
+                    {caps.schemas && (
+                      <SchemaPicker
+                        selected={schemaFilter}
+                        scanned={scannedSchemas}
+                        userName={scannedUser}
+                        scanning={scanning}
+                        error={scanError}
+                        onScan={() => void scanSchemas()}
+                        onChange={setSchemaFilter}
+                      />
+                    )}
                   </div>
                 )}
                 {step === 3 && (

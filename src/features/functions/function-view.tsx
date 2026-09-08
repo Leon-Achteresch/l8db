@@ -1,44 +1,28 @@
-import { useQueryClient } from "@tanstack/react-query";
-
-import {
-  CheckCircleIcon,
-  HammerIcon,
-  LoaderIcon,
-  PencilIcon,
-  PlayIcon,
-  TriangleAlertIcon,
-  UndoIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useRef, useState } from "react";
-
+import { useEffect, useMemo, useRef } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import {
+  OpenInQueryEditorButton,
+  SqlEditActions,
+  SqlEditFeedback,
+  SqlEditHint,
+  useSqlObjectEdit,
+} from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery, validateSql } from "@/lib/db";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities } from "@/lib/db-selection";
+import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
-import { useFunctionDefinitionQuery } from "@/lib/queries";
-import { effectiveConnectionString } from "@/lib/ssh";
+import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
+import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
 }
-
-type ValidationState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "success" }
-  | { status: "error"; message: string };
-
-type ExecutionState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "success"; time: number }
-  | { status: "error"; message: string };
 
 export interface FunctionViewProps {
   schema: string;
@@ -49,75 +33,20 @@ export interface FunctionViewProps {
 
 export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   const connection = useActiveConnection();
-  const database = useActiveDatabase();
-  const queryClient = useQueryClient();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const capabilities = useActiveCapabilities();
   const { compile, state: compileState } = useCompileObject();
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
-
-  const [editing, setEditing] = useState(false);
-  const [editedSql, setEditedSql] = useState("");
-  const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
-  const [execution, setExecution] = useState<ExecutionState>({ status: "idle" });
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
+  const isInvalid = isFunctionInvalid(invalidSet, schema, name);
+  const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "");
 
   useEffect(() => {
     if (oid) {
       openFunctionTab({ schema, name, oid });
     }
   }, [schema, name, oid, openFunctionTab]);
-
-  const handleEdit = useCallback(() => {
-    setEditing(true);
-    setEditedSql(data ?? "");
-    setValidation({ status: "idle" });
-    setExecution({ status: "idle" });
-  }, [data]);
-
-  const handleCancel = useCallback(() => {
-    setEditing(false);
-    setEditedSql("");
-    setValidation({ status: "idle" });
-    setExecution({ status: "idle" });
-  }, []);
-
-  const handleValidate = useCallback(async () => {
-    if (!connection) return;
-    setValidation({ status: "loading" });
-    setExecution({ status: "idle" });
-    try {
-      await validateSql(
-        connection.kind,
-        effectiveConnectionString(connection),
-        editedSql,
-        database ?? undefined,
-      );
-      setValidation({ status: "success" });
-    } catch (e) {
-      setValidation({ status: "error", message: String(e) });
-    }
-  }, [connection, database, editedSql]);
-
-  const handleExecute = useCallback(async () => {
-    if (!connection) return;
-    setExecution({ status: "loading" });
-    try {
-      const result = await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        editedSql,
-        database ?? undefined,
-      );
-      setExecution({ status: "success", time: result.execution_time_ms });
-      setValidation({ status: "idle" });
-      await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
-      await queryClient.invalidateQueries({ queryKey: ["functions"] });
-      setEditing(false);
-      setEditedSql("");
-    } catch (e) {
-      setExecution({ status: "error", message: String(e) });
-    }
-  }, [connection, database, editedSql, queryClient]);
 
   if (!connection) {
     return (
@@ -158,7 +87,6 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
     );
   }
 
-  const feedbackState = execution.status !== "idle" ? execution : validation;
   const compileResult = compileState.status === "done" ? compileState.result : null;
 
   return (
@@ -167,68 +95,33 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         <span className="text-xs font-medium text-muted-foreground flex-1">
           {schema}.{name}
         </span>
-        {!editing ? (
-          <>
-            {capabilities.compile_objects && oid ? (
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => void compile(oid, "function", `${schema}.${name}`)}
-                disabled={compileState.status === "loading"}
-              >
-                {compileState.status === "loading" ? (
-                  <LoaderIcon data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <HammerIcon data-icon="inline-start" />
-                )}
-                Kompilieren
-              </Button>
-            ) : null}
-            <Button variant="outline" size="xs" onClick={handleEdit}>
-              <PencilIcon data-icon="inline-start" />
-              Bearbeiten
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button variant="ghost" size="xs" onClick={handleCancel}>
-              <UndoIcon data-icon="inline-start" />
-              Abbrechen
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={handleValidate}
-              disabled={validation.status === "loading" || execution.status === "loading"}
-            >
-              {validation.status === "loading" ? (
-                <LoaderIcon data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <CheckCircleIcon data-icon="inline-start" />
-              )}
-              Prüfen
-            </Button>
-            <Button
-              variant="default"
-              size="xs"
-              onClick={handleExecute}
-              disabled={execution.status === "loading"}
-            >
-              {execution.status === "loading" ? (
-                <LoaderIcon data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <PlayIcon data-icon="inline-start" />
-              )}
-              Ausführen
-            </Button>
-          </>
-        )}
+        {isInvalid && !compileResult ? <Badge variant="destructive">INVALID</Badge> : null}
+        {!edit.editing && capabilities.compile_objects && oid ? (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => void compile(oid, "function", `${schema}.${name}`)}
+            disabled={compileState.status === "loading"}
+            title="Kompiliert das gespeicherte Objekt in der Datenbank neu — ohne den Quelltext zu ändern."
+          >
+            {compileState.status === "loading" ? (
+              <LoaderIcon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <HammerIcon data-icon="inline-start" />
+            )}
+            Kompilieren
+          </Button>
+        ) : null}
+        <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
+        <SqlEditActions edit={edit} />
       </div>
 
+      {edit.editing ? <SqlEditHint /> : null}
+
       <SqlEditorPane
-        value={editing ? editedSql : (data ?? "")}
-        readOnly={!editing}
-        onChange={editing ? setEditedSql : undefined}
+        value={edit.editing ? edit.sql : (data ?? "")}
+        readOnly={!edit.editing}
+        onChange={edit.editing ? edit.setSql : undefined}
         revealLine={compileResult?.line ?? line}
       />
 
@@ -245,42 +138,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         </div>
       ) : null}
 
-      {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
-        <FeedbackPanel state={feedbackState} />
-      )}
-    </div>
-  );
-}
-
-function FeedbackPanel({
-  state,
-}: {
-  state: { status: "success"; time?: number } | { status: "error"; message: string };
-}) {
-  return (
-    <div
-      className={
-        state.status === "success"
-          ? "flex items-start gap-2 border-t bg-emerald-500/5 px-4 py-2.5"
-          : "flex items-start gap-2 border-t bg-destructive/5 px-4 py-2.5"
-      }
-    >
-      {state.status === "success" ? (
-        <>
-          <CheckCircleIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            Erfolgreich
-            {state.time != null ? ` (${state.time} ms)` : ""}
-          </span>
-        </>
-      ) : (
-        <>
-          <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <pre className="flex-1 whitespace-pre-wrap break-all text-xs font-mono text-destructive select-text">
-            {state.message}
-          </pre>
-        </>
-      )}
+      <SqlEditFeedback state={edit.state} />
     </div>
   );
 }
@@ -344,10 +202,12 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
     });
 
     const formatAction = addSqlFormatAction(editor);
+    const intellisense = attachSqlIntellisense(editor);
 
     return () => {
       changeSub.dispose();
       formatAction.dispose();
+      intellisense.dispose();
       editor.dispose();
       editorRef.current = null;
     };

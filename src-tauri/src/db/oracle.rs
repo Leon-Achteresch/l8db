@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -5,14 +6,15 @@ use oracle::sql_type::OracleType;
 pub use oracle::Connection;
 use oracle::{Connector, Row};
 
-use super::pool::PoolState;
+use super::pool::{BlockingPool, PoolState};
 use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
-    ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ForeignKeyInfo,
-    FunctionInfo, IndexInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, QueryResult,
+    SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo,
+    TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -57,6 +59,10 @@ fn is_query(sql: &str) -> bool {
     let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
     matches!(first.as_str(), "SELECT" | "WITH")
 }
+
+#[path = "oracle_sql.rs"]
+mod sql;
+use sql::prepare;
 
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     let text: Option<String> = match row.get(index) {
@@ -212,6 +218,11 @@ impl OracleAdapter {
     }
 
     pub async fn open_connection(&self) -> Result<Mutex<Connection>, String> {
+        self.open_raw().await.map(Mutex::new)
+    }
+
+    async fn open_raw(&self) -> Result<Connection, String> {
+        ensure_client_lib();
         self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
@@ -229,7 +240,7 @@ impl OracleAdapter {
             conn.set_autocommit(true);
             conn.execute(NLS_SESSION, &[])
                 .map_err(|e| format!("Oracle-Sitzungsformat fehlgeschlagen: {e}"))?;
-            Ok(Mutex::new(conn))
+            Ok(conn)
         })
         .await
         .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
@@ -257,8 +268,38 @@ impl OracleAdapter {
         .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
+    async fn run_pooled<T, F>(&self, suffix: &str, capacity: usize, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        let pool = self
+            .pool_state
+            .shared(&format!("{}#{suffix}", self.key), || async {
+                Ok(BlockingPool::<Connection>::new(capacity))
+            })
+            .await?;
+        pool.run(|| self.open_raw(), f).await
+    }
+
+    async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        self.run_pooled("meta", 3, f).await
+    }
+
+    async fn run_browse<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        self.run_pooled("browse", 2, f).await
+    }
+
     async fn rows(&self, sql: String) -> Result<Vec<Row>, String> {
-        self.run(move |c| fetch(c, &sql)).await
+        self.run_meta(move |c| fetch(c, &sql)).await
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
@@ -318,6 +359,7 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
 #[async_trait]
 impl DatabaseAdapter for OracleAdapter {
     async fn test_connection(&self) -> Result<(), String> {
+        ensure_client_lib();
         oracle::Version::client()
             .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
         self.rows("SELECT 1 FROM dual".to_string())
@@ -401,31 +443,33 @@ impl DatabaseAdapter for OracleAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
-            .collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => String::new(),
-        };
-        let sql = format!(
-            "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
-            if is_view { "t.*" } else { ROWID_SELECT },
-            quote(schema),
-            quote(table),
-            where_sql,
-            order_sql,
-            offset.max(0),
-            limit.max(1)
-        );
-        let (cols, rows) = self.run(move |c| run_query(c, &sql)).await?;
+        let (schema, table) = (schema.to_string(), table.to_string());
+        let order_by = order_by.map(str::to_string);
+        let (columns, cols, rows) = self
+            .run_browse(move |c| {
+                let columns = table_columns(c, &schema, &table, false)?;
+                let order_sql = match order_by {
+                    Some(col) if columns.iter().any(|c| *c == col) => format!(
+                        " ORDER BY {} {}",
+                        quote(&col),
+                        if order_desc { "DESC" } else { "ASC" }
+                    ),
+                    _ => String::new(),
+                };
+                let sql = format!(
+                    "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+                    if is_view { "t.*" } else { ROWID_SELECT },
+                    quote(&schema),
+                    quote(&table),
+                    where_sql,
+                    order_sql,
+                    offset.max(0),
+                    limit.max(1)
+                );
+                let (cols, rows) = run_query(c, &sql)?;
+                Ok((columns, cols, rows))
+            })
+            .await?;
         Ok(TableData {
             columns: if columns.is_empty() {
                 cols.clone()
@@ -449,12 +493,17 @@ impl DatabaseAdapter for OracleAdapter {
             quote(table),
             where_clause(filter, allow_raw_filter)?
         );
-        Ok(self.rows(sql).await?.first().map(|r| i(r, 0)).unwrap_or(0))
+        Ok(self
+            .run_browse(move |c| fetch(c, &sql))
+            .await?
+            .first()
+            .map(|r| i(r, 0))
+            .unwrap_or(0))
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let statement = sql.trim().trim_end_matches(';').to_string();
+        let statement = prepare(sql);
         if is_query(&statement) {
             let (columns, rows) = self.run(move |c| run_query(c, &statement)).await?;
             return Ok(QueryResult {
@@ -471,6 +520,20 @@ impl DatabaseAdapter for OracleAdapter {
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+        let mut results = Vec::new();
+        for statement in sql::split_statements(sql) {
+            let result = self.execute_query(&statement).await;
+            results.push(super::ScriptStatementResult {
+                statement,
+                success: result.is_ok(),
+                rows_affected: result.as_ref().ok().and_then(|r| r.rows_affected),
+                error: result.err(),
+            });
+        }
+        Ok(results)
     }
 
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
@@ -762,17 +825,30 @@ impl DatabaseAdapter for OracleAdapter {
             return Err("Ungültige Objektreferenz".to_string());
         }
         let (owner, name) = (parts[0], parts[1]);
-        let (compile_kind, error_type) = match object_type {
-            "package_spec" => ("PACKAGE".to_string(), "PACKAGE".to_string()),
-            "package_body" => ("PACKAGE BODY".to_string(), "PACKAGE BODY".to_string()),
-            other => (other.to_uppercase(), other.to_uppercase()),
+        let error_type = match parts[2].trim().to_uppercase() {
+            t if !t.is_empty() => t,
+            _ => match object_type {
+                "package_spec" => "PACKAGE".to_string(),
+                "package_body" => "PACKAGE BODY".to_string(),
+                other => other.to_uppercase(),
+            },
+        };
+        let (compile_kind, compile_part) = match error_type.as_str() {
+            "PACKAGE" => ("PACKAGE", " SPECIFICATION"),
+            "PACKAGE BODY" => ("PACKAGE", " BODY"),
+            "TYPE BODY" => ("TYPE", " BODY"),
+            "FUNCTION" | "PROCEDURE" | "TRIGGER" | "TYPE" | "VIEW" | "MATERIALIZED VIEW" => {
+                (error_type.as_str(), "")
+            }
+            other => return Err(format!("Objekttyp {other} kann nicht kompiliert werden")),
         };
         let compile_error = self
             .exec(format!(
-                "ALTER {} {}.{} COMPILE",
+                "ALTER {} {}.{} COMPILE{}",
                 compile_kind,
                 quote(owner),
-                quote(name)
+                quote(name),
+                compile_part
             ))
             .await
             .err();
@@ -808,6 +884,114 @@ impl DatabaseAdapter for OracleAdapter {
             line,
             position,
         })
+    }
+
+    async fn list_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        let sql = format!(
+            "SELECT owner, object_name, object_type, status FROM all_objects WHERE status = 'INVALID' AND {} AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') ORDER BY object_type, object_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| {
+                let owner = s(r, 0);
+                let name = s(r, 1);
+                let object_type = s(r, 2);
+                InvalidObjectInfo {
+                    oid: format!("{owner}\u{1f}{name}\u{1f}{object_type}"),
+                    schema: owner,
+                    name,
+                    object_type: object_type.clone(),
+                    status: s(r, 3),
+                }
+            })
+            .collect())
+    }
+
+    async fn list_compile_errors(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<CompileErrorInfo>, String> {
+        let sql = format!(
+            "SELECT owner, name, type, line, position, text FROM all_errors WHERE {} ORDER BY owner, name, type, sequence",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| CompileErrorInfo {
+                schema: s(r, 0),
+                name: s(r, 1),
+                object_type: s(r, 2),
+                line: s(r, 3).parse::<i32>().ok(),
+                position: s(r, 4).parse::<i32>().ok(),
+                message: s(r, 5),
+            })
+            .collect())
+    }
+
+    async fn compile_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidCompileOutcome>, String> {
+        let invalid = self.list_invalid_objects(schema).await?;
+        let mut out = Vec::new();
+        for item in invalid {
+            if item.object_type.eq_ignore_ascii_case("SYNONYM") {
+                out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: "INVALID".to_string(),
+                    message: Some("Synonyme können nicht kompiliert werden".to_string()),
+                    line: None,
+                    position: None,
+                });
+                continue;
+            }
+            let object_arg = match item.object_type.to_uppercase().as_str() {
+                "PACKAGE" => "package_spec",
+                "PACKAGE BODY" => "package_body",
+                "FUNCTION" => "function",
+                "PROCEDURE" => "procedure",
+                "TRIGGER" => "trigger",
+                "VIEW" => "view",
+                "MATERIALIZED VIEW" => "view",
+                "TYPE" => "type",
+                "TYPE BODY" => "type_body",
+                _ => "routine",
+            };
+            match self.compile_object(&item.oid, object_arg).await {
+                Ok(res) => out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: res.status,
+                    message: res.message,
+                    line: res.line,
+                    position: res.position,
+                }),
+                Err(e) => out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: "INVALID".to_string(),
+                    message: Some(e),
+                    line: None,
+                    position: None,
+                }),
+            }
+        }
+        Ok(out)
     }
 
     async fn start_debug_session(
@@ -1266,9 +1450,637 @@ impl DatabaseAdapter for OracleAdapter {
     }
 }
 
+pub fn ensure_client_lib() {
+    if oracle::InitParams::is_initialized() {
+        return;
+    }
+    if let Some(dir) = find_client_lib_dir() {
+        let mut params = oracle::InitParams::new();
+        if let Ok(params) = params.oracle_client_lib_dir(dir) {
+            let _ = params.init();
+        }
+    }
+}
+
+fn is_client_lib(file: &str) -> bool {
+    if cfg!(target_os = "windows") {
+        file.eq_ignore_ascii_case("oci.dll")
+    } else if cfg!(target_os = "macos") {
+        file == "libclntsh.dylib"
+    } else {
+        file.starts_with("libclntsh.so")
+    }
+}
+
+fn has_client_lib(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| is_client_lib(&e.file_name().to_string_lossy()))
+        })
+        .unwrap_or(false)
+}
+
+fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(parent)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with("instantclient"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    dirs.sort();
+    dirs.reverse();
+    dirs
+}
+
+fn client_lib_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = std::env::var_os("ORACLE_HOME") {
+        dirs.push(PathBuf::from(&home).join("lib"));
+        dirs.push(PathBuf::from(home));
+    }
+    let path_vars: &[&str] = if cfg!(target_os = "windows") {
+        &["PATH"]
+    } else if cfg!(target_os = "macos") {
+        &["DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"]
+    } else {
+        &["LD_LIBRARY_PATH"]
+    };
+    for var in path_vars {
+        if let Some(paths) = std::env::var_os(var) {
+            dirs.extend(std::env::split_paths(&paths));
+        }
+    }
+    dirs.extend(["/opt/homebrew/lib", "/usr/local/lib"].map(PathBuf::from));
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
+        dirs.push(home.join("lib"));
+        dirs.extend(instant_client_dirs(&home));
+        dirs.extend(instant_client_dirs(&home.join("Downloads")));
+    }
+    for parent in [
+        "/opt/oracle",
+        "/opt",
+        "/usr/lib/oracle",
+        "C:\\oracle",
+        "C:\\",
+    ] {
+        dirs.extend(instant_client_dirs(Path::new(parent)));
+    }
+    dirs
+}
+
+pub fn find_client_lib_dir() -> Option<PathBuf> {
+    find_client_lib_in(&client_lib_candidates())
+}
+
+fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|dir| has_client_lib(dir)).cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_client_lib_dir_in_candidates() {
+        let dir = std::env::temp_dir().join(format!("l8db-oracle-{}", std::process::id()));
+        let empty = dir.join("leer");
+        std::fs::create_dir_all(&empty).unwrap();
+        let name = if cfg!(target_os = "windows") {
+            "oci.dll"
+        } else if cfg!(target_os = "macos") {
+            "libclntsh.dylib"
+        } else {
+            "libclntsh.so.21.1"
+        };
+        std::fs::write(dir.join(name), b"").unwrap();
+        assert_eq!(
+            find_client_lib_in(&[empty.clone(), dir.clone()]),
+            Some(dir.clone())
+        );
+        assert_eq!(find_client_lib_in(&[empty]), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prepares_statements() {
+        assert_eq!(prepare("SELECT 1 FROM DUAL;"), "SELECT 1 FROM DUAL");
+        assert_eq!(
+            prepare("SELECT 1 FROM DUAL; -- hinweis"),
+            "SELECT 1 FROM DUAL"
+        );
+        assert_eq!(
+            prepare("-- kopf\nSELECT 1 FROM DUAL;\n/* ende */\n"),
+            "SELECT 1 FROM DUAL"
+        );
+        assert_eq!(prepare("SELECT ';' FROM DUAL;"), "SELECT ';' FROM DUAL");
+        assert_eq!(
+            prepare("SELECT 'it''s;' FROM DUAL;;"),
+            "SELECT 'it''s;' FROM DUAL"
+        );
+        assert_eq!(prepare("BEGIN NULL; END;\n/\n"), "BEGIN NULL; END;");
+        assert_eq!(prepare("begin null; end"), "begin null; end;");
+        assert_eq!(
+            prepare("CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/"),
+            "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"
+        );
+        assert_eq!(
+            prepare("CREATE TABLE t (TYPE NUMBER);"),
+            "CREATE TABLE t (TYPE NUMBER)"
+        );
+        assert_eq!(prepare("SELECT 4/2 FROM DUAL;"), "SELECT 4/2 FROM DUAL");
+        assert!(is_query(&prepare("/* x */ SELECT 1 FROM DUAL")));
+        assert_eq!(prepare("   "), "");
+    }
+
+    fn lenient<T>(what: &str, result: Result<T, String>, allowed: &[&str]) -> Option<T> {
+        match result {
+            Ok(v) => Some(v),
+            Err(e) if allowed.iter().any(|code| e.contains(code)) => {
+                eprintln!("{what}: übersprungen ({e})");
+                None
+            }
+            Err(e) => panic!("{what}: {e}"),
+        }
+    }
+
+    const NO_PRIV: &[&str] = &["ORA-01031", "ORA-27486", "ORA-01950", "ORA-00942"];
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_all_functions() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a =
+            OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "live".into()).unwrap();
+        let a = &a;
+        let q = |sql: &str| {
+            let sql = sql.to_string();
+            async move { a.execute_query(&sql).await }
+        };
+        let cleanup = [
+            "DROP TRIGGER L8_LIVE_TRG",
+            "DROP VIEW L8_LIVE_V",
+            "DROP SYNONYM L8_LIVE_SYN",
+            "DROP TABLE L8_LIVE_CHILD CASCADE CONSTRAINTS",
+            "DROP TABLE L8_LIVE_PARENT CASCADE CONSTRAINTS",
+            "DROP TABLE L8_LIVE_CT CASCADE CONSTRAINTS",
+            "DROP SEQUENCE L8_LIVE_SEQ",
+            "DROP PACKAGE L8_LIVE_PKG",
+            "DROP PROCEDURE L8_LIVE_PROC",
+            "DROP FUNCTION L8_LIVE_FN",
+            "BEGIN DBMS_SCHEDULER.DROP_JOB('L8_LIVE_JOB', TRUE); END;",
+            "DROP USER L8_LIVE_USR CASCADE",
+        ];
+        for sql in cleanup {
+            let _ = q(sql).await;
+        }
+
+        a.test_connection().await.expect("test_connection");
+        assert!(!a.list_databases().await.expect("list_databases").is_empty());
+        let schema = q("SELECT USER AS U FROM dual;").await.expect("user").rows[0]["U"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(a
+            .list_schemas()
+            .await
+            .expect("list_schemas")
+            .contains(&schema));
+
+        for sql in [
+            "CREATE TABLE L8_LIVE_PARENT (ID NUMBER PRIMARY KEY, NAME VARCHAR2(50) NOT NULL, CREATED DATE DEFAULT SYSDATE)",
+            "CREATE TABLE L8_LIVE_CHILD (ID NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, PARENT_ID NUMBER CONSTRAINT L8_LIVE_FK REFERENCES L8_LIVE_PARENT (ID), NOTE VARCHAR2(100), CONSTRAINT L8_LIVE_CHK CHECK (NOTE <> 'x'));",
+            "CREATE INDEX L8_LIVE_IDX ON L8_LIVE_CHILD (NOTE, PARENT_ID)",
+            "CREATE SEQUENCE L8_LIVE_SEQ",
+            "CREATE OR REPLACE VIEW L8_LIVE_V AS SELECT ID, NAME FROM L8_LIVE_PARENT",
+            "CREATE SYNONYM L8_LIVE_SYN FOR L8_LIVE_PARENT",
+            "CREATE OR REPLACE TRIGGER L8_LIVE_TRG BEFORE INSERT ON L8_LIVE_PARENT FOR EACH ROW\nBEGIN\n  :NEW.NAME := UPPER(:NEW.NAME);\nEND;\n/\n",
+            "-- Funktion\nCREATE OR REPLACE FUNCTION L8_LIVE_FN(p NUMBER) RETURN NUMBER IS\nBEGIN\n  RETURN p * 2;\nEND L8_LIVE_FN;\n/",
+            "CREATE OR REPLACE PROCEDURE L8_LIVE_PROC(p OUT NUMBER) IS BEGIN p := L8_LIVE_FN(2); END;",
+            "CREATE OR REPLACE PACKAGE L8_LIVE_PKG AS\n  FUNCTION f RETURN NUMBER;\n  PROCEDURE p;\nEND L8_LIVE_PKG;\n/",
+            "CREATE OR REPLACE PACKAGE BODY L8_LIVE_PKG AS\n  FUNCTION f RETURN NUMBER IS BEGIN RETURN L8_LIVE_FN(1); END;\n  PROCEDURE p IS BEGIN NULL; END;\nEND L8_LIVE_PKG;\n/",
+        ] {
+            q(sql).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let ins = q("INSERT INTO L8_LIVE_PARENT (ID, NAME) VALUES (1, 'alpha');")
+            .await
+            .expect("insert");
+        assert_eq!(ins.rows_affected, Some(1));
+        q("INSERT INTO L8_LIVE_CHILD (PARENT_ID, NOTE) VALUES (1, 'n')")
+            .await
+            .expect("insert child");
+        let sel = q("/* kopf */ SELECT NAME FROM L8_LIVE_PARENT; -- ende")
+            .await
+            .expect("select");
+        assert_eq!(sel.rows[0]["NAME"], "ALPHA");
+
+        a.set_server_output(true).await.expect("set_server_output");
+        q("BEGIN\n  DBMS_OUTPUT.PUT_LINE('hallo');\nEND;\n/")
+            .await
+            .expect("plsql block");
+        let out = a.take_server_output().await.expect("take_server_output");
+        assert!(
+            out.iter().any(|m| format!("{m:?}").contains("hallo")),
+            "{out:?}"
+        );
+        a.set_server_output(false)
+            .await
+            .expect("set_server_output off");
+
+        let fns = a
+            .list_functions(Some(&schema))
+            .await
+            .expect("list_functions");
+        let fn_oid = fns
+            .iter()
+            .find(|f| f.name == "L8_LIVE_FN")
+            .expect("fn listed")
+            .oid
+            .clone();
+        let pkg = fns
+            .iter()
+            .find(|f| f.name == "L8_LIVE_PKG")
+            .expect("pkg listed");
+        assert_eq!(pkg.return_type, "PACKAGE");
+        assert!(!a
+            .list_functions(None)
+            .await
+            .expect("list_functions default")
+            .is_empty());
+        let procs = a
+            .list_procedures(Some(&schema))
+            .await
+            .expect("list_procedures");
+        let proc_oid = procs
+            .iter()
+            .find(|f| f.name == "L8_LIVE_PROC")
+            .expect("proc listed")
+            .oid
+            .clone();
+        let spec_oid = format!("{schema}\u{1f}L8_LIVE_PKG\u{1f}PACKAGE");
+        let body_oid = format!("{schema}\u{1f}L8_LIVE_PKG\u{1f}PACKAGE BODY");
+        for oid in [&fn_oid, &proc_oid, &spec_oid, &body_oid] {
+            assert!(!a
+                .get_function_definition(oid)
+                .await
+                .expect("definition")
+                .is_empty());
+        }
+        for (oid, kind) in [
+            (&fn_oid, "function"),
+            (&proc_oid, "procedure"),
+            (&spec_oid, "package_spec"),
+            (&body_oid, "package_body"),
+            (&spec_oid, "function"),
+        ] {
+            let r = a
+                .compile_object(oid, kind)
+                .await
+                .unwrap_or_else(|e| panic!("compile {kind}: {e}"));
+            assert_eq!(r.status, "VALID", "{kind}: {:?}", r.message);
+        }
+        let _ = q("CREATE OR REPLACE PACKAGE BODY L8_LIVE_PKG AS\n  FUNCTION f RETURN NUMBER IS BEGIN RETURN gibt_es_nicht(1); END;\n  PROCEDURE p IS BEGIN NULL; END;\nEND L8_LIVE_PKG;\n/").await;
+        let broken = a
+            .compile_object(&body_oid, "package_body")
+            .await
+            .expect("compile broken body");
+        assert_eq!(broken.status, "INVALID");
+        assert!(broken.line.is_some());
+        assert!(
+            broken.message.as_deref().unwrap_or("").contains("PLS-"),
+            "{:?}",
+            broken.message
+        );
+        q("CREATE OR REPLACE PACKAGE BODY L8_LIVE_PKG AS\n  FUNCTION f RETURN NUMBER IS BEGIN RETURN L8_LIVE_FN(1); END;\n  PROCEDURE p IS BEGIN NULL; END;\nEND L8_LIVE_PKG;\n/").await.expect("restore body");
+        assert_eq!(
+            a.compile_object(&body_oid, "package_body")
+                .await
+                .unwrap()
+                .status,
+            "VALID"
+        );
+
+        let used = a
+            .list_used_by(&schema, "L8_LIVE_FN")
+            .await
+            .expect("list_used_by");
+        assert!(used.iter().any(|d| d.name == "L8_LIVE_PKG"), "{used:?}");
+        let used = a
+            .list_used_by(&schema, "L8_LIVE_PARENT")
+            .await
+            .expect("list_used_by table");
+        assert!(
+            used.iter()
+                .any(|d| d.name == "L8_LIVE_CHILD" && d.relation == "Fremdschlüssel"),
+            "{used:?}"
+        );
+        let syn = a.list_synonyms(Some(&schema)).await.expect("list_synonyms");
+        assert!(
+            syn.iter()
+                .any(|s| s.name == "L8_LIVE_SYN" && s.target_type == "table"),
+            "{syn:?}"
+        );
+        a.list_synonyms(None).await.expect("list_synonyms default");
+
+        let views = a.list_views(Some(&schema)).await.expect("list_views");
+        assert!(views.iter().any(|v| v.name == "L8_LIVE_V"));
+        assert!(a
+            .get_view_definition(&schema, "L8_LIVE_V")
+            .await
+            .expect("view def")
+            .contains("L8_LIVE_PARENT"));
+        a.update_view_definition(&schema, "L8_LIVE_V", "SELECT ID FROM L8_LIVE_PARENT", true)
+            .await
+            .expect("view dry run");
+        a.update_view_definition(&schema, "L8_LIVE_V", "SELECT ID FROM L8_LIVE_PARENT", false)
+            .await
+            .expect("view update");
+        assert!(!a
+            .get_view_definition(&schema, "L8_LIVE_V")
+            .await
+            .unwrap()
+            .contains("NAME"));
+
+        let tables = a.list_tables(Some(&schema)).await.expect("list_tables");
+        assert!(tables.iter().any(|t| t.name == "L8_LIVE_PARENT"));
+        a.list_tables(None).await.expect("list_tables default");
+        assert_eq!(
+            a.list_columns(Some(&schema), Some("L8_LIVE_PARENT"), None)
+                .await
+                .expect("list_columns")
+                .len(),
+            3
+        );
+        assert_eq!(
+            a.list_columns(Some(&schema), Some("L8_LIVE_V"), Some("view"))
+                .await
+                .expect("list_columns view")
+                .len(),
+            1
+        );
+        a.list_columns(None, None, None)
+            .await
+            .expect("list_columns all");
+        let detailed = a
+            .list_table_columns_detailed(&schema, "L8_LIVE_PARENT")
+            .await
+            .expect("detailed");
+        assert!(detailed[0].is_primary_key);
+        assert_eq!(detailed[1].data_type, "VARCHAR2(50)");
+        assert_eq!(detailed[1].character_maximum_length, Some(50));
+        assert_eq!(detailed[2].column_default.as_deref(), Some("SYSDATE"));
+
+        let data = a
+            .fetch_rows(
+                &schema,
+                "L8_LIVE_PARENT",
+                Some("ID = 1"),
+                10,
+                0,
+                Some("NAME"),
+                true,
+                false,
+                true,
+            )
+            .await
+            .expect("fetch_rows");
+        assert_eq!(data.rows.len(), 1);
+        assert!(data.rows[0]["__ctid__"].is_string());
+        assert_eq!(data.columns, vec!["ID", "NAME", "CREATED"]);
+        let data = a
+            .fetch_rows(&schema, "L8_LIVE_V", None, 10, 0, None, false, true, false)
+            .await
+            .expect("fetch_rows view");
+        assert_eq!(data.rows.len(), 1);
+        assert_eq!(
+            a.count_rows(&schema, "L8_LIVE_PARENT", Some("ID = 1"), true)
+                .await
+                .expect("count_rows"),
+            1
+        );
+        assert_eq!(
+            a.count_rows(&schema, "L8_LIVE_PARENT", None, false)
+                .await
+                .expect("count_rows plain"),
+            1
+        );
+
+        a.add_column(
+            &schema,
+            "L8_LIVE_PARENT",
+            &AddColumnRequest {
+                name: "EXTRA".into(),
+                data_type: "VARCHAR2(10)".into(),
+                is_nullable: false,
+                default_value: Some("'x'".into()),
+            },
+        )
+        .await
+        .expect("add_column");
+        a.alter_column(
+            &schema,
+            "L8_LIVE_PARENT",
+            &AlterColumnRequest {
+                old_name: "EXTRA".into(),
+                new_name: Some("EXTRA2".into()),
+                data_type: Some("VARCHAR2(20)".into()),
+                set_not_null: Some(false),
+                new_default: Some("'y'".into()),
+                drop_default: false,
+            },
+        )
+        .await
+        .expect("alter_column");
+        a.alter_column(
+            &schema,
+            "L8_LIVE_PARENT",
+            &AlterColumnRequest {
+                old_name: "EXTRA2".into(),
+                new_name: None,
+                data_type: None,
+                set_not_null: None,
+                new_default: None,
+                drop_default: true,
+            },
+        )
+        .await
+        .expect("alter_column drop default");
+        a.drop_column(&schema, "L8_LIVE_PARENT", "EXTRA2")
+            .await
+            .expect("drop_column");
+        assert_eq!(
+            a.list_table_columns_detailed(&schema, "L8_LIVE_PARENT")
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+
+        let fks = a
+            .list_foreign_keys(&schema, "L8_LIVE_CHILD")
+            .await
+            .expect("list_foreign_keys");
+        assert_eq!(fks.len(), 1);
+        assert_eq!(fks[0].to_table, "L8_LIVE_PARENT");
+        let trg = a
+            .list_triggers(&schema, "L8_LIVE_PARENT")
+            .await
+            .expect("list_triggers");
+        assert_eq!(trg.len(), 1);
+        assert_eq!(trg[0].timing, "BEFORE");
+        assert_eq!(trg[0].orientation, "ROW");
+        let idx = a
+            .list_indexes(&schema, "L8_LIVE_CHILD")
+            .await
+            .expect("list_indexes");
+        let composite = idx
+            .iter()
+            .find(|i| i.name == "L8_LIVE_IDX")
+            .expect("index listed");
+        assert_eq!(composite.columns, vec!["NOTE", "PARENT_ID"]);
+        assert!(idx.iter().any(|i| i.is_primary));
+        let cons = a
+            .list_constraints(&schema, "L8_LIVE_CHILD")
+            .await
+            .expect("list_constraints");
+        for kind in ["PRIMARY KEY", "FOREIGN KEY", "CHECK"] {
+            assert!(
+                cons.iter().any(|c| c.constraint_type == kind),
+                "{kind}: {cons:?}"
+            );
+        }
+        assert!(a
+            .list_sequences(Some(&schema))
+            .await
+            .expect("list_sequences")
+            .iter()
+            .any(|s| s.name == "L8_LIVE_SEQ"));
+        a.list_sequences(None)
+            .await
+            .expect("list_sequences default");
+
+        let ct = CreateTableRequest {
+            schema: schema.clone(),
+            name: "L8_LIVE_CT".into(),
+            columns: vec![
+                super::super::ColumnDefinition {
+                    name: "ID".into(),
+                    data_type: "NUMBER".into(),
+                    is_nullable: false,
+                    default_value: None,
+                    is_primary_key: true,
+                    is_unique: false,
+                },
+                super::super::ColumnDefinition {
+                    name: "NAME".into(),
+                    data_type: "VARCHAR2(20)".into(),
+                    is_nullable: false,
+                    default_value: Some("'n'".into()),
+                    is_primary_key: false,
+                    is_unique: false,
+                },
+                super::super::ColumnDefinition {
+                    name: "CODE".into(),
+                    data_type: "VARCHAR2(5)".into(),
+                    is_nullable: true,
+                    default_value: None,
+                    is_primary_key: false,
+                    is_unique: true,
+                },
+            ],
+            if_not_exists: true,
+        };
+        a.create_table(&ct).await.expect("create_table");
+        a.create_table(&ct)
+            .await
+            .expect("create_table if_not_exists");
+        a.truncate_table(&schema, "L8_LIVE_CT")
+            .await
+            .expect("truncate_table");
+        a.drop_table(&schema, "L8_LIVE_CT")
+            .await
+            .expect("drop_table");
+
+        let plan = a
+            .explain_query("SELECT * FROM L8_LIVE_PARENT WHERE ID = 1;", false)
+            .await
+            .expect("explain_query");
+        assert!(
+            plan.as_str().unwrap_or("").contains("L8_LIVE_PARENT"),
+            "{plan}"
+        );
+
+        if let Some(sessions) = lenient("list_sessions", a.list_sessions().await, NO_PRIV) {
+            let me = sessions
+                .iter()
+                .find(|s| s.is_self)
+                .expect("own session listed");
+            lenient(
+                "cancel_session",
+                a.cancel_session(me.pid).await,
+                &["ORA-01013", "ORA-00022", "ORA-01031"],
+            );
+            lenient(
+                "terminate_session",
+                a.terminate_session(me.pid).await,
+                &["ORA-00027", "ORA-01031"],
+            );
+        }
+
+        if lenient("create job", q("BEGIN DBMS_SCHEDULER.CREATE_JOB(job_name => 'L8_LIVE_JOB', job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;', start_date => SYSTIMESTAMP + INTERVAL '1' DAY, repeat_interval => 'FREQ=DAILY', enabled => FALSE); END;").await, NO_PRIV).is_some() {
+            let jobs = a.list_scheduler_jobs().await.expect("list_scheduler_jobs");
+            let job = jobs.iter().find(|j| j.name == "L8_LIVE_JOB").expect("job listed");
+            assert!(!job.enabled);
+            a.set_scheduler_job_enabled(&job.id, true).await.expect("enable job");
+            a.set_scheduler_job_enabled(&job.id, false).await.expect("disable job");
+            a.run_scheduler_job(&job.id).await.expect("run job");
+            assert!(a.list_scheduler_jobs().await.unwrap().iter().any(|j| j.name == "L8_LIVE_JOB"));
+        } else {
+            lenient("list_scheduler_jobs", a.list_scheduler_jobs().await, NO_PRIV);
+        }
+
+        let dbg = a
+            .start_debug_session(&proc_oid, "procedure")
+            .await
+            .expect("start_debug_session");
+        assert!(!dbg.available);
+        if lenient(
+            "create_schema",
+            a.create_schema("L8_LIVE_USR").await,
+            NO_PRIV,
+        )
+        .is_some()
+        {
+            a.drop_schema("L8_LIVE_USR", true)
+                .await
+                .expect("drop_schema");
+        }
+        let overview = a
+            .get_database_overview()
+            .await
+            .expect("get_database_overview");
+        assert!(!overview.database.is_empty());
+        assert!(overview.schemas.iter().any(|s| s.schema == schema));
+
+        let script = a.execute_script("INSERT INTO L8_LIVE_PARENT (ID, NAME) VALUES (2, 'b'); SELECT COUNT(*) AS C FROM L8_LIVE_PARENT").await.expect("execute_script");
+        assert!(script.iter().all(|r| r.success), "{script:?}");
+
+        for sql in cleanup {
+            let _ = q(sql).await;
+        }
+    }
 
     #[test]
     fn parses_url() {
@@ -1406,7 +2218,8 @@ pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
 
 pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    let statement = sql.trim().trim_end_matches(';');
+    let statement = prepare(sql);
+    let statement = statement.as_str();
     if is_query(statement) {
         let (columns, rows) = run_query(c, statement)?;
         return Ok(QueryResult {

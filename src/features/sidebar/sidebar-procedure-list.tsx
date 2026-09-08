@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { HammerIcon, SquareFunctionIcon } from "lucide-react";
-
+import { useMemo } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -10,7 +10,10 @@ import {
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 interface SidebarProcedureListProps {
@@ -30,6 +33,8 @@ export function SidebarProcedureList({
   const openProcedureTab = useTableTabs((state) => state.openProcedureTab);
   const capabilities = useActiveCapabilities();
   const { compile } = useCompileObject();
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
   if (isLoading) {
     return (
@@ -67,6 +72,7 @@ export function SidebarProcedureList({
                   {item.name}
                   {item.identity_args ? `(${item.identity_args})` : "()"}
                 </span>
+                {isProcedureInvalid(invalidSet, item.schema, item.name) ? <InvalidMarker /> : null}
               </SidebarMenuButton>
             </ContextMenuTrigger>
             <ContextMenuContent>

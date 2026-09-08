@@ -1,11 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ZapIcon } from "lucide-react";
 import { motion } from "motion/react";
-
+import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SPRING_LAYOUT } from "@/lib/ease";
-import { useTriggersQuery } from "@/lib/queries";
+import { buildInvalidSet, isTriggerInvalid } from "@/lib/invalid-objects";
+import { useInvalidObjectsQuery, useTriggersQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +18,8 @@ interface TableTriggersListProps {
 
 export function TableTriggersList({ schema, table }: TableTriggersListProps) {
   const { data: triggers, isLoading } = useTriggersQuery(schema, table);
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const navigate = useNavigate();
   const openTriggerTab = useTableTabs((state) => state.openTriggerTab);
 
@@ -70,6 +74,9 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                 {trigger.trigger_name}
               </span>
+              {isTriggerInvalid(invalidSet, schema, trigger.trigger_name) ? (
+                <InvalidMarker />
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {trigger.timing} {trigger.event}
               </span>

@@ -176,18 +176,20 @@ export async function ensureSshTunnel(
 interface ConnectionSwitchState {
   targetId: string | null;
   isSwitching: boolean;
+  errorId: string | null;
 }
 
 export const useConnectionSwitch = create<ConnectionSwitchState>(() => ({
   targetId: null,
   isSwitching: false,
+  errorId: null,
 }));
 
 async function performActivation(
   id: string | null,
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
-  useConnectionSwitch.setState({ targetId: id, isSwitching: true });
+  useConnectionSwitch.setState({ targetId: id, isSwitching: true, errorId: null });
   try {
     const store = useConnectionsStore.getState();
     const previous = store.connections.find((entry) => entry.id === store.activeId);
@@ -254,7 +256,13 @@ export function activateConnection(
   id: string | null,
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
-  const result = activationQueue.then(() => performActivation(id, sshPassword));
+  const result = activationQueue.then(async () => {
+    const outcome = await performActivation(id, sshPassword);
+    if (!outcome.ok) {
+      useConnectionSwitch.setState({ errorId: id ?? useConnectionsStore.getState().activeId });
+    }
+    return outcome;
+  });
   activationQueue = result.catch(() => undefined);
   return result;
 }

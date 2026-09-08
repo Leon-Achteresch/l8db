@@ -10,6 +10,7 @@ import {
   EyeIcon,
   FileCodeIcon,
   FilterIcon,
+  KeyRoundIcon,
   LayersIcon,
   LinkIcon,
   ListIcon,
@@ -32,7 +33,7 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
-
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
@@ -63,6 +64,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -73,7 +75,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -97,12 +102,16 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
+import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 
+import { connectionUser, groupByServer, siblingConnections } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
@@ -118,6 +127,13 @@ import {
   useActiveSchema,
   useDbSelectionStore,
 } from "@/lib/db-selection";
+import {
+  buildInvalidSet,
+  INVALID_GROUP_TYPES,
+  isFunctionInvalid,
+  isPackageInvalid,
+  isViewInvalid,
+} from "@/lib/invalid-objects";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
 import { packageOid } from "@/lib/plsql";
 import {
@@ -125,6 +141,7 @@ import {
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useInvalidObjectsQuery,
   useMaterializedViewsQuery,
   useProceduresQuery,
   useRolesQuery,
@@ -162,58 +179,13 @@ export function AppSidebarPanel() {
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
-  const {
-    data: tables,
-    isLoading: tablesLoading,
-    isError: tablesError,
-    error: tablesErrorValue,
-  } = useTablesQuery();
-  const {
-    data: views,
-    isLoading: viewsLoading,
-    isError: viewsError,
-    error: viewsErrorValue,
-  } = useViewsQuery();
-  const {
-    data: functions,
-    isLoading: functionsLoading,
-    isError: functionsError,
-    error: functionsErrorValue,
-  } = useFunctionsQuery();
-  const {
-    data: procedures,
-    isLoading: proceduresLoading,
-    isError: proceduresError,
-    error: proceduresErrorValue,
-  } = useProceduresQuery();
-  const {
-    data: synonyms,
-    isLoading: synonymsLoading,
-    isError: synonymsError,
-    error: synonymsErrorValue,
-  } = useSynonymsQuery();
-  const {
-    data: extensions,
-    isLoading: extensionsLoading,
-    isError: extensionsError,
-    error: extensionsErrorValue,
-  } = useExtensionsQuery();
-  const {
-    data: roles,
-    isLoading: rolesLoading,
-    isError: rolesError,
-    error: rolesErrorValue,
-  } = useRolesQuery();
-
-  const {
-    data: sequences,
-    isLoading: sequencesLoading,
-    isError: sequencesError,
-    error: sequencesErrorValue,
-  } = useSequencesQuery();
-
-  const { data: matviews } = useMaterializedViewsQuery();
-
+  const serverGroups = useMemo(() => groupByServer(connections), [connections]);
+  const grouped = serverGroups.some((group) => group.connections.length > 1);
+  const siblings = useMemo(
+    () => siblingConnections(connections, activeConnection),
+    [connections, activeConnection],
+  );
+  const activeUser = activeConnection ? connectionUser(activeConnection) : "";
   const [selectedTab, setSidebarTab] = useState<
     | "tables"
     | "views"
@@ -226,6 +198,58 @@ export function AppSidebarPanel() {
     | "roles"
     | "sequences"
   >("tables");
+  const {
+    data: tables,
+    isLoading: tablesLoading,
+    isError: tablesError,
+    error: tablesErrorValue,
+  } = useTablesQuery();
+  const {
+    data: views,
+    isLoading: viewsLoading,
+    isError: viewsError,
+    error: viewsErrorValue,
+  } = useViewsQuery(selectedTab === "views");
+  const {
+    data: functions,
+    isLoading: functionsLoading,
+    isError: functionsError,
+    error: functionsErrorValue,
+  } = useFunctionsQuery();
+  const {
+    data: procedures,
+    isLoading: proceduresLoading,
+    isError: proceduresError,
+    error: proceduresErrorValue,
+  } = useProceduresQuery(selectedTab === "procedures");
+  const {
+    data: synonyms,
+    isLoading: synonymsLoading,
+    isError: synonymsError,
+    error: synonymsErrorValue,
+  } = useSynonymsQuery(undefined, selectedTab === "synonyms");
+  const {
+    data: extensions,
+    isLoading: extensionsLoading,
+    isError: extensionsError,
+    error: extensionsErrorValue,
+  } = useExtensionsQuery(selectedTab === "extensions");
+  const {
+    data: roles,
+    isLoading: rolesLoading,
+    isError: rolesError,
+    error: rolesErrorValue,
+  } = useRolesQuery(selectedTab === "roles");
+
+  const {
+    data: sequences,
+    isLoading: sequencesLoading,
+    isError: sequencesError,
+    error: sequencesErrorValue,
+  } = useSequencesQuery(selectedTab === "sequences");
+
+  const { data: matviews } = useMaterializedViewsQuery(undefined, selectedTab === "views");
+
   const caps = useActiveCapabilities();
   const packages = functions?.filter((f) => f.return_type === "PACKAGE");
   const plainFunctions = functions?.filter((f) => f.return_type !== "PACKAGE");
@@ -314,37 +338,65 @@ export function AppSidebarPanel() {
             {connections.length === 0 ? (
               <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
             ) : (
-              connections.map((connection) => (
-                <DropdownMenuItem
-                  key={connection.id}
-                  disabled={isSwitching}
-                  onSelect={() => {
-                    if (useConnectionSwitch.getState().isSwitching) return;
-                    if (connection.id === activeConnection?.id) return;
-                    void activateConnectionWithToast(connection.id).then((ok) => {
-                      if (ok) void navigate({ to: "/" });
-                    });
-                  }}
-                >
-                  <ProviderLogo providerId={providerFor(connection).id} kind={connection.kind} />
-                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span className="truncate">{connection.name}</span>
-                    {connection.tags?.map((tag, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.name}
+              serverGroups.map((group) => (
+                <DropdownMenuGroup key={group.key}>
+                  {grouped && (
+                    <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
+                      <ProviderLogo
+                        providerId={providerFor(group.connections[0]).id}
+                        kind={group.kind}
+                        className="size-3"
+                      />
+                      <span className="truncate">{group.label}</span>
+                      <span className="ml-auto shrink-0 tabular-nums">
+                        {group.connections.length}
                       </span>
-                    ))}
-                  </span>
-                  {isSwitching && switchTargetId === connection.id ? (
-                    <Spinner className="size-4" />
-                  ) : connection.id === activeConnection?.id ? (
-                    <CheckIcon className="size-4" />
-                  ) : null}
-                </DropdownMenuItem>
+                    </DropdownMenuLabel>
+                  )}
+                  {group.connections.map((connection) => (
+                    <DropdownMenuItem
+                      key={connection.id}
+                      disabled={isSwitching}
+                      onSelect={() => {
+                        if (useConnectionSwitch.getState().isSwitching) return;
+                        if (connection.id === activeConnection?.id) return;
+                        void activateConnectionWithToast(connection.id).then((ok) => {
+                          if (ok) void navigate({ to: "/" });
+                        });
+                      }}
+                    >
+                      <ConnectionStatusIndicator connectionId={connection.id} />
+                      {!grouped ? (
+                        <ProviderLogo
+                          providerId={providerFor(connection).id}
+                          kind={connection.kind}
+                        />
+                      ) : null}
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="truncate">{connection.name}</span>
+                        {grouped && connectionUser(connection) && (
+                          <span className="truncate font-mono text-[10px] text-muted-foreground">
+                            {connectionUser(connection)}
+                          </span>
+                        )}
+                        {connection.tags?.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                            style={{ backgroundColor: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </span>
+                      {isSwitching && switchTargetId === connection.id ? (
+                        <Spinner className="size-4" />
+                      ) : connection.id === activeConnection?.id ? (
+                        <CheckIcon className="size-4" />
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
               ))
             )}
             <DropdownMenuSeparator />
@@ -400,8 +452,17 @@ export function AppSidebarPanel() {
                 </span>
                 <Select
                   value={activeSchema}
-                  onValueChange={(value) => setSchema(activeConnection.id, value)}
-                  disabled={schemasLoading}
+                  onValueChange={(value) => {
+                    if (value.startsWith("conn:")) {
+                      if (useConnectionSwitch.getState().isSwitching) return;
+                      void activateConnectionWithToast(value.slice(5)).then((ok) => {
+                        if (ok) void navigate({ to: "/" });
+                      });
+                      return;
+                    }
+                    setSchema(activeConnection.id, value);
+                  }}
+                  disabled={schemasLoading || isSwitching}
                 >
                   <SelectTrigger size="sm" className="w-full">
                     {schemas?.includes(activeSchema) ? null : (
@@ -410,11 +471,38 @@ export function AppSidebarPanel() {
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
                   <SelectContent>
+                    {siblings.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="flex items-center gap-1.5 text-[10px]">
+                          <KeyRoundIcon className="size-3" />
+                          Mit eigenem Login
+                        </SelectLabel>
+                        {siblings.map((connection) => (
+                          <SelectItem key={connection.id} value={`conn:${connection.id}`}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              <SchemaLogo name={connectionUser(connection) || connection.name} />
+                              <span className="truncate">
+                                {connectionUser(connection) || connection.name}
+                              </span>
+                              {connectionUser(connection) && (
+                                <span className="truncate text-[10px] text-muted-foreground">
+                                  {connection.name}
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                        <SelectSeparator />
+                      </SelectGroup>
+                    )}
                     {(schemas ?? []).map((schema) => (
                       <SelectItem key={schema} value={schema}>
                         <span className="flex min-w-0 items-center gap-2">
                           <SchemaLogo name={schema} />
                           <span className="truncate">{schema}</span>
+                          {schema.toLowerCase() === activeUser.toLowerCase() && (
+                            <KeyRoundIcon className="size-3 shrink-0 text-muted-foreground" />
+                          )}
                         </span>
                       </SelectItem>
                     ))}
@@ -446,27 +534,39 @@ export function AppSidebarPanel() {
         ) : null}
         <SidebarFavorites />
         <SidebarGroup>
-          <SidebarGroupLabel>
-            {sidebarTab === "tables"
-              ? "Tabellen"
-              : sidebarTab === "views"
-                ? "Views"
-                : sidebarTab === "functions"
-                  ? "Funktionen"
-                  : sidebarTab === "procedures"
-                    ? "Prozeduren"
-                    : sidebarTab === "packages"
-                      ? "Packages"
-                      : sidebarTab === "synonyms"
-                        ? "Synonyme"
-                        : sidebarTab === "extensions"
-                          ? "Packages"
-                          : sidebarTab === "roles"
-                            ? "Benutzer & Rollen"
-                            : sidebarTab === "sequences"
-                              ? "Sequenzen"
-                              : "Gespeicherte Queries"}
-          </SidebarGroupLabel>
+          <div
+            className={
+              sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
+            }
+          >
+            <SidebarGroupLabel className="flex-1">
+              {sidebarTab === "tables"
+                ? "Tabellen"
+                : sidebarTab === "views"
+                  ? "Views"
+                  : sidebarTab === "functions"
+                    ? "Funktionen"
+                    : sidebarTab === "procedures"
+                      ? "Prozeduren"
+                      : sidebarTab === "packages"
+                        ? "Packages"
+                        : sidebarTab === "synonyms"
+                          ? "Synonyme"
+                          : sidebarTab === "extensions"
+                            ? "Packages"
+                            : sidebarTab === "roles"
+                              ? "Benutzer & Rollen"
+                              : sidebarTab === "sequences"
+                                ? "Sequenzen"
+                                : "Gespeicherte Queries"}
+            </SidebarGroupLabel>
+            {sidebarTab === "functions" ||
+            sidebarTab === "procedures" ||
+            sidebarTab === "packages" ||
+            sidebarTab === "views" ? (
+              <CompileInvalidButton types={INVALID_GROUP_TYPES[sidebarTab] ?? []} />
+            ) : null}
+          </div>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction
               onClick={() => {
@@ -559,6 +659,7 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
+        <ExtensionSidebarViews />
         {searchModalMounted && (
           <Suspense fallback={null}>
             <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
@@ -653,7 +754,12 @@ function SidebarEntityList({
   const queryClient = useQueryClient();
   const favorites = useObjectFavoritesStore((state) => state.favorites);
   const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
-  const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
+  const { data: columns } = useColumnsQuery(
+    type === "table" ? "BASE TABLE" : "VIEW",
+    search.trim().length > 0,
+  );
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
   const columnsByTable = useMemo(() => {
     if (!columns) return new Map<string, string[]>();
@@ -863,6 +969,7 @@ function SidebarEntityList({
                 >
                   <EyeIcon className="text-muted-foreground" />
                   <span className="truncate">{item.name}</span>
+                  {isViewInvalid(invalidSet, item.schema, item.name) ? <InvalidMarker /> : null}
                 </SidebarMenuButton>
               ) : (
                 <SidebarMenuButton asChild isActive={isActive}>
@@ -1013,6 +1120,8 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const caps = useActiveCapabilities();
   const { compile } = useCompileObject();
+  const { data: invalidObjects } = useInvalidObjectsQuery();
+  const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
   if (isLoading) {
     return (
@@ -1033,90 +1142,97 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
 
   return (
     <SidebarMenu>
-      {items.map((item) => (
-        <SidebarMenuItem key={item.oid}>
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <SidebarMenuButton
-                onClick={() => {
-                  if (item.return_type === "PACKAGE") {
-                    openPackageTab({ schema: item.schema, name: item.name });
-                    navigate({
-                      to: "/packages/$schema/$name",
-                      params: { schema: item.schema, name: item.name },
+      {items.map((item) => {
+        const invalid =
+          item.return_type === "PACKAGE"
+            ? isPackageInvalid(invalidSet, item.schema, item.name)
+            : isFunctionInvalid(invalidSet, item.schema, item.name);
+        return (
+          <SidebarMenuItem key={item.oid}>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <SidebarMenuButton
+                  onClick={() => {
+                    if (item.return_type === "PACKAGE") {
+                      openPackageTab({ schema: item.schema, name: item.name });
+                      navigate({
+                        to: "/packages/$schema/$name",
+                        params: { schema: item.schema, name: item.name },
+                      });
+                      return;
+                    }
+                    openFunctionTab({
+                      schema: item.schema,
+                      name: item.name,
+                      oid: item.oid,
                     });
-                    return;
-                  }
-                  openFunctionTab({
-                    schema: item.schema,
-                    name: item.name,
-                    oid: item.oid,
-                  });
-                  navigate({
-                    to: "/functions/$schema/$name",
-                    params: { schema: item.schema, name: item.name },
-                    search: { oid: item.oid },
-                  });
-                }}
-              >
-                {item.return_type === "PACKAGE" ? (
-                  <PackageIcon className="text-muted-foreground" />
+                    navigate({
+                      to: "/functions/$schema/$name",
+                      params: { schema: item.schema, name: item.name },
+                      search: { oid: item.oid },
+                    });
+                  }}
+                >
+                  {item.return_type === "PACKAGE" ? (
+                    <PackageIcon className="text-muted-foreground" />
+                  ) : (
+                    <BracesIcon className="text-muted-foreground" />
+                  )}
+                  <span className="truncate">
+                    {item.name}
+                    {item.return_type === "PACKAGE"
+                      ? ""
+                      : item.identity_args
+                        ? `(${item.identity_args})`
+                        : "()"}
+                  </span>
+                  {invalid ? <InvalidMarker /> : null}
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {caps.compile_objects ? (
+                  item.return_type === "PACKAGE" ? (
+                    <>
+                      <ContextMenuItem
+                        onSelect={() => {
+                          void compile(
+                            packageOid(item.schema, item.name, "spec"),
+                            "package_spec",
+                            `${item.schema}.${item.name} (Spec)`,
+                          );
+                        }}
+                      >
+                        Spec kompilieren
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => {
+                          void compile(
+                            packageOid(item.schema, item.name, "body"),
+                            "package_body",
+                            `${item.schema}.${item.name} (Body)`,
+                          );
+                        }}
+                      >
+                        Body kompilieren
+                      </ContextMenuItem>
+                    </>
+                  ) : (
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(item.oid, "function", `${item.schema}.${item.name}`);
+                      }}
+                    >
+                      Kompilieren
+                    </ContextMenuItem>
+                  )
                 ) : (
-                  <BracesIcon className="text-muted-foreground" />
+                  <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
                 )}
-                <span className="truncate">
-                  {item.name}
-                  {item.return_type === "PACKAGE"
-                    ? ""
-                    : item.identity_args
-                      ? `(${item.identity_args})`
-                      : "()"}
-                </span>
-              </SidebarMenuButton>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              {caps.compile_objects ? (
-                item.return_type === "PACKAGE" ? (
-                  <>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        void compile(
-                          packageOid(item.schema, item.name, "spec"),
-                          "package_spec",
-                          `${item.schema}.${item.name} (Spec)`,
-                        );
-                      }}
-                    >
-                      Spec kompilieren
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        void compile(
-                          packageOid(item.schema, item.name, "body"),
-                          "package_body",
-                          `${item.schema}.${item.name} (Body)`,
-                        );
-                      }}
-                    >
-                      Body kompilieren
-                    </ContextMenuItem>
-                  </>
-                ) : (
-                  <ContextMenuItem
-                    onSelect={() => {
-                      void compile(item.oid, "function", `${item.schema}.${item.name}`);
-                    }}
-                  >
-                    Kompilieren
-                  </ContextMenuItem>
-                )
-              ) : (
-                <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        </SidebarMenuItem>
-      ))}
+              </ContextMenuContent>
+            </ContextMenu>
+          </SidebarMenuItem>
+        );
+      })}
     </SidebarMenu>
   );
 }

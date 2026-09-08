@@ -1,8 +1,19 @@
 {
   "name": "l8db",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "description": "Fast, native desktop client for PostgreSQL and other databases.",
+  "author": "Leon Achteresch",
+  "license": "MIT",
+  "homepage": "https://github.com/Leon-Achteresch/l8db",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leon-Achteresch/l8db.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Leon-Achteresch/l8db/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json && vite build",
@@ -14,6 +25,7 @@
     "test": "bun test tests",
     "test:perf": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 bun test tests/perf-browser.test.ts tests/perf-bundle.test.ts",
     "version:check": "node scripts/version.mjs check",
+    "changelog": "node .github/scripts/generate-changelog.mjs",
     "extension": "bun packages/extension-sdk/src/cli.ts"
   },
   "dependencies": {

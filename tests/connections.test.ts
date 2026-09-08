@@ -77,7 +77,7 @@ Object.defineProperty(globalThis, "localStorage", {
 
 const { loadProviders } = await import("../src/lib/providers");
 await loadProviders();
-const { useConnectionsStore } = await import("../src/lib/connections");
+const { useConnectionsStore, visibleSchemas } = await import("../src/lib/connections");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const {
   parseConnectionUrl,
@@ -328,7 +328,9 @@ describe("Oracle Key-Value", () => {
     expect(url.searchParams.get("connect_string")).toBe("ORCL");
   });
   test("rejects MSSQL-style strings and incomplete input", () => {
-    expect(kindFromUrl("Server=db.internal;Database=shop;User Id=sa;Password=secret")).toBeUndefined();
+    expect(
+      kindFromUrl("Server=db.internal;Database=shop;User Id=sa;Password=secret"),
+    ).toBeUndefined();
     expect(isOracleKeyValue("Server=db.internal;Database=shop;User Id=sa;Password=secret")).toBe(
       false,
     );
@@ -345,13 +347,17 @@ describe("Oracle Key-Value", () => {
   });
   test("maps Oracle network errors to actionable messages", () => {
     expect(
-      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12514: TNS:listener does not know of service"),
+      connectionError(
+        "Oracle-Verbindung fehlgeschlagen: ORA-12514: TNS:listener does not know of service",
+      ),
     ).toContain("ORA-12514");
     expect(
       connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12541: TNS:no listener"),
     ).toContain("ORA-12541");
     expect(
-      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12545: Connect failed because target host does not exist"),
+      connectionError(
+        "Oracle-Verbindung fehlgeschlagen: ORA-12545: Connect failed because target host does not exist",
+      ),
     ).toContain("ORA-12545");
     expect(
       connectionError(
@@ -359,17 +365,15 @@ describe("Oracle Key-Value", () => {
       ),
     ).toContain("TCP-Timeout nach 8 s");
     expect(
-      connectionError("Oracle-Host db.internal kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN."),
+      connectionError(
+        "Oracle-Host db.internal kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN.",
+      ),
     ).toContain("DNS");
   });
 });
 
-const {
-  buildConnectionExport,
-  parseConnectionImport,
-  resolveImport,
-  stripConnectionSecrets,
-} = await import("../src/lib/connection-export");
+const { buildConnectionExport, parseConnectionImport, resolveImport, stripConnectionSecrets } =
+  await import("../src/lib/connection-export");
 
 describe("Connection profiles export/import", () => {
   test("export strips passwords, tokens, SSH secrets and tunnel ports", () => {
@@ -407,9 +411,7 @@ describe("Connection profiles export/import", () => {
     expect(file.connections[0].color).toBe("#ef4444");
     expect(file.connections[1].ssh?.host).toBe("bastion.example.com");
     expect(file.connections[1].ssh?.keyFile).toBe("");
-    expect(file.connections[2].connectionString).toBe(
-      "user id=scott;data source=localhost/xe",
-    );
+    expect(file.connections[2].connectionString).toBe("user id=scott;data source=localhost/xe");
     expect(stripConnectionSecrets("redis://:secret@localhost:6379/0")).toBe(
       "redis://localhost:6379/0",
     );
@@ -508,9 +510,9 @@ describe("Lesemodus", () => {
       activeId: "direct",
     });
     calls.length = 0;
-    await expect(
-      truncateTable("postgres", direct.connectionString, "public", "t"),
-    ).rejects.toThrow("Lesemodus");
+    await expect(truncateTable("postgres", direct.connectionString, "public", "t")).rejects.toThrow(
+      "Lesemodus",
+    );
     expect(calls).not.toContain("truncate_table");
     await executeQuery("postgres", direct.connectionString, "SELECT 1").catch(() => undefined);
     expect(calls).toContain("execute_query");
@@ -518,5 +520,74 @@ describe("Lesemodus", () => {
       connections: [{ ...direct, readOnly: false }],
       activeId: null,
     });
+  });
+});
+
+describe("Sichtbare Schemas", () => {
+  test("filter keeps only selected schemas and falls back to all without a selection", () => {
+    const all = ["HR", "SCOTT", "SYS", "APP"];
+    expect(visibleSchemas({ schemas: ["APP", "HR", "GONE"] }, all)).toEqual(["HR", "APP"]);
+    expect(visibleSchemas({ schemas: [] }, all)).toBe(all);
+    expect(visibleSchemas({ schemas: null }, all)).toBe(all);
+    expect(visibleSchemas(null, all)).toBe(all);
+  });
+
+  test("export and import round-trip the schema selection", () => {
+    const file = buildConnectionExport([{ ...direct, schemas: ["HR", "APP"] }, direct]);
+    expect(file.connections[0].schemas).toEqual(["HR", "APP"]);
+    expect(file.connections[1].schemas).toBeNull();
+    const parsed = parseConnectionImport(JSON.stringify(file), []);
+    const [withFilter, without] = resolveImport(parsed.candidates, new Set([0, 1]), "skip");
+    expect(withFilter.schemas).toEqual(["HR", "APP"]);
+    expect(without.schemas).toBeNull();
+  });
+});
+
+describe("Server groups", () => {
+  test("groups connections by kind and endpoint, siblings share a server", async () => {
+    const { groupByServer, siblingConnections, connectionUser, serverLabel } = await import(
+      "../src/lib/connection-groups"
+    );
+    const base = { sslMode: "prefer" as const, ssh: null };
+    const hr = {
+      ...base,
+      id: "hr",
+      name: "HR",
+      kind: "oracle" as const,
+      connectionString: "oracle://HR@db1.example.com:1521/ORCL",
+    };
+    const sales = {
+      ...base,
+      id: "sales",
+      name: "Sales",
+      kind: "oracle" as const,
+      connectionString: "oracle://SALES@DB1.example.com:1521/ORCL",
+    };
+    const other = {
+      ...base,
+      id: "other",
+      name: "Other",
+      kind: "oracle" as const,
+      connectionString: "oracle://HR@db2.example.com:1521/ORCL",
+    };
+    const pg = {
+      ...base,
+      id: "pg",
+      name: "PG",
+      kind: "postgres" as const,
+      connectionString: "postgresql://app@db1.example.com:1521/ORCL",
+    };
+    const groups = groupByServer([hr, sales, other, pg]);
+    expect(groups.map((group) => group.connections.map((entry) => entry.id))).toEqual([
+      ["hr", "sales"],
+      ["other"],
+      ["pg"],
+    ]);
+    expect(serverLabel(hr)).toBe("db1.example.com:1521/ORCL");
+    expect(connectionUser(sales)).toBe("SALES");
+    expect(siblingConnections([hr, sales, other, pg], hr).map((entry) => entry.id)).toEqual([
+      "sales",
+    ]);
+    expect(siblingConnections([hr], null)).toEqual([]);
   });
 });

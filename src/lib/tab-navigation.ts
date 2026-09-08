@@ -67,6 +67,13 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab) {
     });
     return;
   }
+  if (tab.kind === "extension-panel") {
+    void navigate({
+      to: "/extension-panels/$extensionId/$panelId",
+      params: { extensionId: tab.extensionId, panelId: tab.panelId },
+    });
+    return;
+  }
   void navigate({ to: "/extensions/$name", params: { name: tab.name } });
 }
 
@@ -78,5 +85,6 @@ export function tabLabel(tab: Tab): string {
   if (tab.kind === "trigger") return tab.trigger;
   if (tab.kind === "view-editor") return tab.view;
   if (tab.kind === "alter-table") return tab.table;
+  if (tab.kind === "extension-panel") return tab.title;
   return tab.name;
 }
