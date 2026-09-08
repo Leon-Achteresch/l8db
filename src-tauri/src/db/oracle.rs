@@ -34,6 +34,66 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn view_create_script(
+    owner: &str,
+    name: &str,
+    columns: &[String],
+    bequeath: Option<&str>,
+    text: &str,
+) -> String {
+    let mut out = format!(
+        "CREATE OR REPLACE FORCE VIEW {}.{}",
+        quote(owner),
+        quote(name)
+    );
+    if !columns.is_empty() {
+        out.push_str("\n(\n  ");
+        out.push_str(
+            &columns
+                .iter()
+                .map(|c| quote(c))
+                .collect::<Vec<_>>()
+                .join(",\n  "),
+        );
+        out.push_str("\n)");
+    }
+    if let Some(b) = bequeath {
+        out.push_str("\nBEQUEATH ");
+        out.push_str(b);
+    }
+    out.push_str("\nAS\n");
+    out.push_str(text.trim().trim_end_matches(';').trim_end());
+    out.push(';');
+    out
+}
+
+fn view_select_body(ddl: &str) -> &str {
+    let bytes = ddl.as_bytes();
+    let (mut depth, mut quoted, mut i) = (0usize, false, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => quoted = !quoted,
+            b'(' if !quoted => depth += 1,
+            b')' if !quoted => depth = depth.saturating_sub(1),
+            b'A' | b'a' if !quoted && depth == 0 => {
+                let at_start = i == 0 || bytes[i - 1].is_ascii_whitespace() || bytes[i - 1] == b')';
+                let is_as = bytes
+                    .get(i + 1)
+                    .is_some_and(|c| c.eq_ignore_ascii_case(&b'S'));
+                let ends = bytes
+                    .get(i + 2)
+                    .is_none_or(|c| c.is_ascii_whitespace() || *c == b'(');
+                if at_start && is_as && ends {
+                    return ddl[i + 2..].trim_start();
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    ddl
+}
+
 fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> String {
     let mut rest = source.trim_start();
     for word in object_type.split_whitespace() {
@@ -642,16 +702,43 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
-        let sql = format!(
-            "SELECT text FROM all_views WHERE owner = {} AND view_name = {}",
-            lit(schema),
-            lit(view)
-        );
-        self.rows(sql)
+        let text = self
+            .rows(format!(
+                "SELECT text FROM all_views WHERE owner = {} AND view_name = {}",
+                lit(schema),
+                lit(view)
+            ))
             .await?
             .first()
             .map(|r| s(r, 0))
-            .ok_or_else(|| "View nicht gefunden".to_string())
+            .ok_or_else(|| "View nicht gefunden".to_string())?;
+        let columns: Vec<String> = self
+            .rows(format!(
+                "SELECT column_name FROM all_tab_columns WHERE owner = {} AND table_name = {} ORDER BY column_id",
+                lit(schema),
+                lit(view)
+            ))
+            .await?
+            .iter()
+            .map(|r| s(r, 0))
+            .collect();
+        let bequeath = self
+            .rows(format!(
+                "SELECT bequeath FROM all_views WHERE owner = {} AND view_name = {}",
+                lit(schema),
+                lit(view)
+            ))
+            .await
+            .ok()
+            .and_then(|rows| rows.first().map(|r| s(r, 0)))
+            .filter(|b| !b.is_empty());
+        Ok(view_create_script(
+            schema,
+            view,
+            &columns,
+            bequeath.as_deref(),
+            &text,
+        ))
     }
 
     async fn update_view_definition(
@@ -661,22 +748,28 @@ impl DatabaseAdapter for OracleAdapter {
         body: &str,
         dry_run: bool,
     ) -> Result<(), String> {
+        let body = body.trim().trim_end_matches(';').trim_end();
+        let is_ddl = body
+            .get(..6)
+            .is_some_and(|h| h.eq_ignore_ascii_case("create"));
         if dry_run {
+            let select = if is_ddl { view_select_body(body) } else { body };
+            let sql = format!("EXPLAIN PLAN FOR {select}");
             return self
-                .run({
-                    let sql = format!("EXPLAIN PLAN FOR {body}");
-                    move |c| c.execute(&sql, &[]).map(|_| ()).map_err(map_err)
-                })
+                .run(move |c| c.execute(&sql, &[]).map(|_| ()).map_err(map_err))
                 .await;
         }
-        self.exec(format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
-            quote(schema),
-            quote(view),
-            body
-        ))
-        .await
-        .map(|_| ())
+        let ddl = if is_ddl {
+            body.to_string()
+        } else {
+            format!(
+                "CREATE OR REPLACE VIEW {}.{} AS {}",
+                quote(schema),
+                quote(view),
+                body
+            )
+        };
+        self.exec(ddl).await.map(|_| ())
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1605,6 +1698,29 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn view_create_script_and_select_body() {
+        let ddl = view_create_script(
+            "ZEN",
+            "V_X",
+            &["REF".to_string(), "NAME".to_string()],
+            Some("DEFINER"),
+            "SELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a\n",
+        );
+        assert_eq!(
+            ddl,
+            "CREATE OR REPLACE FORCE VIEW \"ZEN\".\"V_X\"\n(\n  \"REF\",\n  \"NAME\"\n)\nBEQUEATH DEFINER\nAS\nSELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a;"
+        );
+        assert_eq!(
+            view_select_body(ddl.trim_end_matches(';')),
+            "SELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a"
+        );
+        assert_eq!(
+            view_select_body("CREATE OR REPLACE VIEW s.v AS SELECT 1 FROM dual"),
+            "SELECT 1 FROM dual"
+        );
+    }
 
     #[test]
     fn create_script_prefixes_and_qualifies() {
