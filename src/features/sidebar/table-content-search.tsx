@@ -85,7 +85,7 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
     const worker = async () => {
       while (index < candidates.length && runRef.current === runId) {
         const c = candidates[index++];
-        const filter = compileContentFilter(c.columns, valueTrimmed);
+        const filter = compileContentFilter(c.columns, valueTrimmed, connection.kind);
         let hit: Hit | null = null;
         try {
           const count = await countTableRows(

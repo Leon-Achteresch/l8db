@@ -1,6 +1,6 @@
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
-import { operatorNeedsValue, quoteLike, quoteLiteral } from "@/lib/sql-filter";
+import { compileConditionExpression, type FilterKind } from "@/lib/sql-filter";
 
 export type QuerySource = "base" | "join";
 export type JoinType = "INNER" | "LEFT";
@@ -93,34 +93,13 @@ function columnExpr(
   return `${aliasFor(source)}.${quoted}`;
 }
 
-export function compileBuilderCondition(columnExpression: string, operator: string, value: string) {
-  if (operatorNeedsValue(operator) && value.trim() === "") return null;
-  switch (operator) {
-    case "eq":
-      return `${columnExpression} = ${quoteLiteral(value)}`;
-    case "neq":
-      return `${columnExpression} <> ${quoteLiteral(value)}`;
-    case "gt":
-      return `${columnExpression} > ${quoteLiteral(value)}`;
-    case "gte":
-      return `${columnExpression} >= ${quoteLiteral(value)}`;
-    case "lt":
-      return `${columnExpression} < ${quoteLiteral(value)}`;
-    case "lte":
-      return `${columnExpression} <= ${quoteLiteral(value)}`;
-    case "contains":
-      return `${columnExpression}::text ILIKE '%${quoteLike(value)}%'`;
-    case "startsWith":
-      return `${columnExpression}::text ILIKE '${quoteLike(value)}%'`;
-    case "endsWith":
-      return `${columnExpression}::text ILIKE '%${quoteLike(value)}'`;
-    case "isNull":
-      return `${columnExpression} IS NULL`;
-    case "isNotNull":
-      return `${columnExpression} IS NOT NULL`;
-    default:
-      return null;
-  }
+export function compileBuilderCondition(
+  columnExpression: string,
+  operator: string,
+  value: string,
+  kind?: FilterKind,
+) {
+  return compileConditionExpression(columnExpression, operator, value, kind);
 }
 
 function qualifiedTable(
@@ -176,6 +155,7 @@ export function buildSelectSql(state: QueryBuilderState): string {
         columnExpr(state, condition.source, condition.column, style),
         condition.operator,
         condition.value,
+        state.kind,
       ),
     )
     .filter((part): part is string => part !== null);

@@ -37,9 +37,15 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
 import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { SqlEditor } from "@/features/table/sql-editor";
+import { useActiveConnection } from "@/lib/connections";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
-import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import {
+  compileSingleCondition,
+  type FilterKind,
+  OPERATORS,
+  operatorNeedsValue,
+} from "@/lib/sql-filter";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -62,9 +68,13 @@ type Combinator = "AND" | "OR";
 type FilterMode = "simple" | "sql";
 type SearchMode = "objects" | "content";
 
-function compileConditions(conditions: Condition[], combinator: Combinator): string {
+function compileConditions(
+  conditions: Condition[],
+  combinator: Combinator,
+  kind: FilterKind,
+): string {
   const parts = conditions
-    .map((c) => compileSingleCondition(c.column, c.operator, c.value))
+    .map((c) => compileSingleCondition(c.column, c.operator, c.value, kind))
     .filter((part): part is string => part !== null);
   if (parts.length === 0) return "";
   return parts.join(` ${combinator} `);
@@ -211,9 +221,10 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     return columnsByTable.get(key) ?? [];
   }, [selectedEntity, columnsByTable]);
 
+  const kind = useActiveConnection()?.kind;
   const compiledSimple = useMemo(
-    () => compileConditions(conditions, combinator),
-    [conditions, combinator],
+    () => compileConditions(conditions, combinator, kind),
+    [conditions, combinator, kind],
   );
   const whereClause = filterMode === "sql" ? sql.trim() : compiledSimple;
   const whereIsRaw = filterMode === "sql";
@@ -345,9 +356,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 onPressedChange={setSearchIncludeColumns}
                 aria-label="Spalten in Suche einbeziehen"
                 title={
-                  searchIncludeColumns
-                    ? "Spaltensuche deaktivieren"
-                    : "Spaltensuche aktivieren"
+                  searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"
                 }
                 className="h-7 shrink-0 px-1.5"
               >
