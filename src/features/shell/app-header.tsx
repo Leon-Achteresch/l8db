@@ -10,6 +10,7 @@ import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
+import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ export function AppHeader() {
   const togglePanel = useTransactionStore((s) => s.togglePanel);
   const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
+  const update = useVisibleUpdate();
 
   useWindowTitle();
 
@@ -230,12 +232,18 @@ export function AppHeader() {
             to="/settings"
             aria-label="Einstellungen"
             className={cn(
-              "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
               pathname.startsWith("/settings") && "bg-primary/12 text-foreground",
             )}
           >
             <Settings className="size-4" strokeWidth={2} />
+            {update ? (
+              <span
+                aria-hidden
+                className="absolute right-0.5 top-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
+              />
+            ) : null}
           </Link>
         </Tooltip>
       </nav>

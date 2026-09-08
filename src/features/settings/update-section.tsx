@@ -6,23 +6,36 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { useSettingsStore } from "@/lib/settings";
-import { checkForUpdates, getAppVersion, getPendingUpdate, presentUpdate } from "@/lib/updater";
+import { checkForUpdates, getAppVersion, presentUpdate } from "@/lib/updater";
 
 type Status =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "current" }
   | { kind: "available" }
+  | { kind: "skipped" }
   | { kind: "failed"; message: string };
 
 export function UpdateSection() {
+  const { update: pending } = useUpdatePrompt();
   const [status, setStatus] = useState<Status>(() =>
-    getPendingUpdate() ? { kind: "available" } : { kind: "idle" },
+    pending ? { kind: "available" } : { kind: "idle" },
   );
   const [version, setVersion] = useState<string | null>(null);
   const { autoUpdateCheck, autoUpdateInstall, setAutoUpdateCheck, setAutoUpdateInstall } =
     useSettingsStore();
+  const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
+  const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
+  const isSkipped = Boolean(pending && skippedUpdateVersion === pending.version);
+
+  useEffect(() => {
+    if (!pending) return;
+    setStatus(
+      skippedUpdateVersion === pending.version ? { kind: "skipped" } : { kind: "available" },
+    );
+  }, [pending, skippedUpdateVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +52,9 @@ export function UpdateSection() {
     try {
       const update = await checkForUpdates();
       if (update) {
+        if (useSettingsStore.getState().skippedUpdateVersion === update.version) {
+          setSkippedUpdateVersion(null);
+        }
         setStatus({ kind: "available" });
         presentUpdate(update);
       } else {
@@ -49,7 +65,12 @@ export function UpdateSection() {
     }
   }
 
-  const pending = getPendingUpdate();
+  function onShowSkipped() {
+    if (!pending) return;
+    setSkippedUpdateVersion(null);
+    setStatus({ kind: "available" });
+    presentUpdate(pending);
+  }
 
   return (
     <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="space-y-3">
@@ -68,7 +89,7 @@ export function UpdateSection() {
       </SettingsRow>
       <SettingsRow
         title="Automatisch nach Updates suchen"
-        description="Beim Start der App im Hintergrund nach neuen Versionen suchen."
+        description="Beim Start und danach alle 6 Stunden im Hintergrund nach neuen Versionen suchen."
       >
         <Switch
           checked={autoUpdateCheck}
@@ -104,12 +125,22 @@ export function UpdateSection() {
           </Button>
         </SettingsRow>
       ) : null}
-      {status.kind === "available" && pending ? (
+      {status.kind === "available" && pending && !isSkipped ? (
         <SettingsRow
           title="Update verfügbar"
           description={`Version ${pending.version} steht bereit.`}
         >
           <Button onClick={() => presentUpdate(pending)}>Anzeigen</Button>
+        </SettingsRow>
+      ) : null}
+      {status.kind === "skipped" && pending ? (
+        <SettingsRow
+          title="Update übersprungen"
+          description={`Version ${pending.version} wird nicht mehr vorgeschlagen.`}
+        >
+          <Button variant="outline" onClick={onShowSkipped}>
+            Trotzdem anzeigen
+          </Button>
         </SettingsRow>
       ) : null}
     </motion.div>

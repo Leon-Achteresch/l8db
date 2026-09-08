@@ -36,6 +36,7 @@ beforeEach(() => {
     transactionsEnabled: true,
     autoUpdateCheck: true,
     autoUpdateInstall: false,
+    skippedUpdateVersion: null,
   });
 });
 
@@ -65,6 +66,15 @@ describe("auto-update settings", () => {
   });
 });
 
+describe("skipped update version", () => {
+  test("startet leer und lässt sich setzen und wieder aufheben", () => {
+    expect(useSettingsStore.getState().skippedUpdateVersion).toBeNull();
+    useSettingsStore.getState().setSkippedUpdateVersion("0.2.1");
+    expect(useSettingsStore.getState().skippedUpdateVersion).toBe("0.2.1");
+    useSettingsStore.getState().setSkippedUpdateVersion(null);
+    expect(useSettingsStore.getState().skippedUpdateVersion).toBeNull();
+  });
+});
 describe("pending update cache", () => {
   test("startet leer und lässt sich setzen und wieder löschen", () => {
     expect(getPendingUpdate()).toBeNull();

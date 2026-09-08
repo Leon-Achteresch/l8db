@@ -8,6 +8,7 @@ import {
 } from "@/lib/updater";
 
 const STARTUP_DELAY_MS = 3000;
+const PERIODIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 let started = false;
 
@@ -15,21 +16,27 @@ export function initAutoUpdater(): void {
   if (started || import.meta.env.DEV) return;
   started = true;
   window.setTimeout(() => {
-    void runStartupCheck();
+    void runCheck();
   }, STARTUP_DELAY_MS);
+  window.setInterval(() => {
+    void runCheck();
+  }, PERIODIC_CHECK_INTERVAL_MS);
 }
 
-async function runStartupCheck(): Promise<void> {
+async function runCheck(): Promise<void> {
   try {
-    const { autoUpdateCheck, autoUpdateInstall } = useSettingsStore.getState();
+    const { autoUpdateCheck, autoUpdateInstall, skippedUpdateVersion } =
+      useSettingsStore.getState();
     if (!autoUpdateCheck) return;
+    const previousVersion = getPendingUpdate()?.version;
     const update = await checkForUpdates();
     if (!update) return;
+    if (update.version === skippedUpdateVersion) return;
     if (autoUpdateInstall) {
       await installSilently();
       return;
     }
-    presentUpdate(update);
+    if (update.version !== previousVersion) presentUpdate(update);
   } catch {
     return;
   }
