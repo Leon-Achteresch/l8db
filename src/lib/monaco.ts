@@ -5,6 +5,8 @@ import {
   conf as sqlConf,
   language as sqlLanguage,
 } from "monaco-editor/esm/vs/basic-languages/sql/sql";
+import "monaco-editor/esm/vs/language/json/monaco.contribution";
+import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
@@ -24,8 +26,8 @@ const globalScope = self as unknown as {
 };
 
 globalScope.MonacoEnvironment = {
-  getWorker() {
-    return new EditorWorker();
+  getWorker(_moduleId, label) {
+    return label === "json" ? new JsonWorker() : new EditorWorker();
   },
 };
 

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { CreateTableView } from "@/features/tables/create-table-view";
+import { CreateObjectView } from "@/features/tables/create-object-view";
 
 export const Route = createFileRoute("/_app/_workspace/create-table")({
-  component: CreateTableView,
+  component: CreateObjectView,
 });

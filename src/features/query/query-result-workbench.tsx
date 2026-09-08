@@ -2,6 +2,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { gridCellText } from "@/lib/grid-search";
 import type { QueryResult } from "@/lib/db";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { QueryCellInspector } from "./query-cell-inspector";
@@ -34,7 +35,7 @@ export function QueryResultWorkbench({
             ...result,
             rows: result.rows.filter((row) =>
               result.columns.some((column) =>
-                String(row[column] ?? "NULL")
+                gridCellText(row[column] ?? "NULL")
                   .toLocaleLowerCase()
                   .includes(term),
               ),

@@ -228,7 +228,7 @@ export interface ColumnInfo {
 
 export interface QueryResult {
   columns: string[];
-  rows: Record<string, string | null>[];
+  rows: Record<string, unknown>[];
   rows_affected: number | null;
   execution_time_ms: number;
 }

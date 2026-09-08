@@ -16,7 +16,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -73,7 +73,16 @@ function CreateIndexDialog({
 }: CreateIndexDialogProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const [sql, setSql] = useState(`CREATE INDEX ON "${schema}"."${table}" (column_name);`);
+  const caps = useActiveCapabilities();
+  const [sql, setSql] = useState(() =>
+    caps.query_language === "json"
+      ? JSON.stringify(
+          { createIndexes: table, indexes: [{ key: { field: 1 }, name: "field_1" }] },
+          null,
+          2,
+        )
+      : `CREATE INDEX ON "${schema}"."${table}" (column_name);`,
+  );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +115,7 @@ function CreateIndexDialog({
         </DialogHeader>
         <div className="space-y-3 py-1">
           <textarea
+            aria-label="Index-Befehl"
             value={sql}
             onChange={(e) => setSql(e.target.value)}
             rows={5}

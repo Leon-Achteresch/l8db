@@ -1,3 +1,4 @@
+import { gridCellText } from "@/lib/grid-search";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -92,7 +93,14 @@ export function createExtensionHost() {
               );
         return {
           columns: result.columns,
-          rows: result.rows,
+          rows: result.rows.map((row) =>
+            Object.fromEntries(
+              Object.entries(row).map(([key, value]) => [
+                key,
+                value == null ? null : gridCellText(value),
+              ]),
+            ),
+          ),
           rowsAffected: result.rows_affected,
           executionTimeMs: result.execution_time_ms,
         };
