@@ -1146,7 +1146,7 @@ function SidebarEntityList({
                                 schema: item.schema,
                                 table: item.name,
                               }}
-                              search={{ type }}
+                              search={{ type, column: col }}
                             >
                               <ColumnsIcon className="text-muted-foreground" />
                               <span className="truncate">{col}</span>

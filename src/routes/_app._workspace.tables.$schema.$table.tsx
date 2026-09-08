@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TableColumnHighlight } from "@/features/objects/table-column-highlight";
 import { TableView } from "@/features/table/table-view";
 
 export const Route = createFileRoute("/_app/_workspace/tables/$schema/$table")({
@@ -8,10 +7,14 @@ export const Route = createFileRoute("/_app/_workspace/tables/$schema/$table")({
     const { schema, table } = Route.useParams();
     const { type, fkFilter, fkRaw, column } = Route.useSearch();
     return (
-      <>
-        <TableColumnHighlight column={column} />
-        <TableView schema={schema} table={table} type={type} fkFilter={fkFilter} fkRaw={fkRaw} />
-      </>
+      <TableView
+        schema={schema}
+        table={table}
+        type={type}
+        fkFilter={fkFilter}
+        fkRaw={fkRaw}
+        column={column}
+      />
     );
   },
   validateSearch: (
