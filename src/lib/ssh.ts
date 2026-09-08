@@ -1,4 +1,4 @@
-import { AUTH_ERROR_PATTERN, connectionError } from "@/lib/connection-url";
+import { AUTH_FAILED_MESSAGE, connectionError } from "@/lib/connection-url";
 import {
   closeSshTunnel,
   type DatabaseKind,
@@ -307,7 +307,7 @@ export async function activateConnectionWithToast(
     : toast.loading("Trenne Verbindung…");
   try {
     let outcome = await activateConnection(id, sshPassword);
-    while (id && !outcome.ok && AUTH_ERROR_PATTERN.test(outcome.error ?? "")) {
+    while (id && !outcome.ok && outcome.error === AUTH_FAILED_MESSAGE) {
       toast.dismiss(pending);
       if (
         !(await ensurePassword(

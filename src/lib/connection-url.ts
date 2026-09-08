@@ -446,8 +446,10 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
   }
 }
 
-export const AUTH_ERROR_PATTERN =
+const AUTH_ERROR_PATTERN =
   /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|ORA-01017|ORA-01005/i;
+export const AUTH_FAILED_MESSAGE =
+  "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
 
 export function connectionError(error: unknown): string {
   const message = String(error)
@@ -455,8 +457,7 @@ export function connectionError(error: unknown): string {
     .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "[Verbindungs-URL]");
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))
     return "Zum Testen und Verbinden öffne l8db als Desktop-App.";
-  if (AUTH_ERROR_PATTERN.test(message))
-    return "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
+  if (AUTH_ERROR_PATTERN.test(message)) return AUTH_FAILED_MESSAGE;
   if (
     /Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(
       message,
