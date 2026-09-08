@@ -739,12 +739,22 @@ impl DatabaseAdapter for MysqlAdapter {
             lit(schema),
             lit(table)
         );
-        Ok(self
-            .rows(&sql)
-            .await?
-            .iter()
-            .map(|r| TriggerInfo {
-                trigger_name: cell(r, 0),
+        let rows = self.rows(&sql).await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows.iter() {
+            let name = cell(r, 0);
+            let definition = self
+                .rows(&format!(
+                    "SHOW CREATE TRIGGER {}.{}",
+                    quote(schema),
+                    quote(&name)
+                ))
+                .await
+                .ok()
+                .and_then(|rows| rows.first().map(|r| cell(r, 2)))
+                .unwrap_or_else(|| cell(r, 4));
+            out.push(TriggerInfo {
+                trigger_name: name,
                 table_schema: schema.to_string(),
                 table_name: table.to_string(),
                 event: cell(r, 1),
@@ -753,9 +763,10 @@ impl DatabaseAdapter for MysqlAdapter {
                 function_schema: String::new(),
                 function_name: String::new(),
                 enabled: "O".to_string(),
-                definition: cell(r, 4),
-            })
-            .collect())
+                definition,
+            });
+        }
+        Ok(out)
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {

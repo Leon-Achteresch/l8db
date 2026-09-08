@@ -156,6 +156,18 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
     }
 }
 
+fn create_or_alter(definition: &str) -> String {
+    let trimmed = definition.trim_start();
+    let mut words = trimmed.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let second = words.next().unwrap_or("");
+    if first.eq_ignore_ascii_case("CREATE") && !second.eq_ignore_ascii_case("OR") {
+        format!("CREATE OR ALTER{}", &trimmed[first.len()..])
+    } else {
+        definition.to_string()
+    }
+}
+
 fn text(row: &Row, index: usize) -> String {
     match value_to_json(
         &row.cells()
@@ -680,7 +692,7 @@ impl DatabaseAdapter for MssqlAdapter {
         self.rows(&format!("SELECT OBJECT_DEFINITION({id})"))
             .await?
             .first()
-            .map(|r| text(r, 0))
+            .map(|r| create_or_alter(&text(r, 0)))
             .filter(|d| !d.is_empty())
             .ok_or_else(|| "Definition nicht verfügbar".to_string())
     }
@@ -880,7 +892,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 } else {
                     "O".to_string()
                 },
-                definition: text(r, 4),
+                definition: create_or_alter(&text(r, 4)),
             })
             .collect())
     }
@@ -1104,6 +1116,22 @@ impl DatabaseAdapter for MssqlAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_becomes_create_or_alter() {
+        assert_eq!(
+            create_or_alter("\n  create   FUNCTION dbo.f() RETURNS INT AS BEGIN RETURN 1 END"),
+            "CREATE OR ALTER   FUNCTION dbo.f() RETURNS INT AS BEGIN RETURN 1 END"
+        );
+        assert_eq!(
+            create_or_alter("CREATE OR ALTER PROCEDURE p AS SELECT 1"),
+            "CREATE OR ALTER PROCEDURE p AS SELECT 1"
+        );
+        assert_eq!(
+            create_or_alter("ALTER TRIGGER t ON x AFTER INSERT AS SELECT 1"),
+            "ALTER TRIGGER t ON x AFTER INSERT AS SELECT 1"
+        );
+    }
 
     #[test]
     fn parses_url_options() {

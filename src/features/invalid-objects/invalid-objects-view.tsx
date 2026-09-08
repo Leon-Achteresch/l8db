@@ -87,7 +87,7 @@ export function InvalidObjectsView() {
   };
   const handleOpen = (schema: string, name: string, objectType: string, oid: string) => {
     const t = objectType.toUpperCase();
-    if (t === "FUNCTION") {
+    if (t === "FUNCTION" || t === "TRIGGER" || t === "TYPE" || t === "TYPE BODY") {
       openFunctionTab({ schema, name, oid });
       void navigate({ to: "/functions/$schema/$name", params: { schema, name }, search: { oid } });
     } else if (t === "PROCEDURE") {
