@@ -6,8 +6,8 @@ import {
   language as sqlLanguage,
 } from "monaco-editor/esm/vs/basic-languages/sql/sql";
 import "monaco-editor/esm/vs/language/json/monaco.contribution";
-import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";

@@ -1,6 +1,6 @@
 import type { Update } from "@tauri-apps/plugin-updater";
-import { useSettingsStore } from "@/lib/settings";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
+import { useSettingsStore } from "@/lib/settings";
 
 export function useVisibleUpdate(): Update | null {
   const { update } = useUpdatePrompt();

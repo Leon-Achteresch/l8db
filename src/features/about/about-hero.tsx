@@ -1,11 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Sparkles, Star } from "lucide-react";
 import { motion } from "motion/react";
+import { AppLogo } from "@/components/app-logo";
 import { AnimatedGradientText } from "@/components/ui/animated-gradient-text";
 import { AnimatedGridPattern } from "@/components/ui/animated-grid-pattern";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AppLogo } from "@/components/app-logo";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
 export function AboutHero() {
