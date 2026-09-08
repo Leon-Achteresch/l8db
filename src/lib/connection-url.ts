@@ -470,6 +470,12 @@ export function connectionError(error: unknown): string {
     return "Kein Oracle-Listener auf Host und Port (ORA-12541). Prüfe Host, Port und ob die Datenbank läuft.";
   if (/ORA-12545/i.test(message))
     return "Der Ziel-Host existiert nicht (ORA-12545). Prüfe Hostnamen, DNS und VPN.";
+  if (/^MongoDB:\s*/i.test(message)) {
+    const detail = message.replace(/^MongoDB:\s*/i, "");
+    if (/server selection|no available servers|timeout|timed out|dns|resolve/i.test(detail))
+      return `MongoDB-Serverauswahl fehlgeschlagen. Prüfe Atlas-IP-Allowlist, DNS/SRV und Firewall. Details: ${detail}`;
+    return detail;
+  }
   if (/certificate|tls|ssl/i.test(message))
     return "TLS-Verbindung fehlgeschlagen. Prüfe SSL-Modus, Servername und das Zertifikat im System-Zertifikatsspeicher.";
   if (/timeout|timed out/i.test(message))
