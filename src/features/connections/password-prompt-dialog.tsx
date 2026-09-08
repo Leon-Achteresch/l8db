@@ -15,6 +15,7 @@ import { usePasswordPrompt } from "@/lib/password-prompt";
 
 export function PasswordPromptDialog() {
   const connection = usePasswordPrompt((state) => state.connection);
+  const message = usePasswordPrompt((state) => state.message);
   const resolve = usePasswordPrompt((state) => state.resolve);
   const [password, setPassword] = useState("");
   const [save, setSave] = useState(false);
@@ -38,7 +39,7 @@ export function PasswordPromptDialog() {
           <DialogHeader>
             <DialogTitle>Passwort erforderlich</DialogTitle>
             <DialogDescription>
-              Für „{connection?.name}“ ist kein Passwort hinterlegt.
+              {message ?? `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">

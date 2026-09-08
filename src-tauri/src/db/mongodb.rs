@@ -564,6 +564,13 @@ mod tests {
             "k".into()
         )
         .is_err());
+        assert!(MongoAdapter::new(
+            "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/",
+            None,
+            crate::db::pool::create_pool_state(),
+            "srv".into()
+        )
+        .is_ok());
     }
 
     #[test]
