@@ -1,5 +1,6 @@
 import { Pencil, Star, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { providerFor } from "@/lib/connection-url";
@@ -49,7 +50,10 @@ export function SavedConnectionChip({
           <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold">{connection.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <ConnectionStatusIndicator connectionId={connection.id} />
+            <span className="truncate text-xs font-semibold">{connection.name}</span>
+          </span>
           <span className="block truncate text-[10px] text-muted-foreground">{provider.name}</span>
         </span>
         <AnimatedBadge status={connecting ? "loading" : active ? "success" : "neutral"} size="sm">

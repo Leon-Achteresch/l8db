@@ -79,6 +79,17 @@ export interface SavedConnection {
   favorite?: boolean;
   color?: string | null;
   readOnly?: boolean;
+  schemas?: string[] | null;
+}
+
+export function visibleSchemas(
+  connection: Pick<SavedConnection, "schemas"> | null | undefined,
+  schemas: string[],
+): string[] {
+  const allowed = connection?.schemas;
+  if (!allowed?.length) return schemas;
+  const set = new Set(allowed);
+  return schemas.filter((schema) => set.has(schema));
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;
@@ -89,6 +100,7 @@ interface ConnectionsState {
   addConnection: (input: ConnectionInput) => SavedConnection;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
+  duplicateConnection: (id: string) => SavedConnection | null;
   toggleFavorite: (id: string) => void;
   addImported: (connections: SavedConnection[]) => void;
   setActiveId: (id: string | null) => void;
@@ -133,7 +145,7 @@ const scrubbingStorage: StateStorage = {
 
 export const useConnectionsStore = create<ConnectionsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       connections: [],
       activeId: null,
       addConnection: (input) => {
@@ -157,6 +169,23 @@ export const useConnectionsStore = create<ConnectionsState>()(
           connections: state.connections.filter((connection) => connection.id !== id),
           activeId: state.activeId === id ? null : state.activeId,
         }));
+      },
+      duplicateConnection: (id) => {
+        const source = get().connections.find((connection) => connection.id === id);
+        if (!source) return null;
+        const copy: SavedConnection = {
+          ...source,
+          id: createId(),
+          name: `${source.name} (Kopie)`,
+          favorite: false,
+        };
+        for (const suffix of ["", ":ssh"]) {
+          void loadSecret(`${id}${suffix}`)
+            .then((secret) => (secret ? storeSecret(`${copy.id}${suffix}`, secret) : undefined))
+            .catch(() => undefined);
+        }
+        set((state) => ({ connections: [...state.connections, copy] }));
+        return copy;
       },
       toggleFavorite: (id) =>
         set((state) => ({

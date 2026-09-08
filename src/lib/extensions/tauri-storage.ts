@@ -1,4 +1,4 @@
-import { communityExtensionStore } from "@/lib/db";
+import { communityExtensionStore, deleteSecret, loadSecret, storeSecret } from "@/lib/db";
 import type {
   ExtensionArchive,
   ExtensionStorage,
@@ -27,5 +27,14 @@ export class TauriExtensionStorage implements ExtensionStorage {
   }
   set(id: string, key: string, value: Json) {
     return communityExtensionStore<void>("set", id, { key, value });
+  }
+  secretGet(id: string, key: string) {
+    return loadSecret(`extension:${id}:${key}`);
+  }
+  secretSet(id: string, key: string, value: string) {
+    return storeSecret(`extension:${id}:${key}`, value);
+  }
+  secretDelete(id: string, key: string) {
+    return deleteSecret(`extension:${id}:${key}`);
   }
 }

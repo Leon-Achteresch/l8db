@@ -1,5 +1,6 @@
 import { ArrowUpRight, LockKeyhole, Pencil, Trash2, Unplug } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DriverDetail } from "@/components/driver-detail";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -48,7 +49,10 @@ export function ConnectionCard({
           <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold">{connection.name}</h3>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <ConnectionStatusIndicator connectionId={connection.id} />
+            <h3 className="truncate text-sm font-semibold">{connection.name}</h3>
+          </span>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {provider.name}
             {connection.ssh?.host ? " · SSH-Tunnel" : ""}

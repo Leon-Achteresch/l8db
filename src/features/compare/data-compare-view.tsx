@@ -1,4 +1,13 @@
-import { ClipboardCopyIcon, PlayIcon, SquareArrowOutUpRightIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ClipboardCopyIcon,
+  LoaderIcon,
+  MinusIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  SquareArrowOutUpRightIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,11 +38,7 @@ import { fetchTableRows, listConstraints, listTableColumnsDetailed } from "@/lib
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-import {
-  DataCompareSidePicker,
-  type DataCompareSideSelection,
-  EMPTY_DATA_SIDE,
-} from "./data-compare-side-picker";
+import type { DataCompareSideSelection } from "./data-compare-side-picker";
 
 type CategoryFilter = DataDiffCategory | "all";
 
@@ -59,6 +64,13 @@ const CATEGORY_LABEL: Record<DataDiffCategory, string> = {
   only_right: "Nur rechts",
   changed: "Geändert",
   equal: "Gleich",
+};
+
+const CATEGORY_ICON: Record<DataDiffCategory, typeof CheckIcon> = {
+  only_left: MinusIcon,
+  only_right: PlusIcon,
+  changed: PencilIcon,
+  equal: CheckIcon,
 };
 
 function errorMessage(error: unknown): string {
@@ -115,11 +127,14 @@ async function loadSide(
   };
 }
 
-export function DataCompareView() {
+interface DataCompareViewProps {
+  left: DataCompareSideSelection;
+  right: DataCompareSideSelection;
+}
+
+export function DataCompareView({ left, right }: DataCompareViewProps) {
   const connections = useConnectionsStore((state) => state.connections);
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
-  const [left, setLeft] = useState<DataCompareSideSelection>(EMPTY_DATA_SIDE);
-  const [right, setRight] = useState<DataCompareSideSelection>(EMPTY_DATA_SIDE);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<CompareState | null>(null);
@@ -246,14 +261,13 @@ export function DataCompareView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
-      <div className="grid gap-3 lg:grid-cols-2">
-        <DataCompareSidePicker title="Links (Quelle)" value={left} onChange={setLeft} />
-        <DataCompareSidePicker title="Rechts (Ziel)" value={right} onChange={setRight} />
-      </div>
-
       <div className="flex flex-wrap items-center gap-3">
         <Button size="sm" onClick={() => void runCompare()} disabled={!ready || running}>
-          <PlayIcon className="size-3.5" />
+          {running ? (
+            <LoaderIcon className="size-3.5 animate-spin" />
+          ) : (
+            <PlayIcon className="size-3.5" />
+          )}
           {running ? "Vergleiche…" : "Vergleichen"}
         </Button>
         <span className="text-xs text-muted-foreground">
@@ -265,6 +279,13 @@ export function DataCompareView() {
       {error && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
+        </div>
+      )}
+
+      {running && (
+        <div className="flex flex-1 items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+          <LoaderIcon className="size-4 animate-spin" />
+          Tabellen werden geladen…
         </div>
       )}
 
@@ -283,11 +304,15 @@ export function DataCompareView() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Schlüssel: {state.keyColumns.join(", ")}</Badge>
             {(["only_left", "only_right", "changed", "equal"] as DataDiffCategory[]).map(
-              (category) => (
-                <Badge key={category} variant="secondary">
-                  {CATEGORY_LABEL[category]}: {state.result.counts[category]}
-                </Badge>
-              ),
+              (category) => {
+                const Icon = CATEGORY_ICON[category];
+                return (
+                  <Badge key={category} variant="secondary" className="gap-1">
+                    <Icon className="size-3" />
+                    {CATEGORY_LABEL[category]}: {state.result.counts[category]}
+                  </Badge>
+                );
+              },
             )}
             <div className="ml-auto flex items-center gap-2">
               <Label className="text-xs">Filter</Label>
@@ -300,11 +325,15 @@ export function DataCompareView() {
                     Alle
                   </SelectItem>
                   {(["only_left", "only_right", "changed", "equal"] as DataDiffCategory[]).map(
-                    (category) => (
-                      <SelectItem key={category} value={category} className="text-xs">
-                        {CATEGORY_LABEL[category]}
-                      </SelectItem>
-                    ),
+                    (category) => {
+                      const Icon = CATEGORY_ICON[category];
+                      return (
+                        <SelectItem key={category} value={category} className="text-xs">
+                          <Icon className="size-3.5" />
+                          {CATEGORY_LABEL[category]}
+                        </SelectItem>
+                      );
+                    },
                   )}
                 </SelectContent>
               </Select>
@@ -322,32 +351,40 @@ export function DataCompareView() {
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((row) => (
-                  <tr key={row.keyText} className="border-t">
-                    <td className="px-2 py-1">
-                      {row.category !== "equal" && (
-                        <Checkbox
-                          checked={selected.has(row.keyText)}
-                          onCheckedChange={() => toggleRow(row.keyText)}
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-1">{CATEGORY_LABEL[row.category]}</td>
-                    <td className="px-2 py-1 font-mono">
-                      {state.keyColumns
-                        .map((column) => `${column}=${cellText(row.keyValues[column])}`)
-                        .join(", ")}
-                    </td>
-                    <td className="px-2 py-1 font-mono text-muted-foreground">
-                      {row.differences
-                        .map(
-                          (diff) =>
-                            `${diff.column}: ${cellText(diff.left)} → ${cellText(diff.right)}`,
-                        )
-                        .join(" | ")}
-                    </td>
-                  </tr>
-                ))}
+                {visibleRows.map((row) => {
+                  const CategoryIcon = CATEGORY_ICON[row.category];
+                  return (
+                    <tr key={row.keyText} className="border-t">
+                      <td className="px-2 py-1">
+                        {row.category !== "equal" && (
+                          <Checkbox
+                            checked={selected.has(row.keyText)}
+                            onCheckedChange={() => toggleRow(row.keyText)}
+                          />
+                        )}
+                      </td>
+                      <td className="px-2 py-1">
+                        <span className="inline-flex items-center gap-1.5">
+                          <CategoryIcon className="size-3.5" />
+                          {CATEGORY_LABEL[row.category]}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 font-mono">
+                        {state.keyColumns
+                          .map((column) => `${column}=${cellText(row.keyValues[column])}`)
+                          .join(", ")}
+                      </td>
+                      <td className="px-2 py-1 font-mono text-muted-foreground">
+                        {row.differences
+                          .map(
+                            (diff) =>
+                              `${diff.column}: ${cellText(diff.left)} → ${cellText(diff.right)}`,
+                          )
+                          .join(" | ")}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {visibleRows.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">

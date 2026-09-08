@@ -1,7 +1,19 @@
 {
   "name": "@l8db/extension-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
+  "description": "Extension API for l8db.",
+  "author": "Leon Achteresch",
+  "license": "MIT",
+  "homepage": "https://github.com/Leon-Achteresch/l8db",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leon-Achteresch/l8db.git",
+    "directory": "packages/extension-api"
+  },
+  "bugs": {
+    "url": "https://github.com/Leon-Achteresch/l8db/issues"
+  },
   "types": "src/index.ts",
   "exports": {
     ".": {
@@ -16,6 +28,5 @@
   ],
   "dependencies": {
     "semver": "^7.8.5"
-  },
-  "license": "MIT"
+  }
 }

@@ -8,16 +8,22 @@ export type PlsqlMember = { kind: "FUNCTION" | "PROCEDURE"; name: string; line: 
 
 export function parsePlsqlMembers(source: string): PlsqlMember[] {
   const members: PlsqlMember[] = [];
-  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
   source.split("\n").forEach((text, i) => {
     const m = /^\s*(FUNCTION|PROCEDURE)\s+"?([\w$#]+)"?/i.exec(text);
     if (!m) return;
     const kind = m[1].toUpperCase() as PlsqlMember["kind"];
     const name = m[2].toUpperCase();
     const key = `${kind}:${name}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    members.push({ kind, name, line: i + 1 });
+    const member: PlsqlMember = { kind, name, line: i + 1 };
+    const existing = indexByKey.get(key);
+    const isBody = /\b(is|as)\b/i.test(text.slice(m[0].length));
+    if (existing === undefined) {
+      indexByKey.set(key, members.length);
+      members.push(member);
+      return;
+    }
+    if (isBody) members[existing] = member;
   });
   return members;
 }

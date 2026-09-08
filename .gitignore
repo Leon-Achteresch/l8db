@@ -52,3 +52,4 @@ l8db-website/
 
 # TanStack Router temp
 .tanstack/
+graphify-out/
