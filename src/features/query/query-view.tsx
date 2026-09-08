@@ -132,7 +132,13 @@ export function QueryView({ tabId }: QueryViewProps) {
   useEffect(() => {
     if (editorFocus) return;
     const group = workspaceGroup.current;
-    if (group && Math.abs((group.getLayout().editor ?? 0) - workspace.editorShare) > 0.1) {
+    const layout = group?.getLayout();
+    if (
+      group &&
+      layout?.editor !== undefined &&
+      layout.results !== undefined &&
+      Math.abs(layout.editor - workspace.editorShare) > 0.1
+    ) {
       group.setLayout({ editor: workspace.editorShare, results: 100 - workspace.editorShare });
     }
   }, [workspace.editorShare, workspace.layout, editorFocus, workspaceGroup]);
