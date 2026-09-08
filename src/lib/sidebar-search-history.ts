@@ -18,7 +18,9 @@ export const useSidebarSearchHistory = create<SidebarSearchHistoryState>()(
         set((state) => {
           const value = query.trim();
           if (value === "") return state;
-          return { entries: [value, ...state.entries.filter((e) => e !== value)].slice(0, MAX_ENTRIES) };
+          return {
+            entries: [value, ...state.entries.filter((e) => e !== value)].slice(0, MAX_ENTRIES),
+          };
         }),
       remove: (query) => set((state) => ({ entries: state.entries.filter((e) => e !== query) })),
       clear: () => set({ entries: [] }),

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type RegexSearchScope = "grid" | "tabs" | "source";
+export type RegexSearchScope = "grid" | "tabs" | "source" | "sidebar";
 
 interface RegexSearchPrefsState {
   scopes: Record<RegexSearchScope, boolean>;
@@ -12,7 +12,7 @@ interface RegexSearchPrefsState {
 export const useRegexSearchPrefs = create<RegexSearchPrefsState>()(
   persist(
     (set) => ({
-      scopes: { grid: false, tabs: false, source: false },
+      scopes: { grid: false, tabs: false, source: false, sidebar: false },
       setRegexEnabled: (scope, enabled) =>
         set((state) => ({ scopes: { ...state.scopes, [scope]: enabled } })),
       toggleRegex: (scope) =>
