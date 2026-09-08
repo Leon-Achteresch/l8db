@@ -55,6 +55,9 @@ export interface SqlFormatOptions {
   dialect: SqlDialect;
   tabWidth: number;
   keywordCase: SqlKeywordCaseOption;
+  linesBetweenQueries?: number;
+  denseOperators?: boolean;
+  newlineBeforeSemicolon?: boolean;
 }
 
 export type SqlFormatResult =
@@ -69,7 +72,9 @@ export function formatSqlWith(sql: string, options: SqlFormatOptions): SqlFormat
         language: options.dialect,
         tabWidth: options.tabWidth,
         keywordCase: options.keywordCase,
-        linesBetweenQueries: 2,
+        linesBetweenQueries: options.linesBetweenQueries ?? 2,
+        denseOperators: options.denseOperators ?? false,
+        newlineBeforeSemicolon: options.newlineBeforeSemicolon ?? false,
       }),
     };
   } catch (error) {

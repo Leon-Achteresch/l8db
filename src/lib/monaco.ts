@@ -84,7 +84,7 @@ monaco.editor.defineTheme("l8db-light", {
   rules: [],
   colors: {
     "editor.background": transparent,
-    "editor.lineHighlightBackground": transparent,
+    "editor.lineHighlightBackground": "#64748b0c",
     "editor.lineHighlightBorder": transparent,
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
@@ -98,7 +98,7 @@ monaco.editor.defineTheme("l8db-dark", {
   rules: [],
   colors: {
     "editor.background": transparent,
-    "editor.lineHighlightBackground": transparent,
+    "editor.lineHighlightBackground": "#94a3b80c",
     "editor.lineHighlightBorder": transparent,
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
@@ -122,11 +122,20 @@ export function isSqlFormattingAvailable(): boolean {
 }
 
 function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
-  const { editorTabSize, editorKeywordCase } = useSettingsStore.getState();
+  const {
+    editorTabSize,
+    editorKeywordCase,
+    editorFormatLinesBetweenQueries,
+    editorFormatDenseOperators,
+    editorFormatNewlineBeforeSemicolon,
+  } = useSettingsStore.getState();
   return {
     dialect: dialect ?? activeSqlDialect(),
     tabWidth: editorTabSize ?? 2,
     keywordCase: editorKeywordCase ?? "upper",
+    linesBetweenQueries: editorFormatLinesBetweenQueries ?? 2,
+    denseOperators: editorFormatDenseOperators ?? false,
+    newlineBeforeSemicolon: editorFormatNewlineBeforeSemicolon ?? false,
   };
 }
 

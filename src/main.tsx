@@ -1,9 +1,10 @@
+import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { StartupView } from "@/features/shell/startup-view";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
+import { StartupView } from "@/features/shell/startup-view";
 import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets } from "@/lib/connections";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
@@ -25,12 +26,14 @@ root.render(<StartupView />);
 function render() {
   root.render(
     <React.StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ExtensionHostContext.Provider value={extensionHost.manager}>
-          <RouterProvider router={router} />
-          <ExtensionPrompts />
-        </ExtensionHostContext.Provider>
-      </QueryClientProvider>
+      <HotkeysProvider defaultOptions={{ hotkey: { preventDefault: true, stopPropagation: true } }}>
+        <QueryClientProvider client={queryClient}>
+          <ExtensionHostContext.Provider value={extensionHost.manager}>
+            <RouterProvider router={router} />
+            <ExtensionPrompts />
+          </ExtensionHostContext.Provider>
+        </QueryClientProvider>
+      </HotkeysProvider>
     </React.StrictMode>,
   );
 }

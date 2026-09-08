@@ -1,4 +1,4 @@
-import { Blocks, CodeXml, Database, Info, ShieldCheck, Sliders } from "lucide-react";
+import { Blocks, CodeXml, Database, Info, Keyboard, ShieldCheck, Sliders } from "lucide-react";
 import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -42,6 +42,12 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     label: "Erweiterungen",
     description: "Community Plugins",
     icon: Blocks,
+  },
+  {
+    id: "hotkeys",
+    label: "Tastenkürzel",
+    description: "Shortcuts anpassen",
+    icon: Keyboard,
   },
   {
     id: "about",

@@ -54,8 +54,36 @@ test("formatSqlWith applies indentation and keyword case", () => {
   expect(lower.sql).toContain("  id");
 });
 
-test("formatSqlWith keeps text unchanged and reports the reason on failure", () => {
-  const result = formatSqlWith("select 1", {
+test("formatSqlWith honors extended formatting options", () => {
+  const dense = formatSqlWith("select id from users where id = 1", {
+    dialect: "postgresql",
+    tabWidth: 2,
+    keywordCase: "upper",
+    denseOperators: true,
+  });
+  expect(dense.ok).toBe(true);
+  expect(dense.sql).toContain("id=1");
+
+  const spaced = formatSqlWith("select id from users where id = 1", {
+    dialect: "postgresql",
+    tabWidth: 2,
+    keywordCase: "upper",
+    denseOperators: false,
+  });
+  expect(spaced.ok).toBe(true);
+  expect(spaced.sql).toContain("id = 1");
+
+  const semicolon = formatSqlWith("select 1;", {
+    dialect: "sql",
+    tabWidth: 2,
+    keywordCase: "upper",
+    newlineBeforeSemicolon: true,
+  });
+  expect(semicolon.ok).toBe(true);
+  expect(semicolon.sql).toContain("\n;");
+});
+
+test("formatSqlWith keeps text unchanged and reports the reason on failure", () => {  const result = formatSqlWith("select 1", {
     dialect: "not-a-dialect" as never,
     tabWidth: 2,
     keywordCase: "upper",

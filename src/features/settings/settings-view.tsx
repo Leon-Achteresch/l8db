@@ -1,35 +1,40 @@
+import { useHotkey } from "@tanstack/react-hotkeys";
+import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
 import { SettingsDataTab } from "@/features/settings/settings-data-tab";
 import { SettingsEditorTab } from "@/features/settings/settings-editor-tab";
 import { SettingsExtensionsTab } from "@/features/settings/settings-extensions-tab";
 import { SettingsGeneralTab } from "@/features/settings/settings-general-tab";
+import { SettingsHotkeysTab } from "@/features/settings/settings-hotkeys-tab";
 import { SettingsSearch } from "@/features/settings/settings-search";
 import { SettingsSearchResults } from "@/features/settings/settings-search-results";
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SettingsSidebar } from "@/features/settings/settings-sidebar";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useResolvedHotkey } from "@/lib/hotkeys";
+
+const settingsRouteApi = getRouteApi("/settings");
 
 export function SettingsView() {
-  const [activeTab, setActiveTab] = useState("general");
+  const { tab: initialTab } = settingsRouteApi.useSearch();
+  const [activeTab, setActiveTab] = useState(initialTab ?? "general");
   const [searchQuery, setSearchQuery] = useState("");
+  const settingsSearchHotkey = useResolvedHotkey("settings.search");
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "f") {
-        event.preventDefault();
-        const searchInput = document.querySelector<HTMLInputElement>(
-          'input[type="search"][placeholder*="Einstellungen"]',
-        );
-        searchInput?.focus();
-        searchInput?.select();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  useHotkey(
+    settingsSearchHotkey,
+    (event) => {
+      event.preventDefault();
+      const searchInput = document.querySelector<HTMLInputElement>(
+        'input[type="search"][placeholder*="Einstellungen"]',
+      );
+      searchInput?.focus();
+      searchInput?.select();
+    },
+    { ignoreInputs: false },
+  );
 
   return (
     <main
@@ -84,6 +89,7 @@ export function SettingsView() {
                   {activeTab === "data" ? <SettingsDataTab /> : null}
                   {activeTab === "security" ? <SettingsSecurityTab /> : null}
                   {activeTab === "extensions" ? <SettingsExtensionsTab /> : null}
+                  {activeTab === "hotkeys" ? <SettingsHotkeysTab /> : null}
                   {activeTab === "about" ? <SettingsAboutTab /> : null}
                 </>
               )}

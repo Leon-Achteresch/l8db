@@ -16,6 +16,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -94,9 +95,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         <span className="text-xs font-medium text-muted-foreground flex-1">
           {schema}.{name}
         </span>
-        {isInvalid && !compileResult ? (
-          <Badge variant="destructive">INVALID</Badge>
-        ) : null}
+        {isInvalid && !compileResult ? <Badge variant="destructive">INVALID</Badge> : null}
         {!edit.editing && capabilities.compile_objects && oid ? (
           <Button
             variant="outline"
@@ -203,10 +202,12 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
     });
 
     const formatAction = addSqlFormatAction(editor);
+    const intellisense = attachSqlIntellisense(editor);
 
     return () => {
       changeSub.dispose();
       formatAction.dispose();
+      intellisense.dispose();
       editor.dispose();
       editorRef.current = null;
     };

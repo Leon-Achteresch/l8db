@@ -1,7 +1,8 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
-
+import { editorFontStack, editorLineHeightPx } from "@/lib/editor-options";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface SqlEditorProps {
@@ -33,6 +34,9 @@ export function SqlEditor({
   const onSubmitRef = useRef(onSubmit);
   const columnsRef = useRef(columns);
   const { resolvedTheme } = useTheme();
+  const editorFontFamily = useSettingsStore((s) => s.editorFontFamily);
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const editorLineHeight = useSettingsStore((s) => s.editorLineHeight);
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
@@ -57,8 +61,9 @@ export function SqlEditor({
       lineNumbersMinChars: 0,
       scrollBeyondLastLine: false,
       wordWrap: "on",
-      fontSize: 12,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: editorFontStack(editorFontFamily),
+      fontSize: Math.min(editorFontSize, 14),
+      lineHeight: editorLineHeightPx(Math.min(editorFontSize, 14), editorLineHeight),
       padding: { top: 8, bottom: 8 },
       renderLineHighlight: "none",
       overviewRulerLanes: 0,
@@ -128,6 +133,17 @@ export function SqlEditor({
       editor.setValue(value);
     }
   }, [value]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const size = Math.min(editorFontSize, 14);
+    editor.updateOptions({
+      fontFamily: editorFontStack(editorFontFamily),
+      fontSize: size,
+      lineHeight: editorLineHeightPx(size, editorLineHeight),
+    });
+  }, [editorFontFamily, editorFontSize, editorLineHeight]);
 
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));

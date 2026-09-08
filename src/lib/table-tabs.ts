@@ -89,6 +89,7 @@ interface TabsState {
   tabs: Tab[];
   tabsByConnection: Record<string, Tab[]>;
   queryCounter: number;
+  recentlyClosed: Tab[];
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
   openQueryTabWithSql: (sql: string, title?: string) => string;
@@ -106,6 +107,7 @@ interface TabsState {
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;
+  reopenLastTab: () => Tab | null;
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
@@ -133,6 +135,13 @@ function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[]
   return tabs.map((t) => (t.kind === "query" && t.id === id ? { ...t, ...patch } : t));
 }
 
+const MAX_RECENTLY_CLOSED = 10;
+
+function pushRecentlyClosed(current: Tab[], closed: Tab[]): Tab[] {
+  if (closed.length === 0) return current;
+  return [...closed, ...current].slice(0, MAX_RECENTLY_CLOSED);
+}
+
 function storeFor(
   tabs: Tab[],
   state: { tabsByConnection: Record<string, Tab[]> },
@@ -152,6 +161,7 @@ export const useTableTabs = create<TabsState>()(
       tabs: [],
       tabsByConnection: {},
       queryCounter: 0,
+      recentlyClosed: [],
 
       openTab: (tab) => {
         const tableTab: TableTab = {
@@ -295,28 +305,62 @@ export const useTableTabs = create<TabsState>()(
       },
 
       closeTab: (key) =>
-        set((state) =>
-          storeFor(
-            state.tabs.filter((t) => tabKey(t) !== key),
-            state,
-          ),
-        ),
+        set((state) => {
+          const closed = state.tabs.filter((t) => tabKey(t) === key);
+          return {
+            ...storeFor(
+              state.tabs.filter((t) => tabKey(t) !== key),
+              state,
+            ),
+            recentlyClosed: pushRecentlyClosed(state.recentlyClosed, closed),
+          };
+        }),
 
       closeOtherTabs: (key) =>
-        set((state) =>
-          storeFor(
-            state.tabs.filter((t) => tabKey(t) === key),
-            state,
-          ),
-        ),
+        set((state) => {
+          const closed = state.tabs.filter((t) => tabKey(t) !== key);
+          return {
+            ...storeFor(
+              state.tabs.filter((t) => tabKey(t) === key),
+              state,
+            ),
+            recentlyClosed: pushRecentlyClosed(state.recentlyClosed, closed),
+          };
+        }),
 
       closeTabsToRight: (key) =>
         set((state) => {
           const index = state.tabs.findIndex((t) => tabKey(t) === key);
-          return index === -1 ? state : storeFor(state.tabs.slice(0, index + 1), state);
+          if (index === -1) return state;
+          const closed = state.tabs.slice(index + 1);
+          return {
+            ...storeFor(state.tabs.slice(0, index + 1), state),
+            recentlyClosed: pushRecentlyClosed(state.recentlyClosed, closed),
+          };
         }),
 
-      closeAllTabs: () => set((state) => storeFor([], state)),
+      closeAllTabs: () =>
+        set((state) => ({
+          ...storeFor([], state),
+          recentlyClosed: pushRecentlyClosed(state.recentlyClosed, state.tabs),
+        })),
+
+      reopenLastTab: () => {
+        const state = get();
+        const [next, ...rest] = state.recentlyClosed;
+        if (!next) return null;
+        const key = tabKey(next);
+        if (state.tabs.some((t) => tabKey(t) === key)) {
+          set({ recentlyClosed: rest });
+          return next;
+        }
+        const restored: Tab = next.kind === "query" ? { ...next, id: next.id } : { ...next };
+        set((current) => ({
+          ...storeFor([...current.tabs, restored], current),
+          recentlyClosed: rest,
+        }));
+        return restored;
+      },
 
       clearTabsForConnection: (connectionId) =>
         set((state) => {
