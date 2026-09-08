@@ -10,10 +10,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
 import {
   type DefinitionDiffApi,
   DefinitionDiffEditor,
+  type DiffStats,
 } from "@/features/compare/definition-diff-editor";
 import {
   type CompareSideSelection,
@@ -38,17 +40,16 @@ function sideReady(side: CompareSideSelection): boolean {
   return Boolean(side.objectName);
 }
 
-interface DefinitionCompareViewProps {
-  left: CompareSideSelection;
-  right: CompareSideSelection;
-}
+type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definitions" }>;
 
-export function DefinitionCompareView({ left, right }: DefinitionCompareViewProps) {
+export function DefinitionCompareView(props: DefinitionCompareViewProps) {
+  const { left, right } = props;
   const connections = useConnectionsStore((state) => state.connections);
   const [leftState, setLeftState] = useState<SideState>(IDLE_SIDE);
   const [rightState, setRightState] = useState<SideState>(IDLE_SIDE);
   const [onlyDifferences, setOnlyDifferences] = useState(false);
-  const [changeCount, setChangeCount] = useState(0);
+  const [stats, setStats] = useState<DiffStats>({ changes: 0, added: 0, removed: 0 });
+  const changeCount = stats.changes;
   const [reloadToken, setReloadToken] = useState(0);
   const diffRef = useRef<DefinitionDiffApi>(null);
 
@@ -150,28 +151,45 @@ export function DefinitionCompareView({ left, right }: DefinitionCompareViewProp
           <RefreshCwIcon className="size-3" />
           Neu laden
         </Button>
+        <CompareSetupModal {...props} />
       </div>
 
       <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
-        <CompareSideSummary side={left} loading={leftState.loading} error={leftState.error} />
-        <CompareSideSummary side={right} loading={rightState.loading} error={rightState.error} />
+        <CompareSideSummary
+          side={left}
+          loading={leftState.loading}
+          error={leftState.error}
+          delta={{ sign: "-", count: stats.removed }}
+        />
+        <CompareSideSummary
+          side={right}
+          loading={rightState.loading}
+          error={rightState.error}
+          delta={{ sign: "+", count: stats.added }}
+        />
       </div>
 
-      <div className="relative min-h-0 flex-1">
-        <DefinitionDiffEditor
-          ref={diffRef}
-          original={leftState.definition}
-          modified={rightState.definition}
-          onlyDifferences={onlyDifferences}
-          onChangeCount={setChangeCount}
-        />
-        {(leftState.loading || rightState.loading) && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
-            <LoaderIcon className="size-4 animate-spin" />
-            Definitionen werden geladen…
-          </div>
-        )}
-      </div>
+      {!sideReady(left) || !sideReady(right) ? (
+        <div className="flex flex-1 items-center justify-center">
+          <CompareSetupModal {...props} size="lg" />
+        </div>
+      ) : (
+        <div className="relative min-h-0 flex-1">
+          <DefinitionDiffEditor
+            ref={diffRef}
+            original={leftState.definition}
+            modified={rightState.definition}
+            onlyDifferences={onlyDifferences}
+            onStats={setStats}
+          />
+          {(leftState.loading || rightState.loading) && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
+              <LoaderIcon className="size-4 animate-spin" />
+              Definitionen werden geladen…
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
-import { operatorNeedsValue, quoteLike, quoteLiteral } from "@/lib/sql-filter";
+import { compileConditionExpression, type FilterKind } from "@/lib/sql-filter";
 
 export type QuerySource = "base" | "join";
 export type JoinType = "INNER" | "LEFT";
@@ -93,34 +93,13 @@ function columnExpr(
   return `${aliasFor(source)}.${quoted}`;
 }
 
-export function compileBuilderCondition(columnExpression: string, operator: string, value: string) {
-  if (operatorNeedsValue(operator) && value.trim() === "") return null;
-  switch (operator) {
-    case "eq":
-      return `${columnExpression} = ${quoteLiteral(value)}`;
-    case "neq":
-      return `${columnExpression} <> ${quoteLiteral(value)}`;
-    case "gt":
-      return `${columnExpression} > ${quoteLiteral(value)}`;
-    case "gte":
-      return `${columnExpression} >= ${quoteLiteral(value)}`;
-    case "lt":
-      return `${columnExpression} < ${quoteLiteral(value)}`;
-    case "lte":
-      return `${columnExpression} <= ${quoteLiteral(value)}`;
-    case "contains":
-      return `${columnExpression}::text ILIKE '%${quoteLike(value)}%'`;
-    case "startsWith":
-      return `${columnExpression}::text ILIKE '${quoteLike(value)}%'`;
-    case "endsWith":
-      return `${columnExpression}::text ILIKE '%${quoteLike(value)}'`;
-    case "isNull":
-      return `${columnExpression} IS NULL`;
-    case "isNotNull":
-      return `${columnExpression} IS NOT NULL`;
-    default:
-      return null;
-  }
+export function compileBuilderCondition(
+  columnExpression: string,
+  operator: string,
+  value: string,
+  kind?: FilterKind,
+) {
+  return compileConditionExpression(columnExpression, operator, value, kind);
 }
 
 function qualifiedTable(
@@ -176,6 +155,7 @@ export function buildSelectSql(state: QueryBuilderState): string {
         columnExpr(state, condition.source, condition.column, style),
         condition.operator,
         condition.value,
+        state.kind,
       ),
     )
     .filter((part): part is string => part !== null);
@@ -213,4 +193,21 @@ export function parseColumnOptionValue(value: string): { source: QuerySource; co
   const separator = value.indexOf(":");
   const source = value.slice(0, separator) === "join" ? "join" : "base";
   return { source, column: value.slice(separator + 1) };
+}
+
+export function buildViewDdl(
+  kind: DatabaseKind | null | undefined,
+  schema: string,
+  view: string,
+  body: string,
+): string {
+  const style = identifierStyleForKind(kind);
+  const target = schema
+    ? `${quoteIdentifier(schema, style)}.${quoteIdentifier(view, style)}`
+    : quoteIdentifier(view, style);
+  const select = body.trim().replace(/;+\s*$/, "");
+  if (kind === "mssql") return `CREATE OR ALTER VIEW ${target} AS\n${select};`;
+  if (kind === "sqlite")
+    return `DROP VIEW IF EXISTS ${target};\nCREATE VIEW ${target} AS\n${select};`;
+  return `CREATE OR REPLACE VIEW ${target} AS\n${select};`;
 }

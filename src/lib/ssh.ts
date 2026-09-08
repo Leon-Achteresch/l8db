@@ -1,9 +1,10 @@
-import { connectionError } from "@/lib/connection-url";
+import { AUTH_FAILED_MESSAGE, connectionError } from "@/lib/connection-url";
 import {
   closeSshTunnel,
   type DatabaseKind,
   listSshTunnels,
   openSshTunnel,
+  registerReadOnlyResolver,
   testConnectionString,
 } from "@/lib/db";
 
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import { ensurePassword } from "@/lib/password-prompt";
 import { loadSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
@@ -89,6 +91,21 @@ export function readOnlyConnectionString(value: string): string {
   url.search = params.join("&");
   return url.toString();
 }
+
+registerReadOnlyResolver((connectionString) => {
+  const { connections, activeId } = useConnectionsStore.getState();
+  if (typeof connectionString === "string") {
+    const matches = connections.filter((entry) => {
+      try {
+        return effectiveConnectionString(entry) === connectionString;
+      } catch {
+        return false;
+      }
+    });
+    if (matches.length) return matches.some(isReadOnlyConnection);
+  }
+  return isReadOnlyConnection(connections.find((entry) => entry.id === activeId));
+});
 
 export function effectiveConnectionString(connection: SavedConnection): string {
   const base = isReadOnlyConnection(connection)
@@ -250,6 +267,7 @@ async function performActivation(
   }
 }
 
+const ACTIVATION_TIMEOUT_MS = 30_000;
 let activationQueue: Promise<unknown> = Promise.resolve();
 
 export function activateConnection(
@@ -257,7 +275,15 @@ export function activateConnection(
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
   const result = activationQueue.then(async () => {
-    const outcome = await performActivation(id, sshPassword);
+    const outcome = await Promise.race([
+      performActivation(id, sshPassword),
+      new Promise<TunnelOutcome>((resolve) =>
+        setTimeout(() => {
+          useConnectionSwitch.setState({ targetId: null, isSwitching: false });
+          resolve({ ok: false, error: "Zeitüberschreitung beim Verbindungswechsel." });
+        }, ACTIVATION_TIMEOUT_MS),
+      ),
+    ]);
     if (!outcome.ok) {
       useConnectionSwitch.setState({ errorId: id ?? useConnectionsStore.getState().activeId });
     }
@@ -275,19 +301,37 @@ export async function activateConnectionWithToast(
     ? useConnectionsStore.getState().connections.find((entry) => entry.id === id)
     : null;
   const label = target?.name ?? "Verbindung";
+  if (id && !(await ensurePassword(id))) return false;
   const pending = id
     ? toast.loading(`Verbinde mit „${label}“…`)
     : toast.loading("Trenne Verbindung…");
-  const outcome = await activateConnection(id, sshPassword);
-  toast.dismiss(pending);
-  if (!outcome.ok) {
-    toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
-  } else if (id) {
-    toast.success(`Mit „${label}“ verbunden`);
-  } else {
-    toast.success("Verbindung getrennt");
+  try {
+    let outcome = await activateConnection(id, sshPassword);
+    while (id && !outcome.ok && outcome.error === AUTH_FAILED_MESSAGE) {
+      toast.dismiss(pending);
+      if (
+        !(await ensurePassword(
+          id,
+          `Anmeldung bei „${label}“ fehlgeschlagen. Passwort erneut eingeben.`,
+        ))
+      )
+        return false;
+      outcome = await activateConnection(id, sshPassword);
+    }
+    if (!outcome.ok) {
+      toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
+    } else if (id) {
+      toast.success(`Mit „${label}“ verbunden`);
+    } else {
+      toast.success("Verbindung getrennt");
+    }
+    return outcome.ok;
+  } catch (error) {
+    toast.error(String(error));
+    return false;
+  } finally {
+    toast.dismiss(pending);
   }
-  return outcome.ok;
 }
 
 export async function restoreSshTunnel(): Promise<void> {

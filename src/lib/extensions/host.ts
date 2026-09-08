@@ -2,9 +2,11 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
+import { copyText, pasteText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections";
 import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { gridCellText } from "@/lib/grid-search";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
@@ -92,7 +94,14 @@ export function createExtensionHost() {
               );
         return {
           columns: result.columns,
-          rows: result.rows,
+          rows: result.rows.map((row) =>
+            Object.fromEntries(
+              Object.entries(row).map(([key, value]) => [
+                key,
+                value == null ? null : gridCellText(value),
+              ]),
+            ),
+          ),
           rowsAffected: result.rows_affected,
           executionTimeMs: result.execution_time_ms,
         };
@@ -105,14 +114,14 @@ export function createExtensionHost() {
     },
     async clipboardRead() {
       try {
-        return await navigator.clipboard.readText();
+        return await pasteText();
       } catch (error) {
         throw new ExtensionError("ClipboardError", String(error));
       }
     },
     async clipboardWrite(value) {
       try {
-        await navigator.clipboard.writeText(value);
+        await copyText(value);
       } catch (error) {
         throw new ExtensionError("ClipboardError", String(error));
       }

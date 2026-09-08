@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import {
   type ColumnDefinition,
@@ -301,7 +302,7 @@ export function CreateTableView() {
   const copyDdl = async () => {
     if (!ddl) return;
     try {
-      await navigator.clipboard.writeText(ddl);
+      await copyText(ddl);
       toast.success("SQL kopiert.");
     } catch {
       toast.error("SQL konnte nicht kopiert werden.");

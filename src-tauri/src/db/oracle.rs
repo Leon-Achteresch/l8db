@@ -34,6 +34,99 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn view_create_script(
+    owner: &str,
+    name: &str,
+    columns: &[String],
+    bequeath: Option<&str>,
+    text: &str,
+) -> String {
+    let mut out = format!(
+        "CREATE OR REPLACE FORCE VIEW {}.{}",
+        quote(owner),
+        quote(name)
+    );
+    if !columns.is_empty() {
+        out.push_str("\n(\n  ");
+        out.push_str(
+            &columns
+                .iter()
+                .map(|c| quote(c))
+                .collect::<Vec<_>>()
+                .join(",\n  "),
+        );
+        out.push_str("\n)");
+    }
+    if let Some(b) = bequeath {
+        out.push_str("\nBEQUEATH ");
+        out.push_str(b);
+    }
+    out.push_str("\nAS\n");
+    out.push_str(text.trim().trim_end_matches(';').trim_end());
+    out.push(';');
+    out
+}
+
+fn view_select_body(ddl: &str) -> &str {
+    let bytes = ddl.as_bytes();
+    let (mut depth, mut quoted, mut i) = (0usize, false, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => quoted = !quoted,
+            b'(' if !quoted => depth += 1,
+            b')' if !quoted => depth = depth.saturating_sub(1),
+            b'A' | b'a' if !quoted && depth == 0 => {
+                let at_start = i == 0 || bytes[i - 1].is_ascii_whitespace() || bytes[i - 1] == b')';
+                let is_as = bytes
+                    .get(i + 1)
+                    .is_some_and(|c| c.eq_ignore_ascii_case(&b'S'));
+                let ends = bytes
+                    .get(i + 2)
+                    .is_none_or(|c| c.is_ascii_whitespace() || *c == b'(');
+                if at_start && is_as && ends {
+                    return ddl[i + 2..].trim_start();
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    ddl
+}
+
+fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> String {
+    let mut rest = source.trim_start();
+    for word in object_type.split_whitespace() {
+        let Some(after) = rest
+            .get(..word.len())
+            .filter(|head| head.eq_ignore_ascii_case(word))
+            .map(|_| rest[word.len()..].trim_start())
+        else {
+            return format!("CREATE OR REPLACE {source}");
+        };
+        rest = after;
+    }
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == '(' || c == ';')
+        .unwrap_or(rest.len());
+    let head = &rest[..end];
+    let is_name = head
+        .rsplit('.')
+        .next()
+        .map(|n| n.trim_matches('"').eq_ignore_ascii_case(name))
+        .unwrap_or(false);
+    if !is_name {
+        return format!("CREATE OR REPLACE {source}");
+    }
+    format!(
+        "CREATE OR REPLACE {} {}.{}{}",
+        object_type.to_uppercase(),
+        quote(owner),
+        quote(name),
+        &rest[end..]
+    )
+}
+
 fn map_err(e: oracle::Error) -> String {
     format!("Oracle: {e}")
 }
@@ -300,6 +393,26 @@ impl OracleAdapter {
 
     async fn rows(&self, sql: String) -> Result<Vec<Row>, String> {
         self.run_meta(move |c| fetch(c, &sql)).await
+    }
+
+    async fn source_script(
+        &self,
+        owner: &str,
+        name: &str,
+        object_type: &str,
+    ) -> Result<String, String> {
+        let sql = format!(
+            "SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line",
+            lit(owner),
+            lit(name),
+            lit(object_type)
+        );
+        let rows = self.rows(sql).await?;
+        if rows.is_empty() {
+            return Err("Quelltext nicht verfügbar".to_string());
+        }
+        let source = rows.iter().map(|r| s(r, 0)).collect::<String>();
+        Ok(create_script(owner, name, object_type, &source))
     }
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
@@ -589,16 +702,43 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
-        let sql = format!(
-            "SELECT text FROM all_views WHERE owner = {} AND view_name = {}",
-            lit(schema),
-            lit(view)
-        );
-        self.rows(sql)
+        let text = self
+            .rows(format!(
+                "SELECT text FROM all_views WHERE owner = {} AND view_name = {}",
+                lit(schema),
+                lit(view)
+            ))
             .await?
             .first()
             .map(|r| s(r, 0))
-            .ok_or_else(|| "View nicht gefunden".to_string())
+            .ok_or_else(|| "View nicht gefunden".to_string())?;
+        let columns: Vec<String> = self
+            .rows(format!(
+                "SELECT column_name FROM all_tab_columns WHERE owner = {} AND table_name = {} ORDER BY column_id",
+                lit(schema),
+                lit(view)
+            ))
+            .await?
+            .iter()
+            .map(|r| s(r, 0))
+            .collect();
+        let bequeath = self
+            .rows(format!(
+                "SELECT bequeath FROM all_views WHERE owner = {} AND view_name = {}",
+                lit(schema),
+                lit(view)
+            ))
+            .await
+            .ok()
+            .and_then(|rows| rows.first().map(|r| s(r, 0)))
+            .filter(|b| !b.is_empty());
+        Ok(view_create_script(
+            schema,
+            view,
+            &columns,
+            bequeath.as_deref(),
+            &text,
+        ))
     }
 
     async fn update_view_definition(
@@ -608,22 +748,28 @@ impl DatabaseAdapter for OracleAdapter {
         body: &str,
         dry_run: bool,
     ) -> Result<(), String> {
+        let body = body.trim().trim_end_matches(';').trim_end();
+        let is_ddl = body
+            .get(..6)
+            .is_some_and(|h| h.eq_ignore_ascii_case("create"));
         if dry_run {
+            let select = if is_ddl { view_select_body(body) } else { body };
+            let sql = format!("EXPLAIN PLAN FOR {select}");
             return self
-                .run({
-                    let sql = format!("EXPLAIN PLAN FOR {body}");
-                    move |c| c.execute(&sql, &[]).map(|_| ()).map_err(map_err)
-                })
+                .run(move |c| c.execute(&sql, &[]).map(|_| ()).map_err(map_err))
                 .await;
         }
-        self.exec(format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
-            quote(schema),
-            quote(view),
-            body
-        ))
-        .await
-        .map(|_| ())
+        let ddl = if is_ddl {
+            body.to_string()
+        } else {
+            format!(
+                "CREATE OR REPLACE VIEW {}.{} AS {}",
+                quote(schema),
+                quote(view),
+                body
+            )
+        };
+        self.exec(ddl).await.map(|_| ())
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -648,12 +794,7 @@ impl DatabaseAdapter for OracleAdapter {
         if parts.len() != 3 {
             return Err("Ungültige Objektreferenz".to_string());
         }
-        let sql = format!("SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line", lit(parts[0]), lit(parts[1]), lit(parts[2]));
-        let rows = self.rows(sql).await?;
-        if rows.is_empty() {
-            return Err("Quelltext nicht verfügbar".to_string());
-        }
-        Ok(rows.iter().map(|r| s(r, 0)).collect::<String>())
+        self.source_script(parts[0], parts[1], parts[2]).await
     }
 
     async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1179,36 +1320,43 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
-        Ok(self
+        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
+        let rows: Vec<Vec<String>> = self
             .rows(sql)
             .await?
             .iter()
-            .map(|r| {
-                let trigger_type = s(r, 1);
-                TriggerInfo {
-                    trigger_name: s(r, 0),
-                    table_schema: schema.to_string(),
-                    table_name: table.to_string(),
-                    event: s(r, 2).trim().to_string(),
-                    timing: trigger_type
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string(),
-                    orientation: if trigger_type.contains("EACH ROW") {
-                        "ROW"
-                    } else {
-                        "STATEMENT"
-                    }
+            .map(|r| (0..6).map(|i| s(r, i)).collect())
+            .collect();
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let definition = self
+                .source_script(&r[5], &r[0], "TRIGGER")
+                .await
+                .unwrap_or_else(|_| r[4].clone());
+            let trigger_type = r[1].clone();
+            out.push(TriggerInfo {
+                trigger_name: r[0].clone(),
+                table_schema: schema.to_string(),
+                table_name: table.to_string(),
+                event: r[2].trim().to_string(),
+                timing: trigger_type
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
                     .to_string(),
-                    function_schema: String::new(),
-                    function_name: String::new(),
-                    enabled: if s(r, 3) == "ENABLED" { "O" } else { "D" }.to_string(),
-                    definition: s(r, 4),
+                orientation: if trigger_type.contains("EACH ROW") {
+                    "ROW"
+                } else {
+                    "STATEMENT"
                 }
-            })
-            .collect())
+                .to_string(),
+                function_schema: String::new(),
+                function_name: String::new(),
+                enabled: if r[3] == "ENABLED" { "O" } else { "D" }.to_string(),
+                definition,
+            });
+        }
+        Ok(out)
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
@@ -1550,6 +1698,59 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn view_create_script_and_select_body() {
+        let ddl = view_create_script(
+            "ZEN",
+            "V_X",
+            &["REF".to_string(), "NAME".to_string()],
+            Some("DEFINER"),
+            "SELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a\n",
+        );
+        assert_eq!(
+            ddl,
+            "CREATE OR REPLACE FORCE VIEW \"ZEN\".\"V_X\"\n(\n  \"REF\",\n  \"NAME\"\n)\nBEQUEATH DEFINER\nAS\nSELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a;"
+        );
+        assert_eq!(
+            view_select_body(ddl.trim_end_matches(';')),
+            "SELECT a.ref, (SELECT n FROM t WHERE x = 'AS') AS name FROM a"
+        );
+        assert_eq!(
+            view_select_body("CREATE OR REPLACE VIEW s.v AS SELECT 1 FROM dual"),
+            "SELECT 1 FROM dual"
+        );
+    }
+
+    #[test]
+    fn create_script_prefixes_and_qualifies() {
+        assert_eq!(
+            create_script("DEV", "TEST_FUNKTION", "FUNCTION", "function test_funktion(p NUMBER) RETURN NUMBER IS\nBEGIN RETURN p; END;"),
+            "CREATE OR REPLACE FUNCTION \"DEV\".\"TEST_FUNKTION\"(p NUMBER) RETURN NUMBER IS\nBEGIN RETURN p; END;"
+        );
+        assert_eq!(
+            create_script(
+                "DEV",
+                "PKG",
+                "PACKAGE BODY",
+                "PACKAGE BODY \"PKG\" AS\nEND;"
+            ),
+            "CREATE OR REPLACE PACKAGE BODY \"DEV\".\"PKG\" AS\nEND;"
+        );
+        assert_eq!(
+            create_script(
+                "DEV",
+                "P",
+                "PROCEDURE",
+                "PROCEDURE dev.p IS BEGIN NULL; END;"
+            ),
+            "CREATE OR REPLACE PROCEDURE \"DEV\".\"P\" IS BEGIN NULL; END;"
+        );
+        assert_eq!(
+            create_script("DEV", "X", "FUNCTION", "irgendwas"),
+            "CREATE OR REPLACE irgendwas"
+        );
+    }
 
     #[test]
     fn finds_client_lib_dir_in_candidates() {
@@ -2362,4 +2563,87 @@ pub fn tx_delete_row(c: &Connection, schema: &str, table: &str, rowid: &str) -> 
         return Err("Zeile nicht gefunden".to_string());
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct TnsNames {
+    pub path: Option<String>,
+    pub aliases: Vec<String>,
+}
+
+fn tnsnames_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(admin) = std::env::var_os("TNS_ADMIN") {
+        dirs.push(PathBuf::from(admin));
+    }
+    if let Some(home) = std::env::var_os("ORACLE_HOME") {
+        dirs.push(PathBuf::from(home).join("network").join("admin"));
+    }
+    if let Some(dir) = find_client_lib_dir() {
+        dirs.push(dir.join("network").join("admin"));
+    }
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
+        dirs.push(home.join(".oracle"));
+        dirs.push(home);
+    }
+    dirs.into_iter().map(|d| d.join("tnsnames.ora")).collect()
+}
+
+pub fn parse_tns_aliases(text: &str) -> Vec<String> {
+    let mut aliases = Vec::new();
+    let mut depth = 0i32;
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if depth == 0 {
+            if let Some((name, _)) = line.split_once('=') {
+                let name = name.trim();
+                if !name.is_empty()
+                    && !name.contains(char::is_whitespace)
+                    && !name.contains('(')
+                    && !name.eq_ignore_ascii_case("ifile")
+                {
+                    aliases.push(name.to_string());
+                }
+            }
+        }
+        depth += line.matches('(').count() as i32 - line.matches(')').count() as i32;
+        depth = depth.max(0);
+    }
+    aliases.sort_by_key(|a| a.to_lowercase());
+    aliases.dedup();
+    aliases
+}
+
+pub fn tns_names() -> TnsNames {
+    let Some(path) = tnsnames_candidates().into_iter().find(|p| p.is_file()) else {
+        return TnsNames {
+            path: None,
+            aliases: Vec::new(),
+        };
+    };
+    if std::env::var_os("TNS_ADMIN").is_none() {
+        if let Some(dir) = path.parent() {
+            std::env::set_var("TNS_ADMIN", dir);
+        }
+    }
+    let aliases = std::fs::read_to_string(&path)
+        .map(|t| parse_tns_aliases(&t))
+        .unwrap_or_default();
+    TnsNames {
+        path: Some(path.to_string_lossy().into_owned()),
+        aliases,
+    }
+}
+
+#[cfg(test)]
+mod tns_tests {
+    #[test]
+    fn parses_aliases_and_ignores_nested_keys() {
+        let text = "# comment\nSLTEST =\n  (DESCRIPTION =\n    (ADDRESS = (PROTOCOL = TCP)(HOST = h)(PORT = 1521))\n    (CONNECT_DATA = (SERVICE_NAME = sl)))\nprod.example.com, PROD = (DESCRIPTION=(ADDRESS=(HOST=x)))\nIFILE=/x\nORCL=(DESCRIPTION=(SID=orcl))\n";
+        let aliases = super::parse_tns_aliases(text);
+        assert_eq!(aliases, vec!["ORCL", "SLTEST"]);
+    }
 }

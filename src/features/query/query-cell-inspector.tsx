@@ -7,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { copyText } from "@/lib/clipboard";
 
 export function QueryCellInspector({
   cell,
@@ -40,7 +41,7 @@ export function QueryCellInspector({
           className="m-4"
           onClick={async () => {
             try {
-              await navigator.clipboard.writeText(value);
+              await copyText(value);
               toast.success("Zellwert kopiert");
             } catch {
               toast.error("Zellwert konnte nicht kopiert werden");

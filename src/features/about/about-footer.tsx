@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { FileText, FolderGit, Heart, Scale, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
+import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -27,11 +28,7 @@ export function AboutFooter() {
     >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <img
-            src="/logo.png"
-            alt=""
-            className="size-8 rounded-lg object-contain ring-1 ring-border"
-          />
+          <AppLogo alt="" className="size-8 ring-1 ring-border" />
           <div>
             <p className="text-sm font-medium leading-tight">l8db · v0.1.0</p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
