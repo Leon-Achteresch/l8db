@@ -38,7 +38,7 @@ import { fetchTableRows, listConstraints, listTableColumnsDetailed } from "@/lib
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
-import { type DataCompareSideSelection } from "./data-compare-side-picker";
+import type { DataCompareSideSelection } from "./data-compare-side-picker";
 
 type CategoryFilter = DataDiffCategory | "all";
 
@@ -354,35 +354,35 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
                 {visibleRows.map((row) => {
                   const CategoryIcon = CATEGORY_ICON[row.category];
                   return (
-                  <tr key={row.keyText} className="border-t">
-                    <td className="px-2 py-1">
-                      {row.category !== "equal" && (
-                        <Checkbox
-                          checked={selected.has(row.keyText)}
-                          onCheckedChange={() => toggleRow(row.keyText)}
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-1">
-                      <span className="inline-flex items-center gap-1.5">
-                        <CategoryIcon className="size-3.5" />
-                        {CATEGORY_LABEL[row.category]}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1 font-mono">
-                      {state.keyColumns
-                        .map((column) => `${column}=${cellText(row.keyValues[column])}`)
-                        .join(", ")}
-                    </td>
-                    <td className="px-2 py-1 font-mono text-muted-foreground">
-                      {row.differences
-                        .map(
-                          (diff) =>
-                            `${diff.column}: ${cellText(diff.left)} → ${cellText(diff.right)}`,
-                        )
-                        .join(" | ")}
-                    </td>
-                  </tr>
+                    <tr key={row.keyText} className="border-t">
+                      <td className="px-2 py-1">
+                        {row.category !== "equal" && (
+                          <Checkbox
+                            checked={selected.has(row.keyText)}
+                            onCheckedChange={() => toggleRow(row.keyText)}
+                          />
+                        )}
+                      </td>
+                      <td className="px-2 py-1">
+                        <span className="inline-flex items-center gap-1.5">
+                          <CategoryIcon className="size-3.5" />
+                          {CATEGORY_LABEL[row.category]}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 font-mono">
+                        {state.keyColumns
+                          .map((column) => `${column}=${cellText(row.keyValues[column])}`)
+                          .join(", ")}
+                      </td>
+                      <td className="px-2 py-1 font-mono text-muted-foreground">
+                        {row.differences
+                          .map(
+                            (diff) =>
+                              `${diff.column}: ${cellText(diff.left)} → ${cellText(diff.right)}`,
+                          )
+                          .join(" | ")}
+                      </td>
+                    </tr>
                   );
                 })}
                 {visibleRows.length === 0 && (

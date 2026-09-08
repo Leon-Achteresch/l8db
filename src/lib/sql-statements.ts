@@ -97,10 +97,16 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         }
       }
       const quoteStart = ch === "n" || ch === "N" ? index + 1 : index;
-      if (/q/i.test(sql[quoteStart]) && sql[quoteStart + 1] === "'" && !isWordChar(sql[index - 1])) {
+      if (
+        /q/i.test(sql[quoteStart]) &&
+        sql[quoteStart + 1] === "'" &&
+        !isWordChar(sql[index - 1])
+      ) {
         const opening = sql[quoteStart + 2];
         if (opening && !isSpace(opening)) {
-          const closing = ({ "[": "]", "{": "}", "(": ")", "<": ">" } as Record<string, string>)[opening] ?? opening;
+          const closing =
+            ({ "[": "]", "{": "}", "(": ")", "<": ">" } as Record<string, string>)[opening] ??
+            opening;
           const end = sql.indexOf(`${closing}'`, quoteStart + 3);
           hasCode = true;
           if (end < 0) {
@@ -116,9 +122,15 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
         while (index < length && isWordChar(sql[index])) index += 1;
         if (leadingWords.length < 6) leadingWords.push(sql.slice(start, index).toUpperCase());
         const first = leadingWords[0];
-        const object = leadingWords.slice(1).find((word) => !["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"].includes(word));
-        plsql ||= first === "BEGIN" || first === "DECLARE" ||
-          (first === "CREATE" && object !== undefined && ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER", "TYPE"].includes(object));
+        const object = leadingWords
+          .slice(1)
+          .find((word) => !["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"].includes(word));
+        plsql ||=
+          first === "BEGIN" ||
+          first === "DECLARE" ||
+          (first === "CREATE" &&
+            object !== undefined &&
+            ["PACKAGE", "PROCEDURE", "FUNCTION", "TRIGGER", "TYPE"].includes(object));
         hasCode = true;
         continue;
       }
@@ -128,7 +140,10 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       hasCode = true;
       const prev = sql[index - 1];
       const backslashEscapes =
-        dialect !== "oracle" && (prev === "E" || prev === "e") && !isWordChar(sql[index - 2]) && sql[index - 2] !== ".";
+        dialect !== "oracle" &&
+        (prev === "E" || prev === "e") &&
+        !isWordChar(sql[index - 2]) &&
+        sql[index - 2] !== ".";
       index += 1;
       let closed = false;
       while (index < length) {
@@ -211,7 +226,11 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
   return { statements, unterminated: false };
 }
 
-export function statementAtOffset(sql: string, offset: number, dialect?: string): SqlStatement | null {
+export function statementAtOffset(
+  sql: string,
+  offset: number,
+  dialect?: string,
+): SqlStatement | null {
   const { statements, unterminated } = splitSqlStatements(sql, dialect);
   if (unterminated) return null;
   const position = Math.max(0, Math.min(offset, sql.length));

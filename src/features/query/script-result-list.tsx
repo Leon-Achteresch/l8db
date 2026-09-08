@@ -1,8 +1,7 @@
 import { CheckCircle2Icon, CircleDashedIcon, LoaderIcon, XCircleIcon, XIcon } from "lucide-react";
-
-import type { QueryResult } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { QueryResult } from "@/lib/db";
 
 export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped";
 

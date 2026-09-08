@@ -1,6 +1,10 @@
 import { gt, satisfies } from "semver";
 import type { ExtensionEvents } from "../../../packages/extension-api/src";
-import { matchesHost, safePath, validateArchive } from "../../../packages/extension-api/src/manifest";
+import {
+  matchesHost,
+  safePath,
+  validateArchive,
+} from "../../../packages/extension-api/src/manifest";
 import type {
   CoreServices,
   Disposable,
@@ -45,7 +49,9 @@ export function isWriteQuery(sql: string): boolean {
     .trimStart();
   if (/;[\s\S]*\S/.test(cleaned)) return true;
   const first = cleaned.match(/^\(?\s*([a-zA-Z]+)/)?.[1].toUpperCase() ?? "";
-  return !["SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC", "VALUES", "TABLE"].includes(first);
+  return !["SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "DESC", "VALUES", "TABLE"].includes(
+    first,
+  );
 }
 
 export class ExtensionManager {
@@ -498,7 +504,11 @@ export class ExtensionManager {
     if (method === "events.on") {
       this.permissions.require(extension, "database:read");
       const event = text(0, 64);
-      if (event !== "databaseOpened" && event !== "databaseClosed" && event !== "activeDatabaseChanged")
+      if (
+        event !== "databaseOpened" &&
+        event !== "databaseClosed" &&
+        event !== "activeDatabaseChanged"
+      )
         throw new ExtensionError("ProtocolError", "Unknown event");
       const key = `event:${event}`;
       if (!resources.has(key))
@@ -563,7 +573,13 @@ export class ExtensionManager {
         params !== undefined &&
         (!Array.isArray(params) ||
           params.length > 100 ||
-          !params.every((p) => typeof p === "string" || p === null || typeof p === "number" || typeof p === "boolean"))
+          !params.every(
+            (p) =>
+              typeof p === "string" ||
+              p === null ||
+              typeof p === "number" ||
+              typeof p === "boolean",
+          ))
       )
         throw new ExtensionError("ProtocolError", "Invalid query params");
       const write = isWriteQuery(sql);
@@ -600,15 +616,21 @@ export class ExtensionManager {
           Array.isArray(options.headers) ||
           Object.entries(options.headers).length > 20 ||
           Object.entries(options.headers).some(
-            ([k, v]) => typeof k !== "string" || typeof v !== "string" || k.length > 256 || v.length > 4096,
+            ([k, v]) =>
+              typeof k !== "string" || typeof v !== "string" || k.length > 256 || v.length > 4096,
           ))
       )
         throw new ExtensionError("ProtocolError", "Invalid fetch headers");
-      if (options.body !== undefined && (typeof options.body !== "string" || options.body.length > 262144))
+      if (
+        options.body !== undefined &&
+        (typeof options.body !== "string" || options.body.length > 262144)
+      )
         throw new ExtensionError("ProtocolError", "Invalid fetch body");
       if (
         options.timeoutMs !== undefined &&
-        (typeof options.timeoutMs !== "number" || options.timeoutMs < 1 || options.timeoutMs > 30000)
+        (typeof options.timeoutMs !== "number" ||
+          options.timeoutMs < 1 ||
+          options.timeoutMs > 30000)
       )
         throw new ExtensionError("ProtocolError", "Invalid fetch timeout");
       return (await this.core.fetch({ url, options })) as unknown as Json;
@@ -616,7 +638,8 @@ export class ExtensionManager {
     if (method === "secrets.get" || method === "secrets.set" || method === "secrets.delete") {
       this.permissions.require(extension, "filesystem:extension-storage");
       const key = text(0, 80);
-      if (!SECRET_KEY_PATTERN.test(key)) throw new ExtensionError("ProtocolError", "Invalid secret key");
+      if (!SECRET_KEY_PATTERN.test(key))
+        throw new ExtensionError("ProtocolError", "Invalid secret key");
       if (method === "secrets.get") return this.storage.secretGet(id, key);
       if (method === "secrets.delete") {
         await this.storage.secretDelete(id, key);
@@ -674,7 +697,10 @@ export class ExtensionManager {
           !options.args.every((a) => typeof a === "string" && a.length <= 4096))
       )
         throw new ExtensionError("ProtocolError", "Invalid process args");
-      if (options.cwd !== undefined && (typeof options.cwd !== "string" || options.cwd.length > 4096))
+      if (
+        options.cwd !== undefined &&
+        (typeof options.cwd !== "string" || options.cwd.length > 4096)
+      )
         throw new ExtensionError("ProtocolError", "Invalid process cwd");
       if (
         options.env !== undefined &&
@@ -682,13 +708,16 @@ export class ExtensionManager {
           Array.isArray(options.env) ||
           Object.entries(options.env).length > 20 ||
           Object.entries(options.env).some(
-            ([k, v]) => typeof k !== "string" || typeof v !== "string" || k.length > 256 || v.length > 4096,
+            ([k, v]) =>
+              typeof k !== "string" || typeof v !== "string" || k.length > 256 || v.length > 4096,
           ))
       )
         throw new ExtensionError("ProtocolError", "Invalid process env");
       if (
         options.timeoutMs !== undefined &&
-        (typeof options.timeoutMs !== "number" || options.timeoutMs < 1 || options.timeoutMs > 120000)
+        (typeof options.timeoutMs !== "number" ||
+          options.timeoutMs < 1 ||
+          options.timeoutMs > 120000)
       )
         throw new ExtensionError("ProtocolError", "Invalid process timeout");
       return (await this.core.runProcess({ command, options })) as unknown as Json;
@@ -699,7 +728,8 @@ export class ExtensionManager {
         throw new ExtensionError("ProtocolError", "Invalid quick pick items");
       const items = raw.map((entry) => {
         if (typeof entry === "string") {
-          if (!entry || entry.length > 256) throw new ExtensionError("ProtocolError", "Invalid quick pick item");
+          if (!entry || entry.length > 256)
+            throw new ExtensionError("ProtocolError", "Invalid quick pick item");
           return { label: entry };
         }
         if (!entry || typeof entry !== "object" || Array.isArray(entry))
@@ -709,19 +739,23 @@ export class ExtensionManager {
           throw new ExtensionError("ProtocolError", "Invalid quick pick item");
         return {
           label: item.label,
-          description: typeof item.description === "string" ? item.description.slice(0, 256) : undefined,
+          description:
+            typeof item.description === "string" ? item.description.slice(0, 256) : undefined,
           detail: typeof item.detail === "string" ? item.detail.slice(0, 512) : undefined,
           picked: item.picked === true,
         };
       });
       const rawOptions = (args[1] ?? null) as unknown as QuickPickOptions | null;
       const options: QuickPickOptions =
-        rawOptions && typeof rawOptions === "object" && !Array.isArray(rawOptions) ? rawOptions : {};
+        rawOptions && typeof rawOptions === "object" && !Array.isArray(rawOptions)
+          ? rawOptions
+          : {};
       const picked = await this.core.prompt({
         kind: "quickPick",
         extensionId: id,
         title: typeof options.title === "string" ? options.title.slice(0, 256) : undefined,
-        placeholder: typeof options.placeholder === "string" ? options.placeholder.slice(0, 256) : undefined,
+        placeholder:
+          typeof options.placeholder === "string" ? options.placeholder.slice(0, 256) : undefined,
         canPickMany: options.canPickMany === true,
         items: items as { label: string }[],
       });
@@ -731,13 +765,16 @@ export class ExtensionManager {
     if (method === "window.showInputBox") {
       const rawOptions = (args[0] ?? null) as unknown as InputBoxOptions | null;
       const options: InputBoxOptions =
-        rawOptions && typeof rawOptions === "object" && !Array.isArray(rawOptions) ? rawOptions : {};
+        rawOptions && typeof rawOptions === "object" && !Array.isArray(rawOptions)
+          ? rawOptions
+          : {};
       return (await this.core.prompt({
         kind: "inputBox",
         extensionId: id,
         title: typeof options.title === "string" ? options.title.slice(0, 256) : undefined,
         message: typeof options.prompt === "string" ? options.prompt.slice(0, 1024) : undefined,
-        placeholder: typeof options.placeholder === "string" ? options.placeholder.slice(0, 256) : undefined,
+        placeholder:
+          typeof options.placeholder === "string" ? options.placeholder.slice(0, 256) : undefined,
         defaultValue: typeof options.value === "string" ? options.value.slice(0, 4096) : undefined,
         password: options.password === true,
       })) as Json;
@@ -826,7 +863,8 @@ export class ExtensionManager {
     }
     if (method === "panels.onMessage") {
       const panelId = text(0, 128);
-      if (this.panels.owner(panelId) !== id) throw new ExtensionError("PanelNotFoundError", panelId);
+      if (this.panels.owner(panelId) !== id)
+        throw new ExtensionError("PanelNotFoundError", panelId);
       const key = `webview:${panelId}`;
       if (!resources.has(key))
         resources.set(

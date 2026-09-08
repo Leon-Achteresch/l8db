@@ -199,12 +199,16 @@ export function TableTabs() {
                     </span>
                   </span>
                   {tab.kind === "query" && isQueryTabDirty(tab) && (
-                    <span className="text-amber-500" aria-label="Ungespeicherte Änderungen">
+                    <span
+                      role="img"
+                      className="text-amber-500"
+                      aria-label="Ungespeicherte Änderungen"
+                    >
                       ●
                     </span>
                   )}
                   {tab.kind === "query" && tab.externalChange && (
-                    <span className="text-amber-500" aria-label="Datei extern geändert">
+                    <span role="img" className="text-amber-500" aria-label="Datei extern geändert">
                       !
                     </span>
                   )}

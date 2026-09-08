@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useExtensionPrompts, type ActivePrompt } from "@/lib/extensions/prompts";
+import { type ActivePrompt, useExtensionPrompts } from "@/lib/extensions/prompts";
 import { cn } from "@/lib/utils";
 
 export function ExtensionPrompts() {
@@ -176,7 +176,11 @@ function MessageDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">
-            {prompt.level === "error" ? "Fehler" : prompt.level === "warning" ? "Warnung" : "Hinweis"}
+            {prompt.level === "error"
+              ? "Fehler"
+              : prompt.level === "warning"
+                ? "Warnung"
+                : "Hinweis"}
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm">{prompt.message}</p>

@@ -14,8 +14,8 @@ export function SettingsTableTabs() {
         <div>
           <h3 className="text-sm font-semibold">Tabbar für Tabellen & Views</h3>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Sichtbare Tabs für alle Verbindungen festlegen. Auch per Rechtsklick auf die Tabbar.
-            Je nach Datenbank und Objekttyp sind nicht alle Tabs verfügbar.
+            Sichtbare Tabs für alle Verbindungen festlegen. Auch per Rechtsklick auf die Tabbar. Je
+            nach Datenbank und Objekttyp sind nicht alle Tabs verfügbar.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={reset} disabled={hidden.length === 0}>
@@ -25,7 +25,10 @@ export function SettingsTableTabs() {
       <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
         {TABLE_DETAIL_TABS.map((tab) => (
           <label key={tab.id} className="flex items-center justify-between gap-4 text-sm">
-            <span>{tab.label}{tab.entity === "view" ? " (Views)" : ""}</span>
+            <span>
+              {tab.label}
+              {tab.entity === "view" ? " (Views)" : ""}
+            </span>
             <Switch
               checked={!hidden.includes(tab.id)}
               onCheckedChange={(checked) => setVisible(tab.id, checked)}

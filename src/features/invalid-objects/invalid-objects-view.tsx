@@ -1,5 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
-import { EraserIcon, HammerIcon, LoaderIcon, RefreshCwIcon, TerminalIcon, XCircleIcon } from "lucide-react";
+import {
+  EraserIcon,
+  HammerIcon,
+  LoaderIcon,
+  RefreshCwIcon,
+  TerminalIcon,
+  XCircleIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +49,9 @@ export function InvalidObjectsView() {
   if (!caps.compile_objects) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Invalide Objekte werden für diese Verbindung nicht unterstützt.</p>
+        <p className="text-sm text-muted-foreground">
+          Invalide Objekte werden für diese Verbindung nicht unterstützt.
+        </p>
       </div>
     );
   }
@@ -147,7 +156,9 @@ export function InvalidObjectsView() {
                       <span className="block truncate font-mono text-xs">
                         {item.schema}.{item.name}
                       </span>
-                      <span className="block text-[11px] text-muted-foreground">{item.object_type}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {item.object_type}
+                      </span>
                     </span>
                     <Button
                       variant="ghost"
@@ -160,7 +171,9 @@ export function InvalidObjectsView() {
                     <Button
                       variant="outline"
                       size="xs"
-                      disabled={compilingOid === item.oid || item.object_type.toUpperCase() === "SYNONYM"}
+                      disabled={
+                        compilingOid === item.oid || item.object_type.toUpperCase() === "SYNONYM"
+                      }
                       onClick={() =>
                         void handleCompileOne(
                           item.oid,
@@ -208,7 +221,10 @@ export function InvalidObjectsView() {
             ) : (
               <ul className="divide-y">
                 {errors.map((err, idx) => (
-                  <li key={`${err.schema}.${err.name}.${err.object_type}.${idx}`} className="px-4 py-2">
+                  <li
+                    key={`${err.schema}.${err.name}.${err.object_type}.${idx}`}
+                    className="px-4 py-2"
+                  >
                     <div className="flex items-center gap-2 text-xs">
                       <Badge variant="destructive" className="shrink-0 text-[10px]">
                         {err.object_type}

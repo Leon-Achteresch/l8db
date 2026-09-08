@@ -73,7 +73,8 @@
     context.subscriptions.push(disposable);
     return disposable;
   };
-  const notify = (level, message, actions) => rpc("notifications.show", level, message, actions ?? []);
+  const notify = (level, message, actions) =>
+    rpc("notifications.show", level, message, actions ?? []);
   self.onmessage = async ({ data: message }) => {
     if (message.type === "rpc-result") {
       const request = pending.get(message.id);

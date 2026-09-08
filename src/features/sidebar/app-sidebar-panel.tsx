@@ -33,10 +33,9 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
-
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
-import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,8 +102,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useCompileObject } from "@/features/functions/use-compile-object";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
+import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
@@ -128,8 +127,14 @@ import {
   useActiveSchema,
   useDbSelectionStore,
 } from "@/lib/db-selection";
+import {
+  buildInvalidSet,
+  INVALID_GROUP_TYPES,
+  isFunctionInvalid,
+  isPackageInvalid,
+  isViewInvalid,
+} from "@/lib/invalid-objects";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
-import { buildInvalidSet, INVALID_GROUP_TYPES, isFunctionInvalid, isPackageInvalid, isViewInvalid } from "@/lib/invalid-objects";
 import { packageOid } from "@/lib/plsql";
 import {
   useColumnsQuery,
@@ -243,10 +248,7 @@ export function AppSidebarPanel() {
     error: sequencesErrorValue,
   } = useSequencesQuery(selectedTab === "sequences");
 
-  const { data: matviews } = useMaterializedViewsQuery(
-    undefined,
-    selectedTab === "views",
-  );
+  const { data: matviews } = useMaterializedViewsQuery(undefined, selectedTab === "views");
 
   const caps = useActiveCapabilities();
   const packages = functions?.filter((f) => f.return_type === "PACKAGE");
@@ -532,7 +534,11 @@ export function AppSidebarPanel() {
         ) : null}
         <SidebarFavorites />
         <SidebarGroup>
-          <div className={sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"}>
+          <div
+            className={
+              sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
+            }
+          >
             <SidebarGroupLabel className="flex-1">
               {sidebarTab === "tables"
                 ? "Tabellen"
@@ -1142,89 +1148,89 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
             ? isPackageInvalid(invalidSet, item.schema, item.name)
             : isFunctionInvalid(invalidSet, item.schema, item.name);
         return (
-        <SidebarMenuItem key={item.oid}>
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <SidebarMenuButton
-                onClick={() => {
-                  if (item.return_type === "PACKAGE") {
-                    openPackageTab({ schema: item.schema, name: item.name });
-                    navigate({
-                      to: "/packages/$schema/$name",
-                      params: { schema: item.schema, name: item.name },
+          <SidebarMenuItem key={item.oid}>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <SidebarMenuButton
+                  onClick={() => {
+                    if (item.return_type === "PACKAGE") {
+                      openPackageTab({ schema: item.schema, name: item.name });
+                      navigate({
+                        to: "/packages/$schema/$name",
+                        params: { schema: item.schema, name: item.name },
+                      });
+                      return;
+                    }
+                    openFunctionTab({
+                      schema: item.schema,
+                      name: item.name,
+                      oid: item.oid,
                     });
-                    return;
-                  }
-                  openFunctionTab({
-                    schema: item.schema,
-                    name: item.name,
-                    oid: item.oid,
-                  });
-                  navigate({
-                    to: "/functions/$schema/$name",
-                    params: { schema: item.schema, name: item.name },
-                    search: { oid: item.oid },
-                  });
-                }}
-              >
-                {item.return_type === "PACKAGE" ? (
-                  <PackageIcon className="text-muted-foreground" />
+                    navigate({
+                      to: "/functions/$schema/$name",
+                      params: { schema: item.schema, name: item.name },
+                      search: { oid: item.oid },
+                    });
+                  }}
+                >
+                  {item.return_type === "PACKAGE" ? (
+                    <PackageIcon className="text-muted-foreground" />
+                  ) : (
+                    <BracesIcon className="text-muted-foreground" />
+                  )}
+                  <span className="truncate">
+                    {item.name}
+                    {item.return_type === "PACKAGE"
+                      ? ""
+                      : item.identity_args
+                        ? `(${item.identity_args})`
+                        : "()"}
+                  </span>
+                  {invalid ? <InvalidMarker /> : null}
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {caps.compile_objects ? (
+                  item.return_type === "PACKAGE" ? (
+                    <>
+                      <ContextMenuItem
+                        onSelect={() => {
+                          void compile(
+                            packageOid(item.schema, item.name, "spec"),
+                            "package_spec",
+                            `${item.schema}.${item.name} (Spec)`,
+                          );
+                        }}
+                      >
+                        Spec kompilieren
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => {
+                          void compile(
+                            packageOid(item.schema, item.name, "body"),
+                            "package_body",
+                            `${item.schema}.${item.name} (Body)`,
+                          );
+                        }}
+                      >
+                        Body kompilieren
+                      </ContextMenuItem>
+                    </>
+                  ) : (
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(item.oid, "function", `${item.schema}.${item.name}`);
+                      }}
+                    >
+                      Kompilieren
+                    </ContextMenuItem>
+                  )
                 ) : (
-                  <BracesIcon className="text-muted-foreground" />
+                  <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
                 )}
-                <span className="truncate">
-                  {item.name}
-                  {item.return_type === "PACKAGE"
-                    ? ""
-                    : item.identity_args
-                      ? `(${item.identity_args})`
-                      : "()"}
-                </span>
-                {invalid ? <InvalidMarker /> : null}
-              </SidebarMenuButton>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              {caps.compile_objects ? (
-                item.return_type === "PACKAGE" ? (
-                  <>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        void compile(
-                          packageOid(item.schema, item.name, "spec"),
-                          "package_spec",
-                          `${item.schema}.${item.name} (Spec)`,
-                        );
-                      }}
-                    >
-                      Spec kompilieren
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                      onSelect={() => {
-                        void compile(
-                          packageOid(item.schema, item.name, "body"),
-                          "package_body",
-                          `${item.schema}.${item.name} (Body)`,
-                        );
-                      }}
-                    >
-                      Body kompilieren
-                    </ContextMenuItem>
-                  </>
-                ) : (
-                  <ContextMenuItem
-                    onSelect={() => {
-                      void compile(item.oid, "function", `${item.schema}.${item.name}`);
-                    }}
-                  >
-                    Kompilieren
-                  </ContextMenuItem>
-                )
-              ) : (
-                <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        </SidebarMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          </SidebarMenuItem>
         );
       })}
     </SidebarMenu>

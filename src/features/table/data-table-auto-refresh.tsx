@@ -36,9 +36,7 @@ export function DataTableAutoRefresh({
       )}
       <Select
         value={String(intervalMs)}
-        onValueChange={(value) =>
-          onIntervalChange(normalizeAutoRefreshInterval(Number(value)))
-        }
+        onValueChange={(value) => onIntervalChange(normalizeAutoRefreshInterval(Number(value)))}
       >
         <SelectTrigger
           size="sm"

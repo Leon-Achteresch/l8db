@@ -10,11 +10,7 @@ interface PackageViewPrefsState {
   setWidth: (key: string, width: number) => void;
 }
 
-export function packageOutlinePrefKey(
-  connectionId: string,
-  schema: string,
-  name: string,
-): string {
+export function packageOutlinePrefKey(connectionId: string, schema: string, name: string): string {
   return `${connectionId}:${schema}.${name}`;
 }
 

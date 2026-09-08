@@ -36,13 +36,13 @@ export function CompileInvalidButton({ types }: { types: string[] }) {
             database ?? undefined,
           );
           if (result.status === "VALID") ok += 1;
-        } catch {
-          continue;
-        }
+        } catch {}
       }
       const bad = items.length - ok;
       if (bad === 0) {
-        toast.success(`${ok} Objekte kompiliert`, { description: "Alle INVALID-Objekte dieser Gruppe sind jetzt VALID" });
+        toast.success(`${ok} Objekte kompiliert`, {
+          description: "Alle INVALID-Objekte dieser Gruppe sind jetzt VALID",
+        });
       } else {
         toast.error(`${bad} Objekte weiterhin INVALID`, {
           description: `${ok} kompiliert, Details siehe Outputs-Page`,

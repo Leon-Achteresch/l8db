@@ -1,4 +1,4 @@
-import { connectionStatusFor, type ConnectionStatus } from "@/lib/connection-state";
+import { type ConnectionStatus, connectionStatusFor } from "@/lib/connection-state";
 import { useConnectionsStore } from "@/lib/connections";
 import { useConnectionSwitch } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
@@ -9,10 +9,7 @@ interface Props {
   className?: string;
 }
 
-const STATUS_CONFIG: Record<
-  ConnectionStatus,
-  { label: string; dot: string; pulse: boolean }
-> = {
+const STATUS_CONFIG: Record<ConnectionStatus, { label: string; dot: string; pulse: boolean }> = {
   disconnected: { label: "Getrennt", dot: "bg-muted-foreground/45", pulse: false },
   connecting: { label: "Wird verbunden", dot: "bg-sky-500", pulse: true },
   connected: { label: "Verbunden", dot: "bg-emerald-500", pulse: false },
@@ -36,6 +33,7 @@ export function ConnectionStatusIndicator({ connectionId, showLabel = false, cla
 
   return (
     <span
+      role="img"
       aria-label={config.label}
       className={cn("inline-flex shrink-0 items-center gap-1.5", className)}
       data-connection-status={status}

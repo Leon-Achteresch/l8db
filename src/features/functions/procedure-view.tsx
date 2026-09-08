@@ -17,7 +17,11 @@ import { useActiveConnection } from "@/lib/connections";
 import { type DebugSessionInfo, startDebugSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
-import { useFunctionDefinitionQuery, useInvalidObjectsQuery, useProceduresQuery } from "@/lib/queries";
+import {
+  useFunctionDefinitionQuery,
+  useInvalidObjectsQuery,
+  useProceduresQuery,
+} from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 

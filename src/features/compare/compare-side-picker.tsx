@@ -1,10 +1,4 @@
-import {
-  DatabaseIcon,
-  GitCompareIcon,
-  LayersIcon,
-  LoaderIcon,
-  LockIcon,
-} from "lucide-react";
+import { DatabaseIcon, GitCompareIcon, LayersIcon, LoaderIcon, LockIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ProviderLogo } from "@/components/provider-logo";
@@ -251,13 +245,13 @@ export function CompareSidePicker({
         </Label>
         <Select
           value={value.schema ?? ""}
-          onValueChange={(schema) =>
-            emit({ ...value, schema, objectName: null, objectOid: null })
-          }
+          onValueChange={(schema) => emit({ ...value, schema, objectName: null, objectOid: null })}
           disabled={!connection || loadingSchemas || schemas.length === 0}
         >
           <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
-            {loadingSchemas && <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />}
+            {loadingSchemas && (
+              <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+            )}
             <SelectValue placeholder={loadingSchemas ? "Lädt…" : "Schema wählen"} />
           </SelectTrigger>
           <SelectContent>
@@ -330,7 +324,9 @@ export function CompareSidePicker({
           disabled={!value.schema || loadingObjects || objects.length === 0}
         >
           <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
-            {loadingObjects && <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />}
+            {loadingObjects && (
+              <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+            )}
             <SelectValue placeholder={loadingObjects ? "Lädt…" : "Objekt wählen"} />
           </SelectTrigger>
           <SelectContent>

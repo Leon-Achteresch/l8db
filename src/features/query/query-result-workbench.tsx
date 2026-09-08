@@ -18,9 +18,7 @@ export function QueryResultWorkbench({
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
-  const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(
-    null,
-  );
+  const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(null);
   const [lastResult, setLastResult] = useState(result);
   if (lastResult !== result) {
     setLastResult(result);
@@ -102,9 +100,7 @@ export function QueryResultWorkbench({
             title="Suchergebnisse als JSON kopieren; lokale Spaltenfilter und Sortierung gelten nur in der Tabelle"
             onClick={async () => {
               try {
-                await navigator.clipboard.writeText(
-                  JSON.stringify(filtered?.rows ?? [], null, 2),
-                );
+                await navigator.clipboard.writeText(JSON.stringify(filtered?.rows ?? [], null, 2));
                 toast.success("Suchergebnisse kopiert");
               } catch {
                 toast.error("Ergebnisse konnten nicht kopiert werden");

@@ -41,7 +41,7 @@ export function QueryWorkspaceSettings() {
           Wird automatisch gespeichert und gilt für alle Query-Tabs.
         </p>
       </div>
-      <div className="grid grid-cols-3 gap-2" aria-label="Arbeitsplatz-Vorlagen">
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Arbeitsplatz-Vorlagen">
         {(
           [
             ["focus", "Schreiben", "Mehr Platz für Code"],
