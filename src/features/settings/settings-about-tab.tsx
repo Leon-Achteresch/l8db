@@ -55,7 +55,7 @@ export function SettingsAboutTab() {
 
       <UpdateSection />
 
-      <div className="pt-2">
+      <div className="space-y-3 pt-2">
         <SettingsRow
           title="Systemdiagnose"
           description="Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte."
