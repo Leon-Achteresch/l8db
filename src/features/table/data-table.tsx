@@ -1109,6 +1109,128 @@ export function DataTable({
     toast.success("In die Zwischenablage kopiert!");
   }, []);
 
+  const headerGroups = table.getHeaderGroups();
+  const resizingColumn = table.getState().columnSizingInfo.isResizingColumn;
+  const tableHeader = useMemo(
+    () => (
+      <thead className="sticky top-0 z-10 select-none">
+        {headerGroups.map((headerGroup) => (
+          <tr key={headerGroup.id}>
+            {columnWindow.items.map((item) => {
+              if (item.spacer)
+                return (
+                  <th
+                    key={`gap-${item.index}`}
+                    aria-hidden
+                    colSpan={item.span}
+                    style={{ width: item.width, padding: 0 }}
+                  />
+                );
+              const header = headerGroup.headers[item.index];
+              if (header.id === INDEX_COLUMN) {
+                return (
+                  <ContextMenu key={header.id}>
+                    <ContextMenuTrigger asChild>
+                      <th
+                        title="Rechtsklick: Spalten"
+                        className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
+                        style={{ width: header.getSize() }}
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-64">
+                      <DataTableColumnSettings
+                        columns={order}
+                        hidden={hidden}
+                        pinned={pinned}
+                        isCustomized={isCustomized}
+                        onToggle={(column) => setHidden(toggleHiddenColumn(order, hidden, column))}
+                        onReorder={setOrder}
+                        onReset={reset}
+                        onShowAll={() => setHidden([])}
+                        onUnpinAll={() => setPinned([])}
+                        onCopyColumnNames={copyColumnNames}
+                        profiles={profiles}
+                        canUseProfiles={canUseProfiles}
+                        onSaveProfile={saveProfile}
+                        onApplyProfile={applyProfile}
+                        onRenameProfile={renameProfile}
+                        onDeleteProfile={deleteProfile}
+                      />
+                    </ContextMenuContent>
+                  </ContextMenu>
+                );
+              }
+              return (
+                <DataTableHeaderCell
+                  key={header.id}
+                  header={header}
+                  sortableIndex={visibleDataColumns.indexOf(header.id)}
+                  isFetching={isFetching}
+                  sorting={sorting}
+                  onSortingChange={onSortingChange}
+                  filterOpen={filterColumn === header.id}
+                  onFilterOpenChange={(open) => {
+                    if (open) setFilterColumn(header.id);
+                    else setFilterColumn(null);
+                  }}
+                  filterOperator={filterOperator}
+                  onFilterOperatorChange={setFilterOperator}
+                  filterValue={filterValue}
+                  onFilterValueChange={setFilterValue}
+                  compiledFilter={filterColumn === header.id ? compiledFilter : ""}
+                  onApplyFilter={onApplyFilter}
+                  onApplyColumnFilter={applyColumnFilter}
+                  onHideColumn={() => setHidden(toggleHiddenColumn(order, hidden, header.id))}
+                  canHide={visibleDataColumns.length > 1}
+                  isPinned={pinnedSet.has(header.id)}
+                  onTogglePin={() => setPinned(togglePinnedColumn(order, pinned, header.id))}
+                />
+              );
+            })}
+          </tr>
+        ))}
+      </thead>
+    ),
+    [
+      headerGroups,
+      columnWindow.items,
+      columnSizing,
+      resizingColumn,
+      columnPinning,
+      typeInfoByColumn,
+      order,
+      hidden,
+      pinned,
+      isCustomized,
+      setHidden,
+      setOrder,
+      reset,
+      setPinned,
+      copyColumnNames,
+      profiles,
+      canUseProfiles,
+      saveProfile,
+      applyProfile,
+      renameProfile,
+      deleteProfile,
+      visibleDataColumns,
+      isFetching,
+      sorting,
+      onSortingChange,
+      filterColumn,
+      filterOperator,
+      filterValue,
+      compiledFilter,
+      onApplyFilter,
+      applyColumnFilter,
+      pinnedSet,
+    ],
+  );
+
   return (
     <div ref={rootRef} className={cn("flex min-h-0 flex-1 flex-col relative", className)}>
       {isFetching && (
@@ -1229,93 +1351,7 @@ export function DataTable({
                   <col key={column.id} style={{ width: columnWidths[index] }} />
                 ))}
               </colgroup>
-              <thead className="sticky top-0 z-10 select-none">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {columnWindow.items.map((item) => {
-                      if (item.spacer)
-                        return (
-                          <th
-                            key={`gap-${item.index}`}
-                            aria-hidden
-                            colSpan={item.span}
-                            style={{ width: item.width, padding: 0 }}
-                          />
-                        );
-                      const header = headerGroup.headers[item.index];
-                      if (header.id === INDEX_COLUMN) {
-                        return (
-                          <ContextMenu key={header.id}>
-                            <ContextMenuTrigger asChild>
-                              <th
-                                title="Rechtsklick: Spalten"
-                                className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
-                                style={{ width: header.getSize() }}
-                              >
-                                {header.isPlaceholder
-                                  ? null
-                                  : flexRender(header.column.columnDef.header, header.getContext())}
-                              </th>
-                            </ContextMenuTrigger>
-                            <ContextMenuContent className="w-64">
-                              <DataTableColumnSettings
-                                columns={order}
-                                hidden={hidden}
-                                pinned={pinned}
-                                isCustomized={isCustomized}
-                                onToggle={(column) =>
-                                  setHidden(toggleHiddenColumn(order, hidden, column))
-                                }
-                                onReorder={setOrder}
-                                onReset={reset}
-                                onShowAll={() => setHidden([])}
-                                onUnpinAll={() => setPinned([])}
-                                onCopyColumnNames={copyColumnNames}
-                                profiles={profiles}
-                                canUseProfiles={canUseProfiles}
-                                onSaveProfile={saveProfile}
-                                onApplyProfile={applyProfile}
-                                onRenameProfile={renameProfile}
-                                onDeleteProfile={deleteProfile}
-                              />
-                            </ContextMenuContent>
-                          </ContextMenu>
-                        );
-                      }
-                      return (
-                        <DataTableHeaderCell
-                          key={header.id}
-                          header={header}
-                          sortableIndex={visibleDataColumns.indexOf(header.id)}
-                          isFetching={isFetching}
-                          sorting={sorting}
-                          onSortingChange={onSortingChange}
-                          filterOpen={filterColumn === header.id}
-                          onFilterOpenChange={(open) => {
-                            if (open) setFilterColumn(header.id);
-                            else setFilterColumn(null);
-                          }}
-                          filterOperator={filterOperator}
-                          onFilterOperatorChange={setFilterOperator}
-                          filterValue={filterValue}
-                          onFilterValueChange={setFilterValue}
-                          compiledFilter={filterColumn === header.id ? compiledFilter : ""}
-                          onApplyFilter={onApplyFilter}
-                          onApplyColumnFilter={applyColumnFilter}
-                          onHideColumn={() =>
-                            setHidden(toggleHiddenColumn(order, hidden, header.id))
-                          }
-                          canHide={visibleDataColumns.length > 1}
-                          isPinned={pinnedSet.has(header.id)}
-                          onTogglePin={() =>
-                            setPinned(togglePinnedColumn(order, pinned, header.id))
-                          }
-                        />
-                      );
-                    })}
-                  </tr>
-                ))}
-              </thead>
+              {tableHeader}
               <ContextMenu>
                 <ContextMenuTrigger asChild>
                   <tbody

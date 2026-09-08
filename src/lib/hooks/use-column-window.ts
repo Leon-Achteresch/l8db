@@ -1,5 +1,7 @@
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { type RefObject, useCallback, useEffect, useMemo } from "react";
+
+import { columnWindowRange } from "@/lib/column-window";
 
 export type ColumnWindowItem = { index: number; span: number; width: number; spacer: boolean };
 
@@ -10,8 +12,7 @@ export function useColumnWindow(
 ) {
   const enabled = widths.length > 20;
   const rangeExtractor = useCallback(
-    (range: Parameters<typeof defaultRangeExtractor>[0]) =>
-      [...new Set([...pinned, ...defaultRangeExtractor(range)])].sort((a, b) => a - b),
+    (range: Parameters<typeof columnWindowRange>[0]) => columnWindowRange(range, pinned),
     [pinned],
   );
   const virtualizer = useVirtualizer({

@@ -1,6 +1,6 @@
+import type { SortingState } from "@tanstack/react-table";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { SortingState } from "@tanstack/react-table";
 import { QueryResultTable } from "../../src/features/query/query-result-table";
 import { DataTable } from "../../src/features/table/data-table";
 
@@ -106,6 +106,32 @@ async function measure() {
   const fps = (frames.length / total) * 1000;
   const worstFrameMs = Math.max(...frames);
   const rowsAfterScroll = document.querySelectorAll("tbody tr[data-index]").length;
+  scroller.scrollTop = 0;
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const horizontalHeights = new Set<number>();
+  const horizontalFrames: number[] = [];
+  let horizontalLast = performance.now();
+  const horizontalEnd = horizontalLast + 2000;
+  let direction = 1;
+  await new Promise<void>((resolve) => {
+    const frame = () => {
+      const now = performance.now();
+      horizontalFrames.push(now - horizontalLast);
+      horizontalLast = now;
+      horizontalHeights.add(
+        document.querySelector("tbody tr[data-index]")!.getBoundingClientRect().height,
+      );
+      scroller.scrollLeft += direction * 120;
+      if (scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth) direction = -1;
+      if (scroller.scrollLeft <= 0) direction = 1;
+      if (now < horizontalEnd) requestAnimationFrame(frame);
+      else resolve();
+    };
+    requestAnimationFrame(frame);
+  });
+  const horizontalFps =
+    (horizontalFrames.length / horizontalFrames.reduce((a, b) => a + b, 0)) * 1000;
+  const horizontalWorstFrameMs = Math.max(...horizontalFrames);
   const heapMb =
     (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
   return {
@@ -115,6 +141,9 @@ async function measure() {
     rowsAfterScroll,
     fps,
     worstFrameMs,
+    horizontalHeights: [...horizontalHeights],
+    horizontalFps,
+    horizontalWorstFrameMs,
     heapMb: heapMb / 1024 / 1024,
     totalRows: ROWS,
   };

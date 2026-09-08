@@ -1,7 +1,7 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import { editorFontStack, editorLineHeightPx } from "@/lib/editor-options";
-import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { addSqlFormatAction, monaco, overflowWidgetsDomNode } from "@/lib/monaco";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +78,7 @@ export function SqlEditor({
       contextmenu: false,
       tabSize: 2,
       fixedOverflowWidgets: true,
+      overflowWidgetsDomNode,
       placeholder,
       readOnly,
       domReadOnly: readOnly,
