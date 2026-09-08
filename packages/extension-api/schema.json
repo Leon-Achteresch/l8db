@@ -51,7 +51,7 @@
           "description": "npm semver range"
         },
         "api": {
-          "const": "^1.0.0",
+          "enum": ["^1.0.0", "^1.1.0"],
           "default": "^1.0.0"
         }
       }
@@ -61,7 +61,7 @@
       "maxItems": 100,
       "items": {
         "type": "string",
-        "pattern": "^(onStartup|onDatabaseOpen|onCommand:[a-zA-Z0-9][a-zA-Z0-9._-]{0,127})$"
+        "pattern": "^(onStartup|onDatabaseOpen|onCommand:[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}|onView:[a-zA-Z0-9][a-zA-Z0-9._-]{0,127})$"
       }
     },
     "permissions": {
@@ -77,6 +77,36 @@
           "clipboard:write",
           "process:execute"
         ]
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {
+          "type": "object",
+          "required": ["hosts"],
+          "additionalProperties": false,
+          "properties": {
+            "hosts": {
+              "type": "array",
+              "maxItems": 50,
+              "items": { "type": "string", "minLength": 1, "maxLength": 253 }
+            }
+          }
+        },
+        "process": {
+          "type": "object",
+          "required": ["commands"],
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "type": "array",
+              "maxItems": 50,
+              "items": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$" }
+            }
+          }
+        }
       }
     },
     "dependencies": {
@@ -111,6 +141,10 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 4096
+              },
+              "icon": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
               }
             }
           }
@@ -137,6 +171,12 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "enum": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": { "type": "boolean" }
                   }
                 }
               },
@@ -155,6 +195,12 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "enum": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": { "type": "string" }
                   }
                 }
               },
@@ -173,10 +219,69 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "enum": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": { "type": "number" }
                   }
                 }
               }
             ]
+          }
+        },
+        "views": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "location"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 4096 },
+              "location": { "enum": ["sidebar", "panel"] },
+              "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" }
+            }
+          }
+        },
+        "panels": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            }
+          }
+        },
+        "statusBar": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
+              "alignment": { "enum": ["left", "right"] },
+              "priority": { "type": "number" }
+            }
+          }
+        },
+        "menus": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": ["command", "location"],
+            "properties": {
+              "command": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
+              "location": { "enum": ["palette", "view/title", "view/item", "statusBar"] },
+              "view": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
+              "group": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            }
           }
         }
       }

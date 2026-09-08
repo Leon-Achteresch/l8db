@@ -58,7 +58,7 @@ export function CommunityExtensionCard({
                 }
               />
               {permission}
-              {!host.permissions.supported.includes(permission) && " (in API v1 gesperrt)"}
+              {!host.permissions.supported.includes(permission) && " (wird nicht unterstützt)"}
             </label>
           ))}
         </fieldset>
@@ -134,6 +134,31 @@ export function CommunityExtensionCard({
           {command.title}
         </Button>
       ))}
+      {(manifest.contributes?.views ?? []).length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Ansichten: {(manifest.contributes?.views ?? []).map((view) => view.title).join(", ")}
+        </p>
+      )}
+      {(manifest.contributes?.panels ?? []).length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Panels: {(manifest.contributes?.panels ?? []).map((panel) => panel.title).join(", ")}
+        </p>
+      )}
+      {(manifest.contributes?.statusBar ?? []).length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Statusleiste: {(manifest.contributes?.statusBar ?? []).map((item) => item.id).join(", ")}
+        </p>
+      )}
+      {manifest.capabilities?.network && (
+        <p className="break-all text-xs text-muted-foreground">
+          Netzwerk-Hosts: {manifest.capabilities.network.hosts.join(", ")}
+        </p>
+      )}
+      {manifest.capabilities?.process && (
+        <p className="break-all text-xs text-muted-foreground">
+          Prozesse: {manifest.capabilities.process.commands.join(", ")}
+        </p>
+      )}
       {!!Object.keys(manifest.contributes?.configuration ?? {}).length && (
         <details>
           <summary className="cursor-pointer text-sm">Konfiguration</summary>

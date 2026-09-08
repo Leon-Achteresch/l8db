@@ -2,10 +2,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { LinkIcon } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
-
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import type { SynonymInfo } from "@/lib/db";
+import { isSynonymTargetInvalid } from "@/lib/invalid-objects";
 import { resolveSynonym } from "@/lib/synonyms";
 import { normalizeObjectType } from "@/lib/used-by";
 
@@ -88,6 +89,9 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
               <span className="flex w-full items-center gap-2">
                 <LinkIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{synonym.name}</span>
+                {isSynonymTargetInvalid(synonym.status) ? (
+                  <InvalidMarker label={synonym.status} />
+                ) : null}
                 <span
                   className={`ml-auto shrink-0 text-[10px] ${
                     synonym.status.toUpperCase() === "VALID"

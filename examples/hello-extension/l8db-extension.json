@@ -2,14 +2,20 @@
   "id": "community.hello",
   "name": "Hello l8db",
   "version": "1.0.0",
-  "description": "A minimal community extension demonstrating commands, events and configuration.",
+  "description": "A minimal community extension demonstrating commands, events, views, panels and configuration.",
   "publisher": "community",
   "engines": { "l8db": ">=0.1.0 <1.0.0", "api": "^1.0.0" },
   "main": "./dist/extension.js",
-  "activationEvents": ["onCommand:hello.greet", "onDatabaseOpen"],
+  "activationEvents": ["onCommand:hello.greet", "onCommand:hello.inspect", "onDatabaseOpen", "onView:hello.overview"],
   "permissions": ["database:read"],
   "contributes": {
-    "commands": [{ "id": "hello.greet", "title": "Hello: Greet" }],
+    "commands": [
+      { "id": "hello.greet", "title": "Hello: Greet" },
+      { "id": "hello.inspect", "title": "Hello: Inspect Active Database" }
+    ],
+    "views": [{ "id": "hello.overview", "title": "Hello Overview", "location": "sidebar" }],
+    "statusBar": [{ "id": "hello.status", "alignment": "right", "priority": 10 }],
+    "menus": [{ "command": "hello.inspect", "location": "view/title", "view": "hello.overview" }],
     "configuration": { "hello.enabled": { "type": "boolean", "default": true, "description": "Show greeting notifications" } }
   }
 }

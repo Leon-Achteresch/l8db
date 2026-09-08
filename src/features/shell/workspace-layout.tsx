@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
+import { useSqlIntellisenseSync } from "@/lib/monaco-intellisense";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -19,6 +20,7 @@ const sensors = [
 ];
 
 export function WorkspaceLayout() {
+  useSqlIntellisenseSync();
   const activeTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
@@ -63,8 +65,8 @@ export function WorkspaceLayout() {
       }}
     >
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 items-center gap-2 border-b border-border/70 bg-card/70 px-3 py-1 backdrop-blur-md">
-          <SidebarTrigger className="-ml-1" />
+        <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5">
+          <SidebarTrigger className="size-7 rounded-full" />
           <TableTabs />
         </header>
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

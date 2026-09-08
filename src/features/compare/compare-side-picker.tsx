@@ -1,5 +1,7 @@
+import { DatabaseIcon, GitCompareIcon, LayersIcon, LoaderIcon, LockIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ProviderLogo } from "@/components/provider-logo";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -8,80 +10,61 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { type FunctionInfo, listDatabases, listFunctions, listSchemas, listViews } from "@/lib/db";
+import { CompareObjectIcon } from "@/features/compare/compare-object-icon";
+import { compareLoadErrorMessage, listCompareObjects } from "@/lib/compare-definition";
+import {
+  COMPARE_OBJECT_LABELS,
+  type CompareObjectType,
+  type CompareSideSelection,
+  supportedCompareObjectTypes,
+} from "@/lib/compare-types";
+import { providerFor } from "@/lib/connection-url";
+import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
+import { listDatabases, listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
-
-export type CompareObjectType = "view" | "routine";
-
-export interface CompareSideSelection {
-  connectionId: string | null;
-  database: string | null;
-  schema: string | null;
-  objectType: CompareObjectType;
-  objectName: string | null;
-  objectOid: string | null;
-}
-
-export const EMPTY_SIDE: CompareSideSelection = {
-  connectionId: null,
-  database: null,
-  schema: null,
-  objectType: "view",
-  objectName: null,
-  objectOid: null,
-};
 
 interface CompareSidePickerProps {
   title: string;
   value: CompareSideSelection;
   onChange: (value: CompareSideSelection) => void;
+  lockConnection?: SavedConnection | null;
+  hideObjectType?: boolean;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function supportedObjectTypes(connection: SavedConnection | null): CompareObjectType[] {
-  if (!connection) return [];
-  const capabilities = capabilitiesFor(connection.kind);
-  const types: CompareObjectType[] = [];
-  if (capabilities.views) types.push("view");
-  if (capabilities.functions) types.push("routine");
-  return types;
-}
-
-function routineLabel(routine: FunctionInfo): string {
-  return `${routine.name}(${routine.identity_args})`;
-}
-
-export function CompareSidePicker({ title, value, onChange }: CompareSidePickerProps) {
+export function CompareSidePicker({
+  title,
+  value,
+  onChange,
+  lockConnection,
+  hideObjectType,
+}: CompareSidePickerProps) {
   const connections = useConnectionsStore((state) => state.connections);
   const [databases, setDatabases] = useState<string[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
-  const [views, setViews] = useState<string[]>([]);
-  const [routines, setRoutines] = useState<FunctionInfo[]>([]);
+  const [objects, setObjects] = useState<{ name: string; oid: string | null }[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingSchemas, setLoadingSchemas] = useState(false);
   const [loadingObjects, setLoadingObjects] = useState(false);
 
-  const usable = connections.filter((connection) => {
-    const capabilities = capabilitiesFor(connection.kind);
-    return capabilities.views || capabilities.functions;
-  });
+  const usable = connections;
   const connection: SavedConnection | null =
-    usable.find((item) => item.id === value.connectionId) ?? null;
+    lockConnection ?? usable.find((item) => item.id === value.connectionId) ?? null;
+  const capabilities = capabilitiesFor(connection?.kind);
+  const availableTypes = supportedCompareObjectTypes(connection);
+  const usesOid = value.objectType === "routine" || value.objectType === "procedure";
+  const emit = (next: CompareSideSelection) => {
+    onChange(lockConnection ? { ...next, connectionId: lockConnection.id } : next);
+  };
 
   useEffect(() => {
-    if (!connection) {
+    if (!connection || !capabilities.databases) {
       setDatabases([]);
       return;
     }
     let active = true;
-    const url = effectiveConnectionString(connection);
-    listDatabases(connection.kind, url)
+    listDatabases(connection.kind, effectiveConnectionString(connection))
       .then((list) => {
         if (!active) return;
         setDatabases(list);
@@ -90,34 +73,32 @@ export function CompareSidePicker({ title, value, onChange }: CompareSidePickerP
       .catch((error) => {
         if (!active) return;
         setDatabases([]);
-        setLoadError(`Datenbanken: ${errorMessage(error)}`);
+        setLoadError(`Datenbanken: ${compareLoadErrorMessage(error)}`);
       });
     return () => {
       active = false;
     };
-  }, [connection]);
+  }, [capabilities.databases, connection]);
 
   useEffect(() => {
     setSchemas([]);
-    setViews([]);
-    setRoutines([]);
+    setObjects([]);
     if (!connection) {
       setLoadingSchemas(false);
       return;
     }
     let active = true;
     setLoadingSchemas(true);
-    const url = effectiveConnectionString(connection);
-    listSchemas(connection.kind, url, value.database ?? undefined)
+    listSchemas(connection.kind, effectiveConnectionString(connection), value.database ?? undefined)
       .then((list) => {
         if (!active) return;
-        setSchemas(list);
+        setSchemas(visibleSchemas(connection, list));
         setLoadError(null);
       })
       .catch((error) => {
         if (!active) return;
         setSchemas([]);
-        setLoadError(`Schemas: ${errorMessage(error)}`);
+        setLoadError(`Schemas: ${compareLoadErrorMessage(error)}`);
       })
       .finally(() => {
         if (active) setLoadingSchemas(false);
@@ -128,138 +109,172 @@ export function CompareSidePicker({ title, value, onChange }: CompareSidePickerP
   }, [connection, value.database]);
 
   useEffect(() => {
-    setViews([]);
-    setRoutines([]);
+    setObjects([]);
     if (!connection || !value.schema) {
       setLoadingObjects(false);
       return;
     }
     let active = true;
     setLoadingObjects(true);
-    const url = effectiveConnectionString(connection);
-    const database = value.database ?? undefined;
-    if (value.objectType === "view") {
-      listViews(connection.kind, url, database, value.schema)
-        .then((list) => {
-          if (!active) return;
-          setViews(list.map((item) => item.name));
-          setLoadError(null);
-        })
-        .catch((error) => {
-          if (!active) return;
-          setViews([]);
-          setLoadError(`Views: ${errorMessage(error)}`);
-        })
-        .finally(() => {
-          if (active) setLoadingObjects(false);
-        });
-    } else {
-      listFunctions(connection.kind, url, database, value.schema)
-        .then((list) => {
-          if (!active) return;
-          setRoutines(list);
-          setLoadError(null);
-        })
-        .catch((error) => {
-          if (!active) return;
-          setRoutines([]);
-          setLoadError(`Routinen: ${errorMessage(error)}`);
-        })
-        .finally(() => {
-          if (active) setLoadingObjects(false);
-        });
-    }
+    listCompareObjects(connection, {
+      ...value,
+      objectName: null,
+      objectOid: null,
+    })
+      .then((list) => {
+        if (!active) return;
+        setObjects(list);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setObjects([]);
+        setLoadError(`Objekte: ${compareLoadErrorMessage(error)}`);
+      })
+      .finally(() => {
+        if (active) setLoadingObjects(false);
+      });
     return () => {
       active = false;
     };
-  }, [connection, value.database, value.schema, value.objectType]);
-
-  const availableTypes = supportedObjectTypes(connection);
+  }, [connection, value.database, value.objectType, value.schema]);
 
   const handleConnection = (connectionId: string) => {
     const picked = usable.find((item) => item.id === connectionId) ?? null;
     const database = picked
       ? databaseFromConnectionString(effectiveConnectionString(picked))
       : null;
-    const types = supportedObjectTypes(picked);
-    const objectType = types.includes(value.objectType) ? value.objectType : (types[0] ?? "view");
-    onChange({ ...EMPTY_SIDE, objectType, connectionId, database });
+    const types = supportedCompareObjectTypes(picked);
+    const objectType = types.includes(value.objectType) ? value.objectType : (types[0] ?? "table");
+    emit({
+      connectionId,
+      database,
+      schema: null,
+      objectType,
+      objectName: null,
+      objectOid: null,
+    });
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase text-muted-foreground">{title}</span>
-        {loadError && <span className="text-xs text-destructive">{loadError}</span>}
+    <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3">
+      <div className="flex items-center gap-2">
+        {lockConnection ? (
+          <LockIcon className="size-3.5 shrink-0 text-emerald-500" />
+        ) : (
+          <GitCompareIcon className="size-3.5 shrink-0 text-sky-500" />
+        )}
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </span>
+        {lockConnection && (
+          <span className="ml-auto flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+            <ProviderLogo
+              providerId={providerFor(lockConnection).id}
+              kind={lockConnection.kind}
+              className="size-3.5"
+            />
+            <span className="truncate">{lockConnection.name}</span>
+          </span>
+        )}
       </div>
+      {loadError && <span className="text-xs text-destructive">{loadError}</span>}
 
-      <div className="grid gap-2 md:grid-cols-2">
+      {!lockConnection && (
         <div className="flex flex-col gap-1">
-          <Label className="text-xs">Verbindung</Label>
+          <Label className="flex items-center gap-1.5 text-xs">
+            <GitCompareIcon className="size-3.5 text-muted-foreground" />
+            Verbindung
+          </Label>
           <Select value={value.connectionId ?? ""} onValueChange={handleConnection}>
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-8 w-full min-w-0 text-xs">
               <SelectValue placeholder="Verbindung wählen" />
             </SelectTrigger>
             <SelectContent>
               {usable.map((item) => (
                 <SelectItem key={item.id} value={item.id} className="text-xs">
+                  <ProviderLogo
+                    providerId={providerFor(item).id}
+                    kind={item.kind}
+                    className="size-3.5"
+                  />
                   {item.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+      )}
 
+      {capabilities.databases && (
         <div className="flex flex-col gap-1">
-          <Label className="text-xs">Datenbank</Label>
+          <Label className="flex items-center gap-1.5 text-xs">
+            <DatabaseIcon className="size-3.5 text-muted-foreground" />
+            Datenbank
+          </Label>
           <Select
             value={value.database ?? ""}
             onValueChange={(database) =>
-              onChange({ ...value, database, schema: null, objectName: null, objectOid: null })
+              emit({ ...value, database, schema: null, objectName: null, objectOid: null })
             }
             disabled={!connection || databases.length === 0}
           >
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-8 w-full min-w-0 text-xs">
               <SelectValue placeholder="Datenbank wählen" />
             </SelectTrigger>
             <SelectContent>
               {databases.map((database) => (
                 <SelectItem key={database} value={database} className="text-xs">
+                  <DatabaseIcon className="size-3.5 text-muted-foreground" />
                   {database}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+      )}
 
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs">Schema</Label>
-          <Select
-            value={value.schema ?? ""}
-            onValueChange={(schema) =>
-              onChange({ ...value, schema, objectName: null, objectOid: null })
-            }
-            disabled={!connection || loadingSchemas || schemas.length === 0}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Schema wählen" />
-            </SelectTrigger>
-            <SelectContent>
-              {schemas.map((schema) => (
-                <SelectItem key={schema} value={schema} className="text-xs">
-                  {schema}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="flex flex-col gap-1">
+        <Label className="flex items-center gap-1.5 text-xs">
+          {loadingSchemas ? (
+            <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+          ) : (
+            <LayersIcon className="size-3.5 text-muted-foreground" />
+          )}
+          Schema
+        </Label>
+        <Select
+          value={value.schema ?? ""}
+          onValueChange={(schema) => emit({ ...value, schema, objectName: null, objectOid: null })}
+          disabled={!connection || loadingSchemas || schemas.length === 0}
+        >
+          <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
+            {loadingSchemas && (
+              <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+            )}
+            <SelectValue placeholder={loadingSchemas ? "Lädt…" : "Schema wählen"} />
+          </SelectTrigger>
+          <SelectContent>
+            {schemas.map((schema) => (
+              <SelectItem key={schema} value={schema} className="text-xs">
+                <LayersIcon className="size-3.5 text-muted-foreground" />
+                {schema}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
+      {!hideObjectType && (
         <div className="flex flex-col gap-1">
-          <Label className="text-xs">Objekttyp</Label>
+          <Label className="flex items-center gap-1.5 text-xs">
+            <CompareObjectIcon type={value.objectType} />
+            Objekttyp
+          </Label>
           <Select
             value={value.objectType}
             onValueChange={(objectType) =>
-              onChange({
+              emit({
                 ...value,
                 objectType: objectType as CompareObjectType,
                 objectName: null,
@@ -268,64 +283,65 @@ export function CompareSidePicker({ title, value, onChange }: CompareSidePickerP
             }
             disabled={availableTypes.length < 2}
           >
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-8 w-full min-w-0 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {availableTypes.map((type) => (
                 <SelectItem key={type} value={type} className="text-xs">
-                  {type === "view" ? "View" : "Routine"}
+                  <CompareObjectIcon type={type} />
+                  {COMPARE_OBJECT_LABELS[type]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-col gap-1">
-        <Label className="text-xs">Objekt</Label>
-        {value.objectType === "view" ? (
-          <Select
-            value={value.objectName ?? ""}
-            onValueChange={(objectName) => onChange({ ...value, objectName, objectOid: null })}
-            disabled={!value.schema || loadingObjects || views.length === 0}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="View wählen" />
-            </SelectTrigger>
-            <SelectContent>
-              {views.map((name) => (
-                <SelectItem key={name} value={name} className="text-xs">
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Select
-            value={value.objectOid ?? ""}
-            onValueChange={(oid) => {
-              const routine = routines.find((item) => item.oid === oid) ?? null;
-              onChange({
+        <Label className="flex items-center gap-1.5 text-xs">
+          {loadingObjects ? (
+            <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+          ) : (
+            <CompareObjectIcon type={value.objectType} />
+          )}
+          Objekt
+        </Label>
+        <Select
+          value={usesOid ? (value.objectOid ?? "") : (value.objectName ?? "")}
+          onValueChange={(picked) => {
+            if (usesOid) {
+              const match = objects.find((item) => item.oid === picked);
+              emit({
                 ...value,
-                objectOid: oid,
-                objectName: routine ? routineLabel(routine) : null,
+                objectOid: picked,
+                objectName: match?.name ?? null,
               });
-            }}
-            disabled={!value.schema || loadingObjects || routines.length === 0}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Routine wählen" />
-            </SelectTrigger>
-            <SelectContent>
-              {routines.map((routine) => (
-                <SelectItem key={routine.oid} value={routine.oid} className="text-xs">
-                  {routineLabel(routine)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+              return;
+            }
+            emit({ ...value, objectName: picked, objectOid: null });
+          }}
+          disabled={!value.schema || loadingObjects || objects.length === 0}
+        >
+          <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
+            {loadingObjects && (
+              <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+            )}
+            <SelectValue placeholder={loadingObjects ? "Lädt…" : "Objekt wählen"} />
+          </SelectTrigger>
+          <SelectContent>
+            {objects.map((item) => (
+              <SelectItem
+                key={item.oid ?? item.name}
+                value={usesOid ? (item.oid ?? item.name) : item.name}
+                className="text-xs"
+              >
+                <CompareObjectIcon type={value.objectType} />
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

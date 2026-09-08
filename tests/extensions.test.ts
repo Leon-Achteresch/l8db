@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { ExtensionManager } from "../src/lib/extensions/manager";
+import { ExtensionManager, isWriteQuery } from "../src/lib/extensions/manager";
 import { CommandRegistry, EventBus } from "../src/lib/extensions/registries";
-import { ExtensionError, assertCompatible, validateArchive, validateManifest } from "../packages/extension-api/src/manifest";
-import type { ExtensionArchive, ExtensionDescriptor, ExtensionRuntime, ExtensionStorage, InstalledExtension, Json, Permission, RpcHandler } from "../src/lib/extensions/contracts";
+import { ExtensionError, assertCompatible, matchesHost, validateArchive, validateManifest } from "../packages/extension-api/src/manifest";
+import type { CoreServices, ExtensionArchive, ExtensionDescriptor, ExtensionRuntime, ExtensionStorage, InstalledExtension, Json, Permission, RpcHandler } from "../src/lib/extensions/contracts";
 
 function archive(id = "test.example", events: string[] = ["onCommand:test.hello"]): ExtensionArchive {
   return validateArchive({ format: 1, manifest: { id, publisher: id.split(".")[0], name: "Test", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: events, permissions: ["database:read", "filesystem:extension-storage"], contributes: { commands: [{ id: "test.hello", title: "Hello" }], configuration: { "test.enabled": { type: "boolean", default: true } } } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
@@ -10,6 +10,7 @@ function archive(id = "test.example", events: string[] = ["onCommand:test.hello"
 class MemoryStorage implements ExtensionStorage {
   entries = new Map<string, InstalledExtension>();
   values = new Map<string, Json>();
+  secrets = new Map<string, string>();
   async list() { return structuredClone([...this.entries.values()]) }
   async install(value: ExtensionArchive) { this.entries.set(value.manifest.id, { archive: value, enabled: false, grants: [], configuration: {} }) }
   async replace(id: string, value: ExtensionArchive) { const entry = this.entries.get(id)!; entry.archive = value; entry.grants = entry.grants.filter(grant => value.manifest.permissions?.includes(grant) ?? false) }
@@ -17,6 +18,9 @@ class MemoryStorage implements ExtensionStorage {
   async update(id: string, enabled: boolean, grants: Permission[], configuration: Record<string, Json>) { Object.assign(this.entries.get(id)!, { enabled, grants, configuration }) }
   async get(id: string, key: string) { return this.values.get(`${id}:${key}`) ?? null }
   async set(id: string, key: string, value: Json) { this.values.set(`${id}:${key}`, value) }
+  async secretGet(id: string, key: string) { return this.secrets.get(`${id}:${key}`) ?? null }
+  async secretSet(id: string, key: string, value: string) { this.secrets.set(`${id}:${key}`, value) }
+  async secretDelete(id: string, key: string) { this.secrets.delete(`${id}:${key}`) }
 }
 class TestRuntime implements ExtensionRuntime {
   rpc = new Map<string, RpcHandler>();
@@ -35,15 +39,37 @@ class TestRuntime implements ExtensionRuntime {
   }
   async deactivate(id: string) { this.deactivated.push(id); await this.rpc.get(id)!("logger", ["info", "deactivated"]) }
   async unload(id: string) { this.unloaded.push(id); this.rpc.delete(id) }
-  async execute(id: string, _command: string, payload?: Json) { await this.rpc.get(id)!("notifications.info", ["Hello"]); return payload ?? "ok" }
+  async execute(id: string, _command: string, payload?: Json) { await this.rpc.get(id)!("notifications.show", ["info", "Hello", []]); return payload ?? "ok" }
   event(id: string, name: string) { this.events.push(`${id}:${name}`) }
+}
+function fakeCore() {
+  const notifications: string[] = [];
+  const clipboard = { value: "" };
+  const files = new Map<string, string>();
+  const processes: { command: string; options: unknown }[] = [];
+  const prompts: unknown[] = [];
+  const core: CoreServices = {
+    database: () => null,
+    notify: message => notifications.push(message),
+    query: async () => ({ columns: ["n"], rows: [{ n: "1" }], rowsAffected: null, executionTimeMs: 1 }),
+    fetch: async () => ({ status: 200, headers: {}, body: "ok" }),
+    clipboardRead: async () => clipboard.value,
+    clipboardWrite: async value => { clipboard.value = value },
+    showOpenDialog: async () => "/tmp/opened.txt",
+    showSaveDialog: async () => "/tmp/saved.txt",
+    readTextFile: async path => files.get(path) ?? "",
+    writeTextFile: async (path, contents) => { files.set(path, contents) },
+    runProcess: async request => { processes.push(request); return { status: 0, stdout: "out", stderr: "" } },
+    prompt: (async (request: unknown) => { prompts.push(request); return undefined }) as CoreServices["prompt"],
+  };
+  return { core, notifications, clipboard, files, processes, prompts };
 }
 function setup() {
   const storage = new MemoryStorage();
   const runtime = new TestRuntime();
-  const notifications: string[] = [];
-  const manager = new ExtensionManager(storage, runtime, { database: () => null, notify: message => notifications.push(message) }, "0.1.0");
-  return { storage, runtime, manager, notifications };
+  const fakes = fakeCore();
+  const manager = new ExtensionManager(storage, runtime, fakes.core, "0.1.0");
+  return { storage, runtime, manager, ...fakes };
 }
 function other(id: string) {
   const value = archive(id, ["onStartup"]);
@@ -196,7 +222,7 @@ test("disabling a dependency stops its active dependents", async () => {
 });
 test("a new manager discovers persisted enablement and activates on startup", async () => {
   const { manager, storage } = setup(); await manager.installExtension(other("test.persisted")); await manager.enableExtension("test.persisted", []);
-  const runtime = new TestRuntime(); const restored = new ExtensionManager(storage, runtime, { database: () => null, notify: () => undefined }, "0.1.0");
+  const runtime = new TestRuntime(); const restored = new ExtensionManager(storage, runtime, fakeCore().core, "0.1.0");
   await restored.discover(); await restored.trigger("onStartup");
   expect(restored.registry.get("test.persisted").state).toBe("activated");
 });
@@ -218,4 +244,145 @@ test("updateExtension keeps grants and configuration and rejects non-newer versi
   expect(storage.entries.get("test.example")!.archive.manifest.version).toBe("2.0.0");
   await expect(manager.updateExtension(archive("test.example", ["onStartup"]))).rejects.toThrow();
   expect(manager.listExtensions()[0].archive.manifest.version).toBe("2.0.0");
+});
+function richArchive(): ExtensionArchive {
+  return validateArchive({ format: 1, manifest: { id: "test.rich", publisher: "test", name: "Rich", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: ["onStartup", "onView:test.view"], permissions: ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute"], capabilities: { network: { hosts: ["example.com", "*.example.org"] }, process: { commands: ["tool"] } }, contributes: { commands: [{ id: "test.run", title: "Run" }], configuration: { "test.mode": { type: "string", default: "a", enum: ["a", "b"] } }, views: [{ id: "test.view", title: "View", location: "sidebar" }], panels: [{ id: "test.panel", title: "Panel" }], statusBar: [{ id: "test.status", alignment: "right", priority: 5 }], menus: [{ command: "test.run", location: "palette" }] } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
+}
+test("manifest validates views, panels, status bar, menus and capabilities", () => {
+  expect(() => richArchive()).not.toThrow();
+  const base = richArchive().manifest;
+  expect(() => validateManifest({ ...base, activationEvents: ["onView:missing"] })).toThrow();
+  expect(() => validateManifest({ ...base, contributes: { ...base.contributes, menus: [{ command: "missing", location: "palette" }] } })).toThrow();
+  expect(() => validateManifest({ ...base, capabilities: { network: { hosts: ["not a host!!"] } } })).toThrow();
+  expect(() => validateManifest({ ...base, capabilities: { process: { commands: ["../evil"] } } })).toThrow();
+  expect(() => validateManifest({ ...base, contributes: { ...base.contributes, views: [{ id: "x", title: "X", location: "nowhere" }] } })).toThrow();
+  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <1.0.0", api: "^1.1.0" } })).not.toThrow();
+  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <1.0.0", api: "^2.0.0" } })).toThrow();
+});
+test("matchesHost supports wildcards and ports", () => {
+  expect(matchesHost("example.com", "example.com")).toBe(true);
+  expect(matchesHost("sub.example.org", "*.example.org")).toBe(true);
+  expect(matchesHost("example.org", "*.example.org")).toBe(false);
+  expect(matchesHost("example.com", "other.com")).toBe(false);
+});
+test("isWriteQuery separates reads from writes", () => {
+  expect(isWriteQuery("SELECT 1")).toBe(false);
+  expect(isWriteQuery("-- comment\nWITH x AS (SELECT 1) SELECT * FROM x")).toBe(false);
+  expect(isWriteQuery("UPDATE t SET a = 1")).toBe(true);
+  expect(isWriteQuery("SELECT 1; DELETE FROM t")).toBe(true);
+});
+test("database.query enforces read and write permissions", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", ["database:read"]);
+  await manager.activate("test.rich");
+  const denied = runtime.rpc.get("test.rich")!;
+  expect(await denied("database.query", ["SELECT 1"])).toEqual({ columns: ["n"], rows: [{ n: "1" }], rowsAffected: null, executionTimeMs: 1 });
+  await expect(denied("database.query", ["DELETE FROM t"])).rejects.toThrow(ExtensionError);
+  await manager.enableExtension("test.rich", ["database:read", "database:write"]);
+  await manager.activate("test.rich");
+  const allowed = runtime.rpc.get("test.rich")!;
+  expect(await allowed("database.query", ["DELETE FROM t"])).toBeDefined();
+  await expect(allowed("database.query", [""])).rejects.toThrow(ExtensionError);
+});
+test("network.fetch enforces the host allowlist", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", ["network"]);
+  await manager.activate("test.rich");
+  const rpc = runtime.rpc.get("test.rich")!;
+  expect(await rpc("network.fetch", ["https://example.com/api"])).toEqual({ status: 200, headers: {}, body: "ok" });
+  expect(await rpc("network.fetch", ["https://sub.example.org/x"])).toBeDefined();
+  await expect(rpc("network.fetch", ["https://evil.com/"])).rejects.toThrow(ExtensionError);
+  await expect(rpc("network.fetch", ["ftp://example.com/"])).rejects.toThrow(ExtensionError);
+});
+test("secrets, clipboard, files and processes are permission gated", async () => {
+  const { manager, runtime, clipboard, files, processes } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  const denied = runtime.rpc.get("test.rich")!;
+  await expect(denied("secrets.get", ["token"])).rejects.toThrow(ExtensionError);
+  await expect(denied("clipboard.read", [])).rejects.toThrow(ExtensionError);
+  await expect(denied("process.run", ["tool", {}])).rejects.toThrow(ExtensionError);
+  await manager.enableExtension("test.rich", ["filesystem:extension-storage", "clipboard:read", "clipboard:write", "filesystem", "process:execute"]);
+  await manager.activate("test.rich");
+  const allowed = runtime.rpc.get("test.rich")!;
+  await allowed("secrets.set", ["token", "s3cret"]);
+  expect(await allowed("secrets.get", ["token"])).toBe("s3cret");
+  await expect(allowed("secrets.get", ["../other"])).rejects.toThrow(ExtensionError);
+  await allowed("clipboard.write", ["hello"]);
+  expect(await allowed("clipboard.read", [])).toBe("hello");
+  expect(clipboard.value).toBe("hello");
+  await expect(allowed("workspace.readFile", ["/tmp/opened.txt"])).rejects.toThrow("file dialog");
+  expect(await allowed("workspace.showOpenDialog", [])).toBe("/tmp/opened.txt");
+  files.set("/tmp/opened.txt", "data");
+  expect(await allowed("workspace.readFile", ["/tmp/opened.txt"])).toBe("data");
+  await allowed("workspace.writeFile", ["/tmp/opened.txt", "changed"]);
+  expect(files.get("/tmp/opened.txt")).toBe("changed");
+  expect(await allowed("process.run", ["tool", { args: ["--help"] }])).toEqual({ status: 0, stdout: "out", stderr: "" });
+  await expect(allowed("process.run", ["other", {}])).rejects.toThrow(ExtensionError);
+  expect(processes).toHaveLength(1);
+});
+test("views, status bar and panels push UI state", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  const rpc = runtime.rpc.get("test.rich")!;
+  await rpc("views.setTree", ["test.view", [{ id: "a", label: "A", children: [{ id: "b", label: "B", command: "test.run" }] }]]);
+  expect(manager.listViews()[0].items).toHaveLength(1);
+  await expect(rpc("views.setTree", ["unknown", []])).rejects.toThrow(ExtensionError);
+  await expect(rpc("views.setTree", ["test.view", [{ id: "!!", label: "x" }]])).rejects.toThrow(ExtensionError);
+  await rpc("statusBar.set", ["test.status", { text: "ok", command: "test.run" }]);
+  expect(manager.listStatusBar()).toHaveLength(1);
+  await rpc("statusBar.hide", ["test.status"]);
+  expect(manager.listStatusBar()).toHaveLength(0);
+  await rpc("panels.open", ["test.panel", "<h1>hi</h1>"]);
+  expect(manager.listPanels()).toHaveLength(1);
+  await rpc("panels.onMessage", ["test.panel"]);
+  manager.panelMessageFromWebview("test.rich", "test.panel", { hello: 1 });
+  expect(runtime.events).toContain("test.rich:webview:message:test.panel");
+  await rpc("panels.postMessage", ["test.panel", { reply: 2 }]);
+  await rpc("panels.close", ["test.panel"]);
+  expect(manager.listPanels()).toHaveLength(0);
+  await manager.disableExtension("test.rich");
+  expect(manager.listViews()[0].items).toEqual([]);
+});
+test("configuration enforces enums and notifies active extensions", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  await expect(manager.setConfiguration("test.rich", { "test.mode": "c" })).rejects.toThrow(ExtensionError);
+  await manager.setConfiguration("test.rich", { "test.mode": "b" });
+  expect(runtime.events).toContain("test.rich:configurationChanged");
+});
+test("extensions can subscribe to active database changes", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(archive());
+  await manager.enableExtension("test.example", ["database:read"]);
+  await manager.activate("test.example");
+  const rpc = runtime.rpc.get("test.example")!;
+  await rpc("events.on", ["activeDatabaseChanged"]);
+  manager.events.emit("activeDatabaseChanged", null);
+  expect(runtime.events).toContain("test.example:activeDatabaseChanged");
+});
+test("window.showQuickPick forwards to the host prompt", async () => {
+  const { manager, runtime, prompts } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  const rpc = runtime.rpc.get("test.rich")!;
+  expect(await rpc("window.showQuickPick", [["a", { label: "b" }]])).toBeUndefined();
+  expect(prompts).toHaveLength(1);
+  expect(await rpc("commands.list", [])).toHaveLength(1);
+});
+test("duplicate views roll back installation", async () => {
+  const { manager } = setup();
+  await manager.installExtension(richArchive());
+  const duplicate = richArchive();
+  duplicate.manifest.id = "test.other";
+  await expect(manager.installExtension(duplicate)).rejects.toThrow(ExtensionError);
+  expect(manager.commands.owner("test.run")).toBe("test.rich");
 });

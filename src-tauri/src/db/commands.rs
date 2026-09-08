@@ -3,12 +3,13 @@ use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
     AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
-    CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
-    CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
-    DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest,
+    CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
+    CreateTableRequest, DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
+    InvalidObjectInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo,
+    ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo,
+    TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -659,6 +660,60 @@ pub async fn compile_object(
         pool_state.inner().clone(),
     )?
     .compile_object(&oid, &object_type)
+    .await
+}
+
+#[tauri::command]
+pub async fn list_invalid_objects(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<InvalidObjectInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_invalid_objects(schema.as_deref())
+    .await
+}
+
+#[tauri::command]
+pub async fn list_compile_errors(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<CompileErrorInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_compile_errors(schema.as_deref())
+    .await
+}
+
+#[tauri::command]
+pub async fn compile_invalid_objects(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<InvalidCompileOutcome>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .compile_invalid_objects(schema.as_deref())
     .await
 }
 

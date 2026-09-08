@@ -72,3 +72,10 @@ export function compileSingleCondition(
       return null;
   }
 }
+
+export function compileContentFilter(columns: string[], value: string): string {
+  return columns
+    .map((col) => compileSingleCondition(col, "contains", value))
+    .filter((part): part is string => part !== null)
+    .join(" OR ");
+}

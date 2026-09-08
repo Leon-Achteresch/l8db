@@ -1,6 +1,8 @@
+import { HOTKEY_COMMANDS, type HotkeyArea as NewHotkeyArea, resolveHotkey } from "@/lib/hotkeys";
+
 export type ShortcutPlatform = "mac" | "other";
 
-export type ShortcutArea = "Allgemein" | "Navigation" | "SQL-Editor" | "Datengitter";
+export type ShortcutArea = "Allgemein" | "Tabs" | "Navigation" | "SQL-Editor" | "Datengitter";
 
 export type ShortcutRequirement = "connection";
 
@@ -23,85 +25,36 @@ export interface ShortcutAvailabilityContext {
   hasConnection: boolean;
 }
 
-export const SHORTCUTS: ShortcutDefinition[] = [
-  {
-    id: "palette.open",
-    label: "Suche und Befehlspalette öffnen",
-    area: "Navigation",
-    binding: { mod: true, key: "K" },
-  },
-  {
-    id: "sidebar.toggle",
-    label: "Seitenleiste ein- oder ausblenden",
-    area: "Navigation",
-    binding: { mod: true, key: "B" },
-  },
-  {
-    id: "shortcuts.open",
-    label: "Tastenkürzelhilfe öffnen",
-    area: "Allgemein",
-    binding: { mod: true, key: "/" },
-  },
-  {
-    id: "dialog.close",
-    label: "Dialog oder Overlay schließen",
-    area: "Allgemein",
-    binding: { key: "Esc" },
-  },
-  {
-    id: "settings.search",
-    label: "Einstellungen durchsuchen",
-    area: "Allgemein",
-    binding: { mod: true, key: "F" },
-  },
-  {
-    id: "query.run",
-    label: "Abfrage ausführen",
-    area: "SQL-Editor",
-    binding: { mod: true, key: "Enter" },
-    requires: "connection",
-  },
-  {
-    id: "query.runSelection",
-    label: "Markierung ausführen",
-    area: "SQL-Editor",
-    binding: { mod: true, shift: true, key: "Enter" },
-    requires: "connection",
-  },
-  {
-    id: "query.runStatement",
-    label: "Anweisung unter dem Cursor ausführen",
-    area: "SQL-Editor",
-    binding: { mod: true, alt: true, key: "Enter" },
-    requires: "connection",
-  },
-  {
-    id: "query.save",
-    label: "Abfrage speichern",
-    area: "SQL-Editor",
-    binding: { mod: true, key: "S" },
-  },
-  {
-    id: "query.format",
-    label: "SQL formatieren",
-    area: "SQL-Editor",
-    binding: { shift: true, alt: true, key: "F" },
-  },
-  {
-    id: "grid.search",
-    label: "In Ergebnissen suchen",
-    area: "Datengitter",
-    binding: { mod: true, key: "F" },
-    requires: "connection",
-  },
-  {
-    id: "grid.copy",
-    label: "Auswahl kopieren",
-    area: "Datengitter",
-    binding: { mod: true, key: "C" },
-    requires: "connection",
-  },
-];
+function parseDefaultHotkey(hotkey: string): ShortcutBinding {
+  const parts = hotkey.split("+").map((part) => part.trim());
+  const key = parts[parts.length - 1] ?? "";
+  const binding: ShortcutBinding = { key };
+  for (const part of parts.slice(0, -1)) {
+    const token = part.toLowerCase();
+    if (token === "mod" || token === "cmd" || token === "command" || token === "meta") {
+      binding.mod = true;
+    } else if (token === "ctrl" || token === "control") {
+      binding.mod = true;
+    } else if (token === "shift") {
+      binding.shift = true;
+    } else if (token === "alt" || token === "option") {
+      binding.alt = true;
+    }
+  }
+  return binding;
+}
+
+function toShortcutArea(area: NewHotkeyArea): ShortcutArea {
+  return area;
+}
+
+export const SHORTCUTS: ShortcutDefinition[] = HOTKEY_COMMANDS.map((command) => ({
+  id: command.id,
+  label: command.label,
+  area: toShortcutArea(command.area),
+  binding: parseDefaultHotkey(resolveHotkey(command.id)),
+  ...(command.requiresConnection ? { requires: "connection" as const } : {}),
+}));
 
 export function detectShortcutPlatform(platform?: string): ShortcutPlatform {
   const value = platform ?? (typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));

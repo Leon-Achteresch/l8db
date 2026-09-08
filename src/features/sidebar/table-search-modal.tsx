@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   Code2Icon,
   ColumnsIcon,
+  DatabaseIcon,
   EyeIcon,
   FilterIcon,
   PlayIcon,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
+import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
@@ -57,6 +59,7 @@ function emptyCondition(column = ""): Condition {
 
 type Combinator = "AND" | "OR";
 type FilterMode = "simple" | "sql";
+type SearchMode = "objects" | "content";
 
 function compileConditions(conditions: Condition[], combinator: Combinator): string {
   const parts = conditions
@@ -103,6 +106,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
   const navigate = useNavigate();
   const openTab = useTableTabs((state) => state.openTab);
 
+  const [searchMode, setSearchMode] = useState<SearchMode>("objects");
   const [nameQuery, setNameQuery] = useState("");
   const [useRegex, setUseRegex] = useState(false);
   const [regexError, setRegexError] = useState<string | null>(null);
@@ -121,6 +125,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
 
   useEffect(() => {
     if (!open) return;
+    setSearchMode("objects");
     setNameQuery("");
     setUseRegex(false);
     setRegexError(null);
@@ -283,306 +288,335 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
       <DialogHeader className="sr-only">
         <DialogTitle>Erweiterte Suche</DialogTitle>
         <DialogDescription>
-          Tabellen und Views mit Regex, mehreren Mustern und SQL WHERE durchsuchen
+          Tabellen und Views nach Namen, Spalten oder Inhalten durchsuchen
         </DialogDescription>
       </DialogHeader>
       <DialogContent
         className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         showCloseButton={false}
       >
-        <div className="flex items-center gap-2 border-b px-3 py-2.5">
-          <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
-          <input
-            placeholder="Tabellen & Views suchen... (mehrere mit ; trennen)"
-            value={nameQuery}
-            onChange={(e) => setNameQuery(e.target.value)}
-            className={cn(
-              "h-7 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground",
-              regexError && "text-destructive",
-            )}
-            autoFocus
-          />
-          <Toggle
-            size="sm"
-            variant="outline"
-            pressed={useRegex}
-            onPressedChange={setUseRegex}
-            aria-label="Regex-Modus"
-            className="h-7 shrink-0 px-1.5"
-          >
-            <RegexIcon className="size-3.5" />
-          </Toggle>
+        <div className="border-b px-3 py-2">
+          <Tabs value={searchMode} onValueChange={(v) => setSearchMode(v as SearchMode)}>
+            <TabsList className="w-full">
+              <TabsTrigger value="objects" className="flex-1">
+                <TableIcon className="size-3" />
+                Objekte
+              </TabsTrigger>
+              <TabsTrigger value="content" className="flex-1">
+                <DatabaseIcon className="size-3" />
+                Inhalt
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-
-        {regexError && (
-          <p className="border-b px-3 py-1 text-xs text-destructive">
-            Ungultiger Regex: {regexError}
-          </p>
-        )}
-
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 w-1/2 flex-col border-r">
-            <div className="flex items-center gap-2 border-b px-3 py-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                {filteredEntities.length} Ergebnis{filteredEntities.length !== 1 ? "se" : ""}
-              </span>
-              {tableResults.length > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  <TableIcon className="size-2.5" />
-                  {tableResults.length}
-                </Badge>
-              )}
-              {viewResults.length > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  <EyeIcon className="size-2.5" />
-                  {viewResults.length}
-                </Badge>
-              )}
-            </div>
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="py-1">
-                {filteredEntities.length === 0 ? (
-                  <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-                    Keine Treffer
-                  </p>
-                ) : (
-                  filteredEntities.map((entity) => {
-                    const isSelected =
-                      selectedEntity?.schema === entity.schema &&
-                      selectedEntity?.name === entity.name &&
-                      selectedEntity?.type === entity.type;
-                    return (
-                      <div key={`${entity.type}:${entity.schema}.${entity.name}`}>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectEntity(entity)}
-                          onDoubleClick={() => handleOpenDirect(entity)}
-                          className={cn(
-                            "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/80",
-                            isSelected && "bg-muted",
-                          )}
-                        >
-                          {entity.type === "table" ? (
-                            <TableIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                          ) : (
-                            <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                          )}
-                          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                            {entity.schema}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">{entity.name}</span>
-                        </button>
-                        {entity.matchingColumns.length > 0 && (
-                          <div className="ml-7 border-l border-border/40 py-0.5 pl-2">
-                            {entity.matchingColumns.slice(0, 3).map((col) => (
-                              <div
-                                key={col}
-                                className="flex items-center gap-1.5 px-1 py-0.5 text-[10px] text-muted-foreground"
-                              >
-                                <ColumnsIcon className="size-2.5 shrink-0" />
-                                <span className="truncate">{col}</span>
-                              </div>
-                            ))}
-                            {entity.matchingColumns.length > 3 && (
-                              <span className="px-1 text-[10px] text-muted-foreground/60">
-                                +{entity.matchingColumns.length - 3} weitere
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
+        {searchMode === "content" ? (
+          <TableContentSearch onClose={() => onOpenChange(false)} />
+        ) : (
+          <>
+            <div className="flex items-center gap-2 border-b px-3 py-2.5">
+              <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+              <input
+                placeholder="Tabellen & Views suchen... (mehrere mit ; trennen)"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                className={cn(
+                  "h-7 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground",
+                  regexError && "text-destructive",
                 )}
-              </div>
-            </ScrollArea>
-          </div>
+                autoFocus
+              />
+              <Toggle
+                size="sm"
+                variant="outline"
+                pressed={useRegex}
+                onPressedChange={setUseRegex}
+                aria-label="Regex-Modus"
+                className="h-7 shrink-0 px-1.5"
+              >
+                <RegexIcon className="size-3.5" />
+              </Toggle>
+            </div>
 
-          <div className="flex min-h-0 w-1/2 flex-col">
-            {selectedEntity ? (
-              <>
+            {regexError && (
+              <p className="border-b px-3 py-1 text-xs text-destructive">
+                Ungultiger Regex: {regexError}
+              </p>
+            )}
+
+            <div className="flex min-h-0 flex-1">
+              <div className="flex min-h-0 w-1/2 flex-col border-r">
                 <div className="flex items-center gap-2 border-b px-3 py-1.5">
-                  <FilterIcon className="size-3.5 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                    {selectedEntity.name}
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {filteredEntities.length} Ergebnis{filteredEntities.length !== 1 ? "se" : ""}
                   </span>
-                  {whereClause && (
+                  {tableResults.length > 0 && (
                     <Badge variant="secondary" className="text-[10px]">
-                      WHERE
+                      <TableIcon className="size-2.5" />
+                      {tableResults.length}
+                    </Badge>
+                  )}
+                  {viewResults.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      <EyeIcon className="size-2.5" />
+                      {viewResults.length}
                     </Badge>
                   )}
                 </div>
-                <div className="border-b px-3 py-2">
-                  <Tabs value={filterMode} onValueChange={(v) => switchFilterMode(v as FilterMode)}>
-                    <TabsList className="w-full">
-                      <TabsTrigger value="simple" className="flex-1">
-                        <SlidersHorizontalIcon className="size-3" />
-                        Einfach
-                      </TabsTrigger>
-                      <TabsTrigger value="sql" className="flex-1">
-                        <Code2Icon className="size-3" />
-                        SQL
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                </div>
-
                 <ScrollArea className="min-h-0 flex-1">
-                  <div className="space-y-2 p-3">
-                    {filterMode === "simple" ? (
-                      <>
-                        {conditions.map((condition, index) => (
-                          <div key={condition.id} className="flex flex-col gap-1.5">
-                            <div className="text-[10px] text-muted-foreground">
-                              {index === 0 ? (
-                                "Wo"
-                              ) : (
-                                <Select
-                                  value={combinator}
-                                  onValueChange={(value) => setCombinator(value as Combinator)}
-                                >
-                                  <SelectTrigger size="sm" className="w-20">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent position="popper">
-                                    <SelectItem value="AND">und</SelectItem>
-                                    <SelectItem value="OR">oder</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                  <div className="py-1">
+                    {filteredEntities.length === 0 ? (
+                      <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        Keine Treffer
+                      </p>
+                    ) : (
+                      filteredEntities.map((entity) => {
+                        const isSelected =
+                          selectedEntity?.schema === entity.schema &&
+                          selectedEntity?.name === entity.name &&
+                          selectedEntity?.type === entity.type;
+                        return (
+                          <div key={`${entity.type}:${entity.schema}.${entity.name}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectEntity(entity)}
+                              onDoubleClick={() => handleOpenDirect(entity)}
+                              className={cn(
+                                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/80",
+                                isSelected && "bg-muted",
                               )}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Select
-                                value={condition.column}
-                                onValueChange={(value) =>
-                                  updateCondition(condition.id, {
-                                    column: value,
-                                  })
-                                }
-                              >
-                                <SelectTrigger size="sm" className="min-w-0 flex-1">
-                                  <SelectValue placeholder="Spalte..." />
-                                </SelectTrigger>
-                                <SelectContent position="popper">
-                                  {selectedColumns.map((col) => (
-                                    <SelectItem key={col} value={col}>
-                                      {col}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Select
-                                value={condition.operator}
-                                onValueChange={(value) =>
-                                  updateCondition(condition.id, {
-                                    operator: value,
-                                  })
-                                }
-                              >
-                                <SelectTrigger size="sm" className="w-auto min-w-0 shrink-0">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent position="popper">
-                                  {OPERATORS.map((op) => (
-                                    <SelectItem key={op.key} value={op.key}>
-                                      {op.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-xs"
-                                onClick={() => removeCondition(condition.id)}
-                                aria-label="Bedingung entfernen"
-                              >
-                                <Trash2Icon />
-                              </Button>
-                            </div>
-                            {operatorNeedsValue(condition.operator) && (
-                              <Input
-                                value={condition.value}
-                                onChange={(e) =>
-                                  updateCondition(condition.id, {
-                                    value: e.target.value,
-                                  })
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleOpen();
-                                }}
-                                placeholder="Wert"
-                                className="h-7 text-xs"
-                              />
+                            >
+                              {entity.type === "table" ? (
+                                <TableIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                {entity.schema}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate font-medium">
+                                {entity.name}
+                              </span>
+                            </button>
+                            {entity.matchingColumns.length > 0 && (
+                              <div className="ml-7 border-l border-border/40 py-0.5 pl-2">
+                                {entity.matchingColumns.slice(0, 3).map((col) => (
+                                  <div
+                                    key={col}
+                                    className="flex items-center gap-1.5 px-1 py-0.5 text-[10px] text-muted-foreground"
+                                  >
+                                    <ColumnsIcon className="size-2.5 shrink-0" />
+                                    <span className="truncate">{col}</span>
+                                  </div>
+                                ))}
+                                {entity.matchingColumns.length > 3 && (
+                                  <span className="px-1 text-[10px] text-muted-foreground/60">
+                                    +{entity.matchingColumns.length - 3} weitere
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          onClick={addCondition}
-                          className="w-full"
-                        >
-                          <PlusIcon />
-                          Bedingung
-                        </Button>
-                        {compiledSimple && (
-                          <p className="break-all font-mono text-[10px] text-muted-foreground">
-                            WHERE {compiledSimple}
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <SqlEditor
-                        value={sql}
-                        onChange={setSql}
-                        onSubmit={handleOpen}
-                        columns={selectedColumns}
-                        placeholder="z.B. status = 'active' AND id > 100"
-                        className="h-32"
-                      />
+                        );
+                      })
                     )}
                   </div>
                 </ScrollArea>
-
-                <div className="flex items-center gap-2 border-t px-3 py-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={resetFilter}
-                    disabled={!whereClause}
-                  >
-                    <RotateCcwIcon />
-                  </Button>
-                  <div className="flex-1" />
-                  <Button type="button" size="xs" onClick={handleOpen}>
-                    <PlayIcon />
-                    Offnen
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-                <FilterIcon className="size-8 text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground">
-                  Tabelle auswahlen um Filter zu setzen
-                </p>
-                <p className="text-[10px] text-muted-foreground/60">Doppelklick offnet direkt</p>
               </div>
-            )}
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3 border-t px-3 py-1.5 text-[10px] text-muted-foreground/60">
-          <span>
-            <kbd className="rounded border border-border/40 bg-background/60 px-1 font-sans">;</kbd>{" "}
-            mehrere Muster
-          </span>
-          <span>Doppelklick = direkt offnen</span>
-          {useRegex && <span className="ml-auto font-mono text-blue-400/70">regex</span>}
-        </div>
+              <div className="flex min-h-0 w-1/2 flex-col">
+                {selectedEntity ? (
+                  <>
+                    <div className="flex items-center gap-2 border-b px-3 py-1.5">
+                      <FilterIcon className="size-3.5 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                        {selectedEntity.name}
+                      </span>
+                      {whereClause && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          WHERE
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="border-b px-3 py-2">
+                      <Tabs
+                        value={filterMode}
+                        onValueChange={(v) => switchFilterMode(v as FilterMode)}
+                      >
+                        <TabsList className="w-full">
+                          <TabsTrigger value="simple" className="flex-1">
+                            <SlidersHorizontalIcon className="size-3" />
+                            Einfach
+                          </TabsTrigger>
+                          <TabsTrigger value="sql" className="flex-1">
+                            <Code2Icon className="size-3" />
+                            SQL
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                    </div>
+
+                    <ScrollArea className="min-h-0 flex-1">
+                      <div className="space-y-2 p-3">
+                        {filterMode === "simple" ? (
+                          <>
+                            {conditions.map((condition, index) => (
+                              <div key={condition.id} className="flex flex-col gap-1.5">
+                                <div className="text-[10px] text-muted-foreground">
+                                  {index === 0 ? (
+                                    "Wo"
+                                  ) : (
+                                    <Select
+                                      value={combinator}
+                                      onValueChange={(value) => setCombinator(value as Combinator)}
+                                    >
+                                      <SelectTrigger size="sm" className="w-20">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent position="popper">
+                                        <SelectItem value="AND">und</SelectItem>
+                                        <SelectItem value="OR">oder</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Select
+                                    value={condition.column}
+                                    onValueChange={(value) =>
+                                      updateCondition(condition.id, {
+                                        column: value,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger size="sm" className="min-w-0 flex-1">
+                                      <SelectValue placeholder="Spalte..." />
+                                    </SelectTrigger>
+                                    <SelectContent position="popper">
+                                      {selectedColumns.map((col) => (
+                                        <SelectItem key={col} value={col}>
+                                          {col}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Select
+                                    value={condition.operator}
+                                    onValueChange={(value) =>
+                                      updateCondition(condition.id, {
+                                        operator: value,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger size="sm" className="w-auto min-w-0 shrink-0">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent position="popper">
+                                      {OPERATORS.map((op) => (
+                                        <SelectItem key={op.key} value={op.key}>
+                                          {op.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => removeCondition(condition.id)}
+                                    aria-label="Bedingung entfernen"
+                                  >
+                                    <Trash2Icon />
+                                  </Button>
+                                </div>
+                                {operatorNeedsValue(condition.operator) && (
+                                  <Input
+                                    value={condition.value}
+                                    onChange={(e) =>
+                                      updateCondition(condition.id, {
+                                        value: e.target.value,
+                                      })
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleOpen();
+                                    }}
+                                    placeholder="Wert"
+                                    className="h-7 text-xs"
+                                  />
+                                )}
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="xs"
+                              onClick={addCondition}
+                              className="w-full"
+                            >
+                              <PlusIcon />
+                              Bedingung
+                            </Button>
+                            {compiledSimple && (
+                              <p className="break-all font-mono text-[10px] text-muted-foreground">
+                                WHERE {compiledSimple}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <SqlEditor
+                            value={sql}
+                            onChange={setSql}
+                            onSubmit={handleOpen}
+                            columns={selectedColumns}
+                            placeholder="z.B. status = 'active' AND id > 100"
+                            className="h-32"
+                          />
+                        )}
+                      </div>
+                    </ScrollArea>
+
+                    <div className="flex items-center gap-2 border-t px-3 py-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={resetFilter}
+                        disabled={!whereClause}
+                      >
+                        <RotateCcwIcon />
+                      </Button>
+                      <div className="flex-1" />
+                      <Button type="button" size="xs" onClick={handleOpen}>
+                        <PlayIcon />
+                        Offnen
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+                    <FilterIcon className="size-8 text-muted-foreground/30" />
+                    <p className="text-xs text-muted-foreground">
+                      Tabelle auswahlen um Filter zu setzen
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/60">
+                      Doppelklick offnet direkt
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 border-t px-3 py-1.5 text-[10px] text-muted-foreground/60">
+              <span>
+                <kbd className="rounded border border-border/40 bg-background/60 px-1 font-sans">
+                  ;
+                </kbd>{" "}
+                mehrere Muster
+              </span>
+              <span>Doppelklick = direkt offnen</span>
+              {useRegex && <span className="ml-auto font-mono text-blue-400/70">regex</span>}
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
