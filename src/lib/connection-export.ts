@@ -6,6 +6,7 @@ import {
 } from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import { scrubUrlPassword } from "@/lib/secrets";
+import { isToadExport, parseToadExport } from "@/lib/toad-import";
 
 export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 export const CONNECTION_EXPORT_VERSION = 1;
@@ -152,6 +153,7 @@ export interface ImportCandidate {
 export interface ParsedConnectionImport {
   candidates: ImportCandidate[];
   error: string | null;
+  source: "l8db" | "toad";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -241,43 +243,66 @@ export function parseConnectionImport(
   text: string,
   existing: SavedConnection[],
 ): ParsedConnectionImport {
+  if (isToadExport(text)) {
+    const candidates = parseToadExport(text).map((parsed, index) =>
+      toCandidate(parsed, index, `Eintrag ${index + 1}`, existing),
+    );
+    return { candidates, error: null, source: "toad" };
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { candidates: [], error: "Die Datei enthält kein gültiges JSON." };
+    return {
+      candidates: [],
+      error: "Die Datei enthält weder gültiges JSON noch einen Toad-Export.",
+      source: "l8db",
+    };
   }
-  if (!isRecord(raw)) return { candidates: [], error: "Die Datei hat kein bekanntes Format." };
+  if (!isRecord(raw))
+    return { candidates: [], error: "Die Datei hat kein bekanntes Format.", source: "l8db" };
   if (raw.format !== CONNECTION_EXPORT_FORMAT)
     return {
       candidates: [],
       error: "Die Datei ist kein l8db-Verbindungsexport.",
+      source: "l8db",
     };
   if (typeof raw.version !== "number" || raw.version > CONNECTION_EXPORT_VERSION)
     return {
       candidates: [],
       error: `Exportversion ${String(raw.version)} wird nicht unterstützt (maximal ${CONNECTION_EXPORT_VERSION}).`,
+      source: "l8db",
     };
   if (!Array.isArray(raw.connections))
-    return { candidates: [], error: "Die Datei enthält keine Verbindungsliste." };
-  const candidates: ImportCandidate[] = raw.connections.map((entry, index) => {
-    const parsed = parseProfile(entry);
-    if (typeof parsed === "string") {
-      const label =
-        isRecord(entry) && typeof entry.name === "string" && entry.name
-          ? entry.name
-          : `Eintrag ${index + 1}`;
-      return { index, profile: null, label, error: parsed, duplicateOf: null };
-    }
-    return {
+    return { candidates: [], error: "Die Datei enthält keine Verbindungsliste.", source: "l8db" };
+  const candidates: ImportCandidate[] = raw.connections.map((entry, index) =>
+    toCandidate(
+      parseProfile(entry),
       index,
-      profile: parsed,
-      label: parsed.name,
-      error: null,
-      duplicateOf: findDuplicate(parsed, existing),
-    };
-  });
-  return { candidates, error: null };
+      isRecord(entry) && typeof entry.name === "string" && entry.name
+        ? entry.name
+        : `Eintrag ${index + 1}`,
+      existing,
+    ),
+  );
+  return { candidates, error: null, source: "l8db" };
+}
+
+function toCandidate(
+  parsed: ExportedConnection | string,
+  index: number,
+  fallbackLabel: string,
+  existing: SavedConnection[],
+): ImportCandidate {
+  if (typeof parsed === "string")
+    return { index, profile: null, label: fallbackLabel, error: parsed, duplicateOf: null };
+  return {
+    index,
+    profile: parsed,
+    label: parsed.name,
+    error: null,
+    duplicateOf: findDuplicate(parsed, existing),
+  };
 }
 
 function toSavedConnection(profile: ExportedConnection): SavedConnection {
