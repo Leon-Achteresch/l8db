@@ -5,6 +5,7 @@ import { AnimatedGradientText } from "@/components/ui/animated-gradient-text";
 import { AnimatedGridPattern } from "@/components/ui/animated-grid-pattern";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AppLogo } from "@/components/app-logo";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
 export function AboutHero() {
@@ -34,8 +35,8 @@ export function AboutHero() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], layout: SPRING_LAYOUT }}
           className="flex flex-col items-center"
         >
-          <span className="grid size-16 place-items-center overflow-hidden rounded-2xl bg-background shadow-[0_12px_32px_-12px_oklch(0_0_0/0.35)] ring-1 ring-border">
-            <img src="/logo.png" alt="l8db Logo" className="size-11 object-contain" />
+          <span className="grid size-16 place-items-center overflow-hidden rounded-full bg-background shadow-[0_12px_32px_-12px_oklch(0_0_0/0.35)] ring-1 ring-border">
+            <AppLogo className="size-11" />
           </span>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <Badge variant="secondary" className="rounded-full px-3">
