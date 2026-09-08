@@ -157,7 +157,7 @@ export function SqlEditor({
         className,
       )}
     >
-      <div ref={containerRef} className="size-full" />
+      <div ref={containerRef} className="relative size-full" />
     </div>
   );
 }
