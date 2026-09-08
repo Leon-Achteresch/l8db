@@ -1,19 +1,38 @@
 import {
-  CodeIcon, Columns2Icon, GaugeIcon, HistoryIcon, LayersIcon,
-  NetworkIcon, ShieldIcon, TableIcon, ZapIcon,
+  CodeIcon,
+  Columns2Icon,
+  GaugeIcon,
+  HistoryIcon,
+  LayersIcon,
+  NetworkIcon,
+  ShieldIcon,
+  TableIcon,
+  ZapIcon,
 } from "lucide-react";
 import {
-  ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem,
-  ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
+  ContextMenu,
+  ContextMenuCheckboxItem,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettingsStore } from "@/lib/settings";
-import { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
+import type { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
 
 const icons = {
-  data: TableIcon, columns: Columns2Icon, definition: CodeIcon, triggers: ZapIcon,
-  indexes: LayersIcon, rls: ShieldIcon, partitions: NetworkIcon,
-  "used-by": NetworkIcon, performance: GaugeIcon, audit: HistoryIcon,
+  data: TableIcon,
+  columns: Columns2Icon,
+  definition: CodeIcon,
+  triggers: ZapIcon,
+  indexes: LayersIcon,
+  rls: ShieldIcon,
+  partitions: NetworkIcon,
+  "used-by": NetworkIcon,
+  performance: GaugeIcon,
+  audit: HistoryIcon,
 };
 
 export function TableDetailTabBar({ tabs }: { tabs: typeof TABLE_DETAIL_TABS }) {
@@ -25,13 +44,21 @@ export function TableDetailTabBar({ tabs }: { tabs: typeof TABLE_DETAIL_TABS }) 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="h-9 min-w-0 flex-1 overflow-x-auto overflow-y-hidden" aria-label="Tabbar anpassen per Rechtsklick">
+        <div
+          role="group"
+          className="h-9 min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+          aria-label="Tabbar anpassen per Rechtsklick"
+        >
           {visible.length ? (
             <TabsList variant="line" className="h-9" aria-label="Tabellenansichten">
               {visible.map((tab) => {
                 const Icon = icons[tab.id];
                 return (
-                  <TabsTrigger key={tab.id} value={tab.id} className="group-data-horizontal/tabs:after:bottom-0">
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    className="group-data-horizontal/tabs:after:bottom-0"
+                  >
                     <Icon className="size-3.5" />
                     {tab.label}
                   </TabsTrigger>

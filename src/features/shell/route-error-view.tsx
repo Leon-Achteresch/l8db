@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { motion } from "motion/react";
 import {
   ArrowLeft,
   Check,
@@ -10,6 +9,7 @@ import {
   TriangleAlert,
   WifiOff,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -146,7 +146,10 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
           >
             <span>Fehlerdetails</span>
             <ChevronDown
-              className={cn("size-4 transition-transform duration-200", detailsOpen && "rotate-180")}
+              className={cn(
+                "size-4 transition-transform duration-200",
+                detailsOpen && "rotate-180",
+              )}
             />
           </button>
           {detailsOpen && (

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useExtensionHost, useExtensionPanels } from "@/lib/extensions/react-context";
 import type { Json } from "@/lib/extensions/contracts";
+import { useExtensionHost, useExtensionPanels } from "@/lib/extensions/react-context";
 
 export function ExtensionPanelView({
   extensionId,
@@ -17,10 +17,7 @@ export function ExtensionPanelView({
 
   useEffect(() => {
     const subscription = host.panels.outgoing.on(`${extensionId}:${panelId}`, (message) => {
-      frameRef.current?.contentWindow?.postMessage(
-        { source: "l8db-extension", message },
-        "*",
-      );
+      frameRef.current?.contentWindow?.postMessage({ source: "l8db-extension", message }, "*");
     });
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;

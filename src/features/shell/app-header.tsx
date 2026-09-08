@@ -91,11 +91,7 @@ export function AppHeader() {
         IS_WINDOWS && "pr-[140px]",
       )}
     >
-      <nav
-        data-tour="header-nav"
-        className="flex items-center gap-1 px-3"
-        aria-label="Bereiche"
-      >
+      <nav data-tour="header-nav" className="flex items-center gap-1 px-3" aria-label="Bereiche">
         <Link
           to="/"
           className="mr-1 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"

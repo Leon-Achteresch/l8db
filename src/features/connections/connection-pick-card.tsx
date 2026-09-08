@@ -1,7 +1,7 @@
 import { Copy, CopyPlus, KeyRound, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
   ContextMenu,

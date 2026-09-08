@@ -1,7 +1,7 @@
 import { Pencil, Star, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";

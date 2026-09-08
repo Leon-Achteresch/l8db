@@ -18,9 +18,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const animation = animate(
       progress,
       open ? 1 : 0,
-      reduceMotion
-        ? { duration: 0 }
-        : { type: "spring", stiffness: 400, damping: 40 },
+      reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 40 },
     );
 
     return () => animation.stop();

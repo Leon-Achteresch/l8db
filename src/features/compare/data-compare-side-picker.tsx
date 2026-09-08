@@ -218,9 +218,7 @@ export function DataCompareSidePicker({
           </Label>
           <Select
             value={value.database ?? ""}
-            onValueChange={(database) =>
-              emit({ ...value, database, schema: null, table: null })
-            }
+            onValueChange={(database) => emit({ ...value, database, schema: null, table: null })}
             disabled={!connection || databases.length === 0}
           >
             <SelectTrigger className="h-8 w-full min-w-0 text-xs">

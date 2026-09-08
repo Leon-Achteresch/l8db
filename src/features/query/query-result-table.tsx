@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { QueryResult } from "@/lib/db";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
   activeFilterCount,
   applyResultView,
@@ -30,7 +31,6 @@ import {
   sortRankFor,
   toggleResultSort,
 } from "@/lib/result-grid";
-import { useQueryWorkspace } from "@/lib/query-workspace";
 import { cn } from "@/lib/utils";
 
 const PINNED_COLUMNS = [0];

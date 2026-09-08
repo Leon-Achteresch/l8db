@@ -9,7 +9,6 @@ import {
   BookmarkPlusIcon,
   Columns2Icon,
   DownloadIcon,
-  PanelLeftIcon,
   FileIcon,
   GaugeIcon,
   HistoryIcon,
@@ -18,6 +17,7 @@ import {
   Maximize2Icon,
   Minimize2Icon,
   PanelBottomIcon,
+  PanelLeftIcon,
   PlayIcon,
   ScanTextIcon,
   SearchIcon,
@@ -30,8 +30,8 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { useGroupRef } from "react-resizable-panels";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,8 +50,8 @@ import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settin
 import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
 import { QueryPerfPanel } from "@/features/query/query-perf-panel";
-import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
+import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { ScriptResultList, type ScriptRunEntry } from "@/features/query/script-result-list";
 import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
@@ -487,7 +487,13 @@ export function QueryView({ tabId }: QueryViewProps) {
     setEditorFocus(false);
     setStatementRange(null);
     setStatementError(null);
-    const target = resolveQueryRunTarget(sql, selectedSql, cursorOffset, workspace.runTarget, connection?.kind);
+    const target = resolveQueryRunTarget(
+      sql,
+      selectedSql,
+      cursorOffset,
+      workspace.runTarget,
+      connection?.kind,
+    );
     if (!target.trim()) {
       setStatementError("Kein ausführbares Statement an der Cursorposition.");
       return;
@@ -667,7 +673,10 @@ export function QueryView({ tabId }: QueryViewProps) {
   );
   useEffect(() => onHotkeyAction("grid.export", () => setCsvExportOpen(true)), []);
 
-  const scriptSplit = useMemo(() => splitSqlStatements(sql, connection?.kind), [sql, connection?.kind]);
+  const scriptSplit = useMemo(
+    () => splitSqlStatements(sql, connection?.kind),
+    [sql, connection?.kind],
+  );
 
   const handleOpenScriptDialog = useCallback(() => {
     if (!connection) return;
@@ -827,7 +836,13 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const handleExplain = useCallback(
     async (analyze: boolean) => {
-      const target = resolveQueryRunTarget(sql, selectedSql, cursorOffset, workspace.runTarget, connection?.kind);
+      const target = resolveQueryRunTarget(
+        sql,
+        selectedSql,
+        cursorOffset,
+        workspace.runTarget,
+        connection?.kind,
+      );
       if (!connection || !target.trim() || planLoading) return;
       setPlanLoading(true);
       setPlanError(null);

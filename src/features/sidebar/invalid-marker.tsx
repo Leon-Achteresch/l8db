@@ -1,9 +1,16 @@
 import { XCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function InvalidMarker({ label = "INVALID", className }: { label?: string; className?: string }) {
+export function InvalidMarker({
+  label = "INVALID",
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
   return (
     <span
+      role="img"
       title={label}
       aria-label={label}
       className={cn("inline-flex shrink-0 items-center text-destructive", className)}
