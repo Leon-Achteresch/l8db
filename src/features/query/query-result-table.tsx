@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { QueryResult } from "@/lib/db";
+import type { DatabaseKind } from "@/lib/db";
+import { dbErrorCode } from "@/lib/db-error-codes";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
@@ -42,6 +44,7 @@ interface QueryResultTableProps {
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
+  kind?: DatabaseKind;
   onInspect?: (column: string, value: unknown, row: number) => void;
 }
 
@@ -49,6 +52,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   result,
   isLoading,
   error,
+  kind,
   onInspect,
 }: QueryResultTableProps) {
   const workspace = useQueryWorkspace();
@@ -145,12 +149,14 @@ export const QueryResultTable = memo(function QueryResultTable({
   }
 
   if (error) {
+    const errorCode = dbErrorCode(kind, error);
     return (
       <div className="flex h-full flex-col items-start gap-2 overflow-auto p-5">
         <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive">
           Fehler
         </span>
         <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">{error}</pre>
+        {errorCode && <p className="text-xs text-muted-foreground">Fehlercode <span className="font-mono font-semibold">{errorCode.code}</span> · {errorCode.description}</p>}
       </div>
     );
   }
