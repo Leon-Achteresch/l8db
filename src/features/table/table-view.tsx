@@ -3,7 +3,7 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { DownloadIcon, LoaderIcon, PlusIcon } from "lucide-react";
+import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -325,11 +325,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
 
   const emptyMessage = filter.trim() === "" ? "Keine Daten." : "Keine Zeilen für diesen Filter.";
 
-  const dataContent = isLoading ? (
-    <TableDataSkeleton />
-  ) : isError ? (
-    <TableDataError title="Fehler beim Laden der Tabelle" error={error} />
-  ) : (
+  const dataContent = (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {!isView && (
         <>
@@ -352,36 +348,66 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
           </div>
         </>
       )}
-      <DataTable
-        className="h-full min-h-0 flex-1"
-        columns={data?.columns ?? []}
-        data={data?.rows ?? []}
-        emptyMessage={emptyMessage}
-        sorting={sorting}
-        onSortingChange={setSorting}
-        isFetching={isFetching}
-        onSaveRow={
-          isView || !caps.row_edit
-            ? undefined
-            : async (ctid, updates, oldValues) => {
-                await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
-              }
-        }
-        onApplyFilter={handleFilterChange}
-        page={page}
-        totalCount={totalCount ?? undefined}
-        pageSize={rowLimit}
-        onPageChange={setPage}
-        foreignKeys={foreignKeys}
-        currentSchema={schema}
-        currentTable={table}
-        onNavigateToTable={handleNavigateToTable}
-        onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
-        onDuplicateRowToEdit={isView || !caps.row_edit ? undefined : handleDuplicateRowToEdit}
-        onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
-        columnDetails={columnDetails}
-        onRefresh={handleRefresh}
-      />
+      {isLoading ? (
+        <TableDataSkeleton />
+      ) : isError ? (
+        <TableDataError
+          title="Fehler beim Laden der Tabelle"
+          error={error}
+          actions={
+            <>
+              {(filter.trim() !== "" || sorting.length > 0) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    handleFilterChange("", false);
+                    setSorting([]);
+                  }}
+                >
+                  <FilterXIcon />
+                  Filter & Sortierung zurücksetzen
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => void refetch()}>
+                <RefreshCwIcon />
+                Erneut versuchen
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <DataTable
+          className="h-full min-h-0 flex-1"
+          columns={data?.columns ?? []}
+          data={data?.rows ?? []}
+          emptyMessage={emptyMessage}
+          sorting={sorting}
+          onSortingChange={setSorting}
+          isFetching={isFetching}
+          onSaveRow={
+            isView || !caps.row_edit
+              ? undefined
+              : async (ctid, updates, oldValues) => {
+                  await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
+                }
+          }
+          onApplyFilter={caps.query_language === "json" ? undefined : handleFilterChange}
+          page={page}
+          totalCount={totalCount ?? undefined}
+          pageSize={rowLimit}
+          onPageChange={setPage}
+          foreignKeys={foreignKeys}
+          currentSchema={schema}
+          currentTable={table}
+          onNavigateToTable={handleNavigateToTable}
+          onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
+          onDuplicateRowToEdit={isView || !caps.row_edit ? undefined : handleDuplicateRowToEdit}
+          onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
+          columnDetails={columnDetails}
+          onRefresh={handleRefresh}
+        />
+      )}
     </div>
   );
 
