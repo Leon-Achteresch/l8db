@@ -34,6 +34,39 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> String {
+    let mut rest = source.trim_start();
+    for word in object_type.split_whitespace() {
+        let Some(after) = rest
+            .get(..word.len())
+            .filter(|head| head.eq_ignore_ascii_case(word))
+            .map(|_| rest[word.len()..].trim_start())
+        else {
+            return format!("CREATE OR REPLACE {source}");
+        };
+        rest = after;
+    }
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == '(' || c == ';')
+        .unwrap_or(rest.len());
+    let head = &rest[..end];
+    let is_name = head
+        .rsplit('.')
+        .next()
+        .map(|n| n.trim_matches('"').eq_ignore_ascii_case(name))
+        .unwrap_or(false);
+    if !is_name {
+        return format!("CREATE OR REPLACE {source}");
+    }
+    format!(
+        "CREATE OR REPLACE {} {}.{}{}",
+        object_type.to_uppercase(),
+        quote(owner),
+        quote(name),
+        &rest[end..]
+    )
+}
+
 fn map_err(e: oracle::Error) -> String {
     format!("Oracle: {e}")
 }
@@ -653,7 +686,8 @@ impl DatabaseAdapter for OracleAdapter {
         if rows.is_empty() {
             return Err("Quelltext nicht verfügbar".to_string());
         }
-        Ok(rows.iter().map(|r| s(r, 0)).collect::<String>())
+        let source = rows.iter().map(|r| s(r, 0)).collect::<String>();
+        Ok(create_script(parts[0], parts[1], parts[2], &source))
     }
 
     async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1550,6 +1584,36 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_script_prefixes_and_qualifies() {
+        assert_eq!(
+            create_script("DEV", "TEST_FUNKTION", "FUNCTION", "function test_funktion(p NUMBER) RETURN NUMBER IS\nBEGIN RETURN p; END;"),
+            "CREATE OR REPLACE FUNCTION \"DEV\".\"TEST_FUNKTION\"(p NUMBER) RETURN NUMBER IS\nBEGIN RETURN p; END;"
+        );
+        assert_eq!(
+            create_script(
+                "DEV",
+                "PKG",
+                "PACKAGE BODY",
+                "PACKAGE BODY \"PKG\" AS\nEND;"
+            ),
+            "CREATE OR REPLACE PACKAGE BODY \"DEV\".\"PKG\" AS\nEND;"
+        );
+        assert_eq!(
+            create_script(
+                "DEV",
+                "P",
+                "PROCEDURE",
+                "PROCEDURE dev.p IS BEGIN NULL; END;"
+            ),
+            "CREATE OR REPLACE PROCEDURE \"DEV\".\"P\" IS BEGIN NULL; END;"
+        );
+        assert_eq!(
+            create_script("DEV", "X", "FUNCTION", "irgendwas"),
+            "CREATE OR REPLACE irgendwas"
+        );
+    }
 
     #[test]
     fn finds_client_lib_dir_in_candidates() {
