@@ -250,6 +250,7 @@ async function performActivation(
   }
 }
 
+const ACTIVATION_TIMEOUT_MS = 30_000;
 let activationQueue: Promise<unknown> = Promise.resolve();
 
 export function activateConnection(
@@ -257,7 +258,15 @@ export function activateConnection(
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
   const result = activationQueue.then(async () => {
-    const outcome = await performActivation(id, sshPassword);
+    const outcome = await Promise.race([
+      performActivation(id, sshPassword),
+      new Promise<TunnelOutcome>((resolve) =>
+        setTimeout(() => {
+          useConnectionSwitch.setState({ targetId: null, isSwitching: false });
+          resolve({ ok: false, error: "Zeitüberschreitung beim Verbindungswechsel." });
+        }, ACTIVATION_TIMEOUT_MS),
+      ),
+    ]);
     if (!outcome.ok) {
       useConnectionSwitch.setState({ errorId: id ?? useConnectionsStore.getState().activeId });
     }
@@ -278,16 +287,22 @@ export async function activateConnectionWithToast(
   const pending = id
     ? toast.loading(`Verbinde mit „${label}“…`)
     : toast.loading("Trenne Verbindung…");
-  const outcome = await activateConnection(id, sshPassword);
-  toast.dismiss(pending);
-  if (!outcome.ok) {
-    toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
-  } else if (id) {
-    toast.success(`Mit „${label}“ verbunden`);
-  } else {
-    toast.success("Verbindung getrennt");
+  try {
+    const outcome = await activateConnection(id, sshPassword);
+    if (!outcome.ok) {
+      toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
+    } else if (id) {
+      toast.success(`Mit „${label}“ verbunden`);
+    } else {
+      toast.success("Verbindung getrennt");
+    }
+    return outcome.ok;
+  } catch (error) {
+    toast.error(String(error));
+    return false;
+  } finally {
+    toast.dismiss(pending);
   }
-  return outcome.ok;
 }
 
 export async function restoreSshTunnel(): Promise<void> {
