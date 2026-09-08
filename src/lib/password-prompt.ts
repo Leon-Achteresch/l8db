@@ -9,11 +9,13 @@ export interface PasswordAnswer {
 
 interface PasswordPromptState {
   connection: SavedConnection | null;
+  message: string | null;
   resolve: ((answer: PasswordAnswer | null) => void) | null;
 }
 
 export const usePasswordPrompt = create<PasswordPromptState>(() => ({
   connection: null,
+  message: null,
   resolve: null,
 }));
 
@@ -27,24 +29,29 @@ export function needsPassword(connection: SavedConnection): boolean {
   }
 }
 
-export function requestPassword(connection: SavedConnection): Promise<PasswordAnswer | null> {
+export function requestPassword(
+  connection: SavedConnection,
+  message: string | null = null,
+): Promise<PasswordAnswer | null> {
   return new Promise((resolve) => {
     usePasswordPrompt.setState({
       connection,
+      message,
       resolve: (answer) => {
-        usePasswordPrompt.setState({ connection: null, resolve: null });
+        usePasswordPrompt.setState({ connection: null, message: null, resolve: null });
         resolve(answer);
       },
     });
   });
 }
 
-export async function ensurePassword(id: string): Promise<boolean> {
+export async function ensurePassword(id: string, retryMessage?: string): Promise<boolean> {
   const connection = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
-  if (!connection || !needsPassword(connection)) return true;
-  const answer = await requestPassword(connection);
+  if (!connection) return true;
+  if (!retryMessage && !needsPassword(connection)) return true;
+  const answer = await requestPassword(connection, retryMessage ?? null);
   if (!answer) return false;
-  if (!answer.password) return true;
+  if (!answer.password) return !retryMessage;
   useConnectionsStore.setState((state) => ({
     connections: state.connections.map((entry) =>
       entry.id === id

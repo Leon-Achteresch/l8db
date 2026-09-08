@@ -1,4 +1,4 @@
-import { connectionError } from "@/lib/connection-url";
+import { AUTH_ERROR_PATTERN, connectionError } from "@/lib/connection-url";
 import {
   closeSshTunnel,
   type DatabaseKind,
@@ -306,7 +306,18 @@ export async function activateConnectionWithToast(
     ? toast.loading(`Verbinde mit „${label}“…`)
     : toast.loading("Trenne Verbindung…");
   try {
-    const outcome = await activateConnection(id, sshPassword);
+    let outcome = await activateConnection(id, sshPassword);
+    while (id && !outcome.ok && AUTH_ERROR_PATTERN.test(outcome.error ?? "")) {
+      toast.dismiss(pending);
+      if (
+        !(await ensurePassword(
+          id,
+          `Anmeldung bei „${label}“ fehlgeschlagen. Passwort erneut eingeben.`,
+        ))
+      )
+        return false;
+      outcome = await activateConnection(id, sshPassword);
+    }
     if (!outcome.ok) {
       toast.error(outcome.error ?? "Verbindung konnte nicht aktiviert werden.");
     } else if (id) {
