@@ -495,6 +495,7 @@ export function DataTable({
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [togglingColumn, setTogglingColumn] = useState<string | null>(null);
   const [autoRefreshMs, setAutoRefreshMs] = useState(0);
   const [isWindowVisible, setIsWindowVisible] = useState(true);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
@@ -1166,6 +1167,16 @@ export function DataTable({
     toast.success("In die Zwischenablage kopiert!");
   }, []);
 
+  const handleColumnToggle = useCallback(
+    (column: string) => {
+      if (togglingColumn) return;
+      setTogglingColumn(column);
+      setHidden(toggleHiddenColumn(order, hidden, column));
+      requestAnimationFrame(() => setTogglingColumn(null));
+    },
+    [hidden, order, setHidden, togglingColumn],
+  );
+
   const headerGroups = table.getHeaderGroups();
   const resizingColumn = table.getState().columnSizingInfo.isResizingColumn;
   const tableHeader = useMemo(
@@ -1204,7 +1215,8 @@ export function DataTable({
                         hidden={hidden}
                         pinned={pinned}
                         isCustomized={isCustomized}
-                        onToggle={(column) => setHidden(toggleHiddenColumn(order, hidden, column))}
+                        togglingColumn={togglingColumn}
+                        onToggle={handleColumnToggle}
                         onReorder={setOrder}
                         onReset={reset}
                         onShowAll={() => setHidden([])}

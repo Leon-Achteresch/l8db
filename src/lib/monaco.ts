@@ -91,6 +91,11 @@ monaco.editor.defineTheme("l8db-light", {
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
     "scrollbarSlider.background": "#64748b40",
+    "editorStickyScroll.background": "#f4f5f7",
+    "editorStickyScrollGutter.background": "#f4f5f7",
+    "editorStickyScroll.border": "#e2e5ea",
+    "editorStickyScroll.shadow": "#00000014",
+    "editorStickyScrollHover.background": "#eceef1",
   },
 });
 
@@ -105,6 +110,11 @@ monaco.editor.defineTheme("l8db-dark", {
     "editorGutter.background": transparent,
     "editorOverviewRuler.background": transparent,
     "scrollbarSlider.background": "#94a3b840",
+    "editorStickyScroll.background": "#1d1f2a",
+    "editorStickyScrollGutter.background": "#1d1f2a",
+    "editorStickyScroll.border": "#2e3345",
+    "editorStickyScroll.shadow": "#00000066",
+    "editorStickyScrollHover.background": "#262a3a",
   },
 });
 
