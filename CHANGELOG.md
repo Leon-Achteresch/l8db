@@ -3,13 +3,46 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
-## [Unreleased]
+## [0.2.19] - 2026-09-08
 
 ### Features
+- introduce @tanstack/react-hotkeys and overhaul query workspace
+- rotes X in Sidebar, Compile-pro-Gruppe und Outputs-Page
+- Extension API v1.1 mit Abfragen, Netzwerk, Prozessen, Ansichten, Panels und Dialogen
+- Mitgliederliste pro Package resizebar merken
+- Spec/Body als Tabs mit Mitglieder-Outline statt Accordion
+- Auswahl ausführen und Editieren klar von Speichern trennen
+- customize table detail tabs
+- show connection status indicators
+- compact playful table tabs with overflow menu
+- add table detail tab visibility controls and refine tab bar
+- one-click select the schema matching the db user in schema picker
+- context menu with duplicate and create-similar on connection cards
+- add content search to table search modal and refactor detail tabs
+- group connections by server and add template support
+- Vergleich von der aktiven Verbindung im Modal einrichten
+- Changelog und Release-Notes automatisch aus Git-Tags erzeugen
 - sichtbare Schemas pro Verbindung scannen und filtern
 
 ### Fixes
+- satisfy frontend Biome checks
+- Bedienpanel klickbar und Popover im App-Theme
+- widen connection picker layout
+- reorder NOT NULL constraint after DEFAULT in column definition SQL
+- Kommentare, Semikolons und PL/SQL-Terminator vor Ausführung korrekt behandeln
 - ausgeblendetes aktives Schema auf sichtbares Schema zurücksetzen
+
+### Performance
+- Oracle-Verbindungspools, lazy Sidebar-Metadaten und Instant-Client-Suche
+
+### Änderungen
+- replace native select with radix select in auto-refresh
+
+### Weitere Änderungen
+- fix window dragging in app header
+- Improve table footer alignment
+- Persist workspace tabs per connection
+- Feat: sidebar animation
 
 ## [0.1.161] - 2026-09-07
 
