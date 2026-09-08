@@ -1,5 +1,15 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Download, KeyRound, Pencil, Plus, Star, Upload } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Download,
+  KeyRound,
+  Pencil,
+  Plus,
+  Star,
+  Upload,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,9 +25,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { connectionUser, groupByServer, type ServerGroup } from "@/lib/connection-groups";
+import {
+  connectionUser,
+  groupByServer,
+  type ServerGroup,
+  serverKey,
+  sortServerGroups,
+} from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  type SavedConnection,
+  sortConnectionsByName,
+  useConnectionsStore,
+} from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { ensurePassword } from "@/lib/password-prompt";
 import { capabilitiesFor } from "@/lib/providers";
@@ -30,11 +50,13 @@ import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
-import { SavedConnectionChip } from "./saved-connection-chip";
+import { ConnectionSwitcher } from "./connection-switcher";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeId = useConnectionsStore((state) => state.activeId);
+  const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
+  const serverOrder = useConnectionsStore((state) => state.serverOrder);
   const [editorId, setEditorId] = useState<string | null>(connections.length ? null : "new");
   const [template, setTemplate] = useState<SavedConnection | null>(null);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
@@ -46,15 +68,26 @@ export function ConnectionsView() {
   const [importOpen, setImportOpen] = useState(false);
   const [bulkGroup, setBulkGroup] = useState<ServerGroup | null>(null);
   const toggleFavorite = useConnectionsStore((state) => state.toggleFavorite);
+  const toggleServerFavorite = useConnectionsStore((state) => state.toggleServerFavorite);
+  const setServerOrder = useConnectionsStore((state) => state.setServerOrder);
   const duplicateConnection = useConnectionsStore((state) => state.duplicateConnection);
   const navigate = useNavigate();
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
   const favoriteCount = connections.filter((connection) => connection.favorite).length;
-  const visible = favoritesOnly
-    ? connections.filter((connection) => connection.favorite)
+  const sortedConnections = sortConnectionsByName(connections);
+  const filtered = favoritesOnly
+    ? connections.filter(
+        (connection) => connection.favorite || favoriteServerKeys.includes(serverKey(connection)),
+      )
     : connections;
-  const groups = groupByServer(visible);
+  const visible = sortConnectionsByName(filtered);
+  const allGroups = sortServerGroups(
+    groupByServer(sortedConnections),
+    favoriteServerKeys,
+    serverOrder,
+  );
+  const groups = sortServerGroups(groupByServer(visible), favoriteServerKeys, serverOrder);
   const grouped = groups.some((group) => group.connections.length > 1);
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
@@ -101,6 +134,17 @@ export function ConnectionsView() {
       }),
     }));
     toast.success(`Schema-Filter für ${users.size} Connections auf Username gesetzt`);
+  }
+
+  function moveServerGroup(key: string, delta: number) {
+    const index = allGroups.findIndex((group) => group.key === key);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= allGroups.length) return;
+    const next = allGroups.map((group) => group.key);
+    const [moved] = next.splice(index, 1);
+    if (!moved) return;
+    next.splice(target, 0, moved);
+    setServerOrder(next);
   }
 
   async function openInWindow(connection: SavedConnection) {
@@ -199,23 +243,18 @@ export function ConnectionsView() {
           </div>
         )}
         {editorId && connections.length > 0 && (
-          <div className="mb-3 flex shrink-0 gap-2 overflow-x-auto pb-1">
-            {connections.map((connection) => (
-              <SavedConnectionChip
-                key={connection.id}
-                connection={connection}
-                active={activeId === connection.id}
-                connecting={connectingId === connection.id}
-                onOpen={() => {
-                  if (activeId === connection.id) void connect(null);
-                  else void connect(connection.id);
-                }}
-                onEdit={() => openEditor(connection.id)}
-                onDelete={() => setDeleteId(connection.id)}
-                onToggleFavorite={() => toggleFavorite(connection.id)}
-              />
-            ))}
-          </div>
+          <ConnectionSwitcher
+            connections={sortedConnections}
+            activeId={activeId}
+            connectingId={connectingId}
+            onOpen={(connection) => {
+              if (activeId === connection.id) void connect(null);
+              else void connect(connection.id);
+            }}
+            onEdit={(connection) => openEditor(connection.id)}
+            onDelete={(connection) => setDeleteId(connection.id)}
+            onToggleFavorite={(connection) => toggleFavorite(connection.id)}
+          />
         )}
         <div className="flex min-h-0 flex-1 flex-col">
           {editorId ? (
@@ -261,6 +300,42 @@ export function ConnectionsView() {
                           </span>
                         </span>
                         <div className="ml-auto flex flex-wrap items-center justify-end gap-1 max-sm:ml-8 max-sm:w-full max-sm:justify-start">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={
+                              favoriteServerKeys.includes(group.key)
+                                ? `${group.label} aus Favoriten entfernen`
+                                : `${group.label} favorisieren`
+                            }
+                            onClick={() => toggleServerFavorite(group.key)}
+                          >
+                            <Star
+                              className={
+                                favoriteServerKeys.includes(group.key)
+                                  ? "size-3.5 fill-current text-amber-500"
+                                  : "size-3.5"
+                              }
+                            />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`${group.label} nach oben verschieben`}
+                            disabled={allGroups[0]?.key === group.key}
+                            onClick={() => moveServerGroup(group.key, -1)}
+                          >
+                            <ArrowUp className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`${group.label} nach unten verschieben`}
+                            disabled={allGroups.at(-1)?.key === group.key}
+                            onClick={() => moveServerGroup(group.key, 1)}
+                          >
+                            <ArrowDown className="size-3.5" />
+                          </Button>
                           {group.connections.length > 1 && group.kind === "oracle" && (
                             <Button
                               variant="ghost"

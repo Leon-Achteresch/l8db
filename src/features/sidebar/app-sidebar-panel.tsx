@@ -112,9 +112,18 @@ import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 
-import { connectionUser, groupByServer, siblingConnections } from "@/lib/connection-groups";
+import {
+  connectionUser,
+  groupByServer,
+  sortServerGroups,
+  siblingConnections,
+} from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
-import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  sortConnectionsByName,
+  useActiveConnection,
+  useConnectionsStore,
+} from "@/lib/connections";
 import {
   createMaterializedView,
   createSchema,
@@ -170,6 +179,8 @@ const TableSearchModal = lazy(() =>
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
+  const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
+  const serverOrder = useConnectionsStore((state) => state.serverOrder);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
@@ -181,7 +192,15 @@ export function AppSidebarPanel() {
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
-  const serverGroups = useMemo(() => groupByServer(connections), [connections]);
+  const serverGroups = useMemo(
+    () =>
+      sortServerGroups(
+        groupByServer(sortConnectionsByName(connections)),
+        favoriteServerKeys,
+        serverOrder,
+      ),
+    [connections, favoriteServerKeys, serverOrder],
+  );
   const grouped = serverGroups.some((group) => group.connections.length > 1);
   const siblings = useMemo(
     () => siblingConnections(connections, activeConnection),
@@ -353,6 +372,9 @@ export function AppSidebarPanel() {
                       <span className="ml-auto shrink-0 tabular-nums">
                         {group.connections.length}
                       </span>
+                      {favoriteServerKeys.includes(group.key) && (
+                        <StarIcon className="size-3 fill-current text-amber-500" />
+                      )}
                     </DropdownMenuLabel>
                   )}
                   {group.connections.map((connection) => (

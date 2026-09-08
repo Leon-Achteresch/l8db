@@ -78,6 +78,10 @@ export interface SavedConnection {
   schemas?: string[] | null;
 }
 
+export function sortConnectionsByName(connections: SavedConnection[]): SavedConnection[] {
+  return [...connections].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function visibleSchemas(
   connection: Pick<SavedConnection, "schemas"> | null | undefined,
   schemas: string[],
@@ -93,6 +97,8 @@ export type ConnectionInput = Omit<SavedConnection, "id">;
 interface ConnectionsState {
   connections: SavedConnection[];
   activeId: string | null;
+  favoriteServerKeys: string[];
+  serverOrder: string[];
   addConnection: (input: ConnectionInput) => SavedConnection;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
@@ -100,6 +106,8 @@ interface ConnectionsState {
   toggleFavorite: (id: string) => void;
   addImported: (connections: SavedConnection[]) => void;
   setActiveId: (id: string | null) => void;
+  toggleServerFavorite: (key: string) => void;
+  setServerOrder: (keys: string[]) => void;
 }
 
 export function createConnectionId(): string {
@@ -161,6 +169,8 @@ export const useConnectionsStore = create<ConnectionsState>()(
     (set, get) => ({
       connections: [],
       activeId: null,
+      favoriteServerKeys: [],
+      serverOrder: [],
       addConnection: (input) => {
         const connection: SavedConnection = { ...input, id: createId() };
         set((state) => ({
@@ -213,6 +223,13 @@ export const useConnectionsStore = create<ConnectionsState>()(
           return { connections: [...state.connections, ...fresh] };
         }),
       setActiveId: (id) => set({ activeId: id }),
+      toggleServerFavorite: (key) =>
+        set((state) => ({
+          favoriteServerKeys: state.favoriteServerKeys.includes(key)
+            ? state.favoriteServerKeys.filter((entry) => entry !== key)
+            : [...state.favoriteServerKeys, key],
+        })),
+      setServerOrder: (keys) => set({ serverOrder: keys }),
     }),
     {
       name: "l8db.connections",
@@ -220,6 +237,8 @@ export const useConnectionsStore = create<ConnectionsState>()(
       partialize: (state) => ({
         connections: state.connections,
         activeId: isMainWindow ? state.activeId : readStoredActiveId(),
+        favoriteServerKeys: state.favoriteServerKeys,
+        serverOrder: state.serverOrder,
       }),
     },
   ),
