@@ -11,11 +11,31 @@ export interface DefinitionDiffApi {
   goToChange: (direction: 1 | -1) => void;
 }
 
+export interface DiffStats {
+  changes: number;
+  added: number;
+  removed: number;
+}
+
+export function diffStats(changes: readonly monaco.editor.ILineChange[]): DiffStats {
+  let added = 0;
+  let removed = 0;
+  for (const change of changes) {
+    if (change.originalEndLineNumber > 0) {
+      removed += change.originalEndLineNumber - change.originalStartLineNumber + 1;
+    }
+    if (change.modifiedEndLineNumber > 0) {
+      added += change.modifiedEndLineNumber - change.modifiedStartLineNumber + 1;
+    }
+  }
+  return { changes: changes.length, added, removed };
+}
+
 interface DefinitionDiffEditorProps {
   original: string;
   modified: string;
   onlyDifferences: boolean;
-  onChangeCount?: (count: number) => void;
+  onStats?: (stats: DiffStats) => void;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -23,16 +43,16 @@ export function DefinitionDiffEditor({
   original,
   modified,
   onlyDifferences,
-  onChangeCount,
+  onStats,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const indexRef = useRef(-1);
-  const countRef = useRef<((count: number) => void) | undefined>(onChangeCount);
+  const statsRef = useRef<((stats: DiffStats) => void) | undefined>(onStats);
   const { resolvedTheme } = useTheme();
 
-  countRef.current = onChangeCount;
+  statsRef.current = onStats;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -44,7 +64,7 @@ export function DefinitionDiffEditor({
       originalEditable: false,
       automaticLayout: true,
       renderSideBySide: true,
-      renderOverviewRuler: false,
+      renderOverviewRuler: true,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       fontSize: 13,
@@ -66,7 +86,7 @@ export function DefinitionDiffEditor({
 
     const subscription = editor.onDidUpdateDiff(() => {
       indexRef.current = -1;
-      countRef.current?.(editor.getLineChanges()?.length ?? 0);
+      statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
     });
 
     return () => {
@@ -87,7 +107,12 @@ export function DefinitionDiffEditor({
 
   useEffect(() => {
     diffRef.current?.updateOptions({
-      hideUnchangedRegions: { enabled: onlyDifferences },
+      hideUnchangedRegions: {
+        enabled: onlyDifferences,
+        contextLineCount: 1,
+        minimumLineCount: 1,
+        revealLineCount: 5,
+      },
     });
   }, [onlyDifferences]);
 
