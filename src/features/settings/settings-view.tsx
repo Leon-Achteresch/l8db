@@ -41,7 +41,7 @@ export function SettingsView() {
       className="workspace-canvas h-full w-full min-w-0 overflow-y-auto"
       data-tour="settings-page"
     >
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Einstellungen</h1>
@@ -67,7 +67,7 @@ export function SettingsView() {
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1">
+          <section className="min-w-0 flex-1 overflow-x-clip">
             <motion.div
               key={searchQuery ? "search" : activeTab}
               initial={{ opacity: 0, y: 6 }}
