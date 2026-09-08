@@ -86,6 +86,7 @@ const {
   connectionSummary,
   kindFromUrl,
   isOracleKeyValue,
+  updateOracleConnectionEndpoint,
 } = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
@@ -326,6 +327,45 @@ describe("Oracle Key-Value", () => {
   test("keeps TNS aliases via connect_string with explicit kind", () => {
     const url = parseConnectionUrl("User Id=scott;Password=tiger;Data Source=ORCL", "oracle");
     expect(url.searchParams.get("connect_string")).toBe("ORCL");
+  });
+  test("updates the host and service name without changing credentials or parameters", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT:p%40ss@old.example.com:1521/OLD?sslmode=require",
+      "new.example.com",
+      "NEWPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT:p%40ss@new.example.com:1521/NEWPDB?sslmode=require");
+    expect(extractUrlPassword(updated)).toBe("p@ss");
+    expect(connectionSummary(updated, "oracle")).toEqual({
+      host: "new.example.com",
+      port: "1521",
+      database: "NEWPDB",
+      user: "SCOTT",
+    });
+  });
+  test("converts an Oracle alias to an explicit bulk-edit endpoint", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@ORCL/?connect_string=ORCL",
+      "db.example.com",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@db.example.com/ORCLPDB");
+  });
+  test("supports IPv6 hosts in bulk-edit endpoints", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@old.example.com:1521/ORCL",
+      "2001:db8::10",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@[2001:db8::10]:1521/ORCLPDB");
+  });
+  test("accepts a host with an explicit port", () => {
+    const updated = updateOracleConnectionEndpoint(
+      "oracle://SCOTT@old.example.com:1521/ORCL",
+      "new.example.com:1541",
+      "ORCLPDB",
+    );
+    expect(updated).toBe("oracle://SCOTT@new.example.com:1541/ORCLPDB");
   });
   test("rejects MSSQL-style strings and incomplete input", () => {
     expect(

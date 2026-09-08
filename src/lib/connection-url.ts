@@ -211,6 +211,65 @@ export function oracleConnectString(url: URL): string | null {
   return url.searchParams.get("connect_string") ?? url.searchParams.get("tns");
 }
 
+interface OracleHostInput {
+  hostname: string;
+  port: string | null;
+}
+
+function parseOracleHostInput(host: string): OracleHostInput {
+  const trimmed = host.trim();
+  if (!trimmed) throw new Error("Der Host ist erforderlich.");
+  let hostname = trimmed;
+  let port: string | null = null;
+  if (trimmed.startsWith("[")) {
+    const match = /^\[([^\]]+)\](?::(\d+))?$/.exec(trimmed);
+    if (!match) throw new Error("Der Host enthält eine ungültige IPv6-Adresse oder Portangabe.");
+    hostname = match[1];
+    port = match[2] ?? null;
+  } else {
+    const match = /^([^:]+):(\d+)$/.exec(trimmed);
+    if (match) {
+      hostname = match[1];
+      port = match[2];
+    }
+  }
+  if (!hostname || /[^\w.:-]/.test(hostname) || hostname.includes("@")) {
+    throw new Error("Der Host enthält ungültige Zeichen.");
+  }
+  if (hostname.includes(":") && !/^[0-9a-f:.]+$/i.test(hostname)) {
+    throw new Error("Der Host enthält eine ungültige IPv6-Adresse.");
+  }
+  if (port) checkOraclePort(port);
+  return {
+    hostname: hostname.includes(":") ? `[${hostname}]` : hostname,
+    port,
+  };
+}
+
+export function normalizeOracleHost(host: string): string {
+  return parseOracleHostInput(host).hostname;
+}
+
+export function updateOracleConnectionEndpoint(
+  value: string,
+  host: string,
+  serviceName: string,
+): string {
+  const { hostname, port } = parseOracleHostInput(host);
+  const service = serviceName.trim();
+  if (!service) throw new Error("Der Service-Name ist erforderlich.");
+  if (/[\s/?#]/.test(service)) {
+    throw new Error("Der Service-Name darf keine Leerzeichen oder URL-Trenner enthalten.");
+  }
+  const url = parseConnectionUrl(value, "oracle");
+  url.hostname = hostname;
+  if (port) url.port = port;
+  url.pathname = `/${encodeURIComponent(service)}`;
+  url.searchParams.delete("connect_string");
+  url.searchParams.delete("tns");
+  return parseConnectionUrl(url.toString(), "oracle").toString();
+}
+
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
   if (PATH_LIKE.test(trimmed)) return /\.(duckdb|ddb)$/i.test(trimmed) ? "duckdb" : "sqlite";
