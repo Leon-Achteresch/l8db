@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, Columns2Icon, FolderOpenIcon, PlusIcon, SquareIcon } from "lucide-react";
 import type * as React from "react";
+import { useCallback, useEffect } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,10 +9,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
-
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
+import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
+import { onHotkeyAction } from "@/lib/hotkeys";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -87,11 +88,13 @@ export function TableTabs() {
     void navigate({ to: "/" });
   };
 
-  const handleSplit = () => {
+  const handleSplit = useCallback(() => {
     const key = activeTab ? tabKey(activeTab) : tabs[0] ? tabKey(tabs[0]) : null;
     addPane(key);
     if (!activeTab && tabs[0]) navigateToTab(navigate, tabs[0]);
-  };
+  }, [activeTab, addPane, navigate, tabs]);
+
+  useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
 
   const handleSplitTab = (tab: Tab) => {
     addPane(activeTab ? tabKey(activeTab) : null, tabKey(tab));

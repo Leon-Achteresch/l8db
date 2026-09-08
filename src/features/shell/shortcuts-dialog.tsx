@@ -1,9 +1,12 @@
-import { SearchIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { SearchIcon, Settings2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -12,13 +15,13 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
 import {
-  detectShortcutPlatform,
-  filterShortcuts,
-  groupShortcutsByArea,
-  isShortcutAvailable,
-  SHORTCUTS,
-  shortcutKeys,
-} from "@/lib/shortcuts";
+  filterHotkeyCommands,
+  groupHotkeyCommands,
+  isHotkeyAvailable,
+  resolveHotkey,
+  splitHotkeyForKbd,
+  useHotkeysStore,
+} from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 interface ShortcutsDialogProps {
@@ -29,11 +32,11 @@ interface ShortcutsDialogProps {
 export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
   const [term, setTerm] = useState("");
   const connection = useActiveConnection();
-  const platform = useMemo(() => detectShortcutPlatform(), []);
-  const groups = useMemo(
-    () => groupShortcutsByArea(filterShortcuts(SHORTCUTS, term, platform)),
-    [platform, term],
-  );
+  const navigate = useNavigate();
+  const overrides = useHotkeysStore((state) => state.overrides);
+
+  const groups = useMemo(() => groupHotkeyCommands(filterHotkeyCommands(term)), [term]);
+  void overrides;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -41,7 +44,8 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
         <DialogHeader>
           <DialogTitle>Tastenkürzel</DialogTitle>
           <DialogDescription>
-            Alle in l8db registrierten Tastenkürzel. Nicht verfügbare Aktionen sind ausgegraut.
+            Alle registrierten Befehle mit aktueller Belegung. Nicht verfügbare Aktionen sind
+            ausgegraut.
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -65,26 +69,31 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
                 <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                   {group.area}
                 </h3>
-                {group.shortcuts.map((shortcut) => {
-                  const available = isShortcutAvailable(shortcut, {
+                {group.commands.map((command) => {
+                  const available = isHotkeyAvailable(command.id, {
                     hasConnection: connection !== null,
                   });
+                  const current = resolveHotkey(command.id);
+                  const customized = command.id in overrides;
                   return (
                     <div
-                      key={shortcut.id}
+                      key={command.id}
                       className={cn(
                         "flex items-center justify-between gap-4 rounded-md px-2 py-1.5 text-sm",
                         available ? "text-foreground" : "text-muted-foreground/60",
                       )}
                     >
                       <span className="min-w-0 truncate">
-                        {shortcut.label}
+                        {command.label}
+                        {customized && (
+                          <span className="ml-2 text-xs text-primary">(angepasst)</span>
+                        )}
                         {!available && (
                           <span className="ml-2 text-xs">(Verbindung erforderlich)</span>
                         )}
                       </span>
                       <KbdGroup>
-                        {shortcutKeys(shortcut.binding, platform).map((key) => (
+                        {splitHotkeyForKbd(current).map((key) => (
                           <Kbd key={key}>{key}</Kbd>
                         ))}
                       </KbdGroup>
@@ -95,6 +104,19 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
             ))}
           </div>
         </ScrollArea>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+              void navigate({ to: "/settings", search: { tab: "hotkeys" } });
+            }}
+          >
+            <Settings2Icon className="size-4" />
+            Kürzel anpassen
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

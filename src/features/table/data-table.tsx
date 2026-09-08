@@ -1,6 +1,7 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import {
   type ColumnDef,
   type ColumnPinningState,
@@ -72,6 +73,7 @@ import {
   summarizeSelection,
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useResolvedHotkey } from "@/lib/hotkeys";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { compileSingleCondition } from "@/lib/sql-filter";
@@ -949,19 +951,79 @@ export function DataTable({
     cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeMatch]);
 
-  useEffect(() => {
-    const handleSearchHotkey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "f") return;
+  const gridSearchHotkey = useResolvedHotkey("grid.search");
+  const gridCopyHotkey = useResolvedHotkey("grid.copy");
+  const gridNextPageHotkey = useResolvedHotkey("grid.nextPage");
+  const gridPrevPageHotkey = useResolvedHotkey("grid.prevPage");
+
+  useHotkey(
+    gridSearchHotkey,
+    (event) => {
       const root = rootRef.current;
       const focusInside = root?.contains(document.activeElement) ?? false;
       if (!focusInside && activeCell === null) return;
-      e.preventDefault();
+      event.preventDefault();
       setSearchOpen(true);
       requestAnimationFrame(() => searchInputRef.current?.select());
-    };
-    window.addEventListener("keydown", handleSearchHotkey);
-    return () => window.removeEventListener("keydown", handleSearchHotkey);
-  }, [activeCell]);
+    },
+    { ignoreInputs: false },
+  );
+
+  const copyActiveCell = useCallback(() => {
+    if (!activeCell) return;
+    const { rowIndex, columnId } = activeCell;
+    if (copySelection()) return;
+    if (columnId === INDEX_COLUMN) return;
+    const row = rows[rowIndex];
+    const val = row?.getValue(columnId);
+    if (val !== undefined) {
+      const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
+      void navigator.clipboard.writeText(stringVal);
+      toast.success("Wert in die Zwischenablage kopiert!");
+    }
+  }, [activeCell, copySelection, rows]);
+
+  useHotkey(
+    gridCopyHotkey,
+    (event) => {
+      const root = rootRef.current;
+      const focusInside = root?.contains(document.activeElement) ?? false;
+      if (!focusInside && activeCell === null) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (editingCell) return;
+      event.preventDefault();
+      copyActiveCell();
+    },
+    { ignoreInputs: false },
+  );
+
+  useHotkey(
+    gridNextPageHotkey,
+    (event) => {
+      if (!onPageChange || totalCount == null) return;
+      const root = rootRef.current;
+      if (!(root?.contains(document.activeElement) ?? false)) return;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      if (page >= totalPages - 1) return;
+      event.preventDefault();
+      onPageChange(page + 1);
+    },
+    { ignoreInputs: false },
+  );
+
+  useHotkey(
+    gridPrevPageHotkey,
+    (event) => {
+      if (!onPageChange) return;
+      const root = rootRef.current;
+      if (!(root?.contains(document.activeElement) ?? false)) return;
+      if (page <= 0) return;
+      event.preventDefault();
+      onPageChange(page - 1);
+    },
+    { ignoreInputs: false },
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -984,20 +1046,6 @@ export function DataTable({
       if (!activeCell) return;
       const { rowIndex, columnId } = activeCell;
       const colIndex = visibleDataColumns.indexOf(columnId);
-
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        if (copySelection()) return;
-        if (columnId === INDEX_COLUMN) return;
-        const row = rows[rowIndex];
-        const val = row?.getValue(columnId);
-        if (val !== undefined) {
-          const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-          void navigator.clipboard.writeText(stringVal);
-          toast.success("Wert in die Zwischenablage kopiert!");
-        }
-        return;
-      }
 
       if (e.key === "Escape") {
         if (selectedCount > 1) {
@@ -1395,7 +1443,9 @@ export function DataTable({
               </span>
               <div className="min-w-0 truncate text-center">
                 {selectionStats ? (
-                  <span className="truncate font-mono">{describeSelectionStats(selectionStats)}</span>
+                  <span className="truncate font-mono">
+                    {describeSelectionStats(selectionStats)}
+                  </span>
                 ) : isFetching ? (
                   <span>Lade…</span>
                 ) : activeSort ? (

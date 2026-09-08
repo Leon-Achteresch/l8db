@@ -1,11 +1,35 @@
-import { useNavigate } from "@tanstack/react-router";
-import { Braces, Database, Eye, Keyboard, Puzzle, Search, Sparkles, Table, TextSearch } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  Braces,
+  Database,
+  Eye,
+  Keyboard,
+  Puzzle,
+  Search,
+  Sparkles,
+  Table,
+  TextSearch,
+} from "lucide-react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useExtensionHost } from "@/lib/extensions/react-context";
+import {
+  commandById,
+  emitHotkeyAction,
+  formatHotkeyDisplay,
+  HOTKEY_COMMANDS,
+  isCommandVisibleInRoute,
+  isHotkeyAvailable,
+  onHotkeyAction,
+  resolveHotkey,
+  useHotkeysStore,
+  useResolvedHotkey,
+} from "@/lib/hotkeys";
 import {
   buildObjectEntries,
   OBJECT_TYPE_PLURAL,
@@ -17,15 +41,12 @@ import { useAllSchemaObjectsQuery } from "@/lib/queries";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 const MAX_VISIBLE_RESULTS = 60;
 
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
-const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
-
 export function AppHeaderSearch() {
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [open, setOpen] = useState(false);
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
@@ -38,6 +59,12 @@ export function AppHeaderSearch() {
   const canSearchSource = supports(activeConnection, "source_search");
   const extensionHost = useExtensionHost();
   const [extensionVersion, setExtensionVersion] = useState(0);
+  const hotkeyOverrideVersion = useHotkeysStore((state) => state.overrides);
+  const searchButtonRef = useRef<HTMLButtonElement | null>(null);
+  const paletteHotkey = useResolvedHotkey("palette.open");
+  const quickOpenHotkey = useResolvedHotkey("palette.quickOpen");
+  const shortcutsHotkey = useResolvedHotkey("shortcuts.open");
+  const focusSearchHotkey = useResolvedHotkey("app.focusSearch");
 
   useEffect(() => {
     const subscription = extensionHost.changes.on("change", () =>
@@ -46,15 +73,40 @@ export function AppHeaderSearch() {
     return () => subscription.dispose();
   }, [extensionHost]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key !== "/") return;
-      event.preventDefault();
-      setShortcutsOpen((previous) => !previous);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useHotkeys(
+    [
+      {
+        hotkey: paletteHotkey,
+        callback: () => setOpen((previous) => !previous),
+        options: { ignoreInputs: false },
+      },
+      {
+        hotkey: quickOpenHotkey,
+        callback: () => setOpen(true),
+        options: { ignoreInputs: false },
+      },
+      {
+        hotkey: shortcutsHotkey,
+        callback: () => setShortcutsOpen((previous) => !previous),
+        options: { ignoreInputs: false },
+      },
+      {
+        hotkey: focusSearchHotkey,
+        callback: () => searchButtonRef.current?.focus(),
+        options: { ignoreInputs: false },
+      },
+    ],
+    { preventDefault: true, stopPropagation: true },
+  );
+
+  useHotkey(
+    (commandById("palette.open")?.aliases?.[0] ?? "Mod+Shift+P") as never,
+    () => setOpen((previous) => !previous),
+    { ignoreInputs: false, preventDefault: true, stopPropagation: true },
+  );
+
+  useEffect(() => onHotkeyAction("objects.search", () => setObjectSearchOpen(true)), []);
+  useEffect(() => onHotkeyAction("app.focusSearch", () => setOpen(true)), []);
 
   const onSelectConnection = useCallback(
     async (id: string) => {
@@ -65,23 +117,20 @@ export function AppHeaderSearch() {
     [navigate],
   );
 
-  const extensionItems = useMemo<CommandItem[]>(
-    () => {
-      void extensionVersion;
-      return extensionHost.commands.paletteCommands().map((command) => ({
-        id: `extension:${command.id}`,
-        label: command.title,
-        group: "Extensions",
-        icon: Puzzle,
-        keywords: [command.id, command.owner],
-        onSelect: () => {
-          setOpen(false);
-          void extensionHost.executeCommand(command.id).catch((error) => toast.error(String(error)));
-        },
-      }));
-    },
-    [extensionHost, extensionVersion],
-  );
+  const extensionItems = useMemo<CommandItem[]>(() => {
+    void extensionVersion;
+    return extensionHost.commands.paletteCommands().map((command) => ({
+      id: `extension:${command.id}`,
+      label: command.title,
+      group: "Extensions",
+      icon: Puzzle,
+      keywords: [command.id, command.owner],
+      onSelect: () => {
+        setOpen(false);
+        void extensionHost.executeCommand(command.id).catch((error) => toast.error(String(error)));
+      },
+    }));
+  }, [extensionHost, extensionVersion]);
 
   const items = useMemo<CommandItem[]>(() => {
     const connectionItems = connections.map((connection) => ({
@@ -168,16 +217,49 @@ export function AppHeaderSearch() {
       label: "Tastenkürzel anzeigen",
       group: "Hilfe",
       icon: Keyboard,
-      hint: "Cmd/Ctrl+/",
+      hint: formatHotkeyDisplay(shortcutsHotkey),
       keywords: ["tastenkürzel", "shortcut", "tastatur", "hilfe", "keyboard"],
       onSelect: () => {
         setOpen(false);
         setShortcutsOpen(true);
       },
     };
-    return [...connectionItems, ...deepSearchItem, ...objectItems, ...extensionItems, tourItem, shortcutsItem];
+    const hotkeyItems: CommandItem[] = HOTKEY_COMMANDS.filter(
+      (command) =>
+        command.id !== "palette.open" &&
+        command.id !== "palette.quickOpen" &&
+        command.id !== "shortcuts.open" &&
+        command.id !== "dialog.close" &&
+        isCommandVisibleInRoute(command, pathname) &&
+        isHotkeyAvailable(command.id, { hasConnection: activeConnection !== null }),
+    ).map((command) => ({
+      id: `hotkey:${command.id}`,
+      label: command.label,
+      group: "Aktionen",
+      icon: Keyboard,
+      hint: formatHotkeyDisplay(resolveHotkey(command.id)),
+      keywords: [command.id, command.area, command.description, command.reference ?? ""],
+      onSelect: () => {
+        setOpen(false);
+        if (command.id === "shortcuts.open") {
+          setShortcutsOpen(true);
+          return;
+        }
+        emitHotkeyAction(command.id);
+      },
+    }));
+    return [
+      ...connectionItems,
+      ...deepSearchItem,
+      ...objectItems,
+      ...extensionItems,
+      ...hotkeyItems,
+      tourItem,
+      shortcutsItem,
+    ];
   }, [
     activeConnection?.id,
+    activeConnection,
     canSearchColumns,
     canSearchSource,
     connections,
@@ -187,12 +269,16 @@ export function AppHeaderSearch() {
     onSelectConnection,
     isSwitching,
     switchTargetId,
+    shortcutsHotkey,
+    hotkeyOverrideVersion,
+    pathname,
   ]);
 
   return (
     <>
       <button
         type="button"
+        ref={searchButtonRef}
         data-tour="header-search"
         onClick={() => setOpen(true)}
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
@@ -207,7 +293,7 @@ export function AppHeaderSearch() {
         <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
         <span className="min-w-0 flex-1 truncate text-left">Suchen</span>
         <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 bg-background/70 px-1.5 py-px font-sans text-[10px]">
-          {MOD_KEY}K
+          {formatHotkeyDisplay(paletteHotkey)}
         </kbd>
       </button>
       <CommandPalette

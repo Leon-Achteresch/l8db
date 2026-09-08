@@ -2,6 +2,7 @@
 
 // beui.dev/components/blocks/command-palette
 
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { type LucideIcon, Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -86,21 +87,24 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === shortcut.toLowerCase()) {
-        e.preventDefault();
-        setOpen(!open);
-        return;
-      }
-      if (e.key === "Escape" && open) {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, shortcut, setOpen]);
+  useHotkey(
+    "Escape",
+    (event) => {
+      if (!open) return;
+      event.preventDefault();
+      setOpen(false);
+    },
+    { enabled: open, ignoreInputs: false },
+  );
+
+  useHotkey(
+    `Mod+${shortcut}` as never,
+    () => {
+      if (controlled) return;
+      setOpen(!open);
+    },
+    { enabled: !controlled, ignoreInputs: false, preventDefault: true, stopPropagation: true },
+  );
 
   useEffect(() => {
     if (!open) return;
