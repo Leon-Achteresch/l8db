@@ -1,8 +1,7 @@
 import { Blocks, CodeXml, Database, Info, Keyboard, ShieldCheck, Sliders } from "lucide-react";
 import { motion } from "motion/react";
-import { Badge } from "@/components/ui/badge";
 import { SPRING_LAYOUT } from "@/lib/ease";
-import { getPendingUpdate } from "@/lib/updater";
+import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { cn } from "@/lib/utils";
 
 export interface SettingsTabItem {
@@ -63,14 +62,14 @@ interface SettingsSidebarProps {
 }
 
 export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps) {
-  const pendingUpdate = getPendingUpdate();
+  const update = useVisibleUpdate();
 
   return (
     <nav className="flex flex-col gap-1" aria-label="Einstellungskategorien">
       {SETTINGS_TABS.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
-        const hasUpdate = tab.id === "about" && Boolean(pendingUpdate);
+        const hasUpdate = tab.id === "about" && Boolean(update);
 
         return (
           <button
@@ -100,15 +99,16 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               )}
             >
               <Icon className="size-4" />
+              {hasUpdate ? (
+                <span
+                  aria-hidden
+                  className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-red-500 ring-2 ring-background"
+                />
+              ) : null}
             </div>
             <div className="relative min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm">{tab.label}</span>
-                {hasUpdate ? (
-                  <Badge variant="default" className="h-4 px-1 text-[10px]">
-                    Neu
-                  </Badge>
-                ) : null}
               </div>
               <p className="truncate text-xs text-muted-foreground">{tab.description}</p>
             </div>
