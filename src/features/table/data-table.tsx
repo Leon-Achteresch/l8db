@@ -59,8 +59,9 @@ import {
   shouldAutoRefresh,
 } from "@/lib/auto-refresh";
 import { buildRowUpdates } from "@/lib/cell-editor";
+import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
-import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
+import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
 import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
@@ -124,7 +125,21 @@ function renderTypeIcon(iconName: string, className?: string) {
   }
 }
 
-function getColumnTypeInfo(col: string, rows: TableRow[]) {
+type ColumnTypeKind = "text" | "number" | "boolean" | "date" | "json" | "key" | "uuid";
+
+function kindFromDataType(dataType: string): ColumnTypeKind | null {
+  const lower = dataType.toLowerCase();
+  if (lower.includes("bool")) return "boolean";
+  if (lower.includes("uuid") || lower === "uniqueidentifier") return "uuid";
+  if (lower.includes("json") || lower === "object" || lower === "array") return "json";
+  if (lower.includes("time") || lower.includes("date") || lower.includes("interval")) return "date";
+  if (/^(number|numeric|dec|float|double|real|serial|money|binary_)|int/.test(lower))
+    return "number";
+  if (/char|text|clob|string/.test(lower)) return "text";
+  return null;
+}
+
+function getColumnTypeInfo(col: string, rows: TableRow[], detail?: DetailedColumnInfo) {
   let first: unknown;
   for (const row of rows) {
     const value = row[col];
@@ -134,9 +149,14 @@ function getColumnTypeInfo(col: string, rows: TableRow[]) {
     }
   }
 
-  let type: "text" | "number" | "boolean" | "date" | "json" | "key" | "uuid" = "text";
+  let type: ColumnTypeKind = "text";
+  const known = detail ? kindFromDataType(detail.data_type) : null;
 
-  if (col.toLowerCase() === "id" || col.toLowerCase() === "uuid") {
+  if (detail?.is_primary_key) {
+    type = "key";
+  } else if (known) {
+    type = known;
+  } else if (col.toLowerCase() === "id" || col.toLowerCase() === "uuid") {
     type = col.toLowerCase() === "id" ? "key" : "uuid";
   } else if (first === undefined) {
     if (col.toLowerCase().endsWith("_id") || col.toLowerCase().endsWith("id")) {
@@ -517,9 +537,12 @@ export function DataTable({
 
   const typeInfoByColumn = useMemo(() => {
     const map = new Map<string, ReturnType<typeof getColumnTypeInfo>>();
-    for (const column of columnNames) map.set(column, getColumnTypeInfo(column, data));
+    const detailByName = new Map((columnDetails ?? []).map((c) => [c.name, c]));
+    for (const column of columnNames) {
+      map.set(column, getColumnTypeInfo(column, data, detailByName.get(column)));
+    }
     return map;
-  }, [columnNames, data]);
+  }, [columnNames, data, columnDetails]);
   const headerStateRef = useRef({ typeInfoByColumn, isFetching, page, pageSize });
   headerStateRef.current = { typeInfoByColumn, isFetching, page, pageSize };
 
@@ -748,7 +771,7 @@ export function DataTable({
     if (!selectedRange || selectedCount <= 1) return false;
     const tsv = selectionToTsv(data, selectedRange);
     if (tsv === "") return false;
-    void navigator.clipboard.writeText(tsv);
+    void copyText(tsv);
     toast.success(`${selectedCount} Zellen als TSV kopiert.`);
     return true;
   }, [selectedRange, selectedCount, data]);
@@ -790,17 +813,20 @@ export function DataTable({
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
-    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue);
+    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind);
     if (sql) {
       onApplyFilter(sql, false);
     }
     setFilterColumn(null);
-  }, [filterColumn, filterOperator, filterValue, onApplyFilter]);
+  }, [filterColumn, filterOperator, filterValue, onApplyFilter, connection?.kind]);
 
   const compiledFilter = useMemo(
     () =>
-      filterColumn ? (compileSingleCondition(filterColumn, filterOperator, filterValue) ?? "") : "",
-    [filterColumn, filterOperator, filterValue],
+      filterColumn
+        ? (compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind) ??
+          "")
+        : "",
+    [filterColumn, filterOperator, filterValue, connection?.kind],
   );
 
   const handleCellEdit = useCallback((row: Row<TableRow>, columnId: string) => {
@@ -927,7 +953,7 @@ export function DataTable({
   const copyColumnNames = useCallback(() => {
     const names = formatVisibleColumnNames(order, hidden);
     if (names === "") return;
-    void navigator.clipboard.writeText(names);
+    void copyText(names);
     toast.success("Spaltennamen kopiert.");
   }, [order, hidden]);
 
@@ -978,7 +1004,7 @@ export function DataTable({
     const val = row?.getValue(columnId);
     if (val !== undefined) {
       const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-      void navigator.clipboard.writeText(stringVal);
+      void copyText(stringVal);
       toast.success("Wert in die Zwischenablage kopiert!");
     }
   }, [activeCell, copySelection, rows]);
@@ -1105,7 +1131,7 @@ export function DataTable({
   const handleCellCopy = useCallback((val: unknown) => {
     if (val === undefined || val === null) return;
     const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-    void navigator.clipboard.writeText(stringVal);
+    void copyText(stringVal);
     toast.success("In die Zwischenablage kopiert!");
   }, []);
 

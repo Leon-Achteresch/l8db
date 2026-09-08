@@ -102,6 +102,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -152,6 +153,7 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { useSettingsStore } from "@/lib/settings";
 import {
   activateConnectionWithToast,
   effectiveConnectionString,
@@ -409,7 +411,7 @@ export function AppSidebarPanel() {
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
-          <div className="flex gap-2" data-tour="sidebar-scope">
+          <div className="grid min-w-0 gap-2" data-tour="sidebar-scope">
             {caps.databases && (
               <div className="grid min-w-0 flex-1 gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
@@ -418,7 +420,12 @@ export function AppSidebarPanel() {
                   onValueChange={(value) => setDatabase(activeConnection.id, value)}
                   disabled={databasesLoading}
                 >
-                  <SelectTrigger size="sm" className="w-full">
+                  <SelectTrigger
+                    size="sm"
+                    className="w-full min-w-0"
+                    aria-label="Datenbank"
+                    title={activeDatabase ?? undefined}
+                  >
                     {activeDatabase && databases?.includes(activeDatabase) ? null : (
                       <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
@@ -437,7 +444,7 @@ export function AppSidebarPanel() {
                 </Select>
               </div>
             )}
-            {caps.schemas && (
+            {caps.schemas && caps.query_language !== "json" && (
               <div className="grid min-w-0 flex-1 gap-1.5">
                 <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                   Schema
@@ -464,7 +471,12 @@ export function AppSidebarPanel() {
                   }}
                   disabled={schemasLoading || isSwitching}
                 >
-                  <SelectTrigger size="sm" className="w-full">
+                  <SelectTrigger
+                    size="sm"
+                    className="w-full min-w-0"
+                    aria-label="Schema"
+                    title={activeSchema}
+                  >
                     {schemas?.includes(activeSchema) ? null : (
                       <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
@@ -669,46 +681,60 @@ export function AppSidebarPanel() {
           <SidebarGroup className="mt-auto border-t pt-2">
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/import">
-                      <UploadIcon className="text-muted-foreground" />
-                      <span>SQL importieren</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/create-table">
-                      <PlusIcon className="text-muted-foreground" />
-                      <span>Tabelle erstellen</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/sessions">
-                      <ActivityIcon className="text-muted-foreground" />
-                      <span>Sitzungen & Locks</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/replication">
-                      <RadioIcon className="text-muted-foreground" />
-                      <span>Replikation</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <Link to="/enums">
-                      <ListIcon className="text-muted-foreground" />
-                      <span>Enum-Typen</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {caps.query_language === "sql" && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/import">
+                        <UploadIcon className="text-muted-foreground" />
+                        <span>SQL importieren</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {caps.ddl && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/create-table">
+                        <PlusIcon className="text-muted-foreground" />
+                        <span>
+                          {caps.query_language === "json"
+                            ? "Collection erstellen"
+                            : "Tabelle erstellen"}
+                        </span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {caps.sessions && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/sessions">
+                        <ActivityIcon className="text-muted-foreground" />
+                        <span>Sitzungen & Locks</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {caps.replication && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/replication">
+                        <RadioIcon className="text-muted-foreground" />
+                        <span>Replikation</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {caps.enums && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/enums">
+                        <ListIcon className="text-muted-foreground" />
+                        <span>Enum-Typen</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -750,13 +776,16 @@ function SidebarEntityList({
   const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const activeConnection = useActiveConnection();
+  const caps = useActiveCapabilities();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
   const favorites = useObjectFavoritesStore((state) => state.favorites);
   const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
+  const searchIncludeColumns = useSettingsStore((state) => state.searchIncludeColumns);
+  const setSearchIncludeColumns = useSettingsStore((state) => state.setSearchIncludeColumns);
   const { data: columns } = useColumnsQuery(
     type === "table" ? "BASE TABLE" : "VIEW",
-    search.trim().length > 0,
+    search.trim().length > 0 && searchIncludeColumns,
   );
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
@@ -784,6 +813,9 @@ function SidebarEntityList({
     return items
       .map((item) => {
         const nameMatch = item.name.toLowerCase().includes(q);
+        if (!searchIncludeColumns) {
+          return nameMatch ? { ...item, matchingColumns: [] as string[] } : null;
+        }
         const key = `${item.schema}.${item.name}`;
         const cols = columnsByTable.get(key) ?? [];
         const matchingColumns = cols.filter((c) => c.toLowerCase().includes(q));
@@ -796,7 +828,7 @@ function SidebarEntityList({
         (item): item is { schema: string; name: string; matchingColumns: string[] } =>
           item !== null,
       );
-  }, [items, deferredSearch, columnsByTable]);
+  }, [items, deferredSearch, columnsByTable, searchIncludeColumns]);
 
   if (isLoading) {
     return (
@@ -848,7 +880,11 @@ function SidebarEntityList({
   };
 
   const handleOpenInEditor = (itemSchema: string, itemName: string) => {
-    const id = openQueryTabWithSql(`SELECT * FROM ${itemSchema}."${itemName}";`);
+    const id = openQueryTabWithSql(
+      caps.query_language === "json"
+        ? JSON.stringify({ find: itemName, filter: {} }, null, 2)
+        : `SELECT * FROM ${itemSchema}."${itemName}";`,
+    );
     navigate({ to: "/query/$id", params: { id } });
   };
 
@@ -895,14 +931,35 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative" data-tour="sidebar-search">
-        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <SidebarInput
-          placeholder={type === "table" ? "Tabellen & Spalten…" : "Views & Spalten…"}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
-        />
+      <div className="flex items-center gap-1" data-tour="sidebar-search">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <SidebarInput
+            placeholder={
+              searchIncludeColumns
+                ? type === "table"
+                  ? "Tabellen & Spalten…"
+                  : "Views & Spalten…"
+                : type === "table"
+                  ? "Tabellen…"
+                  : "Views…"
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <Toggle
+          size="sm"
+          variant="outline"
+          pressed={searchIncludeColumns}
+          onPressedChange={setSearchIncludeColumns}
+          aria-label="Spalten in Suche einbeziehen"
+          title={searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
+          className="h-7 shrink-0 px-1.5"
+        >
+          <ColumnsIcon className="size-3.5" />
+        </Toggle>
       </div>
       <AlertDialog
         open={confirmAction !== null}
@@ -1004,16 +1061,20 @@ function SidebarEntityList({
                         <SquareTerminalIcon />
                         Im Editor öffnen
                       </ContextMenuItem>
-                      <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
-                        <WrenchIcon />
-                        Alter Table
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() => handleFocusInErDiagram(item.schema, item.name)}
-                      >
-                        <NetworkIcon />
-                        Im ER-Diagramm fokussieren
-                      </ContextMenuItem>
+                      {caps.alter_columns && (
+                        <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
+                          <WrenchIcon />
+                          Alter Table
+                        </ContextMenuItem>
+                      )}
+                      {caps.foreign_keys && (
+                        <ContextMenuItem
+                          onSelect={() => handleFocusInErDiagram(item.schema, item.name)}
+                        >
+                          <NetworkIcon />
+                          Im ER-Diagramm fokussieren
+                        </ContextMenuItem>
+                      )}
                       <ContextMenuSeparator />
                       <ContextMenuItem
                         variant="destructive"

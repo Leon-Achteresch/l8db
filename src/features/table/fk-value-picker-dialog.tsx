@@ -71,7 +71,7 @@ export function FkValuePickerDialog({
     let cancelled = false;
     setIsLoading(true);
     setError(null);
-    const filter = buildFkSearchFilter(target.keyColumn, labelColumns, debounced);
+    const filter = buildFkSearchFilter(target.keyColumn, labelColumns, debounced, connection.kind);
     fetchTableRows(
       connection.kind,
       effectiveConnectionString(connection),

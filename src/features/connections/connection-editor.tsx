@@ -1,7 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ArrowRight, Eye, EyeOff, FolderOpen, LockKeyhole, PlugZap, X } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  LockKeyhole,
+  PlugZap,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -28,6 +37,7 @@ import {
   detectProvider,
   filePath,
   kindFromUrl,
+  oracleConnectString,
   parseConnectionUrl,
   sslModeFromUrl,
 } from "@/lib/connection-url";
@@ -40,6 +50,8 @@ import {
 import {
   type DatabaseKind,
   listSchemas,
+  openTnsNames,
+  oracleTnsNames,
   type ProviderInfo,
   type SslMode,
   testConnectionString,
@@ -72,7 +84,7 @@ interface Props {
   onSaved: () => void;
   onCancel: () => void;
 }
-type Mode = "string" | "fields";
+type Mode = "string" | "fields" | "tns";
 type SetupMode = "simple" | "connection-string";
 type TestResult = {
   status: "idle" | "testing" | "success" | "error";
@@ -122,6 +134,8 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const [password, setPassword] = useState("");
   const [file, setFile] = useState("");
   const [extraParams, setExtraParams] = useState("");
+  const [tnsAlias, setTnsAlias] = useState("");
+  const [tns, setTns] = useState<{ path: string | null; aliases: string[] } | null>(null);
   const [sshEnabled, setSshEnabled] = useState(Boolean(seed?.ssh?.host));
   const [sshHost, setSshHost] = useState(seed?.ssh?.host ?? "");
   const [sshPort, setSshPort] = useState(String(seed?.ssh?.port ?? 22));
@@ -170,10 +184,15 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     return () => clearInterval(timer);
   }, [result.status]);
 
+  useEffect(() => {
+    if (mode === "tns" && !tns) void oracleTnsNames().then(setTns);
+  }, [mode, tns]);
+
   function selectProvider(id: string) {
     const next = providers.find((entry) => entry.id === id);
     if (!next) return;
     setProvider(id);
+    if (mode === "tns" && next.kind !== "oracle") setMode("fields");
     setPreview(next.kind, next.id);
     setResult({ status: "idle" });
     const nextDefaults = placeholderDefaults(next);
@@ -190,9 +209,26 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       if (!value.trim()) throw new Error("Gib eine Verbindungs-URL ein, z. B. postgresql://…");
       return parseConnectionUrl(value, quickKind).toString();
     }
-    if (info.file_based)
-      return parseConnectionUrl(mode === "string" ? value : file, kind).toString();
-    if (mode === "string") return withSsl(parseConnectionUrl(value, kind).toString());
+    if (mode === "string") {
+      const inputKind = kindFromUrl(value) ?? kind;
+      const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
+      if (inputInfo.file_based) return parseConnectionUrl(value, inputKind).toString();
+      const connectionString = parseConnectionUrl(value, inputKind).toString();
+      return inputInfo.capabilities.ssl
+        ? withSslModeParam(connectionString, ssl)
+        : connectionString;
+    }
+    if (info.file_based) return parseConnectionUrl(file, kind).toString();
+    if (mode === "tns") {
+      const alias = tnsAlias.trim();
+      if (!alias) throw new Error("Wähle einen TNS-Alias aus.");
+      if (!user.trim()) throw new Error("Der Benutzer ist erforderlich.");
+      const auth = `${encodeURIComponent(user.trim())}${password ? `:${encodeURIComponent(password)}` : ""}@`;
+      return parseConnectionUrl(
+        `oracle://${auth}${encodeURIComponent(alias)}/?connect_string=${encodeURIComponent(alias)}`,
+        kind,
+      ).toString();
+    }
     if (!host.trim()) throw new Error("Der Host ist erforderlich.");
     if (port) validatePort(port);
     const hostname = host.includes(":") && !host.startsWith("[") ? `[${host.trim()}]` : host.trim();
@@ -215,12 +251,17 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   function switchMode(next: Mode) {
     if (next === mode) return;
     try {
-      if (next === "fields" && value.trim()) {
-        if (info.file_based) setFile(filePath(value));
+      if (next !== "string" && value.trim()) {
+        const inputKind = kindFromUrl(value) ?? kind;
+        const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
+        setProvider(detectProvider(value, inputKind));
+        if (inputInfo.file_based) setFile(filePath(value));
         else {
-          const url = parseConnectionUrl(value, kind);
+          const url = parseConnectionUrl(value, inputKind);
+          const alias = inputKind === "oracle" ? oracleConnectString(url) : null;
+          if (alias) setTnsAlias(alias);
           setHost(url.hostname);
-          setPort(url.port || String(info.default_port ?? ""));
+          setPort(url.port || String(inputInfo.default_port ?? ""));
           setDatabase(decodeURIComponent(url.pathname.slice(1)));
           setUser(decodeURIComponent(url.username));
           setPassword(decodeURIComponent(url.password));
@@ -252,9 +293,11 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       const connectionString = parseConnectionUrl(value, quickKind).toString();
       return { connectionString, secret: "", ssh: null, kind: quickKind };
     }
+    const inputKind = mode === "string" ? (kindFromUrl(value) ?? kind) : kind;
+    const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
     const connectionString = makeUrl();
-    const target = info.file_based ? null : parseConnectionUrl(connectionString, kind);
-    const useSsh = caps.ssh && sshEnabled;
+    const target = inputInfo.file_based ? null : parseConnectionUrl(connectionString, inputKind);
+    const useSsh = inputInfo.capabilities.ssh && sshEnabled;
     if (useSsh) {
       validatePort(sshPort);
       if (!sshHost.trim() || !sshUser.trim())
@@ -269,7 +312,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     return {
       connectionString,
       secret,
-      kind,
+      kind: inputKind,
       ssh:
         useSsh && target
           ? {
@@ -279,7 +322,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
               auth: sshAuth,
               keyFile: sshKey.trim(),
               remoteHost: target.hostname.replace(/^\[|\]$/g, ""),
-              remotePort: Number(target.port || info.default_port || 0),
+              remotePort: Number(target.port || inputInfo.default_port || 0),
             }
           : null,
     };
@@ -359,6 +402,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     try {
       if (!name.trim()) throw new Error("Gib der Verbindung einen Namen.");
       const config = await configuration();
+      const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
       const dbPassword = extractUrlPassword(config.connectionString);
       if (connection && useConnectionsStore.getState().activeId === id) {
@@ -394,10 +438,12 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
         ssh: config.ssh,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
-        readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
+        readOnly: quickSave
+          ? (connection?.readOnly ?? false)
+          : readOnly && configInfo.capabilities.read_only_mode,
         schemas: quickSave
           ? (connection?.schemas ?? null)
-          : caps.schemas && schemaFilter.length
+          : configInfo.capabilities.schemas && schemaFilter.length
             ? schemaFilter
             : null,
         color: quickSave ? (connection?.color ?? null) : color,
@@ -702,6 +748,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                       options={[
                         { value: "string", label: info.file_based ? "Pfad" : "URL" },
                         { value: "fields", label: "Felder" },
+                        ...(kind === "oracle" ? [{ value: "tns" as const, label: "TNS" }] : []),
                       ]}
                     />
                     {mode === "string" ? (
@@ -713,10 +760,11 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                           placeholder={info.placeholder}
                           value={value}
                           onChange={(event) => {
-                            setValue(event.target.value);
-                            if (caps.ssl) setSsl(sslModeFromUrl(event.target.value));
-                            if (event.target.value.trim())
-                              setProvider(detectProvider(event.target.value, kind));
+                            const nextValue = event.target.value;
+                            setValue(nextValue);
+                            if (caps.ssl) setSsl(sslModeFromUrl(nextValue));
+                            const inputKind = kindFromUrl(nextValue);
+                            if (inputKind) setProvider(detectProvider(nextValue, inputKind));
                           }}
                           autoComplete="off"
                           spellCheck={false}
@@ -743,6 +791,74 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                             <Eye className="size-4" />
                           )}
                         </button>
+                      </div>
+                    ) : mode === "tns" ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-1">
+                          <Label htmlFor="connection-tns" className="text-xs text-muted-foreground">
+                            TNS-Alias
+                          </Label>
+                          <div className="flex items-end gap-2">
+                            <Select value={tnsAlias} onValueChange={setTnsAlias}>
+                              <SelectTrigger id="connection-tns" className="w-full">
+                                <SelectValue
+                                  placeholder={
+                                    tns?.aliases.length ? "Alias wählen" : "Keine Aliase gefunden"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent position="popper">
+                                {(tns?.aliases.includes(tnsAlias) || !tnsAlias
+                                  ? (tns?.aliases ?? [])
+                                  : [tnsAlias, ...(tns?.aliases ?? [])]
+                                ).map((alias) => (
+                                  <SelectItem key={alias} value={alias}>
+                                    {alias}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              aria-label="tnsnames.ora neu laden"
+                              onClick={() => void oracleTnsNames().then(setTns)}
+                            >
+                              <RefreshCw className="size-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              onClick={() =>
+                                openTnsNames().catch((error) => toast.error(connectionError(error)))
+                              }
+                            >
+                              TNSNames Editor
+                            </Button>
+                          </div>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {tns?.path ??
+                              "Keine tnsnames.ora gefunden: TNS_ADMIN setzen oder unter <Instant Client>/network/admin ablegen."}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <ConnectionField
+                            id="connection-tns-user"
+                            label="Benutzer"
+                            value={user}
+                            onChange={(event) => setUser(event.target.value)}
+                          />
+                          <ConnectionField
+                            id="connection-tns-password"
+                            label="Passwort"
+                            type="password"
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                          />
+                        </div>
                       </div>
                     ) : info.file_based ? (
                       <div className="flex items-end gap-2">

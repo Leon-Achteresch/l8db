@@ -1,3 +1,6 @@
+import type { DatabaseKind } from "@/lib/db";
+import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
+
 export interface OperatorDef {
   key: string;
   label: string;
@@ -18,18 +21,21 @@ export const OPERATORS: OperatorDef[] = [
   { key: "isNotNull", label: "ist nicht leer", needsValue: false },
 ];
 
+export type FilterKind = DatabaseKind | null | undefined;
+
 export function operatorNeedsValue(key: string): boolean {
   return OPERATORS.find((op) => op.key === key)?.needsValue ?? true;
 }
 
-export function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
+export function quoteIdent(name: string, kind?: FilterKind): string {
+  return quoteIdentifier(name, identifierStyleForKind(kind));
 }
 
-export function quoteLiteral(value: string): string {
+export function quoteLiteral(value: string, kind?: FilterKind): string {
   const trimmed = value.trim();
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
-  if (trimmed === "true" || trimmed === "false" || trimmed === "null") return trimmed;
+  const strict = kind === "oracle" || kind === "mssql";
+  if (!strict && /^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
+  if (!strict && (trimmed === "true" || trimmed === "false" || trimmed === "null")) return trimmed;
   return `'${value.replace(/'/g, "''")}'`;
 }
 
@@ -37,45 +43,76 @@ export function quoteLike(value: string): string {
   return value.replace(/'/g, "''").replace(/([%_\\])/g, "\\$1");
 }
 
-export function compileSingleCondition(
-  column: string,
+export function textMatch(columnExpression: string, pattern: string, kind?: FilterKind): string {
+  const literal = `'${pattern}'`;
+  switch (kind) {
+    case "oracle":
+      return `UPPER(TO_CHAR(${columnExpression})) LIKE UPPER(${literal}) ESCAPE '\\'`;
+    case "mssql":
+      return `CAST(${columnExpression} AS NVARCHAR(MAX)) LIKE ${literal} ESCAPE '\\'`;
+    case "mysql":
+      return `CAST(${columnExpression} AS CHAR) LIKE ${literal}`;
+    case "sqlite":
+      return `CAST(${columnExpression} AS TEXT) LIKE ${literal} ESCAPE '\\'`;
+    case "clickhouse":
+      return `toString(${columnExpression}) ILIKE ${literal}`;
+    case "odbc":
+    case "cassandra":
+      return `UPPER(CAST(${columnExpression} AS VARCHAR(4000))) LIKE UPPER(${literal}) ESCAPE '\\'`;
+    default:
+      return `${columnExpression}::text ILIKE ${literal}`;
+  }
+}
+
+export function compileConditionExpression(
+  columnExpression: string,
   operator: string,
   value: string,
+  kind?: FilterKind,
 ): string | null {
-  if (!column) return null;
-  if (operatorNeedsValue(operator) && value === "") return null;
-  const col = quoteIdent(column);
+  if (operatorNeedsValue(operator) && value.trim() === "") return null;
   switch (operator) {
     case "eq":
-      return `${col} = ${quoteLiteral(value)}`;
+      return `${columnExpression} = ${quoteLiteral(value, kind)}`;
     case "neq":
-      return `${col} <> ${quoteLiteral(value)}`;
+      return `${columnExpression} <> ${quoteLiteral(value, kind)}`;
     case "gt":
-      return `${col} > ${quoteLiteral(value)}`;
+      return `${columnExpression} > ${quoteLiteral(value, kind)}`;
     case "gte":
-      return `${col} >= ${quoteLiteral(value)}`;
+      return `${columnExpression} >= ${quoteLiteral(value, kind)}`;
     case "lt":
-      return `${col} < ${quoteLiteral(value)}`;
+      return `${columnExpression} < ${quoteLiteral(value, kind)}`;
     case "lte":
-      return `${col} <= ${quoteLiteral(value)}`;
+      return `${columnExpression} <= ${quoteLiteral(value, kind)}`;
     case "contains":
-      return `${col}::text ILIKE '%${quoteLike(value)}%'`;
+      return textMatch(columnExpression, `%${quoteLike(value)}%`, kind);
     case "startsWith":
-      return `${col}::text ILIKE '${quoteLike(value)}%'`;
+      return textMatch(columnExpression, `${quoteLike(value)}%`, kind);
     case "endsWith":
-      return `${col}::text ILIKE '%${quoteLike(value)}'`;
+      return textMatch(columnExpression, `%${quoteLike(value)}`, kind);
     case "isNull":
-      return `${col} IS NULL`;
+      return `${columnExpression} IS NULL`;
     case "isNotNull":
-      return `${col} IS NOT NULL`;
+      return `${columnExpression} IS NOT NULL`;
     default:
       return null;
   }
 }
 
-export function compileContentFilter(columns: string[], value: string): string {
+export function compileSingleCondition(
+  column: string,
+  operator: string,
+  value: string,
+  kind?: FilterKind,
+): string | null {
+  if (!column) return null;
+  if (operatorNeedsValue(operator) && value === "") return null;
+  return compileConditionExpression(quoteIdent(column, kind), operator, value, kind);
+}
+
+export function compileContentFilter(columns: string[], value: string, kind?: FilterKind): string {
   return columns
-    .map((col) => compileSingleCondition(col, "contains", value))
+    .map((col) => compileSingleCondition(col, "contains", value, kind))
     .filter((part): part is string => part !== null)
     .join(" OR ");
 }

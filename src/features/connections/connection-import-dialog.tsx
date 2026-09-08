@@ -1,6 +1,6 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { AlertTriangle, CopyPlus, FileJson } from "lucide-react";
+import { AlertTriangle, CopyPlus, FileJson, Rat } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ interface Props {
 export function ConnectionImportDialog({ open, onOpenChange }: Props) {
   const [candidates, setCandidates] = useState<ImportCandidate[] | null>(null);
   const [fileName, setFileName] = useState("");
+  const [source, setSource] = useState<"l8db" | "toad">("l8db");
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [strategy, setStrategy] = useState<DuplicateStrategy>("skip");
@@ -45,12 +46,17 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
       const picked = await openFileDialog({
         multiple: false,
         directory: false,
-        filters: [{ name: "JSON", extensions: ["json"] }],
+        filters: [
+          { name: "l8db oder Toad", extensions: ["json", "xml"] },
+          { name: "l8db (JSON)", extensions: ["json"] },
+          { name: "Toad for Oracle (XML)", extensions: ["xml"] },
+        ],
       });
       if (!picked || typeof picked !== "string") return;
       const text = await readTextFile(picked);
       const parsed = parseConnectionImport(text, useConnectionsStore.getState().connections);
       setFileName(picked.split("/").pop() ?? picked);
+      setSource(parsed.source);
       setError(parsed.error);
       setCandidates(parsed.error ? null : parsed.candidates);
       setSelected(
@@ -100,8 +106,9 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Verbindungen importieren</DialogTitle>
           <DialogDescription>
-            Exportdatei aus l8db auswählen. Bestehende Profile bleiben unverändert, es wird keine
-            Verbindung aufgebaut. Passwörter werden nach dem Import regulär im Profil erfasst.
+            Exportdatei aus l8db (JSON) oder Toad for Oracle (XML) auswählen. Bestehende Profile
+            bleiben unverändert, es wird keine Verbindung aufgebaut. Passwörter werden nach dem
+            Import regulär im Profil erfasst.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -111,7 +118,14 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
               Datei wählen
             </Button>
             {fileName && (
-              <span className="truncate font-mono text-xs text-muted-foreground">{fileName}</span>
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {source === "toad" ? (
+                  <Rat className="size-3.5 shrink-0" aria-label="Toad for Oracle" />
+                ) : (
+                  <FileJson className="size-3.5 shrink-0" aria-label="l8db" />
+                )}
+                <span className="truncate font-mono">{fileName}</span>
+              </span>
             )}
           </div>
           {error && (

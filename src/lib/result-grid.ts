@@ -1,4 +1,6 @@
-export type ResultRow = Record<string, string | null>;
+import { gridCellText } from "@/lib/grid-search";
+
+export type ResultRow = Record<string, unknown>;
 
 export type ResultSortDirection = "asc" | "desc";
 
@@ -23,12 +25,12 @@ const textCollator = new Intl.Collator("de", { sensitivity: "base" });
 const NUMBER_PATTERN = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}([ T][\d:.]+([+-][\d:]+|Z)?)?$/;
 
-export function resultCellText(value: string | null | undefined): string {
+export function resultCellText(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return String(value);
+  return gridCellText(value);
 }
 
-export function isNullValue(value: string | null | undefined): boolean {
+export function isNullValue(value: unknown): boolean {
   return value === null || value === undefined;
 }
 
@@ -43,7 +45,7 @@ export function detectColumnKind(
   for (const row of rows) {
     const value = row[column];
     if (isNullValue(value)) continue;
-    const text = String(value).trim();
+    const text = resultCellText(value).trim();
     if (text === "") continue;
     seen += 1;
     if (numeric && !NUMBER_PATTERN.test(text)) numeric = false;
@@ -68,18 +70,14 @@ export function detectColumnKinds(
   return kinds;
 }
 
-export function compareResultValues(
-  a: string | null | undefined,
-  b: string | null | undefined,
-  kind: ResultValueKind,
-): number {
+export function compareResultValues(a: unknown, b: unknown, kind: ResultValueKind): number {
   const aNull = isNullValue(a);
   const bNull = isNullValue(b);
   if (aNull && bNull) return 0;
   if (aNull) return 1;
   if (bNull) return -1;
-  const left = String(a);
-  const right = String(b);
+  const left = resultCellText(a);
+  const right = resultCellText(b);
   if (kind === "number") {
     const leftNum = Number(left);
     const rightNum = Number(right);
@@ -139,8 +137,8 @@ export function sortRankFor(sorts: ResultSort[], column: string): number | null 
 }
 
 export function compareForSort(
-  a: string | null | undefined,
-  b: string | null | undefined,
+  a: unknown,
+  b: unknown,
   kind: ResultValueKind,
   direction: ResultSortDirection,
 ): number {
@@ -187,16 +185,13 @@ export function activeFilterCount(filters: ResultFilters): number {
   return Object.values(filters).filter((filter) => isFilterActive(filter)).length;
 }
 
-export function matchesResultFilter(
-  value: string | null | undefined,
-  filter: ResultFilter,
-): boolean {
+export function matchesResultFilter(value: unknown, filter: ResultFilter): boolean {
   if (filter.operator === "is_null") return isNullValue(value);
   if (filter.operator === "not_null") return !isNullValue(value);
   const needle = filter.value.trim().toLowerCase();
   if (needle === "") return true;
   if (isNullValue(value)) return false;
-  const haystack = String(value).toLowerCase();
+  const haystack = resultCellText(value).toLowerCase();
   if (filter.operator === "equals") return haystack.trim() === needle;
   return haystack.includes(needle);
 }

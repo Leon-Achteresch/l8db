@@ -211,6 +211,65 @@ export function oracleConnectString(url: URL): string | null {
   return url.searchParams.get("connect_string") ?? url.searchParams.get("tns");
 }
 
+interface OracleHostInput {
+  hostname: string;
+  port: string | null;
+}
+
+function parseOracleHostInput(host: string): OracleHostInput {
+  const trimmed = host.trim();
+  if (!trimmed) throw new Error("Der Host ist erforderlich.");
+  let hostname = trimmed;
+  let port: string | null = null;
+  if (trimmed.startsWith("[")) {
+    const match = /^\[([^\]]+)\](?::(\d+))?$/.exec(trimmed);
+    if (!match) throw new Error("Der Host enthält eine ungültige IPv6-Adresse oder Portangabe.");
+    hostname = match[1];
+    port = match[2] ?? null;
+  } else {
+    const match = /^([^:]+):(\d+)$/.exec(trimmed);
+    if (match) {
+      hostname = match[1];
+      port = match[2];
+    }
+  }
+  if (!hostname || /[^\w.:-]/.test(hostname) || hostname.includes("@")) {
+    throw new Error("Der Host enthält ungültige Zeichen.");
+  }
+  if (hostname.includes(":") && !/^[0-9a-f:.]+$/i.test(hostname)) {
+    throw new Error("Der Host enthält eine ungültige IPv6-Adresse.");
+  }
+  if (port) checkOraclePort(port);
+  return {
+    hostname: hostname.includes(":") ? `[${hostname}]` : hostname,
+    port,
+  };
+}
+
+export function normalizeOracleHost(host: string): string {
+  return parseOracleHostInput(host).hostname;
+}
+
+export function updateOracleConnectionEndpoint(
+  value: string,
+  host: string,
+  serviceName: string,
+): string {
+  const { hostname, port } = parseOracleHostInput(host);
+  const service = serviceName.trim();
+  if (!service) throw new Error("Der Service-Name ist erforderlich.");
+  if (/[\s/?#]/.test(service)) {
+    throw new Error("Der Service-Name darf keine Leerzeichen oder URL-Trenner enthalten.");
+  }
+  const url = parseConnectionUrl(value, "oracle");
+  url.hostname = hostname;
+  if (port) url.port = port;
+  url.pathname = `/${encodeURIComponent(service)}`;
+  url.searchParams.delete("connect_string");
+  url.searchParams.delete("tns");
+  return parseConnectionUrl(url.toString(), "oracle").toString();
+}
+
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
   if (PATH_LIKE.test(trimmed)) return /\.(duckdb|ddb)$/i.test(trimmed) ? "duckdb" : "sqlite";
@@ -387,18 +446,18 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
   }
 }
 
+const AUTH_ERROR_PATTERN =
+  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|ORA-01017|ORA-01005/i;
+export const AUTH_FAILED_MESSAGE =
+  "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
+
 export function connectionError(error: unknown): string {
   const message = String(error)
     .replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***")
     .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "[Verbindungs-URL]");
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))
     return "Zum Testen und Verbinden öffne l8db als Desktop-App.";
-  if (
-    /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|ORA-01017/i.test(
-      message,
-    )
-  )
-    return "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
+  if (AUTH_ERROR_PATTERN.test(message)) return AUTH_FAILED_MESSAGE;
   if (
     /Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(
       message,
@@ -411,6 +470,12 @@ export function connectionError(error: unknown): string {
     return "Kein Oracle-Listener auf Host und Port (ORA-12541). Prüfe Host, Port und ob die Datenbank läuft.";
   if (/ORA-12545/i.test(message))
     return "Der Ziel-Host existiert nicht (ORA-12545). Prüfe Hostnamen, DNS und VPN.";
+  if (/^MongoDB:\s*/i.test(message)) {
+    const detail = message.replace(/^MongoDB:\s*/i, "");
+    if (/server selection|no available servers|timeout|timed out|dns|resolve/i.test(detail))
+      return `MongoDB-Serverauswahl fehlgeschlagen. Prüfe Atlas-IP-Allowlist, DNS/SRV und Firewall. Details: ${detail}`;
+    return detail;
+  }
   if (/certificate|tls|ssl/i.test(message))
     return "TLS-Verbindung fehlgeschlagen. Prüfe SSL-Modus, Servername und das Zertifikat im System-Zertifikatsspeicher.";
   if (/timeout|timed out/i.test(message))

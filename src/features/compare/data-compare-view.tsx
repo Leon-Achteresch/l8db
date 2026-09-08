@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { copyText } from "@/lib/clipboard";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   buildSyncScript,
@@ -249,7 +249,7 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
 
   const copyScript = async () => {
     if (!script?.sql) return;
-    await navigator.clipboard.writeText(script.sql);
+    await copyText(script.sql);
     toast.success("Skript kopiert");
   };
 

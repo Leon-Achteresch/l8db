@@ -30,7 +30,14 @@ export type SymbolTarget =
   | { kind: "local"; name: string; line: number; memberKind: PlsqlMember["kind"] }
   | { kind: "function" | "procedure"; schema: string; name: string; oid: string }
   | { kind: "package"; schema: string; name: string; member?: string }
-  | { kind: "table"; schema: string; name: string; entityType: "table" | "view"; column?: string };
+  | {
+      kind: "table";
+      schema: string;
+      name: string;
+      entityType: "table" | "view";
+      column?: string;
+      sql?: string;
+    };
 
 export type SuggestionKind =
   | "schema"

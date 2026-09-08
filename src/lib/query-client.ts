@@ -20,6 +20,8 @@ export const METADATA_QUERY_ROOTS = [
   "triggers",
   "er-schema",
   "all-tables",
+  "all-views",
+  "all-matviews",
   "all-columns",
   "all-objects",
   "sequences",

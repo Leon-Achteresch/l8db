@@ -33,6 +33,7 @@ interface BindParamsDialogProps {
   values: Record<string, BindParamValue>;
   onValuesChange: (values: Record<string, BindParamValue>) => void;
   onConfirm: () => void;
+  inline?: boolean;
 }
 
 export function BindParamsDialog({
@@ -42,6 +43,7 @@ export function BindParamsDialog({
   values,
   onValuesChange,
   onConfirm,
+  inline = false,
 }: BindParamsDialogProps) {
   const errors = validateBindParams(refs, values);
   const update = (name: string, patch: Partial<BindParamValue>) => {
@@ -55,8 +57,9 @@ export function BindParamsDialog({
         <DialogHeader>
           <DialogTitle>Bind-Parameter</DialogTitle>
           <DialogDescription>
-            Werte werden gebunden und nicht in den SQL-Text eingesetzt. Der Verlauf speichert nur
-            die Abfrage mit Platzhaltern.
+            {inline
+              ? "Werte werden als Literale in den SQL-Text eingesetzt."
+              : "Werte werden gebunden und nicht in den SQL-Text eingesetzt. Der Verlauf speichert nur die Abfrage mit Platzhaltern."}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-80 pr-2">

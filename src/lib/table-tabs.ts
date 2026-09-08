@@ -20,6 +20,7 @@ export type QueryTab = {
   fileMtime?: number | null;
   externalChange?: boolean;
   bookmarks?: number[];
+  autoRun?: boolean;
 };
 export type QueryFileInfo = { path: string; mtime: number | null };
 
@@ -91,7 +92,7 @@ interface TabsState {
   recentlyClosed: Tab[];
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
-  openQueryTabWithSql: (sql: string, title?: string) => string;
+  openQueryTabWithSql: (sql: string, title?: string, autoRun?: boolean) => string;
   openSavedQueryTab: (tab: { id: string; title: string; sql: string }) => void;
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
   openProcedureTab: (tab: Omit<ProcedureTab, "kind">) => void;
@@ -205,12 +206,13 @@ export const useTableTabs = create<TabsState>()(
         return qt.id;
       },
 
-      openQueryTabWithSql: (sql, title) => {
+      openQueryTabWithSql: (sql, title, autoRun) => {
         const qt: QueryTab = {
           kind: "query",
           id: crypto.randomUUID(),
           title: title ?? nextQueryTitle(get().tabs),
           sql,
+          autoRun,
         };
         set((state) => storeFor([...state.tabs, qt], state));
         return qt.id;

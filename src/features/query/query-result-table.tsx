@@ -26,6 +26,7 @@ import {
   type ResultFilterOperator,
   type ResultFilters,
   type ResultSort,
+  resultCellText,
   resultFilterOperatorLabel,
   sortDirectionFor,
   sortRankFor,
@@ -384,17 +385,18 @@ export const QueryResultTable = memo(function QueryResultTable({
                     const col = columns[item.index - 1];
                     const raw = row[col];
                     const isNull = raw === null || raw === undefined;
+                    const text = resultCellText(raw);
                     const display = isNull
                       ? "NULL"
-                      : String(raw).length > 200
-                        ? `${String(raw).slice(0, 200)}…`
-                        : String(raw);
+                      : text.length > 200
+                        ? `${text.slice(0, 200)}…`
+                        : text;
                     return (
                       <td
                         key={col}
                         data-col={col}
                         style={{ fontSize: workspace.resultFontSize }}
-                        title={isNull ? undefined : String(raw)}
+                        title={isNull ? undefined : text}
                         className={cn(
                           "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono",
                           isNull && "text-muted-foreground/50 italic",

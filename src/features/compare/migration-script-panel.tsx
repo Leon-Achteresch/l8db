@@ -3,12 +3,12 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CopyIcon, FileDownIcon, SquarePenIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { copyText } from "@/lib/clipboard";
 import type { DatabaseKind } from "@/lib/db";
 import { buildMigrationScript, migrationFileName } from "@/lib/migration-script";
 import type { SchemaSnapshot, SnapshotDiffEntry } from "@/lib/schema-snapshot";
@@ -39,7 +39,7 @@ export function MigrationScriptPanel({ kind, base, current, entries }: Migration
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(script.sql);
+      await copyText(script.sql);
       toast.success("Migrationsskript kopiert");
     } catch (error) {
       setStatus(`Kopieren fehlgeschlagen: ${errorMessage(error)}`);

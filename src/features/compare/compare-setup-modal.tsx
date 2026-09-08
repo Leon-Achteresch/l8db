@@ -42,7 +42,9 @@ interface DataSetup {
   onRightChange: (value: DataCompareSideSelection) => void;
 }
 
-type CompareSetupModalProps = DefinitionSetup | DataSetup;
+export type CompareSetupProps = DefinitionSetup | DataSetup;
+
+type CompareSetupModalProps = CompareSetupProps & { size?: "sm" | "lg" };
 
 export function CompareSetupModal(props: CompareSetupModalProps) {
   const types = supportedCompareObjectTypes(props.sourceConnection);
@@ -67,10 +69,17 @@ export function CompareSetupModal(props: CompareSetupModalProps) {
   return (
     <CenterMorphModal>
       <CenterMorphModalTrigger>
-        <Button size="sm" variant="outline" className="h-7 text-xs">
-          <Settings2Icon className="size-3.5" />
-          Einrichten
-        </Button>
+        {props.size === "lg" ? (
+          <Button size="lg" className="h-12 px-8 text-base">
+            <Settings2Icon className="size-5" />
+            Vergleich einrichten
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" className="h-7 text-xs">
+            <Settings2Icon className="size-3.5" />
+            Einrichten
+          </Button>
+        )}
       </CenterMorphModalTrigger>
       <CenterMorphModalContent
         ariaLabel="Vergleich einrichten"

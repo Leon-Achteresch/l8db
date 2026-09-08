@@ -312,3 +312,24 @@ export function buildParameterizedQuery(
     }),
   };
 }
+
+function sqlLiteral(entry: BindParamValue | undefined): string {
+  const value = entry ? normalizeBindValue(entry) : null;
+  if (value === null) return "NULL";
+  if (entry?.type === "int" || entry?.type === "numeric" || entry?.type === "bool") return value;
+  if (entry?.type === "timestamp") return `TIMESTAMP '${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+export function inlineBindValues(
+  sql: string,
+  values: Record<string, BindParamValue | undefined>,
+): string {
+  let out = "";
+  let cursor = 0;
+  for (const occurrence of scanBindParams(sql)) {
+    out += sql.slice(cursor, occurrence.start) + sqlLiteral(values[occurrence.name]);
+    cursor = occurrence.end;
+  }
+  return out + sql.slice(cursor);
+}

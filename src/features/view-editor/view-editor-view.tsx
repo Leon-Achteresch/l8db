@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import {
@@ -24,6 +23,7 @@ import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -146,7 +146,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   }, []);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(currentValue);
+    await copyText(currentValue);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

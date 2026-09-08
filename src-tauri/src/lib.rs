@@ -10,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
@@ -21,6 +22,8 @@ pub fn run() {
             db::commands::list_providers,
             db::commands::driver_status,
             db::commands::install_driver,
+            db::commands::oracle_tns_names,
+            db::commands::oracle_open_tnsnames,
             db::commands::test_connection,
             db::commands::test_connection_string,
             db::commands::list_databases,

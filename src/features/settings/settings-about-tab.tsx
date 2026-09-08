@@ -1,41 +1,21 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { Bug, Check, Copy, ExternalLink, Terminal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { BugReportDialog, collectDiagnosticText } from "@/features/settings/bug-report-dialog";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
+import { copyText } from "@/lib/clipboard";
 
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
-
-  const diagnosticInfo = () =>
-    [
-      `l8db Version: 0.1.0`,
-      `Plattform: ${navigator.userAgent}`,
-      `Sprache: ${navigator.language}`,
-      `Screen: ${window.innerWidth}x${window.innerHeight}`,
-      `Engine: Tauri v2 / Rust Backend`,
-      `UI: React 19 / Vite`,
-    ].join("\n");
-
-  const reportBug = async () => {
-    const subject = encodeURIComponent("l8db Bugreport");
-    const body = encodeURIComponent(
-      `Beschreibung:\n\n\nSchritte zum Reproduzieren:\n\n\n---\n${diagnosticInfo()}`,
-    );
-    try {
-      await openUrl(`mailto:leon.achteresch@gmail.com?subject=${subject}&body=${body}`);
-    } catch {
-      toast.error("E-Mail-Programm konnte nicht geöffnet werden");
-    }
-  };
+  const [reportOpen, setReportOpen] = useState(false);
 
   const copyDiagnosticInfo = async () => {
-    const info = diagnosticInfo();
+    const info = await collectDiagnosticText();
 
     try {
-      await navigator.clipboard.writeText(info);
+      await copyText(info);
       setCopied(true);
       toast.success("Diagnose-Informationen in die Zwischenablage kopiert");
       setTimeout(() => setCopied(false), 2000);
@@ -55,7 +35,7 @@ export function SettingsAboutTab() {
 
       <UpdateSection />
 
-      <div className="pt-2">
+      <div className="space-y-3 pt-2">
         <SettingsRow
           title="Systemdiagnose"
           description="Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte."
@@ -71,13 +51,14 @@ export function SettingsAboutTab() {
         </SettingsRow>
         <SettingsRow
           title="Bug melden"
-          description="Öffnet dein E-Mail-Programm mit vorausgefüllten Diagnose-Informationen."
+          description="Problem beschreiben und direkt auf GitHub melden, kopieren oder per E-Mail senden."
         >
-          <Button variant="outline" size="sm" onClick={() => void reportBug()}>
+          <Button variant="outline" size="sm" onClick={() => setReportOpen(true)}>
             <Bug className="size-3.5" />
-            <span>Bugreport senden</span>
+            <span>Bug melden</span>
           </Button>
         </SettingsRow>
+        <BugReportDialog open={reportOpen} onOpenChange={setReportOpen} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-muted-foreground">
