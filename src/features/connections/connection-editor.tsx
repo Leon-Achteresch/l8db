@@ -438,8 +438,9 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
         ssh: config.ssh,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
-        readOnly:
-          quickSave ? (connection?.readOnly ?? false) : readOnly && configInfo.capabilities.read_only_mode,
+        readOnly: quickSave
+          ? (connection?.readOnly ?? false)
+          : readOnly && configInfo.capabilities.read_only_mode,
         schemas: quickSave
           ? (connection?.schemas ?? null)
           : configInfo.capabilities.schemas && schemaFilter.length

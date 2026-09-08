@@ -55,9 +55,12 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
       const store = useConnectionsStore.getState();
       if (store.activeId && ids.has(store.activeId)) {
         const outcome = await activateConnection(null);
-        if (!outcome.ok) throw new Error(outcome.error ?? "Die aktive Verbindung konnte nicht getrennt werden.");
+        if (!outcome.ok)
+          throw new Error(outcome.error ?? "Die aktive Verbindung konnte nicht getrennt werden.");
       }
-      const current = useConnectionsStore.getState().connections.filter((connection) => ids.has(connection.id));
+      const current = useConnectionsStore
+        .getState()
+        .connections.filter((connection) => ids.has(connection.id));
       await Promise.all(
         current
           .filter((connection) => connection.tunnelPort)
@@ -137,7 +140,12 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
               Abbrechen
             </Button>
             <Button type="submit" disabled={saving || !host.trim() || !serviceName.trim()}>

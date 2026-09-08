@@ -955,9 +955,7 @@ function SidebarEntityList({
           pressed={searchIncludeColumns}
           onPressedChange={setSearchIncludeColumns}
           aria-label="Spalten in Suche einbeziehen"
-          title={
-            searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"
-          }
+          title={searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
           className="h-7 shrink-0 px-1.5"
         >
           <ColumnsIcon className="size-3.5" />
