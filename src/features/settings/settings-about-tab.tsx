@@ -1,4 +1,5 @@
-import { Check, Copy, ExternalLink, Terminal } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Bug, Check, Copy, ExternalLink, Terminal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,8 @@ import { UpdateSection } from "@/features/settings/update-section";
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
 
-  const copyDiagnosticInfo = async () => {
-    const info = [
+  const diagnosticInfo = () =>
+    [
       `l8db Version: 0.1.0`,
       `Plattform: ${navigator.userAgent}`,
       `Sprache: ${navigator.language}`,
@@ -17,6 +18,21 @@ export function SettingsAboutTab() {
       `Engine: Tauri v2 / Rust Backend`,
       `UI: React 19 / Vite`,
     ].join("\n");
+
+  const reportBug = async () => {
+    const subject = encodeURIComponent("l8db Bugreport");
+    const body = encodeURIComponent(
+      `Beschreibung:\n\n\nSchritte zum Reproduzieren:\n\n\n---\n${diagnosticInfo()}`,
+    );
+    try {
+      await openUrl(`mailto:leon.achteresch@gmail.com?subject=${subject}&body=${body}`);
+    } catch {
+      toast.error("E-Mail-Programm konnte nicht geöffnet werden");
+    }
+  };
+
+  const copyDiagnosticInfo = async () => {
+    const info = diagnosticInfo();
 
     try {
       await navigator.clipboard.writeText(info);
@@ -51,6 +67,15 @@ export function SettingsAboutTab() {
               <Copy className="size-3.5" />
             )}
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
+          </Button>
+        </SettingsRow>
+        <SettingsRow
+          title="Bug melden"
+          description="Öffnet dein E-Mail-Programm mit vorausgefüllten Diagnose-Informationen."
+        >
+          <Button variant="outline" size="sm" onClick={() => void reportBug()}>
+            <Bug className="size-3.5" />
+            <span>Bugreport senden</span>
           </Button>
         </SettingsRow>
       </div>

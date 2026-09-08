@@ -221,6 +221,14 @@ const SEARCH_ITEMS: SearchItem[] = [
       "Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte kopieren.",
     keywords: ["diagnose", "system", "info", "kopieren", "fehlerbericht", "support"],
   },
+  {
+    id: "bug-report",
+    tabId: "about",
+    tabLabel: "Über & Updates",
+    title: "Bug melden",
+    description: "Bugreport per E-Mail mit Diagnose-Informationen senden.",
+    keywords: ["bug", "fehler", "melden", "report", "email", "mail", "support"],
+  },
 ];
 
 interface SettingsSearchResultsProps {
