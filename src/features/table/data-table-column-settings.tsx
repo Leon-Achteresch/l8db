@@ -24,6 +24,7 @@ type DataTableColumnSettingsProps = {
   hidden: string[];
   pinned: string[];
   isCustomized: boolean;
+  togglingColumn: string | null;
   onToggle: (column: string) => void;
   onReorder: (order: string[]) => void;
   onReset: () => void;
@@ -43,6 +44,7 @@ export function DataTableColumnSettings({
   hidden,
   pinned,
   isCustomized,
+  togglingColumn,
   onToggle,
   onReorder,
   onReset,
@@ -80,6 +82,7 @@ export function DataTableColumnSettings({
               index={index}
               checked={!hiddenSet.has(column)}
               disabled={!hiddenSet.has(column) && visibleCount <= 1}
+              loading={togglingColumn === column}
               onToggle={() => onToggle(column)}
             />
           ))}

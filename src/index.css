@@ -366,6 +366,17 @@
   }
 }
 
+.monaco-editor .sticky-widget,
+.monaco-editor .sticky-widget-lines,
+.monaco-editor .sticky-widget-line-numbers {
+  background-color: var(--background) !important;
+}
+
+.monaco-editor .sticky-widget {
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: 0 4px 12px -6px oklch(0 0 0 / 25%) !important;
+}
+
 .sql-flash-line {
   background-color: color-mix(in oklab, var(--primary) 18%, transparent);
 }

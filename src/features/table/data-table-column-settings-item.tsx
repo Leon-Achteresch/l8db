@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { GripVerticalIcon } from "lucide-react";
 
-import { Checkbox } from "@/components/ui/checkbox";
+import { SwitchButton } from "@/components/motion/switch-button";
 import { cn } from "@/lib/utils";
 
 type DataTableColumnSettingsItemProps = {
@@ -9,6 +9,7 @@ type DataTableColumnSettingsItemProps = {
   index: number;
   checked: boolean;
   disabled: boolean;
+  loading: boolean;
   onToggle: () => void;
 };
 
@@ -17,6 +18,7 @@ export function DataTableColumnSettingsItem({
   index,
   checked,
   disabled,
+  loading,
   onToggle,
 }: DataTableColumnSettingsItemProps) {
   const { ref, handleRef, isDragging } = useSortable({ id, index });
@@ -38,8 +40,21 @@ export function DataTableColumnSettingsItem({
       >
         <GripVerticalIcon className="size-3.5" />
       </button>
-      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-        <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => onToggle()} />
+      <SwitchButton
+        id={`column-visibility-${id}`}
+        checked={checked}
+        loading={loading}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+        aria-label={`${id} ${checked ? "ausblenden" : "einblenden"}`}
+      />
+      <label
+        htmlFor={`column-visibility-${id}`}
+        className={cn(
+          "min-w-0 flex-1 cursor-pointer font-mono text-[12px]",
+          (disabled || loading) && "cursor-not-allowed opacity-50",
+        )}
+      >
         <span className="truncate font-mono text-[12px]">{id}</span>
       </label>
     </div>
