@@ -1,10 +1,10 @@
 import { Copy, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
-
 import { DriverDetail } from "@/components/driver-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { copyText } from "@/lib/clipboard";
 import type { DatabaseKind } from "@/lib/db";
 import type { DriverSummary } from "@/lib/drivers";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -67,7 +67,7 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
             type="button"
             aria-label="Befehl kopieren"
             className="cursor-pointer text-muted-foreground hover:text-foreground"
-            onClick={() => void navigator.clipboard.writeText(command)}
+            onClick={() => void copyText(command)}
           >
             <Copy className="size-3.5" />
           </button>
@@ -94,7 +94,7 @@ export function DriverCard({ summary, installing, busy, log, onInstall, onRechec
               aria-label="Protokoll kopieren"
               title="Protokoll kopieren"
               className="inline-flex cursor-pointer items-center gap-1 hover:text-foreground"
-              onClick={() => void navigator.clipboard.writeText(log)}
+              onClick={() => void copyText(log)}
             >
               <Copy className="size-3" />
               Kopieren

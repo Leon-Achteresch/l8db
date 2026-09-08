@@ -17,11 +17,11 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { copyText } from "@/lib/clipboard";
 import type { DetailedColumnInfo } from "@/lib/db";
 import { useDetailedColumnsQuery } from "@/lib/queries";
 
@@ -522,7 +522,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                               className="h-7 gap-1.5 px-2.5 text-[11px]"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigator.clipboard.writeText(column.name);
+                                copyText(column.name);
                                 setCopiedColumn(column.name);
                                 setTimeout(() => setCopiedColumn(null), 1500);
                               }}

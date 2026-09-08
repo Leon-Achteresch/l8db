@@ -1,7 +1,6 @@
 import { CopyIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { copyText } from "@/lib/clipboard";
 
 interface DdlPreviewDialogProps {
   open: boolean;
@@ -48,7 +48,7 @@ export function DdlPreviewDialog({
   const copyDdl = async () => {
     if (!ddl) return;
     try {
-      await navigator.clipboard.writeText(ddl);
+      await copyText(ddl);
       toast.success("SQL kopiert.");
     } catch {
       toast.error("SQL konnte nicht kopiert werden.");

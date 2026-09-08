@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { OpenInQueryEditorButton } from "@/features/functions/use-sql-object-edit";
 import { SqlEditor } from "@/features/table/sql-editor";
+import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { updateViewDefinition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -40,7 +41,7 @@ export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) 
   }, [schema, view, definition]);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(currentValue);
+    await copyText(currentValue);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
