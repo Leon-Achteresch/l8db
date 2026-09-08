@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Download, Plus, Star, Upload } from "lucide-react";
+import { ArrowLeft, Download, KeyRound, Pencil, Plus, Star, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,16 +15,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { groupByServer } from "@/lib/connection-groups";
+import { connectionUser, groupByServer, type ServerGroup } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { ensurePassword } from "@/lib/password-prompt";
+import { capabilitiesFor } from "@/lib/providers";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { openConnectionWindow } from "@/lib/windows";
 import { ConnectionEditor } from "./connection-editor";
+import { ConnectionBulkEditDialog } from "./connection-bulk-edit-dialog";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
@@ -42,6 +44,7 @@ export function ConnectionsView() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [bulkGroup, setBulkGroup] = useState<ServerGroup | null>(null);
   const toggleFavorite = useConnectionsStore((state) => state.toggleFavorite);
   const duplicateConnection = useConnectionsStore((state) => state.duplicateConnection);
   const navigate = useNavigate();
@@ -80,6 +83,26 @@ export function ConnectionsView() {
     );
   }
 
+  function setSchemasToUser(group: ServerGroup) {
+    const ids = new Set(group.connections.map((connection) => connection.id));
+    const users = new Map(
+      group.connections
+        .map((connection) => [connection.id, connectionUser(connection)] as const)
+        .filter((entry) => entry[1]),
+    );
+    if (users.size === 0) {
+      toast.error("Für diese Connections wurde kein Username gefunden.");
+      return;
+    }
+    useConnectionsStore.setState((state) => ({
+      connections: state.connections.map((connection) => {
+        const user = users.get(connection.id);
+        return ids.has(connection.id) && user ? { ...connection, schemas: [user] } : connection;
+      }),
+    }));
+    toast.success(`Schema-Filter für ${users.size} Connections auf Username gesetzt`);
+  }
+
   async function openInWindow(connection: SavedConnection) {
     if (!(await ensurePassword(connection.id))) return;
     const current = useConnectionsStore
@@ -104,7 +127,7 @@ export function ConnectionsView() {
       data-tour="connections-page"
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
-      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4 py-4">
+      <div className="relative flex h-full min-h-0 w-full flex-col px-4 py-4">
         <header className="mb-4 flex shrink-0 items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-muted-foreground">l8db</p>
@@ -220,7 +243,7 @@ export function ConnectionsView() {
                 <div className="flex w-full flex-col gap-5 self-start py-1">
                   {groups.map((group) => (
                     <section key={group.key} className="flex flex-col gap-2.5">
-                      <header className="flex items-center gap-2 border-b pb-1.5">
+                      <header className="flex flex-wrap items-center gap-2 border-b pb-1.5">
                         <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-muted/50">
                           <ProviderLogo
                             providerId={providerFor(group.connections[0]).id}
@@ -237,15 +260,39 @@ export function ConnectionsView() {
                             {group.connections.length === 1 ? "Schema" : "Schemas"}
                           </span>
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => openEditor("new", group.connections[0])}
-                        >
-                          <Plus className="size-3.5" />
-                          Schema hinzufügen
-                        </Button>
+                        <div className="ml-auto flex flex-wrap items-center justify-end gap-1 max-sm:ml-8 max-sm:w-full max-sm:justify-start">
+                          {group.connections.length > 1 && group.kind === "oracle" && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-xs"
+                              onClick={() => setBulkGroup(group)}
+                            >
+                              <Pencil className="size-3.5" />
+                              Host &amp; Service bearbeiten
+                            </Button>
+                          )}
+                          {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-xs"
+                              onClick={() => setSchemasToUser(group)}
+                            >
+                              <KeyRound className="size-3.5" />
+                              Schema = Username
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => openEditor("new", group.connections[0])}
+                          >
+                            <Plus className="size-3.5" />
+                            Schema hinzufügen
+                          </Button>
+                        </div>
                       </header>
                       <motion.div
                         layout
@@ -278,6 +325,15 @@ export function ConnectionsView() {
         />
       )}
       {importOpen && <ConnectionImportDialog open={importOpen} onOpenChange={setImportOpen} />}
+      {bulkGroup && (
+        <ConnectionBulkEditDialog
+          open
+          group={bulkGroup}
+          onOpenChange={(open) => {
+            if (!open) setBulkGroup(null);
+          }}
+        />
+      )}
       <AlertDialog
         open={Boolean(deleting)}
         onOpenChange={(open) => {
