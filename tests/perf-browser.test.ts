@@ -9,6 +9,9 @@ type PerfResult = {
   rowsAfterScroll: number;
   fps: number;
   worstFrameMs: number;
+  horizontalHeights: number[];
+  horizontalFps: number;
+  horizontalWorstFrameMs: number;
   heapMb: number;
   totalRows: number;
 };
@@ -23,7 +26,7 @@ const CSS =
   ".truncate{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.sticky{position:sticky}.top-0{top:0}.left-0{left:0}";
 
 for (const kind of ["table", "result"])
-  for (const columns of [12, 120]) {
+  for (const columns of [12, 49, 120]) {
     test.skipIf(!process.env.L8DB_PERF_BROWSER)(
       `${kind}: FPS, DOM-Größe und Mount-Zeit bei 5.000 × ${columns + 1} Zellen`,
       async () => {
@@ -87,7 +90,7 @@ for (const kind of ["table", "result"])
             () => (window as unknown as { result: Promise<PerfResult> }).result,
           )) as PerfResult;
           console.log(
-            `perf ${kind}/${columns}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb.toFixed(1)} MB`,
+            `perf ${kind}/${columns}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb.toFixed(1)} MB, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
           );
           expect(errors).toEqual([]);
           expect(result.renderedRows).toBeGreaterThan(0);
@@ -98,6 +101,68 @@ for (const kind of ["table", "result"])
           expect(result.mountMs).toBeLessThan(3000);
           expect(result.fps).toBeGreaterThan(30);
           expect(result.worstFrameMs).toBeLessThan(250);
+          expect(result.horizontalFps).toBeGreaterThan(45);
+          expect(result.horizontalWorstFrameMs).toBeLessThan(100);
+          if (stylesheet && kind === "table") expect(result.horizontalHeights).toEqual([33]);
+          if (columns === 49) {
+            const unchanged = await page.evaluate(async () => {
+              const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
+              const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
+              scroller.scrollLeft = 650;
+              await settle();
+              const row = document.querySelector('tbody tr[data-index="0"]')!;
+              const cells = [...row.children];
+              const headers = [...document.querySelectorAll("thead th")];
+              scroller.scrollLeft = 850;
+              await settle();
+              return {
+                cells:
+                  cells.length === row.children.length &&
+                  cells.every((cell, index) => cell === row.children[index]),
+                headers:
+                  headers.length === document.querySelectorAll("thead th").length &&
+                  headers.every(
+                    (header, index) => header === document.querySelectorAll("thead th")[index],
+                  ),
+              };
+            });
+            expect(unchanged).toEqual({ cells: true, headers: true });
+            if (kind === "table") {
+              const header = page.locator("thead th").filter({
+                has: page.getByRole("button", { name: "col_4 verschieben", exact: true }),
+              });
+              const width = await header.evaluate(
+                (element) => element.getBoundingClientRect().width,
+              );
+              const resizeHandle = await header.locator(".cursor-col-resize").boundingBox();
+              if (!resizeHandle) throw new Error("column resize handle not found");
+              await page.mouse.move(resizeHandle.x + resizeHandle.width / 2, resizeHandle.y + 10);
+              await page.mouse.down();
+              await page.mouse.move(
+                resizeHandle.x + resizeHandle.width / 2 + 60,
+                resizeHandle.y + 10,
+              );
+              await page.mouse.up();
+              await page.waitForFunction((expected) => {
+                const cell = document.querySelector(
+                  'tbody tr[data-index="0"] td[data-col="col_4"]',
+                );
+                return cell && Math.abs(cell.getBoundingClientRect().width - expected) < 2;
+              }, width + 60);
+              expect(
+                await header.evaluate((element) => element.getBoundingClientRect().width),
+              ).toBeCloseTo(width + 60, 0);
+              await header.click({ button: "right" });
+              await page
+                .getByRole("menuitem", { name: "Aufsteigend sortieren", exact: true })
+                .click();
+              await header.locator(".lucide-arrow-up").waitFor();
+              await header.click({ button: "right" });
+              await page.getByRole("menuitem", { name: "Spalte ausblenden", exact: true }).click();
+              await header.waitFor({ state: "detached" });
+              expect(await page.locator('tbody td[data-col="col_4"]').count()).toBe(0);
+            }
+          }
           if (columns === 120) {
             await page
               .locator(".overflow-auto")

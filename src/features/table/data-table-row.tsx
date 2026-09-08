@@ -186,7 +186,7 @@ export const DataTableRow = memo(function DataTableRow({
               !isActive && cellIndex > 0 && "hover:bg-muted/10",
             )}
           >
-            <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
+            <div className="relative flex items-center justify-between gap-2 w-full h-5 text-left">
               <div className="min-w-0 flex-1 truncate text-left">
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </div>
