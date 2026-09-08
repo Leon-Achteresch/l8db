@@ -76,7 +76,9 @@ import {
   executeQueryWithParams,
   explainQuery,
   listAllColumns,
+  listMaterializedViews,
   listTables,
+  listViews,
   type QueryResult,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -312,12 +314,38 @@ export function QueryView({ tabId }: QueryViewProps) {
     staleTime: 60_000,
   });
 
-  const registry = useMemo(
-    () => ({ schemas: schemas ?? [], tables: tables ?? [], columns: columns ?? [] }),
-    [schemas, tables, columns],
-  );
-
   const caps = useCapabilities(connection?.kind);
+
+  const { data: views } = useQuery({
+    queryKey: ["all-views", connection?.id, database],
+    queryFn: () =>
+      listViews(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: Boolean(connection) && caps.views,
+  });
+
+  const { data: matviews } = useQuery({
+    queryKey: ["all-matviews", connection?.id, database],
+    queryFn: () =>
+      listMaterializedViews(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && caps.materialized_views,
+  });
+
+  const registry = useMemo(
+    () => ({
+      schemas: schemas ?? [],
+      tables: [
+        ...(tables ?? []),
+        ...(views ?? []),
+        ...(matviews ?? []).map(({ schema, name }) => ({ schema, name })),
+      ],
+      columns: columns ?? [],
+    }),
+    [schemas, tables, views, matviews, columns],
+  );
 
   const dialectLabel = useMemo(
     () =>
