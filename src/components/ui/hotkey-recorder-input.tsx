@@ -38,7 +38,7 @@ export function HotkeyRecorderInput({
         onClick={() => recorder.cancelRecording()}
         aria-label="Aufnahme abbrechen"
         className={cn(
-          "inline-flex h-7 min-w-36 items-center justify-center gap-2 rounded-md border border-primary/50 bg-primary/10 px-2.5",
+          "inline-flex h-7 min-w-36 shrink-0 items-center justify-center gap-2 rounded-md border border-primary/50 bg-primary/10 px-2.5",
           "text-xs font-medium text-foreground",
           "animate-pulse cursor-pointer",
         )}
@@ -50,7 +50,7 @@ export function HotkeyRecorderInput({
   }
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex shrink-0 items-center gap-1">
       <button
         type="button"
         disabled={disabled}

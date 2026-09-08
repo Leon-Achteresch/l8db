@@ -59,8 +59,8 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
             aria-label="Tastenkürzel durchsuchen"
           />
         </div>
-        <ScrollArea className="max-h-[60vh] pr-3">
-          <div className="flex flex-col gap-4">
+        <ScrollArea className="max-h-[60vh] w-full overflow-x-clip">
+          <div className="flex flex-col gap-4 pr-4">
             {groups.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">Keine Treffer</p>
             )}
@@ -79,7 +79,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
                     <div
                       key={command.id}
                       className={cn(
-                        "flex items-center justify-between gap-4 rounded-md px-2 py-1.5 text-sm",
+                        "flex min-w-0 items-center justify-between gap-4 overflow-x-clip rounded-md px-2 py-1.5 text-sm",
                         available ? "text-foreground" : "text-muted-foreground/60",
                       )}
                     >
@@ -92,7 +92,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
                           <span className="ml-2 text-xs">(Verbindung erforderlich)</span>
                         )}
                       </span>
-                      <KbdGroup>
+                      <KbdGroup className="shrink-0">
                         {splitHotkeyForKbd(current).map((key) => (
                           <Kbd key={key}>{key}</Kbd>
                         ))}
