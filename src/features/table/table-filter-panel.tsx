@@ -76,9 +76,15 @@ interface TableFilterPanelProps {
   columns: string[];
   activeFilter: string;
   onApply: (where: string, isRaw: boolean) => void;
+  onColumnSelect?: (column: string) => void;
 }
 
-export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilterPanelProps) {
+export function TableFilterPanel({
+  columns,
+  activeFilter,
+  onApply,
+  onColumnSelect,
+}: TableFilterPanelProps) {
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
   const json = caps.query_language === "json";
@@ -236,11 +242,10 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
 
                       <Select
                         value={condition.column}
-                        onValueChange={(value) =>
-                          updateCondition(condition.id, {
-                            column: value,
-                          })
-                        }
+                        onValueChange={(value) => {
+                          updateCondition(condition.id, { column: value });
+                          onColumnSelect?.(value);
+                        }}
                       >
                         <SelectTrigger size="sm" className="w-full min-w-0 sm:min-w-40 sm:flex-1">
                           <SelectValue placeholder="Spalte wählen…" />
