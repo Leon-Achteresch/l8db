@@ -36,6 +36,7 @@ import {
   connectionSummary,
   detectProvider,
   filePath,
+  isTrustedConnection,
   kindFromUrl,
   oracleConnectString,
   parseConnectionUrl,
@@ -134,6 +135,13 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const [password, setPassword] = useState("");
   const [file, setFile] = useState("");
   const [extraParams, setExtraParams] = useState("");
+  const [trusted, setTrusted] = useState(() => {
+    try {
+      return seed ? isTrustedConnection(new URL(seed.connectionString)) : false;
+    } catch {
+      return false;
+    }
+  });
   const [tnsAlias, setTnsAlias] = useState("");
   const [tns, setTns] = useState<{ path: string | null; aliases: string[] } | null>(null);
   const [sshEnabled, setSshEnabled] = useState(Boolean(seed?.ssh?.host));
@@ -160,6 +168,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
+  const windowsAuth = kind === "mssql" && trusted;
   const quickKind = kindFromUrl(value) ?? kind;
   const quickProviderId = value.trim() ? detectProvider(value, quickKind) : provider;
   const quickInfo = providers.find((entry) => entry.id === quickProviderId) ?? info;
@@ -240,6 +249,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       `${info.url_schemes[0]}://${auth}${hostname}${port ? `:${port}` : ""}/${encodeURIComponent(database.trim())}`,
     );
     url.search = extraParams;
+    if (windowsAuth) url.searchParams.set("trusted_connection", "true");
     return withSsl(parseConnectionUrl(url.toString(), kind).toString());
   }
 
@@ -266,6 +276,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
           setUser(decodeURIComponent(url.username));
           setPassword(decodeURIComponent(url.password));
           setExtraParams(url.search);
+          setTrusted(isTrustedConnection(url));
         }
       } else if (next === "string") setValue(info.file_based ? filePath(makeUrl()) : makeUrl());
       setMode(next);
@@ -906,16 +917,35 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                           placeholder={defaults.database}
                           onChange={(event) => setDatabase(event.target.value)}
                         />
+                        {kind === "mssql" && (
+                          <label className="flex items-center justify-between gap-3 text-xs font-medium">
+                            <span className="flex flex-col gap-0.5">
+                              <span className="flex items-center gap-2">
+                                <LockKeyhole className="size-4 text-muted-foreground" />{" "}
+                                Windows-Authentifizierung
+                              </span>
+                              <span className="font-normal text-muted-foreground">
+                                Meldet mit dem angemeldeten Windows-Konto an. Benutzer und Passwort
+                                nur für ein anderes Domänenkonto (DOMAENE\Benutzer) ausfüllen.
+                              </span>
+                            </span>
+                            <Switch
+                              checked={trusted}
+                              onCheckedChange={setTrusted}
+                              aria-label="Windows-Authentifizierung"
+                            />
+                          </label>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                           <ConnectionField
                             id="connection-user"
-                            label="Benutzer"
+                            label={windowsAuth ? "Benutzer (optional)" : "Benutzer"}
                             value={user}
                             onChange={(event) => setUser(event.target.value)}
                           />
                           <ConnectionField
                             id="connection-password"
-                            label="Passwort"
+                            label={windowsAuth ? "Passwort (optional)" : "Passwort"}
                             type="password"
                             autoComplete="new-password"
                             value={password}
