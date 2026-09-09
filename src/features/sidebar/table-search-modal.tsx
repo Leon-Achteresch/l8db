@@ -39,6 +39,7 @@ import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { useActiveConnection } from "@/lib/connections";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
+import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
 import { useSettingsStore } from "@/lib/settings";
 import {
   compileSingleCondition,
@@ -81,20 +82,12 @@ function compileConditions(
 }
 
 function parsePatterns(raw: string, useRegex: boolean): ((name: string) => boolean)[] {
-  const parts = raw
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const parts = splitSearchPatterns(raw);
   if (parts.length === 0) return [];
   return parts.map((pattern) => {
     if (useRegex) {
-      try {
-        const re = new RegExp(pattern, "i");
-        return (name: string) => re.test(name);
-      } catch {
-        const lower = pattern.toLowerCase();
-        return (name: string) => name.toLowerCase().includes(lower);
-      }
+      const compiled = compileSearchPatterns(pattern, { global: false });
+      if (compiled.ok) return (name: string) => compiled.regexes.some((regex) => regex.test(name));
     }
     const lower = pattern.toLowerCase();
     return (name: string) => name.toLowerCase().includes(lower);
@@ -154,17 +147,10 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
       setRegexError(null);
       return;
     }
-    const parts = nameQuery
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const p of parts) {
-      try {
-        new RegExp(p, "i");
-      } catch (e) {
-        setRegexError(e instanceof Error ? e.message : String(e));
-        return;
-      }
+    const compiled = compileSearchPatterns(nameQuery, { global: false });
+    if (!compiled.ok) {
+      setRegexError(compiled.error.message);
+      return;
     }
     setRegexError(null);
   }, [nameQuery, useRegex]);
@@ -528,7 +514,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                     <SelectTrigger size="sm" className="min-w-0 flex-1">
                                       <SelectValue placeholder="Spalte..." />
                                     </SelectTrigger>
-                                    <SelectContent position="popper">
+                                    <SelectContent position="popper" searchable>
                                       {selectedColumns.map((col) => (
                                         <SelectItem key={col} value={col}>
                                           {col}

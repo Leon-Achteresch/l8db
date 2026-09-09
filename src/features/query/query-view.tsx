@@ -156,6 +156,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     return tab?.kind === "query" ? tab.sql : "";
   });
   const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
+  const markQueryTabExecuted = useTableTabs((state) => state.markQueryTabExecuted);
   const filePath = useTableTabs((state) => {
     const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
     return tab?.kind === "query" ? (tab.filePath ?? null) : null;
@@ -413,6 +414,12 @@ export function QueryView({ tabId }: QueryViewProps) {
         }
       }
       setEditorFocus(false);
+      const currentTab = useTableTabs
+        .getState()
+        .tabs.find((tab) => tab.kind === "query" && tab.id === tabId);
+      if (currentTab?.kind === "query" && currentTab.sql === sql) {
+        markQueryTabExecuted(tabId, sql);
+      }
       runningRef.current = true;
       setIsRunning(true);
       setScriptEntries(null);
@@ -512,7 +519,15 @@ export function QueryView({ tabId }: QueryViewProps) {
         setIsRunning(false);
       }
     },
-    [connection, database, recordHistory, caps.transactions, collectOutput],
+    [
+      connection,
+      database,
+      markQueryTabExecuted,
+      recordHistory,
+      caps.transactions,
+      collectOutput,
+      tabId,
+    ],
   );
 
   const autoRun = useTableTabs((state) => {
@@ -537,9 +552,10 @@ export function QueryView({ tabId }: QueryViewProps) {
     if (caps.bind_parameters) {
       void runSql(pending, buildParameterizedQuery(pending, bindValues));
     } else {
+      markQueryTabExecuted(tabId, pending);
       void runSql(inlineBindValues(pending, bindValues), undefined, true);
     }
-  }, [bindPendingSql, bindValues, runSql, caps.bind_parameters]);
+  }, [bindPendingSql, bindValues, markQueryTabExecuted, runSql, caps.bind_parameters, tabId]);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);

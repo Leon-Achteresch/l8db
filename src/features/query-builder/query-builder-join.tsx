@@ -70,7 +70,7 @@ export function QueryBuilderJoin({
               <SelectTrigger className="w-[26rem]">
                 <SelectValue placeholder="Beziehung" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 <SelectItem value={NO_JOIN}>Kein Join</SelectItem>
                 {relations.map((relation) => (
                   <SelectItem key={relationKey(relation)} value={relationKey(relation)}>

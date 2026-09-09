@@ -16,7 +16,9 @@ Tauri v2 desktop database client (PostgreSQL viewer). Frontend: React 19 + TypeS
 | Rust E2E tests (needs lab, see below) | `cargo test --lib -- --ignored --test-threads=1` | `src-tauri/` |
 
 Frontend regression tests: `bun run test` (Bun, in `tests/`, mocked Tauri transport).
-Biome is installed; the existing root `biome.json` contains legacy configuration keys and needs migration before the root lint/format scripts can be used.
+Biome is configured; run `bun run check` for frontend lint and formatting checks.
+Production configuration checks: `bun run production:check`. CSP browser tests: build first, then run `L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts` (use `webkit` instead of `1` for WebKit).
+Use Bun 1.3.10 and commit `bun.lock`; do not add an npm lockfile.
 
 ## Toolchain
 

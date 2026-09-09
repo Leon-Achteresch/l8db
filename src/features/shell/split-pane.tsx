@@ -120,7 +120,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
                   <span className="truncate">{override ? override.name : "Aktive Verbindung"}</span>
                 </span>
               </SelectTrigger>
-              <SelectContent onMouseDown={(event) => event.stopPropagation()}>
+              <SelectContent searchable onMouseDown={(event) => event.stopPropagation()}>
                 <SelectItem value={ACTIVE_VALUE} className="text-xs">
                   Aktive Verbindung
                 </SelectItem>

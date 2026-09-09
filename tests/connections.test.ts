@@ -93,6 +93,7 @@ const {
   connectionSummary,
   kindFromUrl,
   isOracleKeyValue,
+  isTrustedConnection,
   updateOracleConnectionEndpoint,
 } = await import("../src/lib/connection-url");
 const {
@@ -722,5 +723,17 @@ describe("Passwort-Abfrage", () => {
     expect(injectUrlPassword("oracle://scott:@db.example.com:1521/ORCL", "tiger")).toBe(
       "oracle://scott:tiger@db.example.com:1521/ORCL",
     );
+  });
+});
+
+describe("mssql windows auth", () => {
+  test("trusted connection needs no user", () => {
+    const url = parseConnectionUrl("mssql://sqlhost:1433/master?trusted_connection=true", "mssql");
+    expect(url.hostname).toBe("sqlhost");
+    expect(isTrustedConnection(url)).toBe(true);
+  });
+
+  test("plain mssql url still needs a user", () => {
+    expect(() => parseConnectionUrl("mssql://sqlhost/master", "mssql")).toThrow();
   });
 });

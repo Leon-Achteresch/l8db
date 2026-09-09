@@ -147,7 +147,7 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Alle Schemas" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 <SelectItem value={ALL_SCHEMAS}>Alle Schemas</SelectItem>
                 {(schemas ?? []).map((name) => (
                   <SelectItem key={name} value={name}>

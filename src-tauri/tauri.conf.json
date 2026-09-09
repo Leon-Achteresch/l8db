@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "l8db",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.leon.l8db",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run production:check && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -22,20 +22,52 @@
         "trafficLightPosition": {
           "x": 12,
           "y": 25
-        }
+        },
+        "label": "main"
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-eval' 'sha256-szkJT1v5wX5zI0mECJRp869oafUGTckDj0XDj+IFsz4='",
+        "style-src": "'self'",
+        "style-src-elem": "'self' 'unsafe-inline'",
+        "style-src-attr": "'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http: https:",
+        "worker-src": "'self' blob:",
+        "frame-src": "'self'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval'",
+        "style-src": "'self'",
+        "style-src-elem": "'self' 'unsafe-inline'",
+        "style-src-attr": "'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http: https: ws: wss:",
+        "worker-src": "'self' blob:",
+        "frame-src": "'self'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      },
+      "freezePrototype": false,
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "plugins": {
     "updater": {
-      "active": true,
       "endpoints": [
         "https://github.com/Leon-Achteresch/l8db/releases/latest/download/latest.json"
       ],
-      "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCQ0E1MjBEMzUzREExMjIKUldRaW9UMDFEVkxLcXhrRE15cGsvRlFJaU5keTk1SXRsVy9Ib3RqVlROenZZTm5LVW9kZGZsdDMK"
     }
   },
@@ -44,7 +76,7 @@
     "targets": "all",
     "publisher": "Leon Achteresch",
     "category": "DeveloperTool",
-    "shortDescription": "l8db",
+    "shortDescription": "Native database client for PostgreSQL and other databases",
     "longDescription": "l8db is a fast, native desktop client for PostgreSQL and other databases.",
     "createUpdaterArtifacts": true,
     "icon": [
@@ -53,6 +85,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "homepage": "https://github.com/Leon-Achteresch/l8db",
+    "license": "MIT",
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true
+    }
   }
 }

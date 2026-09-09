@@ -250,7 +250,7 @@ export function TableFilterPanel({
                         <SelectTrigger size="sm" className="w-full min-w-0 sm:min-w-40 sm:flex-1">
                           <SelectValue placeholder="Spalte wählen…" />
                         </SelectTrigger>
-                        <SelectContent position="popper">
+                        <SelectContent position="popper" searchable>
                           {columns.map((column) => (
                             <SelectItem key={column} value={column}>
                               {column}

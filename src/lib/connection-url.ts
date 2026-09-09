@@ -297,6 +297,20 @@ function parseFileUrl(value: string, kind: DatabaseKind): URL {
   return new URL(`${kind}:${path}`);
 }
 
+const TRUSTED_KEYS = [
+  "trusted_connection",
+  "trustedconnection",
+  "integrated_security",
+  "integratedsecurity",
+];
+const TRUSTED_VALUES = ["true", "yes", "1", "sspi"];
+
+export function isTrustedConnection(url: URL): boolean {
+  return TRUSTED_KEYS.some((key) =>
+    TRUSTED_VALUES.includes((url.searchParams.get(key) ?? "").toLowerCase()),
+  );
+}
+
 export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): URL {
   let text = value.trim();
   let resolved = kind;
@@ -320,7 +334,7 @@ export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): UR
       `Die URL muss mit ${schemes.map((scheme) => `${scheme}://`).join(" oder ")} beginnen.`,
     );
   if (!url.hostname) throw new Error("Der Host fehlt in der URL.");
-  if (USER_REQUIRED.includes(resolved) && !url.username)
+  if (USER_REQUIRED.includes(resolved) && !url.username && !isTrustedConnection(url))
     throw new Error("Der Benutzer fehlt in der URL.");
   if (DATABASE_REQUIRED.includes(resolved) && (!url.pathname || url.pathname === "/") && !override)
     throw new Error(

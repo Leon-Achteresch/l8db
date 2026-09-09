@@ -1,4 +1,5 @@
 import type { ExtensionDescriptor, ExtensionRuntime, Json, RpcHandler } from "./contracts";
+import frameScript from "./sandbox-frame.js?raw";
 import bootstrap from "./worker-bootstrap.js?raw";
 
 interface Sandbox {
@@ -91,24 +92,7 @@ export class SandboxRuntime implements ExtensionRuntime {
         resolve();
       };
     });
-    frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'none'; child-src 'none'; frame-src 'none'"><script>
-      addEventListener('message', function initialize(event) {
-        if (event.source !== parent || !event.ports[0]) return;
-        removeEventListener('message', initialize);
-        const port = event.ports[0];
-        const url = URL.createObjectURL(new Blob([event.data.bootstrap], {type:'text/javascript'}));
-        let worker;
-        try { worker = new Worker(url); } catch(error) { port.postMessage({type:'crash', error:String(error)}); return; }
-        worker.onmessage = event => port.postMessage(event.data);
-        worker.onerror = event => port.postMessage({type:'crash', error:event.message});
-        port.onmessage = event => {
-          if (event.data.type === 'terminate') { worker.terminate(); URL.revokeObjectURL(url); port.close(); }
-          else worker.postMessage(event.data);
-        };
-        port.start();
-        addEventListener('pagehide', () => worker.terminate());
-      });
-    </script>`;
+    frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'none'; child-src 'none'; frame-src 'none'"><script>${frameScript}</script>`;
     document.body.append(frame);
     try {
       await loaded;

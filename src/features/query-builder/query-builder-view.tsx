@@ -267,7 +267,7 @@ export function QueryBuilderView() {
             <SelectTrigger id="query-builder-table" className="w-72">
               <SelectValue placeholder="Tabelle wählen" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               {(tablesQuery.data ?? []).map((table) => (
                 <SelectItem key={`${table.schema}.${table.name}`} value={table.name}>
                   {table.name}

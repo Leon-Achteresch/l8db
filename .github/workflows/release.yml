@@ -27,10 +27,15 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       changelog: ${{ steps.changelog.outputs.changelog }}
     steps:
-      - name: Prüfe Changelog-PR-Token
+      - name: Prüfe Release-Secrets
         env:
           RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Repository-Secret TAURI_SIGNING_PRIVATE_KEY fehlt. Auto-Updates benötigen signierte Artefakte."
+            exit 1
+          fi
           if [ -z "$RELEASE_PR_TOKEN" ]; then
             echo "::error::Repository-Secret RELEASE_PR_TOKEN fehlt. Einrichtung siehe .github/RELEASING.md."
             exit 1
@@ -69,11 +74,11 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: --target universal-apple-darwin
+            args: --target universal-apple-darwin -- --locked
           - platform: ubuntu-22.04
-            args: ""
+            args: -- --locked
           - platform: windows-latest
-            args: ""
+            args: -- --locked
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -109,7 +114,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.10
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -135,7 +140,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: l8db v__VERSION__
           releaseBody: ${{ needs.prepare.outputs.changelog }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -143,8 +148,27 @@ jobs:
           appVersion: ${{ needs.prepare.outputs.version }}
           args: ${{ matrix.args }}
 
-  changelog:
+  finalize:
     needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prüfe vollständige Update-Artefakte
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh release download "v${RELEASE_VERSION}" --pattern latest.json --dir "$RUNNER_TEMP/release"
+          gh release view "v${RELEASE_VERSION}" --json assets > "$RUNNER_TEMP/release/assets.json"
+          node .github/scripts/verify-release.mjs "$RUNNER_TEMP/release/latest.json" "$RUNNER_TEMP/release/assets.json" "$RELEASE_VERSION"
+      - name: Veröffentliche vollständigen Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release edit "v${RELEASE_VERSION}" --draft=false --latest
+
+  changelog:
+    needs: [prepare, finalize]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
