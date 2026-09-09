@@ -1,14 +1,17 @@
 import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TourChapterButton } from "@/features/tour/tour-chapter-button";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { advanceTour, jumpTourChapter, rewindTour } from "@/lib/hooks/use-app-tour";
 import { TOUR_CHAPTERS, tourProgress } from "@/lib/tour/chapters";
+import { overviewVerticalOffset } from "@/lib/tour/overview-position";
 import { useTourStore } from "@/lib/tour/store";
 
 export function TourOverview() {
+  const overviewRef = useRef<HTMLElement>(null);
   const chapterIndex = useTourStore((s) => s.chapterIndex);
   const stepIndex = useTourStore((s) => s.stepIndex);
   const completed = useTourStore((s) => s.completedChapterIds);
@@ -20,11 +23,52 @@ export function TourOverview() {
   const chapter = TOUR_CHAPTERS[chapterIndex];
   const step = chapter?.steps[stepIndex];
   const progress = tourProgress(chapterIndex, stepIndex);
+  const reduceMotion = useReducedMotion();
+  const [verticalOffset, setVerticalOffset] = useState(0);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let timer = 0;
+    const updatePosition = () => {
+      const panel = overviewRef.current;
+      if (!panel) return;
+      const target = step?.target ? document.querySelector<HTMLElement>(step.target) : null;
+      const popover = document.querySelector<HTMLElement>(".driver-popover.l8db-driver");
+      const obstructions = [target, popover]
+        .filter((element): element is HTMLElement => element !== null)
+        .map((element) => element.getBoundingClientRect());
+      setVerticalOffset((currentOffset) => {
+        const nextOffset = overviewVerticalOffset({
+          panel: panel.getBoundingClientRect(),
+          currentOffset,
+          obstructions,
+        });
+        return nextOffset === currentOffset ? currentOffset : nextOffset;
+      });
+    };
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updatePosition);
+    };
+    const observer = new ResizeObserver(scheduleUpdate);
+    if (overviewRef.current) observer.observe(overviewRef.current);
+    window.addEventListener("resize", scheduleUpdate);
+    scheduleUpdate();
+    timer = window.setTimeout(scheduleUpdate, 350);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [chapterIndex, stepIndex, step?.target]);
 
   return (
     <motion.aside
+      ref={overviewRef}
       layout
-      transition={{ layout: SPRING_LAYOUT }}
+      animate={{ y: verticalOffset }}
+      transition={reduceMotion ? { duration: 0 } : { layout: SPRING_LAYOUT, y: SPRING_LAYOUT }}
       data-tour-ui="overview"
       className="pointer-events-auto fixed bottom-4 left-4 z-[10000001] flex w-[20.5rem] flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/92 shadow-2xl shadow-black/20 backdrop-blur-xl"
     >

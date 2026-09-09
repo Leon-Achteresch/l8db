@@ -1,4 +1,4 @@
-import { AUTH_FAILED_MESSAGE, connectionError } from "@/lib/connection-url";
+import { connectionError, isAuthFailure } from "@/lib/connection-url";
 import {
   closeSshTunnel,
   type DatabaseKind,
@@ -301,21 +301,26 @@ export async function activateConnectionWithToast(
     ? useConnectionsStore.getState().connections.find((entry) => entry.id === id)
     : null;
   const label = target?.name ?? "Verbindung";
-  if (id && !(await ensurePassword(id))) return false;
+  if (id && !(await ensurePassword(id))) {
+    if (useConnectionsStore.getState().activeId === id) await activateConnection(null);
+    return false;
+  }
   const pending = id
     ? toast.loading(`Verbinde mit „${label}“…`)
     : toast.loading("Trenne Verbindung…");
   try {
     let outcome = await activateConnection(id, sshPassword);
-    while (id && !outcome.ok && outcome.error === AUTH_FAILED_MESSAGE) {
+    while (id && !outcome.ok && isAuthFailure(outcome.error)) {
       toast.dismiss(pending);
       if (
         !(await ensurePassword(
           id,
           `Anmeldung bei „${label}“ fehlgeschlagen. Passwort erneut eingeben.`,
         ))
-      )
+      ) {
+        if (useConnectionsStore.getState().activeId === id) await activateConnection(null);
         return false;
+      }
       outcome = await activateConnection(id, sshPassword);
     }
     if (!outcome.ok) {

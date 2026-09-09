@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
+import { SidebarSearchInput } from "@/components/sidebar-search-input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -90,7 +91,6 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -110,11 +110,17 @@ import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
+import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 
-import { connectionUser, groupByServer, siblingConnections } from "@/lib/connection-groups";
+import {
+  connectionUser,
+  groupByServer,
+  siblingConnections,
+  sortServerGroups,
+} from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
-import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { sortConnectionsByName, useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
   createMaterializedView,
   createSchema,
@@ -152,6 +158,8 @@ import {
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
+import { compileRegexSearch } from "@/lib/regex-search";
+import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
 import {
@@ -170,6 +178,8 @@ const TableSearchModal = lazy(() =>
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
+  const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
+  const serverOrder = useConnectionsStore((state) => state.serverOrder);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
@@ -181,7 +191,15 @@ export function AppSidebarPanel() {
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
-  const serverGroups = useMemo(() => groupByServer(connections), [connections]);
+  const serverGroups = useMemo(
+    () =>
+      sortServerGroups(
+        groupByServer(sortConnectionsByName(connections)),
+        favoriteServerKeys,
+        serverOrder,
+      ),
+    [connections, favoriteServerKeys, serverOrder],
+  );
   const grouped = serverGroups.some((group) => group.connections.length > 1);
   const siblings = useMemo(
     () => siblingConnections(connections, activeConnection),
@@ -353,6 +371,9 @@ export function AppSidebarPanel() {
                       <span className="ml-auto shrink-0 tabular-nums">
                         {group.connections.length}
                       </span>
+                      {favoriteServerKeys.includes(group.key) && (
+                        <StarIcon className="size-3 fill-current text-amber-500" />
+                      )}
                     </DropdownMenuLabel>
                   )}
                   {group.connections.map((connection) => (
@@ -783,6 +804,8 @@ function SidebarEntityList({
   const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
   const searchIncludeColumns = useSettingsStore((state) => state.searchIncludeColumns);
   const setSearchIncludeColumns = useSettingsStore((state) => state.setSearchIncludeColumns);
+  const regexEnabled = useRegexEnabled("sidebar");
+  const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const { data: columns } = useColumnsQuery(
     type === "table" ? "BASE TABLE" : "VIEW",
     search.trim().length > 0 && searchIncludeColumns,
@@ -806,19 +829,33 @@ function SidebarEntityList({
   }, [columns]);
 
   const deferredSearch = useDeferredValue(search);
+  const compiled = useMemo(
+    () =>
+      regexEnabled && deferredSearch.trim() !== ""
+        ? compileRegexSearch(deferredSearch.trim(), { global: false })
+        : null,
+    [regexEnabled, deferredSearch],
+  );
+  const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo(() => {
     if (!items) return undefined;
     const q = deferredSearch.trim().toLowerCase();
     if (!q) return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
+    if (compiled && !compiled.ok) {
+      return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
+    }
+    const matches = compiled?.ok
+      ? (value: string) => compiled.regex.test(value)
+      : (value: string) => value.toLowerCase().includes(q);
     return items
       .map((item) => {
-        const nameMatch = item.name.toLowerCase().includes(q);
+        const nameMatch = matches(item.name);
         if (!searchIncludeColumns) {
           return nameMatch ? { ...item, matchingColumns: [] as string[] } : null;
         }
         const key = `${item.schema}.${item.name}`;
         const cols = columnsByTable.get(key) ?? [];
-        const matchingColumns = cols.filter((c) => c.toLowerCase().includes(q));
+        const matchingColumns = cols.filter(matches);
         if (nameMatch || matchingColumns.length > 0) {
           return { ...item, matchingColumns };
         }
@@ -828,7 +865,7 @@ function SidebarEntityList({
         (item): item is { schema: string; name: string; matchingColumns: string[] } =>
           item !== null,
       );
-  }, [items, deferredSearch, columnsByTable, searchIncludeColumns]);
+  }, [items, deferredSearch, columnsByTable, searchIncludeColumns, compiled]);
 
   if (isLoading) {
     return (
@@ -840,7 +877,7 @@ function SidebarEntityList({
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -932,23 +969,22 @@ function SidebarEntityList({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1" data-tour="sidebar-search">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <SidebarInput
-            placeholder={
-              searchIncludeColumns
-                ? type === "table"
-                  ? "Tabellen & Spalten…"
-                  : "Views & Spalten…"
-                : type === "table"
-                  ? "Tabellen…"
-                  : "Views…"
-            }
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
+        <SidebarSearchInput
+          placeholder={
+            searchIncludeColumns
+              ? type === "table"
+                ? "Tabellen & Spalten…"
+                : "Views & Spalten…"
+              : type === "table"
+                ? "Tabellen…"
+                : "Views…"
+          }
+          value={search}
+          onChange={setSearch}
+          regexEnabled={regexEnabled}
+          onRegexEnabledChange={(enabled) => setRegexEnabled("sidebar", enabled)}
+          regexError={regexError}
+        />
         <Toggle
           size="sm"
           variant="outline"
@@ -1146,7 +1182,7 @@ function SidebarEntityList({
                                 schema: item.schema,
                                 table: item.name,
                               }}
-                              search={{ type }}
+                              search={{ type, column: col }}
                             >
                               <ColumnsIcon className="text-muted-foreground" />
                               <span className="truncate">{col}</span>
@@ -1178,13 +1214,24 @@ interface SidebarFunctionListProps {
 function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFunctionListProps) {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
+  const regexEnabled = useRegexEnabled("sidebar");
+  const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
+  const compiled = useMemo(
+    () =>
+      regexEnabled && deferredSearch.trim() !== ""
+        ? compileRegexSearch(deferredSearch.trim(), { global: false })
+        : null,
+    [regexEnabled, deferredSearch],
+  );
+  const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    if (!q) return items;
-    return items?.filter(
-      (item) => item.name.toLowerCase().includes(q) || item.identity_args.toLowerCase().includes(q),
-    );
-  }, [items, deferredSearch]);
+    if (!q || (compiled && !compiled.ok)) return items;
+    const matches = compiled?.ok
+      ? (value: string) => compiled.regex.test(value)
+      : (value: string) => value.toLowerCase().includes(q);
+    return items?.filter((item) => matches(item.name) || matches(item.identity_args));
+  }, [items, deferredSearch, compiled]);
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
@@ -1203,7 +1250,7 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1212,13 +1259,14 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <SidebarInput
+      <div className="flex items-center">
+        <SidebarSearchInput
           placeholder="Funktionen…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
+          onChange={setSearch}
+          regexEnabled={regexEnabled}
+          onRegexEnabledChange={(enabled) => setRegexEnabled("sidebar", enabled)}
+          regexError={regexError}
         />
       </div>
       {filtered && filtered.length === 0 ? (
@@ -1343,7 +1391,7 @@ function SidebarExtensionList({ items, isLoading, isError, error }: SidebarExten
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1730,7 +1778,7 @@ function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListPr
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {
@@ -1782,7 +1830,7 @@ function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequen
   }
 
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
 
   if (!items || items.length === 0) {

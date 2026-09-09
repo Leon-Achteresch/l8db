@@ -86,6 +86,7 @@ export function DataTableHeaderCell({
           <ContextMenuTrigger asChild>
             <th
               ref={ref}
+              data-column-id={header.id}
               className={cn(
                 "relative border-b border-r border-border bg-muted px-3 py-2 text-left align-middle",
                 pinnedOffset !== null && "sticky z-30 bg-muted shadow-[1px_0_0_0_var(--border)]",

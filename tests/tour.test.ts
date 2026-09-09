@@ -17,6 +17,11 @@ describe("tour script", () => {
     expect(tourProgress(1, 0).current).toBe(firstLen + 1);
   });
 
+  test("gibt beim Speichern den gesamten Editor frei", () => {
+    const saveStep = TOUR_CHAPTERS[1].steps.find((step) => step.id === "save-connection");
+    expect(saveStep?.target).toBe("[data-tour='connection-editor']");
+  });
+
   test("springt zum nächsten Kapitel nach dem letzten Schritt", () => {
     const last = TOUR_CHAPTERS[0].steps.length - 1;
     expect(nextTourPosition(0, last)).toEqual({ chapterIndex: 1, stepIndex: 0 });

@@ -71,7 +71,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
         id: "save-connection",
         title: "Speichern — jetzt du",
         body: "Fülle die Felder aus und speichere die Verbindung (Slide-Button). Die Tour wartet, bis eine neue Verbindung im Speicher liegt. Du kannst diesen Schritt überspringen, wenn du später speichern willst.",
-        target: "[data-tour='connection-save']",
+        target: "[data-tour='connection-editor']",
         wait: { type: "connection-added" },
         waitHint: "Warte, bis die Verbindung gespeichert ist…",
         side: "top",

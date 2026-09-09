@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_app/_workspace/procedures/$schema/$name"
     return <ProcedureView schema={schema} name={name} oid={oid} line={line} />;
   },
   validateSearch: (search: Record<string, unknown>): { oid?: string; line?: number } => ({
-    oid: typeof search["oid"] === "string" ? search["oid"] : undefined,
-    line: typeof search["line"] === "number" ? search["line"] : undefined,
+    oid: typeof search.oid === "string" ? search.oid : undefined,
+    line: typeof search.line === "number" ? search.line : undefined,
   }),
 });

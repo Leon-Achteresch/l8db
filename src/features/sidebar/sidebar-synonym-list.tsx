@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import type { SynonymInfo } from "@/lib/db";
 import { isSynonymTargetInvalid } from "@/lib/invalid-objects";
 import { resolveSynonym } from "@/lib/synonyms";
@@ -30,7 +31,7 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
     );
   }
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
   if (all.length === 0) {
     return <p className="py-1 text-sm text-muted-foreground">Keine Synonyme gefunden.</p>;
