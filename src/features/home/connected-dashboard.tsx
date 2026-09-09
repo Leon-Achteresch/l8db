@@ -38,6 +38,8 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { useTableTabs } from "@/lib/table-tabs";
 import { DashboardMetric } from "./dashboard-metric";
 
+const TABLE_LIST_LIMIT = 50;
+
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 4);
@@ -69,8 +71,9 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
     1,
     ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
   );
-  const filtered =
+  const matching =
     tables.data?.filter((table) => table.name.toLowerCase().includes(search.toLowerCase())) ?? [];
+  const filtered = matching.slice(0, TABLE_LIST_LIMIT);
   const metrics = [
     { label: "Tabellen", query: tables, icon: Database, enabled: true },
     { label: "Views", query: views, icon: Eye, enabled: caps.views },
@@ -205,11 +208,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               ) : filtered.length ? (
                 <div className="max-h-80 overflow-auto divide-y divide-border/60">
                   {filtered.map((table) => (
-                    <motion.div
-                      key={`${table.schema}.${table.name}`}
-                      layout="position"
-                      transition={{ layout: SPRING_LAYOUT }}
-                    >
+                    <div key={`${table.schema}.${table.name}`}>
                       <Link
                         to="/tables/$schema/$table"
                         params={{ schema: table.schema, table: table.name }}
@@ -218,17 +217,22 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                             .getState()
                             .openTab({ schema: table.schema, table: table.name })
                         }
-                        className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/60"
+                        className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/60"
                       >
                         <Table2 className="size-4 text-primary/80" />
                         <span className="min-w-0 flex-1 truncate font-mono text-xs">
                           {table.name}
                         </span>
                         <span className="text-[10px] text-muted-foreground">{table.schema}</span>
-                        <ArrowRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                        <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
                       </Link>
-                    </motion.div>
+                    </div>
                   ))}
+                  {matching.length > filtered.length ? (
+                    <p className="px-5 py-3 text-[11px] text-muted-foreground">
+                      {`… und ${matching.length - filtered.length} weitere. Suche eingrenzen oder Sidebar nutzen.`}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="p-8 text-center">

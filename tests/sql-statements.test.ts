@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { splitSqlStatements, sqlToRun, statementAtOffset } from "../src/lib/sql-statements";
+import {
+  isTransactionalStatement,
+  splitSqlStatements,
+  sqlToRun,
+  statementAtOffset,
+} from "../src/lib/sql-statements";
 
 describe("splitSqlStatements", () => {
   test("splits simple statements and keeps offsets", () => {
@@ -223,4 +228,30 @@ test("MongoDB commands remain intact with escaped quotes, semicolons and SQL-lik
   });
   expect(statementAtOffset(input, input.indexOf("SELECT"), "mongodb")?.text).toBe(command);
   expect(splitSqlStatements(" \n ", "mongodb").statements).toEqual([]);
+});
+
+test("view DDL läuft ohne Transaktion", () => {
+  expect(isTransactionalStatement("create or replace view v as select 1", "postgres")).toBe(false);
+  expect(isTransactionalStatement("  CREATE TEMP VIEW v AS SELECT 1", "postgres")).toBe(false);
+  expect(isTransactionalStatement("CREATE MATERIALIZED VIEW v AS SELECT 1", "postgres")).toBe(true);
+  expect(isTransactionalStatement("UPDATE t SET a = 1", "postgres")).toBe(true);
+  expect(isTransactionalStatement("SELECT * FROM v", "postgres")).toBe(false);
+  expect(
+    isTransactionalStatement(
+      "-- neue View\n/* v2 */ CREATE OR REPLACE VIEW v AS SELECT 1",
+      "postgres",
+    ),
+  ).toBe(false);
+  expect(isTransactionalStatement("-- fix\nDELETE FROM t", "oracle")).toBe(true);
+});
+
+test("DDL ohne Transaktion bei implizitem Commit", () => {
+  for (const kind of ["oracle", "mysql"]) {
+    expect(isTransactionalStatement("CREATE TABLE t (a int)", kind)).toBe(false);
+    expect(isTransactionalStatement("ALTER TABLE t ADD b int", kind)).toBe(false);
+    expect(isTransactionalStatement("TRUNCATE TABLE t", kind)).toBe(false);
+    expect(isTransactionalStatement("DELETE FROM t", kind)).toBe(true);
+  }
+  expect(isTransactionalStatement("CREATE TABLE t (a int)", "mssql")).toBe(true);
+  expect(isTransactionalStatement("CREATE TABLE t (a int)", "sqlite")).toBe(true);
 });

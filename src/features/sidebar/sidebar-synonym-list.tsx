@@ -2,10 +2,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { LinkIcon } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
+import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SynonymInfo } from "@/lib/db";
 import { isSynonymTargetInvalid } from "@/lib/invalid-objects";
 import { resolveSynonym } from "@/lib/synonyms";
@@ -74,8 +75,9 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
   };
 
   return (
-    <SidebarMenu>
-      {all.map((synonym) => {
+    <SidebarWindow count={all.length}>
+      {(index) => {
+        const synonym = all[index];
         const resolution = resolveSynonym(synonym, all);
         const targetLabel = resolution.cycle
           ? "Zirkel erkannt"
@@ -109,7 +111,7 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
             </SidebarMenuButton>
           </SidebarMenuItem>
         );
-      })}
-    </SidebarMenu>
+      }}
+    </SidebarWindow>
   );
 }
