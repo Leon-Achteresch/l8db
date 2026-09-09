@@ -1564,7 +1564,7 @@ export function DataTable({
                 ) : (
                   <span>
                     {onSaveRow
-                      ? "Pfeiltasten navigieren · Enter oder Doppelklick zum Bearbeiten"
+                      ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
                       : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
                   </span>
                 )}
