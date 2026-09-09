@@ -12,7 +12,6 @@ import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
-import { installScrollIdle } from "@/lib/scroll-idle";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { router } from "./router";
 
