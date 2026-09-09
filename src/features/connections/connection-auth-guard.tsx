@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { isAuthFailure } from "@/lib/connection-url";
+import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { ensurePassword } from "@/lib/password-prompt";
 import { useFunctionsQuery, useTablesQuery } from "@/lib/queries";
 import { isConnectionQuery } from "@/lib/query-client";

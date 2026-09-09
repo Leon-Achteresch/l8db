@@ -16,8 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import type { QueryResult } from "@/lib/db";
-import type { DatabaseKind } from "@/lib/db";
+import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { dbErrorCode } from "@/lib/db-error-codes";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useQueryWorkspace } from "@/lib/query-workspace";
@@ -170,7 +169,12 @@ export const QueryResultTable = memo(function QueryResultTable({
           Fehler
         </span>
         <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">{error}</pre>
-        {errorCode && <p className="text-xs text-muted-foreground">Fehlercode <span className="font-mono font-semibold">{errorCode.code}</span> · {errorCode.description}</p>}
+        {errorCode && (
+          <p className="text-xs text-muted-foreground">
+            Fehlercode <span className="font-mono font-semibold">{errorCode.code}</span> ·{" "}
+            {errorCode.description}
+          </p>
+        )}
       </div>
     );
   }
