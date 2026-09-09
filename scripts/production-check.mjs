@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const config = readJson("../src-tauri/tauri.conf.json");
@@ -38,7 +39,7 @@ assert(updater.endpoints.length > 0);
 for (const endpoint of updater.endpoints) assert.equal(new URL(endpoint).protocol, "https:");
 assert.match(Buffer.from(updater.pubkey, "base64").toString(), /^untrusted comment:.*\nRW/);
 assert(!("active" in updater || "dialog" in updater), "Remove obsolete Tauri v1 updater options");
-execFileSync(process.execPath, [new URL("version.mjs", import.meta.url).pathname, "check"], {
+execFileSync(process.execPath, [fileURLToPath(new URL("version.mjs", import.meta.url)), "check"], {
   stdio: "inherit",
 });
 console.log("Production configuration checks passed");

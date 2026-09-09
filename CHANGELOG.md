@@ -3,13 +3,148 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
-## [Unreleased]
+## [0.3.53] - 2026-09-09
+
+### Fixes
+- kein Render-Loop mehr beim schnellen Scrollen
+
+## [0.3.49] - 2026-09-09
 
 ### Features
+- responsive row height scaling and view toggle cleanup
+- Dashboards aus Datei laden und mit Datei synchron halten
+- fokussierte Zelle mit einem Klick bearbeiten
+
+### Fixes
+- Monaco-Tooltips blockieren keine Klicks mehr
+
+## [0.3.42] - 2026-09-09
+
+### Features
+- open workspace tools like compare and ER diagram as tabs
+- add SidebarWindow virtualisation and related refinements
+
+### Fixes
+- keine Transaktion für View-DDL und implizit committende Dialekte
+
+### Performance
+- 60 FPS in Übersicht, Dashboard und Tabellenansicht sichern
+
+### Änderungen
+- remove unused scroll-idle import
+- throttle update checks with focus and visibility-driven re-checks
+
+## [0.3.32] - 2026-09-09
+
+### Features
+- integrate chart palette and dashboard canvas components
+- regex object search with persisted search history
+- implement connection authentication guard and error handling
+- introduce sidebar search input and connection switcher
+- enhance connection management and UI components
+- add dashboard route and sidebar integration
+- integrate SwitchButton for column visibility toggling
+- add auto-sizing feature for table columns
+- enhance error handling in query result components
+
+### Fixes
+- resolve frontend formatting checks
+
+### Änderungen
+- update props to use HTMLMotionProps for better type safety
+- remove TableColumnHighlight component and update related references
+
+## [0.3.17] - 2026-09-08
+
+### Features
+- enhance MongoDB error handling in connectionError function
+- implement automated changelog generation and PR creation
+- add bug report dialog and integrate diagnostic information collection
+- Import von Toad for Oracle Verbindungsexporten (XML)
+- implement connection window opening and enhance read-only mode handling
+- Passwort-Abfrage beim Verbinden ohne hinterlegtes Passwort mit optionalem Speichern
+- TNS-Modus im Verbindungseditor mit Alias-Auswahl aus tnsnames.ora
+- STRG+Klick auf Tabellen in PL/SQL-Selects öffnet Ergebnis-Tab, Parameter-Dialog für alle Datenbanken
+- View-Definition als vollständiges CREATE OR REPLACE FORCE VIEW mit Spaltenliste und BEQUEATH
+- vollständige CREATE-Skripte für Trigger, Typen und Routinen in allen Adaptern
+- gemeinsame Diff-Minimap und Plus/Minus-Zähler im Header
+- JSON-Abfragen, Collection-Verwaltung und Browser-Tests
+- make column search optional in sidebar and advanced search
+- red dot indicators, periodic checks and skip-version
+- open view definition as full DDL in query editor
+
+### Fixes
+- satisfy Biome checks
+- Views und Materialized Views im SQL-Linter als bekannte Tabellen behandeln
+- App-Icon im Apple-Squircle-Raster statt rundem Logo
+- Verbindungs-Toast immer schließen und Aktivierung mit Timeout absichern
+- Funktions-/Prozedur-/Package-Quelltext als CREATE OR REPLACE mit Schema liefern
+- compile simple filters per SQL dialect instead of Postgres-only ILIKE
+- derive header type badge from column metadata instead of first row value
+- offer filter/sort reset and retry in table load error state
+- add spacing between diagnose rows
+- anchor Monaco hover tooltips to the editor container
+
+### Änderungen
+- streamline authentication error handling
+
+### Weitere Änderungen
+- Fix Oracle bulk host editing
+
+## [0.2.30] - 2026-09-08
+
+### Features
+- add search filter to function and package lists
+- add bug report button that opens a prefilled mail
+
+### Fixes
+- prevent horizontal overflow in hotkey lists
+- stop re-revealing member line on every keystroke while editing
+- name new query tabs per connection instead of globally
+- render Monaco overflow widgets outside transformed ancestors
+- guard setLayout until both panels are registered after editor focus toggle
+- smooth horizontal scrolling in wide tables
+
+## [0.2.19] - 2026-09-08
+
+### Features
+- introduce @tanstack/react-hotkeys and overhaul query workspace
+- rotes X in Sidebar, Compile-pro-Gruppe und Outputs-Page
+- Extension API v1.1 mit Abfragen, Netzwerk, Prozessen, Ansichten, Panels und Dialogen
+- Mitgliederliste pro Package resizebar merken
+- Spec/Body als Tabs mit Mitglieder-Outline statt Accordion
+- Auswahl ausführen und Editieren klar von Speichern trennen
+- customize table detail tabs
+- show connection status indicators
+- compact playful table tabs with overflow menu
+- add table detail tab visibility controls and refine tab bar
+- one-click select the schema matching the db user in schema picker
+- context menu with duplicate and create-similar on connection cards
+- add content search to table search modal and refactor detail tabs
+- group connections by server and add template support
+- Vergleich von der aktiven Verbindung im Modal einrichten
+- Changelog und Release-Notes automatisch aus Git-Tags erzeugen
 - sichtbare Schemas pro Verbindung scannen und filtern
 
 ### Fixes
+- satisfy frontend Biome checks
+- Bedienpanel klickbar und Popover im App-Theme
+- widen connection picker layout
+- reorder NOT NULL constraint after DEFAULT in column definition SQL
+- Kommentare, Semikolons und PL/SQL-Terminator vor Ausführung korrekt behandeln
 - ausgeblendetes aktives Schema auf sichtbares Schema zurücksetzen
+
+### Performance
+- Oracle-Verbindungspools, lazy Sidebar-Metadaten und Instant-Client-Suche
+
+### Änderungen
+- replace native select with radix select in auto-refresh
+
+### Weitere Änderungen
+- fix window dragging in app header
+- Improve table footer alignment
+- Persist workspace tabs per connection
+- Feat: sidebar animation
 
 ## [0.1.161] - 2026-09-07
 
