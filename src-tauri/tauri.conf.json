@@ -29,7 +29,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "script-src": "'self' 'unsafe-eval' 'sha256-szkJT1v5wX5zI0mECJRp869oafUGTckDj0XDj+IFsz4='",
+        "script-src": "'self' 'unsafe-eval'",
         "style-src": "'self'",
         "style-src-elem": "'self' 'unsafe-inline'",
         "style-src-attr": "'unsafe-inline'",

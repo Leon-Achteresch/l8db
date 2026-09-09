@@ -87,8 +87,8 @@ die vom Nutzer freigegebenen Netzwerkfähigkeiten von Erweiterungen verfügbar.
 Die Erweiterungsverwaltung beschränkt diese zusätzlich auf freigegebene Hosts.
 
 Das isolierte Erweiterungs-Startskript liegt in
-`src/lib/extensions/sandbox-frame.js`; dessen SHA-256-Hash muss nach Änderungen in
-`app.security.csp.script-src` aktualisiert werden. `unsafe-eval` bleibt für den
+`src/lib/extensions/sandbox-frame.js`; Tauri ergänzt die Hashes des gebauten
+Dokuments automatisch. `unsafe-eval` bleibt für den
 bestehenden CommonJS-Lader im Sandbox-Worker erforderlich. Die Sandbox besitzt
 keinen Tauri-Zugriff und blockiert direkte Netzwerkverbindungen durch ihre eigene CSP.
 Tauris automatische CSP-Ergänzungen bleiben aktiv.
