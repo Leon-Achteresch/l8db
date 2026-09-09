@@ -13,6 +13,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
 import { Route as DriversRouteImport } from './routes/drivers'
 import { Route as DevRouteImport } from './routes/dev'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/_app'
@@ -65,6 +66,11 @@ const DriversRoute = DriversRouteImport.update({
 const DevRoute = DevRouteImport.update({
   id: '/dev',
   path: '/dev',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -247,6 +253,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
@@ -283,6 +290,7 @@ export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
@@ -319,6 +327,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
@@ -360,6 +369,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/connections'
+    | '/dashboard'
     | '/dev'
     | '/drivers'
     | '/release-notes'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/connections'
+    | '/dashboard'
     | '/dev'
     | '/drivers'
     | '/release-notes'
@@ -431,6 +442,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/about'
     | '/connections'
+    | '/dashboard'
     | '/dev'
     | '/drivers'
     | '/release-notes'
@@ -471,6 +483,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
   ConnectionsRoute: typeof ConnectionsRoute
+  DashboardRoute: typeof DashboardRoute
   DevRoute: typeof DevRoute
   DriversRoute: typeof DriversRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
@@ -505,6 +518,13 @@ declare module '@tanstack/react-router' {
       path: '/dev'
       fullPath: '/dev'
       preLoaderRoute: typeof DevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -845,6 +865,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
   ConnectionsRoute: ConnectionsRoute,
+  DashboardRoute: DashboardRoute,
   DevRoute: DevRoute,
   DriversRoute: DriversRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,

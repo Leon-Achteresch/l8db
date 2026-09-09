@@ -34,8 +34,8 @@ export function SavedConnectionChip({
       layout
       transition={{ layout: SPRING_LAYOUT }}
       className={cn(
-        "flex min-w-[12.5rem] items-center gap-2 rounded-2xl border bg-card/90 px-2.5 py-2 shadow-sm",
-        active ? "border-primary ring-2 ring-primary/25" : "border-border/70",
+        "flex min-w-[11rem] max-w-[15rem] items-center gap-1.5 rounded-xl border bg-card/90 px-2 py-1.5 shadow-sm",
+        active ? "border-primary/70 bg-primary/[0.045] ring-1 ring-primary/20" : "border-border/70",
       )}
       style={
         connection.color ? { borderLeftWidth: 4, borderLeftColor: connection.color } : undefined
@@ -46,18 +46,18 @@ export function SavedConnectionChip({
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
-        <span className="grid size-8 place-items-center rounded-xl bg-background ring-1 ring-border">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-background ring-1 ring-border">
           <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
             <ConnectionStatusIndicator connectionId={connection.id} />
-            <span className="truncate text-xs font-semibold">{connection.name}</span>
+            <span className="truncate text-[11px] font-semibold">{connection.name}</span>
           </span>
-          <span className="block truncate text-[10px] text-muted-foreground">{provider.name}</span>
+          <span className="block truncate text-[9px] text-muted-foreground">{provider.name}</span>
         </span>
         <AnimatedBadge status={connecting ? "loading" : active ? "success" : "neutral"} size="sm">
-          {connecting ? "…" : active ? "An" : "Öffnen"}
+          {connecting ? "…" : active ? "An" : "Auf"}
         </AnimatedBadge>
       </button>
       <button
@@ -70,7 +70,7 @@ export function SavedConnectionChip({
         aria-pressed={favorite}
         onClick={onToggleFavorite}
         className={cn(
-          "grid size-7 place-items-center rounded-full hover:bg-muted",
+          "grid size-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-muted",
           favorite ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
         )}
       >
@@ -80,7 +80,7 @@ export function SavedConnectionChip({
         type="button"
         aria-label={`${connection.name} bearbeiten`}
         onClick={onEdit}
-        className="grid size-7 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <Pencil className="size-3.5" />
       </button>
@@ -88,7 +88,7 @@ export function SavedConnectionChip({
         type="button"
         aria-label={`${connection.name} entfernen`}
         onClick={onDelete}
-        className="grid size-7 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
       >
         <Trash2 className="size-3.5" />
       </button>

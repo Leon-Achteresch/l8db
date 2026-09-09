@@ -35,6 +35,7 @@ import {
   TypeIcon,
   XIcon,
 } from "lucide-react";
+import { animate } from "motion/react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { RegexSearchHelper } from "@/components/regex-search-helper";
@@ -468,6 +469,7 @@ export function DataTable({
   onDeleteRow,
   onRefresh,
   columnDetails,
+  revealColumn,
 }: DataTableProps) {
   const connection = useActiveConnection();
   const capabilities = useActiveCapabilities();
@@ -493,6 +495,7 @@ export function DataTable({
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [togglingColumn, setTogglingColumn] = useState<string | null>(null);
   const [autoRefreshMs, setAutoRefreshMs] = useState(0);
   const [isWindowVisible, setIsWindowVisible] = useState(true);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
@@ -867,6 +870,35 @@ export function DataTable({
     pinnedIndices,
   ]);
 
+  const layoutRef = useRef({ visibleColumns, columnWidths, pinnedIndices });
+  layoutRef.current = { visibleColumns, columnWidths, pinnedIndices };
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!revealColumn || !scroller) return;
+    const { visibleColumns, columnWidths, pinnedIndices } = layoutRef.current;
+    const index = visibleColumns.findIndex((column) => column.id === revealColumn.name);
+    if (index < 0) return;
+    const pinnedWidth = pinnedIndices.reduce((sum, i) => sum + columnWidths[i], 0);
+    const left = columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
+    const viewport = scroller.clientWidth - pinnedWidth;
+    const target = Math.max(0, left - pinnedWidth - (viewport - columnWidths[index]) / 2);
+    const controls = animate(scroller.scrollLeft, target, {
+      duration: 0.45,
+      ease: "easeInOut",
+      onUpdate: (value) => {
+        scroller.scrollLeft = value;
+      },
+      onComplete: () => {
+        const th = scroller.querySelector<HTMLElement>(
+          `th[data-column-id="${CSS.escape(revealColumn.name)}"]`,
+        );
+        if (th) animate(th, { opacity: [1, 0.25, 1, 0.25, 1] }, { duration: 0.8 });
+      },
+    });
+    return () => controls.stop();
+  }, [revealColumn]);
+
   useEffect(() => {
     if (!editingCell || !tbodyRef.current) return;
     rowVirtualizer.scrollToIndex(editingCell.rowIndex, { align: "auto" });
@@ -1135,6 +1167,16 @@ export function DataTable({
     toast.success("In die Zwischenablage kopiert!");
   }, []);
 
+  const handleColumnToggle = useCallback(
+    (column: string) => {
+      if (togglingColumn) return;
+      setTogglingColumn(column);
+      setHidden(toggleHiddenColumn(order, hidden, column));
+      requestAnimationFrame(() => setTogglingColumn(null));
+    },
+    [hidden, order, setHidden, togglingColumn],
+  );
+
   const headerGroups = table.getHeaderGroups();
   const resizingColumn = table.getState().columnSizingInfo.isResizingColumn;
   const tableHeader = useMemo(
@@ -1173,7 +1215,8 @@ export function DataTable({
                         hidden={hidden}
                         pinned={pinned}
                         isCustomized={isCustomized}
-                        onToggle={(column) => setHidden(toggleHiddenColumn(order, hidden, column))}
+                        togglingColumn={togglingColumn}
+                        onToggle={handleColumnToggle}
                         onReorder={setOrder}
                         onReset={reset}
                         onShowAll={() => setHidden([])}

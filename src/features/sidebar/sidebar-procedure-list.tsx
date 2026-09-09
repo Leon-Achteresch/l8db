@@ -11,6 +11,7 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -45,7 +46,7 @@ export function SidebarProcedureList({
     );
   }
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
   if (!items || items.length === 0) {
     return <p className="py-1 text-sm text-muted-foreground">Keine Prozeduren gefunden.</p>;

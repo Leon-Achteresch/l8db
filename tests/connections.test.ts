@@ -89,6 +89,7 @@ const {
   parseConnectionUrl,
   detectProvider,
   connectionError,
+  queryErrorMessage,
   connectionSummary,
   kindFromUrl,
   isOracleKeyValue,
@@ -97,6 +98,7 @@ const {
 const {
   withSslModeParam,
   extractUrlPassword,
+  injectUrlPassword,
   scrubUrlPassword,
   storeSecret,
   loadSecret,
@@ -226,6 +228,22 @@ describe("Other providers", () => {
     expect(connectionError("Failed mysql://user:secret@host/app")).not.toContain("secret");
     expect(connectionError("Access denied for user 'root'@'localhost'")).toContain("Anmeldung");
     expect(connectionError("ORA-01017: invalid username/password")).toContain("Anmeldung");
+    expect(
+      connectionError(
+        "Oracle-Verbindung fehlgeschlagen: OCI Error: ORA-01005: Login denied due to invalid password. Help: https://docs.oracle.com/error-help/db/ora-01005/",
+      ),
+    ).toContain("Anmeldung");
+    expect(
+      connectionError({
+        message:
+          "Oracle-Verbindung fehlgeschlagen: OCI Error: ORA-01005: Login denied due to invalid password.",
+      }),
+    ).toContain("Anmeldung");
+    expect(
+      queryErrorMessage(
+        "Oracle-Verbindung fehlgeschlagen: OCI Error: ORA-01005: Login denied due to invalid password.",
+      ),
+    ).toBeNull();
   });
   test("keeps MongoDB server-selection details actionable", () => {
     const message = connectionError(
@@ -693,5 +711,16 @@ describe("Passwort-Abfrage", () => {
     expect(needsPassword(withUrl("postgresql://alice:pw@localhost/db"))).toBe(false);
     expect(needsPassword(withUrl("postgresql://localhost/db"))).toBe(false);
     expect(needsPassword(withUrl("/tmp/app.sqlite"))).toBe(false);
+    expect(
+      needsPassword({
+        ...base,
+        kind: "oracle",
+        connectionString: "oracle://scott@db.example.com:1521/ORCL",
+      } as Parameters<typeof needsPassword>[0]),
+    ).toBe(true);
+    expect(extractUrlPassword("oracle://scott:@db.example.com:1521/ORCL")).toBeNull();
+    expect(injectUrlPassword("oracle://scott:@db.example.com:1521/ORCL", "tiger")).toBe(
+      "oracle://scott:tiger@db.example.com:1521/ORCL",
+    );
   });
 });

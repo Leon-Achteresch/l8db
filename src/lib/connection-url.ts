@@ -447,12 +447,30 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
 }
 
 const AUTH_ERROR_PATTERN =
-  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|ORA-01017|ORA-01005/i;
+  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005/i;
 export const AUTH_FAILED_MESSAGE =
   "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
 
+function errorText(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error)
+    return String((error as { message: unknown }).message);
+  return String(error);
+}
+
+export function isAuthFailure(error: unknown): boolean {
+  const message = errorText(error);
+  return AUTH_ERROR_PATTERN.test(message) || message.includes(AUTH_FAILED_MESSAGE);
+}
+
+export function queryErrorMessage(error: unknown): string | null {
+  if (isAuthFailure(error)) return null;
+  return connectionError(error);
+}
+
 export function connectionError(error: unknown): string {
-  const message = String(error)
+  const message = errorText(error)
     .replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***")
     .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "[Verbindungs-URL]");
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))

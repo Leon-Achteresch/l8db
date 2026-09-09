@@ -3,31 +3,28 @@ import type { TourStep } from "@/lib/tour/types";
 
 let instance: Driver | null = null;
 
+function dockPopoverAtTop(selector: string) {
+  const dock = () => {
+    const target = document.querySelector<HTMLElement>(selector);
+    if (!target?.classList.contains("driver-active-element")) return;
+    const popover = document.querySelector<HTMLElement>(".driver-popover.l8db-driver");
+    if (!popover) return;
+    popover.dataset.tourDock = "top";
+    popover.style.top = "1rem";
+    popover.style.right = "1rem";
+    popover.style.bottom = "auto";
+    popover.style.left = "auto";
+  };
+  window.requestAnimationFrame(dock);
+  window.setTimeout(dock, 250);
+}
+
 export function destroySpotlight() {
   instance?.destroy();
   instance = null;
   document.querySelectorAll("[data-tour-wait]").forEach((el) => {
     el.removeAttribute("data-tour-wait");
   });
-}
-
-function keepPopoverClearOfOverview() {
-  const popover = document.querySelector<HTMLElement>(".driver-popover");
-  const overview = document.querySelector<HTMLElement>('[data-tour-ui="overview"]');
-  if (!popover || !overview) return;
-  const p = popover.getBoundingClientRect();
-  const o = overview.getBoundingClientRect();
-  const overlaps = p.left < o.right && p.right > o.left && p.top < o.bottom && p.bottom > o.top;
-  if (!overlaps) return;
-  const gap = 16;
-  const fitsRight = o.right + gap + p.width <= window.innerWidth;
-  if (fitsRight) {
-    popover.style.left = `${o.right + gap}px`;
-    popover.style.right = "auto";
-    return;
-  }
-  popover.style.top = `${Math.max(gap, o.top - gap - p.height)}px`;
-  popover.style.bottom = "auto";
 }
 
 export function showSpotlight(step: TourStep, waiting: boolean) {
@@ -43,7 +40,6 @@ export function showSpotlight(step: TourStep, waiting: boolean) {
       showButtons: [],
       disableActiveInteraction: false,
       popoverClass: "l8db-driver",
-      onHighlighted: keepPopoverClearOfOverview,
     });
   }
   document.querySelectorAll("[data-tour-wait]").forEach((el) => {
@@ -66,6 +62,7 @@ export function showSpotlight(step: TourStep, waiting: boolean) {
         };
   if (target) {
     instance.highlight({ element: target, popover });
+    if (waiting && step.target) dockPopoverAtTop(step.target);
     return;
   }
   instance.highlight({ popover });

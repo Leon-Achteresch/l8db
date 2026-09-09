@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
+import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { buildInvalidSet, isPackageInvalid, isPackagePartInvalid } from "@/lib/invalid-objects";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
@@ -42,7 +43,7 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
     );
   }
   if (isError) {
-    return <p className="py-1 text-sm text-destructive">{String(error)}</p>;
+    return <SidebarQueryError error={error} />;
   }
   if (!items || items.length === 0) {
     return <p className="py-1 text-sm text-muted-foreground">Keine Packages gefunden.</p>;
