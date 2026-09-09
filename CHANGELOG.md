@@ -3,6 +3,22 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.3.42] - 2026-09-09
+
+### Features
+- open workspace tools like compare and ER diagram as tabs
+- add SidebarWindow virtualisation and related refinements
+
+### Fixes
+- keine Transaktion für View-DDL und implizit committende Dialekte
+
+### Performance
+- 60 FPS in Übersicht, Dashboard und Tabellenansicht sichern
+
+### Änderungen
+- remove unused scroll-idle import
+- throttle update checks with focus and visibility-driven re-checks
+
 ## [0.3.32] - 2026-09-09
 
 ### Features
