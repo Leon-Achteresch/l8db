@@ -176,6 +176,8 @@ export interface Dashboard {
   refreshSec: number;
   locked: boolean;
   createdAt: number;
+  filePath?: string | null;
+  fileStamp?: string | null;
 }
 
 export const GRID_COLS = 12;
@@ -716,7 +718,11 @@ interface DashboardsState {
   remove: (id: string) => void;
   duplicate: (id: string) => string;
   setActive: (connectionId: string, id: string) => void;
-  importDashboard: (dashboard: Dashboard, connectionId: string, database: string | null) => string;
+  importDashboard: (
+    dashboard: Partial<Dashboard>,
+    connectionId: string,
+    database: string | null,
+  ) => string;
 }
 
 export const useDashboardsStore = create<DashboardsState>()(
@@ -776,11 +782,33 @@ export const useDashboardsStore = create<DashboardsState>()(
       setActive: (connectionId, id) =>
         set((s) => ({ active: { ...s.active, [connectionId]: id } })),
       importDashboard: (dashboard, connectionId, database) => {
+        const existing = dashboard.filePath
+          ? get().dashboards.find(
+              (d) => d.filePath === dashboard.filePath && d.connectionId === connectionId,
+            )
+          : undefined;
+        if (existing) {
+          set((s) => ({
+            dashboards: s.dashboards.map((d) =>
+              d.id === existing.id ? { ...d, ...dashboard, id: d.id, connectionId, database } : d,
+            ),
+            active: { ...s.active, [connectionId]: existing.id },
+          }));
+          return existing.id;
+        }
         const id = createId();
         set((s) => ({
           dashboards: [
             ...s.dashboards,
-            { ...dashboard, id, connectionId, database, createdAt: Date.now() },
+            {
+              filePath: null,
+              fileStamp: null,
+              ...dashboard,
+              id,
+              connectionId,
+              database,
+              createdAt: Date.now(),
+            } as Dashboard,
           ],
           active: { ...s.active, [connectionId]: id },
         }));
