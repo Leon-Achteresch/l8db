@@ -4,6 +4,7 @@ import { SidebarMenu } from "@/components/ui/sidebar";
 const OVERSCAN = 10;
 const MIN_COUNT = 60;
 const ESTIMATED_PITCH = 36;
+const PITCH_TOLERANCE = 0.5;
 
 export function SidebarWindow({
   count,
@@ -18,8 +19,9 @@ export function SidebarWindow({
 }) {
   const listRef = useRef<HTMLUListElement>(null);
   const pitchRef = useRef(ESTIMATED_PITCH);
+  const frameRef = useRef(0);
   const windowed = !disabled && count > MIN_COUNT;
-  const [range, setRange] = useState({ start: 0, end: count });
+  const [range, setRange] = useState({ start: 0, end: Math.min(count, MIN_COUNT) });
 
   const update = useCallback(() => {
     const list = listRef.current;
@@ -29,7 +31,8 @@ export function SidebarWindow({
     const second = first?.nextElementSibling;
     if (first && second) {
       const pitch = second.getBoundingClientRect().top - first.getBoundingClientRect().top;
-      if (pitch > 0) pitchRef.current = pitch;
+      if (pitch > 0 && Math.abs(pitch - pitchRef.current) > PITCH_TOLERANCE)
+        pitchRef.current = pitch;
     }
     const pitch = pitchRef.current;
     const offset = scroller.getBoundingClientRect().top - list.getBoundingClientRect().top;
@@ -39,6 +42,14 @@ export function SidebarWindow({
       previous.start === start && previous.end === end ? previous : { start, end },
     );
   }, [count]);
+
+  const schedule = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      update();
+    });
+  }, [update]);
 
   useEffect(() => {
     if (!windowed) {
@@ -50,17 +61,19 @@ export function SidebarWindow({
     const scroller = listRef.current?.closest<HTMLElement>("[data-slot=sidebar-content]");
     if (!scroller) return;
     update();
-    scroller.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
+    scroller.addEventListener("scroll", schedule, { passive: true });
+    const observer = new ResizeObserver(schedule);
     observer.observe(scroller);
     return () => {
-      scroller.removeEventListener("scroll", update);
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
+      scroller.removeEventListener("scroll", schedule);
       observer.disconnect();
     };
-  }, [windowed, count, update]);
+  }, [windowed, count, update, schedule]);
 
   useEffect(() => {
-    if (windowed) update();
+    if (windowed) schedule();
   });
 
   const start = windowed ? Math.min(range.start, count) : 0;
