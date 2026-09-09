@@ -190,7 +190,7 @@ export function CompareSidePicker({
             <SelectTrigger className="h-8 w-full min-w-0 text-xs">
               <SelectValue placeholder="Verbindung wählen" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               {usable.map((item) => (
                 <SelectItem key={item.id} value={item.id} className="text-xs">
                   <ProviderLogo
@@ -222,7 +222,7 @@ export function CompareSidePicker({
             <SelectTrigger className="h-8 w-full min-w-0 text-xs">
               <SelectValue placeholder="Datenbank wählen" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               {databases.map((database) => (
                 <SelectItem key={database} value={database} className="text-xs">
                   <DatabaseIcon className="size-3.5 text-muted-foreground" />
@@ -254,7 +254,7 @@ export function CompareSidePicker({
             )}
             <SelectValue placeholder={loadingSchemas ? "Lädt…" : "Schema wählen"} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent searchable>
             {schemas.map((schema) => (
               <SelectItem key={schema} value={schema} className="text-xs">
                 <LayersIcon className="size-3.5 text-muted-foreground" />
@@ -329,7 +329,7 @@ export function CompareSidePicker({
             )}
             <SelectValue placeholder={loadingObjects ? "Lädt…" : "Objekt wählen"} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent searchable>
             {objects.map((item) => (
               <SelectItem
                 key={item.oid ?? item.name}

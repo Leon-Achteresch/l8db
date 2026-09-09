@@ -818,7 +818,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                                   }
                                 />
                               </SelectTrigger>
-                              <SelectContent position="popper">
+                              <SelectContent position="popper" searchable>
                                 {(tns?.aliases.includes(tnsAlias) || !tnsAlias
                                   ? (tns?.aliases ?? [])
                                   : [tnsAlias, ...(tns?.aliases ?? [])]

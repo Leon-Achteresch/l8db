@@ -210,7 +210,7 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
               <SelectTrigger size="sm" className="h-7 w-64 text-xs">
                 <SelectValue placeholder="Lauf A wählen" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 {sources.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id} className="text-xs">
                     {entry.label}
@@ -222,7 +222,7 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
               <SelectTrigger size="sm" className="h-7 w-64 text-xs">
                 <SelectValue placeholder="Lauf B wählen" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 {sources.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id} className="text-xs">
                     {entry.label}

@@ -342,7 +342,11 @@ export function AppSidebarPanel() {
       className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
-        <DropdownMenu>
+        <DropdownMenu
+          onOpenChange={(open) => {
+            if (!open) setConnectionSearch("");
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -390,10 +394,27 @@ export function AppSidebarPanel() {
             className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
           >
             <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
+            {connections.length > 0 && (
+              <div className="relative px-1 pb-1.5">
+                <SearchIcon className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
+                <Input
+                  value={connectionSearch}
+                  onChange={(event) => setConnectionSearch(event.target.value)}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  placeholder="Verbindungen suchen…"
+                  aria-label="Verbindungen suchen"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+            )}
             {connections.length === 0 ? (
               <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
+            ) : filteredServerGroups.length === 0 ? (
+              <DropdownMenuItem disabled>Keine Treffer</DropdownMenuItem>
             ) : (
-              serverGroups.map((group) => (
+              filteredServerGroups.map((group) => (
                 <DropdownMenuGroup key={group.key}>
                   {grouped && (
                     <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
@@ -487,7 +508,7 @@ export function AppSidebarPanel() {
                     )}
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent searchable collisionPadding={{ top: 48 }}>
                     {(databases ?? []).map((database) => (
                       <SelectItem key={database} value={database}>
                         <span className="flex min-w-0 items-center gap-2">
@@ -538,7 +559,7 @@ export function AppSidebarPanel() {
                     )}
                     <SelectValue placeholder="Wählen…" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent searchable collisionPadding={{ top: 48 }}>
                     {siblings.length > 0 && (
                       <SelectGroup>
                         <SelectLabel className="flex items-center gap-1.5 text-[10px]">

@@ -65,7 +65,7 @@ export function CsvMappingTable({
                     <SelectTrigger size="sm" className="w-full min-w-56">
                       <SelectValue placeholder="Auslassen" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent searchable>
                       <SelectItem value={NO_TARGET}>Auslassen</SelectItem>
                       {targets.map((target) => (
                         <SelectItem

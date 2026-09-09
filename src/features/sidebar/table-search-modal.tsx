@@ -514,7 +514,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                     <SelectTrigger size="sm" className="min-w-0 flex-1">
                                       <SelectValue placeholder="Spalte..." />
                                     </SelectTrigger>
-                                    <SelectContent position="popper">
+                                    <SelectContent position="popper" searchable>
                                       {selectedColumns.map((col) => (
                                         <SelectItem key={col} value={col}>
                                           {col}

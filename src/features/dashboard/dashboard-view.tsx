@@ -328,7 +328,7 @@ function Editor({
                     <SelectTrigger size="sm" className="h-8 w-full text-xs">
                       <SelectValue placeholder="Datensatz für neue Charts" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent searchable>
                       {dashboard.datasets.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}
@@ -351,7 +351,7 @@ function Editor({
               <SelectTrigger size="sm" className="h-8 w-44 text-xs">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 {siblings.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
                     {d.name}

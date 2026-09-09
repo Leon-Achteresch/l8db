@@ -71,10 +71,20 @@ function SelectContent({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const showSearch = searchable ?? autoSearchable;
 
-  React.useEffect(() => {
-    const items = viewportRef.current?.querySelectorAll("[data-slot=select-item]").length ?? 0;
-    setAutoSearchable(items >= SEARCH_MIN_ITEMS);
-  }, []);
+  React.useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const updateSearchVisibility = () => {
+      const items = viewport.querySelectorAll("[data-slot=select-item]").length;
+      setAutoSearchable(items >= SEARCH_MIN_ITEMS);
+    };
+
+    updateSearchVisibility();
+    const observer = new MutationObserver(updateSearchVisibility);
+    observer.observe(viewport, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [children]);
 
   React.useEffect(() => {
     if (!showSearch) return;
