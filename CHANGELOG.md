@@ -3,6 +3,26 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.3.32] - 2026-09-09
+
+### Features
+- integrate chart palette and dashboard canvas components
+- regex object search with persisted search history
+- implement connection authentication guard and error handling
+- introduce sidebar search input and connection switcher
+- enhance connection management and UI components
+- add dashboard route and sidebar integration
+- integrate SwitchButton for column visibility toggling
+- add auto-sizing feature for table columns
+- enhance error handling in query result components
+
+### Fixes
+- resolve frontend formatting checks
+
+### Änderungen
+- update props to use HTMLMotionProps for better type safety
+- remove TableColumnHighlight component and update related references
+
 ## [0.3.17] - 2026-09-08
 
 ### Features
