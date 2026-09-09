@@ -22,6 +22,11 @@ import type {
   TableRow,
 } from "./data-table-types";
 
+const focusEditInput = (el: HTMLInputElement | null) => {
+  el?.focus();
+  el?.select();
+};
+
 type DataTableRowProps = {
   row: Row<TableRow>;
   columnWindow: ColumnWindowItem[];
@@ -123,6 +128,7 @@ export const DataTableRow = memo(function DataTableRow({
               <div className="flex flex-col">
                 <input
                   type="text"
+                  ref={focusEditInput}
                   value={editingCell.value}
                   onChange={(e) =>
                     setEditingCell((prev) => (prev ? { ...prev, value: e.target.value } : prev))
@@ -154,8 +160,19 @@ export const DataTableRow = memo(function DataTableRow({
           <td
             key={cell.id}
             onClick={(event) => {
+              const extend = event.shiftKey && columnId !== "__row_index__";
+              if (
+                isActive &&
+                !extend &&
+                onSaveRow &&
+                cellIndex > 0 &&
+                (window.getSelection()?.isCollapsed ?? true)
+              ) {
+                handleCellEdit(row, columnId);
+                return;
+              }
               setEditingCell(null);
-              focusCell({ rowIndex, columnId }, event.shiftKey && columnId !== "__row_index__");
+              focusCell({ rowIndex, columnId }, extend);
             }}
             onDoubleClick={
               onSaveRow && cellIndex > 0
