@@ -10,7 +10,7 @@ import {
   GRID_COLS,
   GRID_GAP,
   minSize,
-  ROW_HEIGHT,
+  rowHeightFor,
   useDashboardsStore,
   type Widget,
 } from "@/lib/dashboards";
@@ -64,7 +64,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
           layout={layout}
           gridConfig={{
             cols: GRID_COLS,
-            rowHeight: ROW_HEIGHT,
+            rowHeight: rowHeightFor(width),
             margin: [GRID_GAP, GRID_GAP],
             containerPadding: [0, 0],
           }}
