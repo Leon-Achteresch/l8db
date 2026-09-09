@@ -11,12 +11,7 @@ function overlapsHorizontally(first: Rectangle, second: Rectangle) {
   return first.left < second.right && first.right > second.left;
 }
 
-export function overviewVerticalOffset({
-  panel,
-  currentOffset,
-  obstructions,
-  gap = 16,
-}: Options) {
+export function overviewVerticalOffset({ panel, currentOffset, obstructions, gap = 16 }: Options) {
   const basePanel = {
     ...panel,
     top: panel.top - currentOffset,
