@@ -1,7 +1,7 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { Outlet, useNavigate } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
@@ -9,6 +9,7 @@ import { TableTabs } from "@/features/shell/table-tabs";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
+import { toolIdForPath } from "@/lib/tool-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 const SqlIntellisenseSync = lazy(() => import("@/features/shell/sql-intellisense-sync"));
@@ -21,6 +22,14 @@ const sensors = [
 ];
 
 export function WorkspaceLayout() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const openToolTab = useTableTabs((state) => state.openToolTab);
+
+  useEffect(() => {
+    const tool = toolIdForPath(pathname);
+    if (tool) openToolTab(tool);
+  }, [pathname, openToolTab]);
+
   const activeTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
