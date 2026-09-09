@@ -1,5 +1,6 @@
 import { lazy } from "react";
 import type { Tab } from "@/lib/table-tabs";
+import { TOOL_TABS } from "@/lib/tool-tabs";
 
 const AlterTableView = lazy(() =>
   import("@/features/alter-table/alter-table-view").then((module) => ({
@@ -71,6 +72,10 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
       return <ViewEditorView schema={tab.schema} view={tab.view} />;
     case "alter-table":
       return <AlterTableView schema={tab.schema} table={tab.table} />;
+    case "tool": {
+      const ToolComponent = TOOL_TABS[tab.tool].Component;
+      return <ToolComponent />;
+    }
     case "extension-panel":
       return <ExtensionPanelView extensionId={tab.extensionId} panelId={tab.panelId} />;
     default:

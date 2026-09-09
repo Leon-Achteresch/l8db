@@ -1,6 +1,7 @@
 import { useMatchRoute } from "@tanstack/react-router";
 
 import { type Tab, useTableTabs } from "@/lib/table-tabs";
+import { TOOL_TABS } from "@/lib/tool-tabs";
 
 type MatchRoute = ReturnType<typeof useMatchRoute>;
 
@@ -69,6 +70,9 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab): boolean {
         params: { schema: tab.schema, name: tab.name },
       }),
     );
+  }
+  if (tab.kind === "tool") {
+    return Boolean(matchRoute({ to: TOOL_TABS[tab.tool].path }));
   }
   if (tab.kind === "extension-panel") {
     return Boolean(

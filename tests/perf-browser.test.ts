@@ -16,6 +16,8 @@ type PerfResult = {
   totalRows: number;
 };
 
+const WEBKIT = process.env.L8DB_PERF_ENGINE === "webkit";
+
 const HOST_CSS =
   "html,body,#root{margin:0;height:100%}#root{display:flex;flex-direction:column;height:600px}";
 const CSS =
@@ -99,10 +101,10 @@ for (const kind of ["table", "result"])
           expect(result.rowsAfterScroll).toBeLessThan(80);
           expect(result.renderedCells).toBeLessThan(1200);
           expect(result.mountMs).toBeLessThan(3000);
-          expect(result.fps).toBeGreaterThan(30);
-          expect(result.worstFrameMs).toBeLessThan(250);
-          expect(result.horizontalFps).toBeGreaterThan(45);
-          expect(result.horizontalWorstFrameMs).toBeLessThan(100);
+          expect(result.fps).toBeGreaterThan(55);
+          expect(result.worstFrameMs).toBeLessThan(60);
+          expect(result.horizontalFps).toBeGreaterThan(WEBKIT ? 50 : 55);
+          expect(result.horizontalWorstFrameMs).toBeLessThan(WEBKIT ? 80 : 60);
           if (stylesheet && kind === "table") expect(result.horizontalHeights).toEqual([33]);
           if (columns === 49) {
             const unchanged = await page.evaluate(async () => {

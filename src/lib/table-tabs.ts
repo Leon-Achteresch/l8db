@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
+import type { ToolId } from "@/lib/tool-tabs";
 
 export type TableTab = {
   kind: "table";
@@ -41,6 +42,7 @@ export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigg
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
 export type PackageTab = { kind: "package"; schema: string; name: string };
+export type ToolTab = { kind: "tool"; tool: ToolId };
 export type Tab =
   | TableTab
   | QueryTab
@@ -52,7 +54,8 @@ export type Tab =
   | TriggerTab
   | ViewEditorTab
   | AlterTableTab
-  | PackageTab;
+  | PackageTab
+  | ToolTab;
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
@@ -64,6 +67,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   if (tab.kind === "alter-table") return `alter-table:${tab.schema}.${tab.table}`;
   if (tab.kind === "package") return `package:${tab.schema}.${tab.name}`;
+  if (tab.kind === "tool") return `tool:${tab.tool}`;
   if (tab.kind === "extension-panel") return `extension-panel:${tab.extensionId}:${tab.panelId}`;
   return `extension:${tab.name}`;
 }
@@ -103,6 +107,7 @@ interface TabsState {
   openViewEditorTab: (tab: Omit<ViewEditorTab, "kind">) => void;
   openAlterTableTab: (tab: Omit<AlterTableTab, "kind">) => void;
   openPackageTab: (tab: Omit<PackageTab, "kind">) => void;
+  openToolTab: (tool: ToolId) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
@@ -270,6 +275,15 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
           return storeFor([...state.tabs, pt], state);
+        });
+      },
+
+      openToolTab: (tool) => {
+        const tt: ToolTab = { kind: "tool", tool };
+        const key = tabKey(tt);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return storeFor([...state.tabs, tt], state);
         });
       },
 

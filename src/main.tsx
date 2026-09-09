@@ -49,7 +49,6 @@ Promise.all([loadProviders(), initConnectionSecrets()])
   });
 
 if (!import.meta.env.DEV && isMainWindow) {
-  window.addEventListener("load", () => {
-    initAutoUpdater();
-  });
+  if (document.readyState === "complete") initAutoUpdater();
+  else window.addEventListener("load", () => initAutoUpdater(), { once: true });
 }

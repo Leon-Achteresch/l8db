@@ -7,11 +7,12 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
+import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -62,36 +63,41 @@ export function SidebarProcedureList({
   };
 
   return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <SidebarMenuItem key={item.oid}>
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <SidebarMenuButton onClick={() => open(item)}>
-                <SquareFunctionIcon className="text-muted-foreground" />
-                <span className="truncate">
-                  {item.name}
-                  {item.identity_args ? `(${item.identity_args})` : "()"}
-                </span>
-                {isProcedureInvalid(invalidSet, item.schema, item.name) ? <InvalidMarker /> : null}
-              </SidebarMenuButton>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <ContextMenuItem onSelect={() => open(item)}>Öffnen</ContextMenuItem>
-              {capabilities.compile_objects ? (
-                <ContextMenuItem
-                  onSelect={() => {
-                    void compile(item.oid, "procedure", `${item.schema}.${item.name}`);
-                  }}
-                >
-                  <HammerIcon />
-                  Kompilieren
-                </ContextMenuItem>
-              ) : null}
-            </ContextMenuContent>
-          </ContextMenu>
-        </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
+    <SidebarWindow count={items.length}>
+      {(index) => {
+        const item = items[index];
+        return (
+          <SidebarMenuItem key={item.oid}>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <SidebarMenuButton onClick={() => open(item)}>
+                  <SquareFunctionIcon className="text-muted-foreground" />
+                  <span className="truncate">
+                    {item.name}
+                    {item.identity_args ? `(${item.identity_args})` : "()"}
+                  </span>
+                  {isProcedureInvalid(invalidSet, item.schema, item.name) ? (
+                    <InvalidMarker />
+                  ) : null}
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={() => open(item)}>Öffnen</ContextMenuItem>
+                {capabilities.compile_objects ? (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      void compile(item.oid, "procedure", `${item.schema}.${item.name}`);
+                    }}
+                  >
+                    <HammerIcon />
+                    Kompilieren
+                  </ContextMenuItem>
+                ) : null}
+              </ContextMenuContent>
+            </ContextMenu>
+          </SidebarMenuItem>
+        );
+      }}
+    </SidebarWindow>
   );
 }
