@@ -159,7 +159,7 @@ import {
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
-import { compileRegexSearch } from "@/lib/regex-search";
+import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -202,6 +202,40 @@ export function AppSidebarPanel() {
     [connections, favoriteServerKeys, serverOrder],
   );
   const grouped = serverGroups.some((group) => group.connections.length > 1);
+  const [connectionSearch, setConnectionSearch] = useState("");
+  const connectionRegexEnabled = useRegexEnabled("sidebar");
+  const connectionSearchPatterns = useMemo(
+    () =>
+      connectionRegexEnabled && connectionSearch.trim() !== ""
+        ? compileSearchPatterns(connectionSearch, { global: false })
+        : null,
+    [connectionRegexEnabled, connectionSearch],
+  );
+  const filteredServerGroups = useMemo(() => {
+    const query = connectionSearch.trim().toLowerCase();
+    if (!query) return serverGroups;
+    if (connectionSearchPatterns && !connectionSearchPatterns.ok) return [];
+
+    const matches = connectionSearchPatterns?.ok
+      ? (value: string) => connectionSearchPatterns.regexes.some((regex) => regex.test(value))
+      : (value: string) => {
+          const patterns = splitSearchPatterns(connectionSearch);
+          const lower = value.toLowerCase();
+          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+        };
+
+    return serverGroups
+      .map((group) => {
+        const connectionsInGroup = group.connections.filter((connection) => {
+          const tags = connection.tags?.map((tag) => tag.name).join(" ") ?? "";
+          return matches(
+            `${connection.name} ${connection.kind} ${connectionUser(connection)} ${tags}`,
+          );
+        });
+        return connectionsInGroup.length > 0 ? { ...group, connections: connectionsInGroup } : null;
+      })
+      .filter((group): group is (typeof serverGroups)[number] => group !== null);
+  }, [connectionRegexEnabled, connectionSearch, connectionSearchPatterns, serverGroups]);
   const siblings = useMemo(
     () => siblingConnections(connections, activeConnection),
     [connections, activeConnection],
@@ -833,21 +867,25 @@ function SidebarEntityList({
   const compiled = useMemo(
     () =>
       regexEnabled && deferredSearch.trim() !== ""
-        ? compileRegexSearch(deferredSearch.trim(), { global: false })
+        ? compileSearchPatterns(deferredSearch, { global: false })
         : null,
     [regexEnabled, deferredSearch],
   );
   const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo(() => {
     if (!items) return undefined;
-    const q = deferredSearch.trim().toLowerCase();
-    if (!q) return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
+    const patterns = splitSearchPatterns(deferredSearch);
+    if (patterns.length === 0)
+      return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
     if (compiled && !compiled.ok) {
       return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
     }
     const matches = compiled?.ok
-      ? (value: string) => compiled.regex.test(value)
-      : (value: string) => value.toLowerCase().includes(q);
+      ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
+      : (value: string) => {
+          const lower = value.toLowerCase();
+          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+        };
     return items
       .map((item) => {
         const nameMatch = matches(item.name);
@@ -1224,17 +1262,20 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   const compiled = useMemo(
     () =>
       regexEnabled && deferredSearch.trim() !== ""
-        ? compileRegexSearch(deferredSearch.trim(), { global: false })
+        ? compileSearchPatterns(deferredSearch, { global: false })
         : null,
     [regexEnabled, deferredSearch],
   );
   const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo(() => {
-    const q = deferredSearch.trim().toLowerCase();
-    if (!q || (compiled && !compiled.ok)) return items;
+    const patterns = splitSearchPatterns(deferredSearch);
+    if (patterns.length === 0 || (compiled && !compiled.ok)) return items;
     const matches = compiled?.ok
-      ? (value: string) => compiled.regex.test(value)
-      : (value: string) => value.toLowerCase().includes(q);
+      ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
+      : (value: string) => {
+          const lower = value.toLowerCase();
+          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+        };
     return items?.filter((item) => matches(item.name) || matches(item.identity_args));
   }, [items, deferredSearch, compiled]);
   const navigate = useNavigate();
