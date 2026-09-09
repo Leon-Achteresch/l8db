@@ -478,12 +478,20 @@ function Editor({
               </>
             )}
             <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={editing ? "Ansichtsmodus" : "Bearbeitungsmodus"}
+              variant={editing ? "default" : "outline"}
+              size="xs"
+              aria-label={editing ? "Zur Ansicht wechseln" : "Dashboard bearbeiten"}
               onClick={() => update({ locked: editing })}
             >
-              {editing ? <EyeIcon /> : <PencilIcon />}
+              {editing ? (
+                <>
+                  <EyeIcon /> Ansicht
+                </>
+              ) : (
+                <>
+                  <PencilIcon /> Bearbeiten
+                </>
+              )}
             </Button>
           </div>
         </header>
