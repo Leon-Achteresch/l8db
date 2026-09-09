@@ -52,4 +52,5 @@ export type DataTableProps = {
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];
+  revealColumn?: { name: string; nonce: number } | null;
 };

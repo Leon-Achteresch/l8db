@@ -79,9 +79,10 @@ export interface TableViewProps {
   type?: "table" | "view";
   fkFilter?: string;
   fkRaw?: boolean;
+  column?: string;
 }
 
-export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewProps) {
+export function TableView({ schema, table, type, fkFilter, fkRaw, column }: TableViewProps) {
   const navigate = useNavigate();
   const routeNavigate = routeApi.useNavigate();
   const pane = useWorkspacePane();
@@ -119,6 +120,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [filterRaw, setFilterRaw] = useState(fkRaw ?? false);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [duplicatePrefill, setDuplicatePrefill] = useState<DuplicatePrefill | null>(null);
@@ -315,6 +317,10 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
     setTableTab("data");
   }, [schema, table, fkFilter, fkRaw]);
 
+  useEffect(() => {
+    if (column && !isLoading) setRevealColumn({ name: column, nonce: Date.now() });
+  }, [column, isLoading]);
+
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 bg-background">
@@ -344,6 +350,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
               columns={data?.columns ?? []}
               activeFilter={filter}
               onApply={handleFilterChange}
+              onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
             />
           </div>
         </>
@@ -393,6 +400,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
                 }
           }
           onApplyFilter={caps.query_language === "json" ? undefined : handleFilterChange}
+          revealColumn={revealColumn}
           page={page}
           totalCount={totalCount ?? undefined}
           pageSize={rowLimit}

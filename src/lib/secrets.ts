@@ -53,9 +53,11 @@ export function extractUrlPassword(url: string): string | null {
   const colon = userinfo.indexOf(":");
   if (colon < 0) return null;
   try {
-    return decodeURIComponent(userinfo.slice(colon + 1));
+    const password = decodeURIComponent(userinfo.slice(colon + 1));
+    return password ? password : null;
   } catch {
-    return userinfo.slice(colon + 1);
+    const password = userinfo.slice(colon + 1);
+    return password ? password : null;
   }
 }
 
@@ -89,8 +91,11 @@ export function injectUrlPassword(redactedUrl: string, password: string): string
   const tail = rest.slice(end);
   const at = authority.lastIndexOf("@");
   if (at < 0) return redactedUrl;
-  if (authority.slice(0, at).includes(":")) return redactedUrl;
-  return `${prefix}${authority.slice(0, at)}:${encodeURIComponent(password)}${authority.slice(at)}${tail}`;
+  const userinfo = authority.slice(0, at);
+  const colon = userinfo.indexOf(":");
+  if (colon >= 0 && userinfo.slice(colon + 1)) return redactedUrl;
+  const user = colon < 0 ? userinfo : userinfo.slice(0, colon);
+  return `${prefix}${user}:${encodeURIComponent(password)}${authority.slice(at)}${tail}`;
 }
 
 export function withSslModeParam(value: string, sslMode: string): string {

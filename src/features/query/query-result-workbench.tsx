@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copyText } from "@/lib/clipboard";
-import type { QueryResult } from "@/lib/db";
+import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { gridCellText } from "@/lib/grid-search";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { QueryCellInspector } from "./query-cell-inspector";
@@ -13,10 +13,12 @@ export function QueryResultWorkbench({
   result,
   isLoading,
   error,
+  kind,
 }: {
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
+  kind?: DatabaseKind;
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
@@ -45,7 +47,7 @@ export function QueryResultWorkbench({
     [result, term],
   );
   if (isLoading || error)
-    return <QueryResultTable result={result} isLoading={isLoading} error={error} />;
+    return <QueryResultTable result={result} isLoading={isLoading} error={error} kind={kind} />;
   if (!result)
     return (
       <div className="flex h-full items-center justify-center bg-muted/10 p-8">
