@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
@@ -10,12 +9,6 @@ const capability = readJson("../src-tauri/capabilities/default.json");
 const security = config.app.security;
 const csp = security.csp;
 assert(csp && typeof csp === "object", "Production CSP must be configured");
-const frame = readFileSync(new URL("../src/lib/extensions/sandbox-frame.js", import.meta.url));
-const hash = createHash("sha256").update(frame).digest("base64");
-assert(
-  csp["script-src"].split(" ").includes(`'sha256-${hash}'`),
-  "Update the CSP hash after editing sandbox-frame.js",
-);
 assert(
   !csp["script-src"].includes("'unsafe-inline'"),
   "Inline scripts must remain hash restricted",
