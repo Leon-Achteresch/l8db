@@ -22,7 +22,7 @@ export function initAutoUpdater(): void {
   window.setTimeout(() => {
     void maybeCheck(true);
   }, STARTUP_DELAY_MS);
-   window.setInterval(() => {
+  window.setInterval(() => {
     void maybeCheck();
   }, TICK_MS);
   window.addEventListener("focus", () => {
