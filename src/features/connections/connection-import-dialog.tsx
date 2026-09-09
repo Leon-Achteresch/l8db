@@ -55,7 +55,7 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
       if (!picked || typeof picked !== "string") return;
       const text = await readTextFile(picked);
       const parsed = parseConnectionImport(text, useConnectionsStore.getState().connections);
-      setFileName(picked.split("/").pop() ?? picked);
+      setFileName(picked.split(/[/\\]/).pop() || picked);
       setSource(parsed.source);
       setError(parsed.error);
       setCandidates(parsed.error ? null : parsed.candidates);
@@ -102,7 +102,7 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Verbindungen importieren</DialogTitle>
           <DialogDescription>
@@ -124,7 +124,7 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
                 ) : (
                   <FileJson className="size-3.5 shrink-0" aria-label="l8db" />
                 )}
-                <span className="truncate font-mono">{fileName}</span>
+                <span className="min-w-0 truncate font-mono">{fileName}</span>
               </span>
             )}
           </div>
