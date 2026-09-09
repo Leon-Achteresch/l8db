@@ -3,6 +3,16 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.3.49] - 2026-09-09
+
+### Features
+- responsive row height scaling and view toggle cleanup
+- Dashboards aus Datei laden und mit Datei synchron halten
+- fokussierte Zelle mit einem Klick bearbeiten
+
+### Fixes
+- Monaco-Tooltips blockieren keine Klicks mehr
+
 ## [0.3.42] - 2026-09-09
 
 ### Features
