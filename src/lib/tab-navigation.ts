@@ -1,4 +1,5 @@
 import type { Tab } from "@/lib/table-tabs";
+import { TOOL_TABS } from "@/lib/tool-tabs";
 
 type TabNavigate = (opts: {
   to: string;
@@ -67,6 +68,10 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab) {
     });
     return;
   }
+  if (tab.kind === "tool") {
+    void navigate({ to: TOOL_TABS[tab.tool].path });
+    return;
+  }
   if (tab.kind === "extension-panel") {
     void navigate({
       to: "/extension-panels/$extensionId/$panelId",
@@ -86,5 +91,6 @@ export function tabLabel(tab: Tab): string {
   if (tab.kind === "view-editor") return tab.view;
   if (tab.kind === "alter-table") return tab.table;
   if (tab.kind === "extension-panel") return tab.title;
+  if (tab.kind === "tool") return TOOL_TABS[tab.tool].label;
   return tab.name;
 }
