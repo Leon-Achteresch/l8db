@@ -186,6 +186,14 @@ export function minSize(kind: ChartKind): { minW: number; minH: number } {
 }
 export const ROW_HEIGHT = 44;
 export const GRID_GAP = 12;
+export const BASE_COL_WIDTH = 80;
+
+export function rowHeightFor(width: number): number {
+  const colWidth = (width - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
+  if (!(colWidth > 0)) return ROW_HEIGHT;
+  const scale = Math.min(1.5, Math.max(0.7, colWidth / BASE_COL_WIDTH));
+  return Math.round(ROW_HEIGHT * scale);
+}
 
 export interface ChartDef {
   label: string;
