@@ -176,6 +176,8 @@ export interface Dashboard {
   refreshSec: number;
   locked: boolean;
   createdAt: number;
+  filePath?: string | null;
+  fileStamp?: string | null;
 }
 
 export const GRID_COLS = 12;
@@ -184,6 +186,14 @@ export function minSize(kind: ChartKind): { minW: number; minH: number } {
 }
 export const ROW_HEIGHT = 44;
 export const GRID_GAP = 12;
+export const BASE_COL_WIDTH = 80;
+
+export function rowHeightFor(width: number): number {
+  const colWidth = (width - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
+  if (!(colWidth > 0)) return ROW_HEIGHT;
+  const scale = Math.min(1.5, Math.max(0.7, colWidth / BASE_COL_WIDTH));
+  return Math.round(ROW_HEIGHT * scale);
+}
 
 export interface ChartDef {
   label: string;
@@ -716,7 +726,11 @@ interface DashboardsState {
   remove: (id: string) => void;
   duplicate: (id: string) => string;
   setActive: (connectionId: string, id: string) => void;
-  importDashboard: (dashboard: Dashboard, connectionId: string, database: string | null) => string;
+  importDashboard: (
+    dashboard: Partial<Dashboard>,
+    connectionId: string,
+    database: string | null,
+  ) => string;
 }
 
 export const useDashboardsStore = create<DashboardsState>()(
@@ -776,11 +790,33 @@ export const useDashboardsStore = create<DashboardsState>()(
       setActive: (connectionId, id) =>
         set((s) => ({ active: { ...s.active, [connectionId]: id } })),
       importDashboard: (dashboard, connectionId, database) => {
+        const existing = dashboard.filePath
+          ? get().dashboards.find(
+              (d) => d.filePath === dashboard.filePath && d.connectionId === connectionId,
+            )
+          : undefined;
+        if (existing) {
+          set((s) => ({
+            dashboards: s.dashboards.map((d) =>
+              d.id === existing.id ? { ...d, ...dashboard, id: d.id, connectionId, database } : d,
+            ),
+            active: { ...s.active, [connectionId]: existing.id },
+          }));
+          return existing.id;
+        }
         const id = createId();
         set((s) => ({
           dashboards: [
             ...s.dashboards,
-            { ...dashboard, id, connectionId, database, createdAt: Date.now() },
+            {
+              filePath: null,
+              fileStamp: null,
+              ...dashboard,
+              id,
+              connectionId,
+              database,
+              createdAt: Date.now(),
+            } as Dashboard,
           ],
           active: { ...s.active, [connectionId]: id },
         }));
