@@ -83,3 +83,10 @@ export async function installUpdateAndRelaunch(
   setPendingUpdate(null);
   await relaunch();
 }
+
+export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+export function shouldRunCheck(now: number, lastCheck: number, force = false): boolean {
+  if (force) return true;
+  return now - lastCheck >= UPDATE_CHECK_INTERVAL_MS;
+}

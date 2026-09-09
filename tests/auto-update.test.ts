@@ -18,6 +18,8 @@ Object.defineProperty(globalThis, "window", {
 
 const { useSettingsStore } = await import("../src/lib/settings");
 const {
+  UPDATE_CHECK_INTERVAL_MS,
+  shouldRunCheck,
   closeUpdatePrompt,
   getPendingUpdate,
   getUpdatePromptState,
@@ -95,5 +97,14 @@ describe("update prompt", () => {
     expect(getUpdatePromptState()).toEqual({ update: fake, open: false });
     setPendingUpdate(null);
     expect(getUpdatePromptState()).toEqual({ update: null, open: false });
+  });
+});
+
+describe("check throttle", () => {
+  test("erzwungener Start-Check läuft immer, danach erst nach dem Intervall", () => {
+    expect(shouldRunCheck(0, 0, true)).toBe(true);
+    expect(shouldRunCheck(1000, 0)).toBe(false);
+    expect(shouldRunCheck(UPDATE_CHECK_INTERVAL_MS - 1, 0)).toBe(false);
+    expect(shouldRunCheck(UPDATE_CHECK_INTERVAL_MS, 0)).toBe(true);
   });
 });
