@@ -1,7 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, Columns2Icon, FolderOpenIcon, PlusIcon, SquareIcon } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +26,13 @@ import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
-import { isQueryTabDirty, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import {
+  hasUnexecutedQueryChanges,
+  isQueryTabDirty,
+  type Tab,
+  tabKey,
+  useTableTabs,
+} from "@/lib/table-tabs";
 import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
 
 const iconButton =
@@ -38,6 +54,9 @@ export function TableTabs() {
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = panes.length > 1;
+  const [pendingClose, setPendingClose] = useState<
+    { type: "tab" | "others" | "right"; key: string } | { type: "all" } | null
+  >(null);
 
   const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
     const el = navRef.current;
@@ -55,7 +74,7 @@ export function TableTabs() {
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
 
-  const handleClose = (tab: Tab) => {
+  const closeTabNow = (tab: Tab) => {
     const key = tabKey(tab);
     const wasActive = isTabActive(tab);
     const index = tabs.findIndex((t) => tabKey(t) === key);
@@ -69,12 +88,46 @@ export function TableTabs() {
     }
   };
 
-  const handleCloseOthers = (tab: Tab) => {
+  const requestClose = (pending: NonNullable<typeof pendingClose>, closingTabs: Tab[]) => {
+    if (closingTabs.some((tab) => tab.kind === "query" && hasUnexecutedQueryChanges(tab))) {
+      setPendingClose(pending);
+      return;
+    }
+    executeClose(pending);
+  };
+
+  const executeClose = (pending: NonNullable<typeof pendingClose>) => {
+    if (pending.type === "tab") {
+      const tab = tabs.find((entry) => tabKey(entry) === pending.key);
+      if (tab) closeTabNow(tab);
+      return;
+    }
+    if (pending.type === "others") {
+      const tab = tabs.find((entry) => tabKey(entry) === pending.key);
+      if (tab) closeOthersNow(tab);
+      return;
+    }
+    if (pending.type === "right") {
+      const tab = tabs.find((entry) => tabKey(entry) === pending.key);
+      if (tab) closeToRightNow(tab);
+      return;
+    }
+    closeAllTabs();
+    collapse();
+    void navigate({ to: "/" });
+  };
+
+  const handleClose = (tab: Tab) => {
+    const key = tabKey(tab);
+    requestClose({ type: "tab", key }, [tab]);
+  };
+
+  const closeOthersNow = (tab: Tab) => {
     closeOtherTabs(tabKey(tab));
     navigateToTab(navigate, tab);
   };
 
-  const handleCloseToRight = (tab: Tab) => {
+  const closeToRightNow = (tab: Tab) => {
     const index = tabs.findIndex((t) => tabKey(t) === tabKey(tab));
     const remaining = tabs.slice(0, index + 1);
     closeTabsToRight(tabKey(tab));
@@ -83,11 +136,29 @@ export function TableTabs() {
     }
   };
 
-  const handleCloseAll = () => {
-    closeAllTabs();
-    collapse();
-    void navigate({ to: "/" });
+  const handleCloseOthers = (tab: Tab) => {
+    const key = tabKey(tab);
+    requestClose({ type: "others", key }, tabs.filter((entry) => tabKey(entry) !== key));
   };
+
+  const handleCloseToRight = (tab: Tab) => {
+    const index = tabs.findIndex((entry) => tabKey(entry) === tabKey(tab));
+    requestClose({ type: "right", key: tabKey(tab) }, tabs.slice(index + 1));
+  };
+
+  const handleCloseAll = () => {
+    requestClose({ type: "all" }, tabs);
+  };
+
+  useEffect(() => {
+    const onCloseRequest = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      const tab = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === key);
+      if (tab) requestClose({ type: "tab", key }, [tab]);
+    };
+    window.addEventListener("l8db:request-close-tab", onCloseRequest);
+    return () => window.removeEventListener("l8db:request-close-tab", onCloseRequest);
+  });
 
   const handleSplit = useCallback(() => {
     const key = activeTab ? tabKey(activeTab) : tabs[0] ? tabKey(tabs[0]) : null;
@@ -251,6 +322,36 @@ export function TableTabs() {
       >
         <FolderOpenIcon className="size-3.5" />
       </button>
+      <AlertDialog
+        open={pendingClose !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingClose(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Änderungen nicht ausgeführt</AlertDialogTitle>
+            <AlertDialogDescription>
+              Die Änderungen in diesem Query Editor wurden noch nicht ausgeführt. Möchtest du den
+              Tab wirklich schließen?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!pendingClose) return;
+                const pending = pendingClose;
+                setPendingClose(null);
+                executeClose(pending);
+              }}
+            >
+              Trotzdem schließen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

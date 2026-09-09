@@ -125,7 +125,7 @@ describe("tabs per connection", () => {
   });
 });
 
-const { isQueryTabDirty } = await import("../src/lib/table-tabs");
+const { hasUnexecutedQueryChanges, isQueryTabDirty } = await import("../src/lib/table-tabs");
 const { defaultSqlFileName, fileMtimeChanged, sqlFileSizeError, sqlFileTitle } = await import(
   "../src/lib/sql-file"
 );
@@ -221,6 +221,20 @@ describe("dateigebundene Query-Tabs", () => {
     expect(fileMtimeChanged(1, 1)).toBe(false);
     expect(fileMtimeChanged(null, 2)).toBe(false);
     expect(fileMtimeChanged(1, null)).toBe(false);
+  });
+});
+
+describe("nicht ausgeführte Query-Änderungen", () => {
+  test("erkennt Änderungen seit dem letzten Ausführen", () => {
+    const tab = { kind: "query" as const, id: "q", title: "Query", sql: "SELECT 2" };
+    expect(hasUnexecutedQueryChanges(tab)).toBe(false);
+    useTableTabs.getState().openSavedQueryTab(tab);
+    useTableTabs.getState().updateQuerySql("q", "SELECT 3");
+    const changed = useTableTabs.getState().tabs.find((entry) => entry.kind === "query");
+    expect(changed?.kind === "query" && hasUnexecutedQueryChanges(changed)).toBe(true);
+    useTableTabs.getState().markQueryTabExecuted("q", "SELECT 3");
+    const executed = useTableTabs.getState().tabs.find((entry) => entry.kind === "query");
+    expect(executed?.kind === "query" && hasUnexecutedQueryChanges(executed)).toBe(false);
   });
 });
 
