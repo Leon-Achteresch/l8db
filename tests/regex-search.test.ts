@@ -18,7 +18,8 @@ describe("compileSearchPatterns", () => {
     const result = compileSearchPatterns("users;orders", { global: false });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.regexes.some((regex) => regex.test("orders_archive"))).toBe(true);
+      expect(result.regexes.some((regex) => regex.test("orders"))).toBe(true);
+      expect(result.regexes.some((regex) => regex.test("orders_archive"))).toBe(false);
       expect(result.regexes.some((regex) => regex.test("customers"))).toBe(false);
     }
   });

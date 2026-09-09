@@ -130,8 +130,9 @@ export function splitSearchPatterns(raw: string): string[] {
 }
 
 function normalizeSearchPattern(pattern: string): string {
-  if (!pattern.includes("*") || /[\\.+?^${}()[\]|{}]/.test(pattern)) return pattern;
-  return pattern.split("*").map(escapeRegexLiteral).join(".*");
+  if (/[\\.+?^${}()[\]|{}]/.test(pattern)) return pattern;
+  const wildcardPattern = pattern.split("*").map(escapeRegexLiteral).join(".*");
+  return `^${wildcardPattern}$`;
 }
 
 export function compileSearchPatterns(
