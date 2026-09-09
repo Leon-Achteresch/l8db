@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { useConnectionsStore } = await import("../src/lib/connections");
-const { useTableTabs } = await import("../src/lib/table-tabs");
+const { useTableTabs, tabKey } = await import("../src/lib/table-tabs");
 
 await useConnectionsStore.persist.rehydrate();
 await useTableTabs.persist.rehydrate();
@@ -265,5 +265,18 @@ describe("Lesezeichen je Query-Tab", () => {
     useConnectionsStore.getState().setActiveId(a.id);
     const tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
     expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([4]);
+  });
+});
+
+describe("tool tabs", () => {
+  test("openToolTab öffnet einmalig und ist wieder auffindbar", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openToolTab("compare");
+    useTableTabs.getState().openToolTab("compare");
+    useTableTabs.getState().openToolTab("er-diagram");
+    const tabs = useTableTabs.getState().tabs;
+    expect(tabs).toHaveLength(2);
+    expect(tabs.map((t) => tabKey(t))).toEqual(["tool:compare", "tool:er-diagram"]);
   });
 });
