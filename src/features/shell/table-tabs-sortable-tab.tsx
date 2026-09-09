@@ -25,6 +25,7 @@ import {
 import { SPRING } from "@/lib/ease";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
+import { TOOL_TABS } from "@/lib/tool-tabs";
 import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
@@ -69,6 +70,10 @@ function tabVisual(tab: Tab) {
       return { Icon: EyeIcon, iconColor: "text-cyan-500" };
     case "alter-table":
       return { Icon: WrenchIcon, iconColor: "text-orange-500" };
+    case "tool": {
+      const { Icon, iconColor } = TOOL_TABS[tab.tool];
+      return { Icon, iconColor };
+    }
     default:
       return (tab.entityType ?? "table") === "view"
         ? { Icon: EyeIcon, iconColor: "text-cyan-500" }

@@ -112,6 +112,7 @@ import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
+import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 
 import {
   connectionUser,
@@ -1028,8 +1029,12 @@ function SidebarEntityList({
       {filtered && filtered.length === 0 ? (
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
-        <SidebarMenu>
-          {filtered?.map((item, index) => {
+        <SidebarWindow
+          count={filtered?.length ?? 0}
+          disabled={filtered?.some((item) => item.matchingColumns.length > 0)}
+        >
+          {(index) => {
+            const item = filtered![index];
             const isActive =
               type === "view"
                 ? Boolean(
@@ -1195,8 +1200,8 @@ function SidebarEntityList({
                 )}
               </SidebarMenuItem>
             );
-          })}
-        </SidebarMenu>
+          }}
+        </SidebarWindow>
       )}
     </div>
   );
@@ -1272,8 +1277,9 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
       {filtered && filtered.length === 0 ? (
         <p className="py-1 text-sm text-muted-foreground">Keine Treffer.</p>
       ) : (
-        <SidebarMenu>
-          {filtered?.map((item) => {
+        <SidebarWindow count={filtered?.length ?? 0}>
+          {(index) => {
+            const item = filtered![index];
             const invalid =
               item.return_type === "PACKAGE"
                 ? isPackageInvalid(invalidSet, item.schema, item.name)
@@ -1363,8 +1369,8 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
                 </ContextMenu>
               </SidebarMenuItem>
             );
-          })}
-        </SidebarMenu>
+          }}
+        </SidebarWindow>
       )}
     </div>
   );
@@ -1500,8 +1506,9 @@ function SidebarMatviewList({
       {(!items || items.length === 0) && (
         <p className="py-1 text-xs text-muted-foreground">Keine vorhanden.</p>
       )}
-      <SidebarMenu>
-        {items?.map((item) => {
+      <SidebarWindow count={items?.length ?? 0}>
+        {(index) => {
+          const item = items![index];
           const isActive = Boolean(
             matchRoute({
               to: "/matviews/$schema/$name",
@@ -1527,8 +1534,8 @@ function SidebarMatviewList({
               </SidebarMenuButton>
             </SidebarMenuItem>
           );
-        })}
-      </SidebarMenu>
+        }}
+      </SidebarWindow>
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -1786,27 +1793,27 @@ function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListPr
   }
 
   return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <SidebarMenuItem key={item.name}>
+    <SidebarWindow count={items.length}>
+      {(index) => (
+        <SidebarMenuItem key={items[index].name}>
           <SidebarMenuButton
             onClick={() => {
-              openRoleTab({ name: item.name });
+              openRoleTab({ name: items[index].name });
               navigate({
                 to: "/users/$name",
-                params: { name: item.name },
+                params: { name: items[index].name },
               });
             }}
           >
             <UsersIcon className="text-muted-foreground" />
             <span className="truncate">
-              {item.name}
-              {item.can_login ? "" : " (Rolle)"}
+              {items[index].name}
+              {items[index].can_login ? "" : " (Rolle)"}
             </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
+      )}
+    </SidebarWindow>
   );
 }
 
@@ -1838,19 +1845,19 @@ function SidebarSequenceList({ items, isLoading, isError, error }: SidebarSequen
   }
 
   return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+    <SidebarWindow count={items.length}>
+      {(index) => (
+        <SidebarMenuItem key={`${items[index].schema}.${items[index].name}`}>
           <SidebarMenuButton
             onClick={() => {
               navigate({ to: "/sequences" });
             }}
           >
             <ListOrderedIcon className="text-muted-foreground" />
-            <span className="truncate">{item.name}</span>
+            <span className="truncate">{items[index].name}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
+      )}
+    </SidebarWindow>
   );
 }

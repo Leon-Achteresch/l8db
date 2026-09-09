@@ -99,3 +99,53 @@ Auf einer isolierten lokalen PostgreSQL-18-Instanz bestanden zusätzlich `stream
 - Das bestehende PostgreSQL-Timeout ist ein clientseitiges Future-Timeout; daraus folgt keine Garantie, dass der Server die laufende Arbeit sofort beendet. Explizite Abbruch- und Wiederverwendungsregeln benötigen gesonderte Integrationstests.
 - Große Schema-Sidebars, vollständige Autocomplete-Kataloge, ER-Diagramme und sehr große Auswahl-/Regex-Suchen können weitere Lastspitzen verursachen. Sie sind nicht durch diesen Tabellenbenchmark abgedeckt.
 - Gemessen wurden Produktionskomponenten im Browser und ausgewählte PostgreSQL-Pfade. CPU/GPU-Auslastung und Gesamt-RSS des nativen Tauri-Prozesses mit realen SSH-Verbindungen und sämtlichen Datenbankprovidern wurden nicht als Vorher-/Nachher-Vergleich gemessen.
+
+# Performance-Audit, 9. September 2026
+
+Der zweite Durchgang betrifft die Bereiche, die der erste Audit ausdrücklich offen gelassen hatte: große Schema-Sidebars, die Startübersicht und das Dashboard. Ziel war mindestens 60 FPS in der gesamten Oberfläche. Gemessen wurde die gebaute App mit echten Maus- und Tastatureingaben über Playwright, 1.600 × 900 Pixel, gegen eine gemockte Tauri-Bridge mit 3.000 Tabellen, 400 Views, 900 Funktionen, 800 Sequenzen, 600 Rollen und einem Dashboard mit zwölf Charts. Die Bildrate stammt aus `requestAnimationFrame`-Abständen im Dokument selbst.
+
+## Gemessene Ergebnisse
+
+| Szene | Vorher | Nachher, Chromium | Nachher, WebKit |
+|---|---:|---:|---:|
+| Sidebar, Tabwechsel Tabellen/Views | 41,6 FPS, längster Frame 505 ms | 59,7 FPS, p95 17,8 ms | 57,4 FPS, p95 18,0 ms |
+| Sidebar, scrollen | 59,3 FPS, p95 24,6 ms | 60,3 FPS, p95 18,2 ms | 60,3 FPS, p95 17,0 ms |
+| Sidebar, Breite ziehen | 10,4 FPS, p95 286 ms | 59,7 FPS, p95 17,4 ms | nicht gemessen |
+| Startübersicht, Tabellenliste scrollen | 45,4 FPS, p95 32,0 ms | 59,9 FPS, p95 18,9 ms | 60,7 FPS, p95 18,0 ms |
+| Dashboard, scrollen | 53,1 FPS, p95 51,3 ms | 58,8 FPS, p95 25,5 ms | 60,2 FPS, p95 18,0 ms |
+| Dashboard, Widget ziehen | 60,4 FPS, p95 18,0 ms | 60,0 FPS, p95 18,3 ms | 60,0 FPS, p95 19,0 ms |
+| Tabellenansicht, 5.000 × 50 Zellen, horizontal scrollen | 51,4 FPS (WebKit) | 60,6 FPS | 55,1 FPS |
+| Sidebar-Einträge im DOM | 3.000 | 30 | 30 |
+| Knoten im DOM auf der Startseite | 27.778 | 1.283 | 1.283 |
+
+Bereits ohne Änderung bei mindestens 59,8 FPS lagen das senkrechte Scrollen der Tabellenansicht, ER-Diagramm mit 120 Tabellen, Sessions mit 500 Einträgen, Monitor, Enums, Sequenzen, Benutzer, ungültige Objekte, Replikation, Query-Builder, Verbindungen, Einstellungen, Info und das Tippen im SQL-Editor.
+
+## Ursachen und Änderungen
+
+- `sidebar-window.tsx` rendert Objektlisten der Sidebar nur im sichtbaren Bereich plus Überhang. Die Zeilenhöhe wird aus dem DOM gemessen, der Rest der Scrollhöhe entsteht über Innenabstände. Listen mit höchstens 60 Einträgen und Listen mit aufgeklappten Spaltentreffern rendern unverändert vollständig. Der eigentliche Aufwand war nicht das Malen, sondern React-Arbeit pro Eintrag, unter anderem ein `matchRoute`-Aufruf je Zeile.
+- `connected-dashboard.tsx` zeigt in der Startübersicht höchstens 50 gefundene Tabellen und weist auf die Restmenge hin. Zuvor renderte die Liste alle Treffer in einen 320 Pixel hohen Kasten, jeden Eintrag zusätzlich in einem layout-animierten Container.
+- Die Zeilen dieser Liste animieren Hover-Farbe und Pfeil-Deckkraft nicht mehr. Beim Scrollen wandern Zeilen unter dem stehenden Mauszeiger durch; jede dieser Übergangsanimationen erzeugte laufende Repaints im Scrollcontainer. Das Entfernen der beiden Übergänge hebt die Liste von 45,4 auf 59,9 FPS, ohne den Hover-Zustand selbst zu verändern.
+- Der Zellinhalt der Tabellenansicht steckte in einem zusätzlichen `truncate`-Container, obwohl die umgebende Zelle bereits abschneidet. Der Container ist entfernt; pro sichtbarer Zelle entfällt damit ein Element, das beim horizontalen Scrollen laufend neu eingehängt wurde.
+- `workspace-layout.tsx` lädt die SQL-Intellisense-Synchronisierung wieder verzögert über `React.lazy`. Seit `6788b37` hing Monaco am statischen Importgraphen des Workspace-Layouts und wurde damit auf jeder Arbeitsroute geladen. Der Bundle-Test schlug deshalb fehl; der statische Graph liegt jetzt wieder bei 1,77 MB ohne Monaco. Autovervollständigung, Hover und Definitionssprung im SQL-Editor wurden danach im Browser geprüft.
+
+Verworfen wurde eine Variante, die den scrollenden Container kurzzeitig mit einem Attribut markiert und darüber Übergänge abschaltet sowie Dashboard-Widgets aus dem Hit-Testing nimmt. In Chromium half sie, in WebKit brach das Dashboard damit auf 1,7 FPS ein, weil jede Attributänderung eine vollständige Neuberechnung des Teilbaums auslöste. Da macOS-Tauri WebKit verwendet, wurde die Variante vollständig entfernt. Ebenfalls ohne messbaren Nutzen blieben `will-change: scroll-position`, `contain: paint`, `contain: layout paint style`, `transform: translateZ(0)` und `content-visibility: auto`.
+
+## Prüfung und Reproduktion
+
+```sh
+bun run test
+bun run test:perf
+L8DB_PERF_ENGINE=webkit bun run test:perf
+```
+
+`tests/perf-app.test.ts` startet die gebaute App gegen eine gemockte Tauri-Bridge und misst Sidebar-Scroll, Übersichts-Scroll, Sidebar-Tabwechsel, Dashboard-Scroll und Dashboard-Drag. Der Test fordert mehr als 55 FPS, ein 95-Perzentil unter 28 ms, im Dashboard unter 40 ms, sowie ein begrenztes DOM: höchstens 120 Sidebar-Einträge, unter 60 Zeilen in der Übersichtsliste und unter 6.000 Knoten. Die Schwellen sind über `L8DB_PERF_MIN_FPS`, `L8DB_PERF_MAX_P95`, `L8DB_PERF_MAX_P95_DASHBOARD` und `L8DB_PERF_TABLES` anpassbar. Die Schwellen des älteren Tabellentests wurden von 30 auf 55 FPS und vom längsten Frame 250 ms auf 60 ms angehoben. Beide Perf-Testdateien laufen unter Chromium und WebKit.
+
+## Verbleibende Grenzen
+
+- Headless Chromium rastert auf der CPU. Paint-lastige Messwerte sind dadurch pessimistischer als im echten WKWebView unter macOS; die Aussagen zu DOM-Größe und JavaScript-Aufwand sind davon unabhängig.
+- Der `requestAnimationFrame`-Zähler ist durch die Bildwiederholrate begrenzt. 60 FPS sind die Obergrenze der Messung; gemessene 58 bis 60 FPS sind der beste erreichbare Bereich.
+- Das Dashboard hält in Chromium knapp 59 FPS, hat dort aber je nach Lauf ein 95-Perzentil zwischen 25 und 34 ms. Der Aufwand entsteht beim Hit-Testing der Widgets, während Inhalte unter dem Mauszeiger durchscrollen. Ein `pointer-events: none` auf `.react-grid-item` beseitigt ihn, kostet aber die Bedienbarkeit während des Scrollens und wurde nicht übernommen. In WebKit tritt der Effekt nicht auf.
+- Das horizontale Scrollen der Tabellenansicht erreicht in WebKit ab etwa 50 Spalten nur 52 bis 55 FPS, in Chromium 60,6 FPS. Beim Scrollen quer über die Spalten hängt die Spaltenvirtualisierung fortlaufend neue Zellen ein; ein eingefrorener DOM-Klon derselben Tabelle scrollt in WebKit mit 60,6 FPS, die Kosten liegen also im React-Commit, nicht im Zeichnen. Größere Spalten-Batches (8, 16, 24 statt 4), mehr Overscan, der Verzicht auf `tailwind-merge`, statische Zellklassen und flachere Zellcontainer bringen jeweils höchstens ein bis zwei FPS. Der Test fordert für WebKit deshalb nur mehr als 50 FPS beim horizontalen Scrollen; senkrecht und in Chromium bleibt es bei 55.
+- Das ER-Diagramm wurde mit 120 Tabellen gemessen. `ReactFlow` läuft ohne `onlyRenderVisibleElements`, und das Fokus-Panel rendert einen Eintrag je Tabelle; sehr große Schemata sind damit nicht abgedeckt.
+- Die Sidebar-Virtualisierung setzt eine gleichmäßige Zeilenhöhe voraus. Listen mit aufgeklappten Untereinträgen sind deshalb bewusst ausgenommen und rendern weiterhin vollständig.
+- Gemessen wurde die Weboberfläche in headless Chromium und WebKit. CPU-, GPU- und Speicherverbrauch des laufenden Tauri-Prozesses auf echter Hardware wurden nicht erneut erhoben.
