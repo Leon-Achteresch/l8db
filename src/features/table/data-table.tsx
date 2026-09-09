@@ -648,7 +648,7 @@ export function DataTable({
                 </FkPreviewPopover>
               );
             }
-            return <div className="truncate text-left">{renderValue(value)}</div>;
+            return renderValue(value);
           },
         }),
       ),

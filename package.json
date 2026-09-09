@@ -23,7 +23,7 @@
     "format": "biome format --write ./src",
     "check": "biome check ./src",
     "test": "bun test tests",
-    "test:perf": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 bun test tests/perf-browser.test.ts tests/perf-bundle.test.ts",
+    "test:perf": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_APP=1 bun test tests/perf-browser.test.ts tests/perf-bundle.test.ts tests/perf-app.test.ts",
     "version:check": "node scripts/version.mjs check",
     "changelog": "node .github/scripts/generate-changelog.mjs",
     "extension": "bun packages/extension-sdk/src/cli.ts"
