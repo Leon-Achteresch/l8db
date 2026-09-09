@@ -3,6 +3,11 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.3.53] - 2026-09-09
+
+### Fixes
+- kein Render-Loop mehr beim schnellen Scrollen
+
 ## [0.3.49] - 2026-09-09
 
 ### Features
