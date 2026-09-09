@@ -38,6 +38,8 @@ import { useQueryHistoryStore } from "@/lib/query-history";
 import { useTableTabs } from "@/lib/table-tabs";
 import { DashboardMetric } from "./dashboard-metric";
 
+const TABLE_LIST_LIMIT = 50;
+
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 4);
@@ -69,8 +71,9 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
     1,
     ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
   );
-  const filtered =
+  const matching =
     tables.data?.filter((table) => table.name.toLowerCase().includes(search.toLowerCase())) ?? [];
+  const filtered = matching.slice(0, TABLE_LIST_LIMIT);
   const metrics = [
     { label: "Tabellen", query: tables, icon: Database, enabled: true },
     { label: "Views", query: views, icon: Eye, enabled: caps.views },
@@ -229,6 +232,11 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                       </Link>
                     </motion.div>
                   ))}
+                  {matching.length > filtered.length ? (
+                    <p className="px-5 py-3 text-[11px] text-muted-foreground">
+                      {`… und ${matching.length - filtered.length} weitere. Suche eingrenzen oder Sidebar nutzen.`}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="p-8 text-center">
