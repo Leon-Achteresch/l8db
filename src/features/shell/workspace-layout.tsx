@@ -2,15 +2,16 @@ import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
-import { useSqlIntellisenseSync } from "@/lib/monaco-intellisense";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
+
+const SqlIntellisenseSync = lazy(() => import("@/features/shell/sql-intellisense-sync"));
 
 const sensors = [
   PointerSensor.configure({
@@ -20,7 +21,6 @@ const sensors = [
 ];
 
 export function WorkspaceLayout() {
-  useSqlIntellisenseSync();
   const activeTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
@@ -64,6 +64,9 @@ export function WorkspaceLayout() {
         }
       }}
     >
+      <Suspense fallback={null}>
+        <SqlIntellisenseSync />
+      </Suspense>
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5">
           <SidebarTrigger className="size-7 rounded-full" />
