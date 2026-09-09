@@ -101,7 +101,11 @@ import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
 import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
-import { splitSqlStatements, statementAtOffset } from "@/lib/sql-statements";
+import {
+  isTransactionalStatement,
+  splitSqlStatements,
+  statementAtOffset,
+} from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
@@ -121,8 +125,6 @@ const SCRIPT_MODE_NOTE: Record<ScriptRunMode, string> = {
   "new-transaction": "verwaltete Transaktion, Commit über Transaktionspanel",
   autocommit: "Autocommit je Statement",
 };
-
-const DML_PATTERN = /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
 
 interface QueryViewProps {
   tabId: string;
@@ -436,7 +438,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       try {
         const store = useTransactionStore.getState();
         const existingTx = getTransactionForConnection(connection.id);
-        const isDml = DML_PATTERN.test(sql.trim());
+        const isDml = isTransactionalStatement(sql, connection.kind);
 
         if (existingTx) {
           const res = bound
@@ -738,7 +740,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     if (!connection) return;
     const existingTx = getTransactionForConnection(connection.id);
     const hasDml = scriptSplit.statements.some((statement) =>
-      DML_PATTERN.test(statement.text.trim()),
+      isTransactionalStatement(statement.text, connection.kind),
     );
     if (existingTx) setScriptMode("existing-transaction");
     else if (hasDml && caps.transactions && useSettingsStore.getState().transactionsEnabled)
@@ -828,7 +830,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           entry.rowsAffected = res.rows_affected == null ? null : Number(res.rows_affected);
           lastResult = res;
           entry.result = res;
-          if (txId && DML_PATTERN.test(entry.sql.trim())) {
+          if (txId && isTransactionalStatement(entry.sql, connection.kind)) {
             store.addChange(txId, {
               id: crypto.randomUUID(),
               type: "query",
