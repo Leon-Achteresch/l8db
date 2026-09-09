@@ -377,6 +377,11 @@
   box-shadow: 0 4px 12px -6px oklch(0 0 0 / 25%) !important;
 }
 
+.workbench-hover-container,
+.monaco-hover.workbench-hover {
+  pointer-events: none !important;
+}
+
 .sql-flash-line {
   background-color: color-mix(in oklab, var(--primary) 18%, transparent);
 }
