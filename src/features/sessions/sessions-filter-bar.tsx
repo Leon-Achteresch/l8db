@@ -69,7 +69,7 @@ export function SessionsFilterBar({
         <SelectTrigger className="h-8 w-32 text-xs" aria-label="Nach Status filtern">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent searchable>
           <SelectItem value={ALL_STATES}>Alle Status</SelectItem>
           {states.map((state) => (
             <SelectItem key={state} value={state}>

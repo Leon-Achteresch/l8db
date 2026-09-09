@@ -54,7 +54,7 @@ export function QueryBuilderConditions({
                 <SelectTrigger className="w-56">
                   <SelectValue placeholder="Spalte" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent searchable>
                   {options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}

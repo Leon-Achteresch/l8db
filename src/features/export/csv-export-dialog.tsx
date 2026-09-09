@@ -264,7 +264,7 @@ export function CsvExportDialog({
                 <SelectTrigger id="csv-template" size="sm" className="flex-1">
                   <SelectValue placeholder="Keine Vorlage" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent searchable>
                   {templates.length === 0 ? (
                     <SelectItem value="__none__" disabled>
                       Keine Vorlagen gespeichert

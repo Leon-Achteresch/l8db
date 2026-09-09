@@ -415,7 +415,7 @@ function ErFocusPanel({
         <SelectTrigger size="sm" className="w-56">
           <SelectValue placeholder="Tabelle wählen…" />
         </SelectTrigger>
-        <SelectContent position="popper">
+        <SelectContent position="popper" searchable>
           {tables.map((table) => (
             <SelectItem key={erTableKeyOf(table)} value={erTableKeyOf(table)}>
               {erTableKeyOf(table)}

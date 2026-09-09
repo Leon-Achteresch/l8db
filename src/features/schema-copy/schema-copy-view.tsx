@@ -272,7 +272,7 @@ export function SchemaCopyView() {
             <SelectTrigger className="h-8 w-48 text-xs">
               <SelectValue placeholder="Quelle wählen" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               {schemas.map((schema) => (
                 <SelectItem key={schema} value={schema} className="text-xs">
                   {schema}
@@ -287,7 +287,7 @@ export function SchemaCopyView() {
             <SelectTrigger className="h-8 w-48 text-xs">
               <SelectValue placeholder="Ziel wählen" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               {schemas.map((schema) => (
                 <SelectItem key={schema} value={schema} className="text-xs">
                   {schema}

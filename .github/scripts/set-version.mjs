@@ -1,45 +1,12 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const version = process.argv[2];
-
 if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error(`Ungueltige Version: ${version ?? "<leer>"}`);
 }
-
-const root = process.cwd();
-
-function writeJsonVersion(relativePath) {
-  const filePath = path.join(root, relativePath);
-  const file = JSON.parse(readFileSync(filePath, "utf8"));
-  file.version = version;
-  writeFileSync(filePath, `${JSON.stringify(file, null, 2)}\n`);
-}
-
-writeJsonVersion("package.json");
-writeJsonVersion("src-tauri/tauri.conf.json");
-
-try {
-  const lockPath = path.join(root, "package-lock.json");
-  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-  lock.version = version;
-  if (lock.packages?.[""]) lock.packages[""].version = version;
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-} catch {
-  console.log("No package-lock.json found, skipping");
-}
-
-const cargoTomlPath = path.join(root, "src-tauri/Cargo.toml");
-const cargoToml = readFileSync(cargoTomlPath, "utf8");
-const packageVersionPattern = /^version = ".*"$/m;
-
-if (!packageVersionPattern.test(cargoToml)) {
-  throw new Error("Cargo.toml enthaelt keine Paketversion.");
-}
-
-const updatedCargoToml = cargoToml.replace(
-  packageVersionPattern,
-  `version = "${version}"`,
+execFileSync(
+  process.execPath,
+  [fileURLToPath(new URL("../../scripts/version.mjs", import.meta.url)), "set", version],
+  { stdio: "inherit" },
 );
-
-writeFileSync(cargoTomlPath, updatedCargoToml);

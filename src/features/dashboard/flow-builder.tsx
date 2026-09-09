@@ -207,7 +207,7 @@ function ColumnSelect({
       <SelectTrigger size="sm" className="h-8 w-full text-xs">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent searchable>
         {allowNone && <SelectItem value={NONE}>{allowNone}</SelectItem>}
         {list.map((col) => (
           <SelectItem key={col.ref} value={col.ref}>
@@ -238,7 +238,7 @@ function TableSelect({
       <SelectTrigger size="sm" className="h-8 w-full text-xs">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent searchable>
         <SelectGroup>
           <SelectLabel>Tabellen</SelectLabel>
           {(tables.data ?? []).map((t) => (
@@ -329,7 +329,7 @@ function NodeConfig({
                 <SelectTrigger size="sm" className="h-8 w-full text-xs">
                   <SelectValue placeholder="Vorschlag wählen" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent searchable>
                   {suggestions.map((r) => (
                     <SelectItem key={r.key} value={r.key}>
                       <WandSparklesIcon className="size-3" /> {r.label}
@@ -371,7 +371,7 @@ function NodeConfig({
                 <SelectTrigger size="sm" className="h-8 w-full text-xs">
                   <SelectValue placeholder="Spalte" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent searchable>
                   {own.map((c) => (
                     <SelectItem key={c.ref} value={splitRef(c.ref).column}>
                       {splitRef(c.ref).column}

@@ -394,7 +394,7 @@ export function CreateTableView() {
               <SelectTrigger className="h-8 text-sm">
                 <SelectValue placeholder="Vorlagentabelle wählen…" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 {templateTables.map((t) => (
                   <SelectItem key={t} value={t} className="font-mono text-xs">
                     {t}

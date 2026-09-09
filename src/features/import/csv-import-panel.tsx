@@ -289,7 +289,7 @@ export function CsvImportPanel() {
               <SelectTrigger size="sm" className="w-72">
                 <SelectValue placeholder="Tabelle wählen…" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 {(tables.data ?? []).map((table) => (
                   <SelectItem key={`${table.schema}.${table.name}`} value={table.name}>
                     {table.name}

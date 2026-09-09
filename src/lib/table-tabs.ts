@@ -16,6 +16,7 @@ export type QueryTab = {
   id: string;
   title: string;
   sql: string;
+  lastExecutedSql?: string;
   filePath?: string;
   savedSql?: string;
   fileMtime?: number | null;
@@ -27,6 +28,14 @@ export type QueryFileInfo = { path: string; mtime: number | null };
 
 export function isQueryTabDirty(tab: QueryTab): boolean {
   return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
+}
+
+export function hasUnexecutedQueryChanges(tab: QueryTab): boolean {
+  return (
+    tab.sql.trim().length > 0 &&
+    tab.lastExecutedSql !== undefined &&
+    tab.sql !== tab.lastExecutedSql
+  );
 }
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ProcedureTab = { kind: "procedure"; schema: string; name: string; oid: string };
@@ -116,6 +125,7 @@ interface TabsState {
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
+  markQueryTabExecuted: (id: string, sql: string) => void;
   openFileQueryTab: (file: QueryFileInfo & { sql: string; title: string }) => string;
   bindQueryTabFile: (id: string, file: QueryFileInfo & { title: string }) => void;
   markQueryTabSaved: (id: string, mtime: number | null) => void;
@@ -409,7 +419,17 @@ export const useTableTabs = create<TabsState>()(
         }),
 
       updateQuerySql: (id, sql) =>
-        set((state) => storeFor(patchQueryTab(state.tabs, id, { sql }), state)),
+        set((state) => {
+          const tab = state.tabs.find((entry) => entry.kind === "query" && entry.id === id);
+          const patch =
+            tab?.kind === "query" && tab.lastExecutedSql === undefined
+              ? { sql, lastExecutedSql: tab.sql }
+              : { sql };
+          return storeFor(patchQueryTab(state.tabs, id, patch), state);
+        }),
+
+      markQueryTabExecuted: (id, sql) =>
+        set((state) => storeFor(patchQueryTab(state.tabs, id, { lastExecutedSql: sql }), state)),
 
       openFileQueryTab: (file) => {
         const existing = get().tabs.find((t) => t.kind === "query" && t.filePath === file.path);

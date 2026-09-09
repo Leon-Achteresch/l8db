@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   compileRegexSearch,
+  compileSearchPatterns,
   countRegexMatches,
   describeRegexError,
   escapeRegexLiteral,
@@ -9,7 +10,32 @@ import {
   REGEX_PATTERN_LIBRARY,
   regexLiteralPrefilter,
   regexSearchFlags,
+  splitSearchPatterns,
 } from "../src/lib/regex-search";
+
+describe("compileSearchPatterns", () => {
+  test("trennt mehrere Muster mit Semikolon und verbindet sie mit Oder", () => {
+    const result = compileSearchPatterns("users;orders", { global: false });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.regexes.some((regex) => regex.test("orders"))).toBe(true);
+      expect(result.regexes.some((regex) => regex.test("orders_archive"))).toBe(false);
+      expect(result.regexes.some((regex) => regex.test("customers"))).toBe(false);
+    }
+  });
+
+  test("unterstützt Sternchen als Wildcard", () => {
+    const result = compileSearchPatterns("user*", { global: false });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.regexes[0].test("user_accounts")).toBe(true);
+  });
+});
+
+describe("splitSearchPatterns", () => {
+  test("entfernt Leerzeichen und leere Muster", () => {
+    expect(splitSearchPatterns(" users ; ; orders ")).toEqual(["users", "orders"]);
+  });
+});
 
 describe("compileRegexSearch", () => {
   test("kompiliert gültige Muster mit Flags", () => {

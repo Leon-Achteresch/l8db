@@ -222,6 +222,20 @@ fn is_result_statement(sql: &str) -> bool {
         )
 }
 
+#[cfg(windows)]
+fn windows_auth(user: &str, password: &str) -> Result<AuthMethod, String> {
+    if user.is_empty() {
+        Ok(AuthMethod::Integrated)
+    } else {
+        Ok(AuthMethod::windows(user, password))
+    }
+}
+
+#[cfg(not(windows))]
+fn windows_auth(_user: &str, _password: &str) -> Result<AuthMethod, String> {
+    Err("Windows-Authentifizierung ist nur unter Windows verfügbar.".to_string())
+}
+
 impl MssqlAdapter {
     pub fn new(
         connection_string: &str,
@@ -238,11 +252,9 @@ impl MssqlAdapter {
         config.host(url.host_str().ok_or("Host fehlt")?);
         config.port(url.port().unwrap_or(1433));
         let user = percent_decode(url.username());
+        let password = percent_decode(url.password().unwrap_or(""));
         if !user.is_empty() {
-            config.authentication(AuthMethod::sql_server(
-                user,
-                percent_decode(url.password().unwrap_or("")),
-            ));
+            config.authentication(AuthMethod::sql_server(&user, &password));
         }
         let path_db = url.path().trim_start_matches('/');
         let db = database
@@ -254,6 +266,7 @@ impl MssqlAdapter {
         }
         let mut ssl = SslMode::Prefer;
         let mut trust = false;
+        let mut trusted = false;
         for (key, value) in url.query_pairs() {
             match key.as_ref() {
                 "sslmode" => {
@@ -267,6 +280,12 @@ impl MssqlAdapter {
                         _ => SslMode::Require,
                     }
                 }
+                "trusted_connection"
+                | "trustedconnection"
+                | "integrated_security"
+                | "integratedsecurity" => {
+                    trusted = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1" | "sspi")
+                }
                 "trust_server_certificate" | "trustservercertificate" => {
                     trust = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1")
                 }
@@ -274,6 +293,9 @@ impl MssqlAdapter {
                 "instance" => config.instance_name(value.into_owned()),
                 _ => {}
             }
+        }
+        if trusted {
+            config.authentication(windows_auth(&user, &password)?);
         }
         config.encryption(match ssl {
             SslMode::Disable => EncryptionLevel::NotSupported,
@@ -1138,7 +1160,14 @@ mod tests {
         let pool = crate::db::pool::create_pool_state();
         let adapter = MssqlAdapter::new("mssql://sa:P%40ss@db.example.com:1434/master?encrypt=true&trust_server_certificate=true", Some("other"), pool.clone(), "k".into()).unwrap();
         assert_eq!(adapter.config.get_addr(), "db.example.com:1434");
-        assert!(MssqlAdapter::new("mysql://x@y/z", None, pool, "k".into()).is_err());
+        assert!(MssqlAdapter::new("mysql://x@y/z", None, pool.clone(), "k".into()).is_err());
+        let trusted = MssqlAdapter::new(
+            "mssql://srv/master?trusted_connection=true",
+            None,
+            pool,
+            "k".into(),
+        );
+        assert_eq!(trusted.is_ok(), cfg!(windows));
         assert!(is_result_statement("  select 1"));
         assert!(!is_result_statement("UPDATE t SET a = 1"));
         assert!(is_result_statement(

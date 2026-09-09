@@ -7,8 +7,14 @@
         "height": 820,
         "minWidth": 760,
         "minHeight": 560,
-        "decorations": false
+        "decorations": false,
+        "label": "main"
       }
     ]
+  },
+  "bundle": {
+    "windows": {
+      "minimumWebview2Version": "111.0.0.0"
+    }
   }
 }

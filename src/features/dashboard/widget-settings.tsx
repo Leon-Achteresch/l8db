@@ -152,7 +152,7 @@ export function WidgetSettings({
               <SelectTrigger size="sm" className="h-8 w-full text-xs">
                 <SelectValue placeholder="Datensatz" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent searchable>
                 <SelectItem value={NONE}>Kein Datensatz</SelectItem>
                 {datasets.map((d) => (
                   <SelectItem key={d.id} value={d.id}>

@@ -24,8 +24,8 @@ export function HomeView() {
   if (activeConnection)
     return <ConnectedDashboard key={activeConnection.id} connection={activeConnection} />;
   return (
-    <main className="workspace-canvas flex flex-1 flex-col items-center justify-center overflow-auto p-8">
-      <div className="w-full max-w-lg">
+    <main className="workspace-canvas flex flex-1 flex-col overflow-auto p-8">
+      <div className="w-full">
         <p className="text-[11px] font-semibold text-muted-foreground">Arbeitsplatz</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           Mit welcher Datenbank arbeiten wir?
@@ -33,7 +33,10 @@ export function HomeView() {
         <p className="mt-3 text-sm text-muted-foreground">
           Wähle eine Verbindung, um Tabellen und Abfragen zu öffnen.
         </p>
-        <div className="my-7 space-y-2" data-tour="home-pick">
+        <div
+          className="my-7 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+          data-tour="home-pick"
+        >
           {connections.map((connection) => {
             const provider = providerFor(connection);
             return (
@@ -71,7 +74,7 @@ export function HomeView() {
             );
           })}
         </div>
-        <Button variant="outline" asChild>
+        <Button variant="outline" className="self-start" asChild>
           <Link to="/connections">
             <Plus className="size-4" />
             Verbindungen verwalten

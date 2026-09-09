@@ -85,7 +85,7 @@ function ColumnSelect({
       <SelectTrigger size="sm" className={cn("h-8 w-full text-xs", className)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent searchable>
         {allowNone && <SelectItem value={NONE}>{allowNone}</SelectItem>}
         {list.map((col) => (
           <SelectItem key={col.ref} value={col.ref}>
@@ -200,7 +200,7 @@ function SimpleBuilder({
           <SelectTrigger size="sm" className="h-8 w-full text-xs">
             <SelectValue placeholder="Tabelle oder View wählen" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent searchable>
             <SelectGroup>
               <SelectLabel>Tabellen</SelectLabel>
               {(tables.data ?? []).map((t) => (
@@ -231,7 +231,7 @@ function SimpleBuilder({
             <SelectTrigger size="sm" className="h-8 w-full text-xs">
               <SelectValue placeholder="Verknüpfte Tabelle" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent searchable>
               <SelectItem value={NONE}>Keine verknüpfte Tabelle</SelectItem>
               {relations.map((r) => (
                 <SelectItem key={r.key} value={r.key}>

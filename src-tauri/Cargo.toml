@@ -1,6 +1,6 @@
 [package]
 name = "l8db"
-version = "0.3.0"
+version = "0.4.0"
 description = "Fast, native desktop client for PostgreSQL and other databases."
 authors = ["Leon Achteresch"]
 edition = "2021"
@@ -41,7 +41,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 mysql_async = { version = "0.37", default-features = false, features = ["minimal", "native-tls-tls"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 chrono = "0.4"
 tokio-util = { version = "0.7", features = ["compat"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "query", "native-tls", "charset", "http2"] }
@@ -71,6 +71,7 @@ keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
