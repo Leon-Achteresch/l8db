@@ -414,9 +414,9 @@ export function QueryView({ tabId }: QueryViewProps) {
         }
       }
       setEditorFocus(false);
-      const currentTab = useTableTabs.getState().tabs.find(
-        (tab) => tab.kind === "query" && tab.id === tabId,
-      );
+      const currentTab = useTableTabs
+        .getState()
+        .tabs.find((tab) => tab.kind === "query" && tab.id === tabId);
       if (currentTab?.kind === "query" && currentTab.sql === sql) {
         markQueryTabExecuted(tabId, sql);
       }

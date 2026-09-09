@@ -138,7 +138,10 @@ export function TableTabs() {
 
   const handleCloseOthers = (tab: Tab) => {
     const key = tabKey(tab);
-    requestClose({ type: "others", key }, tabs.filter((entry) => tabKey(entry) !== key));
+    requestClose(
+      { type: "others", key },
+      tabs.filter((entry) => tabKey(entry) !== key),
+    );
   };
 
   const handleCloseToRight = (tab: Tab) => {

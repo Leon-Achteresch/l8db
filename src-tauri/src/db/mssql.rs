@@ -280,12 +280,11 @@ impl MssqlAdapter {
                         _ => SslMode::Require,
                     }
                 }
-                "trusted_connection" | "trustedconnection" | "integrated_security"
+                "trusted_connection"
+                | "trustedconnection"
+                | "integrated_security"
                 | "integratedsecurity" => {
-                    trusted = matches!(
-                        value.to_lowercase().as_str(),
-                        "true" | "yes" | "1" | "sspi"
-                    )
+                    trusted = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1" | "sspi")
                 }
                 "trust_server_certificate" | "trustservercertificate" => {
                     trust = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1")

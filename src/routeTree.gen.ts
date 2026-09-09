@@ -9,73 +9,47 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
-import { Route as DriversRouteImport } from './routes/drivers'
-import { Route as DevRouteImport } from './routes/dev'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as ConnectionsRouteImport } from './routes/connections'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/_app'
-import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as ConnectionsRouteImport } from './routes/connections'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DevRouteImport } from './routes/dev'
+import { Route as DriversRouteImport } from './routes/drivers'
+import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
-import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
-import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
-import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
-import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._workspace.saved-plan'
-import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
-import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
-import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
-import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
-import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
-import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
-import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
-import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
-import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
-import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
+import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
-import { Route as AppWorkspaceQueryIndexRouteImport } from './routes/_app._workspace.query.index'
-import { Route as AppWorkspaceUsersNameRouteImport } from './routes/_app._workspace.users.$name'
-import { Route as AppWorkspaceQueryIdRouteImport } from './routes/_app._workspace.query.$id'
+import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
+import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
+import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
+import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
+import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
+import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
+import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
+import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
+import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
+import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
+import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
+import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._workspace.saved-plan'
+import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
+import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
 import { Route as AppWorkspaceExtensionsNameRouteImport } from './routes/_app._workspace.extensions.$name'
-import { Route as AppWorkspaceViewEditorSchemaViewRouteImport } from './routes/_app._workspace.view-editor.$schema.$view'
-import { Route as AppWorkspaceTablesSchemaTableRouteImport } from './routes/_app._workspace.tables.$schema.$table'
-import { Route as AppWorkspaceProceduresSchemaNameRouteImport } from './routes/_app._workspace.procedures.$schema.$name'
-import { Route as AppWorkspacePackagesSchemaNameRouteImport } from './routes/_app._workspace.packages.$schema.$name'
-import { Route as AppWorkspaceMatviewsSchemaNameRouteImport } from './routes/_app._workspace.matviews.$schema.$name'
-import { Route as AppWorkspaceFunctionsSchemaNameRouteImport } from './routes/_app._workspace.functions.$schema.$name'
-import { Route as AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport } from './routes/_app._workspace.extension-panels.$extensionId.$panelId'
+import { Route as AppWorkspaceQueryIndexRouteImport } from './routes/_app._workspace.query.index'
+import { Route as AppWorkspaceQueryIdRouteImport } from './routes/_app._workspace.query.$id'
+import { Route as AppWorkspaceUsersNameRouteImport } from './routes/_app._workspace.users.$name'
 import { Route as AppWorkspaceAlterTableSchemaTableRouteImport } from './routes/_app._workspace.alter-table.$schema.$table'
+import { Route as AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport } from './routes/_app._workspace.extension-panels.$extensionId.$panelId'
+import { Route as AppWorkspaceFunctionsSchemaNameRouteImport } from './routes/_app._workspace.functions.$schema.$name'
+import { Route as AppWorkspaceMatviewsSchemaNameRouteImport } from './routes/_app._workspace.matviews.$schema.$name'
+import { Route as AppWorkspacePackagesSchemaNameRouteImport } from './routes/_app._workspace.packages.$schema.$name'
+import { Route as AppWorkspaceProceduresSchemaNameRouteImport } from './routes/_app._workspace.procedures.$schema.$name'
+import { Route as AppWorkspaceTablesSchemaTableRouteImport } from './routes/_app._workspace.tables.$schema.$table'
+import { Route as AppWorkspaceViewEditorSchemaViewRouteImport } from './routes/_app._workspace.view-editor.$schema.$view'
 import { Route as AppWorkspaceTriggersSchemaTableTriggerRouteImport } from './routes/_app._workspace.triggers.$schema.$table.$trigger'
 
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
-  id: '/release-notes',
-  path: '/release-notes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DriversRoute = DriversRouteImport.update({
-  id: '/drivers',
-  path: '/drivers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DevRoute = DevRouteImport.update({
-  id: '/dev',
-  path: '/dev',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConnectionsRoute = ConnectionsRouteImport.update({
-  id: '/connections',
-  path: '/connections',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -83,57 +57,78 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
+const ConnectionsRoute = ConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
-  id: '/_workspace',
-  getParentRoute: () => AppRoute,
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevRoute = DevRouteImport.update({
+  id: '/dev',
+  path: '/dev',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DriversRoute = DriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
+  id: '/release-notes',
+  path: '/release-notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppPlainRoute = AppPlainRouteImport.update({
   id: '/_plain',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
+  id: '/_workspace',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlainAvailableExtensionsRoute =
+  AppPlainAvailableExtensionsRouteImport.update({
+    id: '/available-extensions',
+    path: '/available-extensions',
+    getParentRoute: () => AppPlainRoute,
+  } as any)
 const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceSessionsRoute = AppWorkspaceSessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
+const AppWorkspaceCompareRoute = AppWorkspaceCompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceSequencesRoute = AppWorkspaceSequencesRouteImport.update({
-  id: '/sequences',
-  path: '/sequences',
+const AppWorkspaceCreateTableRoute = AppWorkspaceCreateTableRouteImport.update({
+  id: '/create-table',
+  path: '/create-table',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceSavedPlanRoute = AppWorkspaceSavedPlanRouteImport.update({
-  id: '/saved-plan',
-  path: '/saved-plan',
+const AppWorkspaceEnumsRoute = AppWorkspaceEnumsRouteImport.update({
+  id: '/enums',
+  path: '/enums',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceReplicationRoute = AppWorkspaceReplicationRouteImport.update({
-  id: '/replication',
-  path: '/replication',
+const AppWorkspaceErDiagramRoute = AppWorkspaceErDiagramRouteImport.update({
+  id: '/er-diagram',
+  path: '/er-diagram',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceQueryBuilderRoute =
-  AppWorkspaceQueryBuilderRouteImport.update({
-    id: '/query-builder',
-    path: '/query-builder',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspaceQueryRoute = AppWorkspaceQueryRouteImport.update({
-  id: '/query',
-  path: '/query',
-  getParentRoute: () => AppWorkspaceRoute,
-} as any)
-const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
-  id: '/monitor',
-  path: '/monitor',
+const AppWorkspaceImportRoute = AppWorkspaceImportRouteImport.update({
+  id: '/import',
+  path: '/import',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceInvalidObjectsRoute =
@@ -142,51 +137,41 @@ const AppWorkspaceInvalidObjectsRoute =
     path: '/invalid-objects',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
-const AppWorkspaceImportRoute = AppWorkspaceImportRouteImport.update({
-  id: '/import',
-  path: '/import',
+const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceErDiagramRoute = AppWorkspaceErDiagramRouteImport.update({
-  id: '/er-diagram',
-  path: '/er-diagram',
+const AppWorkspaceQueryRoute = AppWorkspaceQueryRouteImport.update({
+  id: '/query',
+  path: '/query',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceEnumsRoute = AppWorkspaceEnumsRouteImport.update({
-  id: '/enums',
-  path: '/enums',
-  getParentRoute: () => AppWorkspaceRoute,
-} as any)
-const AppWorkspaceCreateTableRoute = AppWorkspaceCreateTableRouteImport.update({
-  id: '/create-table',
-  path: '/create-table',
-  getParentRoute: () => AppWorkspaceRoute,
-} as any)
-const AppWorkspaceCompareRoute = AppWorkspaceCompareRouteImport.update({
-  id: '/compare',
-  path: '/compare',
-  getParentRoute: () => AppWorkspaceRoute,
-} as any)
-const AppPlainAvailableExtensionsRoute =
-  AppPlainAvailableExtensionsRouteImport.update({
-    id: '/available-extensions',
-    path: '/available-extensions',
-    getParentRoute: () => AppPlainRoute,
+const AppWorkspaceQueryBuilderRoute =
+  AppWorkspaceQueryBuilderRouteImport.update({
+    id: '/query-builder',
+    path: '/query-builder',
+    getParentRoute: () => AppWorkspaceRoute,
   } as any)
-const AppWorkspaceQueryIndexRoute = AppWorkspaceQueryIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppWorkspaceQueryRoute,
-} as any)
-const AppWorkspaceUsersNameRoute = AppWorkspaceUsersNameRouteImport.update({
-  id: '/users/$name',
-  path: '/users/$name',
+const AppWorkspaceReplicationRoute = AppWorkspaceReplicationRouteImport.update({
+  id: '/replication',
+  path: '/replication',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
-const AppWorkspaceQueryIdRoute = AppWorkspaceQueryIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => AppWorkspaceQueryRoute,
+const AppWorkspaceSavedPlanRoute = AppWorkspaceSavedPlanRouteImport.update({
+  id: '/saved-plan',
+  path: '/saved-plan',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceSequencesRoute = AppWorkspaceSequencesRouteImport.update({
+  id: '/sequences',
+  path: '/sequences',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceSessionsRoute = AppWorkspaceSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceExtensionsNameRoute =
   AppWorkspaceExtensionsNameRouteImport.update({
@@ -194,40 +179,25 @@ const AppWorkspaceExtensionsNameRoute =
     path: '/extensions/$name',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
-const AppWorkspaceViewEditorSchemaViewRoute =
-  AppWorkspaceViewEditorSchemaViewRouteImport.update({
-    id: '/view-editor/$schema/$view',
-    path: '/view-editor/$schema/$view',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspaceTablesSchemaTableRoute =
-  AppWorkspaceTablesSchemaTableRouteImport.update({
-    id: '/tables/$schema/$table',
-    path: '/tables/$schema/$table',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspaceProceduresSchemaNameRoute =
-  AppWorkspaceProceduresSchemaNameRouteImport.update({
-    id: '/procedures/$schema/$name',
-    path: '/procedures/$schema/$name',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspacePackagesSchemaNameRoute =
-  AppWorkspacePackagesSchemaNameRouteImport.update({
-    id: '/packages/$schema/$name',
-    path: '/packages/$schema/$name',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspaceMatviewsSchemaNameRoute =
-  AppWorkspaceMatviewsSchemaNameRouteImport.update({
-    id: '/matviews/$schema/$name',
-    path: '/matviews/$schema/$name',
-    getParentRoute: () => AppWorkspaceRoute,
-  } as any)
-const AppWorkspaceFunctionsSchemaNameRoute =
-  AppWorkspaceFunctionsSchemaNameRouteImport.update({
-    id: '/functions/$schema/$name',
-    path: '/functions/$schema/$name',
+const AppWorkspaceQueryIndexRoute = AppWorkspaceQueryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppWorkspaceQueryRoute,
+} as any)
+const AppWorkspaceQueryIdRoute = AppWorkspaceQueryIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppWorkspaceQueryRoute,
+} as any)
+const AppWorkspaceUsersNameRoute = AppWorkspaceUsersNameRouteImport.update({
+  id: '/users/$name',
+  path: '/users/$name',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceAlterTableSchemaTableRoute =
+  AppWorkspaceAlterTableSchemaTableRouteImport.update({
+    id: '/alter-table/$schema/$table',
+    path: '/alter-table/$schema/$table',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
 const AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute =
@@ -236,10 +206,40 @@ const AppWorkspaceExtensionPanelsExtensionIdPanelIdRoute =
     path: '/extension-panels/$extensionId/$panelId',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
-const AppWorkspaceAlterTableSchemaTableRoute =
-  AppWorkspaceAlterTableSchemaTableRouteImport.update({
-    id: '/alter-table/$schema/$table',
-    path: '/alter-table/$schema/$table',
+const AppWorkspaceFunctionsSchemaNameRoute =
+  AppWorkspaceFunctionsSchemaNameRouteImport.update({
+    id: '/functions/$schema/$name',
+    path: '/functions/$schema/$name',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
+const AppWorkspaceMatviewsSchemaNameRoute =
+  AppWorkspaceMatviewsSchemaNameRouteImport.update({
+    id: '/matviews/$schema/$name',
+    path: '/matviews/$schema/$name',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
+const AppWorkspacePackagesSchemaNameRoute =
+  AppWorkspacePackagesSchemaNameRouteImport.update({
+    id: '/packages/$schema/$name',
+    path: '/packages/$schema/$name',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
+const AppWorkspaceProceduresSchemaNameRoute =
+  AppWorkspaceProceduresSchemaNameRouteImport.update({
+    id: '/procedures/$schema/$name',
+    path: '/procedures/$schema/$name',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
+const AppWorkspaceTablesSchemaTableRoute =
+  AppWorkspaceTablesSchemaTableRouteImport.update({
+    id: '/tables/$schema/$table',
+    path: '/tables/$schema/$table',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
+const AppWorkspaceViewEditorSchemaViewRoute =
+  AppWorkspaceViewEditorSchemaViewRouteImport.update({
+    id: '/view-editor/$schema/$view',
+    path: '/view-editor/$schema/$view',
     getParentRoute: () => AppWorkspaceRoute,
   } as any)
 const AppWorkspaceTriggersSchemaTableTriggerRoute =
@@ -492,46 +492,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/release-notes': {
-      id: '/release-notes'
-      path: '/release-notes'
-      fullPath: '/release-notes'
-      preLoaderRoute: typeof ReleaseNotesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/drivers': {
-      id: '/drivers'
-      path: '/drivers'
-      fullPath: '/drivers'
-      preLoaderRoute: typeof DriversRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dev': {
-      id: '/dev'
-      path: '/dev'
-      fullPath: '/dev'
-      preLoaderRoute: typeof DevRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/connections': {
-      id: '/connections'
-      path: '/connections'
-      fullPath: '/connections'
-      preLoaderRoute: typeof ConnectionsRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -541,19 +506,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
+    '/connections': {
+      id: '/connections'
+      path: '/connections'
+      fullPath: '/connections'
+      preLoaderRoute: typeof ConnectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/_workspace': {
-      id: '/_app/_workspace'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppWorkspaceRouteImport
-      parentRoute: typeof AppRoute
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev': {
+      id: '/dev'
+      path: '/dev'
+      fullPath: '/dev'
+      preLoaderRoute: typeof DevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/drivers': {
+      id: '/drivers'
+      path: '/drivers'
+      fullPath: '/drivers'
+      preLoaderRoute: typeof DriversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/release-notes': {
+      id: '/release-notes'
+      path: '/release-notes'
+      fullPath: '/release-notes'
+      preLoaderRoute: typeof ReleaseNotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/_plain': {
       id: '/_app/_plain'
@@ -562,95 +555,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlainRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/_workspace': {
+      id: '/_app/_workspace'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppWorkspaceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/_plain/available-extensions': {
+      id: '/_app/_plain/available-extensions'
+      path: '/available-extensions'
+      fullPath: '/available-extensions'
+      preLoaderRoute: typeof AppPlainAvailableExtensionsRouteImport
+      parentRoute: typeof AppPlainRoute
+    }
     '/_app/_workspace/': {
       id: '/_app/_workspace/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceIndexRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/sessions': {
-      id: '/_app/_workspace/sessions'
-      path: '/sessions'
-      fullPath: '/sessions'
-      preLoaderRoute: typeof AppWorkspaceSessionsRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/sequences': {
-      id: '/_app/_workspace/sequences'
-      path: '/sequences'
-      fullPath: '/sequences'
-      preLoaderRoute: typeof AppWorkspaceSequencesRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/saved-plan': {
-      id: '/_app/_workspace/saved-plan'
-      path: '/saved-plan'
-      fullPath: '/saved-plan'
-      preLoaderRoute: typeof AppWorkspaceSavedPlanRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/replication': {
-      id: '/_app/_workspace/replication'
-      path: '/replication'
-      fullPath: '/replication'
-      preLoaderRoute: typeof AppWorkspaceReplicationRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/query-builder': {
-      id: '/_app/_workspace/query-builder'
-      path: '/query-builder'
-      fullPath: '/query-builder'
-      preLoaderRoute: typeof AppWorkspaceQueryBuilderRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/query': {
-      id: '/_app/_workspace/query'
-      path: '/query'
-      fullPath: '/query'
-      preLoaderRoute: typeof AppWorkspaceQueryRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/monitor': {
-      id: '/_app/_workspace/monitor'
-      path: '/monitor'
-      fullPath: '/monitor'
-      preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/invalid-objects': {
-      id: '/_app/_workspace/invalid-objects'
-      path: '/invalid-objects'
-      fullPath: '/invalid-objects'
-      preLoaderRoute: typeof AppWorkspaceInvalidObjectsRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/import': {
-      id: '/_app/_workspace/import'
-      path: '/import'
-      fullPath: '/import'
-      preLoaderRoute: typeof AppWorkspaceImportRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/er-diagram': {
-      id: '/_app/_workspace/er-diagram'
-      path: '/er-diagram'
-      fullPath: '/er-diagram'
-      preLoaderRoute: typeof AppWorkspaceErDiagramRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/enums': {
-      id: '/_app/_workspace/enums'
-      path: '/enums'
-      fullPath: '/enums'
-      preLoaderRoute: typeof AppWorkspaceEnumsRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/create-table': {
-      id: '/_app/_workspace/create-table'
-      path: '/create-table'
-      fullPath: '/create-table'
-      preLoaderRoute: typeof AppWorkspaceCreateTableRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/compare': {
@@ -660,18 +583,109 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceCompareRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
-    '/_app/_plain/available-extensions': {
-      id: '/_app/_plain/available-extensions'
-      path: '/available-extensions'
-      fullPath: '/available-extensions'
-      preLoaderRoute: typeof AppPlainAvailableExtensionsRouteImport
-      parentRoute: typeof AppPlainRoute
+    '/_app/_workspace/create-table': {
+      id: '/_app/_workspace/create-table'
+      path: '/create-table'
+      fullPath: '/create-table'
+      preLoaderRoute: typeof AppWorkspaceCreateTableRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/enums': {
+      id: '/_app/_workspace/enums'
+      path: '/enums'
+      fullPath: '/enums'
+      preLoaderRoute: typeof AppWorkspaceEnumsRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/er-diagram': {
+      id: '/_app/_workspace/er-diagram'
+      path: '/er-diagram'
+      fullPath: '/er-diagram'
+      preLoaderRoute: typeof AppWorkspaceErDiagramRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/import': {
+      id: '/_app/_workspace/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof AppWorkspaceImportRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/invalid-objects': {
+      id: '/_app/_workspace/invalid-objects'
+      path: '/invalid-objects'
+      fullPath: '/invalid-objects'
+      preLoaderRoute: typeof AppWorkspaceInvalidObjectsRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/monitor': {
+      id: '/_app/_workspace/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/query': {
+      id: '/_app/_workspace/query'
+      path: '/query'
+      fullPath: '/query'
+      preLoaderRoute: typeof AppWorkspaceQueryRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/query-builder': {
+      id: '/_app/_workspace/query-builder'
+      path: '/query-builder'
+      fullPath: '/query-builder'
+      preLoaderRoute: typeof AppWorkspaceQueryBuilderRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/replication': {
+      id: '/_app/_workspace/replication'
+      path: '/replication'
+      fullPath: '/replication'
+      preLoaderRoute: typeof AppWorkspaceReplicationRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/saved-plan': {
+      id: '/_app/_workspace/saved-plan'
+      path: '/saved-plan'
+      fullPath: '/saved-plan'
+      preLoaderRoute: typeof AppWorkspaceSavedPlanRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/sequences': {
+      id: '/_app/_workspace/sequences'
+      path: '/sequences'
+      fullPath: '/sequences'
+      preLoaderRoute: typeof AppWorkspaceSequencesRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/sessions': {
+      id: '/_app/_workspace/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof AppWorkspaceSessionsRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/extensions/$name': {
+      id: '/_app/_workspace/extensions/$name'
+      path: '/extensions/$name'
+      fullPath: '/extensions/$name'
+      preLoaderRoute: typeof AppWorkspaceExtensionsNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/query/': {
       id: '/_app/_workspace/query/'
       path: '/'
       fullPath: '/query/'
       preLoaderRoute: typeof AppWorkspaceQueryIndexRouteImport
+      parentRoute: typeof AppWorkspaceQueryRoute
+    }
+    '/_app/_workspace/query/$id': {
+      id: '/_app/_workspace/query/$id'
+      path: '/$id'
+      fullPath: '/query/$id'
+      preLoaderRoute: typeof AppWorkspaceQueryIdRouteImport
       parentRoute: typeof AppWorkspaceQueryRoute
     }
     '/_app/_workspace/users/$name': {
@@ -681,60 +695,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceUsersNameRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
-    '/_app/_workspace/query/$id': {
-      id: '/_app/_workspace/query/$id'
-      path: '/$id'
-      fullPath: '/query/$id'
-      preLoaderRoute: typeof AppWorkspaceQueryIdRouteImport
-      parentRoute: typeof AppWorkspaceQueryRoute
-    }
-    '/_app/_workspace/extensions/$name': {
-      id: '/_app/_workspace/extensions/$name'
-      path: '/extensions/$name'
-      fullPath: '/extensions/$name'
-      preLoaderRoute: typeof AppWorkspaceExtensionsNameRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/view-editor/$schema/$view': {
-      id: '/_app/_workspace/view-editor/$schema/$view'
-      path: '/view-editor/$schema/$view'
-      fullPath: '/view-editor/$schema/$view'
-      preLoaderRoute: typeof AppWorkspaceViewEditorSchemaViewRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/tables/$schema/$table': {
-      id: '/_app/_workspace/tables/$schema/$table'
-      path: '/tables/$schema/$table'
-      fullPath: '/tables/$schema/$table'
-      preLoaderRoute: typeof AppWorkspaceTablesSchemaTableRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/procedures/$schema/$name': {
-      id: '/_app/_workspace/procedures/$schema/$name'
-      path: '/procedures/$schema/$name'
-      fullPath: '/procedures/$schema/$name'
-      preLoaderRoute: typeof AppWorkspaceProceduresSchemaNameRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/packages/$schema/$name': {
-      id: '/_app/_workspace/packages/$schema/$name'
-      path: '/packages/$schema/$name'
-      fullPath: '/packages/$schema/$name'
-      preLoaderRoute: typeof AppWorkspacePackagesSchemaNameRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/matviews/$schema/$name': {
-      id: '/_app/_workspace/matviews/$schema/$name'
-      path: '/matviews/$schema/$name'
-      fullPath: '/matviews/$schema/$name'
-      preLoaderRoute: typeof AppWorkspaceMatviewsSchemaNameRouteImport
-      parentRoute: typeof AppWorkspaceRoute
-    }
-    '/_app/_workspace/functions/$schema/$name': {
-      id: '/_app/_workspace/functions/$schema/$name'
-      path: '/functions/$schema/$name'
-      fullPath: '/functions/$schema/$name'
-      preLoaderRoute: typeof AppWorkspaceFunctionsSchemaNameRouteImport
+    '/_app/_workspace/alter-table/$schema/$table': {
+      id: '/_app/_workspace/alter-table/$schema/$table'
+      path: '/alter-table/$schema/$table'
+      fullPath: '/alter-table/$schema/$table'
+      preLoaderRoute: typeof AppWorkspaceAlterTableSchemaTableRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/extension-panels/$extensionId/$panelId': {
@@ -744,11 +709,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceExtensionPanelsExtensionIdPanelIdRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
-    '/_app/_workspace/alter-table/$schema/$table': {
-      id: '/_app/_workspace/alter-table/$schema/$table'
-      path: '/alter-table/$schema/$table'
-      fullPath: '/alter-table/$schema/$table'
-      preLoaderRoute: typeof AppWorkspaceAlterTableSchemaTableRouteImport
+    '/_app/_workspace/functions/$schema/$name': {
+      id: '/_app/_workspace/functions/$schema/$name'
+      path: '/functions/$schema/$name'
+      fullPath: '/functions/$schema/$name'
+      preLoaderRoute: typeof AppWorkspaceFunctionsSchemaNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/matviews/$schema/$name': {
+      id: '/_app/_workspace/matviews/$schema/$name'
+      path: '/matviews/$schema/$name'
+      fullPath: '/matviews/$schema/$name'
+      preLoaderRoute: typeof AppWorkspaceMatviewsSchemaNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/packages/$schema/$name': {
+      id: '/_app/_workspace/packages/$schema/$name'
+      path: '/packages/$schema/$name'
+      fullPath: '/packages/$schema/$name'
+      preLoaderRoute: typeof AppWorkspacePackagesSchemaNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/procedures/$schema/$name': {
+      id: '/_app/_workspace/procedures/$schema/$name'
+      path: '/procedures/$schema/$name'
+      fullPath: '/procedures/$schema/$name'
+      preLoaderRoute: typeof AppWorkspaceProceduresSchemaNameRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/tables/$schema/$table': {
+      id: '/_app/_workspace/tables/$schema/$table'
+      path: '/tables/$schema/$table'
+      fullPath: '/tables/$schema/$table'
+      preLoaderRoute: typeof AppWorkspaceTablesSchemaTableRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/view-editor/$schema/$view': {
+      id: '/_app/_workspace/view-editor/$schema/$view'
+      path: '/view-editor/$schema/$view'
+      fullPath: '/view-editor/$schema/$view'
+      preLoaderRoute: typeof AppWorkspaceViewEditorSchemaViewRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/triggers/$schema/$table/$trigger': {
