@@ -28,7 +28,7 @@ export function PasswordPromptDialog() {
 
   return (
     <Dialog open={connection !== null} onOpenChange={(open) => !open && finish(null)}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <form
           className="contents"
           onSubmit={(event) => {
@@ -39,7 +39,7 @@ export function PasswordPromptDialog() {
           <DialogHeader>
             <DialogTitle>Passwort erforderlich</DialogTitle>
             <DialogDescription>
-              {message ?? `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
+              {`Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -62,6 +62,9 @@ export function PasswordPromptDialog() {
               />
               <Label htmlFor="prompt-save">Passwort speichern</Label>
             </div>
+            {message && (
+              <p className="whitespace-pre-wrap break-words text-destructive text-sm">{message}</p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => finish(null)}>
