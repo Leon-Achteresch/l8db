@@ -1,5 +1,6 @@
 import { Outlet } from "@tanstack/react-router";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
@@ -19,6 +20,7 @@ export function AppLayout() {
       }
       className="min-h-0 flex-1"
     >
+      <ConnectionAuthGuard />
       <AppSidebar />
       <SidebarInset className="overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">

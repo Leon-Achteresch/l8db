@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { isAuthFailure } from "@/lib/connection-url";
 
 export const METADATA_QUERY_ROOTS = [
   "databases",
@@ -66,7 +67,12 @@ export function sameTableSource(previous: readonly unknown[], next: readonly unk
 
 export function createAppQueryClient() {
   const client = new QueryClient({
-    defaultOptions: { queries: { refetchOnWindowFocus: false } },
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false,
+        retry: (failureCount, error) => !isAuthFailure(error) && failureCount < 3,
+      },
+    },
   });
   for (const root of METADATA_QUERY_ROOTS) {
     client.setQueryDefaults([root], { staleTime: 60_000 });
