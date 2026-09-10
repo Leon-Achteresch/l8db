@@ -1584,7 +1584,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                   )}
 
                   <div className="min-h-0 flex-1 border-t">
-                    <QueryResultWorkbench result={result} isLoading={isRunning} error={error} />
+                    <QueryResultWorkbench result={result} isLoading={isRunning} error={error} kind={connection?.kind} />
                   </div>
                 </ResizablePanel>
               )}
