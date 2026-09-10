@@ -45,7 +45,7 @@ export function TourOverview() {
           <X className="size-3.5" />
         </button>
       </header>
-      <div className="max-h-[min(46vh,22rem)] space-y-0.5 overflow-y-auto px-1.5 py-1.5">
+      <div className="max-h-[min(46vh,22rem)] space-y-0.5 overflow-y-auto px-1.5 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TOUR_CHAPTERS.map((item, index) => (
           <TourChapterButton
             key={item.id}

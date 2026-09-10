@@ -11,6 +11,25 @@ export function destroySpotlight() {
   });
 }
 
+function keepPopoverClearOfOverview() {
+  const popover = document.querySelector<HTMLElement>(".driver-popover");
+  const overview = document.querySelector<HTMLElement>('[data-tour-ui="overview"]');
+  if (!popover || !overview) return;
+  const p = popover.getBoundingClientRect();
+  const o = overview.getBoundingClientRect();
+  const overlaps = p.left < o.right && p.right > o.left && p.top < o.bottom && p.bottom > o.top;
+  if (!overlaps) return;
+  const gap = 16;
+  const fitsRight = o.right + gap + p.width <= window.innerWidth;
+  if (fitsRight) {
+    popover.style.left = `${o.right + gap}px`;
+    popover.style.right = "auto";
+    return;
+  }
+  popover.style.top = `${Math.max(gap, o.top - gap - p.height)}px`;
+  popover.style.bottom = "auto";
+}
+
 export function showSpotlight(step: TourStep, waiting: boolean) {
   if (!instance) {
     instance = driver({
@@ -24,6 +43,7 @@ export function showSpotlight(step: TourStep, waiting: boolean) {
       showButtons: [],
       disableActiveInteraction: false,
       popoverClass: "l8db-driver",
+      onHighlighted: keepPopoverClearOfOverview,
     });
   }
   document.querySelectorAll("[data-tour-wait]").forEach((el) => {
