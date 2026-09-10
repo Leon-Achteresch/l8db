@@ -5,11 +5,14 @@ import ReactDOM from "react-dom/client";
 import { StartupView } from "@/features/shell/startup-view";
 import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets } from "@/lib/connections";
+import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { loadProviders } from "@/lib/providers";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { router } from "./router";
+
+installDiagnosticsErrorCapture();
 
 const queryClient = new QueryClient();
 const extensionHost = createExtensionHost();
