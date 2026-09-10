@@ -468,45 +468,27 @@ export const useTableTabs = create<TabsState>()(
         return persistedState;
       },
       partialize: (state) => ({
-        tabs: state.tabs,
         tabsByConnection: state.tabsByConnection,
         queryCounter: state.queryCounter,
       }),
-      onRehydrateStorage: () => (rehydratedState) => {
-        if (!rehydratedState) return;
-        if (!useConnectionsStore.persist.hasHydrated()) return;
+      merge: (persistedState, currentState) => {
+        const stored = persistedState as Partial<TabsState> | undefined;
+        const tabsByConnection = stored?.tabsByConnection ?? {};
         const key = keyForConnection(useConnectionsStore.getState().activeId);
-        const stored = rehydratedState.tabsByConnection[key];
-        if (stored === undefined) {
-          useTableTabs.setState({
-            tabsByConnection: { ...rehydratedState.tabsByConnection, [key]: rehydratedState.tabs },
-          });
-        } else if (stored !== rehydratedState.tabs) {
-          useTableTabs.setState({ tabs: stored });
-        }
+        return {
+          ...currentState,
+          tabsByConnection,
+          tabs: tabsByConnection[key] ?? [],
+          queryCounter: stored?.queryCounter ?? 0,
+        };
       },
     },
   ),
 );
 
 useConnectionsStore.subscribe((state, previous) => {
-  const nextId = state.activeId;
-  const previousId = previous.activeId;
-  if (nextId === previousId) return;
-  const tabsState = useTableTabs.getState();
-  const nextKey = keyForConnection(nextId);
-  if (!useConnectionsStore.persist.hasHydrated() || !useTableTabs.persist.hasHydrated()) {
-    const stored = tabsState.tabsByConnection[nextKey];
-    if (stored !== undefined && stored !== tabsState.tabs) {
-      useTableTabs.setState({ tabs: stored });
-    }
-    return;
-  }
+  if (state.activeId === previous.activeId) return;
   useTableTabs.setState({
-    tabsByConnection: {
-      ...tabsState.tabsByConnection,
-      [keyForConnection(previousId)]: tabsState.tabs,
-    },
-    tabs: tabsState.tabsByConnection[nextKey] ?? [],
+    tabs: useTableTabs.getState().tabsByConnection[keyForConnection(state.activeId)] ?? [],
   });
 });
