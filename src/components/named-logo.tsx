@@ -12,6 +12,7 @@ import {
   KeyRound,
   Layers,
   Lock,
+  type LucideIcon,
   MapPin,
   Newspaper,
   Puzzle,
@@ -24,7 +25,6 @@ import {
   Store,
   TrendingUp,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import anthropic from "thesvg/anthropic";
 import auth0 from "thesvg/auth0";
@@ -357,7 +357,10 @@ function brandSvgForName(name: string): string | null {
 function SystemIconForName({ name, className }: { name: string; className?: string }) {
   for (const key of candidateKeys(name)) {
     const Icon = NAME_TO_SYSTEM[key];
-    if (Icon) return <Icon className={cn("size-4 shrink-0 text-muted-foreground", className)} aria-hidden />;
+    if (Icon)
+      return (
+        <Icon className={cn("size-4 shrink-0 text-muted-foreground", className)} aria-hidden />
+      );
   }
   return null;
 }
@@ -385,6 +388,9 @@ export function DatabaseLogo({
   if (svg) return <ThesvgIcon svg={svg} className={className} />;
   const system = SystemIconForName({ name, className });
   if (system) return system;
-  if (providerId || kind) return <ProviderLogo providerId={providerId} kind={kind} className={className} />;
-  return <Database className={cn("size-4 shrink-0 text-muted-foreground", className)} aria-hidden />;
+  if (providerId || kind)
+    return <ProviderLogo providerId={providerId} kind={kind} className={className} />;
+  return (
+    <Database className={cn("size-4 shrink-0 text-muted-foreground", className)} aria-hidden />
+  );
 }
