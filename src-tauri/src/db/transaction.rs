@@ -191,10 +191,21 @@ impl TransactionManager {
             ctid,
         );
 
-        let rows = conn.query(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-        match rows.first() {
-            Some(row) => Ok(row.get::<_, String>(0)),
-            None => Err("Zeile nicht gefunden".to_string()),
+        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        match conn.query(sql.as_str(), &[]).await {
+            Ok(rows) => {
+                conn.batch_execute("RELEASE SAVEPOINT l8_op")
+                    .await
+                    .map_err(map_pg_err)?;
+                match rows.first() {
+                    Some(row) => Ok(row.get::<_, String>(0)),
+                    None => Err("Zeile nicht gefunden".to_string()),
+                }
+            }
+            Err(e) => {
+                let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
+                Err(map_pg_err(e))
+            }
         }
     }
 
@@ -256,10 +267,21 @@ impl TransactionManager {
             )
         };
 
-        let rows = conn.query(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-        match rows.first() {
-            Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
-            None => Err("Zeile konnte nicht eingefügt werden".to_string()),
+        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        match conn.query(sql.as_str(), &[]).await {
+            Ok(rows) => {
+                conn.batch_execute("RELEASE SAVEPOINT l8_op")
+                    .await
+                    .map_err(map_pg_err)?;
+                match rows.first() {
+                    Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+                    None => Err("Zeile konnte nicht eingefügt werden".to_string()),
+                }
+            }
+            Err(e) => {
+                let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
+                Err(map_pg_err(e))
+            }
         }
     }
 
@@ -316,10 +338,21 @@ impl TransactionManager {
             )
         };
 
-        let rows = conn.query(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-        match rows.first() {
-            Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
-            None => Err("Zeile konnte nicht dupliziert werden".to_string()),
+        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        match conn.query(sql.as_str(), &[]).await {
+            Ok(rows) => {
+                conn.batch_execute("RELEASE SAVEPOINT l8_op")
+                    .await
+                    .map_err(map_pg_err)?;
+                match rows.first() {
+                    Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+                    None => Err("Zeile konnte nicht dupliziert werden".to_string()),
+                }
+            }
+            Err(e) => {
+                let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
+                Err(map_pg_err(e))
+            }
         }
     }
 
@@ -349,11 +382,22 @@ impl TransactionManager {
             ctid,
         );
 
-        let affected = conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-        if affected == 0 {
-            return Err("Zeile nicht gefunden".to_string());
+        conn.batch_execute("SAVEPOINT l8_op").await.map_err(map_pg_err)?;
+        match conn.execute(sql.as_str(), &[]).await {
+            Ok(affected) => {
+                conn.batch_execute("RELEASE SAVEPOINT l8_op")
+                    .await
+                    .map_err(map_pg_err)?;
+                if affected == 0 {
+                    return Err("Zeile nicht gefunden".to_string());
+                }
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
+                Err(map_pg_err(e))
+            }
         }
-        Ok(())
     }
 
     pub async fn commit(&self, tx_id: &str) -> Result<(), String> {
