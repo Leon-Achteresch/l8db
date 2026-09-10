@@ -186,12 +186,24 @@ fn replace_keeps_storage_and_drops_undeclared_grants() {
     let mut narrowed = archive();
     narrowed["manifest"]["version"] = json!("3.0.0");
     narrowed["manifest"]["permissions"] = json!([]);
-    operate(&root.0, "replace", "test.example", json!({"archive":narrowed})).unwrap();
+    operate(
+        &root.0,
+        "replace",
+        "test.example",
+        json!({"archive":narrowed}),
+    )
+    .unwrap();
     assert!(read_installed(&root.0, "test.example")
         .unwrap()
         .grants
         .is_empty());
     let mut foreign = archive();
     foreign["manifest"]["id"] = json!("other.example");
-    assert!(operate(&root.0, "replace", "test.example", json!({"archive":foreign})).is_err());
+    assert!(operate(
+        &root.0,
+        "replace",
+        "test.example",
+        json!({"archive":foreign})
+    )
+    .is_err());
 }
