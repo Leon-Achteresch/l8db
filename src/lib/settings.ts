@@ -9,6 +9,7 @@ interface SettingsState {
   transactionsEnabled: boolean;
   autoUpdateCheck: boolean;
   autoUpdateInstall: boolean;
+  tourFinished: boolean;
   setRowLimit: (v: number) => void;
   setEditorFontSize: (v: number) => void;
   setQueryTimeout: (v: number) => void;
@@ -16,6 +17,7 @@ interface SettingsState {
   setTransactionsEnabled: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
+  setTourFinished: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -28,6 +30,7 @@ export const useSettingsStore = create<SettingsState>()(
       transactionsEnabled: true,
       autoUpdateCheck: true,
       autoUpdateInstall: false,
+      tourFinished: false,
       setRowLimit: (rowLimit) => set({ rowLimit }),
       setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
       setQueryTimeout: (queryTimeout) => set({ queryTimeout }),
@@ -39,6 +42,7 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setTourFinished: (tourFinished) => set({ tourFinished }),
     }),
     { name: "l8db.settings" },
   ),

@@ -1,10 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Database, Search, Table } from "lucide-react";
+import { Database, Search, Sparkles, Table } from "lucide-react";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useTablesQuery } from "@/lib/queries";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
+import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
@@ -58,13 +59,25 @@ export function AppHeaderSearch() {
         });
       },
     }));
-    return [...connectionItems, ...tableItems];
+    const tourItem: CommandItem = {
+      id: "tour:start",
+      label: "Produkttour von vorn",
+      group: "Hilfe",
+      icon: Sparkles,
+      keywords: ["tour", "hilfe", "onboarding", "guide"],
+      onSelect: () => {
+        setOpen(false);
+        useTourStore.getState().startFromBeginning();
+      },
+    };
+    return [...connectionItems, ...tableItems, tourItem];
   }, [activeConnection?.id, connections, navigate, onSelectConnection, tables, isSwitching, switchTargetId]);
 
   return (
     <>
       <button
         type="button"
+        data-tour="header-search"
         onClick={() => setOpen(true)}
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         className={cn(

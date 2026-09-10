@@ -1,9 +1,12 @@
+import { motion } from "motion/react";
 import { useTheme } from "next-themes";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { TourSection } from "@/features/settings/tour-section";
 import { UpdateSection } from "@/features/settings/update-section";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -23,10 +26,10 @@ export function SettingsView() {
   } = useSettingsStore();
 
   return (
-    <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
+    <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto" data-tour="settings-page">
       <div className="w-full px-6 py-8">
         <h1 className="text-2xl font-semibold tracking-tight">Einstellungen</h1>
-        <div className="mt-6 space-y-3">
+        <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="mt-6 space-y-3">
           <SettingsRow title="Erscheinungsbild" description="Hell, dunkel oder dem System folgen.">
             <SegmentedControl
               value={(theme ?? "system") as "light" | "system" | "dark"}
@@ -110,9 +113,10 @@ export function SettingsView() {
               aria-label="Änderungen als Transaktion"
             />
           </SettingsRow>
+          <TourSection />
           <UpdateSection />
           <CommunityExtensionsSection />
-        </div>
+        </motion.div>
       </div>
     </main>
   );

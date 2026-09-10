@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { TOUR_CHAPTERS } from "@/lib/tour/chapters";
 import { useSettingsStore } from "@/lib/settings";
+import { TOUR_CHAPTERS } from "@/lib/tour/chapters";
 
 interface TourState {
   active: boolean;
@@ -13,9 +13,10 @@ interface TourState {
   waitHint: string | null;
   waitBaseline: number;
   clickDone: boolean;
+  runId: number;
   startFromBeginning: () => void;
   resumeOrStart: () => void;
-  stop: (finished: boolean) => void;
+  stop: () => void;
   setAutoPilot: (value: boolean) => void;
   setPosition: (chapterIndex: number, stepIndex: number) => void;
   markChapterDone: (id: string) => void;
@@ -35,9 +36,10 @@ export const useTourStore = create<TourState>()(
       waitHint: null,
       waitBaseline: 0,
       clickDone: false,
+      runId: 0,
       startFromBeginning: () => {
         useSettingsStore.getState().setTourFinished(false);
-        set({
+        set((state) => ({
           active: true,
           chapterIndex: 0,
           stepIndex: 0,
@@ -46,25 +48,33 @@ export const useTourStore = create<TourState>()(
           waitHint: null,
           waitBaseline: 0,
           clickDone: false,
-        });
+          runId: state.runId + 1,
+        }));
       },
       resumeOrStart: () => {
         useSettingsStore.getState().setTourFinished(false);
-        set({ active: true, waiting: false, waitHint: null, clickDone: false });
+        set((state) => ({
+          active: true,
+          waiting: false,
+          waitHint: null,
+          clickDone: false,
+          runId: state.runId + 1,
+        }));
       },
-      stop: (finished) => {
-        if (finished) useSettingsStore.getState().setTourFinished(true);
+      stop: () => {
+        useSettingsStore.getState().setTourFinished(true);
         set({ active: false, waiting: false, waitHint: null, clickDone: false });
       },
       setAutoPilot: (autoPilot) => set({ autoPilot }),
       setPosition: (chapterIndex, stepIndex) =>
-        set({
+        set((state) => ({
           chapterIndex,
           stepIndex,
           waiting: false,
           waitHint: null,
           clickDone: false,
-        }),
+          runId: state.runId + 1,
+        })),
       markChapterDone: (id) =>
         set((state) =>
           state.completedChapterIds.includes(id)

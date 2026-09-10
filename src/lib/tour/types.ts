@@ -7,7 +7,12 @@ export type TourWait =
   | { type: "route"; includes: string }
   | { type: "element"; selector: string };
 
-export type TourSkipIf = "has-connection" | "no-connection" | "no-tables" | "editor-open";
+export type TourSkipIf =
+  | "has-connection"
+  | "has-active"
+  | "no-connection"
+  | "no-tables"
+  | "editor-open";
 
 export type TourStep = {
   id: string;

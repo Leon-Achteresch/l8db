@@ -39,6 +39,7 @@ export function useAppTour() {
   const stepIndex = useTourStore((s) => s.stepIndex);
   const autoPilot = useTourStore((s) => s.autoPilot);
   const waiting = useTourStore((s) => s.waiting);
+  const runId = useTourStore((s) => s.runId);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -52,43 +53,54 @@ export function useAppTour() {
     if (!step) return;
 
     async function present() {
-      if (shouldSkipStep(step!.skipIf)) {
+      if (shouldSkipStep(step.skipIf)) {
         const nxt = nextTourPosition(chapterIndex, stepIndex);
         if (nxt) useTourStore.getState().setPosition(nxt.chapterIndex, nxt.stepIndex);
         else useTourStore.getState().stop();
         return;
       }
-      if (step!.openTx) useTransactionStore.getState().setPanelOpen(true);
-      await goToStepRoute(step!, navigate);
+      if (step.openTx) useTransactionStore.getState().setPanelOpen(true);
+      await goToStepRoute(step, navigate);
       if (cancelled || generation.current !== token) return;
-      if (step!.target) await waitForSelector(step!.target, 5000);
+      if (
+        (step.id === "connection-editor" || step.id === "save-connection") &&
+        !document.querySelector("[data-tour='connection-editor']")
+      ) {
+        clickSelector("[data-tour='connection-add']");
+      }
+      const baseline = useConnectionsStore.getState().connections.length;
+      const alreadyMet =
+        Boolean(step.wait) &&
+        isWaitMet(step.wait!, baseline, false, window.location.pathname);
+      const waitingNow = Boolean(step.wait) && !alreadyMet;
+      showSpotlight(step, waitingNow);
+      if (step.target) await waitForSelector(step.target, 900);
       if (cancelled || generation.current !== token) return;
-      if (autoPilot && step!.autoClick) {
-        await new Promise((r) => window.setTimeout(r, 280));
-        clickSelector(step!.autoClick);
-        await waitForSelector(step!.target ?? step!.autoClick, 2500);
+      if (autoPilot && step.autoClick) {
+        clickSelector(step.autoClick);
+        await waitForSelector(step.target ?? step.autoClick, 1200);
       }
       if (cancelled || generation.current !== token) return;
-      const baseline = useConnectionsStore.getState().connections.length;
       useTourStore.getState().setClickDone(false);
-      if (step!.wait) {
-        useTourStore.getState().setWaiting(true, step!.waitHint ?? "Warten…", baseline);
-        if (step!.wait.type === "click" && step!.wait.selector) {
-          const el = document.querySelector(step!.wait.selector);
+      if (waitingNow) {
+        useTourStore.getState().setWaiting(true, step.waitHint ?? "Warten…", baseline);
+        if (step.wait?.type === "click" && step.wait.selector) {
+          const el = document.querySelector(step.wait.selector);
           const onClick = () => useTourStore.getState().setClickDone(true);
           el?.addEventListener("click", onClick, { once: true });
         }
-      } else {
-        useTourStore.getState().setWaiting(false, null);
+        showSpotlight(step, true);
+        return;
       }
-      showSpotlight(step!, Boolean(step!.wait));
+      useTourStore.getState().setWaiting(false, null);
+      showSpotlight(step, false);
     }
 
     void present();
     return () => {
       cancelled = true;
     };
-  }, [active, chapterIndex, stepIndex, autoPilot, navigate]);
+  }, [active, chapterIndex, stepIndex, autoPilot, navigate, runId]);
 
   useEffect(() => {
     if (!active || !waiting) return;
