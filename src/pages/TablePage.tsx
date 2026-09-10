@@ -78,13 +78,15 @@ export function TablePage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TableFilterPanel
-        key={`${schema}.${table}`}
-        columns={data?.columns ?? []}
-        activeFilter={filter}
-        onApply={setFilter}
-      />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+        <TableFilterPanel
+          key={`${schema}.${table}`}
+          columns={data?.columns ?? []}
+          activeFilter={filter}
+          onApply={setFilter}
+        />
+      </div>
 
       {isLoading ? (
         <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
