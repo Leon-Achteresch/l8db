@@ -1,6 +1,6 @@
 import type { FunctionInfo, TableInfo } from "@/lib/db";
 
-export type ObjectEntryType = "table" | "view" | "routine";
+export type ObjectEntryType = "table" | "view" | "routine" | "procedure";
 
 export interface ObjectEntry {
   type: ObjectEntryType;
@@ -15,18 +15,21 @@ export interface ObjectSourceLists {
   tables?: TableInfo[];
   views?: TableInfo[];
   functions?: FunctionInfo[];
+  procedures?: FunctionInfo[];
 }
 
 export const OBJECT_TYPE_LABEL: Record<ObjectEntryType, string> = {
   table: "Tabelle",
   view: "View",
   routine: "Routine",
+  procedure: "Prozedur",
 };
 
 export const OBJECT_TYPE_PLURAL: Record<ObjectEntryType, string> = {
   table: "Tabellen",
   view: "Views",
   routine: "Routinen",
+  procedure: "Prozeduren",
 };
 
 function entryKey(type: ObjectEntryType, schema: string, name: string, detail: string): string {
@@ -61,6 +64,16 @@ export function buildObjectEntries(lists: ObjectSourceLists): ObjectEntry[] {
       detail: fn.identity_args,
       oid: fn.oid,
       key: entryKey("routine", fn.schema, fn.name, fn.identity_args),
+    });
+  }
+  for (const proc of lists.procedures ?? []) {
+    entries.push({
+      type: "procedure",
+      schema: proc.schema,
+      name: proc.name,
+      detail: proc.identity_args,
+      oid: proc.oid,
+      key: entryKey("procedure", proc.schema, proc.name, proc.identity_args),
     });
   }
   const seen = new Set<string>();

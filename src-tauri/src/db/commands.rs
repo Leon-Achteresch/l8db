@@ -6,7 +6,8 @@ use super::{
     ConnectionConfig,
     ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest, CreatePublicationRequest,
     CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind,
-    DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
+    CompileResult, DebugSessionInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo,
     PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
     SourceMatch, TableData, TableInfo, TriggerInfo,
 };
@@ -300,6 +301,25 @@ pub async fn execute_query(
 }
 
 #[tauri::command]
+pub async fn execute_query_with_params(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    sql: String,
+    params: Vec<Option<String>>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<QueryResult, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_query_with_params(&sql, &params)
+    .await
+}
+
+#[tauri::command]
 pub async fn list_views(
     kind: DatabaseKind,
     connection_string: String,
@@ -388,6 +408,16 @@ pub async fn execute_in_transaction(
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<QueryResult, String> {
     tx_state.execute(&tx_id, &sql).await
+}
+
+#[tauri::command]
+pub async fn execute_in_transaction_with_params(
+    tx_id: String,
+    sql: String,
+    params: Vec<Option<String>>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<QueryResult, String> {
+    tx_state.execute_with_params(&tx_id, &sql, &params).await
 }
 
 #[tauri::command]
@@ -493,6 +523,62 @@ pub async fn get_function_definition(
         pool_state.inner().clone(),
     )?
     .get_function_definition(&oid)
+    .await
+}
+
+#[tauri::command]
+pub async fn list_procedures(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<FunctionInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_procedures(schema.as_deref())
+    .await
+}
+
+#[tauri::command]
+pub async fn compile_object(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    oid: String,
+    object_type: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<CompileResult, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .compile_object(&oid, &object_type)
+    .await
+}
+
+#[tauri::command]
+pub async fn start_debug_session(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    oid: String,
+    object_type: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<DebugSessionInfo, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .start_debug_session(&oid, &object_type)
     .await
 }
 
