@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { useTableTabs } from "@/lib/table-tabs";
 
-export const Route = createFileRoute("/_app/query/")({
+export const Route = createFileRoute("/_app/_workspace/query/")({
   beforeLoad: () => {
     const { tabs, openQueryTab } = useTableTabs.getState();
     const firstQuery = tabs.find((t) => t.kind === "query");

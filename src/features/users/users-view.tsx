@@ -62,7 +62,7 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
-const routeApi = getRouteApi("/_app/users/$name");
+const routeApi = getRouteApi("/_app/_workspace/users/$name");
 
 const TABLE_PRIVS = [
   "SELECT",
