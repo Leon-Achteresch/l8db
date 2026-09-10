@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { CodeIcon, PlusIcon, TableIcon, ZapIcon } from "lucide-react";
+import { CodeIcon, Columns2Icon, PlusIcon, TableIcon, ZapIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
+import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
@@ -31,8 +32,8 @@ import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
 
-type ViewTab = "data" | "definition";
-type TableTab = "data" | "triggers";
+type ViewTab = "data" | "definition" | "columns";
+type TableTab = "data" | "triggers" | "columns";
 
 export function TableView() {
   const { schema, table } = routeApi.useParams();
@@ -223,6 +224,10 @@ export function TableView() {
               <TableIcon className="size-3.5" />
               Daten
             </TabsTrigger>
+            <TabsTrigger value="columns">
+              <Columns2Icon className="size-3.5" />
+              Columns
+            </TabsTrigger>
             <TabsTrigger value="definition">
               <CodeIcon className="size-3.5" />
               Definition
@@ -232,6 +237,10 @@ export function TableView() {
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {dataContent}
+        </TabsContent>
+
+        <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableColumnsList schema={schema} table={table} />
         </TabsContent>
 
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -252,6 +261,10 @@ export function TableView() {
           <TabsTrigger value="data">
             <TableIcon className="size-3.5" />
             Daten
+          </TabsTrigger>
+          <TabsTrigger value="columns">
+            <Columns2Icon className="size-3.5" />
+            Columns
           </TabsTrigger>
           <TabsTrigger value="triggers">
             <ZapIcon className="size-3.5" />
@@ -274,6 +287,10 @@ export function TableView() {
 
       <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {dataContent}
+      </TabsContent>
+
+      <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableColumnsList schema={schema} table={table} />
       </TabsContent>
 
       <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
