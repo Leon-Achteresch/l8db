@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 
-import { NavUser } from "@/components/nav-user"
-import { Label } from "@/components/ui/label"
+import { NavUser } from "@/components/nav-user";
+import { Label } from "@/components/ui/label";
 import {
   Sidebar,
   SidebarContent,
@@ -16,9 +16,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { Switch } from "@/components/ui/switch"
-import { InboxIcon, FileIcon, SendIcon, ArchiveXIcon, Trash2Icon, TerminalIcon } from "lucide-react"
+} from "@/components/ui/sidebar";
+import { Switch } from "@/components/ui/switch";
+import {
+  ArchiveXIcon,
+  FileIcon,
+  InboxIcon,
+  SendIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 // This is sample data
 const data = {
@@ -31,46 +37,31 @@ const data = {
     {
       title: "Inbox",
       url: "#",
-      icon: (
-        <InboxIcon
-        />
-      ),
+      icon: <InboxIcon />,
       isActive: true,
     },
     {
       title: "Drafts",
       url: "#",
-      icon: (
-        <FileIcon
-        />
-      ),
+      icon: <FileIcon />,
       isActive: false,
     },
     {
       title: "Sent",
       url: "#",
-      icon: (
-        <SendIcon
-        />
-      ),
+      icon: <SendIcon />,
       isActive: false,
     },
     {
       title: "Junk",
       url: "#",
-      icon: (
-        <ArchiveXIcon
-        />
-      ),
+      icon: <ArchiveXIcon />,
       isActive: false,
     },
     {
       title: "Trash",
       url: "#",
-      icon: (
-        <Trash2Icon
-        />
-      ),
+      icon: <Trash2Icon />,
       isActive: false,
     },
   ],
@@ -156,14 +147,14 @@ const data = {
         "To celebrate our recent project success, I'd like to organize a team dinner.\nAre you available next Friday evening? Please let me know your preferences.",
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Note: I'm using state to show active item.
   // IRL you should use the url/router.
-  const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const [mails, setMails] = React.useState(data.mails)
-  const { setOpen } = useSidebar()
+  const [activeItem, setActiveItem] = React.useState(data.navMain[0]);
+  const [mails, setMails] = React.useState(data.mails);
+  const { setOpen } = useSidebar();
 
   return (
     <Sidebar
@@ -184,7 +175,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
                 <a href="#">
                   <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <TerminalIcon className="size-4" />
+                    <img src="/logo.png" alt="logo" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">Acme Inc</span>
@@ -207,15 +198,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         hidden: false,
                       }}
                       onClick={() => {
-                        setActiveItem(item)
-                        const mail = data.mails.sort(() => Math.random() - 0.5)
+                        setActiveItem(item);
+                        const mail = data.mails.sort(() => Math.random() - 0.5);
                         setMails(
                           mail.slice(
                             0,
-                            Math.max(5, Math.floor(Math.random() * 10) + 1)
-                          )
-                        )
-                        setOpen(true)
+                            Math.max(5, Math.floor(Math.random() * 10) + 1),
+                          ),
+                        );
+                        setOpen(true);
                       }}
                       isActive={activeItem?.title === item.title}
                       className="px-2.5 md:px-2"
@@ -273,5 +264,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarContent>
       </Sidebar>
     </Sidebar>
-  )
+  );
 }
