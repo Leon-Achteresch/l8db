@@ -2,12 +2,13 @@ use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
-    AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ConnectionConfig,
+    AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
+    ConnectionConfig,
     ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest, CreatePublicationRequest,
     CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind,
     DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
-    TableData, TableInfo, TriggerInfo,
+    SourceMatch, TableData, TableInfo, TriggerInfo,
 };
 
 #[tauri::command]
@@ -191,6 +192,46 @@ pub async fn list_all_columns(
         pool_state.inner().clone(),
     )?
     .list_columns(schema.as_deref(), None, table_type.as_deref())
+    .await
+}
+
+#[tauri::command]
+pub async fn search_columns(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    term: String,
+    limit: Option<i64>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ColumnMatch>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .search_columns(schema.as_deref(), &term, limit.unwrap_or(500).clamp(1, 2000))
+    .await
+}
+
+#[tauri::command]
+pub async fn search_source(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+    term: String,
+    limit: Option<i64>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<SourceMatch>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .search_source(schema.as_deref(), &term, limit.unwrap_or(200).clamp(1, 1000))
     .await
 }
 

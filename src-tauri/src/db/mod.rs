@@ -152,6 +152,27 @@ pub struct ColumnInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ColumnMatch {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub data_type: String,
+    pub object_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceMatch {
+    pub schema: String,
+    pub name: String,
+    pub oid: String,
+    pub identity: String,
+    pub object_type: String,
+    pub line: i32,
+    pub snippet: String,
+    pub occurrences: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ForeignKeyInfo {
     pub constraint_name: String,
     pub from_schema: String,
@@ -357,6 +378,24 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let _ = oid;
         Err(unsupported("Funktionsdefinitionen"))
+    }
+    async fn search_columns(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<ColumnMatch>, String> {
+        let _ = (schema, term, limit);
+        Err(unsupported("Spaltensuche"))
+    }
+    async fn search_source(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<SourceMatch>, String> {
+        let _ = (schema, term, limit);
+        Err(unsupported("Quelltextsuche"))
     }
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
         Err(unsupported("Extensions"))

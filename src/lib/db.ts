@@ -108,6 +108,8 @@ export interface Capabilities {
   sql_filter: boolean;
   read_only_mode: boolean;
   csv_import: boolean;
+  column_search: boolean;
+  source_search: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -376,6 +378,47 @@ export async function listAllColumns(
   tableType?: string,
 ): Promise<ColumnInfo[]> {
   return invoke("list_all_columns", { kind, connectionString, database, schema, tableType });
+}
+
+export interface ColumnMatch {
+  schema: string;
+  table: string;
+  column: string;
+  data_type: string;
+  object_type: string;
+}
+
+export interface SourceMatch {
+  schema: string;
+  name: string;
+  oid: string;
+  identity: string;
+  object_type: string;
+  line: number;
+  snippet: string;
+  occurrences: number;
+}
+
+export async function searchColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  term: string,
+  database?: string,
+  schema?: string,
+  limit?: number,
+): Promise<ColumnMatch[]> {
+  return invoke("search_columns", { kind, connectionString, database, schema, term, limit });
+}
+
+export async function searchSource(
+  kind: DatabaseKind,
+  connectionString: string,
+  term: string,
+  database?: string,
+  schema?: string,
+  limit?: number,
+): Promise<SourceMatch[]> {
+  return invoke("search_source", { kind, connectionString, database, schema, term, limit });
 }
 
 export type TableRowSort = {

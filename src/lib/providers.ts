@@ -38,6 +38,8 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   sql_filter: true,
   read_only_mode: true,
   csv_import: true,
+  column_search: true,
+  source_search: true,
   ssl: true,
   ssh: true,
   query_language: "sql",
