@@ -96,8 +96,7 @@ export function AppSidebarPanel() {
 
   return (
     <Sidebar collapsible="none" className="relative hidden flex-1 md:flex">
-      <SidebarHeader className="gap-3.5 border-b p-4">
-        <div className="text-base font-medium text-foreground">Verbindung</div>
+      <SidebarHeader className="gap-3.5 border-b p-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
