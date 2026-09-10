@@ -1,30 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  FolderOpen,
-  LockKeyhole,
-  PlugZap,
-  Save,
-  X,
-} from "lucide-react";
+import { ArrowRight, Eye, EyeOff, FolderOpen, LockKeyhole, PlugZap, Save, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { DriverDetail } from "@/components/driver-detail";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { SlideActionButton } from "@/components/motion/slide-action-button";
-import { DriverDetail } from "@/components/driver-detail";
+import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { ProviderLogo } from "@/components/provider-logo";
-import { useDbThemeStore } from "@/lib/db-theme";
-import { ProviderTile } from "./provider-tile";
-import { SetupStepper } from "./setup-stepper";
 import {
   Select,
   SelectContent,
@@ -32,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   connectionError,
   detectProvider,
@@ -41,6 +29,7 @@ import {
 } from "@/lib/connection-url";
 import { type SavedConnection, type SshAuth, useConnectionsStore } from "@/lib/connections";
 import { type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import { useDbThemeStore } from "@/lib/db-theme";
 import { refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 import {
   deleteSecret,
@@ -58,6 +47,8 @@ import {
   tunneledConnectionString,
 } from "@/lib/ssh";
 import { ConnectionField } from "./connection-field";
+import { ProviderTile } from "./provider-tile";
+import { SetupStepper } from "./setup-stepper";
 
 interface Props {
   connection?: SavedConnection;
@@ -377,7 +368,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         onChange={() => setResult({ status: "idle" })}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        <fieldset disabled={busy} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 disabled:opacity-70">
+        <fieldset
+          disabled={busy}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 disabled:opacity-70"
+        >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={step}
@@ -395,7 +389,9 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                   <div className="pr-1">
                     {groups.map((group) => (
                       <div key={group} className="mb-3">
-                        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{group}</p>
+                        <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                          {group}
+                        </p>
                         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                           {providers
                             .filter((entry) => entry.group === group)
@@ -458,215 +454,221 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                       { value: "fields", label: "Felder" },
                     ]}
                   />
-          {mode === "string" ? (
-            <div className="relative">
-              <ConnectionField
-                id="connection-url"
-                label={info.file_based ? "Datenbankdatei" : "Verbindungs-URL"}
-                type={info.file_based || showPassword ? "text" : "password"}
-                placeholder={info.placeholder}
-                value={value}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  if (caps.ssl) setSsl(sslModeFromUrl(event.target.value));
-                  if (event.target.value.trim())
-                    setProvider(detectProvider(event.target.value, kind));
-                }}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button
-                type="button"
-                aria-label={
-                  info.file_based
-                    ? "Datei auswählen"
-                    : showPassword
-                      ? "URL verbergen"
-                      : "URL anzeigen"
-                }
-                onClick={() => (info.file_based ? void pickFile() : setShowPassword(!showPassword))}
-                className="absolute right-2 bottom-2 rounded bg-card p-1 text-muted-foreground"
-              >
-                {info.file_based ? (
-                  <FolderOpen className="size-4" />
-                ) : showPassword ? (
-                  <EyeOff className="size-4" />
-                ) : (
-                  <Eye className="size-4" />
-                )}
-              </button>
-            </div>
-          ) : info.file_based ? (
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <ConnectionField
-                  id="connection-file"
-                  label="Datenbankdatei"
-                  placeholder={info.placeholder}
-                  value={file}
-                  onChange={(event) => setFile(event.target.value)}
-                  spellCheck={false}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10"
-                onClick={() => void pickFile()}
-              >
-                <FolderOpen className="size-4" />
-                Durchsuchen
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-[1fr_90px] gap-3">
-                <ConnectionField
-                  id="connection-host"
-                  label="Host"
-                  value={host}
-                  onChange={(event) => setHost(event.target.value)}
-                />
-                <ConnectionField
-                  id="connection-port"
-                  label="Port"
-                  inputMode="numeric"
-                  value={port}
-                  onChange={(event) => setPort(event.target.value)}
-                />
-              </div>
-              <ConnectionField
-                id="connection-database"
-                label={databaseLabel}
-                value={database}
-                placeholder={defaults.database}
-                onChange={(event) => setDatabase(event.target.value)}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <ConnectionField
-                  id="connection-user"
-                  label="Benutzer"
-                  value={user}
-                  onChange={(event) => setUser(event.target.value)}
-                />
-                <ConnectionField
-                  id="connection-password"
-                  label="Passwort"
-                  type="password"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
-            </div>
-          )}
-          {provider === "supabase" && /:6543(?:\/|$)/.test(value) && (
-            <p
-              role="status"
-              className="min-w-0 break-words rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 [overflow-wrap:anywhere] dark:text-amber-300"
-            >
-              Du nutzt einen Transaction Pooler. Für den vollständigen SQL-Arbeitsplatz nutze eine
-              direkte Verbindung oder den Session Pooler auf Port 5432.
-            </p>
-          )}
-          {(caps.ssl || caps.ssh) && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {caps.ssl && (
-                <div className="grid gap-1">
-                  <Label htmlFor="connection-ssl" className="text-xs text-muted-foreground">
-                    SSL / TLS
-                  </Label>
-                  <Select value={ssl} onValueChange={(value) => setSsl(value as SslMode)}>
-                    <SelectTrigger id="connection-ssl" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectItem value="prefer">Bevorzugen · für lokale Server</SelectItem>
-                      <SelectItem value="require">
-                        Erforderlich · System-Zertifikate prüfen
-                      </SelectItem>
-                      <SelectItem value="verify-full">Zertifikat und Hostname prüfen</SelectItem>
-                      <SelectItem value="verify-ca">Zertifizierungsstelle prüfen</SelectItem>
-                      <SelectItem value="disable">Deaktiviert</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {caps.ssh && (
-                <label className="flex h-9 items-end justify-between gap-3 pb-0.5 text-xs font-medium sm:h-auto sm:items-center sm:self-end sm:pb-2">
-                  <span className="flex items-center gap-2">
-                    <LockKeyhole className="size-4 text-muted-foreground" /> SSH-Tunnel
-                  </span>
-                  <Switch
-                    checked={sshEnabled}
-                    onCheckedChange={setSshEnabled}
-                    aria-label="SSH-Tunnel"
-                  />
-                </label>
-              )}
-            </div>
-          )}
-          {caps.ssh && sshEnabled && (
-            <div className="space-y-3 rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">
-                    Der Datenbank-Host oben wird vom SSH-Server aus erreicht.
-                  </p>
-                  <div className="grid grid-cols-[1fr_80px] gap-3">
-                    <ConnectionField
-                      id="ssh-host"
-                      label="SSH-Host"
-                      value={sshHost}
-                      onChange={(event) => setSshHost(event.target.value)}
-                    />
-                    <ConnectionField
-                      id="ssh-port"
-                      label="SSH-Port"
-                      value={sshPort}
-                      onChange={(event) => setSshPort(event.target.value)}
-                    />
-                  </div>
-                  <ConnectionField
-                    id="ssh-user"
-                    label="SSH-Benutzer"
-                    value={sshUser}
-                    onChange={(event) => setSshUser(event.target.value)}
-                  />
-                  <div className="grid gap-2">
-                    <Label htmlFor="ssh-auth">Authentifizierung</Label>
-                    <Select
-                      value={sshAuth}
-                      onValueChange={(value) => setSshAuth(value as SshAuth)}
-                    >
-                      <SelectTrigger id="ssh-auth" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        <SelectItem value="key">SSH-Key</SelectItem>
-                        <SelectItem value="password">Passwort</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {sshAuth === "key" && (
-                    <ConnectionField
-                      id="ssh-key"
-                      label="Absoluter Pfad zur Key-Datei"
-                      placeholder="/Users/name/.ssh/id_ed25519"
-                      value={sshKey}
-                      onChange={(event) => setSshKey(event.target.value)}
-                    />
+                  {mode === "string" ? (
+                    <div className="relative">
+                      <ConnectionField
+                        id="connection-url"
+                        label={info.file_based ? "Datenbankdatei" : "Verbindungs-URL"}
+                        type={info.file_based || showPassword ? "text" : "password"}
+                        placeholder={info.placeholder}
+                        value={value}
+                        onChange={(event) => {
+                          setValue(event.target.value);
+                          if (caps.ssl) setSsl(sslModeFromUrl(event.target.value));
+                          if (event.target.value.trim())
+                            setProvider(detectProvider(event.target.value, kind));
+                        }}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      <button
+                        type="button"
+                        aria-label={
+                          info.file_based
+                            ? "Datei auswählen"
+                            : showPassword
+                              ? "URL verbergen"
+                              : "URL anzeigen"
+                        }
+                        onClick={() =>
+                          info.file_based ? void pickFile() : setShowPassword(!showPassword)
+                        }
+                        className="absolute right-2 bottom-2 rounded bg-card p-1 text-muted-foreground"
+                      >
+                        {info.file_based ? (
+                          <FolderOpen className="size-4" />
+                        ) : showPassword ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                      </button>
+                    </div>
+                  ) : info.file_based ? (
+                    <div className="flex items-end gap-2">
+                      <div className="min-w-0 flex-1">
+                        <ConnectionField
+                          id="connection-file"
+                          label="Datenbankdatei"
+                          placeholder={info.placeholder}
+                          value={file}
+                          onChange={(event) => setFile(event.target.value)}
+                          spellCheck={false}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10"
+                        onClick={() => void pickFile()}
+                      >
+                        <FolderOpen className="size-4" />
+                        Durchsuchen
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-[1fr_90px] gap-3">
+                        <ConnectionField
+                          id="connection-host"
+                          label="Host"
+                          value={host}
+                          onChange={(event) => setHost(event.target.value)}
+                        />
+                        <ConnectionField
+                          id="connection-port"
+                          label="Port"
+                          inputMode="numeric"
+                          value={port}
+                          onChange={(event) => setPort(event.target.value)}
+                        />
+                      </div>
+                      <ConnectionField
+                        id="connection-database"
+                        label={databaseLabel}
+                        value={database}
+                        placeholder={defaults.database}
+                        onChange={(event) => setDatabase(event.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <ConnectionField
+                          id="connection-user"
+                          label="Benutzer"
+                          value={user}
+                          onChange={(event) => setUser(event.target.value)}
+                        />
+                        <ConnectionField
+                          id="connection-password"
+                          label="Passwort"
+                          type="password"
+                          autoComplete="new-password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                        />
+                      </div>
+                    </div>
                   )}
-                  <ConnectionField
-                    id="ssh-password"
-                    label={sshAuth === "key" ? "Passphrase (optional)" : "SSH-Passwort"}
-                    type="password"
-                    value={sshPassword}
-                    placeholder={
-                      connection ? "Leer lassen, um gespeicherten Wert zu verwenden" : ""
-                    }
-                    onChange={(event) => setSshPassword(event.target.value)}
-                  />
-            </div>
-          )}
+                  {provider === "supabase" && /:6543(?:\/|$)/.test(value) && (
+                    <p
+                      role="status"
+                      className="min-w-0 break-words rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 [overflow-wrap:anywhere] dark:text-amber-300"
+                    >
+                      Du nutzt einen Transaction Pooler. Für den vollständigen SQL-Arbeitsplatz
+                      nutze eine direkte Verbindung oder den Session Pooler auf Port 5432.
+                    </p>
+                  )}
+                  {(caps.ssl || caps.ssh) && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {caps.ssl && (
+                        <div className="grid gap-1">
+                          <Label htmlFor="connection-ssl" className="text-xs text-muted-foreground">
+                            SSL / TLS
+                          </Label>
+                          <Select value={ssl} onValueChange={(value) => setSsl(value as SslMode)}>
+                            <SelectTrigger id="connection-ssl" className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent position="popper">
+                              <SelectItem value="prefer">Bevorzugen · für lokale Server</SelectItem>
+                              <SelectItem value="require">
+                                Erforderlich · System-Zertifikate prüfen
+                              </SelectItem>
+                              <SelectItem value="verify-full">
+                                Zertifikat und Hostname prüfen
+                              </SelectItem>
+                              <SelectItem value="verify-ca">
+                                Zertifizierungsstelle prüfen
+                              </SelectItem>
+                              <SelectItem value="disable">Deaktiviert</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {caps.ssh && (
+                        <label className="flex h-9 items-end justify-between gap-3 pb-0.5 text-xs font-medium sm:h-auto sm:items-center sm:self-end sm:pb-2">
+                          <span className="flex items-center gap-2">
+                            <LockKeyhole className="size-4 text-muted-foreground" /> SSH-Tunnel
+                          </span>
+                          <Switch
+                            checked={sshEnabled}
+                            onCheckedChange={setSshEnabled}
+                            aria-label="SSH-Tunnel"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  {caps.ssh && sshEnabled && (
+                    <div className="space-y-3 rounded-xl border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Der Datenbank-Host oben wird vom SSH-Server aus erreicht.
+                      </p>
+                      <div className="grid grid-cols-[1fr_80px] gap-3">
+                        <ConnectionField
+                          id="ssh-host"
+                          label="SSH-Host"
+                          value={sshHost}
+                          onChange={(event) => setSshHost(event.target.value)}
+                        />
+                        <ConnectionField
+                          id="ssh-port"
+                          label="SSH-Port"
+                          value={sshPort}
+                          onChange={(event) => setSshPort(event.target.value)}
+                        />
+                      </div>
+                      <ConnectionField
+                        id="ssh-user"
+                        label="SSH-Benutzer"
+                        value={sshUser}
+                        onChange={(event) => setSshUser(event.target.value)}
+                      />
+                      <div className="grid gap-2">
+                        <Label htmlFor="ssh-auth">Authentifizierung</Label>
+                        <Select
+                          value={sshAuth}
+                          onValueChange={(value) => setSshAuth(value as SshAuth)}
+                        >
+                          <SelectTrigger id="ssh-auth" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent position="popper">
+                            <SelectItem value="key">SSH-Key</SelectItem>
+                            <SelectItem value="password">Passwort</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {sshAuth === "key" && (
+                        <ConnectionField
+                          id="ssh-key"
+                          label="Absoluter Pfad zur Key-Datei"
+                          placeholder="/Users/name/.ssh/id_ed25519"
+                          value={sshKey}
+                          onChange={(event) => setSshKey(event.target.value)}
+                        />
+                      )}
+                      <ConnectionField
+                        id="ssh-password"
+                        label={sshAuth === "key" ? "Passphrase (optional)" : "SSH-Passwort"}
+                        type="password"
+                        value={sshPassword}
+                        placeholder={
+                          connection ? "Leer lassen, um gespeicherten Wert zu verwenden" : ""
+                        }
+                        onChange={(event) => setSshPassword(event.target.value)}
+                      />
+                    </div>
+                  )}
                   <ConnectionField
                     id="connection-tags"
                     label="Tags"
@@ -714,7 +716,12 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <Button type="button" variant="outline" disabled={busy} onClick={() => void test()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void test()}
+                    >
                       <PlugZap className="size-4" />
                       Testen
                     </Button>

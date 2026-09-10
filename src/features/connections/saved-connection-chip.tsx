@@ -1,6 +1,6 @@
 import { Pencil, Trash2 } from "lucide-react";
-import { ProviderLogo } from "@/components/provider-logo";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
+import { ProviderLogo } from "@/components/provider-logo";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,11 @@ export function SavedConnectionChip({
         active ? "border-primary ring-2 ring-primary/25" : "border-border/70",
       )}
     >
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+      >
         <span className="grid size-8 place-items-center rounded-xl bg-background ring-1 ring-border">
           <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
         </span>

@@ -168,7 +168,8 @@ interface ProviderLogoProps {
 }
 
 export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps) {
-  const slug = (providerId ? PROVIDER_SLUG[providerId] : undefined) ?? (kind ? KIND_SLUG[kind] : null) ?? null;
+  const slug =
+    (providerId ? PROVIDER_SLUG[providerId] : undefined) ?? (kind ? KIND_SLUG[kind] : null) ?? null;
   const icon = slug ? ICONS[slug] : undefined;
   if (!icon) return <Database className={cn("size-4 shrink-0", className)} aria-hidden />;
   const svg = icon.svg.replace(/fill="#(?:fff|ffffff)"/gi, 'fill="currentColor"');
@@ -179,6 +180,7 @@ export function ProviderLogo({ providerId, kind, className }: ProviderLogoProps)
         "inline-flex size-4 shrink-0 items-center justify-center text-foreground [&_svg]:h-full [&_svg]:w-full",
         className,
       )}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: static SVG from the bundled thesvg icon set, no user input
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

@@ -1,11 +1,4 @@
-import {
-  FileDown,
-  GitBranch,
-  Network,
-  ShieldCheck,
-  SquareTerminal,
-  Table2,
-} from "lucide-react";
+import { FileDown, GitBranch, Network, ShieldCheck, SquareTerminal, Table2 } from "lucide-react";
 import { motion } from "motion/react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -20,8 +13,7 @@ const FEATURES = [
   {
     icon: SquareTerminal,
     title: "SQL-Arbeitsplatz",
-    description:
-      "Monaco-Editor mit Highlighting, Formatierung, Verlauf und gespeicherten Queries.",
+    description: "Monaco-Editor mit Highlighting, Formatierung, Verlauf und gespeicherten Queries.",
     span: true,
   },
   {
