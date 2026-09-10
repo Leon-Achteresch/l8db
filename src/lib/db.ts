@@ -15,6 +15,7 @@ const WRITE_COMMANDS = new Set([
   "create_schema",
   "create_subscription",
   "create_table",
+  "csv_import",
   "delete_row_in_transaction",
   "detach_partition",
   "drop_column",
@@ -106,6 +107,7 @@ export interface Capabilities {
   overview: boolean;
   sql_filter: boolean;
   read_only_mode: boolean;
+  csv_import: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -794,6 +796,49 @@ export interface DetailedColumnInfo {
   is_primary_key: boolean;
   ordinal_position: number;
   character_maximum_length: number | null;
+}
+
+export interface ImportColumnInfo {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  has_default: boolean;
+  is_identity: boolean;
+  is_generated: boolean;
+  ordinal_position: number;
+}
+
+export interface CsvImportRequest {
+  schema: string;
+  table: string;
+  columns: string[];
+  rows: (string | null)[][];
+}
+
+export interface CsvImportOutcome {
+  inserted_rows: number;
+  failed_row: number | null;
+  failed_column: string | null;
+  error: string | null;
+}
+
+export async function listImportColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<ImportColumnInfo[]> {
+  return invoke("list_import_columns", { kind, connectionString, database, schema, table });
+}
+
+export async function csvImport(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: CsvImportRequest,
+  database?: string,
+): Promise<CsvImportOutcome> {
+  return invoke("csv_import", { kind, connectionString, database, request });
 }
 
 export interface AddColumnRequest {
