@@ -8,11 +8,28 @@ export async function run() {
   const manager = new ExtensionManager({
     list: async () => [...records.values()],
     install: async archive => { records.set(archive.manifest.id, { archive, enabled: false, grants: [], configuration: {} }) },
+    replace: async (id, archive) => { Object.assign(records.get(id)!, { archive }) },
     update: async (id, enabled, grants, configuration) => { Object.assign(records.get(id)!, { enabled, grants, configuration }) },
     remove: async id => { records.delete(id) },
     get: async () => null,
     set: async () => undefined,
-  }, new SandboxRuntime(1500), { database: () => null, notify: message => notifications.push(message) }, "0.1.0");
+    secretGet: async () => null,
+    secretSet: async () => undefined,
+    secretDelete: async () => undefined,
+  }, new SandboxRuntime(1500), {
+    database: () => null,
+    notify: message => notifications.push(message),
+    query: async () => { throw new Error("unavailable") },
+    fetch: async () => { throw new Error("unavailable") },
+    clipboardRead: async () => "",
+    clipboardWrite: async () => undefined,
+    showOpenDialog: async () => null,
+    showSaveDialog: async () => null,
+    readTextFile: async () => { throw new Error("unavailable") },
+    writeTextFile: async () => { throw new Error("unavailable") },
+    runProcess: async () => { throw new Error("unavailable") },
+    prompt: async () => undefined,
+  }, "0.1.0");
   const archive = (id: string, code: string): ExtensionArchive => ({
     format: 1,
     manifest: { id, publisher: "test", name: id, version: "1.0.0", engines: { l8db: "^0.1.0", api: "^1.0.0" }, main: "extension.js", activationEvents: [`onCommand:${id}.run`], permissions: ["database:read"], contributes: { commands: [{ id: `${id}.run`, title: "Run" }], configuration: { [`${id}.enabled`]: { type: "boolean", default: true } } } },

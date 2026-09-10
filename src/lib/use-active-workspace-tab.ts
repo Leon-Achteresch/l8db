@@ -70,6 +70,14 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab): boolean {
       }),
     );
   }
+  if (tab.kind === "extension-panel") {
+    return Boolean(
+      matchRoute({
+        to: "/extension-panels/$extensionId/$panelId",
+        params: { extensionId: tab.extensionId, panelId: tab.panelId },
+      }),
+    );
+  }
   return Boolean(matchRoute({ to: "/extensions/$name", params: { name: tab.name } }));
 }
 
