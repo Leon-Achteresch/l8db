@@ -35,7 +35,13 @@ import {
   type SshAuth,
   useConnectionsStore,
 } from "@/lib/connections";
-import { type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import {
+  type DatabaseKind,
+  listSchemas,
+  type ProviderInfo,
+  type SslMode,
+  testConnectionString,
+} from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
 import { refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 import {
@@ -55,6 +61,7 @@ import {
 } from "@/lib/ssh";
 import { ConnectionField } from "./connection-field";
 import { ProviderTile } from "./provider-tile";
+import { SchemaPicker } from "./schema-picker";
 import { SetupStepper } from "./setup-stepper";
 
 interface Props {
@@ -125,6 +132,10 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const [tags, setTags] = useState(connection?.tags?.map((tag) => tag.name).join(", ") ?? "");
   const [color, setColor] = useState<string | null>(connection?.color ?? null);
   const [readOnly, setReadOnly] = useState(Boolean(connection?.readOnly));
+  const [schemaFilter, setSchemaFilter] = useState<string[]>(connection?.schemas ?? []);
+  const [scannedSchemas, setScannedSchemas] = useState<string[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
@@ -266,46 +277,66 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
     };
   }
 
+  async function withLiveUrl<T>(run: (kind: DatabaseKind, url: string) => Promise<T>) {
+    const tunnelId = `test-${crypto.randomUUID()}`;
+    let tunnelOpened = false;
+    try {
+      const config = await configuration();
+      let url = config.connectionString;
+      if (config.ssh) {
+        const tunnel = await openSshTunnel({
+          id: tunnelId,
+          host: config.ssh.host,
+          port: config.ssh.port,
+          user: config.ssh.user,
+          auth:
+            sshAuth === "key"
+              ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
+              : { password: config.secret },
+          remote_host: config.ssh.remoteHost,
+          remote_port: config.ssh.remotePort,
+          accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
+        });
+        tunnelOpened = true;
+        url = tunneledConnectionString(url, tunnel.local_port, config.kind);
+      }
+      return await withTimeout(
+        run(config.kind, url),
+        TEST_TIMEOUT_MS,
+        `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
+      );
+    } finally {
+      if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
+    }
+  }
+
   async function test() {
     if (operation.current) return;
     operation.current = true;
     setResult({ status: "testing" });
     const started = performance.now();
     try {
-      const tunnelId = `test-${crypto.randomUUID()}`;
-      let tunnelOpened = false;
-      try {
-        const config = await configuration();
-        let url = config.connectionString;
-        if (config.ssh) {
-          const tunnel = await openSshTunnel({
-            id: tunnelId,
-            host: config.ssh.host,
-            port: config.ssh.port,
-            user: config.ssh.user,
-            auth:
-              sshAuth === "key"
-                ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
-                : { password: config.secret },
-            remote_host: config.ssh.remoteHost,
-            remote_port: config.ssh.remotePort,
-            accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
-          });
-          tunnelOpened = true;
-          url = tunneledConnectionString(url, tunnel.local_port, config.kind);
-        }
-        await withTimeout(
-          testConnectionString(config.kind, url),
-          TEST_TIMEOUT_MS,
-          `Zeitüberschreitung nach ${TEST_TIMEOUT_MS / 1000} s. Prüfe Host, Port und Firewall.`,
-        );
-        setResult({ status: "success", ms: Math.round(performance.now() - started) });
-      } finally {
-        if (tunnelOpened) await closeSshTunnel(tunnelId).catch(() => undefined);
-      }
+      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url));
+      setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });
     } finally {
+      operation.current = false;
+    }
+  }
+
+  async function scanSchemas() {
+    if (operation.current) return;
+    operation.current = true;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const list = await withLiveUrl((liveKind, url) => listSchemas(liveKind, url));
+      setScannedSchemas(list);
+    } catch (error) {
+      setScanError(connectionError(error));
+    } finally {
+      setScanning(false);
       operation.current = false;
     }
   }
@@ -353,6 +384,11 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
         readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
+        schemas: quickSave
+          ? (connection?.schemas ?? null)
+          : caps.schemas && schemaFilter.length
+            ? schemaFilter
+            : null,
         color: quickSave ? (connection?.color ?? null) : color,
         tags: quickSave
           ? (connection?.tags ?? [])
@@ -931,6 +967,16 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                         ))}
                       </div>
                     </fieldset>
+                    {caps.schemas && (
+                      <SchemaPicker
+                        selected={schemaFilter}
+                        scanned={scannedSchemas}
+                        scanning={scanning}
+                        error={scanError}
+                        onScan={() => void scanSchemas()}
+                        onChange={setSchemaFilter}
+                      />
+                    )}
                   </div>
                 )}
                 {step === 3 && (

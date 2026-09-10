@@ -79,6 +79,17 @@ export interface SavedConnection {
   favorite?: boolean;
   color?: string | null;
   readOnly?: boolean;
+  schemas?: string[] | null;
+}
+
+export function visibleSchemas(
+  connection: Pick<SavedConnection, "schemas"> | null | undefined,
+  schemas: string[],
+): string[] {
+  const allowed = connection?.schemas;
+  if (!allowed?.length) return schemas;
+  const set = new Set(allowed);
+  return schemas.filter((schema) => set.has(schema));
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;
