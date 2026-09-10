@@ -11,6 +11,7 @@ use super::{
     PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
     SchedulerJobInfo, SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
+use super::{ObjectAuditInfo, ObjectDdlRequest};
 
 #[tauri::command]
 pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
@@ -1731,5 +1732,123 @@ pub async fn take_server_output(
         pool_state.inner().clone(),
     )?
     .take_server_output()
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_object_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: ObjectDdlRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .preview_object_ddl(&request)
+    .await
+}
+
+#[tauri::command]
+pub async fn execute_object_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: ObjectDdlRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_object_ddl(&request)
+    .await
+}
+
+#[tauri::command]
+pub async fn object_audit_info(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    name: String,
+    object_type: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<ObjectAuditInfo, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .object_audit_info(&schema, &name, &object_type)
+    .await
+}
+
+#[tauri::command]
+pub async fn list_schema_copy_objects(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    source_schema: String,
+    target_schema: String,
+    object_type: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::SchemaObjectEntry>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_schema_copy_objects(&source_schema, &target_schema, &object_type)
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_schema_object_copy(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    source_schema: String,
+    target_schema: String,
+    object_type: String,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .preview_schema_object_copy(&source_schema, &target_schema, &object_type, &name)
+    .await
+}
+
+#[tauri::command]
+pub async fn execute_schema_object_copy(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    source_schema: String,
+    target_schema: String,
+    object_type: String,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_schema_object_copy(&source_schema, &target_schema, &object_type, &name)
     .await
 }
