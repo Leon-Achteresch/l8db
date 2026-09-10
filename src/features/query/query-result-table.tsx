@@ -5,6 +5,7 @@ import {
   ChevronsUpDownIcon,
   FilterIcon,
   FilterXIcon,
+  Maximize2Icon,
 } from "lucide-react";
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   const [sorts, setSorts] = useState<ResultSort[]>([]);
   const [filters, setFilters] = useState<ResultFilters>({});
   const [filterRowOpen, setFilterRowOpen] = useState(false);
+  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>({});
 
   const [lastResult, setLastResult] = useState(result);
   if (result !== lastResult) {
@@ -66,6 +68,7 @@ export const QueryResultTable = memo(function QueryResultTable({
     setSorts([]);
     setFilters({});
     setFilterRowOpen(false);
+    setAutoColumnWidths({});
   }
 
   const columns = useMemo(() => result?.columns ?? [], [result]);
@@ -77,8 +80,8 @@ export const QueryResultTable = memo(function QueryResultTable({
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnWidths = useMemo(
-    () => [48, ...columns.map(() => workspace.resultColumnWidth)],
-    [columns, workspace.resultColumnWidth],
+    () => [48, ...columns.map((column) => autoColumnWidths[column] ?? workspace.resultColumnWidth)],
+    [columns, workspace.resultColumnWidth, autoColumnWidths],
   );
   const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
   const dataColumnWindow = useMemo(
@@ -114,6 +117,17 @@ export const QueryResultTable = memo(function QueryResultTable({
   const resetView = () => {
     setSorts([]);
     setFilters({});
+  };
+
+  const autoSizeColumns = () => {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.font = `${workspace.resultFontSize}px ${getComputedStyle(document.body).fontFamily}`;
+    const nextWidths = Object.fromEntries(
+      columns.map((column) => [column, Math.ceil(context.measureText(column).width) + 48]),
+    );
+    setAutoColumnWidths(nextWidths);
   };
 
   if (isLoading) {
@@ -197,6 +211,16 @@ export const QueryResultTable = memo(function QueryResultTable({
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={autoSizeColumns}
+            title="Alle Spaltenbreiten an die Header-Texte anpassen"
+          >
+            <Maximize2Icon className="size-3" />
+            Headerbreite
+          </Button>
+          <Button
+            size="sm"
             variant={filterRowOpen ? "secondary" : "ghost"}
             className="h-7 gap-1.5 px-2 text-xs"
             onClick={() => setFilterRowOpen((open) => !open)}
@@ -226,18 +250,19 @@ export const QueryResultTable = memo(function QueryResultTable({
         <table
           className="w-full border-separate border-spacing-0 text-sm"
           style={
-            columnWindow.enabled
-              ? { tableLayout: "fixed", width: 48 + columns.length * 200 }
+            columnWindow.enabled || Object.keys(autoColumnWidths).length > 0
+              ? {
+                  tableLayout: "fixed",
+                  width: columnWidths.reduce((total, width) => total + width, 0),
+                }
               : undefined
           }
         >
-          {columnWindow.enabled && (
-            <colgroup>
-              {columnWidths.map((width, index) => (
-                <col key={index} style={{ width }} />
-              ))}
-            </colgroup>
-          )}
+          <colgroup>
+            {columnWidths.map((width, index) => (
+              <col key={index} style={{ width }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
