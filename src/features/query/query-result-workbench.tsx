@@ -118,7 +118,7 @@ export function QueryResultWorkbench({
       {workspace.resultView === "json" ? (
         <pre
           className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
-          style={{ fontSize: workspace.resultFontSize }}
+          style={{ fontSize: `${workspace.resultFontSize / 16}rem` }}
         >
           {JSON.stringify(filtered?.rows ?? [], null, 2)}
         </pre>

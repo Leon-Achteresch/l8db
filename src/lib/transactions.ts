@@ -22,12 +22,20 @@ export interface ActiveTransaction {
   connectionId: string;
   connectionName: string;
   database?: string;
+  scope?: TransactionScope;
   changes: TransactionChange[];
   startedAt: number;
 }
 
+export type TransactionScope =
+  | { type: "connection" }
+  | { type: "query" }
+  | { type: "table"; schema: string; table: string };
+
 interface TransactionStoreState {
   transactions: ActiveTransaction[];
+  busyTransactions: Record<string, number>;
+  finalizingTransactions: string[];
   panelOpen: boolean;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
@@ -41,6 +49,8 @@ export const useTransactionStore = create<TransactionStoreState>()(
   persist(
     (set, get) => ({
       transactions: [],
+      busyTransactions: {},
+      finalizingTransactions: [],
       panelOpen: false,
 
       togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
@@ -69,7 +79,7 @@ export const useTransactionStore = create<TransactionStoreState>()(
             set({ transactions: alive });
           }
         } catch {
-          set({ transactions: [] });
+          return;
         }
       },
     }),
@@ -85,4 +95,45 @@ export const useTransactionStore = create<TransactionStoreState>()(
 
 export function getTransactionForConnection(connectionId: string): ActiveTransaction | undefined {
   return useTransactionStore.getState().transactions.find((t) => t.connectionId === connectionId);
+}
+
+export function findTransaction(
+  transactions: ActiveTransaction[],
+  connectionId: string,
+  database: string | null | undefined,
+  scope: TransactionScope,
+): ActiveTransaction | undefined {
+  const candidates = transactions.filter(
+    (tx) => tx.connectionId === connectionId && (tx.database ?? null) === (database ?? null),
+  );
+  return (
+    candidates.find((tx) => {
+      if (tx.scope?.type !== scope.type) return false;
+      return (
+        scope.type !== "table" ||
+        (tx.scope.type === "table" &&
+          tx.scope.schema === scope.schema &&
+          tx.scope.table === scope.table)
+      );
+    }) ?? candidates.find((tx) => !tx.scope || tx.scope.type === "connection")
+  );
+}
+
+export function getQueryTransaction(connectionId: string, database?: string | null) {
+  return findTransaction(useTransactionStore.getState().transactions, connectionId, database, {
+    type: "query",
+  });
+}
+
+export function getTableTransaction(
+  connectionId: string,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+) {
+  return findTransaction(useTransactionStore.getState().transactions, connectionId, database, {
+    type: "table",
+    schema,
+    table,
+  });
 }

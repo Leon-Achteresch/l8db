@@ -13,7 +13,7 @@ export function SettingsRow({ title, description, children }: Props) {
     <motion.div
       layout
       transition={{ layout: SPRING_LAYOUT }}
-      className="grid items-center gap-4 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto]"
+      className="grid items-center gap-4 rounded-2xl border border-border/80 bg-card px-4 py-[calc(0.875rem+var(--ui-density-step))] shadow-sm @min-[38rem]:grid-cols-[minmax(0,1fr)_auto]"
     >
       <div className="min-w-0">
         <p className="text-sm font-semibold">{title}</p>

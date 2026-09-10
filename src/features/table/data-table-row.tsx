@@ -40,6 +40,7 @@ type DataTableRowProps = {
   isSaving: boolean;
   canPickFk: boolean;
   outgoingFkByColumn: Map<string, ForeignKeyInfo>;
+  canEditCell: DataTableProps["canEditCell"];
   onSaveRow: DataTableProps["onSaveRow"];
   focusCell: (cell: GridCellRef | null, extend?: boolean) => void;
   handleCellEdit: (row: Row<TableRow>, columnId: string) => void;
@@ -69,6 +70,7 @@ export const DataTableRow = memo(function DataTableRow({
   canPickFk,
   outgoingFkByColumn,
   onSaveRow,
+  canEditCell,
   focusCell,
   handleCellEdit,
   handleCellCopy,
@@ -104,6 +106,7 @@ export const DataTableRow = memo(function DataTableRow({
         const cellIndex = item.index;
         const cell = cells[cellIndex];
         const columnId = cell.column.id;
+        const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
         const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
         const isCellEditing = isRowEditing && editingCell?.columnId === columnId;
         const isActive =
@@ -164,7 +167,7 @@ export const DataTableRow = memo(function DataTableRow({
               if (
                 isActive &&
                 !extend &&
-                onSaveRow &&
+                editable &&
                 cellIndex > 0 &&
                 (window.getSelection()?.isCollapsed ?? true)
               ) {
@@ -175,7 +178,7 @@ export const DataTableRow = memo(function DataTableRow({
               focusCell({ rowIndex, columnId }, extend);
             }}
             onDoubleClick={
-              onSaveRow && cellIndex > 0
+              editable && cellIndex > 0
                 ? (e) => {
                     e.stopPropagation();
                     handleCellEdit(row, columnId);
@@ -189,7 +192,7 @@ export const DataTableRow = memo(function DataTableRow({
               left: pinnedOffset ?? undefined,
             }}
             className={cn(
-              "px-3 py-1.5 align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden",
+              "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden",
               cellIndex === 0 &&
                 "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
               pinnedOffset !== null &&
@@ -220,7 +223,7 @@ export const DataTableRow = memo(function DataTableRow({
                   >
                     <CopyIcon className="size-3" />
                   </button>
-                  {(isLargeCellValue(value) || (!!onSaveRow && !!rowCtid)) && (
+                  {(isLargeCellValue(value) || (editable && !!rowCtid)) && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -232,7 +235,7 @@ export const DataTableRow = memo(function DataTableRow({
                           originalValues: { ...row.original },
                         });
                       }}
-                      title={onSaveRow ? "Anzeigen / bearbeiten" : "Anzeigen"}
+                      title={editable ? "Anzeigen / bearbeiten" : "Anzeigen"}
                       className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                     >
                       <Maximize2Icon className="size-3" />

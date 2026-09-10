@@ -17,6 +17,7 @@ export function useColumnWindow(
   );
   const virtualizer = useVirtualizer({
     horizontal: true,
+    useAnimationFrameWithResizeObserver: true,
     count: widths.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => widths[index],
