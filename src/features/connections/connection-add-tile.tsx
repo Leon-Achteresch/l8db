@@ -11,6 +11,7 @@ export function ConnectionAddTile({ onAdd }: Props) {
   return (
     <motion.button
       type="button"
+      data-tour="connection-add"
       onClick={onAdd}
       layout
       initial={reduce ? false : { opacity: 0, y: 8 }}

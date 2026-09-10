@@ -362,3 +362,122 @@ describe("Oracle Key-Value", () => {
     ).toContain("DNS");
   });
 });
+
+const {
+  buildConnectionExport,
+  parseConnectionImport,
+  resolveImport,
+  stripConnectionSecrets,
+} = await import("../src/lib/connection-export");
+
+describe("Connection profiles export/import", () => {
+  test("export strips passwords, tokens, SSH secrets and tunnel ports", () => {
+    const file = buildConnectionExport([
+      {
+        ...direct,
+        connectionString:
+          "postgresql://user:p%40ss@localhost:5432/app?sslmode=disable&token=abc&application_name=x",
+        tunnelPort: 6011,
+        tags: [{ name: "Prod", color: "#ef4444" }],
+        favorite: true,
+        color: "#ef4444",
+      },
+      { ...tunneled, tunnelPort: 6012, ssh: { ...tunneled.ssh, auth: "password" as const } },
+      {
+        id: "ora",
+        name: "Oracle",
+        kind: "oracle" as const,
+        connectionString: "user id=scott;password=tiger;data source=localhost/xe",
+        sslMode: "disable" as const,
+      },
+    ]);
+    expect(file.format).toBe("l8db-connections");
+    expect(file.version).toBe(1);
+    const text = JSON.stringify(file);
+    expect(text).not.toContain("p%40ss");
+    expect(text).not.toContain("token=abc");
+    expect(text).not.toContain("tiger");
+    expect(text).not.toContain("tunnelPort");
+    expect(file.connections[0].connectionString).toBe(
+      "postgresql://user@localhost:5432/app?sslmode=disable&application_name=x",
+    );
+    expect(file.connections[0].tags).toEqual([{ name: "Prod", color: "#ef4444" }]);
+    expect(file.connections[0].favorite).toBe(true);
+    expect(file.connections[0].color).toBe("#ef4444");
+    expect(file.connections[1].ssh?.host).toBe("bastion.example.com");
+    expect(file.connections[1].ssh?.keyFile).toBe("");
+    expect(file.connections[2].connectionString).toBe(
+      "user id=scott;data source=localhost/xe",
+    );
+    expect(stripConnectionSecrets("redis://:secret@localhost:6379/0")).toBe(
+      "redis://localhost:6379/0",
+    );
+  });
+  test("import rejects unknown formats and versions with a readable message", () => {
+    expect(parseConnectionImport("nicht json", []).error).toContain("JSON");
+    expect(parseConnectionImport(JSON.stringify({ format: "x", version: 1 }), []).error).toContain(
+      "l8db",
+    );
+    expect(
+      parseConnectionImport(
+        JSON.stringify({ format: "l8db-connections", version: 99, connections: [] }),
+        [],
+      ).error,
+    ).toContain("99");
+  });
+  test("import flags invalid profiles and duplicates, resolves skip or copy", () => {
+    const payload = JSON.stringify({
+      format: "l8db-connections",
+      version: 1,
+      connections: [
+        { ...direct, connectionString: "postgresql://user@localhost:5432/app?sslmode=disable" },
+        { id: "n", name: "Neu", kind: "mysql", connectionString: "mysql://root@localhost/db" },
+        { id: "bad", name: "Kaputt", kind: "foo", connectionString: "x" },
+        { id: "nix", kind: "postgres", connectionString: "postgres://u@h/db" },
+      ],
+    });
+    const parsed = parseConnectionImport(payload, [direct]);
+    expect(parsed.error).toBeNull();
+    expect(parsed.candidates).toHaveLength(4);
+    expect(parsed.candidates[0].duplicateOf?.id).toBe("direct");
+    expect(parsed.candidates[1].duplicateOf).toBeNull();
+    expect(parsed.candidates[2].error).toContain("foo");
+    expect(parsed.candidates[3].error).toContain("Name");
+    const all = new Set([0, 1, 2, 3]);
+    const skipped = resolveImport(parsed.candidates, all, "skip");
+    expect(skipped.map((connection) => connection.id)).toEqual(["n"]);
+    const copied = resolveImport(parsed.candidates, all, "copy");
+    expect(copied).toHaveLength(2);
+    expect(copied[0].id).not.toBe("direct");
+    expect(copied[0].name).toBe("Local (Kopie)");
+    expect(copied[0].tunnelPort).toBeNull();
+  });
+  test("addImported never overwrites existing profiles or activates a connection", () => {
+    useConnectionsStore.setState({ connections: [direct], activeId: null });
+    useConnectionsStore.getState().addImported([
+      { ...direct, name: "Überschrieben" },
+      { ...direct, id: "fresh", name: "Frisch" },
+    ]);
+    const state = useConnectionsStore.getState();
+    expect(state.activeId).toBeNull();
+    expect(state.connections.map((connection) => connection.name)).toEqual(["Local", "Frisch"]);
+  });
+});
+
+describe("Favorites and profile color", () => {
+  test("toggleFavorite persists without changing the active connection", () => {
+    useConnectionsStore.getState().toggleFavorite("direct");
+    expect(useConnectionsStore.getState().activeId).toBeNull();
+    expect(useConnectionsStore.getState().connections[0].favorite).toBe(true);
+    const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
+    expect(stored.state.connections[0].favorite).toBe(true);
+    useConnectionsStore.getState().toggleFavorite("direct");
+    expect(useConnectionsStore.getState().connections[0].favorite).toBe(false);
+  });
+  test("color is persisted and secrets stay scrubbed in storage", () => {
+    useConnectionsStore.getState().updateConnection("direct", { ...direct, color: "#3b82f6" });
+    const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
+    expect(stored.state.connections[0].color).toBe("#3b82f6");
+    expect(stored.state.connections[0].connectionString).not.toContain("p%40ss");
+  });
+});

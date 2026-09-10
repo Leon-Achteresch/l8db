@@ -1,7 +1,7 @@
 # L8DB-PLAN-003: Verbindungen als Favoriten markieren
 
 Typ: Story · Priorität: **P2** · Schätzung: **1 SP** · Bereich: Verbindungen
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
