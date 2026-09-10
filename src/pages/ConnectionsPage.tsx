@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { CheckIcon, PencilIcon, PlusIcon, TrashIcon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  XIcon,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +28,11 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useConnections, type SavedConnection } from "@/lib/connections";
+import {
+  useActiveConnection,
+  useConnectionsStore,
+  type SavedConnection,
+} from "@/lib/connections";
 import { type DatabaseKind, testConnectionString } from "@/lib/db";
 
 type TestState =
@@ -68,14 +78,16 @@ function buildConnectionString(form: FormState): string {
 }
 
 export function ConnectionsPage() {
-  const {
-    connections,
-    activeConnection,
-    addConnection,
-    updateConnection,
-    removeConnection,
-    setActiveId,
-  } = useConnections();
+  const connections = useConnectionsStore((state) => state.connections);
+  const addConnection = useConnectionsStore((state) => state.addConnection);
+  const updateConnection = useConnectionsStore(
+    (state) => state.updateConnection,
+  );
+  const removeConnection = useConnectionsStore(
+    (state) => state.removeConnection,
+  );
+  const setActiveId = useConnectionsStore((state) => state.setActiveId);
+  const activeConnection = useActiveConnection();
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);

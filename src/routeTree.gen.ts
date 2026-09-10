@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TablesSchemaTableRouteImport } from './routes/tables.$schema.$table'
 
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
@@ -28,35 +29,44 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TablesSchemaTableRoute = TablesSchemaTableRouteImport.update({
+  id: '/tables/$schema/$table',
+  path: '/tables/$schema/$table',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/tables/$schema/$table': typeof TablesSchemaTableRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/tables/$schema/$table': typeof TablesSchemaTableRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
+  '/tables/$schema/$table': typeof TablesSchemaTableRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/connections'
+  fullPaths: '/' | '/about' | '/connections' | '/tables/$schema/$table'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/connections'
-  id: '__root__' | '/' | '/about' | '/connections'
+  to: '/' | '/about' | '/connections' | '/tables/$schema/$table'
+  id: '__root__' | '/' | '/about' | '/connections' | '/tables/$schema/$table'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ConnectionsRoute: typeof ConnectionsRoute
+  TablesSchemaTableRoute: typeof TablesSchemaTableRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tables/$schema/$table': {
+      id: '/tables/$schema/$table'
+      path: '/tables/$schema/$table'
+      fullPath: '/tables/$schema/$table'
+      preLoaderRoute: typeof TablesSchemaTableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ConnectionsRoute: ConnectionsRoute,
+  TablesSchemaTableRoute: TablesSchemaTableRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

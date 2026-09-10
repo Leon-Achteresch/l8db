@@ -1,11 +1,12 @@
 import type * as React from "react";
 
-import { Link } from "@tanstack/react-router";
+import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
   DatabaseIcon,
   SettingsIcon,
+  TableIcon,
 } from "lucide-react";
 
 import {
@@ -21,15 +22,30 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { useConnections } from "@/lib/connections";
+import { Spinner } from "@/components/ui/spinner";
+import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useTablesQuery } from "@/lib/queries";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 
 export function AppSidebarPanel() {
-  const { connections, activeConnection, setActiveId } = useConnections();
+  const connections = useConnectionsStore((state) => state.connections);
+  const setActiveId = useConnectionsStore((state) => state.setActiveId);
+  const activeConnection = useActiveConnection();
   const setWidth = useSidebarPanel((state) => state.setWidth);
   const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
+  const matchRoute = useMatchRoute();
+  const {
+    data: tables,
+    isLoading: tablesLoading,
+    isError: tablesError,
+    error: tablesErrorValue,
+  } = useTablesQuery();
 
   const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -106,8 +122,52 @@ export function AppSidebarPanel() {
         </DropdownMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup className="px-0">
-          <SidebarGroupContent />
+        <SidebarGroup>
+          <SidebarGroupLabel>Tabellen</SidebarGroupLabel>
+          <SidebarGroupContent>
+            {!activeConnection ? (
+              <p className="px-2 py-1 text-sm text-muted-foreground">
+                Keine Verbindung aktiv.
+              </p>
+            ) : tablesLoading ? (
+              <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+                <Spinner />
+                Lade Tabellen…
+              </div>
+            ) : tablesError ? (
+              <p className="px-2 py-1 text-sm text-destructive">
+                {String(tablesErrorValue)}
+              </p>
+            ) : !tables || tables.length === 0 ? (
+              <p className="px-2 py-1 text-sm text-muted-foreground">
+                Keine Tabellen gefunden.
+              </p>
+            ) : (
+              <SidebarMenu>
+                {tables.map((table) => {
+                  const isActive = Boolean(
+                    matchRoute({
+                      to: "/tables/$schema/$table",
+                      params: { schema: table.schema, table: table.name },
+                    }),
+                  );
+                  return (
+                    <SidebarMenuItem key={`${table.schema}.${table.name}`}>
+                      <SidebarMenuButton asChild isActive={isActive}>
+                        <Link
+                          to="/tables/$schema/$table"
+                          params={{ schema: table.schema, table: table.name }}
+                        >
+                          <TableIcon className="text-muted-foreground" />
+                          <span className="truncate">{table.name}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            )}
+          </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
       <div

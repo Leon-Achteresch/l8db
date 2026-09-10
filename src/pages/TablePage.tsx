@@ -1,0 +1,131 @@
+import { useMemo } from "react";
+
+import { getRouteApi } from "@tanstack/react-router";
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useActiveConnection } from "@/lib/connections";
+import { useTableRowsQuery } from "@/lib/queries";
+
+const routeApi = getRouteApi("/tables/$schema/$table");
+
+type Row = Record<string, unknown>;
+
+function renderValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return <span className="text-muted-foreground italic">NULL</span>;
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+export function TablePage() {
+  const { schema, table } = routeApi.useParams();
+  const connection = useActiveConnection();
+  const { data, isLoading, isError, error } = useTableRowsQuery(schema, table);
+
+  const columns = useMemo<ColumnDef<Row>[]>(
+    () =>
+      (data?.columns ?? []).map((column) => ({
+        accessorKey: column,
+        header: column,
+        cell: (info) => renderValue(info.getValue()),
+      })),
+    [data?.columns],
+  );
+
+  const tableInstance = useReactTable({
+    data: data?.rows ?? [],
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  if (!connection) {
+    return (
+      <p className="text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner />
+        Lade Daten…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return <p className="text-sm text-destructive">{String(error)}</p>;
+  }
+
+  return (
+    <div className="flex flex-1 flex-col gap-4">
+      <div>
+        <h1 className="text-lg font-medium">
+          {schema}.{table}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {data?.rows.length ?? 0} Zeilen
+        </p>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {tableInstance.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {tableInstance.getRowModel().rows.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length || 1}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  Keine Daten.
+                </TableCell>
+              </TableRow>
+            ) : (
+              tableInstance.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

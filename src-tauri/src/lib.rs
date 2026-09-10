@@ -13,7 +13,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             db::commands::test_connection,
-            db::commands::test_connection_string
+            db::commands::test_connection_string,
+            db::commands::list_tables,
+            db::commands::fetch_table_rows
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
