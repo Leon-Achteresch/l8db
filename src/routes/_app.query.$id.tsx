@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { QueryPage } from "@/pages/QueryPage";
+import { QueryView } from "@/features/query/query-view";
 
 export const Route = createFileRoute("/_app/query/$id")({
-  component: function QueryTab() {
+  component: function QueryTabRoute() {
     const { id } = Route.useParams();
-    return <QueryPage tabId={id} />;
+    return <QueryView tabId={id} />;
   },
 });

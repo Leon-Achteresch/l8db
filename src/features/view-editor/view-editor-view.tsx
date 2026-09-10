@@ -11,14 +11,14 @@ import {
   RotateCcwIcon,
   ShieldCheckIcon,
   TableIcon,
-  TriangleAlertIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { QueryEditorPane } from "@/components/query/QueryEditorPane";
-import { DataTable } from "@/components/table/data-table";
+import { QueryEditorPane } from "@/features/query/query-editor-pane";
+import { DataTable } from "@/features/table/data-table";
+import { TableDataError } from "@/features/table/table-data-error";
+import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
@@ -38,12 +38,12 @@ import {
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
-interface ViewEditorPageProps {
+interface ViewEditorViewProps {
   schema: string;
   view: string;
 }
 
-export function ViewEditorPage({ schema, view }: ViewEditorPageProps) {
+export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const navigate = useNavigate();
@@ -248,9 +248,9 @@ export function ViewEditorPage({ schema, view }: ViewEditorPageProps) {
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {isLoading ? (
-          <ViewDataSkeleton />
+          <TableDataSkeleton />
         ) : isError ? (
-          <ViewDataError error={error} />
+          <TableDataError title="Fehler beim Laden der View" error={error} />
         ) : (
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <DataTable
@@ -366,45 +366,5 @@ export function ViewEditorPage({ schema, view }: ViewEditorPageProps) {
         )}
       </TabsContent>
     </Tabs>
-  );
-}
-
-function ViewDataSkeleton() {
-  return (
-    <div className="flex-1 overflow-hidden border-t border-border bg-background p-4 space-y-3 select-none">
-      <div className="flex gap-2">
-        <Skeleton className="h-8 w-24 bg-muted/50" />
-        <Skeleton className="h-8 w-32 bg-muted/50" />
-        <Skeleton className="h-8 w-20 bg-muted/50" />
-        <Skeleton className="h-8 w-40 bg-muted/50" />
-      </div>
-      <div className="space-y-3 mt-4">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="flex gap-3 items-center">
-            <Skeleton className="h-5 w-8 rounded-sm bg-muted/30" />
-            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ViewDataError({ error }: { error: unknown }) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6 border-t border-border bg-background">
-      <div className="flex flex-col items-center gap-3 max-w-md text-center p-6 rounded-lg border border-destructive/20 bg-destructive/5 shadow-xs">
-        <TriangleAlertIcon className="size-8 text-destructive animate-bounce" />
-        <h3 className="text-sm font-semibold text-destructive">
-          Fehler beim Laden der View
-        </h3>
-        <p className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text">
-          {String(error)}
-        </p>
-      </div>
-    </div>
   );
 }

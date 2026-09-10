@@ -2,7 +2,7 @@ import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { ThemeProvider } from "next-themes";
 import "../index.css";
 
-import { AppHeader } from "@/components/app-header";
+import { AppHeader } from "@/features/shell/app-header";
 
 function RootComponent() {
   return (

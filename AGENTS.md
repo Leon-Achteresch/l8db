@@ -23,9 +23,16 @@ No JS/TS tests, no JS linter or formatter configured.
 
 ## Routing (TanStack Router)
 
-- Routes live in `src/routes/`. The route tree is **auto-generated** into `src/routeTree.gen.ts` by the Vite plugin on every dev/build start.
+- Routes live in `src/routes/` and stay thin: they only wire `createFileRoute` to a view in `src/features/`.
+- The route tree is **auto-generated** into `src/routeTree.gen.ts` by the Vite plugin on every dev/build start.
 - **Never edit `src/routeTree.gen.ts` by hand.**
 - `_app` prefix = pathless layout route (wraps children in `AppLayout` without adding a path segment).
+
+## Frontend structure
+
+- `src/features/` — feature modules (views + feature-specific UI). One exported React component per file; main route entry is `{feature}-view.tsx`.
+- `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
+- `src/components/ui/` — shared shadcn primitives only.
 
 ## Frontend → Backend Bridge
 

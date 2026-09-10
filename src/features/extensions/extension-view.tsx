@@ -63,7 +63,7 @@ function buildExtensionSql(ext: {
     .join("\n");
 }
 
-export function ExtensionPage() {
+export function ExtensionView() {
   const { name } = routeApi.useParams();
   const connection = useActiveConnection();
   const database = useActiveDatabase();

@@ -3,8 +3,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   appSidebarData,
   type AppSidebarUser,
-} from "@/components/sidebar/app-sidebar-data";
-import { NavUser } from "@/components/sidebar/nav-user";
+} from "@/features/sidebar/app-sidebar-data";
+import { NavUser } from "@/features/sidebar/nav-user";
 import {
   Sidebar,
   SidebarContent,

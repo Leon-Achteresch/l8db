@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { SqlEditor } from "@/components/table/sql-editor";
+import { SqlEditor } from "@/features/table/sql-editor";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";

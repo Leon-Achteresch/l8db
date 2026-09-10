@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 
-export function AboutPage() {
+export function AboutView() {
   return (
     <main className="text-center mx-auto">
       <h1 className="text-3xl font-semibold">About</h1>

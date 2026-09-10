@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { UsersPage } from "@/pages/UsersPage";
+import { UsersView } from "@/features/users/users-view";
 
 export const Route = createFileRoute("/_app/users/$name")({
-  component: UsersPage,
+  component: UsersView,
 });

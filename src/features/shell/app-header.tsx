@@ -1,16 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  Database,
-  GitBranchIcon,
-  Home,
-  RefreshCw,
-  Settings,
-  User,
-  type LucideIcon,
-} from "lucide-react";
+import { GitBranchIcon, RefreshCw, Settings } from "lucide-react";
 import { useEffect, type CSSProperties } from "react";
 
-import { AppHeaderSearch } from "@/components/app-header-search";
+import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -21,18 +13,6 @@ const IS_MAC =
 
 const IS_WINDOWS =
   typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
-
-type NavItem = {
-  to: "/" | "/connections" | "/about";
-  label: string;
-  icon: LucideIcon;
-};
-
-const navItems: NavItem[] = [
-  { to: "/", label: "Home", icon: Home },
-  { to: "/connections", label: "Verbindungen", icon: Database },
-  { to: "/about", label: "Über", icon: User },
-];
 
 export function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });

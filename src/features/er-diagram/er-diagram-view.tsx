@@ -519,7 +519,7 @@ function ERDiagramInner() {
   );
 }
 
-export function ERDiagramPage() {
+export function ErDiagramView() {
   return (
     <ReactFlowProvider>
       <ERDiagramInner />

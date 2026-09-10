@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TablePage } from "@/pages/TablePage";
+import { TableView } from "@/features/table/table-view";
 
 export const Route = createFileRoute("/_app/tables/$schema/$table")({
-  component: TablePage,
+  component: TableView,
   validateSearch: (
     search: Record<string, unknown>,
   ): { type?: "table" | "view"; fkFilter?: string } => ({
