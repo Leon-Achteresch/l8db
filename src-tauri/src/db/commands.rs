@@ -60,8 +60,17 @@ pub async fn fetch_table_rows(
     table: String,
     filter: Option<String>,
     limit: Option<i64>,
+    order_by: Option<String>,
+    order_desc: Option<bool>,
 ) -> Result<TableData, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref())?
-        .fetch_rows(&schema, &table, filter.as_deref(), limit.unwrap_or(100))
+        .fetch_rows(
+            &schema,
+            &table,
+            filter.as_deref(),
+            limit.unwrap_or(100),
+            order_by.as_deref(),
+            order_desc.unwrap_or(false),
+        )
         .await
 }

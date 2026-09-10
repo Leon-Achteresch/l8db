@@ -1,8 +1,21 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import type { SortingState } from "@tanstack/react-table";
 
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
-import { fetchTableRows, listDatabases, listSchemas, listTables } from "@/lib/db";
+import {
+  fetchTableRows,
+  listDatabases,
+  listSchemas,
+  listTables,
+  type TableRowSort,
+} from "@/lib/db";
+
+function sortingToRowSort(sorting: SortingState): TableRowSort | undefined {
+  const active = sorting[0];
+  if (!active?.id) return undefined;
+  return { column: active.id, desc: Boolean(active.desc) };
+}
 
 export function useDatabasesQuery() {
   const connection = useActiveConnection();
@@ -50,11 +63,22 @@ export function useTableRowsQuery(
   schema: string,
   table: string,
   filter?: string,
+  sorting: SortingState = [],
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const sort = sortingToRowSort(sorting);
   return useQuery({
-    queryKey: ["rows", connection?.id, database, schema, table, filter ?? ""],
+    queryKey: [
+      "rows",
+      connection?.id,
+      database,
+      schema,
+      table,
+      filter ?? "",
+      sort?.column ?? "",
+      sort?.desc ?? false,
+    ],
     queryFn: () =>
       fetchTableRows(
         connection!.kind,
@@ -64,6 +88,7 @@ export function useTableRowsQuery(
         filter,
         undefined,
         database ?? undefined,
+        sort,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: keepPreviousData,

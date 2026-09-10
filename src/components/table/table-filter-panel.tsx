@@ -20,7 +20,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SqlEditor } from "@/components/sql-editor";
+import { SqlEditor } from "@/components/table/sql-editor";
 import { cn } from "@/lib/utils";
 
 type FilterMode = "simple" | "sql";

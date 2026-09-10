@@ -1,7 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { TableTabs } from "@/components/table-tabs";
+import { TableTabs } from "@/components/table/table-tabs";
 import {
   SidebarInset,
   SidebarProvider,

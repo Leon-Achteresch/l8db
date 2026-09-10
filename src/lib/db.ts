@@ -56,6 +56,11 @@ export async function listTables(
   return invoke("list_tables", { kind, connectionString, database, schema });
 }
 
+export type TableRowSort = {
+  column: string;
+  desc: boolean;
+};
+
 export async function fetchTableRows(
   kind: DatabaseKind,
   connectionString: string,
@@ -64,6 +69,7 @@ export async function fetchTableRows(
   filter?: string,
   limit?: number,
   database?: string,
+  sort?: TableRowSort,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
@@ -73,5 +79,7 @@ export async function fetchTableRows(
     table,
     filter: filter && filter.trim() !== "" ? filter : undefined,
     limit,
+    orderBy: sort?.column,
+    orderDesc: sort?.desc,
   });
 }
