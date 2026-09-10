@@ -12,6 +12,7 @@ import {
   FileCodeIcon,
   FilterIcon,
   LayersIcon,
+  ListOrderedIcon,
   PackageIcon,
   SearchIcon,
   SettingsIcon,
@@ -85,6 +86,7 @@ import {
   useFunctionsQuery,
   useRolesQuery,
   useSchemasQuery,
+  useSequencesQuery,
   useTablesQuery,
   useViewsQuery,
 } from "@/lib/queries";
@@ -136,8 +138,15 @@ export function AppSidebarPanel() {
     error: rolesErrorValue,
   } = useRolesQuery();
 
+  const {
+    data: sequences,
+    isLoading: sequencesLoading,
+    isError: sequencesError,
+    error: sequencesErrorValue,
+  } = useSequencesQuery();
+
   const [sidebarTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "extensions" | "roles"
+    "tables" | "views" | "queries" | "functions" | "extensions" | "roles" | "sequences"
   >("tables");
 
   return (
@@ -315,6 +324,13 @@ export function AppSidebarPanel() {
                 >
                   <FileCodeIcon className="size-4" />
                 </TabsTrigger>
+                <TabsTrigger
+                  value="sequences"
+                  className="flex-1 px-0"
+                  aria-label="Sequenzen"
+                >
+                  <ListOrderedIcon className="size-4" />
+                </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -331,7 +347,9 @@ export function AppSidebarPanel() {
                     ? "Packages"
                     : sidebarTab === "roles"
                       ? "Benutzer & Rollen"
-                      : "Gespeicherte Queries"}
+                      : sidebarTab === "sequences"
+                        ? "Sequenzen"
+                        : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {!activeConnection ? (
@@ -378,6 +396,13 @@ export function AppSidebarPanel() {
                 isLoading={rolesLoading}
                 isError={rolesError}
                 error={rolesErrorValue}
+              />
+            ) : sidebarTab === "sequences" ? (
+              <SidebarSequenceList
+                items={sequences}
+                isLoading={sequencesLoading}
+                isError={sequencesError}
+                error={sequencesErrorValue}
               />
             ) : (
               <SavedQueriesList />
@@ -926,8 +951,6 @@ interface SidebarRoleListProps {
   isError: boolean;
   error: unknown;
 }
-
-function SidebarRoleList({
   items,
   isLoading,
   isError,
@@ -977,6 +1000,62 @@ function SidebarRoleList({
               {item.name}
               {item.can_login ? "" : " (Rolle)"}
             </span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  );
+}
+
+interface SidebarSequenceListProps {
+  items: { schema: string; name: string }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+function SidebarSequenceList({
+  items,
+  isLoading,
+  isError,
+  error,
+}: SidebarSequenceListProps) {
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+        <Spinner />
+        Lade Sequenzen…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <p className="px-2 py-1 text-sm text-muted-foreground">
+        Keine Sequenzen gefunden.
+      </p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {items.map((item) => (
+        <SidebarMenuItem key={`${item.schema}.${item.name}`}>
+          <SidebarMenuButton
+            onClick={() => {
+              navigate({ to: "/sequences" });
+            }}
+          >
+            <ListOrderedIcon className="text-muted-foreground" />
+            <span className="truncate">{item.name}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}

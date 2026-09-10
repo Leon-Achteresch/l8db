@@ -679,3 +679,24 @@ export async function dropColumn(
     column,
   });
 }
+
+export interface SequenceInfo {
+  schema: string;
+  name: string;
+  data_type: string;
+  start_value: string;
+  min_value: string;
+  max_value: string;
+  increment_by: string;
+  cycle: boolean;
+  last_value: string | null;
+}
+
+export async function listSequences(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<SequenceInfo[]> {
+  return invoke("list_sequences", { kind, connectionString, database, schema });
+}

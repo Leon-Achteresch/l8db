@@ -13,6 +13,7 @@ import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppSequencesRouteImport } from './routes/_app.sequences'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppErDiagramRouteImport } from './routes/_app.er-diagram'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
@@ -43,6 +44,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSequencesRoute = AppSequencesRouteImport.update({
+  id: '/sequences',
+  path: '/sequences',
   getParentRoute: () => AppRoute,
 } as any)
 const AppQueryRoute = AppQueryRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AppAboutRoute
   '/er-diagram': typeof AppErDiagramRoute
   '/query': typeof AppQueryRouteWithChildren
+  '/sequences': typeof AppSequencesRoute
   '/settings': typeof AppSettingsRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
   '/er-diagram': typeof AppErDiagramRoute
+  '/sequences': typeof AppSequencesRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_app/about': typeof AppAboutRoute
   '/_app/er-diagram': typeof AppErDiagramRoute
   '/_app/query': typeof AppQueryRouteWithChildren
+  '/_app/sequences': typeof AppSequencesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/extensions/$name': typeof AppExtensionsNameRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/er-diagram'
     | '/query'
+    | '/sequences'
     | '/settings'
     | '/extensions/$name'
     | '/query/$id'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/connections'
     | '/about'
     | '/er-diagram'
+    | '/sequences'
     | '/settings'
     | '/'
     | '/extensions/$name'
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/_app/about'
     | '/_app/er-diagram'
     | '/_app/query'
+    | '/_app/sequences'
     | '/_app/settings'
     | '/_app/'
     | '/_app/extensions/$name'
@@ -247,6 +259,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sequences': {
+      id: '/_app/sequences'
+      path: '/sequences'
+      fullPath: '/sequences'
+      preLoaderRoute: typeof AppSequencesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/query': {
@@ -354,6 +373,7 @@ interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
   AppErDiagramRoute: typeof AppErDiagramRoute
   AppQueryRoute: typeof AppQueryRouteWithChildren
+  AppSequencesRoute: typeof AppSequencesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppExtensionsNameRoute: typeof AppExtensionsNameRoute
@@ -369,6 +389,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
   AppErDiagramRoute: AppErDiagramRoute,
   AppQueryRoute: AppQueryRouteWithChildren,
+  AppSequencesRoute: AppSequencesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppExtensionsNameRoute: AppExtensionsNameRoute,
