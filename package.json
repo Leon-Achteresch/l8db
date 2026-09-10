@@ -70,7 +70,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/router-plugin": "^1.168.10",
     "@tauri-apps/cli": "^2",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/semver": "^7.8.0",
