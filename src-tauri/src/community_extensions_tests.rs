@@ -153,3 +153,45 @@ fn development_cannot_escape_through_symlinks() {
     std::os::unix::fs::symlink(&outside.0, root.0.join("test.outside")).unwrap();
     assert!(location(&root.0, "test.outside").is_err());
 }
+#[test]
+fn replace_keeps_storage_and_drops_undeclared_grants() {
+    let root = Fixture::new();
+    operate(&root.0, "install", "", json!({"archive":archive()})).unwrap();
+    operate(
+        &root.0,
+        "update",
+        "test.example",
+        json!({"enabled":true,"grants":["filesystem:extension-storage"],"configuration":{"a":1}}),
+    )
+    .unwrap();
+    operate(
+        &root.0,
+        "set",
+        "test.example",
+        json!({"key":"key","value":{"answer":42}}),
+    )
+    .unwrap();
+    let mut next = archive();
+    next["manifest"]["version"] = json!("2.0.0");
+    operate(&root.0, "replace", "test.example", json!({"archive":next})).unwrap();
+    let installed = read_installed(&root.0, "test.example").unwrap();
+    assert_eq!(installed.archive["manifest"]["version"], json!("2.0.0"));
+    assert_eq!(installed.grants, vec!["filesystem:extension-storage"]);
+    assert_eq!(installed.configuration, json!({"a":1}));
+    assert!(installed.enabled);
+    assert_eq!(
+        operate(&root.0, "get", "test.example", json!({"key":"key"})).unwrap(),
+        json!({"answer":42})
+    );
+    let mut narrowed = archive();
+    narrowed["manifest"]["version"] = json!("3.0.0");
+    narrowed["manifest"]["permissions"] = json!([]);
+    operate(&root.0, "replace", "test.example", json!({"archive":narrowed})).unwrap();
+    assert!(read_installed(&root.0, "test.example")
+        .unwrap()
+        .grants
+        .is_empty());
+    let mut foreign = archive();
+    foreign["manifest"]["id"] = json!("other.example");
+    assert!(operate(&root.0, "replace", "test.example", json!({"archive":foreign})).is_err());
+}
