@@ -92,6 +92,7 @@ export async function fetchTableRows(
   limit?: number,
   database?: string,
   sort?: TableRowSort,
+  isView?: boolean,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
@@ -103,6 +104,7 @@ export async function fetchTableRows(
     limit,
     orderBy: sort?.column,
     orderDesc: sort?.desc,
+    isView: isView || undefined,
   });
 }
 

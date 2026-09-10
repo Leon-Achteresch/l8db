@@ -28,6 +28,7 @@ export function TablePage() {
     table,
     filter,
     sorting,
+    isView,
   );
   const updateRowMutation = useUpdateRowMutation(schema, table);
 
@@ -58,20 +59,24 @@ export function TablePage() {
       {isView ? (
         <ViewDefinitionPanel schema={schema} view={table} />
       ) : null}
-      <TableViewsPanel
-        schema={schema}
-        table={table}
-        activeFilter={filter}
-        onSelectView={setFilter}
-      />
-      <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
-        <TableFilterPanel
-          key={`${schema}.${table}`}
-          columns={data?.columns ?? []}
+      {!isView ? (
+        <TableViewsPanel
+          schema={schema}
+          table={table}
           activeFilter={filter}
-          onApply={setFilter}
+          onSelectView={setFilter}
         />
-      </div>
+      ) : null}
+      {!isView ? (
+        <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+          <TableFilterPanel
+            key={`${schema}.${table}`}
+            columns={data?.columns ?? []}
+            activeFilter={filter}
+            onApply={setFilter}
+          />
+        </div>
+      ) : null}
 
       {isLoading ? (
         <div className="flex-1 overflow-hidden border-t border-border bg-background p-4 space-y-3 select-none">
