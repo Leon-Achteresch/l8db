@@ -14,6 +14,7 @@ import { CompareSideSummary } from "@/features/compare/compare-side-summary";
 import {
   type DefinitionDiffApi,
   DefinitionDiffEditor,
+  type DiffStats,
 } from "@/features/compare/definition-diff-editor";
 import {
   type CompareSideSelection,
@@ -48,7 +49,8 @@ export function DefinitionCompareView({ left, right }: DefinitionCompareViewProp
   const [leftState, setLeftState] = useState<SideState>(IDLE_SIDE);
   const [rightState, setRightState] = useState<SideState>(IDLE_SIDE);
   const [onlyDifferences, setOnlyDifferences] = useState(false);
-  const [changeCount, setChangeCount] = useState(0);
+  const [stats, setStats] = useState<DiffStats>({ changes: 0, added: 0, removed: 0 });
+  const changeCount = stats.changes;
   const [reloadToken, setReloadToken] = useState(0);
   const diffRef = useRef<DefinitionDiffApi>(null);
 
@@ -153,8 +155,18 @@ export function DefinitionCompareView({ left, right }: DefinitionCompareViewProp
       </div>
 
       <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
-        <CompareSideSummary side={left} loading={leftState.loading} error={leftState.error} />
-        <CompareSideSummary side={right} loading={rightState.loading} error={rightState.error} />
+        <CompareSideSummary
+          side={left}
+          loading={leftState.loading}
+          error={leftState.error}
+          delta={{ sign: "-", count: stats.removed }}
+        />
+        <CompareSideSummary
+          side={right}
+          loading={rightState.loading}
+          error={rightState.error}
+          delta={{ sign: "+", count: stats.added }}
+        />
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -163,7 +175,7 @@ export function DefinitionCompareView({ left, right }: DefinitionCompareViewProp
           original={leftState.definition}
           modified={rightState.definition}
           onlyDifferences={onlyDifferences}
-          onChangeCount={setChangeCount}
+          onStats={setStats}
         />
         {(leftState.loading || rightState.loading) && (
           <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">

@@ -10,6 +10,7 @@ interface CompareSideSummaryProps {
   side: CompareSideSelection;
   loading: boolean;
   error: string | null;
+  delta?: { sign: "+" | "-"; count: number };
 }
 
 function connectionMeta(connection: SavedConnection | null) {
@@ -18,7 +19,7 @@ function connectionMeta(connection: SavedConnection | null) {
   return { connection, provider };
 }
 
-export function CompareSideSummary({ side, loading, error }: CompareSideSummaryProps) {
+export function CompareSideSummary({ side, loading, error, delta }: CompareSideSummaryProps) {
   const connections = useConnectionsStore((state) => state.connections);
   const meta = connectionMeta(connections.find((item) => item.id === side.connectionId) ?? null);
   const objectLabel =
@@ -44,6 +45,18 @@ export function CompareSideSummary({ side, loading, error }: CompareSideSummaryP
           <CompareObjectIcon type={side.objectType} />
           <span className="truncate">{objectLabel}</span>
           {loading && <LoaderIcon className="size-3 shrink-0 animate-spin text-muted-foreground" />}
+          {delta && delta.count > 0 && (
+            <span
+              className={`ml-auto shrink-0 rounded px-1.5 font-mono text-[11px] tabular-nums ${
+                delta.sign === "+"
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  : "bg-red-500/15 text-red-600 dark:text-red-400"
+              }`}
+            >
+              {delta.sign}
+              {delta.count}
+            </span>
+          )}
         </div>
         <div className="truncate text-muted-foreground">
           {meta
