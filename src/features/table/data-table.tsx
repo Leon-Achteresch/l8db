@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { RegexSearchHelper } from "@/components/regex-search-helper";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -64,12 +65,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
-import {
-  describeGridSearch,
-  findGridMatches,
-  gridMatchKey,
-  stepMatchIndex,
-} from "@/lib/grid-search";
+import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
 import {
   describeSelectionStats,
   type GridCellRef,
@@ -79,6 +75,8 @@ import {
   selectionToTsv,
   summarizeSelection,
 } from "@/lib/grid-selection";
+import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
+import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
@@ -522,6 +520,8 @@ export function DataTable({
   const [filterValue, setFilterValue] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const searchRegex = useRegexEnabled("grid");
+  const setSearchRegex = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const [matchIndex, setMatchIndex] = useState(0);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -687,10 +687,15 @@ export function DataTable({
     };
   }, [pinned, hidden]);
   const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
-  const matches = useMemo(
-    () => (searchOpen ? findGridMatches(data, searchColumns, searchQuery) : []),
-    [searchOpen, data, searchColumns, searchQuery],
+  const searchResult = useMemo(
+    () =>
+      searchOpen
+        ? runGridSearch(data, searchColumns, searchQuery, { regex: searchRegex })
+        : { matches: [], error: null },
+    [searchOpen, data, searchColumns, searchQuery, searchRegex],
   );
+  const matches = searchResult.matches;
+  const searchError = searchResult.error;
   const matchKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const match of matches) keys.add(gridMatchKey(match.rowIndex, match.columnId));
@@ -1066,7 +1071,7 @@ export function DataTable({
             value={searchQuery}
             // biome-ignore lint/a11y/noAutofocus: Suchfeld wird gezielt geöffnet
             autoFocus
-            placeholder="In geladenen Zeilen suchen…"
+            placeholder={searchRegex ? "Regex in geladenen Zeilen…" : "In geladenen Zeilen suchen…"}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -1081,9 +1086,36 @@ export function DataTable({
             }}
             className="h-6 min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground/60"
           />
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-            {describeGridSearch(matches.length, matchIndex)}
+          <span
+            className={cn(
+              "shrink-0 font-mono text-[11px] tabular-nums",
+              searchError ? "text-destructive" : "text-muted-foreground",
+            )}
+            title={searchError ? describeRegexError(searchError) : undefined}
+          >
+            {searchError
+              ? describeRegexError(searchError)
+              : describeGridSearch(matches.length, matchIndex)}
           </span>
+          <RegexSearchHelper
+            enabled={searchRegex}
+            onEnabledChange={(enabled) => setSearchRegex("grid", enabled)}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            onInsert={(snippet) => {
+              const input = searchInputRef.current;
+              const start = input?.selectionStart ?? searchQuery.length;
+              const end = input?.selectionEnd ?? searchQuery.length;
+              const next = insertRegexPattern(searchQuery, start, end, snippet);
+              setSearchQuery(next.value);
+              requestAnimationFrame(() => {
+                input?.focus();
+                input?.setSelectionRange(next.cursor, next.cursor);
+              });
+            }}
+            error={searchError}
+            matchCount={matches.length}
+          />
           <span className="shrink-0 text-[11px] text-muted-foreground">
             {data.length} geladene {data.length === 1 ? "Zeile" : "Zeilen"} · {searchColumns.length}{" "}
             sichtbare Spalten

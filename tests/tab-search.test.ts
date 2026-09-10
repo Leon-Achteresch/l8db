@@ -71,3 +71,26 @@ describe("searchQueryTabs", () => {
     expect(groups[1].matches).toHaveLength(1);
   });
 });
+
+describe("searchQueryTabs Regex-Fehler", () => {
+  test("liefert Fehlerstelle für ungültige Muster", () => {
+    const result = searchQueryTabs(
+      [{ id: "a", title: "A", sql: "select 1" }],
+      "sel(",
+      { regex: true },
+    );
+    expect(result.invalidPattern).toBe(true);
+    expect(result.patternError?.index).toBe(3);
+  });
+
+  test("gültige Muster liefern keinen Fehler", () => {
+    const result = searchQueryTabs(
+      [{ id: "a", title: "A", sql: "select 1\nselect 2" }],
+      "select\\s\\d",
+      { regex: true },
+    );
+    expect(result.invalidPattern).toBe(false);
+    expect(result.patternError).toBeNull();
+    expect(result.matches.length).toBe(2);
+  });
+});

@@ -1,18 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-
+import { RegexSearchHelper } from "@/components/regex-search-helper";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useQueryRevealStore } from "@/lib/query-reveal";
+import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
+import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { groupMatchesByTab, searchQueryTabs, type TabSearchSource } from "@/lib/tab-search";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -35,7 +32,8 @@ export function TabSearchDialog({
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
-  const [regex, setRegex] = useState(false);
+  const regex = useRegexEnabled("tabs");
+  const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,15 +70,40 @@ export function TabSearchDialog({
           <DialogTitle>In offenen Query-Tabs suchen</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Suchtext…"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={regex ? "Regulärer Ausdruck…" : "Suchtext…"}
+            />
+            <RegexSearchHelper
+              enabled={regex}
+              onEnabledChange={(enabled) => setRegexEnabled("tabs", enabled)}
+              query={query}
+              onQueryChange={setQuery}
+              onInsert={(snippet) => {
+                const input = inputRef.current;
+                const start = input?.selectionStart ?? query.length;
+                const end = input?.selectionEnd ?? query.length;
+                const next = insertRegexPattern(query, start, end, snippet);
+                setQuery(next.value);
+                requestAnimationFrame(() => {
+                  input?.focus();
+                  input?.setSelectionRange(next.cursor, next.cursor);
+                });
+              }}
+              error={result.patternError}
+              matchCount={result.matches.length}
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Switch id="tab-search-case" checked={caseSensitive} onCheckedChange={setCaseSensitive} />
+              <Switch
+                id="tab-search-case"
+                checked={caseSensitive}
+                onCheckedChange={setCaseSensitive}
+              />
               <Label htmlFor="tab-search-case" className="text-xs">
                 Groß-/Kleinschreibung
               </Label>
@@ -92,19 +115,24 @@ export function TabSearchDialog({
               </Label>
             </div>
             <div className="flex items-center gap-2">
-              <Switch id="tab-search-regex" checked={regex} onCheckedChange={setRegex} />
+              <Switch
+                id="tab-search-regex"
+                checked={regex}
+                onCheckedChange={(checked) => setRegexEnabled("tabs", checked)}
+              />
               <Label htmlFor="tab-search-regex" className="text-xs">
                 Regulärer Ausdruck
               </Label>
             </div>
             <span className="ml-auto tabular-nums">
-              {sources.length} Tab{sources.length === 1 ? "" : "s"} · {result.matches.length} Treffer
+              {sources.length} Tab{sources.length === 1 ? "" : "s"} · {result.matches.length}{" "}
+              Treffer
               {result.truncated ? " (gekürzt)" : ""}
             </span>
           </div>
 
-          {result.invalidPattern && (
-            <p className="text-xs text-destructive">Ungültiger regulärer Ausdruck.</p>
+          {result.patternError && (
+            <p className="text-xs text-destructive">{describeRegexError(result.patternError)}</p>
           )}
 
           <ScrollArea className="h-80 rounded-md border">

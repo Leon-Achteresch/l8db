@@ -1,3 +1,5 @@
+import { compileRegexSearch, type RegexCompileError } from "@/lib/regex-search";
+
 export type GridMatch = {
   rowIndex: number;
   columnId: string;
@@ -13,22 +15,63 @@ export function gridMatchKey(rowIndex: number, columnId: string): string {
   return `${rowIndex}:${columnId}`;
 }
 
-export function findGridMatches(
+export type GridSearchOptions = {
+  regex?: boolean;
+  caseSensitive?: boolean;
+};
+
+export type GridSearchResult = {
+  matches: GridMatch[];
+  error: RegexCompileError | null;
+};
+
+export function runGridSearch(
   rows: Record<string, unknown>[],
   columns: string[],
   query: string,
-): GridMatch[] {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return [];
+  options: GridSearchOptions = {},
+): GridSearchResult {
+  const trimmed = query.trim();
+  if (trimmed === "") return { matches: [], error: null };
+
   const matches: GridMatch[] = [];
+
+  if (options.regex) {
+    const compiled = compileRegexSearch(trimmed, {
+      caseSensitive: options.caseSensitive,
+      global: false,
+    });
+    if (!compiled.ok) return { matches: [], error: compiled.error };
+    rows.forEach((row, rowIndex) => {
+      for (const columnId of columns) {
+        if (compiled.regex.test(gridCellText(row[columnId]))) {
+          matches.push({ rowIndex, columnId });
+        }
+      }
+    });
+    return { matches, error: null };
+  }
+
+  const needle = options.caseSensitive ? trimmed : trimmed.toLowerCase();
   rows.forEach((row, rowIndex) => {
     for (const columnId of columns) {
-      if (gridCellText(row[columnId]).toLowerCase().includes(needle)) {
+      const text = gridCellText(row[columnId]);
+      const haystack = options.caseSensitive ? text : text.toLowerCase();
+      if (haystack.includes(needle)) {
         matches.push({ rowIndex, columnId });
       }
     }
   });
-  return matches;
+  return { matches, error: null };
+}
+
+export function findGridMatches(
+  rows: Record<string, unknown>[],
+  columns: string[],
+  query: string,
+  options: GridSearchOptions = {},
+): GridMatch[] {
+  return runGridSearch(rows, columns, query, options).matches;
 }
 
 export function stepMatchIndex(current: number, total: number, step: number): number {
