@@ -598,4 +598,15 @@ impl DatabaseAdapter for PostgresAdapter {
         })
         .await
     }
+
+    async fn validate_sql(&self, sql: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+            let result = conn.simple_query(sql).await.map_err(map_pg_err);
+            let _ = conn.simple_query("ROLLBACK").await;
+            result.map(|_| ())
+        })
+        .await
+    }
 }
