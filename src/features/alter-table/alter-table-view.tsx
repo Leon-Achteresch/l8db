@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  CheckIcon,
+  ChevronsUpDownIcon,
   KeyRoundIcon,
   PencilIcon,
   PlusIcon,
@@ -23,8 +25,22 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import { useActiveConnection } from "@/lib/connections";
 import {
   addColumn,
@@ -33,9 +49,189 @@ import {
   listTableColumnsDetailed,
   type AddColumnRequest,
   type AlterColumnRequest,
+  type DatabaseKind,
   type DetailedColumnInfo,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+
+interface DataTypeGroup {
+  label: string;
+  types: string[];
+}
+
+const POSTGRES_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: [
+      "smallint",
+      "integer",
+      "bigint",
+      "decimal",
+      "numeric",
+      "real",
+      "double precision",
+      "smallserial",
+      "serial",
+      "bigserial",
+    ],
+  },
+  {
+    label: "Text",
+    types: [
+      "character varying",
+      "varchar",
+      "character",
+      "char",
+      "text",
+      "citext",
+    ],
+  },
+  {
+    label: "Datum / Zeit",
+    types: [
+      "timestamp without time zone",
+      "timestamp with time zone",
+      "date",
+      "time without time zone",
+      "time with time zone",
+      "interval",
+    ],
+  },
+  {
+    label: "Boolean",
+    types: ["boolean"],
+  },
+  {
+    label: "Binär",
+    types: ["bytea"],
+  },
+  {
+    label: "UUID",
+    types: ["uuid"],
+  },
+  {
+    label: "JSON",
+    types: ["json", "jsonb"],
+  },
+  {
+    label: "Netzwerk",
+    types: ["inet", "cidr", "macaddr", "macaddr8"],
+  },
+  {
+    label: "Geometrie",
+    types: ["point", "line", "lseg", "box", "path", "polygon", "circle"],
+  },
+  {
+    label: "Array",
+    types: [
+      "integer[]",
+      "text[]",
+      "boolean[]",
+      "varchar[]",
+      "bigint[]",
+      "uuid[]",
+      "jsonb[]",
+    ],
+  },
+  {
+    label: "Bereich",
+    types: [
+      "int4range",
+      "int8range",
+      "numrange",
+      "tsrange",
+      "tstzrange",
+      "daterange",
+    ],
+  },
+  {
+    label: "Sonstige",
+    types: [
+      "money",
+      "bit",
+      "bit varying",
+      "tsvector",
+      "tsquery",
+      "xml",
+      "oid",
+      "pg_lsn",
+      "pg_snapshot",
+    ],
+  },
+];
+
+function getDataTypeGroups(_kind: DatabaseKind): DataTypeGroup[] {
+  return POSTGRES_TYPES;
+}
+
+interface DataTypeComboboxProps {
+  value: string;
+  onChange: (value: string) => void;
+  kind: DatabaseKind;
+  className?: string;
+}
+
+function DataTypeCombobox({ value, onChange, kind, className }: DataTypeComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const groups = useMemo(() => getDataTypeGroups(kind), [kind]);
+
+  const allTypes = useMemo(
+    () => groups.flatMap((g) => g.types),
+    [groups],
+  );
+
+  const isCustom = value !== "" && !allTypes.includes(value.toLowerCase());
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-7 w-full items-center justify-between rounded-md border border-input bg-background px-2 text-left text-xs ring-offset-background hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className,
+          )}
+        >
+          <span className="truncate font-mono">{value || "Typ wählen…"}</span>
+          <ChevronsUpDownIcon className="ml-1 size-3 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Typ suchen…" className="h-8 text-xs" />
+          <CommandList className="max-h-60">
+            <CommandEmpty>Kein Typ gefunden.</CommandEmpty>
+            {groups.map((group) => (
+              <CommandGroup key={group.label} heading={group.label}>
+                {group.types.map((t) => (
+                  <CommandItem
+                    key={t}
+                    value={t}
+                    onSelect={(v) => {
+                      onChange(v);
+                      setOpen(false);
+                    }}
+                    className="text-xs"
+                  >
+                    <span className="font-mono">{t}</span>
+                    {value.toLowerCase() === t && (
+                      <CheckIcon className="ml-auto size-3.5" />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+        {isCustom && (
+          <div className="border-t px-2 py-1.5 text-[10px] text-muted-foreground">
+            Aktuell: <span className="font-mono">{value}</span>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface AlterTableViewProps {
   schema: string;
@@ -288,11 +484,10 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                 />
               </div>
               <div className="bg-background px-3 py-1.5">
-                <Input
+                <DataTypeCombobox
                   value={addForm.data_type}
-                  onChange={(e) => setAddForm((f) => ({ ...f, data_type: e.target.value }))}
-                  placeholder="text"
-                  className="h-7 text-xs"
+                  onChange={(v) => setAddForm((f) => ({ ...f, data_type: v }))}
+                  kind={connection.kind}
                 />
               </div>
               <div className="flex items-center bg-background px-3 py-1.5">
@@ -344,10 +539,10 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                     />
                   </div>
                   <div className="bg-background px-3 py-1.5">
-                    <Input
+                    <DataTypeCombobox
                       value={editForm.data_type ?? col.data_type}
-                      onChange={(e) => setEditForm((f) => ({ ...f, data_type: e.target.value }))}
-                      className="h-7 text-xs"
+                      onChange={(v) => setEditForm((f) => ({ ...f, data_type: v }))}
+                      kind={connection.kind}
                     />
                   </div>
                   <div className="flex items-center bg-background px-3 py-1.5">
