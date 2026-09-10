@@ -5,7 +5,7 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { buildEditorOptions } from "@/lib/editor-options";
 import { commandById, useHotkeysStore } from "@/lib/hotkeys";
-import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { addSqlFormatAction, monaco, overflowWidgetsDomNode } from "@/lib/monaco";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
@@ -281,6 +281,7 @@ export function QueryEditorPane({
         horizontalScrollbarSize: 8,
       },
       fixedOverflowWidgets: true,
+      overflowWidgetsDomNode,
     });
 
     editorRef.current = editor;
