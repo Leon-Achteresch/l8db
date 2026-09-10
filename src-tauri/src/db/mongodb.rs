@@ -23,7 +23,21 @@ fn map_err(e: mongodb::error::Error) -> String {
 }
 
 fn to_json(bson: Bson) -> serde_json::Value {
-    bson.into_relaxed_extjson()
+    match bson {
+        Bson::Int64(value)
+            if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value) =>
+        {
+            serde_json::json!({ "$numberLong": value.to_string() })
+        }
+        Bson::Document(document) => serde_json::Value::Object(
+            document
+                .into_iter()
+                .map(|(key, value)| (key, to_json(value)))
+                .collect(),
+        ),
+        Bson::Array(values) => serde_json::Value::Array(values.into_iter().map(to_json).collect()),
+        value => value.into_relaxed_extjson(),
+    }
 }
 
 fn parse_document(input: &str, what: &str) -> Result<Document, String> {
@@ -33,8 +47,10 @@ fn parse_document(input: &str, what: &str) -> Result<Document, String> {
     }
     let value: serde_json::Value = serde_json::from_str(trimmed)
         .map_err(|e| format!("{what} muss gültiges JSON sein: {e}"))?;
-    mongodb::bson::to_document(&value)
-        .map_err(|e| format!("{what} konnte nicht gelesen werden: {e}"))
+    match Bson::try_from(value).map_err(|e| format!("{what} konnte nicht gelesen werden: {e}"))? {
+        Bson::Document(document) => Ok(document),
+        _ => Err(format!("{what} muss ein JSON-Objekt sein")),
+    }
 }
 
 fn bson_type(value: &Bson) -> &'static str {
@@ -117,15 +133,16 @@ impl MongoAdapter {
         let coll = client.database(schema).collection::<Document>(table);
         let mut cursor =
             timed(async { coll.find(doc! {}).limit(50).await.map_err(map_err) }).await?;
-        let mut seen: BTreeMap<String, (String, usize)> = BTreeMap::new();
+        let mut seen: BTreeMap<String, (String, usize, bool)> = BTreeMap::new();
         let mut total = 0usize;
         while let Some(document) = cursor.try_next().await.map_err(map_err)? {
             total += 1;
             for (key, value) in document {
                 let entry = seen
                     .entry(key)
-                    .or_insert_with(|| (bson_type(&value).to_string(), 0));
+                    .or_insert_with(|| (bson_type(&value).to_string(), 0, false));
                 entry.1 += 1;
+                entry.2 |= matches!(value, Bson::Null);
                 if entry.0 == "null" {
                     entry.0 = bson_type(&value).to_string();
                 }
@@ -133,7 +150,7 @@ impl MongoAdapter {
         }
         let mut columns: Vec<(String, String, bool)> = seen
             .into_iter()
-            .map(|(name, (ty, count))| (name, ty, count < total))
+            .map(|(name, (ty, count, null))| (name, ty, null || count < total))
             .collect();
         columns.sort_by_key(|(name, _, _)| {
             if name == "_id" {
@@ -207,7 +224,10 @@ impl DatabaseAdapter for MongoAdapter {
         }
         let tables = match table {
             Some(t) => vec![TableInfo {
-                schema: schema.unwrap_or_default().to_string(),
+                schema: match schema {
+                    Some(schema) => schema.to_string(),
+                    None => self.database_name(&self.client().await?).await?,
+                },
                 name: t.to_string(),
             }],
             None => self.list_tables(schema).await?,
@@ -263,6 +283,17 @@ impl DatabaseAdapter for MongoAdapter {
         let client = self.client().await?;
         let query = parse_document(filter.unwrap_or(""), "Der Filter")?;
         let coll = client.database(schema).collection::<Document>(table);
+        if limit <= 0 {
+            return Ok(TableData {
+                columns: self
+                    .sample_columns(schema, table)
+                    .await?
+                    .into_iter()
+                    .map(|(name, _, _)| name)
+                    .collect(),
+                rows: vec![],
+            });
+        }
         let mut find = coll
             .find(query)
             .skip(offset.max(0) as u64)
@@ -336,19 +367,49 @@ impl DatabaseAdapter for MongoAdapter {
         if command.contains_key("aggregate") && !command.contains_key("cursor") {
             command.insert("cursor", doc! {});
         }
-        let result = timed(async {
-            client
-                .database(&db)
-                .run_command(command)
-                .await
-                .map_err(map_err)
-        })
-        .await?;
-        let batch = result
-            .get_document("cursor")
-            .ok()
-            .and_then(|c| c.get_array("firstBatch").ok().cloned())
-            .or_else(|| result.get_array("documents").ok().cloned());
+        let cursor_command = command.keys().next().is_some_and(|name| {
+            matches!(
+                name.as_str(),
+                "find" | "aggregate" | "listCollections" | "listIndexes"
+            )
+        });
+        let (result, batch) = if cursor_command {
+            let items = timed(async {
+                let cursor = client
+                    .database(&db)
+                    .run_cursor_command(command)
+                    .await
+                    .map_err(map_err)?;
+                cursor.try_collect::<Vec<Document>>().await.map_err(map_err)
+            })
+            .await?;
+            (
+                Document::new(),
+                Some(items.into_iter().map(Bson::Document).collect::<Vec<_>>()),
+            )
+        } else {
+            let result = timed(async {
+                client
+                    .database(&db)
+                    .run_command(command)
+                    .await
+                    .map_err(map_err)
+            })
+            .await?;
+            if let Ok(errors) = result.get_array("writeErrors") {
+                if !errors.is_empty() {
+                    return Err(format!("MongoDB: {}", to_json(Bson::Array(errors.clone()))));
+                }
+            }
+            if let Ok(error) = result.get_document("writeConcernError") {
+                return Err(format!(
+                    "MongoDB: {}",
+                    to_json(Bson::Document(error.clone()))
+                ));
+            }
+            let batch = result.get_array("documents").ok().cloned();
+            (result, batch)
+        };
         let (columns, rows) = match batch {
             Some(items) => {
                 let mut columns: Vec<String> = Vec::new();
@@ -372,8 +433,9 @@ impl DatabaseAdapter for MongoAdapter {
                 (columns, vec![to_json(Bson::Document(result))])
             }
         };
-        let affected = rows
-            .first()
+        let affected = (!cursor_command)
+            .then(|| rows.first())
+            .flatten()
             .and_then(|r| r.get("n"))
             .and_then(|n| n.as_u64());
         Ok(QueryResult {
@@ -454,7 +516,12 @@ impl DatabaseAdapter for MongoAdapter {
                     .and_then(|o| o.unique)
                     .unwrap_or(false)
                     || name == "_id_",
-                index_type: "btree".to_string(),
+                index_type: index
+                    .keys
+                    .values()
+                    .find_map(Bson::as_str)
+                    .unwrap_or("btree")
+                    .to_string(),
                 definition: to_json(Bson::Document(index.keys.clone())).to_string(),
                 columns,
                 name,
@@ -485,7 +552,7 @@ mod tests {
         assert_eq!(
             parse_document("{\"a\": 1}", "x")
                 .unwrap()
-                .get_i64("a")
+                .get_i32("a")
                 .unwrap(),
             1
         );
@@ -508,3 +575,11 @@ mod tests {
         assert_eq!(json["t"]["$date"], "1970-01-01T00:00:00Z");
     }
 }
+
+#[cfg(test)]
+#[path = "mongodb_tests.rs"]
+mod integration_tests;
+
+#[cfg(test)]
+#[path = "mongodb_browser_tests.rs"]
+mod browser_tests;

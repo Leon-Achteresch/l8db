@@ -143,13 +143,18 @@ test("Oracle package bodies stay intact at every internal cursor position", () =
 });
 
 test("Oracle packages without a trailing slash remain a single statement", () => {
-  expect(splitSqlStatements(oraclePackage, "oracle").statements.map((s) => s.text)).toEqual([oraclePackage]);
+  expect(splitSqlStatements(oraclePackage, "oracle").statements.map((s) => s.text)).toEqual([
+    oraclePackage,
+  ]);
 });
 
 test("Oracle specification and body are separate compilation units", () => {
   const spec = "CREATE OR REPLACE PACKAGE demo AS PROCEDURE run; END demo;";
   const sql = `${spec}\r\n  /  \r\n${oraclePackage}\r\n/\r\n`;
-  expect(splitSqlStatements(sql, "oracle").statements.map((s) => s.text)).toEqual([spec, oraclePackage]);
+  expect(splitSqlStatements(sql, "oracle").statements.map((s) => s.text)).toEqual([
+    spec,
+    oraclePackage,
+  ]);
 });
 
 test("Oracle anonymous blocks and stored routines retain inner semicolons", () => {
@@ -165,23 +170,57 @@ test("Oracle anonymous blocks and stored routines retain inner semicolons", () =
 });
 
 test("Oracle ordinary SQL still splits at semicolons and ignores slash delimiters", () => {
-  expect(splitSqlStatements("SELECT 4/2 FROM DUAL;\n/\nSELECT 2 FROM DUAL;", "oracle").statements.map((s) => s.text))
-    .toEqual(["SELECT 4/2 FROM DUAL;", "SELECT 2 FROM DUAL;"]);
+  expect(
+    splitSqlStatements("SELECT 4/2 FROM DUAL;\n/\nSELECT 2 FROM DUAL;", "oracle").statements.map(
+      (s) => s.text,
+    ),
+  ).toEqual(["SELECT 4/2 FROM DUAL;", "SELECT 2 FROM DUAL;"]);
   expect(splitSqlStatements("BEGIN; SELECT 1; COMMIT;", "postgres").statements).toHaveLength(3);
 });
 
 test("Oracle alternative quotes preserve apostrophes and report missing delimiters", () => {
-  for (const [open, close] of [["[", "]"], ["{", "}"], ["(", ")"], ["<", ">"], ["!", "!"]]) {
+  for (const [open, close] of [
+    ["[", "]"],
+    ["{", "}"],
+    ["(", ")"],
+    ["<", ">"],
+    ["!", "!"],
+  ]) {
     const sql = `SELECT q'${open}it's; /* text */${close}' FROM DUAL;`;
-    expect(splitSqlStatements(sql, "oracle")).toEqual({ statements: [{ text: sql, start: 0, end: sql.length }], unterminated: false });
+    expect(splitSqlStatements(sql, "oracle")).toEqual({
+      statements: [{ text: sql, start: 0, end: sql.length }],
+      unterminated: false,
+    });
   }
-  expect(splitSqlStatements("SELECT nq'[it's; text]' FROM DUAL;", "oracle").statements).toHaveLength(1);
-  expect(splitSqlStatements("SELECT nq'[it's; text]' FROM DUAL;", "oracle").unterminated).toBe(false);
+  expect(
+    splitSqlStatements("SELECT nq'[it's; text]' FROM DUAL;", "oracle").statements,
+  ).toHaveLength(1);
+  expect(splitSqlStatements("SELECT nq'[it's; text]' FROM DUAL;", "oracle").unterminated).toBe(
+    false,
+  );
   expect(splitSqlStatements("BEGIN x := q'[it's unfinished", "oracle").unterminated).toBe(true);
 });
 
 test("large Oracle packages are not split by inner procedure declarations", () => {
-  const procedures = Array.from({ length: 1500 }, (_, i) => `PROCEDURE p${i} IS BEGIN NULL; END p${i};`).join("\n");
+  const procedures = Array.from(
+    { length: 1500 },
+    (_, i) => `PROCEDURE p${i} IS BEGIN NULL; END p${i};`,
+  ).join("\n");
   const sql = `CREATE OR REPLACE PACKAGE BODY big_package AS\n${procedures}\nEND big_package;`;
   expect(splitSqlStatements(sql, "oracle").statements.map((s) => s.text)).toEqual([sql]);
+});
+
+test("MongoDB commands remain intact with escaped quotes, semicolons and SQL-like text", () => {
+  const command = JSON.stringify({
+    find: "items",
+    filter: { text: 'quote " ; SELECT -- /* $tag$' },
+  });
+  const input = `  ${command}\n`;
+  const result = splitSqlStatements(input, "mongodb");
+  expect(result).toEqual({
+    statements: [{ text: command, start: 2, end: 2 + command.length }],
+    unterminated: false,
+  });
+  expect(statementAtOffset(input, input.indexOf("SELECT"), "mongodb")?.text).toBe(command);
+  expect(splitSqlStatements(" \n ", "mongodb").statements).toEqual([]);
 });

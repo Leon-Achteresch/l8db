@@ -319,8 +319,11 @@ export function QueryView({ tabId }: QueryViewProps) {
   const caps = useCapabilities(connection?.kind);
 
   const dialectLabel = useMemo(
-    () => sqlDialectLabel(sqlDialectForKind(connection?.kind)),
-    [connection?.kind],
+    () =>
+      caps.query_language === "json"
+        ? "MongoDB JSON"
+        : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
+    [connection?.kind, caps.query_language],
   );
 
   const collectOutput = useCallback(async () => {
@@ -1392,6 +1395,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <QueryEditorPane
+                    language={caps.query_language === "json" ? "json" : "sql"}
                     ref={editorApiRef}
                     value={sql}
                     onChange={(v) => {
