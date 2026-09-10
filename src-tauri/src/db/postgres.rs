@@ -1355,7 +1355,7 @@ impl DatabaseAdapter for PostgresAdapter {
             let query = match schema {
                 Some(s) => {
                     conn.query(
-                        "SELECT schemaname, sequencename, data_type, \
+                        "SELECT schemaname, sequencename, data_type::text, \
                                 start_value::text, min_value::text, max_value::text, \
                                 increment_by::text, cycle, last_value::text \
                          FROM pg_sequences \
@@ -1367,7 +1367,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 None => {
                     conn.query(
-                        "SELECT schemaname, sequencename, data_type, \
+                        "SELECT schemaname, sequencename, data_type::text, \
                                 start_value::text, min_value::text, max_value::text, \
                                 increment_by::text, cycle, last_value::text \
                          FROM pg_sequences \
