@@ -1,4 +1,4 @@
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,6 +12,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { ConnectionsProvider } from "@/lib/connections";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 
 export function AppLayout() {
@@ -19,37 +20,39 @@ export function AppLayout() {
   const isAbout = pathname === "/about";
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
+    <ConnectionsProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  {isAbout ? (
+                    <BreadcrumbLink asChild>
+                      <Link to="/">Home</Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <BreadcrumbPage>Home</BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
                 {isAbout ? (
-                  <BreadcrumbLink asChild>
-                    <Link to="/">Home</Link>
-                  </BreadcrumbLink>
-                ) : (
-                  <BreadcrumbPage>Home</BreadcrumbPage>
-                )}
-              </BreadcrumbItem>
-              {isAbout ? (
-                <>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>About</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </>
-              ) : null}
-            </BreadcrumbList>
-          </Breadcrumb>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4">
-          <Outlet />
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>About</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                ) : null}
+              </BreadcrumbList>
+            </Breadcrumb>
+          </header>
+          <div className="flex flex-1 flex-col gap-4 p-4">
+            <Outlet />
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </ConnectionsProvider>
   );
 }
