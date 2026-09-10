@@ -86,18 +86,25 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
   }, []);
 
   const buildDropSql = useCallback(() => {
-    const quotedSchema = `"${schema.replace(/"/g, '""')}"`;
-    const quotedTable = `"${table.replace(/"/g, '""')}"`;
-    const quotedTrigger = `"${triggerName.replace(/"/g, '""')}"`;
-    return `DROP TRIGGER IF EXISTS ${quotedTrigger} ON ${quotedSchema}.${quotedTable};`;
-  }, [schema, table, triggerName]);
+    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    switch (connection?.kind) {
+      case "postgres":
+        return `DROP TRIGGER IF EXISTS ${q(triggerName)} ON ${q(schema)}.${q(table)};\n`;
+      case "sqlite":
+        return `DROP TRIGGER IF EXISTS ${q(schema)}.${q(triggerName)};\n`;
+      case "mysql":
+        return `DROP TRIGGER IF EXISTS \`${schema.replace(/`/g, "``")}\`.\`${triggerName.replace(/`/g, "``")}\`;\n`;
+      default:
+        return "";
+    }
+  }, [connection?.kind, schema, table, triggerName]);
 
   const handleCompile = useCallback(async () => {
     if (!connection) return;
     setValidation({ status: "loading" });
     setExecution({ status: "idle" });
     try {
-      const sql = `${buildDropSql()}\n${currentValue}`;
+      const sql = `${buildDropSql()}${currentValue}`;
       await validateSql(
         connection.kind,
         effectiveConnectionString(connection),
@@ -114,7 +121,7 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     if (!connection) return;
     setExecution({ status: "loading" });
     try {
-      const sql = `${buildDropSql()}\n${currentValue}`;
+      const sql = `${buildDropSql()}${currentValue}`;
       const result = await executeQuery(
         connection.kind,
         effectiveConnectionString(connection),
