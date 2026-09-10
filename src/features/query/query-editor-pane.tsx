@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
-
 import { useTheme } from "next-themes";
+import { useEffect, useRef } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { lintUnknownTables } from "@/lib/sql-lint";
 
 interface SchemaRegistry {
   schemas: string[];
@@ -255,9 +255,7 @@ function quoteIdent(name: string): string {
   return needsQuoting(name) ? `"${name.replace(/"/g, '""')}"` : name;
 }
 
-function analyzeContext(
-  textBeforeCursor: string,
-): "table" | "column" | "general" {
+function analyzeContext(textBeforeCursor: string): "table" | "column" | "general" {
   const withoutCurrentWord = textBeforeCursor.replace(/\w+$/, "");
   const upper = withoutCurrentWord.toUpperCase();
 
@@ -287,10 +285,7 @@ function analyzeContext(
   return "general";
 }
 
-function extractReferencedTableNames(
-  textBeforeCursor: string,
-  tables: TableInfo[],
-): string[] {
+function extractReferencedTableNames(textBeforeCursor: string, tables: TableInfo[]): string[] {
   const result: string[] = [];
   const pattern = /(?:FROM|JOIN)\s+([\w"]+(?:\.[\w"]+)?)/gi;
   let match: RegExpExecArray | null;
@@ -303,8 +298,7 @@ function extractReferencedTableNames(
       result.push(ref);
     }
   }
-  const aliasPattern =
-    /(?:FROM|JOIN)\s+[\w"]+(?:\.[\w"]+)?(?:\s+(?:AS\s+)?(\w+))?/gi;
+  const aliasPattern = /(?:FROM|JOIN)\s+[\w"]+(?:\.[\w"]+)?(?:\s+(?:AS\s+)?(\w+))?/gi;
   while ((match = aliasPattern.exec(textBeforeCursor)) !== null) {
     if (match[1]) {
       const alias = match[1];
@@ -312,12 +306,8 @@ function extractReferencedTableNames(
         .replace(/(?:FROM|JOIN)\s+/i, "")
         .split(/\s+/)[0]
         .replace(/"/g, "");
-      const tablePart = tableRef.includes(".")
-        ? tableRef.split(".")[1]
-        : tableRef;
-      const found = tables.find(
-        (t) => t.name.toLowerCase() === tablePart.toLowerCase(),
-      );
+      const tablePart = tableRef.includes(".") ? tableRef.split(".")[1] : tableRef;
+      const found = tables.find((t) => t.name.toLowerCase() === tablePart.toLowerCase());
       if (found) result.push(alias);
     }
   }
@@ -359,9 +349,7 @@ function buildCompletions(
       endColumn: position.column,
     };
 
-    const isSchema = registry.schemas.some(
-      (s) => s.toLowerCase() === qualifier.toLowerCase(),
-    );
+    const isSchema = registry.schemas.some((s) => s.toLowerCase() === qualifier.toLowerCase());
 
     if (isSchema) {
       for (const table of registry.tables) {
@@ -378,15 +366,12 @@ function buildCompletions(
       }
     } else {
       const aliasMap = new Map<string, string>();
-      const aliasPattern =
-        /(?:FROM|JOIN)\s+([\w"]+(?:\.[\w"]+)?)(?:\s+(?:AS\s+)?(\w+))?/gi;
+      const aliasPattern = /(?:FROM|JOIN)\s+([\w"]+(?:\.[\w"]+)?)(?:\s+(?:AS\s+)?(\w+))?/gi;
       let am: RegExpExecArray | null;
       while ((am = aliasPattern.exec(textBeforeCursor)) !== null) {
         if (am[2]) {
           const tableRef = am[1].replace(/"/g, "");
-          const tablePart = tableRef.includes(".")
-            ? tableRef.split(".")[1]
-            : tableRef;
+          const tablePart = tableRef.includes(".") ? tableRef.split(".")[1] : tableRef;
           aliasMap.set(am[2].toLowerCase(), tablePart);
         }
       }
@@ -466,17 +451,12 @@ function buildCompletions(
       });
     }
   } else {
-    const referencedNames = extractReferencedTableNames(
-      textBeforeCursor,
-      registry.tables,
-    );
+    const referencedNames = extractReferencedTableNames(textBeforeCursor, registry.tables);
     const hasReferenced = referencedNames.length > 0;
 
     for (const col of registry.columns) {
       const isReferenced = hasReferenced
-        ? referencedNames.some(
-            (n) => n.toLowerCase() === col.table.toLowerCase(),
-          )
+        ? referencedNames.some((n) => n.toLowerCase() === col.table.toLowerCase())
         : false;
       suggestions.push({
         label: col.name,
@@ -527,8 +507,7 @@ function buildCompletions(
       kind: monaco.languages.CompletionItemKind.Function,
       detail: fn.signature,
       insertText: `${fn.name}($0)`,
-      insertTextRules:
-        monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
       range,
       sortText: `5_${fn.name}`,
     });
@@ -539,6 +518,28 @@ function buildCompletions(
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
+}
+
+function refreshLintMarkers(editor: monaco.editor.IStandaloneCodeEditor, registry: SchemaRegistry) {
+  const model = editor.getModel();
+  if (!model) return;
+  const findings = lintUnknownTables(model.getValue(), registry.tables);
+  monaco.editor.setModelMarkers(
+    model,
+    "l8db-sql-lint",
+    findings.map((finding) => {
+      const start = model.getPositionAt(finding.offset);
+      const end = model.getPositionAt(finding.offset + finding.length);
+      return {
+        severity: monaco.MarkerSeverity.Warning,
+        message: finding.message,
+        startLineNumber: start.lineNumber,
+        startColumn: start.column,
+        endLineNumber: end.lineNumber,
+        endColumn: end.column,
+      };
+    }),
+  );
 }
 
 export function QueryEditorPane({
@@ -578,8 +579,7 @@ export function QueryEditorPane({
       wordWrap: "on",
       fontSize: 13,
       lineHeight: 24,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
       overviewRulerLanes: 0,
@@ -605,9 +605,16 @@ export function QueryEditorPane({
     });
 
     editorRef.current = editor;
+    refreshLintMarkers(editor, registryRef.current);
 
+    let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
       onChangeRef.current(editor.getValue());
+      if (lintTimer) clearTimeout(lintTimer);
+      lintTimer = setTimeout(() => {
+        const current = editorRef.current;
+        if (current) refreshLintMarkers(current, registryRef.current);
+      }, 500);
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -616,20 +623,15 @@ export function QueryEditorPane({
 
     const formatAction = addSqlFormatAction(editor);
 
-    const completionProvider = monaco.languages.registerCompletionItemProvider(
-      "sql",
-      {
-        triggerCharacters: ["."],
-        provideCompletionItems(
-          model: monaco.editor.ITextModel,
-          position: monaco.Position,
-        ) {
-          return buildCompletions(registryRef.current, model, position);
-        },
+    const completionProvider = monaco.languages.registerCompletionItemProvider("sql", {
+      triggerCharacters: ["."],
+      provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
+        return buildCompletions(registryRef.current, model, position);
       },
-    );
+    });
 
     return () => {
+      if (lintTimer) clearTimeout(lintTimer);
       changeSub.dispose();
       completionProvider.dispose();
       formatAction.dispose();
@@ -646,10 +648,13 @@ export function QueryEditorPane({
   }, [value]);
 
   useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) refreshLintMarkers(editor, registry);
+  }, [registry]);
+
+  useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
 
-  return (
-    <div ref={containerRef} className={className ?? "size-full"} />
-  );
+  return <div ref={containerRef} className={className ?? "size-full"} />;
 }

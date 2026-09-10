@@ -1,23 +1,16 @@
-import { useRef, useState } from "react";
-
 import { BookmarkPlusIcon, XIcon } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTableRowCountQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { VIEW_COLORS, useViewsStore, type SavedView } from "@/lib/views";
+import { type SavedView, useViewsStore, VIEW_COLORS } from "@/lib/views";
 
 function formatCount(count: number): string {
-  if (count >= 1_000_000)
-    return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (count >= 1_000)
-    return `${(count / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   return String(count);
 }
 
@@ -55,17 +48,10 @@ function ViewChip({
           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
       )}
     >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      <span className={active ? "font-medium text-foreground" : ""}>
-        {label}
-      </span>
+      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      <span className={active ? "font-medium text-foreground" : ""}>{label}</span>
       {countQuery.data !== undefined && (
-        <span className="text-xs text-muted-foreground">
-          {formatCount(countQuery.data)}
-        </span>
+        <span className="text-xs text-muted-foreground">{formatCount(countQuery.data)}</span>
       )}
       {onRemove && (
         <span
@@ -153,25 +139,15 @@ export function TableViewsPanel({
         }}
       >
         <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="ml-1 shrink-0"
-            title="View speichern"
-          >
+          <Button variant="ghost" size="icon-sm" className="ml-1 shrink-0" title="View speichern">
             <BookmarkPlusIcon className="size-4" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-64 gap-0 p-3" align="start">
           <div className="mb-2 flex items-center gap-2">
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: nextColor }}
-            />
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: nextColor }} />
             <span className="text-xs text-muted-foreground">
-              {activeFilter.trim() === ""
-                ? "Aktuell kein Filter aktiv"
-                : activeFilter}
+              {activeFilter.trim() === "" ? "Aktuell kein Filter aktiv" : activeFilter}
             </span>
           </div>
           <Input
@@ -184,12 +160,7 @@ export function TableViewsPanel({
             placeholder="View-Name"
             className="mb-2 h-8"
           />
-          <Button
-            size="sm"
-            className="w-full"
-            onClick={handleSave}
-            disabled={!newName.trim()}
-          >
+          <Button size="sm" className="w-full" onClick={handleSave} disabled={!newName.trim()}>
             Speichern
           </Button>
         </PopoverContent>

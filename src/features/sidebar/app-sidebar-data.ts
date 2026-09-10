@@ -1,4 +1,4 @@
-import { Home, Info, Network, SquareTerminalIcon, type LucideIcon } from "lucide-react";
+import { Home, Info, type LucideIcon, Network, SquareTerminalIcon } from "lucide-react";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 
@@ -8,24 +8,10 @@ export type AppSidebarNavItem = {
   icon: LucideIcon;
 };
 
-export type AppSidebarUser = {
-  name: string;
-  email: string;
-  avatar: string;
-};
-
-export const appSidebarData: {
-  user: AppSidebarUser;
-  navMain: AppSidebarNavItem[];
-} = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
+export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
-    { title: "Home", url: "/", icon: Home },
-    { title: "Query Editor", url: "/query", icon: SquareTerminalIcon },
+    { title: "Übersicht", url: "/", icon: Home },
+    { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Über", url: "/about", icon: Info },
   ],

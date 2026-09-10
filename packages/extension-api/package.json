@@ -1,0 +1,21 @@
+{
+  "name": "@l8db/extension-api",
+  "version": "1.0.0",
+  "type": "module",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    },
+    "./manifest": "./src/manifest.ts",
+    "./schema.json": "./schema.json"
+  },
+  "files": [
+    "src",
+    "schema.json"
+  ],
+  "dependencies": {
+    "semver": "^7.8.5"
+  },
+  "license": "MIT"
+}

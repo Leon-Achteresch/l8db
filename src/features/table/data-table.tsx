@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
 import {
   type ColumnDef,
+  flexRender,
+  getCoreRowModel,
   type HeaderContext,
   type OnChangeFn,
   type Row,
   type SortingState,
-  flexRender,
-  getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import {
@@ -25,21 +26,17 @@ import {
   CopyPlusIcon,
   DatabaseIcon,
   ExternalLinkIcon,
-  FilterIcon,
   FingerprintIcon,
   HashIcon,
   KeyIcon,
   LinkIcon,
   Loader2Icon,
   Maximize2Icon,
-  PlayIcon,
-  RotateCcwIcon,
   Trash2Icon,
   TypeIcon,
-  XIcon,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-
 import {
   ContextMenu,
   ContextMenuContent,
@@ -48,17 +45,28 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { fetchTableRows, type ForeignKeyInfo } from "@/lib/db";
+import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
+import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
 import { useActiveConnection } from "@/lib/connections";
+import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { OPERATORS, compileSingleCondition, operatorNeedsValue } from "@/lib/sql-filter";
+import { compileSingleCondition } from "@/lib/sql-filter";
+import { effectiveConnectionString } from "@/lib/ssh";
+import {
+  reorderVisibleColumns,
+  toggleHiddenColumn,
+  useTableColumnLayout,
+} from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
+
+const headerSensors = [
+  PointerSensor.configure({
+    activationConstraints: () => [new PointerActivationConstraints.Distance({ value: 5 })],
+    preventActivation: () => false,
+  }),
+];
 
 type TableRow = Record<string, unknown>;
 
@@ -84,9 +92,7 @@ function renderTypeIcon(iconName: string, className?: string) {
 }
 
 function getColumnTypeInfo(col: string, rows: TableRow[]) {
-  const nonNull = rows
-    .map((r) => r[col])
-    .filter((v) => v !== null && v !== undefined);
+  const nonNull = rows.map((r) => r[col]).filter((v) => v !== null && v !== undefined);
 
   let type: "text" | "number" | "boolean" | "date" | "json" | "key" | "uuid" = "text";
 
@@ -109,7 +115,10 @@ function getColumnTypeInfo(col: string, rows: TableRow[]) {
     } else if (typeof first === "string") {
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(first)) {
         type = "uuid";
-      } else if (!isNaN(Date.parse(first)) && (first.includes("-") || first.includes("T") || first.includes(":"))) {
+      } else if (
+        !Number.isNaN(Date.parse(first)) &&
+        (first.includes("-") || first.includes("T") || first.includes(":"))
+      ) {
         type = "date";
       } else if (col.toLowerCase().endsWith("_id") || col.toLowerCase().endsWith("id")) {
         type = "key";
@@ -212,7 +221,11 @@ function renderValue(value: unknown) {
   }
 
   const str = String(value);
-  if (str.length >= 10 && !isNaN(Date.parse(str)) && (str.includes("-") || str.includes("T") || str.includes(":"))) {
+  if (
+    str.length >= 10 &&
+    !Number.isNaN(Date.parse(str)) &&
+    (str.includes("-") || str.includes("T") || str.includes(":"))
+  ) {
     return (
       <span className="font-mono text-[12px] text-rose-600 dark:text-rose-400 bg-rose-500/[0.03] px-1 py-0.5 rounded border border-rose-500/5">
         {str}
@@ -272,7 +285,7 @@ function FkPreviewPopover({
     const filterSql = formatFkFilter(targetColumn, value);
     fetchTableRows(
       connection.kind,
-      connection.connectionString,
+      effectiveConnectionString(connection),
       targetSchema,
       targetTable,
       filterSql,
@@ -282,7 +295,7 @@ function FkPreviewPopover({
     )
       .then((result) => {
         setPreviewColumns(result.columns);
-        setPreviewData(result.rows[0] as Record<string, unknown> ?? null);
+        setPreviewData((result.rows[0] as Record<string, unknown>) ?? null);
       })
       .catch(() => {
         setPreviewData(null);
@@ -389,8 +402,12 @@ type DataTableProps = {
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   isFetching?: boolean;
-  onSaveRow?: (ctid: string, updates: Record<string, string | null>, oldValues: Record<string, unknown>) => Promise<void>;
-  onApplyFilter?: (where: string) => void;
+  onSaveRow?: (
+    ctid: string,
+    updates: Record<string, string | null>,
+    oldValues: Record<string, unknown>,
+  ) => Promise<void>;
+  onApplyFilter?: (where: string, isRaw: boolean) => void;
   page?: number;
   totalCount?: number;
   pageSize?: number;
@@ -424,8 +441,17 @@ export function DataTable({
   onDuplicateRow,
   onDeleteRow,
 }: DataTableProps) {
+  const connection = useActiveConnection();
+  const { order, hidden, setOrder, setHidden, reset, isCustomized } = useTableColumnLayout(
+    connection?.id,
+    currentSchema,
+    currentTable,
+    columnNames,
+  );
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
-  const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
+  const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(
+    null,
+  );
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
@@ -452,7 +478,10 @@ export function DataTable({
       {
         id: INDEX_COLUMN,
         header: () => (
-          <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase select-none">
+          <span
+            title="Rechtsklick: Spalten"
+            className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase select-none"
+          >
             #
           </span>
         ),
@@ -503,11 +532,14 @@ export function DataTable({
                 </button>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
                   {fk && (
-                    <div className="flex items-center gap-0.5 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap text-blue-500 bg-blue-500/10 border-blue-500/20" title={
-                      fk.from_schema === currentSchema && fk.from_table === currentTable
-                        ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
-                        : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
-                    }>
+                    <div
+                      className="flex items-center gap-0.5 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap text-blue-500 bg-blue-500/10 border-blue-500/20"
+                      title={
+                        fk.from_schema === currentSchema && fk.from_table === currentTable
+                          ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
+                          : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
+                      }
+                    >
                       <LinkIcon className="size-2.5" />
                       <span>fk</span>
                     </div>
@@ -515,7 +547,7 @@ export function DataTable({
                   <div
                     className={cn(
                       "flex items-center gap-1 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap",
-                      typeInfo.colorClass
+                      typeInfo.colorClass,
                     )}
                   >
                     {renderTypeIcon(typeInfo.iconName, "size-2.5")}
@@ -537,41 +569,55 @@ export function DataTable({
                   currentTable={currentTable}
                   onNavigate={onNavigateToTable}
                 >
-                  <div className="truncate text-left">
-                    {renderValue(value)}
-                  </div>
+                  <div className="truncate text-left">{renderValue(value)}</div>
                 </FkPreviewPopover>
               );
             }
-            return (
-              <div className="truncate text-left">
-                {renderValue(value)}
-              </div>
-            );
+            return <div className="truncate text-left">{renderValue(value)}</div>;
           },
         }),
       ),
     ],
-    [columnNames, isFetching, data, page, pageSize, fkByColumn, onNavigateToTable, currentSchema, currentTable],
+    [
+      columnNames,
+      isFetching,
+      data,
+      page,
+      pageSize,
+      fkByColumn,
+      onNavigateToTable,
+      currentSchema,
+      currentTable,
+    ],
+  );
+
+  const columnOrder = useMemo(() => [INDEX_COLUMN, ...order], [order]);
+  const columnVisibility = useMemo(
+    () => Object.fromEntries(hidden.map((column) => [column, false])),
+    [hidden],
   );
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting },
+    state: { sorting, columnOrder, columnVisibility },
     onSortingChange,
     manualSorting: true,
     columnResizeMode: "onChange",
     getRowId: (row, index) => {
-      const ctid = row["__ctid__"] as string | undefined;
+      const ctid = row.__ctid__ as string | undefined;
       return ctid ?? `row-${index}`;
     },
     getCoreRowModel: getCoreRowModel(),
   });
 
   const rows = table.getRowModel().rows;
-  const colSpan = table.getAllColumns().length || 1;
+  const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];
+  const visibleDataColumns = table
+    .getVisibleLeafColumns()
+    .map((column) => column.id)
+    .filter((id) => id !== INDEX_COLUMN);
 
   const handleSaveCell = useCallback(async () => {
     if (!editingCell || !onSaveRow || isSaving) return;
@@ -606,40 +652,38 @@ export function DataTable({
     if (!filterColumn || !onApplyFilter) return;
     const sql = compileSingleCondition(filterColumn, filterOperator, filterValue);
     if (sql) {
-      onApplyFilter(sql);
+      onApplyFilter(sql, false);
     }
     setFilterColumn(null);
   }, [filterColumn, filterOperator, filterValue, onApplyFilter]);
 
   const compiledFilter = useMemo(
-    () => (filterColumn ? (compileSingleCondition(filterColumn, filterOperator, filterValue) ?? "") : ""),
+    () =>
+      filterColumn ? (compileSingleCondition(filterColumn, filterOperator, filterValue) ?? "") : "",
     [filterColumn, filterOperator, filterValue],
   );
 
-  const handleCellEdit = useCallback(
-    (row: Row<TableRow>, columnId: string) => {
-      const ctid = row.original["__ctid__"] as string | undefined;
-      if (!ctid) return;
-      const val = row.original[columnId];
-      let value: string;
-      if (val === null || val === undefined) {
-        value = "";
-      } else if (typeof val === "object") {
-        value = JSON.stringify(val);
-      } else {
-        value = String(val);
-      }
-      setEditingCell({
-        ctid,
-        rowIndex: row.index,
-        columnId,
-        value,
-        originalValues: { ...row.original },
-      });
-      setActiveCell(null);
-    },
-    [],
-  );
+  const handleCellEdit = useCallback((row: Row<TableRow>, columnId: string) => {
+    const ctid = row.original.__ctid__ as string | undefined;
+    if (!ctid) return;
+    const val = row.original[columnId];
+    let value: string;
+    if (val === null || val === undefined) {
+      value = "";
+    } else if (typeof val === "object") {
+      value = JSON.stringify(val);
+    } else {
+      value = String(val);
+    }
+    setEditingCell({
+      ctid,
+      rowIndex: row.index,
+      columnId,
+      value,
+      originalValues: { ...row.original },
+    });
+    setActiveCell(null);
+  }, []);
 
   useEffect(() => {
     if (!editingCell || !tbodyRef.current) return;
@@ -647,9 +691,7 @@ export function DataTable({
       const tbody = tbodyRef.current;
       if (!tbody) return;
       const tr = Array.from(tbody.children).find(
-        (child) =>
-          child instanceof HTMLTableRowElement &&
-          child.dataset.ctid === editingCell.ctid,
+        (child) => child instanceof HTMLTableRowElement && child.dataset.ctid === editingCell.ctid,
       );
       if (tr instanceof HTMLTableRowElement) {
         tr.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -674,7 +716,7 @@ export function DataTable({
 
       if (!activeCell) return;
       const { rowIndex, columnId } = activeCell;
-      const colIndex = columnNames.indexOf(columnId);
+      const colIndex = visibleDataColumns.indexOf(columnId);
 
       if (e.key === "Escape") {
         setActiveCell(null);
@@ -701,11 +743,11 @@ export function DataTable({
         nextColIndex = Math.max(-1, colIndex - 1);
         e.preventDefault();
       } else if (e.key === "ArrowRight") {
-        nextColIndex = Math.min(columnNames.length - 1, colIndex + 1);
+        nextColIndex = Math.min(visibleDataColumns.length - 1, colIndex + 1);
         e.preventDefault();
       }
 
-      const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : columnNames[nextColIndex];
+      const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : visibleDataColumns[nextColIndex];
       if (nextRowIndex !== rowIndex || nextColumnId !== columnId) {
         setActiveCell({ rowIndex: nextRowIndex, columnId: nextColumnId });
       }
@@ -725,7 +767,7 @@ export function DataTable({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeCell, columnNames, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
+  }, [activeCell, visibleDataColumns, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
 
   const handleCellCopy = (val: unknown) => {
     if (val === undefined || val === null) return;
@@ -749,407 +791,337 @@ export function DataTable({
         )}
       >
         <div className="pb-3">
-        <table className="min-w-full border-separate border-spacing-0 text-sm table-fixed" style={{ width: table.getTotalSize() }}>
-          <thead className="sticky top-0 z-10 select-none">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header, index) => (
-                  <ContextMenu key={header.id}>
-                    <Popover
-                      open={filterColumn === header.id}
-                      onOpenChange={(open) => { if (!open) setFilterColumn(null); }}
-                    >
-                      <PopoverAnchor asChild>
-                        <ContextMenuTrigger asChild>
-                          <th
-                            className={cn(
-                              "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs relative",
-                              index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
-                            )}
-                            style={{ width: header.getSize() }}
-                          >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext(),
-                                )}
-                            {header.column.getCanResize() && (
-                              <div
-                                onDoubleClick={() => header.column.resetSize()}
-                                onMouseDown={(e) => {
-                                  e.stopPropagation();
-                                  header.getResizeHandler()(e);
-                                }}
-                                onTouchStart={(e) => {
-                                  e.stopPropagation();
-                                  header.getResizeHandler()(e);
-                                }}
-                                className={cn(
-                                  "absolute -right-px top-0 z-40 h-full w-2 cursor-col-resize select-none touch-none",
-                                  header.column.getIsResizing() ? "bg-primary" : "bg-transparent hover:bg-primary/30",
-                                )}
+          <DragDropProvider
+            sensors={headerSensors}
+            onDragEnd={(event) => {
+              const { operation, canceled } = event;
+              if (canceled || !isSortable(operation.source)) return;
+              const source = operation.source;
+              if (source.initialIndex === source.index) return;
+              setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
+            }}
+          >
+          <table
+            className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
+            style={{ width: table.getTotalSize() }}
+          >
+            <thead className="sticky top-0 z-10 select-none">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers
+                    .filter((header) => header.column.getIsVisible())
+                    .map((header) => {
+                      if (header.id === INDEX_COLUMN) {
+                        return (
+                          <ContextMenu key={header.id}>
+                            <ContextMenuTrigger asChild>
+                              <th
+                                title="Rechtsklick: Spalten"
+                                className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted/95 px-3 py-2 text-center align-middle backdrop-blur-md shadow-xs"
+                                style={{ width: header.getSize() }}
+                              >
+                                {header.isPlaceholder
+                                  ? null
+                                  : flexRender(header.column.columnDef.header, header.getContext())}
+                              </th>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-64">
+                              <DataTableColumnSettings
+                                columns={order}
+                                hidden={hidden}
+                                isCustomized={isCustomized}
+                                onToggle={(column) =>
+                                  setHidden(toggleHiddenColumn(order, hidden, column))
+                                }
+                                onReorder={setOrder}
+                                onReset={reset}
+                                onShowAll={() => setHidden([])}
                               />
-                            )}
-                          </th>
-                        </ContextMenuTrigger>
-                      </PopoverAnchor>
-                      {index > 0 && onApplyFilter && (
-                        <PopoverContent align="start" sideOffset={4} className="w-80 p-0 gap-0">
-                          <div className="flex items-center gap-2 border-b px-3 py-2">
-                            <FilterIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="font-mono text-[12px] font-semibold text-foreground/80 truncate">{header.id}</span>
-                          </div>
-                          <div className="space-y-2 px-3 py-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="shrink-0 text-xs text-muted-foreground w-6">Wo</span>
-                              <NativeSelect
-                                size="sm"
-                                value={filterOperator}
-                                onChange={(e) => setFilterOperator(e.target.value)}
-                                className="min-w-44 flex-1"
-                              >
-                                {OPERATORS.map((op) => (
-                                  <NativeSelectOption key={op.key} value={op.key}>
-                                    {op.label}
-                                  </NativeSelectOption>
-                                ))}
-                              </NativeSelect>
-                              {operatorNeedsValue(filterOperator) ? (
-                                <Input
-                                  value={filterValue}
-                                  onChange={(e) => setFilterValue(e.target.value)}
-                                  placeholder="Wert"
-                                  autoFocus
-                                  className="h-8 w-full min-w-0"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") applyColumnFilter();
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full" />
-                              )}
-                            </div>
-                            <p className="font-mono text-xs text-muted-foreground">
-                              {compiledFilter !== "" ? `WHERE ${compiledFilter}` : ""}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setFilterColumn(null)}
-                            >
-                              <RotateCcwIcon />
-                              Abbrechen
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={applyColumnFilter}
-                              disabled={operatorNeedsValue(filterOperator) && filterValue.trim() === ""}
-                            >
-                              <PlayIcon />
-                              Filter anwenden
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      )}
-                    </Popover>
-                    <ContextMenuContent>
-                      {index > 0 && (
-                        <>
-                          <ContextMenuLabel className="font-mono text-[11px]">{header.id}</ContextMenuLabel>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            onClick={() => onSortingChange([{ id: header.id, desc: false }])}
-                            disabled={isFetching}
-                          >
-                            <ArrowUpIcon />
-                            Aufsteigend sortieren
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onClick={() => onSortingChange([{ id: header.id, desc: true }])}
-                            disabled={isFetching}
-                          >
-                            <ArrowDownIcon />
-                            Absteigend sortieren
-                          </ContextMenuItem>
-                          {sorting.length > 0 && (
-                            <ContextMenuItem onClick={() => onSortingChange([])}>
-                              <XIcon />
-                              Sortierung entfernen
-                            </ContextMenuItem>
-                          )}
-                          {onApplyFilter && (
-                            <>
-                              <ContextMenuSeparator />
-                              <ContextMenuItem
-                                onClick={() => {
-                                  setFilterColumn(header.id);
-                                  setFilterOperator("eq");
-                                  setFilterValue("");
-                                }}
-                              >
-                                <FilterIcon />
-                                Filter setzen…
-                              </ContextMenuItem>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </ContextMenuContent>
-                  </ContextMenu>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody ref={tbodyRef}>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={colSpan}
-                  className="px-3 py-16 text-center text-muted-foreground bg-background"
-                >
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => {
-                const rowIndex = row.index;
-                const rowCtid = row.original["__ctid__"] as string | undefined;
-                const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
-                const hasRowActions =
-                  !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
-
-                const rowEl = (
-                  <tr
-                    key={rowCtid ?? row.id}
-                    data-row-index={rowIndex}
-                    data-ctid={rowCtid}
-                    className={cn(
-                      "group/row",
-                      isRowEditing
-                        ? "bg-primary/[0.03]"
-                        : "bg-background hover:bg-muted/15",
-                    )}
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      }
+                      return (
+                        <DataTableHeaderCell
+                          key={header.id}
+                          header={header}
+                          sortableIndex={visibleDataColumns.indexOf(header.id)}
+                          isFetching={isFetching}
+                          sorting={sorting}
+                          onSortingChange={onSortingChange}
+                          filterOpen={filterColumn === header.id}
+                          onFilterOpenChange={(open) => {
+                            if (open) setFilterColumn(header.id);
+                            else setFilterColumn(null);
+                          }}
+                          filterOperator={filterOperator}
+                          onFilterOperatorChange={setFilterOperator}
+                          filterValue={filterValue}
+                          onFilterValueChange={setFilterValue}
+                          compiledFilter={
+                            filterColumn === header.id ? compiledFilter : ""
+                          }
+                          onApplyFilter={onApplyFilter}
+                          onApplyColumnFilter={applyColumnFilter}
+                          onHideColumn={() =>
+                            setHidden(toggleHiddenColumn(order, hidden, header.id))
+                          }
+                          canHide={visibleDataColumns.length > 1}
+                        />
+                      );
+                    })}
+                </tr>
+              ))}
+            </thead>
+            <tbody ref={tbodyRef}>
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={colSpan}
+                    className="px-3 py-16 text-center text-muted-foreground bg-background"
                   >
-                    {row.getVisibleCells().map((cell, cellIndex) => {
-                      const columnId = cell.column.id;
-                      const value =
-                        cellIndex > 0 ? row.getValue(columnId) : undefined;
-                      const isCellEditing =
-                        isRowEditing && editingCell?.columnId === columnId;
-                      const isActive =
-                        !isRowEditing &&
-                        activeCell?.rowIndex === rowIndex &&
-                        activeCell.columnId === columnId;
+                    {emptyMessage}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => {
+                  const rowIndex = row.index;
+                  const rowCtid = row.original.__ctid__ as string | undefined;
+                  const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
+                  const hasRowActions = !!rowCtid && (!!onDuplicateRow || !!onDeleteRow);
 
-                      if (isCellEditing && editingCell) {
+                  const rowEl = (
+                    <tr
+                      key={rowCtid ?? row.id}
+                      data-row-index={rowIndex}
+                      data-ctid={rowCtid}
+                      className={cn(
+                        "group/row",
+                        isRowEditing ? "bg-primary/[0.03]" : "bg-background hover:bg-muted/15",
+                      )}
+                    >
+                      {row.getVisibleCells().map((cell, cellIndex) => {
+                        const columnId = cell.column.id;
+                        const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+                        const isCellEditing = isRowEditing && editingCell?.columnId === columnId;
+                        const isActive =
+                          !isRowEditing &&
+                          activeCell?.rowIndex === rowIndex &&
+                          activeCell.columnId === columnId;
+
+                        if (isCellEditing && editingCell) {
+                          return (
+                            <td
+                              key={cell.id}
+                              style={{ width: cell.column.getSize() }}
+                              className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
+                            >
+                              <div className="flex flex-col">
+                                <input
+                                  type="text"
+                                  value={editingCell.value}
+                                  onChange={(e) =>
+                                    setEditingCell((prev) =>
+                                      prev ? { ...prev, value: e.target.value } : prev,
+                                    )
+                                  }
+                                  disabled={isSaving}
+                                  placeholder="NULL"
+                                  className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
+                                />
+                                <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
+                                  <span className="flex items-center gap-1">
+                                    <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+                                      ↵
+                                    </kbd>
+                                    <span>Speichern</span>
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+                                      esc
+                                    </kbd>
+                                    <span>Abbrechen</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        }
+
                         return (
                           <td
                             key={cell.id}
-                            style={{ width: cell.column.getSize() }}
-                            className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
-                          >
-                            <div className="flex flex-col">
-                              <input
-                                type="text"
-                                value={editingCell.value}
-                                onChange={(e) =>
-                                  setEditingCell((prev) =>
-                                    prev ? { ...prev, value: e.target.value } : prev,
-                                  )
-                                }
-                                disabled={isSaving}
-                                placeholder="NULL"
-                                autoFocus
-                                className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
-                              />
-                              <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
-                                <span className="flex items-center gap-1">
-                                  <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">↵</kbd>
-                                  <span>Speichern</span>
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">esc</kbd>
-                                  <span>Abbrechen</span>
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                        );
-                      }
-
-                      return (
-                        <td
-                          key={cell.id}
-                          onClick={() => {
-                            if (editingCell) setEditingCell(null);
-                            setActiveCell({ rowIndex, columnId });
-                          }}
-                          onDoubleClick={onSaveRow && cellIndex > 0 ? (e) => {
-                            e.stopPropagation();
-                            handleCellEdit(row, columnId);
-                          } : undefined}
-                          style={{ width: cell.column.getSize() }}
-                          className={cn(
-                            "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
-                            cellIndex === 0 &&
-                              "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
-                            isActive && "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-                            !isActive && cellIndex > 0 && "hover:bg-muted/10",
-                          )}
-                        >
-                          <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
-                            <div className="min-w-0 flex-1 truncate text-left">
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext(),
-                              )}
-                            </div>
-                            {isActive && cellIndex > 0 && (
-                              <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
+                            onClick={() => {
+                              if (editingCell) setEditingCell(null);
+                              setActiveCell({ rowIndex, columnId });
+                            }}
+                            onDoubleClick={
+                              onSaveRow && cellIndex > 0
+                                ? (e) => {
                                     e.stopPropagation();
-                                    handleCellCopy(value);
-                                  }}
-                                  title="Kopieren"
-                                  className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                >
-                                  <CopyIcon className="size-3" />
-                                </button>
-                                {value !== null && (typeof value === "object" || (typeof value === "string" && value.length > 50)) && (
+                                    handleCellEdit(row, columnId);
+                                  }
+                                : undefined
+                            }
+                            style={{ width: cell.column.getSize() }}
+                            className={cn(
+                              "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
+                              cellIndex === 0 &&
+                                "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
+                              isActive &&
+                                "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
+                              !isActive && cellIndex > 0 && "hover:bg-muted/10",
+                            )}
+                          >
+                            <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
+                              <div className="min-w-0 flex-1 truncate text-left">
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </div>
+                              {isActive && cellIndex > 0 && (
+                                <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setInspectCell({ columnName: columnId, value });
+                                      handleCellCopy(value);
                                     }}
-                                    title="Anzeigen"
+                                    title="Kopieren"
                                     className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                                   >
-                                    <Maximize2Icon className="size-3" />
+                                    <CopyIcon className="size-3" />
                                   </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
+                                  {value !== null &&
+                                    (typeof value === "object" ||
+                                      (typeof value === "string" && value.length > 50)) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setInspectCell({ columnName: columnId, value });
+                                        }}
+                                        title="Anzeigen"
+                                        className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                                      >
+                                        <Maximize2Icon className="size-3" />
+                                      </button>
+                                    )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
 
-                if (!hasRowActions) {
-                  return rowEl;
-                }
+                  if (!hasRowActions) {
+                    return rowEl;
+                  }
 
-                return (
-                  <ContextMenu key={rowCtid ?? row.id}>
-                    <ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuLabel className="font-mono text-[11px]">
-                        Zeile {rowIndex + 1 + page * pageSize}
-                      </ContextMenuLabel>
-                      <ContextMenuSeparator />
-                      {onDuplicateRow && (
-                        <ContextMenuItem
-                          onClick={() => onDuplicateRow(rowCtid!)}
-                        >
-                          <CopyPlusIcon />
-                          Zeile duplizieren
-                        </ContextMenuItem>
-                      )}
-                      {onDeleteRow && (
-                        <ContextMenuItem
-                          variant="destructive"
-                          onClick={() => onDeleteRow(rowCtid!, row.original)}
-                        >
-                          <Trash2Icon />
-                          Zeile löschen
-                        </ContextMenuItem>
-                      )}
-                    </ContextMenuContent>
-                  </ContextMenu>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                  return (
+                    <ContextMenu key={rowCtid ?? row.id}>
+                      <ContextMenuTrigger asChild>{rowEl}</ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuLabel className="font-mono text-[11px]">
+                          Zeile {rowIndex + 1 + page * pageSize}
+                        </ContextMenuLabel>
+                        <ContextMenuSeparator />
+                        {onDuplicateRow && (
+                          <ContextMenuItem onClick={() => onDuplicateRow(rowCtid!)}>
+                            <CopyPlusIcon />
+                            Zeile duplizieren
+                          </ContextMenuItem>
+                        )}
+                        {onDeleteRow && (
+                          <ContextMenuItem
+                            variant="destructive"
+                            onClick={() => onDeleteRow(rowCtid!, row.original)}
+                          >
+                            <Trash2Icon />
+                            Zeile löschen
+                          </ContextMenuItem>
+                        )}
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+          </DragDropProvider>
         </div>
       </div>
-      {rows.length > 0 && (() => {
-        const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
-        const rangeStart = page * pageSize + 1;
-        const rangeEnd = page * pageSize + rows.length;
-        return (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
-          <span>
-            {totalCount != null
-              ? `${rangeStart}–${rangeEnd} von ${totalCount}`
-              : `${rows.length} ${rows.length === 1 ? "Zeile" : "Zeilen"}`}
-          </span>
-          {isFetching ? (
-            <span>Lade…</span>
-          ) : activeSort ? (
-            <span className="truncate">
-              Sortiert nach{" "}
-              <span className="font-mono font-semibold text-foreground bg-muted border border-border rounded px-1 py-[1px]">
-                {activeSort.id}
-              </span>{" "}
-              ({activeSort.desc ? "absteigend" : "aufsteigend"})
-            </span>
-          ) : (
-            <span>
-              {onSaveRow
-                ? "Pfeiltasten navigieren · Enter oder Doppelklick zum Bearbeiten"
-                : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
-            </span>
-          )}
-          {onPageChange && totalPages != null && totalPages > 1 && (
-            <div className="flex items-center gap-1">
-              <span className="mr-1">Seite {page + 1} / {totalPages}</span>
-              <button
-                type="button"
-                disabled={page === 0}
-                onClick={() => onPageChange(0)}
-                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              >
-                <ChevronFirstIcon className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={page === 0}
-                onClick={() => onPageChange(page - 1)}
-                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              >
-                <ChevronLeftIcon className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages - 1}
-                onClick={() => onPageChange(page + 1)}
-                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              >
-                <ChevronRightIcon className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages - 1}
-                onClick={() => onPageChange(totalPages - 1)}
-                className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              >
-                <ChevronLastIcon className="size-3.5" />
-              </button>
+      {rows.length > 0 &&
+        (() => {
+          const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
+          const rangeStart = page * pageSize + 1;
+          const rangeEnd = page * pageSize + rows.length;
+          return (
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
+              <span>
+                {totalCount != null
+                  ? `${rangeStart}–${rangeEnd} von ${totalCount}`
+                  : `${rows.length} ${rows.length === 1 ? "Zeile" : "Zeilen"}`}
+              </span>
+              {isFetching ? (
+                <span>Lade…</span>
+              ) : activeSort ? (
+                <span className="truncate">
+                  Sortiert nach{" "}
+                  <span className="font-mono font-semibold text-foreground bg-muted border border-border rounded px-1 py-[1px]">
+                    {activeSort.id}
+                  </span>{" "}
+                  ({activeSort.desc ? "absteigend" : "aufsteigend"})
+                </span>
+              ) : (
+                <span>
+                  {onSaveRow
+                    ? "Pfeiltasten navigieren · Enter oder Doppelklick zum Bearbeiten"
+                    : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
+                </span>
+              )}
+              {onPageChange && totalPages != null && totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <span className="mr-1">
+                    Seite {page + 1} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={page === 0}
+                    onClick={() => onPageChange(0)}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    <ChevronFirstIcon className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page === 0}
+                    onClick={() => onPageChange(page - 1)}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    <ChevronLeftIcon className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => onPageChange(page + 1)}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    <ChevronRightIcon className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => onPageChange(totalPages - 1)}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    <ChevronLastIcon className="size-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        );
-      })()}
+          );
+        })()}
 
       {inspectCell && (
         <Dialog open={true} onOpenChange={() => setInspectCell(null)}>
@@ -1157,7 +1129,8 @@ export function DataTable({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base font-semibold">
                 <DatabaseIcon className="size-4 text-primary" />
-                Spalte: <span className="font-mono text-primary font-bold">{inspectCell.columnName}</span>
+                Spalte:{" "}
+                <span className="font-mono text-primary font-bold">{inspectCell.columnName}</span>
               </DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-3 my-1">
@@ -1166,7 +1139,10 @@ export function DataTable({
                 <button
                   type="button"
                   onClick={() => {
-                    const stringVal = typeof inspectCell.value === "object" ? JSON.stringify(inspectCell.value, null, 2) : String(inspectCell.value);
+                    const stringVal =
+                      typeof inspectCell.value === "object"
+                        ? JSON.stringify(inspectCell.value, null, 2)
+                        : String(inspectCell.value);
                     void navigator.clipboard.writeText(stringVal);
                     toast.success("Kopiert!");
                   }}

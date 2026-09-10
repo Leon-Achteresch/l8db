@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { useNavigate } from "@tanstack/react-router";
 import {
   Code2Icon,
@@ -15,8 +13,7 @@ import {
   TableIcon,
   Trash2Icon,
 } from "lucide-react";
-
-import { SqlEditor } from "@/features/table/sql-editor";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,18 +25,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
+import { SqlEditor } from "@/features/table/sql-editor";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
-import {
-  OPERATORS,
-  compileSingleCondition,
-  operatorNeedsValue,
-} from "@/lib/sql-filter";
+import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -61,10 +58,7 @@ function emptyCondition(column = ""): Condition {
 type Combinator = "AND" | "OR";
 type FilterMode = "simple" | "sql";
 
-function compileConditions(
-  conditions: Condition[],
-  combinator: Combinator,
-): string {
+function compileConditions(conditions: Condition[], combinator: Combinator): string {
   const parts = conditions
     .map((c) => compileSingleCondition(c.column, c.operator, c.value))
     .filter((part): part is string => part !== null);
@@ -72,10 +66,7 @@ function compileConditions(
   return parts.join(` ${combinator} `);
 }
 
-function parsePatterns(
-  raw: string,
-  useRegex: boolean,
-): ((name: string) => boolean)[] {
+function parsePatterns(raw: string, useRegex: boolean): ((name: string) => boolean)[] {
   const parts = raw
     .split(";")
     .map((s) => s.trim())
@@ -211,11 +202,10 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     [conditions, combinator],
   );
   const whereClause = filterMode === "sql" ? sql.trim() : compiledSimple;
+  const whereIsRaw = filterMode === "sql";
 
   const updateCondition = (id: string, patch: Partial<Condition>) => {
-    setConditions((cur) =>
-      cur.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    );
+    setConditions((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
   const addCondition = () => {
@@ -242,15 +232,12 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     setSql("");
   };
 
-  const handleSelectEntity = useCallback(
-    (entity: MatchedEntity) => {
-      setSelectedEntity(entity);
-      setConditions([emptyCondition()]);
-      setCombinator("AND");
-      setSql("");
-    },
-    [],
-  );
+  const handleSelectEntity = useCallback((entity: MatchedEntity) => {
+    setSelectedEntity(entity);
+    setConditions([emptyCondition()]);
+    setCombinator("AND");
+    setSql("");
+  }, []);
 
   const handleOpen = useCallback(() => {
     if (!selectedEntity) return;
@@ -266,9 +253,10 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
       search: {
         type: selectedEntity.type,
         ...(whereClause ? { fkFilter: whereClause } : {}),
+        ...(whereClause && whereIsRaw ? { fkRaw: true } : {}),
       },
     });
-  }, [selectedEntity, whereClause, openTab, onOpenChange, navigate]);
+  }, [selectedEntity, whereClause, whereIsRaw, openTab, onOpenChange, navigate]);
 
   const handleOpenDirect = useCallback(
     (entity: MatchedEntity) => {
@@ -382,9 +370,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                             {entity.schema}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {entity.name}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium">{entity.name}</span>
                         </button>
                         {entity.matchingColumns.length > 0 && (
                           <div className="ml-7 border-l border-border/40 py-0.5 pl-2">
@@ -427,10 +413,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                   )}
                 </div>
                 <div className="border-b px-3 py-2">
-                  <Tabs
-                    value={filterMode}
-                    onValueChange={(v) => switchFilterMode(v as FilterMode)}
-                  >
+                  <Tabs value={filterMode} onValueChange={(v) => switchFilterMode(v as FilterMode)}>
                     <TabsList className="w-full">
                       <TabsTrigger value="simple" className="flex-1">
                         <SlidersHorizontalIcon className="size-3" />
@@ -449,67 +432,69 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                     {filterMode === "simple" ? (
                       <>
                         {conditions.map((condition, index) => (
-                          <div
-                            key={condition.id}
-                            className="flex flex-col gap-1.5"
-                          >
+                          <div key={condition.id} className="flex flex-col gap-1.5">
                             <div className="text-[10px] text-muted-foreground">
                               {index === 0 ? (
                                 "Wo"
                               ) : (
-                                <NativeSelect
-                                  size="sm"
+                                <Select
                                   value={combinator}
-                                  onChange={(e) =>
-                                    setCombinator(e.target.value as Combinator)
+                                  onValueChange={(value) =>
+                                    setCombinator(value as Combinator)
                                   }
-                                  className="w-20"
                                 >
-                                  <NativeSelectOption value="AND">
-                                    und
-                                  </NativeSelectOption>
-                                  <NativeSelectOption value="OR">
-                                    oder
-                                  </NativeSelectOption>
-                                </NativeSelect>
+                                  <SelectTrigger size="sm" className="w-20">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent position="popper">
+                                    <SelectItem value="AND">und</SelectItem>
+                                    <SelectItem value="OR">oder</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <NativeSelect
-                                size="sm"
+                              <Select
                                 value={condition.column}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                   updateCondition(condition.id, {
-                                    column: e.target.value,
+                                    column: value,
                                   })
                                 }
-                                className="min-w-0 flex-1"
                               >
-                                <NativeSelectOption value="" disabled>
-                                  Spalte...
-                                </NativeSelectOption>
-                                {selectedColumns.map((col) => (
-                                  <NativeSelectOption key={col} value={col}>
-                                    {col}
-                                  </NativeSelectOption>
-                                ))}
-                              </NativeSelect>
-                              <NativeSelect
-                                size="sm"
+                                <SelectTrigger size="sm" className="min-w-0 flex-1">
+                                  <SelectValue placeholder="Spalte..." />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  {selectedColumns.map((col) => (
+                                    <SelectItem key={col} value={col}>
+                                      {col}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select
                                 value={condition.operator}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                   updateCondition(condition.id, {
-                                    operator: e.target.value,
+                                    operator: value,
                                   })
                                 }
-                                className="w-auto min-w-0 shrink-0"
                               >
-                                {OPERATORS.map((op) => (
-                                  <NativeSelectOption key={op.key} value={op.key}>
-                                    {op.label}
-                                  </NativeSelectOption>
-                                ))}
-                              </NativeSelect>
+                                <SelectTrigger
+                                  size="sm"
+                                  className="w-auto min-w-0 shrink-0"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  {OPERATORS.map((op) => (
+                                    <SelectItem key={op.key} value={op.key}>
+                                      {op.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -577,11 +562,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                     <RotateCcwIcon />
                   </Button>
                   <div className="flex-1" />
-                  <Button
-                    type="button"
-                    size="xs"
-                    onClick={handleOpen}
-                  >
+                  <Button type="button" size="xs" onClick={handleOpen}>
                     <PlayIcon />
                     Offnen
                   </Button>
@@ -593,9 +574,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 <p className="text-xs text-muted-foreground">
                   Tabelle auswahlen um Filter zu setzen
                 </p>
-                <p className="text-[10px] text-muted-foreground/60">
-                  Doppelklick offnet direkt
-                </p>
+                <p className="text-[10px] text-muted-foreground/60">Doppelklick offnet direkt</p>
               </div>
             )}
           </div>
@@ -607,9 +586,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
             mehrere Muster
           </span>
           <span>Doppelklick = direkt offnen</span>
-          {useRegex && (
-            <span className="ml-auto font-mono text-blue-400/70">regex</span>
-          )}
+          {useRegex && <span className="ml-auto font-mono text-blue-400/70">regex</span>}
         </div>
       </DialogContent>
     </Dialog>

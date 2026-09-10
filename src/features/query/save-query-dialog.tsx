@@ -17,11 +17,7 @@ interface SaveQueryDialogProps {
   onSave: (name: string) => void;
 }
 
-export function SaveQueryDialog({
-  open,
-  onOpenChange,
-  onSave,
-}: SaveQueryDialogProps) {
+export function SaveQueryDialog({ open, onOpenChange, onSave }: SaveQueryDialogProps) {
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,18 +55,10 @@ export function SaveQueryDialog({
           />
         </div>
         <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Abbrechen
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!name.trim()}
-          >
+          <Button size="sm" onClick={handleSave} disabled={!name.trim()}>
             Speichern
           </Button>
         </DialogFooter>
