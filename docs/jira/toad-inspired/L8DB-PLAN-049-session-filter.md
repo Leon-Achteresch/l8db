@@ -1,7 +1,7 @@
 # L8DB-PLAN-049: Sitzungsliste nach Nutzer, App und Status filtern
 
 Typ: Story · Priorität: **P2** · Schätzung: **2 SP** · Bereich: Sessions
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

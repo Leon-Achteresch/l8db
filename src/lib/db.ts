@@ -1267,6 +1267,7 @@ export interface SessionInfo {
   transaction_start: string | null;
   wait_event: string | null;
   is_self: boolean;
+  blocked_by: number[];
 }
 
 export async function listSessions(
