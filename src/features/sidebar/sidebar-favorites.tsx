@@ -43,13 +43,12 @@ export function SidebarFavorites() {
   const remove = useObjectFavoritesStore((state) => state.remove);
   const move = useObjectFavoritesStore((state) => state.move);
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
-  const { data: objects } = useAllSchemaObjectsQuery();
-  const { data: matviews } = useMaterializedViewsQuery();
-
   const scoped = useMemo(
     () => favoritesFor(favorites, connection?.id, database),
     [favorites, connection?.id, database],
   );
+  const { data: objects } = useAllSchemaObjectsQuery(scoped.length > 0);
+  const { data: matviews } = useMaterializedViewsQuery();
 
   const known = useMemo(() => {
     const set = new Set<string>();

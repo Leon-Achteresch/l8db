@@ -31,7 +31,7 @@ export function AppHeaderSearch() {
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const [objectSearchOpen, setObjectSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const { data: objects } = useAllSchemaObjectsQuery();
+  const { data: objects } = useAllSchemaObjectsQuery(open);
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
 

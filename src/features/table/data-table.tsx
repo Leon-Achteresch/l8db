@@ -7,9 +7,7 @@ import {
   flexRender,
   getCoreRowModel,
   type HeaderContext,
-  type OnChangeFn,
   type Row,
-  type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -24,7 +22,6 @@ import {
   ChevronLastIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CopyIcon,
   CopyPlusIcon,
   ExternalLinkIcon,
   FingerprintIcon,
@@ -32,7 +29,6 @@ import {
   KeyIcon,
   LinkIcon,
   Loader2Icon,
-  Maximize2Icon,
   SearchIcon,
   Trash2Icon,
   TypeIcon,
@@ -51,6 +47,14 @@ import {
 } from "@/components/ui/context-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { CellValueDialog } from "@/features/table/cell-value-dialog";
+import { DataTableRow } from "./data-table-row";
+import type {
+  DataTableProps,
+  EditingCell,
+  FkPickerCell,
+  InspectCell,
+  TableRow,
+} from "./data-table-types";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
 import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
@@ -61,16 +65,16 @@ import {
   autoRefreshPauseReason,
   shouldAutoRefresh,
 } from "@/lib/auto-refresh";
-import { buildRowUpdates, isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
+import { buildRowUpdates } from "@/lib/cell-editor";
+import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useActiveConnection } from "@/lib/connections";
-import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
+import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
 import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
 import {
   describeSelectionStats,
   type GridCellRef,
-  isCellInSelection,
   selectionCellCount,
   selectionRange,
   selectionToTsv,
@@ -96,8 +100,6 @@ const headerSensors = [
     preventActivation: () => false,
   }),
 ];
-
-type TableRow = Record<string, unknown>;
 
 const INDEX_COLUMN = "__row_index__";
 
@@ -421,57 +423,6 @@ function FkPreviewPopover({
   );
 }
 
-type EditingCell = {
-  ctid: string;
-  rowIndex: number;
-  columnId: string;
-  value: string;
-  originalValues: Record<string, unknown>;
-};
-
-type InspectCell = {
-  columnName: string;
-  value: unknown;
-  ctid?: string;
-  originalValues?: Record<string, unknown>;
-};
-
-type FkPickerCell = {
-  columnName: string;
-  ctid: string;
-  originalValues: Record<string, unknown>;
-  currentValue: string | null;
-};
-
-type DataTableProps = {
-  columns: string[];
-  data: TableRow[];
-  emptyMessage: string;
-  className?: string;
-  sorting: SortingState;
-  onSortingChange: OnChangeFn<SortingState>;
-  isFetching?: boolean;
-  onSaveRow?: (
-    ctid: string,
-    updates: Record<string, string | null>,
-    oldValues: Record<string, unknown>,
-  ) => Promise<void>;
-  onApplyFilter?: (where: string, isRaw: boolean) => void;
-  page?: number;
-  totalCount?: number;
-  pageSize?: number;
-  onPageChange?: (page: number) => void;
-  foreignKeys?: ForeignKeyInfo[];
-  currentSchema?: string;
-  currentTable?: string;
-  onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
-  onDuplicateRow?: (ctid: string) => void;
-  onDuplicateRowToEdit?: (ctid: string, values: Record<string, unknown>) => void;
-  onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
-  onRefresh?: () => void | Promise<void>;
-  columnDetails?: DetailedColumnInfo[];
-};
-
 export function DataTable({
   columns: columnNames,
   data,
@@ -743,15 +694,29 @@ export function DataTable({
   } | null>(null);
   const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];
-  const visibleDataColumns = table
-    .getVisibleLeafColumns()
-    .map((column) => column.id)
-    .filter((id) => id !== INDEX_COLUMN);
-  const visibleColumnKey = visibleDataColumns.join("\u0000");
-  const visibleColumnIds = useMemo(
-    () => (visibleColumnKey === "" ? [] : visibleColumnKey.split("\u0000")),
-    [visibleColumnKey],
+  const leftColumns = table.getLeftVisibleLeafColumns();
+  const centerColumns = table.getCenterVisibleLeafColumns();
+  const rightColumns = table.getRightVisibleLeafColumns();
+  const visibleColumns = useMemo(
+    () => [...leftColumns, ...centerColumns, ...rightColumns],
+    [leftColumns, centerColumns, rightColumns],
   );
+  const visibleDataColumns = useMemo(
+    () => visibleColumns.map((column) => column.id).filter((id) => id !== INDEX_COLUMN),
+    [visibleColumns],
+  );
+  const visibleColumnIds = visibleDataColumns;
+  const columnSizing = table.getState().columnSizing;
+  const columnWidths = useMemo(
+    () => visibleColumns.map((column) => column.getSize()),
+    [visibleColumns, columnSizing],
+  );
+  const pinnedIndices = useMemo(
+    () => visibleColumns.flatMap((column, index) => (column.getIsPinned() ? [index] : [])),
+    [visibleColumns, columnPinning],
+  );
+  const columnWindow = useColumnWindow(scrollRef, columnWidths, pinnedIndices);
+
   const selection = useMemo(
     () =>
       activeCell &&
@@ -859,8 +824,20 @@ export function DataTable({
   }, []);
 
   useEffect(() => {
-    if (activeCell) rowVirtualizer.scrollToIndex(activeCell.rowIndex, { align: "auto" });
-  }, [activeCell, rowVirtualizer]);
+    if (!activeCell) return;
+    rowVirtualizer.scrollToIndex(activeCell.rowIndex, { align: "auto" });
+    const columnIndex = visibleColumns.findIndex((column) => column.id === activeCell.columnId);
+    if (columnWindow.enabled && columnIndex >= 0 && !pinnedIndices.includes(columnIndex)) {
+      columnWindow.virtualizer.scrollToIndex(columnIndex, { align: "auto" });
+    }
+  }, [
+    activeCell,
+    rowVirtualizer,
+    columnWindow.enabled,
+    columnWindow.virtualizer,
+    visibleColumns,
+    pinnedIndices,
+  ]);
 
   useEffect(() => {
     if (!editingCell || !tbodyRef.current) return;
@@ -1077,12 +1054,12 @@ export function DataTable({
     selectedCount,
   ]);
 
-  const handleCellCopy = (val: unknown) => {
+  const handleCellCopy = useCallback((val: unknown) => {
     if (val === undefined || val === null) return;
     const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
     void navigator.clipboard.writeText(stringVal);
     toast.success("In die Zwischenablage kopiert!");
-  };
+  }, []);
 
   return (
     <div ref={rootRef} className={cn("flex min-h-0 flex-1 flex-col relative", className)}>
@@ -1199,85 +1176,95 @@ export function DataTable({
               className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
               style={{ width: table.getTotalSize() }}
             >
+              <colgroup>
+                {visibleColumns.map((column, index) => (
+                  <col key={column.id} style={{ width: columnWidths[index] }} />
+                ))}
+              </colgroup>
               <thead className="sticky top-0 z-10 select-none">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id}>
-                    {headerGroup.headers
-                      .filter((header) => header.column.getIsVisible())
-                      .map((header) => {
-                        if (header.id === INDEX_COLUMN) {
-                          return (
-                            <ContextMenu key={header.id}>
-                              <ContextMenuTrigger asChild>
-                                <th
-                                  title="Rechtsklick: Spalten"
-                                  className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted/95 px-3 py-2 text-center align-middle backdrop-blur-md shadow-xs"
-                                  style={{ width: header.getSize() }}
-                                >
-                                  {header.isPlaceholder
-                                    ? null
-                                    : flexRender(
-                                        header.column.columnDef.header,
-                                        header.getContext(),
-                                      )}
-                                </th>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent className="w-64">
-                                <DataTableColumnSettings
-                                  columns={order}
-                                  hidden={hidden}
-                                  pinned={pinned}
-                                  isCustomized={isCustomized}
-                                  onToggle={(column) =>
-                                    setHidden(toggleHiddenColumn(order, hidden, column))
-                                  }
-                                  onReorder={setOrder}
-                                  onReset={reset}
-                                  onShowAll={() => setHidden([])}
-                                  onUnpinAll={() => setPinned([])}
-                                  onCopyColumnNames={copyColumnNames}
-                                  profiles={profiles}
-                                  canUseProfiles={canUseProfiles}
-                                  onSaveProfile={saveProfile}
-                                  onApplyProfile={applyProfile}
-                                  onRenameProfile={renameProfile}
-                                  onDeleteProfile={deleteProfile}
-                                />
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          );
-                        }
+                    {columnWindow.items.map((item) => {
+                      if (item.spacer)
                         return (
-                          <DataTableHeaderCell
-                            key={header.id}
-                            header={header}
-                            sortableIndex={visibleDataColumns.indexOf(header.id)}
-                            isFetching={isFetching}
-                            sorting={sorting}
-                            onSortingChange={onSortingChange}
-                            filterOpen={filterColumn === header.id}
-                            onFilterOpenChange={(open) => {
-                              if (open) setFilterColumn(header.id);
-                              else setFilterColumn(null);
-                            }}
-                            filterOperator={filterOperator}
-                            onFilterOperatorChange={setFilterOperator}
-                            filterValue={filterValue}
-                            onFilterValueChange={setFilterValue}
-                            compiledFilter={filterColumn === header.id ? compiledFilter : ""}
-                            onApplyFilter={onApplyFilter}
-                            onApplyColumnFilter={applyColumnFilter}
-                            onHideColumn={() =>
-                              setHidden(toggleHiddenColumn(order, hidden, header.id))
-                            }
-                            canHide={visibleDataColumns.length > 1}
-                            isPinned={pinnedSet.has(header.id)}
-                            onTogglePin={() =>
-                              setPinned(togglePinnedColumn(order, pinned, header.id))
-                            }
+                          <th
+                            key={`gap-${item.index}`}
+                            aria-hidden
+                            colSpan={item.span}
+                            style={{ width: item.width, padding: 0 }}
                           />
                         );
-                      })}
+                      const header = headerGroup.headers[item.index];
+                      if (header.id === INDEX_COLUMN) {
+                        return (
+                          <ContextMenu key={header.id}>
+                            <ContextMenuTrigger asChild>
+                              <th
+                                title="Rechtsklick: Spalten"
+                                className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
+                                style={{ width: header.getSize() }}
+                              >
+                                {header.isPlaceholder
+                                  ? null
+                                  : flexRender(header.column.columnDef.header, header.getContext())}
+                              </th>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-64">
+                              <DataTableColumnSettings
+                                columns={order}
+                                hidden={hidden}
+                                pinned={pinned}
+                                isCustomized={isCustomized}
+                                onToggle={(column) =>
+                                  setHidden(toggleHiddenColumn(order, hidden, column))
+                                }
+                                onReorder={setOrder}
+                                onReset={reset}
+                                onShowAll={() => setHidden([])}
+                                onUnpinAll={() => setPinned([])}
+                                onCopyColumnNames={copyColumnNames}
+                                profiles={profiles}
+                                canUseProfiles={canUseProfiles}
+                                onSaveProfile={saveProfile}
+                                onApplyProfile={applyProfile}
+                                onRenameProfile={renameProfile}
+                                onDeleteProfile={deleteProfile}
+                              />
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      }
+                      return (
+                        <DataTableHeaderCell
+                          key={header.id}
+                          header={header}
+                          sortableIndex={visibleDataColumns.indexOf(header.id)}
+                          isFetching={isFetching}
+                          sorting={sorting}
+                          onSortingChange={onSortingChange}
+                          filterOpen={filterColumn === header.id}
+                          onFilterOpenChange={(open) => {
+                            if (open) setFilterColumn(header.id);
+                            else setFilterColumn(null);
+                          }}
+                          filterOperator={filterOperator}
+                          onFilterOperatorChange={setFilterOperator}
+                          filterValue={filterValue}
+                          onFilterValueChange={setFilterValue}
+                          compiledFilter={filterColumn === header.id ? compiledFilter : ""}
+                          onApplyFilter={onApplyFilter}
+                          onApplyColumnFilter={applyColumnFilter}
+                          onHideColumn={() =>
+                            setHidden(toggleHiddenColumn(order, hidden, header.id))
+                          }
+                          canHide={visibleDataColumns.length > 1}
+                          isPinned={pinnedSet.has(header.id)}
+                          onTogglePin={() =>
+                            setPinned(togglePinnedColumn(order, pinned, header.id))
+                          }
+                        />
+                      );
+                    })}
                   </tr>
                 ))}
               </thead>
@@ -1318,186 +1305,35 @@ export function DataTable({
                           const row = rows[virtualRow.index];
                           const rowIndex = row.index;
                           const rowCtid = row.original.__ctid__ as string | undefined;
-                          const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
-
                           return (
-                            <tr
+                            <DataTableRow
                               key={rowCtid ?? row.id}
-                              ref={rowVirtualizer.measureElement}
-                              data-index={virtualRow.index}
-                              data-row-index={rowIndex}
-                              data-ctid={rowCtid}
-                              className={cn(
-                                "group/row",
-                                isRowEditing
-                                  ? "bg-primary/[0.03]"
-                                  : "bg-background hover:bg-muted/15",
-                              )}
-                            >
-                              {row.getVisibleCells().map((cell, cellIndex) => {
-                                const columnId = cell.column.id;
-                                const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
-                                const isCellEditing =
-                                  isRowEditing && editingCell?.columnId === columnId;
-                                const isActive =
-                                  !isRowEditing &&
-                                  activeCell?.rowIndex === rowIndex &&
-                                  activeCell.columnId === columnId;
-                                const pinnedOffset =
-                                  cellIndex > 0 && cell.column.getIsPinned() === "left"
-                                    ? cell.column.getStart("left")
-                                    : null;
-                                const isSelected =
-                                  selectedCount > 1 &&
-                                  isCellInSelection(selectedRange, rowIndex, columnId);
-                                const isMatch = matchKeys.has(gridMatchKey(rowIndex, columnId));
-                                const isActiveMatch =
-                                  activeMatch?.rowIndex === rowIndex &&
-                                  activeMatch.columnId === columnId;
-
-                                if (isCellEditing && editingCell) {
-                                  return (
-                                    <td
-                                      key={cell.id}
-                                      style={{ width: cell.column.getSize() }}
-                                      className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
-                                    >
-                                      <div className="flex flex-col">
-                                        <input
-                                          type="text"
-                                          value={editingCell.value}
-                                          onChange={(e) =>
-                                            setEditingCell((prev) =>
-                                              prev ? { ...prev, value: e.target.value } : prev,
-                                            )
-                                          }
-                                          disabled={isSaving}
-                                          placeholder="NULL"
-                                          className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
-                                        />
-                                        <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
-                                          <span className="flex items-center gap-1">
-                                            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                                              ↵
-                                            </kbd>
-                                            <span>Speichern</span>
-                                          </span>
-                                          <span className="flex items-center gap-1">
-                                            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                                              esc
-                                            </kbd>
-                                            <span>Abbrechen</span>
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  );
-                                }
-
-                                return (
-                                  <td
-                                    key={cell.id}
-                                    onClick={(event) => {
-                                      if (editingCell) setEditingCell(null);
-                                      focusCell(
-                                        { rowIndex, columnId },
-                                        event.shiftKey && columnId !== INDEX_COLUMN,
-                                      );
-                                    }}
-                                    onDoubleClick={
-                                      onSaveRow && cellIndex > 0
-                                        ? (e) => {
-                                            e.stopPropagation();
-                                            handleCellEdit(row, columnId);
-                                          }
-                                        : undefined
-                                    }
-                                    data-row-index={rowIndex}
-                                    data-col={cellIndex > 0 ? columnId : undefined}
-                                    style={{
-                                      width: cell.column.getSize(),
-                                      left: pinnedOffset ?? undefined,
-                                    }}
-                                    className={cn(
-                                      "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
-                                      cellIndex === 0 &&
-                                        "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
-                                      pinnedOffset !== null &&
-                                        "sticky z-10 bg-inherit border-r border-border shadow-[1px_0_0_0_var(--border)]",
-                                      isSelected && "bg-primary/10",
-                                      isMatch && "bg-amber-400/15",
-                                      isActiveMatch &&
-                                        "bg-amber-400/30 outline outline-2 -outline-offset-2 outline-amber-500 z-20",
-                                      isActive &&
-                                        "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-                                      !isActive && cellIndex > 0 && "hover:bg-muted/10",
-                                    )}
-                                  >
-                                    <div className="relative flex items-center justify-between gap-2 w-full h-full text-left">
-                                      <div className="min-w-0 flex-1 truncate text-left">
-                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                      </div>
-                                      {isActive && cellIndex > 0 && (
-                                        <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleCellCopy(value);
-                                            }}
-                                            title="Kopieren"
-                                            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                          >
-                                            <CopyIcon className="size-3" />
-                                          </button>
-                                          {(isLargeCellValue(value) ||
-                                            (!!onSaveRow && !!rowCtid)) && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setInspectCell({
-                                                  columnName: columnId,
-                                                  value,
-                                                  ctid: rowCtid,
-                                                  originalValues: { ...row.original },
-                                                });
-                                              }}
-                                              title={
-                                                onSaveRow ? "Anzeigen / bearbeiten" : "Anzeigen"
-                                              }
-                                              className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                            >
-                                              <Maximize2Icon className="size-3" />
-                                            </button>
-                                          )}
-                                          {canPickFk &&
-                                            !!rowCtid &&
-                                            outgoingFkByColumn.has(columnId) && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setFkPickerCell({
-                                                    columnName: columnId,
-                                                    ctid: rowCtid,
-                                                    originalValues: { ...row.original },
-                                                    currentValue: valueToUpdateText(value),
-                                                  });
-                                                }}
-                                                title="Fremdschlüsselwert wählen"
-                                                className="p-0.5 rounded text-muted-foreground hover:text-blue-500 hover:bg-muted transition-colors cursor-pointer"
-                                              >
-                                                <LinkIcon className="size-3" />
-                                              </button>
-                                            )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </td>
-                                );
-                              })}
-                            </tr>
+                              row={row}
+                              columnWindow={columnWindow.items}
+                              measureElement={rowVirtualizer.measureElement}
+                              editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
+                              activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
+                              activeMatch={activeMatch?.rowIndex === rowIndex ? activeMatch : null}
+                              selectedRange={selectedRange}
+                              selectedCount={selectedCount}
+                              matchKeys={matchKeys}
+                              isSaving={isSaving}
+                              canPickFk={canPickFk}
+                              outgoingFkByColumn={outgoingFkByColumn}
+                              onSaveRow={onSaveRow}
+                              focusCell={focusCell}
+                              handleCellEdit={handleCellEdit}
+                              handleCellCopy={handleCellCopy}
+                              setEditingCell={setEditingCell}
+                              setInspectCell={setInspectCell}
+                              setFkPickerCell={setFkPickerCell}
+                              columnSizing={table.getState().columnSizing}
+                              columnOrder={columnOrder}
+                              columnVisibility={columnVisibility}
+                              columnPinning={columnPinning}
+                              columns={columns}
+                              pageOffset={page * pageSize}
+                            />
                           );
                         })}
                         {paddingBottom > 0 && (

@@ -259,11 +259,10 @@ export function QueryView({ tabId }: QueryViewProps) {
     staleTime: 60_000,
   });
 
-  const registry = {
-    schemas: schemas ?? [],
-    tables: tables ?? [],
-    columns: columns ?? [],
-  };
+  const registry = useMemo(
+    () => ({ schemas: schemas ?? [], tables: tables ?? [], columns: columns ?? [] }),
+    [schemas, tables, columns],
+  );
 
   const caps = useCapabilities(connection?.kind);
 

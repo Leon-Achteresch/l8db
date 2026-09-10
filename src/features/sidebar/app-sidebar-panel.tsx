@@ -30,7 +30,7 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -102,7 +102,7 @@ import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
-import { TableSearchModal } from "@/features/sidebar/table-search-modal";
+
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
@@ -141,6 +141,12 @@ import {
   useConnectionSwitch,
 } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+
+const TableSearchModal = lazy(() =>
+  import("@/features/sidebar/table-search-modal").then((module) => ({
+    default: module.TableSearchModal,
+  })),
+);
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -248,6 +254,7 @@ export function AppSidebarPanel() {
   const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [searchModalMounted, setSearchModalMounted] = useState(false);
 
   return (
     <Sidebar
@@ -462,7 +469,10 @@ export function AppSidebarPanel() {
           </SidebarGroupLabel>
           {sidebarTab === "tables" || sidebarTab === "views" ? (
             <SidebarGroupAction
-              onClick={() => setSearchModalOpen(true)}
+              onClick={() => {
+                setSearchModalMounted(true);
+                setSearchModalOpen(true);
+              }}
               aria-label="Erweiterte Suche"
               title="Erweiterte Suche mit Regex & SQL WHERE"
             >
@@ -549,7 +559,11 @@ export function AppSidebarPanel() {
             )}
           </SidebarGroupContent>
         </SidebarGroup>
-        <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+        {searchModalMounted && (
+          <Suspense fallback={null}>
+            <TableSearchModal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
+          </Suspense>
+        )}
         {activeConnection ? (
           <SidebarGroup className="mt-auto border-t pt-2">
             <SidebarGroupContent>
