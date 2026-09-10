@@ -51,7 +51,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.2.8",
     "react-day-picker": "^10.0.1",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.2.8",
     "react-resizable-panels": "^4.11.1",
     "recharts": "^3.8.1",
     "semver": "^7.8.5",
