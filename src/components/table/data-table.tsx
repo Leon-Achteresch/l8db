@@ -37,47 +37,6 @@ type TableRow = Record<string, unknown>;
 
 const INDEX_COLUMN = "__row_index__";
 
-function debugLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  // #region agent log
-  fetch("http://127.0.0.1:7578/ingest/a446df08-7154-43f3-b666-79e09390df4a", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "26a762",
-    },
-    body: JSON.stringify({
-      sessionId: "26a762",
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-}
-
-function resolveRowIndexFromPointer(
-  tbody: HTMLTableSectionElement,
-  clientY: number,
-  maxIndex: number,
-): number {
-  for (let i = 0; i < tbody.children.length && i < maxIndex; i++) {
-    const child = tbody.children[i];
-    if (!(child instanceof HTMLTableRowElement)) continue;
-    const rect = child.getBoundingClientRect();
-    if (clientY >= rect.top && clientY < rect.bottom) {
-      return i;
-    }
-  }
-  return -1;
-}
-
 function renderTypeIcon(iconName: string, className?: string) {
   switch (iconName) {
     case "Key":
@@ -246,7 +205,6 @@ function renderValue(value: unknown) {
 }
 
 type EditingRow = {
-  rowIndex: number;
   ctid: string;
   values: Record<string, string>;
 };
@@ -361,6 +319,10 @@ export function DataTable({
     state: { sorting },
     onSortingChange,
     manualSorting: true,
+    getRowId: (row, index) => {
+      const ctid = row["__ctid__"] as string | undefined;
+      return ctid ?? `row-${index}`;
+    },
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -391,27 +353,9 @@ export function DataTable({
   }, []);
 
   const handleRowDoubleClick = useCallback(
-    (row: Row<TableRow>, rowIndex: number, domRowIndex: number) => {
+    (row: Row<TableRow>) => {
       const ctid = row.original["__ctid__"] as string | undefined;
-      const sampleCol = columnNames[0];
-      const sampleVal = sampleCol ? row.original[sampleCol] : undefined;
-      debugLog("H1-H3", "data-table.tsx:handleRowDoubleClick", "dblclick handler", {
-        passedRowIndex: rowIndex,
-        tanstackRowIndex: row.index,
-        tanstackRowId: row.id,
-        domRowIndex,
-        ctid,
-        sampleCol,
-        sampleVal: sampleVal === undefined ? null : String(sampleVal).slice(0, 40),
-        indexMismatch: rowIndex !== row.index,
-      });
-      if (!ctid) {
-        debugLog("H5", "data-table.tsx:handleRowDoubleClick", "no ctid abort", {
-          passedRowIndex: rowIndex,
-          tanstackRowIndex: row.index,
-        });
-        return;
-      }
+      if (!ctid) return;
       const values: Record<string, string> = {};
       for (const col of columnNames) {
         const val = row.original[col];
@@ -423,67 +367,10 @@ export function DataTable({
           values[col] = String(val);
         }
       }
-      debugLog("H3-H5", "data-table.tsx:handleRowDoubleClick", "setEditingRow", {
-        storedRowIndex: rowIndex,
-        ctid,
-        firstValue: sampleCol ? values[sampleCol]?.slice(0, 40) : null,
-      });
-      setEditingRow({ rowIndex, ctid, values });
+      setEditingRow({ ctid, values });
       setActiveCell(null);
     },
     [columnNames],
-  );
-
-  const handleTbodyDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLTableSectionElement>) => {
-      if (!onSaveRow) return;
-      const tbody = e.currentTarget;
-      const scrollEl = tbody.closest(".overflow-auto");
-      const closestTr = (e.target as HTMLElement).closest("tr");
-      const closestIndex =
-        closestTr?.parentElement === tbody
-          ? Array.from(tbody.children).indexOf(closestTr)
-          : -1;
-      const hitTr = document.elementFromPoint(e.clientX, e.clientY)?.closest("tbody tr");
-      const hitIndex =
-        hitTr?.parentElement === tbody
-          ? Array.from(tbody.children).indexOf(hitTr)
-          : -1;
-      const pointerIndex = resolveRowIndexFromPointer(tbody, e.clientY, rows.length);
-      const rowIndex =
-        pointerIndex >= 0
-          ? pointerIndex
-          : hitIndex >= 0
-            ? hitIndex
-            : closestIndex;
-      if (rowIndex < 0 || rowIndex >= rows.length) return;
-      if (editingRow?.rowIndex === rowIndex) return;
-      const row = rows[rowIndex];
-      const pointerTr = tbody.children[rowIndex];
-      const pointerRect =
-        pointerTr instanceof HTMLTableRowElement
-          ? pointerTr.getBoundingClientRect()
-          : null;
-      debugLog("H7-H9", "data-table.tsx:handleTbodyDoubleClick", "pointer resolve", {
-        clientY: e.clientY,
-        scrollTop: scrollEl instanceof HTMLElement ? scrollEl.scrollTop : null,
-        closestIndex,
-        hitIndex,
-        pointerIndex,
-        chosenRowIndex: rowIndex,
-        rowsLength: rows.length,
-        indicesAgree: closestIndex === hitIndex && hitIndex === pointerIndex,
-        tanstackRowId: row.id,
-        pointerRectTop: pointerRect?.top,
-        pointerRectBottom: pointerRect?.bottom,
-      });
-      handleRowDoubleClick(
-        row,
-        rowIndex,
-        pointerTr instanceof HTMLTableRowElement ? pointerTr.rowIndex : rowIndex,
-      );
-    },
-    [onSaveRow, rows, editingRow, handleRowDoubleClick],
   );
 
   useEffect(() => {
@@ -491,49 +378,16 @@ export function DataTable({
     requestAnimationFrame(() => {
       const tbody = tbodyRef.current;
       if (!tbody) return;
-      const inputRowIndices: number[] = [];
-      Array.from(tbody.children).forEach((child, i) => {
-        if (child instanceof HTMLTableRowElement && child.querySelector("input")) {
-          inputRowIndices.push(i);
-        }
-      });
-      const scrollEl = tbody.closest(".overflow-auto");
-      debugLog("H7", "data-table.tsx:dom-audit", "input rows in DOM", {
-        storedRowIndex: editingRow.rowIndex,
-        inputRowIndices,
-        domMatchesState: inputRowIndices.length === 1 && inputRowIndices[0] === editingRow.rowIndex,
-        scrollTop: scrollEl instanceof HTMLElement ? scrollEl.scrollTop : null,
-      });
-      const tr = tbody.children[editingRow.rowIndex];
+      const tr = Array.from(tbody.children).find(
+        (child) =>
+          child instanceof HTMLTableRowElement &&
+          child.dataset.ctid === editingRow.ctid,
+      );
       if (tr instanceof HTMLTableRowElement) {
         tr.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     });
   }, [editingRow]);
-
-  useEffect(() => {
-    if (!editingRow) return;
-    const indices = rows.map((r) => r.index);
-    const editingMatches = rows.filter((r) => r.index === editingRow.rowIndex);
-    const row0Sample = columnNames[0] ? rows[0]?.original[columnNames[0]] : undefined;
-    const storedSample = columnNames[0]
-      ? rows[editingRow.rowIndex]?.original[columnNames[0]]
-      : undefined;
-    debugLog("H2-H4", "data-table.tsx:editingRow-effect", "editing state after set", {
-      storedRowIndex: editingRow.rowIndex,
-      ctid: editingRow.ctid,
-      rowsLength: rows.length,
-      allTanstackIndices: indices,
-      matchingRowCount: editingMatches.length,
-      matchingRowIds: editingMatches.map((r) => r.id),
-      row0EqualsStoredOriginal: rows[0]?.original === rows[editingRow.rowIndex]?.original,
-      row0Sample: row0Sample === undefined ? null : String(row0Sample).slice(0, 40),
-      storedRowSample: storedSample === undefined ? null : String(storedSample).slice(0, 40),
-      editingFirstValue: columnNames[0]
-        ? editingRow.values[columnNames[0]]?.slice(0, 40)
-        : null,
-    });
-  }, [editingRow, rows, columnNames]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -642,10 +496,7 @@ export function DataTable({
               </tr>
             ))}
           </thead>
-          <tbody
-            ref={tbodyRef}
-            onDoubleClick={rows.length > 0 ? handleTbodyDoubleClick : undefined}
-          >
+          <tbody ref={tbodyRef}>
             {rows.length === 0 ? (
               <tr>
                 <td
@@ -658,18 +509,19 @@ export function DataTable({
             ) : (
               rows.map((row) => {
                 const rowIndex = row.index;
-                const isEditing = editingRow?.rowIndex === rowIndex;
-                if (isEditing) {
-                  debugLog("H4", "data-table.tsx:row-render", "row marked isEditing", {
-                    rowIndex,
-                    tanstackRowId: row.id,
-                    storedRowIndex: editingRow?.rowIndex,
-                  });
-                }
+                const rowCtid = row.original["__ctid__"] as string | undefined;
+                const isEditing = !!rowCtid && editingRow?.ctid === rowCtid;
+                const beginCellEdit = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (!onSaveRow || isEditing) return;
+                  handleRowDoubleClick(row);
+                };
+
                 return (
                   <tr
-                    key={row.id}
+                    key={rowCtid ?? row.id}
                     data-row-index={rowIndex}
+                    data-ctid={rowCtid}
                     className={cn(
                       "group/row",
                       isEditing
@@ -693,7 +545,11 @@ export function DataTable({
                               key={cell.id}
                               className="w-12 border-b border-r border-border sticky left-0 z-10 bg-primary/[0.06] text-center px-1 py-1"
                             >
-                              <div className="flex items-center justify-center gap-0.5">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="font-mono text-[10px] tabular-nums text-muted-foreground/60 select-none leading-none">
+                                  {rowIndex + 1}
+                                </span>
+                                <div className="flex items-center justify-center gap-0.5">
                                 <button
                                   type="button"
                                   onClick={() => void handleSaveRow()}
@@ -716,6 +572,7 @@ export function DataTable({
                                 >
                                   <XIcon className="size-3.5" />
                                 </button>
+                                </div>
                               </div>
                             </td>
                           );
@@ -751,6 +608,7 @@ export function DataTable({
                         <td
                           key={cell.id}
                           onClick={() => setActiveCell({ rowIndex, columnId })}
+                          onDoubleClick={onSaveRow ? beginCellEdit : undefined}
                           className={cn(
                             "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left",
                             cellIndex === 0 &&
