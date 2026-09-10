@@ -1,0 +1,27 @@
+pkgbase = l8db-bin
+	pkgdesc = Fast, native desktop client for PostgreSQL and other databases
+	pkgver = 0.4.1
+	pkgrel = 1
+	url = https://github.com/Leon-Achteresch/l8db
+	arch = x86_64
+	license = MIT
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	depends = openssl
+	depends = libsecret
+	depends = hicolor-icon-theme
+	optdepends = gnome-keyring: Secret-Service-Backend fuer gespeicherte Datenbank-Credentials
+	optdepends = kwallet: alternatives Secret-Service-Backend
+	optdepends = xdg-utils: Links und Ordner im Dateimanager oeffnen
+	provides = l8db=0.4.1
+	conflicts = l8db
+	noextract = l8db-bin-0.4.1.deb
+	options = !strip
+	options = !emptydirs
+	options = !debug
+	source = l8db-bin-0.4.1.deb::https://github.com/Leon-Achteresch/l8db/releases/download/v0.4.1/l8db_0.4.1_amd64.deb
+	source = LICENSE-0.4.1::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v0.4.1/LICENSE
+	sha256sums = 7e70e63db54adb48d49de64b17e07961191e0254229913ab92d69b317dcbc570
+	sha256sums = fffdf02e9ebc177301978d6f2d1e38226c08d0c6d5afb6736ed544a77441e064
+
+pkgname = l8db-bin

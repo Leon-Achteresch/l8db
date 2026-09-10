@@ -3,7 +3,7 @@
 # PRO RELEASE ZU AKTUALISIEREN: PackageVersion, ReleaseNotesUrl.
 
 PackageIdentifier: LeonAchteresch.l8db
-PackageVersion: 0.1.0
+PackageVersion: 0.4.1
 PackageLocale: en-US
 Publisher: Leon Achteresch
 PublisherUrl: https://github.com/Leon-Achteresch
@@ -30,6 +30,6 @@ Tags:
   - developer-tools
   - dbms
   - tauri
-ReleaseNotesUrl: https://github.com/Leon-Achteresch/l8db/releases/tag/v0.1.0
+ReleaseNotesUrl: https://github.com/Leon-Achteresch/l8db/releases/tag/v0.4.1
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0
