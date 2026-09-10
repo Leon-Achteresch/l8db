@@ -40,7 +40,7 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
-import { UnsupportedValueError, buildInsertStatements } from "@/lib/export";
+import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
@@ -52,6 +52,8 @@ import {
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
+import type { DuplicatePrefill } from "@/lib/row-duplicate";
+import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -91,6 +93,8 @@ export function TableView() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
+  const [duplicatePrefill, setDuplicatePrefill] = useState<DuplicatePrefill | null>(null);
+  const [insertError, setInsertError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
@@ -116,13 +120,32 @@ export function TableView() {
   };
 
   const handleInsertRow = async (values: Record<string, string | null>) => {
+    const wasDuplicate = duplicatePrefill !== null;
     try {
       await insertRowMutation.mutateAsync(values);
-      toast.success("Neue Zeile hinzugefügt.");
+      toast.success(wasDuplicate ? "Zeile als neue Zeile eingefügt." : "Neue Zeile hinzugefügt.");
+      setInsertError(null);
+      setDuplicatePrefill(null);
       setAddRowOpen(false);
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      const message = describeInsertError(err);
+      setInsertError(message);
+      toast.error(message);
     }
+  };
+
+  const handleRowDialogOpenChange = (open: boolean) => {
+    setAddRowOpen(open);
+    if (!open) {
+      setInsertError(null);
+      setDuplicatePrefill(null);
+    }
+  };
+
+  const handleDuplicateRowToEdit = (_ctid: string, values: Record<string, unknown>) => {
+    setInsertError(null);
+    setDuplicatePrefill(buildDuplicatePrefill(data?.columns ?? [], values, columnDetails));
+    setAddRowOpen(true);
   };
 
   const handleDuplicateRow = async (ctid: string) => {
@@ -308,6 +331,7 @@ export function TableView() {
         currentTable={table}
         onNavigateToTable={handleNavigateToTable}
         onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
+        onDuplicateRowToEdit={isView || !caps.row_edit ? undefined : handleDuplicateRowToEdit}
         onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
         columnDetails={columnDetails}
         onRefresh={handleRefresh}
@@ -446,7 +470,11 @@ export function TableView() {
               variant="ghost"
               className="h-7 gap-1.5 px-2.5 text-xs"
               data-tour="table-add"
-              onClick={() => setAddRowOpen(true)}
+              onClick={() => {
+                setInsertError(null);
+                setDuplicatePrefill(null);
+                setAddRowOpen(true);
+              }}
               disabled={insertRowMutation.isPending}
             >
               <PlusIcon className="size-3.5" />
@@ -512,12 +540,14 @@ export function TableView() {
 
       <NewRowDialog
         open={addRowOpen}
-        onOpenChange={setAddRowOpen}
+        onOpenChange={handleRowDialogOpenChange}
         schema={schema}
         table={table}
         columns={data?.columns ?? []}
         isPending={insertRowMutation.isPending}
         onSubmit={handleInsertRow}
+        prefill={duplicatePrefill}
+        errorMessage={insertError}
       />
 
       <CsvExportDialog
