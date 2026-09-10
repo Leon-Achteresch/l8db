@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { FileText, FolderGit, Heart, Scale, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
+import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { AppLogo } from "@/components/app-logo";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
 const LINKS = [

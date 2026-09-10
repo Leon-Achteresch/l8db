@@ -4,8 +4,8 @@ import { Check, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { AppLogo } from "@/components/app-logo";
+import { Button } from "@/components/ui/button";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { extractHighlights } from "@/lib/markdown";
 import { useSettingsStore } from "@/lib/settings";
@@ -22,8 +22,7 @@ export function UpdateAvailableDialog() {
   const { update, open } = useUpdatePrompt();
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
-  const visibleUpdate =
-    update && update.version !== skippedUpdateVersion ? update : null;
+  const visibleUpdate = update && update.version !== skippedUpdateVersion ? update : null;
   const [percent, setPercent] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
@@ -99,10 +98,7 @@ export function UpdateAvailableDialog() {
         >
           <div className="relative flex h-36 w-full select-none items-center justify-center overflow-hidden bg-gradient-to-br from-primary/90 via-primary to-chart-2">
             <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/15" />
-            <AppLogo
-              alt=""
-              className="relative z-10 size-12 shadow-lg ring-2 ring-white/20"
-            />
+            <AppLogo alt="" className="relative z-10 size-12 shadow-lg ring-2 ring-white/20" />
             <button
               type="button"
               onClick={onDismiss}
