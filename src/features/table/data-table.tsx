@@ -812,17 +812,20 @@ export function DataTable({
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
-    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue);
+    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind);
     if (sql) {
       onApplyFilter(sql, false);
     }
     setFilterColumn(null);
-  }, [filterColumn, filterOperator, filterValue, onApplyFilter]);
+  }, [filterColumn, filterOperator, filterValue, onApplyFilter, connection?.kind]);
 
   const compiledFilter = useMemo(
     () =>
-      filterColumn ? (compileSingleCondition(filterColumn, filterOperator, filterValue) ?? "") : "",
-    [filterColumn, filterOperator, filterValue],
+      filterColumn
+        ? (compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind) ??
+          "")
+        : "",
+    [filterColumn, filterOperator, filterValue, connection?.kind],
   );
 
   const handleCellEdit = useCallback((row: Row<TableRow>, columnId: string) => {

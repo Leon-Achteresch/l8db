@@ -23,8 +23,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-import { compileSingleCondition, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { Textarea } from "@/components/ui/textarea";
+import { useActiveConnection } from "@/lib/connections";
+import { useActiveCapabilities } from "@/lib/db-selection";
+import {
+  compileSingleCondition,
+  type FilterKind,
+  OPERATORS,
+  operatorNeedsValue,
+} from "@/lib/sql-filter";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -51,9 +58,13 @@ function emptyCondition(column = ""): Condition {
   return { id: createId(), column, operator: "eq", value: "" };
 }
 
-function compileConditions(conditions: Condition[], combinator: Combinator): string {
+function compileConditions(
+  conditions: Condition[],
+  combinator: Combinator,
+  kind: FilterKind,
+): string {
   const parts = conditions
-    .map((c) => compileSingleCondition(c.column, c.operator, c.value))
+    .map((c) => compileSingleCondition(c.column, c.operator, c.value, kind))
     .filter((part): part is string => part !== null);
   if (parts.length === 0) {
     return "";
@@ -68,6 +79,9 @@ interface TableFilterPanelProps {
 }
 
 export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilterPanelProps) {
+  const caps = useActiveCapabilities();
+  const kind = useActiveConnection()?.kind;
+  const json = caps.query_language === "json";
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<FilterMode>("simple");
   const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
@@ -75,11 +89,11 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
   const [sql, setSql] = useState("");
 
   const compiledSimple = useMemo(
-    () => compileConditions(conditions, combinator),
-    [conditions, combinator],
+    () => compileConditions(conditions, combinator, kind),
+    [conditions, combinator, kind],
   );
 
-  const draft = mode === "sql" ? sql.trim() : compiledSimple;
+  const draft = json || mode === "sql" ? sql.trim() : compiledSimple;
   const hasActiveFilter = activeFilter.trim() !== "";
   const isDirty = draft !== activeFilter.trim();
 
@@ -108,7 +122,7 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
   };
 
   const apply = () => {
-    onApply(draft, mode === "sql");
+    onApply(draft, json || mode === "sql");
     setOpen(true);
   };
 
@@ -171,20 +185,30 @@ export function TableFilterPanel({ columns, activeFilter, onApply }: TableFilter
             className="overflow-hidden"
           >
             <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
-              <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
-                <TabsList>
-                  <TabsTrigger value="simple">
-                    <SlidersHorizontalIcon />
-                    Einfach
-                  </TabsTrigger>
-                  <TabsTrigger value="sql">
-                    <Code2Icon />
-                    SQL
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              {!json && (
+                <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
+                  <TabsList>
+                    <TabsTrigger value="simple">
+                      <SlidersHorizontalIcon />
+                      Einfach
+                    </TabsTrigger>
+                    <TabsTrigger value="sql">
+                      <Code2Icon />
+                      SQL
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
 
-              {mode === "simple" ? (
+              {json ? (
+                <Textarea
+                  aria-label="MongoDB-Filter"
+                  value={sql}
+                  onChange={(event) => setSql(event.target.value)}
+                  placeholder={caps.filter_hint}
+                  className="h-36 font-mono text-xs"
+                />
+              ) : mode === "simple" ? (
                 <div className="space-y-2">
                   {conditions.map((condition, index) => (
                     <div

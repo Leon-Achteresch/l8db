@@ -1,4 +1,5 @@
 import type { ForeignKeyInfo } from "@/lib/db";
+import { type FilterKind, quoteIdent, textMatch } from "@/lib/sql-filter";
 
 export type FkTarget = {
   schema: string;
@@ -62,12 +63,13 @@ export function buildFkSearchFilter(
   keyColumn: string,
   labelColumns: string[],
   search: string,
+  kind?: FilterKind,
 ): string {
   const term = search.trim();
   if (term === "") return "";
   const pattern = escapeSqlLiteral(`%${escapeLikePattern(term)}%`);
   const columns = [keyColumn, ...labelColumns.filter((col) => col !== keyColumn)];
-  const conditions = columns.map((col) => `${quoteSqlIdentifier(col)}::text ILIKE '${pattern}'`);
+  const conditions = columns.map((col) => textMatch(quoteIdent(col, kind), pattern, kind));
   if (conditions.length === 0) return "";
   return `(${conditions.join(" OR ")})`;
 }
