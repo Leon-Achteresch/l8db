@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
@@ -39,6 +40,7 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/features/table/view-definition-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { UnsupportedValueError, buildInsertStatements } from "@/lib/export";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
@@ -90,6 +92,7 @@ export function TableView() {
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [csvExportOpen, setCsvExportOpen] = useState(false);
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,
@@ -140,47 +143,51 @@ export function TableView() {
     }
   };
 
-  const handleExport = async (format: "csv" | "json") => {
+  const exportColumns = useMemo(
+    () => (data?.columns ?? []).filter((c) => c !== "__ctid__"),
+    [data],
+  );
+
+  const exportRows = useMemo(() => {
+    const cols = exportColumns;
+    return (data?.rows ?? []).map((row) => {
+      const source = row as Record<string, unknown>;
+      const obj: Record<string, unknown> = {};
+      for (const c of cols) obj[c] = source[c] ?? null;
+      return obj;
+    });
+  }, [data, exportColumns]);
+
+  const handleExport = async (format: "json" | "sql") => {
     if (!data) return;
     setExporting(true);
     try {
-      const ext = format === "csv" ? "csv" : "json";
+      const ext = format === "json" ? "json" : "sql";
+      let content: string;
+      if (format === "json") {
+        content = JSON.stringify(exportRows, null, 2);
+      } else {
+        content = buildInsertStatements({
+          schema,
+          table,
+          columns: exportColumns,
+          rows: exportRows,
+          kind: connection?.kind,
+        });
+      }
       const filePath = await save({
         defaultPath: `${table}.${ext}`,
-        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
       });
       if (!filePath) return;
-
-      let content: string;
-      if (format === "csv") {
-        const cols = data.columns.filter((c) => c !== "__ctid__");
-        const header = cols.map((c) => JSON.stringify(c)).join(",");
-        const rows = data.rows.map((row) => {
-          const r = row as Record<string, unknown>;
-          return cols
-            .map((c) => {
-              const v = r[c];
-              if (v === null || v === undefined) return "";
-              const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-              return `"${s.replace(/"/g, '""')}"`;
-            })
-            .join(",");
-        });
-        content = [header, ...rows].join("\n");
-      } else {
-        const cols = data.columns.filter((c) => c !== "__ctid__");
-        const rows = data.rows.map((row) => {
-          const r = row as Record<string, unknown>;
-          const obj: Record<string, unknown> = {};
-          for (const c of cols) obj[c] = r[c] ?? null;
-          return obj;
-        });
-        content = JSON.stringify(rows, null, 2);
-      }
       await writeTextFile(filePath, content);
       toast.success(`Exportiert nach ${filePath.split("/").pop()}`);
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      if (err instanceof UnsupportedValueError) {
+        toast.error(`Export abgebrochen – ${err.message}`);
+      } else {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setExporting(false);
     }
@@ -337,11 +344,14 @@ export function TableView() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                  Als CSV exportieren
+                <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                  Als CSV exportieren…
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleExport("json")}>
                   Als JSON exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                  Als INSERT-SQL exportieren
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -359,6 +369,13 @@ export function TableView() {
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ViewDefinitionPanel schema={schema} view={table} />
         </TabsContent>
+        <CsvExportDialog
+          open={csvExportOpen}
+          onOpenChange={setCsvExportOpen}
+          columns={exportColumns}
+          rows={exportRows}
+          defaultFileName={`${table}.csv`}
+        />
       </Tabs>
     );
   }
@@ -439,11 +456,14 @@ export function TableView() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                  Als CSV exportieren
+                <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                  Als CSV exportieren…
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleExport("json")}>
                   Als JSON exportieren
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                  Als INSERT-SQL exportieren
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -483,6 +503,14 @@ export function TableView() {
         columns={data?.columns ?? []}
         isPending={insertRowMutation.isPending}
         onSubmit={handleInsertRow}
+      />
+
+      <CsvExportDialog
+        open={csvExportOpen}
+        onOpenChange={setCsvExportOpen}
+        columns={exportColumns}
+        rows={exportRows}
+        defaultFileName={`${table}.csv`}
       />
     </Tabs>
   );

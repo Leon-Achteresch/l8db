@@ -16,7 +16,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
 import { QueryEditorPane, type QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
@@ -136,6 +137,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [csvExportOpen, setCsvExportOpen] = useState(false);
   const [plan, setPlan] = useState<{ node: ExplainNode; analyzed: boolean } | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
@@ -334,34 +336,25 @@ export function QueryView({ tabId }: QueryViewProps) {
     [connection, sql, database, planLoading],
   );
 
-  const handleExport = async (format: "csv" | "json") => {
+  const exportRows = useMemo(() => {
+    if (!result) return [] as Record<string, unknown>[];
+    return result.rows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      for (const c of result.columns) obj[c] = row[c] ?? null;
+      return obj;
+    });
+  }, [result]);
+
+  const handleExportJson = async () => {
     if (!result || result.columns.length === 0) return;
     setExporting(true);
     try {
-      const ext = format === "csv" ? "csv" : "json";
       const filePath = await save({
-        defaultPath: `query-result.${ext}`,
-        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+        defaultPath: "query-result.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!filePath) return;
-
-      let content: string;
-      if (format === "csv") {
-        const header = result.columns.map((c) => JSON.stringify(c)).join(",");
-        const rows = result.rows.map((row) =>
-          result.columns
-            .map((c) => {
-              const v = row[c];
-              if (v === null || v === undefined) return "";
-              return `"${v.replace(/"/g, '""')}"`;
-            })
-            .join(","),
-        );
-        content = [header, ...rows].join("\n");
-      } else {
-        content = JSON.stringify(result.rows, null, 2);
-      }
-      await writeTextFile(filePath, content);
+      await writeTextFile(filePath, JSON.stringify(exportRows, null, 2));
     } catch {
     } finally {
       setExporting(false);
@@ -578,10 +571,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => void handleExport("csv")}>
-                  Als CSV exportieren
+                <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                  Als CSV exportieren…
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport("json")}>
+                <DropdownMenuItem onClick={() => void handleExportJson()}>
                   Als JSON exportieren
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -679,6 +672,14 @@ export function QueryView({ tabId }: QueryViewProps) {
             setSnippetDialogOpen(false);
             editorApiRef.current?.insertSnippet(snippet.body);
           }}
+        />
+
+        <CsvExportDialog
+          open={csvExportOpen}
+          onOpenChange={setCsvExportOpen}
+          columns={result?.columns ?? []}
+          rows={exportRows}
+          defaultFileName="query-result.csv"
         />
       </motion.div>
       {historyOpen && (
