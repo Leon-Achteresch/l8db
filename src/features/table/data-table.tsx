@@ -62,6 +62,15 @@ import {
   gridMatchKey,
   stepMatchIndex,
 } from "@/lib/grid-search";
+import {
+  describeSelectionStats,
+  type GridCellRef,
+  isCellInSelection,
+  selectionCellCount,
+  selectionRange,
+  selectionToTsv,
+  summarizeSelection,
+} from "@/lib/grid-selection";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
@@ -454,9 +463,24 @@ export function DataTable({
   onDeleteRow,
 }: DataTableProps) {
   const connection = useActiveConnection();
-  const { order, hidden, pinned, setOrder, setHidden, setPinned, reset, isCustomized } =
-    useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
-  const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
+  const {
+    order,
+    hidden,
+    pinned,
+    setOrder,
+    setHidden,
+    setPinned,
+    reset,
+    isCustomized,
+    profiles,
+    canUseProfiles,
+    saveProfile,
+    applyProfile,
+    renameProfile,
+    deleteProfile,
+  } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
+  const [activeCell, setActiveCell] = useState<GridCellRef | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(
     null,
   );
@@ -651,6 +675,44 @@ export function DataTable({
     .getVisibleLeafColumns()
     .map((column) => column.id)
     .filter((id) => id !== INDEX_COLUMN);
+  const visibleColumnKey = visibleDataColumns.join("\u0000");
+  const visibleColumnIds = useMemo(
+    () => (visibleColumnKey === "" ? [] : visibleColumnKey.split("\u0000")),
+    [visibleColumnKey],
+  );
+  const selection = useMemo(
+    () =>
+      activeCell &&
+      selectionAnchor &&
+      activeCell.columnId !== INDEX_COLUMN &&
+      selectionAnchor.columnId !== INDEX_COLUMN
+        ? { anchor: selectionAnchor, focus: activeCell }
+        : null,
+    [activeCell, selectionAnchor],
+  );
+  const selectedRange = useMemo(
+    () => selectionRange(selection, visibleColumnIds),
+    [selection, visibleColumnIds],
+  );
+  const selectedCount = selectionCellCount(selectedRange);
+  const selectionStats = useMemo(
+    () => (selectedCount > 1 ? summarizeSelection(data, selectedRange) : null),
+    [selectedCount, data, selectedRange],
+  );
+
+  const focusCell = useCallback((cell: GridCellRef | null, extend = false) => {
+    setActiveCell(cell);
+    if (!extend) setSelectionAnchor(cell);
+  }, []);
+
+  const copySelection = useCallback(() => {
+    if (!selectedRange || selectedCount <= 1) return false;
+    const tsv = selectionToTsv(data, selectedRange);
+    if (tsv === "") return false;
+    void navigator.clipboard.writeText(tsv);
+    toast.success(`${selectedCount} Zellen als TSV kopiert.`);
+    return true;
+  }, [selectedRange, selectedCount, data]);
 
   const handleSaveCell = useCallback(async () => {
     if (!editingCell || !onSaveRow || isSaving) return;
@@ -759,7 +821,9 @@ export function DataTable({
 
   useEffect(() => {
     if (!activeMatch) return;
-    setActiveCell({ rowIndex: activeMatch.rowIndex, columnId: activeMatch.columnId });
+    const matchCell = { rowIndex: activeMatch.rowIndex, columnId: activeMatch.columnId };
+    setActiveCell(matchCell);
+    setSelectionAnchor(matchCell);
     const tbody = tbodyRef.current;
     if (!tbody) return;
     const cell = Array.from(tbody.querySelectorAll<HTMLTableCellElement>("td[data-col]")).find(
@@ -806,8 +870,27 @@ export function DataTable({
       const { rowIndex, columnId } = activeCell;
       const colIndex = visibleDataColumns.indexOf(columnId);
 
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        if (copySelection()) return;
+        if (columnId === INDEX_COLUMN) return;
+        const row = rows[rowIndex];
+        const val = row?.getValue(columnId);
+        if (val !== undefined) {
+          const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
+          void navigator.clipboard.writeText(stringVal);
+          toast.success("Wert in die Zwischenablage kopiert!");
+        }
+        return;
+      }
+
       if (e.key === "Escape") {
+        if (selectedCount > 1) {
+          setSelectionAnchor(activeCell);
+          return;
+        }
         setActiveCell(null);
+        setSelectionAnchor(null);
         return;
       }
 
@@ -828,7 +911,7 @@ export function DataTable({
         nextRowIndex = Math.min(rows.length - 1, rowIndex + 1);
         e.preventDefault();
       } else if (e.key === "ArrowLeft") {
-        nextColIndex = Math.max(-1, colIndex - 1);
+        nextColIndex = Math.max(e.shiftKey ? 0 : -1, colIndex - 1);
         e.preventDefault();
       } else if (e.key === "ArrowRight") {
         nextColIndex = Math.min(visibleDataColumns.length - 1, colIndex + 1);
@@ -837,19 +920,7 @@ export function DataTable({
 
       const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : visibleDataColumns[nextColIndex];
       if (nextRowIndex !== rowIndex || nextColumnId !== columnId) {
-        setActiveCell({ rowIndex: nextRowIndex, columnId: nextColumnId });
-      }
-
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
-        if (columnId === INDEX_COLUMN) return;
-        const row = rows[rowIndex];
-        const val = row?.getValue(columnId);
-        if (val !== undefined) {
-          const stringVal = typeof val === "object" ? JSON.stringify(val, null, 2) : String(val);
-          void navigator.clipboard.writeText(stringVal);
-          toast.success("Wert in die Zwischenablage kopiert!");
-          e.preventDefault();
-        }
+        focusCell({ rowIndex: nextRowIndex, columnId: nextColumnId }, e.shiftKey);
       }
     };
 
@@ -863,6 +934,9 @@ export function DataTable({
     handleSaveCell,
     onSaveRow,
     handleCellEdit,
+    focusCell,
+    copySelection,
+    selectedCount,
   ]);
 
   const handleCellCopy = (val: unknown) => {
@@ -996,6 +1070,12 @@ export function DataTable({
                                   onShowAll={() => setHidden([])}
                                   onUnpinAll={() => setPinned([])}
                                   onCopyColumnNames={copyColumnNames}
+                                  profiles={profiles}
+                                  canUseProfiles={canUseProfiles}
+                                  onSaveProfile={saveProfile}
+                                  onApplyProfile={applyProfile}
+                                  onRenameProfile={renameProfile}
+                                  onDeleteProfile={deleteProfile}
                                 />
                               </ContextMenuContent>
                             </ContextMenu>
@@ -1074,6 +1154,9 @@ export function DataTable({
                             cellIndex > 0 && cell.column.getIsPinned() === "left"
                               ? cell.column.getStart("left")
                               : null;
+                          const isSelected =
+                            selectedCount > 1 &&
+                            isCellInSelection(selectedRange, rowIndex, columnId);
                           const isMatch = matchKeys.has(gridMatchKey(rowIndex, columnId));
                           const isActiveMatch =
                             activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;
@@ -1120,9 +1203,12 @@ export function DataTable({
                           return (
                             <td
                               key={cell.id}
-                              onClick={() => {
+                              onClick={(event) => {
                                 if (editingCell) setEditingCell(null);
-                                setActiveCell({ rowIndex, columnId });
+                                focusCell(
+                                  { rowIndex, columnId },
+                                  event.shiftKey && columnId !== INDEX_COLUMN,
+                                );
                               }}
                               onDoubleClick={
                                 onSaveRow && cellIndex > 0
@@ -1144,6 +1230,7 @@ export function DataTable({
                                   "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
                                 pinnedOffset !== null &&
                                   "sticky z-10 bg-inherit border-r border-border shadow-[1px_0_0_0_var(--border)]",
+                                isSelected && "bg-primary/10",
                                 isMatch && "bg-amber-400/15",
                                 isActiveMatch &&
                                   "bg-amber-400/30 outline outline-2 -outline-offset-2 outline-amber-500 z-20",
@@ -1242,7 +1329,9 @@ export function DataTable({
                   ? `${rangeStart}–${rangeEnd} von ${totalCount}`
                   : `${rows.length} ${rows.length === 1 ? "Zeile" : "Zeilen"}`}
               </span>
-              {isFetching ? (
+              {selectionStats ? (
+                <span className="truncate font-mono">{describeSelectionStats(selectionStats)}</span>
+              ) : isFetching ? (
                 <span>Lade…</span>
               ) : activeSort ? (
                 <span className="truncate">
