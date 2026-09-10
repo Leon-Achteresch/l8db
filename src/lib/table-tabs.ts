@@ -10,12 +10,14 @@ export type TableTab = {
 export type QueryTab = { kind: "query"; id: string; title: string; sql: string };
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ExtensionTab = { kind: "extension"; name: string };
-export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab;
+export type RoleTab = { kind: "role"; name: string };
+export type Tab = TableTab | QueryTab | FunctionTab | ExtensionTab | RoleTab;
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
+  if (tab.kind === "role") return `role:${tab.name}`;
   return `extension:${tab.name}`;
 }
 
@@ -26,6 +28,7 @@ interface TabsState {
   openQueryTab: () => string;
   openFunctionTab: (tab: Omit<FunctionTab, "kind">) => void;
   openExtensionTab: (tab: Omit<ExtensionTab, "kind">) => void;
+  openRoleTab: (tab: Omit<RoleTab, "kind">) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
   closeTabsToRight: (key: string) => void;
@@ -93,6 +96,15 @@ export const useTableTabs = create<TabsState>()(
         set((state) => {
           if (state.tabs.some((t) => tabKey(t) === key)) return state;
           return { tabs: [...state.tabs, et] };
+        });
+      },
+
+      openRoleTab: (tab) => {
+        const rt: RoleTab = { kind: "role", ...tab };
+        const key = tabKey(rt);
+        set((state) => {
+          if (state.tabs.some((t) => tabKey(t) === key)) return state;
+          return { tabs: [...state.tabs, rt] };
         });
       },
 

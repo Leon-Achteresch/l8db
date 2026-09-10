@@ -13,6 +13,7 @@ import {
   SettingsIcon,
   TableIcon,
   TrashIcon,
+  UsersIcon,
 } from "lucide-react";
 
 import {
@@ -53,6 +54,7 @@ import {
   useDatabasesQuery,
   useExtensionsQuery,
   useFunctionsQuery,
+  useRolesQuery,
   useSchemasQuery,
   useTablesQuery,
   useViewsQuery,
@@ -97,9 +99,15 @@ export function AppSidebarPanel() {
     isError: extensionsError,
     error: extensionsErrorValue,
   } = useExtensionsQuery();
+  const {
+    data: roles,
+    isLoading: rolesLoading,
+    isError: rolesError,
+    error: rolesErrorValue,
+  } = useRolesQuery();
 
   const [sidebarTab, setSidebarTab] = useState<
-    "tables" | "views" | "queries" | "functions" | "extensions"
+    "tables" | "views" | "queries" | "functions" | "extensions" | "roles"
   >("tables");
 
   return (
@@ -242,6 +250,13 @@ export function AppSidebarPanel() {
                   <PackageIcon className="size-4" />
                 </TabsTrigger>
                 <TabsTrigger
+                  value="roles"
+                  className="flex-1 px-0"
+                  aria-label="Benutzer"
+                >
+                  <UsersIcon className="size-4" />
+                </TabsTrigger>
+                <TabsTrigger
                   value="queries"
                   className="flex-1 px-0"
                   aria-label="Queries"
@@ -262,7 +277,9 @@ export function AppSidebarPanel() {
                   ? "Funktionen"
                   : sidebarTab === "extensions"
                     ? "Packages"
-                    : "Gespeicherte Queries"}
+                    : sidebarTab === "roles"
+                      ? "Benutzer & Rollen"
+                      : "Gespeicherte Queries"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {!activeConnection ? (
@@ -302,6 +319,13 @@ export function AppSidebarPanel() {
                 isLoading={extensionsLoading}
                 isError={extensionsError}
                 error={extensionsErrorValue}
+              />
+            ) : sidebarTab === "roles" ? (
+              <SidebarRoleList
+                items={roles}
+                isLoading={rolesLoading}
+                isError={rolesError}
+                error={rolesErrorValue}
               />
             ) : (
               <SavedQueriesList />
@@ -576,6 +600,70 @@ function SavedQueriesList() {
           </SidebarMenuItem>
         );
       })}
+    </SidebarMenu>
+  );
+}
+
+interface SidebarRoleListProps {
+  items: { name: string; can_login: boolean }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+function SidebarRoleList({
+  items,
+  isLoading,
+  isError,
+  error,
+}: SidebarRoleListProps) {
+  const navigate = useNavigate();
+  const openRoleTab = useTableTabs((state) => state.openRoleTab);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+        <Spinner />
+        Lade Benutzer…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="px-2 py-1 text-sm text-destructive">{String(error)}</p>
+    );
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <p className="px-2 py-1 text-sm text-muted-foreground">
+        Keine Rollen gefunden.
+      </p>
+    );
+  }
+
+  return (
+    <SidebarMenu>
+      {items.map((item) => (
+        <SidebarMenuItem key={item.name}>
+          <SidebarMenuButton
+            onClick={() => {
+              openRoleTab({ name: item.name });
+              navigate({
+                to: "/users/$name",
+                params: { name: item.name },
+              });
+            }}
+          >
+            <UsersIcon className="text-muted-foreground" />
+            <span className="truncate">
+              {item.name}
+              {item.can_login ? "" : " (Rolle)"}
+            </span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
     </SidebarMenu>
   );
 }

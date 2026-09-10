@@ -1,8 +1,9 @@
 use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
-    create_adapter, create_adapter_from_string, ColumnInfo, ConnectionConfig, DatabaseKind,
-    ExtensionInfo, FunctionInfo, QueryResult, TableData, TableInfo,
+    create_adapter, create_adapter_from_string, AlterRoleOptions, ColumnInfo, ConnectionConfig,
+    CreateRoleOptions, DatabaseKind, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
+    QueryResult, RoleInfo, RolePrivileges, TableData, TableInfo,
 };
 
 #[tauri::command]
@@ -281,5 +282,96 @@ pub async fn validate_sql(
 ) -> Result<(), String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .validate_sql(&sql)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_roles(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<RoleInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_roles()
+        .await
+}
+
+#[tauri::command]
+pub async fn create_role(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    options: CreateRoleOptions,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .create_role(&options)
+        .await
+}
+
+#[tauri::command]
+pub async fn alter_role(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    options: AlterRoleOptions,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .alter_role(&options)
+        .await
+}
+
+#[tauri::command]
+pub async fn drop_role(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .drop_role(&name)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_role_privileges(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    role_name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<RolePrivileges, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_role_privileges(&role_name)
+        .await
+}
+
+#[tauri::command]
+pub async fn modify_privilege(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    change: PrivilegeChange,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .modify_privilege(&change)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_foreign_keys(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ForeignKeyInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_foreign_keys(&schema, &table)
         .await
 }

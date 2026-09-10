@@ -11,7 +11,9 @@ import {
   getViewDefinition,
   listDatabases,
   listExtensions,
+  listForeignKeys,
   listFunctions,
+  listRoles,
   listSchemas,
   listTables,
   listViews,
@@ -152,6 +154,55 @@ export function useExtensionsQuery() {
         database ?? undefined,
       ),
     enabled: Boolean(connection),
+  });
+}
+
+export function useRolesQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["roles", connection?.id, database],
+    queryFn: () =>
+      listRoles(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useRolePrivilegesQuery(roleName: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["role-privileges", connection?.id, database, roleName],
+    queryFn: () =>
+      listRolePrivileges(
+        connection!.kind,
+        connection!.connectionString,
+        roleName,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(roleName),
+  });
+}
+
+export function useForeignKeysQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["foreign-keys", connection?.id, database, schema, table],
+    queryFn: () =>
+      listForeignKeys(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

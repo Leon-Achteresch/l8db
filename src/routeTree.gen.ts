@@ -16,6 +16,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
 import { Route as AppQueryIndexRouteImport } from './routes/_app.query.index'
+import { Route as AppUsersNameRouteImport } from './routes/_app.users.$name'
 import { Route as AppQueryIdRouteImport } from './routes/_app.query.$id'
 import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.$name'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
@@ -55,6 +56,11 @@ const AppQueryIndexRoute = AppQueryIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppQueryRoute,
 } as any)
+const AppUsersNameRoute = AppUsersNameRouteImport.update({
+  id: '/users/$name',
+  path: '/users/$name',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppQueryIdRoute = AppQueryIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
+  '/users/$name': typeof AppUsersNameRoute
   '/query/': typeof AppQueryIndexRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
   '/query/$id': typeof AppQueryIdRoute
+  '/users/$name': typeof AppUsersNameRoute
   '/query': typeof AppQueryIndexRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/extensions/$name': typeof AppExtensionsNameRoute
   '/_app/query/$id': typeof AppQueryIdRoute
+  '/_app/users/$name': typeof AppUsersNameRoute
   '/_app/query/': typeof AppQueryIndexRoute
   '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/extensions/$name'
     | '/query/$id'
+    | '/users/$name'
     | '/query/'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/'
     | '/extensions/$name'
     | '/query/$id'
+    | '/users/$name'
     | '/query'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/extensions/$name'
     | '/_app/query/$id'
+    | '/_app/users/$name'
     | '/_app/query/'
     | '/_app/functions/$schema/$name'
     | '/_app/tables/$schema/$table'
@@ -208,6 +220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQueryIndexRouteImport
       parentRoute: typeof AppQueryRoute
     }
+    '/_app/users/$name': {
+      id: '/_app/users/$name'
+      path: '/users/$name'
+      fullPath: '/users/$name'
+      preLoaderRoute: typeof AppUsersNameRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/query/$id': {
       id: '/_app/query/$id'
       path: '/$id'
@@ -259,6 +278,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppExtensionsNameRoute: typeof AppExtensionsNameRoute
+  AppUsersNameRoute: typeof AppUsersNameRoute
   AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
 }
@@ -269,6 +289,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppExtensionsNameRoute: AppExtensionsNameRoute,
+  AppUsersNameRoute: AppUsersNameRoute,
   AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
 }

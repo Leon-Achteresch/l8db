@@ -10,6 +10,7 @@ import {
   PlusIcon,
   SquareTerminalIcon,
   TableIcon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
@@ -52,6 +53,8 @@ function tabVisual(tab: Tab) {
       return { Icon: BracesIcon, iconColor: "text-violet-500" };
     case "extension":
       return { Icon: PackageIcon, iconColor: "text-amber-500" };
+    case "role":
+      return { Icon: UsersIcon, iconColor: "text-rose-500" };
     default:
       return (tab.entityType ?? "table") === "view"
         ? { Icon: EyeIcon, iconColor: "text-cyan-500" }
@@ -214,6 +217,11 @@ export function TableTabs() {
         }),
       );
     }
+    if (tab.kind === "role") {
+      return Boolean(
+        matchRoute({ to: "/users/$name", params: { name: tab.name } }),
+      );
+    }
     return Boolean(
       matchRoute({ to: "/extensions/$name", params: { name: tab.name } }),
     );
@@ -239,6 +247,8 @@ export function TableTabs() {
         params: { schema: tab.schema, name: tab.name },
         search: { oid: tab.oid },
       });
+    } else if (tab.kind === "role") {
+      void navigate({ to: "/users/$name", params: { name: tab.name } });
     } else {
       void navigate({ to: "/extensions/$name", params: { name: tab.name } });
     }

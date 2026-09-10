@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { TriangleAlertIcon } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
   useTableRowCountQuery,
   useUpdateRowMutation,
   useViewsQuery,
+  useForeignKeysQuery,
   PAGE_SIZE,
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -23,9 +24,11 @@ const routeApi = getRouteApi("/_app/tables/$schema/$table");
 
 export function TablePage() {
   const { schema, table } = routeApi.useParams();
-  const { type } = routeApi.useSearch();
-  const navigate = routeApi.useNavigate();
+  const { type, fkFilter } = routeApi.useSearch();
+  const navigate = useNavigate();
+  const routeNavigate = routeApi.useNavigate();
   const { data: views } = useViewsQuery();
+  const { data: foreignKeys } = useForeignKeysQuery(schema, table);
   const tabEntityType = useTableTabs((state) => {
     const tab = state.tabs.find(
       (t) => t.kind === "table" && t.schema === schema && t.table === table,
@@ -41,7 +44,7 @@ export function TablePage() {
   }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(fkFilter ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
   const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
@@ -60,23 +63,34 @@ export function TablePage() {
     setPage(0);
   };
 
+  const handleNavigateToTable = useMemo(() => {
+    return (targetSchema: string, targetTable: string, filterWhere?: string) => {
+      openTab({ schema: targetSchema, table: targetTable, entityType: "table" });
+      void navigate({
+        to: "/tables/$schema/$table",
+        params: { schema: targetSchema, table: targetTable },
+        search: filterWhere ? { fkFilter: filterWhere } : {},
+      });
+    };
+  }, [openTab, navigate]);
+
   useEffect(() => {
     openTab({ schema, table, entityType: isView ? "view" : "table" });
   }, [schema, table, isView, openTab]);
 
   useEffect(() => {
     if (!isView || type === "view") return;
-    void navigate({
+    void routeNavigate({
       search: { type: "view" },
       replace: true,
     });
-  }, [isView, type, navigate]);
+  }, [isView, type, routeNavigate]);
 
   useEffect(() => {
-    setFilter("");
+    setFilter(fkFilter ?? "");
     setSorting([]);
     setPage(0);
-  }, [schema, table]);
+  }, [schema, table, fkFilter]);
 
   if (!connection) {
     return (
@@ -161,6 +175,10 @@ export function TablePage() {
             totalCount={totalCount ?? undefined}
             pageSize={PAGE_SIZE}
             onPageChange={setPage}
+            foreignKeys={foreignKeys}
+            currentSchema={schema}
+            currentTable={table}
+            onNavigateToTable={handleNavigateToTable}
           />
         </div>
       )}

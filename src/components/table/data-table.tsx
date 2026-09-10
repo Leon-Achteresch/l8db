@@ -24,10 +24,12 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DatabaseIcon,
+  ExternalLinkIcon,
   FilterIcon,
   FingerprintIcon,
   HashIcon,
   KeyIcon,
+  LinkIcon,
   Loader2Icon,
   Maximize2Icon,
   PlayIcon,
@@ -47,9 +49,13 @@ import {
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { fetchTableRows, type ForeignKeyInfo } from "@/lib/db";
+import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { OPERATORS, compileSingleCondition, operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
@@ -224,6 +230,148 @@ function renderValue(value: unknown) {
   return <span className="font-mono text-[13px] text-foreground/90">{str}</span>;
 }
 
+function formatFkFilter(column: string, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const escaped = String(value).replace(/'/g, "''");
+  if (typeof value === "number") return `"${column}" = ${value}`;
+  return `"${column}" = '${escaped}'`;
+}
+
+function FkPreviewPopover({
+  fk,
+  value,
+  currentSchema,
+  currentTable,
+  onNavigate,
+  children,
+}: {
+  fk: ForeignKeyInfo;
+  value: unknown;
+  currentSchema: string;
+  currentTable: string;
+  onNavigate: (schema: string, table: string, filter?: string) => void;
+  children: React.ReactNode;
+}) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const [previewData, setPreviewData] = useState<Record<string, unknown> | null>(null);
+  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  const isOutgoing = fk.from_schema === currentSchema && fk.from_table === currentTable;
+  const targetSchema = isOutgoing ? fk.to_schema : fk.from_schema;
+  const targetTable = isOutgoing ? fk.to_table : fk.from_table;
+  const targetColumn = isOutgoing ? fk.to_column : fk.from_column;
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open || hasLoaded || !connection || value === null || value === undefined) return;
+    setIsLoadingPreview(true);
+    setHasLoaded(true);
+    const filterSql = formatFkFilter(targetColumn, value);
+    fetchTableRows(
+      connection.kind,
+      connection.connectionString,
+      targetSchema,
+      targetTable,
+      filterSql,
+      5,
+      0,
+      database ?? undefined,
+    )
+      .then((result) => {
+        setPreviewColumns(result.columns);
+        setPreviewData(result.rows[0] as Record<string, unknown> ?? null);
+      })
+      .catch(() => {
+        setPreviewData(null);
+      })
+      .finally(() => setIsLoadingPreview(false));
+  };
+
+  const handleCtrlClick = (e: React.MouseEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || value === null || value === undefined) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const filterSql = formatFkFilter(targetColumn, value);
+    onNavigate(targetSchema, targetTable, filterSql);
+  };
+
+  if (value === null || value === undefined) {
+    return <>{children}</>;
+  }
+
+  return (
+    <HoverCard openDelay={400} closeDelay={100} onOpenChange={handleOpenChange}>
+      <HoverCardTrigger asChild>
+        <div
+          onClick={handleCtrlClick}
+          className="inline-flex items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
+        >
+          <LinkIcon className="size-3 shrink-0 text-blue-500/60 group-hover/fk:text-blue-500 transition-colors" />
+          <div className="truncate">{children}</div>
+        </div>
+      </HoverCardTrigger>
+      <HoverCardContent
+        side="bottom"
+        align="start"
+        className="w-auto min-w-72 max-w-[32rem] p-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
+            <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
+              {targetSchema}.{targetTable}
+            </span>
+          </div>
+          <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+            {isOutgoing ? "FK" : "Referenced by"}
+          </span>
+        </div>
+        <div className="px-3 py-2 max-h-52 overflow-auto">
+          {isLoadingPreview ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2Icon className="size-3 animate-spin" />
+              Lade...
+            </div>
+          ) : previewData ? (
+            <div className="space-y-1">
+              {previewColumns.slice(0, 8).map((col) => (
+                <div key={col} className="flex items-baseline gap-2 text-xs">
+                  <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
+                    {col}
+                  </span>
+                  <span className="min-w-0 truncate">{renderValue(previewData[col])}</span>
+                </div>
+              ))}
+              {previewColumns.length > 8 && (
+                <div className="text-[10px] text-muted-foreground pt-1">
+                  +{previewColumns.length - 8} weitere Spalten
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">Kein Eintrag gefunden.</span>
+          )}
+        </div>
+        <div className="border-t px-3 py-1.5 bg-muted/20">
+          <button
+            type="button"
+            className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
+            onClick={() => {
+              const filterSql = formatFkFilter(targetColumn, value);
+              onNavigate(targetSchema, targetTable, filterSql);
+            }}
+          >
+            In {targetSchema}.{targetTable} anzeigen
+          </button>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
 type EditingRow = {
   ctid: string;
   values: Record<string, string>;
@@ -244,6 +392,10 @@ type DataTableProps = {
   totalCount?: number;
   pageSize?: number;
   onPageChange?: (page: number) => void;
+  foreignKeys?: ForeignKeyInfo[];
+  currentSchema?: string;
+  currentTable?: string;
+  onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
 };
 
 export function DataTable({
@@ -260,6 +412,10 @@ export function DataTable({
   totalCount,
   pageSize = 100,
   onPageChange,
+  foreignKeys,
+  currentSchema,
+  currentTable,
+  onNavigateToTable,
 }: DataTableProps) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
@@ -269,6 +425,20 @@ export function DataTable({
   const [filterOperator, setFilterOperator] = useState("eq");
   const [filterValue, setFilterValue] = useState("");
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
+
+  const fkByColumn = useMemo(() => {
+    if (!foreignKeys || !currentSchema || !currentTable) return new Map<string, ForeignKeyInfo>();
+    const map = new Map<string, ForeignKeyInfo>();
+    for (const fk of foreignKeys) {
+      if (fk.from_schema === currentSchema && fk.from_table === currentTable) {
+        map.set(fk.from_column, fk);
+      }
+      if (fk.to_schema === currentSchema && fk.to_table === currentTable) {
+        map.set(fk.to_column, fk);
+      }
+    }
+    return map;
+  }, [foreignKeys, currentSchema, currentTable]);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -297,6 +467,7 @@ export function DataTable({
           header: ({ column: col }: HeaderContext<TableRow, unknown>) => {
             const typeInfo = getColumnTypeInfo(column, data);
             const sorted = col.getIsSorted();
+            const fk = fkByColumn.get(column);
             return (
               <div className="flex items-center gap-2 w-full min-w-0 justify-start">
                 <button
@@ -323,7 +494,17 @@ export function DataTable({
                     )}
                   </span>
                 </button>
-                <div className="ml-auto flex shrink-0 items-center">
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                  {fk && (
+                    <div className="flex items-center gap-0.5 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap text-blue-500 bg-blue-500/10 border-blue-500/20" title={
+                      fk.from_schema === currentSchema && fk.from_table === currentTable
+                        ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
+                        : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
+                    }>
+                      <LinkIcon className="size-2.5" />
+                      <span>fk</span>
+                    </div>
+                  )}
                   <div
                     className={cn(
                       "flex items-center gap-1 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap",
@@ -339,6 +520,22 @@ export function DataTable({
           },
           cell: (info) => {
             const value = info.getValue();
+            const fk = fkByColumn.get(column);
+            if (fk && onNavigateToTable && currentSchema && currentTable) {
+              return (
+                <FkPreviewPopover
+                  fk={fk}
+                  value={value}
+                  currentSchema={currentSchema}
+                  currentTable={currentTable}
+                  onNavigate={onNavigateToTable}
+                >
+                  <div className="truncate text-left">
+                    {renderValue(value)}
+                  </div>
+                </FkPreviewPopover>
+              );
+            }
             return (
               <div className="truncate text-left">
                 {renderValue(value)}
@@ -348,7 +545,7 @@ export function DataTable({
         }),
       ),
     ],
-    [columnNames, isFetching, data, page, pageSize],
+    [columnNames, isFetching, data, page, pageSize, fkByColumn, onNavigateToTable, currentSchema, currentTable],
   );
 
   const table = useReactTable({
