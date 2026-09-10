@@ -1,4 +1,4 @@
-import { Copy, CopyPlus, KeyRound, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { Copy, CopyPlus, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
@@ -56,7 +56,7 @@ export function ConnectionPickCard({
           whileTap={reduce ? undefined : { scale: 0.99 }}
           transition={{ ...SPRING_PRESS, layout: SPRING_LAYOUT }}
           className={cn(
-            "relative flex min-h-[13.5rem] flex-col justify-between overflow-hidden rounded-2xl border bg-card px-4 py-4",
+            "relative flex flex-col justify-between gap-2.5 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-3.5",
             active ? "border-foreground/25" : "border-border",
           )}
         >
@@ -67,23 +67,25 @@ export function ConnectionPickCard({
               style={{ backgroundColor: connection.color }}
             />
           )}
-          <div className="flex items-start justify-between gap-3">
-            <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-              <span className="grid size-10 place-items-center rounded-lg border border-border bg-muted/50">
-                <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-muted/50">
+                <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
               </span>
-              <span className="mt-3 flex min-w-0 items-center gap-2">
-                <ConnectionStatusIndicator connectionId={connection.id} />
-                <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">
-                  {connection.name}
-                </h2>
+              <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <ConnectionStatusIndicator connectionId={connection.id} />
+                  <h2 className="min-w-0 truncate text-sm font-semibold tracking-tight">
+                    {connection.name}
+                  </h2>
+                </span>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {provider.name}
+                  {colorLabel ? ` · ${colorLabel}` : ""}
+                </p>
               </span>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {provider.name}
-                {colorLabel ? ` · ${colorLabel}` : ""}
-              </p>
             </button>
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center gap-0">
               <button
                 type="button"
                 aria-label={
@@ -94,7 +96,7 @@ export function ConnectionPickCard({
                 aria-pressed={favorite}
                 onClick={onToggleFavorite}
                 className={cn(
-                  "grid size-8 place-items-center rounded-md hover:bg-muted",
+                  "grid size-7 place-items-center rounded-md hover:bg-muted",
                   favorite ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -104,7 +106,7 @@ export function ConnectionPickCard({
                 type="button"
                 aria-label={`${connection.name} bearbeiten`}
                 onClick={onEdit}
-                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <Pencil className="size-3.5" />
               </button>
@@ -112,7 +114,7 @@ export function ConnectionPickCard({
                 type="button"
                 aria-label={`${connection.name} entfernen`}
                 onClick={onDelete}
-                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
               </button>
@@ -121,23 +123,14 @@ export function ConnectionPickCard({
           <button
             type="button"
             onClick={onOpen}
-            className="mt-6 flex w-full items-end justify-between gap-3 text-left"
+            className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-tight text-muted-foreground">
               {endpoint.user ? (
-                <span className="mb-1 flex items-center gap-1 truncate font-mono text-xs text-foreground/80">
-                  <KeyRound className="size-3 shrink-0 text-muted-foreground" />
-                  {endpoint.user}
-                </span>
+                <span className="text-foreground/80">{endpoint.user} · </span>
               ) : null}
-              <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                {host}
-              </span>
-              {endpoint.database ? (
-                <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
-                  {endpoint.database}
-                </span>
-              ) : null}
+              {host}
+              {endpoint.database ? ` / ${endpoint.database}` : null}
             </span>
             <AnimatedBadge
               status={connecting ? "loading" : active ? "success" : "neutral"}
