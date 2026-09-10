@@ -46,6 +46,22 @@ export interface QueryResult {
   execution_time_ms: number;
 }
 
+export interface FunctionInfo {
+  schema: string;
+  name: string;
+  identity_args: string;
+  return_type: string;
+  language: string;
+  oid: string;
+}
+
+export interface ExtensionInfo {
+  name: string;
+  version: string | null;
+  schema: string | null;
+  description: string | null;
+}
+
 export async function listDatabases(
   kind: DatabaseKind,
   connectionString: string,
@@ -217,4 +233,35 @@ export async function rollbackTransaction(txId: string): Promise<void> {
 
 export async function listTransactions(): Promise<string[]> {
   return invoke("list_transactions");
+}
+
+export async function listFunctions(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<FunctionInfo[]> {
+  return invoke("list_functions", { kind, connectionString, database, schema });
+}
+
+export async function getFunctionDefinition(
+  kind: DatabaseKind,
+  connectionString: string,
+  oid: string,
+  database?: string,
+): Promise<string> {
+  return invoke("get_function_definition", {
+    kind,
+    connectionString,
+    database,
+    oid,
+  });
+}
+
+export async function listExtensions(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<ExtensionInfo[]> {
+  return invoke("list_extensions", { kind, connectionString, database });
 }
