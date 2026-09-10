@@ -22,7 +22,15 @@ pub fn quote(ident: &str) -> String {
 fn environment() -> Result<&'static Environment, String> {
     static ENV: OnceLock<Result<Environment, String>> = OnceLock::new();
     ENV.get_or_init(|| {
-        Environment::new().map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))
+        unsafe {
+            Environment::set_connection_pooling(odbc_api::sys::AttrConnectionPooling::DriverAware)
+                .ok();
+        }
+        let mut env = Environment::new()
+            .map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))?;
+        env.set_connection_pooling_matching(odbc_api::sys::AttrCpMatch::Strict)
+            .ok();
+        Ok(env)
     })
     .as_ref()
     .map_err(Clone::clone)

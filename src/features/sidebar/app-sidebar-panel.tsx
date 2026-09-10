@@ -30,7 +30,7 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -135,7 +135,6 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import {
   activateConnectionWithToast,
   effectiveConnectionString,
@@ -149,7 +148,6 @@ export function AppSidebarPanel() {
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
-  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
@@ -254,7 +252,7 @@ export function AppSidebarPanel() {
   return (
     <Sidebar
       collapsible="none"
-      style={{ width: panelWidth }}
+      style={{ width: "var(--sidebar-width)" }}
       className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
@@ -658,9 +656,10 @@ function SidebarEntityList({
     return map;
   }, [columns]);
 
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
     if (!items) return undefined;
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     if (!q) return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
     return items
       .map((item) => {
@@ -677,7 +676,7 @@ function SidebarEntityList({
         (item): item is { schema: string; name: string; matchingColumns: string[] } =>
           item !== null,
       );
-  }, [items, search, columnsByTable]);
+  }, [items, deferredSearch, columnsByTable]);
 
   if (isLoading) {
     return (
