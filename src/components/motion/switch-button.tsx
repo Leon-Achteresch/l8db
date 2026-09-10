@@ -1,12 +1,11 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
-import type { ComponentPropsWithoutRef } from "react";
+import { type HTMLMotionProps, motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 export interface SwitchButtonProps
-  extends Omit<ComponentPropsWithoutRef<"button">, "onChange"> {
+  extends Omit<HTMLMotionProps<"button">, "children" | "onChange"> {
   checked?: boolean;
   loading?: boolean;
   onCheckedChange?: (checked: boolean) => void;
