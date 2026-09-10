@@ -1,6 +1,7 @@
 import { Copy, CopyPlus, KeyRound, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
   ContextMenu,
@@ -71,9 +72,12 @@ export function ConnectionPickCard({
               <span className="grid size-10 place-items-center rounded-lg border border-border bg-muted/50">
                 <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
               </span>
-              <h2 className="mt-3 truncate text-lg font-semibold tracking-tight">
-                {connection.name}
-              </h2>
+              <span className="mt-3 flex min-w-0 items-center gap-2">
+                <ConnectionStatusIndicator connectionId={connection.id} />
+                <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">
+                  {connection.name}
+                </h2>
+              </span>
               <p className="mt-1 truncate text-xs text-muted-foreground">
                 {provider.name}
                 {colorLabel ? ` · ${colorLabel}` : ""}
