@@ -1,12 +1,9 @@
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import {
-  DownloadIcon,
-  LoaderIcon,
-  PlusIcon,
-} from "lucide-react";
+import { DownloadIcon, LoaderIcon, PlusIcon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -24,10 +21,10 @@ import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
-import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
+import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
@@ -40,6 +37,7 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
+import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
@@ -54,7 +52,11 @@ import {
 import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
-import { availableTableDetailTabs, resolveTableDetailTab, type TableDetailTab } from "@/lib/table-detail-tabs";
+import {
+  availableTableDetailTabs,
+  resolveTableDetailTab,
+  type TableDetailTab,
+} from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
@@ -124,6 +126,18 @@ export function TableView({ schema, table, type, fkFilter, fkRaw }: TableViewPro
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
   const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
+  const gridExportHotkey = useResolvedHotkey("grid.export");
+  useHotkey(
+    gridExportHotkey,
+    (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      event.preventDefault();
+      setCsvExportOpen(true);
+    },
+    { ignoreInputs: false },
+  );
+  useEffect(() => onHotkeyAction("grid.export", () => setCsvExportOpen(true)), []);
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,

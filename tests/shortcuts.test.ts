@@ -44,7 +44,13 @@ describe("filterShortcuts", () => {
 
   it("filtert nach Bereich", () => {
     const result = filterShortcuts(SHORTCUTS, "datengitter", "other");
-    expect(result.map((entry) => entry.id).sort()).toEqual(["grid.copy", "grid.search"]);
+    expect(result.map((entry) => entry.id).sort()).toEqual([
+      "grid.copy",
+      "grid.export",
+      "grid.nextPage",
+      "grid.prevPage",
+      "grid.search",
+    ]);
   });
 
   it("filtert nach Tastenkürzel und beachtet die Plattform", () => {

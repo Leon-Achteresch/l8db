@@ -60,102 +60,9 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
-fn code_bounds(sql: &str) -> (usize, usize) {
-    let b = sql.as_bytes();
-    let n = b.len();
-    let mut i = 0;
-    let mut first: Option<usize> = None;
-    let mut last = 0;
-    let mut line_start = true;
-    while i < n {
-        let c = b[i];
-        if c == b'-' && b.get(i + 1) == Some(&b'-') {
-            i = sql[i..].find('\n').map(|k| i + k).unwrap_or(n);
-            continue;
-        }
-        if c == b'/' && b.get(i + 1) == Some(&b'*') {
-            i = sql[i + 2..].find("*/").map(|k| i + k + 4).unwrap_or(n);
-            continue;
-        }
-        if c == b'\n' {
-            line_start = true;
-            i += 1;
-            continue;
-        }
-        if c.is_ascii_whitespace() {
-            i += 1;
-            continue;
-        }
-        if c == b'/' && line_start {
-            let rest = &sql[i + 1..];
-            let eol = rest.find('\n').unwrap_or(rest.len());
-            if rest[..eol].trim().is_empty() {
-                i += 1 + eol;
-                continue;
-            }
-        }
-        line_start = false;
-        if c == b'\'' || c == b'"' {
-            let mut j = i + 1;
-            while j < n {
-                if b[j] == c {
-                    if b.get(j + 1) == Some(&c) {
-                        j += 2;
-                        continue;
-                    }
-                    break;
-                }
-                j += 1;
-            }
-            first.get_or_insert(i);
-            i = (j + 1).min(n);
-            last = i;
-            continue;
-        }
-        if c == b';' {
-            i += 1;
-            continue;
-        }
-        first.get_or_insert(i);
-        i += 1;
-        last = i;
-    }
-    let first = first.unwrap_or(0);
-    (first, last.max(first))
-}
-
-fn is_plsql(sql: &str) -> bool {
-    let mut words = sql
-        .split(|c: char| c.is_whitespace() || c == '(')
-        .filter(|w| !w.is_empty())
-        .map(|w| w.to_uppercase());
-    match words.next().as_deref() {
-        Some("BEGIN") | Some("DECLARE") => true,
-        Some("CREATE") => words
-            .find(|w| {
-                !matches!(
-                    w.as_str(),
-                    "OR" | "REPLACE" | "EDITIONABLE" | "NONEDITIONABLE"
-                )
-            })
-            .is_some_and(|w| {
-                matches!(
-                    w.as_str(),
-                    "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE" | "LIBRARY"
-                )
-            }),
-        _ => false,
-    }
-}
-
-fn prepare(sql: &str) -> String {
-    let (start, end) = code_bounds(sql);
-    let mut out = sql[start..end].to_string();
-    if is_plsql(&out) {
-        out.push(';');
-    }
-    out
-}
+#[path = "oracle_sql.rs"]
+mod sql;
+use sql::prepare;
 
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     let text: Option<String> = match row.get(index) {
@@ -613,6 +520,20 @@ impl DatabaseAdapter for OracleAdapter {
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+        let mut results = Vec::new();
+        for statement in sql::split_statements(sql) {
+            let result = self.execute_query(&statement).await;
+            results.push(super::ScriptStatementResult {
+                statement,
+                success: result.is_ok(),
+                rows_affected: result.as_ref().ok().and_then(|r| r.rows_affected),
+                error: result.err(),
+            });
+        }
+        Ok(results)
     }
 
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {

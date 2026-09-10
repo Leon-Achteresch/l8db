@@ -1,5 +1,6 @@
 import { CheckCircle2Icon, CircleDashedIcon, LoaderIcon, XCircleIcon, XIcon } from "lucide-react";
 
+import type { QueryResult } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -15,6 +16,7 @@ export interface ScriptRunEntry {
   rowCount: number | null;
   rowsAffected: number | null;
   error: string | null;
+  result?: QueryResult;
 }
 
 interface ScriptResultListProps {
@@ -65,7 +67,13 @@ export function ScriptResultList({
           {failed > 0 ? ` · ${failed} fehlgeschlagen` : ""}
         </span>
         <span className="truncate text-muted-foreground">· {note}</span>
-        <Button size="icon" variant="ghost" className="ml-auto size-6" onClick={onClose}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="ml-auto size-6"
+          aria-label="Skriptergebnisse schließen"
+          onClick={onClose}
+        >
           <XIcon className="size-3" />
         </Button>
       </div>
