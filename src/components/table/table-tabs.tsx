@@ -148,6 +148,8 @@ export function TableTabs() {
         matchRoute({
           to: "/tables/$schema/$table",
           params: { schema: tab.schema, table: tab.table },
+          search:
+            (tab.entityType ?? "table") === "view" ? { type: "view" } : {},
         }),
       );
     }
@@ -161,6 +163,8 @@ export function TableTabs() {
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema: tab.schema, table: tab.table },
+        search:
+          (tab.entityType ?? "table") === "view" ? { type: "view" } : {},
       });
     } else {
       void navigate({ to: "/query/$id", params: { id: tab.id } });

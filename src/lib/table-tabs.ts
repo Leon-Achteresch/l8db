@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type TableTab = { kind: "table"; schema: string; table: string };
+export type TableTab = {
+  kind: "table";
+  schema: string;
+  table: string;
+  entityType?: "table" | "view";
+};
 export type QueryTab = { kind: "query"; id: string; title: string; sql: string };
 export type Tab = TableTab | QueryTab;
 
@@ -31,13 +36,29 @@ export const useTableTabs = create<TabsState>()(
       queryCounter: 0,
 
       openTab: (tab) => {
-        const tableTab: TableTab = { kind: "table", ...tab };
+        const tableTab: TableTab = {
+          kind: "table",
+          schema: tab.schema,
+          table: tab.table,
+          entityType: tab.entityType ?? "table",
+        };
         const key = tabKey(tableTab);
-        set((state) =>
-          state.tabs.some((t) => tabKey(t) === key)
-            ? state
-            : { tabs: [...state.tabs, tableTab] },
-        );
+        set((state) => {
+          const index = state.tabs.findIndex((t) => tabKey(t) === key);
+          if (index === -1) {
+            return { tabs: [...state.tabs, tableTab] };
+          }
+          const existing = state.tabs[index];
+          if (
+            existing.kind === "table" &&
+            (existing.entityType ?? "table") === tableTab.entityType
+          ) {
+            return state;
+          }
+          const tabs = [...state.tabs];
+          tabs[index] = tableTab;
+          return { tabs };
+        });
       },
 
       openQueryTab: () => {
@@ -87,13 +108,26 @@ export const useTableTabs = create<TabsState>()(
     }),
     {
       name: "l8db.table-tabs",
-      version: 1,
+      version: 2,
       migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {
           const old = persistedState as { tabs: { schema: string; table: string }[] };
           return {
-            tabs: (old.tabs ?? []).map((t) => ({ kind: "table" as const, ...t })),
+            tabs: (old.tabs ?? []).map((t) => ({
+              kind: "table" as const,
+              ...t,
+              entityType: "table" as const,
+            })),
             queryCounter: 0,
+          };
+        }
+        if (version === 1) {
+          const old = persistedState as { tabs: TableTab[]; queryCounter: number };
+          return {
+            tabs: (old.tabs ?? []).map((t) =>
+              t.kind === "table" ? { ...t, entityType: t.entityType ?? "table" } : t,
+            ),
+            queryCounter: old.queryCounter ?? 0,
           };
         }
         return persistedState;
