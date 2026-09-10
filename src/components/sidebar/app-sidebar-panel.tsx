@@ -54,15 +54,14 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { useSidebarPanel } from "@/lib/sidebar-panel";
+import { selectSidebarPanelWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const setActiveId = useConnectionsStore((state) => state.setActiveId);
   const activeConnection = useActiveConnection();
-  const setWidth = useSidebarPanel((state) => state.setWidth);
-  const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
+  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
   const matchRoute = useMatchRoute();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
@@ -85,32 +84,12 @@ export function AppSidebarPanel() {
 
   const [sidebarTab, setSidebarTab] = useState<"tables" | "views" | "queries">("tables");
 
-  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = useSidebarPanel.getState().width;
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      setWidth(startWidth + (moveEvent.clientX - startX));
-    };
-
-    const handlePointerUp = () => {
-      setIsResizing(false);
-      document.body.style.removeProperty("cursor");
-      document.body.style.removeProperty("user-select");
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-
-    setIsResizing(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-  };
-
   return (
-    <Sidebar collapsible="none" className="relative hidden flex-1 md:flex">
+    <Sidebar
+      collapsible="none"
+      style={{ width: panelWidth }}
+      className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
+    >
       <SidebarHeader className="gap-3.5 border-b p-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -216,17 +195,26 @@ export function AppSidebarPanel() {
               onValueChange={(v) => setSidebarTab(v as "tables" | "views" | "queries")}
             >
               <TabsList className="w-full">
-                <TabsTrigger value="tables" className="flex-1">
-                  <TableIcon className="size-3.5" />
-                  Tabellen
+                <TabsTrigger
+                  value="tables"
+                  className="flex-1 px-0"
+                  aria-label="Tabellen"
+                >
+                  <TableIcon className="size-4" />
                 </TabsTrigger>
-                <TabsTrigger value="views" className="flex-1">
-                  <EyeIcon className="size-3.5" />
-                  Views
+                <TabsTrigger
+                  value="views"
+                  className="flex-1 px-0"
+                  aria-label="Views"
+                >
+                  <EyeIcon className="size-4" />
                 </TabsTrigger>
-                <TabsTrigger value="queries" className="flex-1">
-                  <FileCodeIcon className="size-3.5" />
-                  Queries
+                <TabsTrigger
+                  value="queries"
+                  className="flex-1 px-0"
+                  aria-label="Queries"
+                >
+                  <FileCodeIcon className="size-4" />
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -267,12 +255,6 @@ export function AppSidebarPanel() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onPointerDown={handleResizeStart}
-        className="absolute inset-y-0 right-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-sidebar-border"
-      />
     </Sidebar>
   );
 }

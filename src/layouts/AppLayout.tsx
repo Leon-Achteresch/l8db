@@ -7,10 +7,13 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { useSidebarPanel } from "@/lib/sidebar-panel";
+import {
+  selectSidebarPanelWidth,
+  useSidebarPanel,
+} from "@/lib/sidebar-panel";
 
 export function AppLayout() {
-  const panelWidth = useSidebarPanel((state) => state.width);
+  const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
 
   return (
     <SidebarProvider
