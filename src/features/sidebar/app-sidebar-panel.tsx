@@ -181,58 +181,6 @@ export function AppSidebarPanel() {
     [connections, activeConnection],
   );
   const activeUser = activeConnection ? connectionUser(activeConnection) : "";
-  const {
-    data: tables,
-    isLoading: tablesLoading,
-    isError: tablesError,
-    error: tablesErrorValue,
-  } = useTablesQuery();
-  const {
-    data: views,
-    isLoading: viewsLoading,
-    isError: viewsError,
-    error: viewsErrorValue,
-  } = useViewsQuery();
-  const {
-    data: functions,
-    isLoading: functionsLoading,
-    isError: functionsError,
-    error: functionsErrorValue,
-  } = useFunctionsQuery();
-  const {
-    data: procedures,
-    isLoading: proceduresLoading,
-    isError: proceduresError,
-    error: proceduresErrorValue,
-  } = useProceduresQuery();
-  const {
-    data: synonyms,
-    isLoading: synonymsLoading,
-    isError: synonymsError,
-    error: synonymsErrorValue,
-  } = useSynonymsQuery();
-  const {
-    data: extensions,
-    isLoading: extensionsLoading,
-    isError: extensionsError,
-    error: extensionsErrorValue,
-  } = useExtensionsQuery();
-  const {
-    data: roles,
-    isLoading: rolesLoading,
-    isError: rolesError,
-    error: rolesErrorValue,
-  } = useRolesQuery();
-
-  const {
-    data: sequences,
-    isLoading: sequencesLoading,
-    isError: sequencesError,
-    error: sequencesErrorValue,
-  } = useSequencesQuery();
-
-  const { data: matviews } = useMaterializedViewsQuery();
-
   const [selectedTab, setSidebarTab] = useState<
     | "tables"
     | "views"
@@ -245,6 +193,61 @@ export function AppSidebarPanel() {
     | "roles"
     | "sequences"
   >("tables");
+  const {
+    data: tables,
+    isLoading: tablesLoading,
+    isError: tablesError,
+    error: tablesErrorValue,
+  } = useTablesQuery();
+  const {
+    data: views,
+    isLoading: viewsLoading,
+    isError: viewsError,
+    error: viewsErrorValue,
+  } = useViewsQuery(selectedTab === "views");
+  const {
+    data: functions,
+    isLoading: functionsLoading,
+    isError: functionsError,
+    error: functionsErrorValue,
+  } = useFunctionsQuery();
+  const {
+    data: procedures,
+    isLoading: proceduresLoading,
+    isError: proceduresError,
+    error: proceduresErrorValue,
+  } = useProceduresQuery(selectedTab === "procedures");
+  const {
+    data: synonyms,
+    isLoading: synonymsLoading,
+    isError: synonymsError,
+    error: synonymsErrorValue,
+  } = useSynonymsQuery(undefined, selectedTab === "synonyms");
+  const {
+    data: extensions,
+    isLoading: extensionsLoading,
+    isError: extensionsError,
+    error: extensionsErrorValue,
+  } = useExtensionsQuery(selectedTab === "extensions");
+  const {
+    data: roles,
+    isLoading: rolesLoading,
+    isError: rolesError,
+    error: rolesErrorValue,
+  } = useRolesQuery(selectedTab === "roles");
+
+  const {
+    data: sequences,
+    isLoading: sequencesLoading,
+    isError: sequencesError,
+    error: sequencesErrorValue,
+  } = useSequencesQuery(selectedTab === "sequences");
+
+  const { data: matviews } = useMaterializedViewsQuery(
+    undefined,
+    selectedTab === "views",
+  );
+
   const caps = useActiveCapabilities();
   const packages = functions?.filter((f) => f.return_type === "PACKAGE");
   const plainFunctions = functions?.filter((f) => f.return_type !== "PACKAGE");
@@ -745,7 +748,10 @@ function SidebarEntityList({
   const queryClient = useQueryClient();
   const favorites = useObjectFavoritesStore((state) => state.favorites);
   const toggleObjectFavorite = useObjectFavoritesStore((state) => state.toggle);
-  const { data: columns } = useColumnsQuery(type === "table" ? "BASE TABLE" : "VIEW");
+  const { data: columns } = useColumnsQuery(
+    type === "table" ? "BASE TABLE" : "VIEW",
+    search.trim().length > 0,
+  );
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
