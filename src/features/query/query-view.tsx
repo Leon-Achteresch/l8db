@@ -40,14 +40,24 @@ import {
   ScriptResultList,
   type ScriptRunEntry,
 } from "@/features/query/script-result-list";
+import { BindParamsDialog } from "@/features/query/bind-params-dialog";
 import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
+import {
+  type BindParamRef,
+  type BindParamValue,
+  buildParameterizedQuery,
+  detectBindParams,
+  type ParameterizedQuery,
+} from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
 import {
   beginTransaction,
   type ExplainNode,
   executeInTransaction,
+  executeInTransactionWithParams,
   executeQuery,
+  executeQueryWithParams,
   explainQuery,
   listAllColumns,
   listTables,
@@ -178,6 +188,10 @@ export function QueryView({ tabId }: QueryViewProps) {
   const clearQueryBookmarks = useTableTabs((state) => state.clearQueryBookmarks);
   const normalizedBookmarks = useMemo(() => normalizeBookmarks(bookmarks), [bookmarks]);
 
+  const [bindDialogOpen, setBindDialogOpen] = useState(false);
+  const [bindRefs, setBindRefs] = useState<BindParamRef[]>([]);
+  const [bindPendingSql, setBindPendingSql] = useState<string | null>(null);
+  const [bindValues, setBindValues] = useState<Record<string, BindParamValue>>({});
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
   const [scriptMode, setScriptMode] = useState<ScriptRunMode>("autocommit");
@@ -240,9 +254,25 @@ export function QueryView({ tabId }: QueryViewProps) {
   const caps = useCapabilities(connection?.kind);
 
   const runSql = useCallback(
-    async (text: string) => {
+    async (text: string, bound?: ParameterizedQuery) => {
       const sql = text;
       if (!connection || !sql.trim()) return;
+      if (!bound && caps.bind_parameters) {
+        const refs = detectBindParams(sql);
+        if (refs.length > 0) {
+          setBindValues((previous) => {
+            const next: Record<string, BindParamValue> = {};
+            for (const ref of refs) {
+              next[ref.name] = previous[ref.name] ?? { type: "text", value: "" };
+            }
+            return next;
+          });
+          setBindRefs(refs);
+          setBindPendingSql(sql);
+          setBindDialogOpen(true);
+          return;
+        }
+      }
     setIsRunning(true);
     setError(null);
     const startedAt = performance.now();
@@ -268,7 +298,9 @@ export function QueryView({ tabId }: QueryViewProps) {
       const isDml = DML_PATTERN.test(sql.trim());
 
       if (existingTx) {
-        const res = await executeInTransaction(existingTx.txId, sql);
+        const res = bound
+          ? await executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values)
+          : await executeInTransaction(existingTx.txId, sql);
         if (isDml) {
           store.addChange(existingTx.txId, {
             id: crypto.randomUUID(),
@@ -295,7 +327,9 @@ export function QueryView({ tabId }: QueryViewProps) {
           changes: [],
           startedAt: Date.now(),
         });
-        const res = await executeInTransaction(txId, sql);
+        const res = bound
+          ? await executeInTransactionWithParams(txId, bound.sql, bound.values)
+          : await executeInTransaction(txId, sql);
         store.addChange(txId, {
           id: crypto.randomUUID(),
           type: "query",
@@ -307,12 +341,20 @@ export function QueryView({ tabId }: QueryViewProps) {
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } else {
-        const res = await executeQuery(
-          connection.kind,
-          effectiveConnectionString(connection),
-          sql,
-          database ?? undefined,
-        );
+        const res = bound
+          ? await executeQueryWithParams(
+              connection.kind,
+              effectiveConnectionString(connection),
+              bound.sql,
+              bound.values,
+              database ?? undefined,
+            )
+          : await executeQuery(
+              connection.kind,
+              effectiveConnectionString(connection),
+              sql,
+              database ?? undefined,
+            );
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       }
@@ -325,8 +367,16 @@ export function QueryView({ tabId }: QueryViewProps) {
       setIsRunning(false);
     }
     },
-    [connection, database, recordHistory, caps.transactions],
+    [connection, database, recordHistory, caps.transactions, caps.bind_parameters],
   );
+
+  const handleBindConfirm = useCallback(() => {
+    const pending = bindPendingSql;
+    if (!pending) return;
+    setBindDialogOpen(false);
+    setBindPendingSql(null);
+    void runSql(pending, buildParameterizedQuery(pending, bindValues));
+  }, [bindPendingSql, bindValues, runSql]);
 
   const handleRun = useCallback(() => {
     setStatementRange(null);
@@ -953,6 +1003,18 @@ export function QueryView({ tabId }: QueryViewProps) {
             setSnippetDialogOpen(false);
             editorApiRef.current?.insertSnippet(snippet.body);
           }}
+        />
+
+        <BindParamsDialog
+          open={bindDialogOpen}
+          onOpenChange={(open) => {
+            setBindDialogOpen(open);
+            if (!open) setBindPendingSql(null);
+          }}
+          refs={bindRefs}
+          values={bindValues}
+          onValuesChange={setBindValues}
+          onConfirm={handleBindConfirm}
         />
 
         <ScriptRunDialog
