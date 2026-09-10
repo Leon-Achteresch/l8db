@@ -427,3 +427,12 @@
   background-color: color-mix(in oklch, var(--primary) 18%, transparent);
   border-radius: 2px;
 }
+
+.l8db-bookmark-glyph {
+  background-color: color-mix(in oklch, var(--primary) 70%, transparent);
+  border-radius: 999px;
+  width: 8px !important;
+  height: 8px !important;
+  margin-left: 4px;
+  margin-top: 6px;
+}

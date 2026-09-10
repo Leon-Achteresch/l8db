@@ -195,3 +195,47 @@ describe("dateigebundene Query-Tabs", () => {
     expect(fileMtimeChanged(1, null)).toBe(false);
   });
 });
+
+describe("Lesezeichen je Query-Tab", () => {
+  test("Toggle setzt und entfernt Zeilen, Reihenfolge bleibt sortiert", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+
+    useTableTabs.getState().toggleQueryBookmark(id, 5);
+    useTableTabs.getState().toggleQueryBookmark(id, 2);
+    let tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([2, 5]);
+
+    useTableTabs.getState().toggleQueryBookmark(id, 5);
+    tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([2]);
+  });
+
+  test("setQueryBookmarks normalisiert, clearQueryBookmarks leert", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+
+    useTableTabs.getState().setQueryBookmarks(id, [9, 3, 3, 0, -1]);
+    let tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([3, 9]);
+
+    useTableTabs.getState().clearQueryBookmarks(id);
+    tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([]);
+  });
+
+  test("Lesezeichen überleben Verbindungswechsel", () => {
+    const a = addConnection("a");
+    const b = addConnection("b");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+    useTableTabs.getState().setQueryBookmarks(id, [4]);
+
+    useConnectionsStore.getState().setActiveId(b.id);
+    useConnectionsStore.getState().setActiveId(a.id);
+    const tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([4]);
+  });
+});
