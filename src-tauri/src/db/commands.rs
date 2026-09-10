@@ -23,6 +23,22 @@ pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
     super::provider::kind_driver_status(kind)
 }
 
+#[tauri::command(async)]
+pub fn oracle_tns_names() -> super::oracle::TnsNames {
+    super::oracle::tns_names()
+}
+
+#[tauri::command(async)]
+pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = super::oracle::tns_names()
+        .path
+        .ok_or("Keine tnsnames.ora gefunden. Setze TNS_ADMIN oder lege die Datei unter <Instant Client>/network/admin ab.")?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     super::provider::install_driver(kind).await

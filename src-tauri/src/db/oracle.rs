@@ -2564,3 +2564,86 @@ pub fn tx_delete_row(c: &Connection, schema: &str, table: &str, rowid: &str) -> 
     }
     Ok(())
 }
+
+#[derive(serde::Serialize)]
+pub struct TnsNames {
+    pub path: Option<String>,
+    pub aliases: Vec<String>,
+}
+
+fn tnsnames_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(admin) = std::env::var_os("TNS_ADMIN") {
+        dirs.push(PathBuf::from(admin));
+    }
+    if let Some(home) = std::env::var_os("ORACLE_HOME") {
+        dirs.push(PathBuf::from(home).join("network").join("admin"));
+    }
+    if let Some(dir) = find_client_lib_dir() {
+        dirs.push(dir.join("network").join("admin"));
+    }
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
+        dirs.push(home.join(".oracle"));
+        dirs.push(home);
+    }
+    dirs.into_iter().map(|d| d.join("tnsnames.ora")).collect()
+}
+
+pub fn parse_tns_aliases(text: &str) -> Vec<String> {
+    let mut aliases = Vec::new();
+    let mut depth = 0i32;
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if depth == 0 {
+            if let Some((name, _)) = line.split_once('=') {
+                let name = name.trim();
+                if !name.is_empty()
+                    && !name.contains(char::is_whitespace)
+                    && !name.contains('(')
+                    && !name.eq_ignore_ascii_case("ifile")
+                {
+                    aliases.push(name.to_string());
+                }
+            }
+        }
+        depth += line.matches('(').count() as i32 - line.matches(')').count() as i32;
+        depth = depth.max(0);
+    }
+    aliases.sort_by_key(|a| a.to_lowercase());
+    aliases.dedup();
+    aliases
+}
+
+pub fn tns_names() -> TnsNames {
+    let Some(path) = tnsnames_candidates().into_iter().find(|p| p.is_file()) else {
+        return TnsNames {
+            path: None,
+            aliases: Vec::new(),
+        };
+    };
+    if std::env::var_os("TNS_ADMIN").is_none() {
+        if let Some(dir) = path.parent() {
+            std::env::set_var("TNS_ADMIN", dir);
+        }
+    }
+    let aliases = std::fs::read_to_string(&path)
+        .map(|t| parse_tns_aliases(&t))
+        .unwrap_or_default();
+    TnsNames {
+        path: Some(path.to_string_lossy().into_owned()),
+        aliases,
+    }
+}
+
+#[cfg(test)]
+mod tns_tests {
+    #[test]
+    fn parses_aliases_and_ignores_nested_keys() {
+        let text = "# comment\nSLTEST =\n  (DESCRIPTION =\n    (ADDRESS = (PROTOCOL = TCP)(HOST = h)(PORT = 1521))\n    (CONNECT_DATA = (SERVICE_NAME = sl)))\nprod.example.com, PROD = (DESCRIPTION=(ADDRESS=(HOST=x)))\nIFILE=/x\nORCL=(DESCRIPTION=(SID=orcl))\n";
+        let aliases = super::parse_tns_aliases(text);
+        assert_eq!(aliases, vec!["ORCL", "SLTEST"]);
+    }
+}
