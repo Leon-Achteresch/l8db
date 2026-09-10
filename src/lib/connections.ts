@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { sslModeFromUrl } from "@/lib/connection-url";
-import { closeSshTunnel, type DatabaseKind, type SslMode } from "@/lib/db";
+import { closeSshTunnel, type DatabaseKind, registerReadOnlyResolver, type SslMode } from "@/lib/db";
+import { capabilitiesFor } from "@/lib/providers";
 import {
   deleteSecret,
   extractUrlPassword,
@@ -72,6 +73,7 @@ export interface SavedConnection {
   tags?: ConnectionTag[];
   favorite?: boolean;
   color?: string | null;
+  readOnly?: boolean;
 }
 
 export type ConnectionInput = Omit<SavedConnection, "id">;
@@ -224,6 +226,27 @@ export async function initConnectionSecrets(): Promise<void> {
   if (changed) {
     useConnectionsStore.setState({ connections: next });
   }
+}
+
+export function isReadOnlyConnection(
+  connection: Pick<SavedConnection, "kind" | "readOnly"> | null | undefined,
+): boolean {
+  if (!connection?.readOnly) return false;
+  return capabilitiesFor(connection.kind).read_only_mode;
+}
+
+registerReadOnlyResolver(() => {
+  const state = useConnectionsStore.getState();
+  const active = state.connections.find((connection) => connection.id === state.activeId);
+  return isReadOnlyConnection(active);
+});
+
+export function useReadOnlyConnection(): boolean {
+  return useConnectionsStore((state) =>
+    isReadOnlyConnection(
+      state.connections.find((connection) => connection.id === state.activeId) ?? null,
+    ),
+  );
 }
 
 export function useActiveConnection(): SavedConnection | null {

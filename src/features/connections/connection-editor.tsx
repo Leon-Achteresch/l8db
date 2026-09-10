@@ -124,6 +124,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
   const setPreview = useDbThemeStore((state) => state.setPreview);
   const [tags, setTags] = useState(connection?.tags?.map((tag) => tag.name).join(", ") ?? "");
   const [color, setColor] = useState<string | null>(connection?.color ?? null);
+  const [readOnly, setReadOnly] = useState(Boolean(connection?.readOnly));
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
@@ -354,6 +355,7 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
         ssh: config.ssh,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
+        readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
         color: quickSave ? (connection?.color ?? null) : color,
         tags: quickSave
           ? (connection?.tags ?? [])
@@ -808,6 +810,24 @@ export function ConnectionEditor({ connection, onSaved, onCancel }: Props) {
                               checked={sshEnabled}
                               onCheckedChange={setSshEnabled}
                               aria-label="SSH-Tunnel"
+                            />
+                          </label>
+                        )}
+                        {caps.read_only_mode && (
+                          <label className="flex items-center justify-between gap-3 text-xs font-medium sm:col-span-2">
+                            <span className="flex flex-col gap-0.5">
+                              <span className="flex items-center gap-2">
+                                <Eye className="size-4 text-muted-foreground" /> Lesemodus
+                              </span>
+                              <span className="font-normal text-muted-foreground">
+                                Schreibzugriffe werden serverseitig blockiert. Ein Moduswechsel wird
+                                erst nach erneutem Verbinden wirksam.
+                              </span>
+                            </span>
+                            <Switch
+                              checked={readOnly}
+                              onCheckedChange={setReadOnly}
+                              aria-label="Lesemodus"
                             />
                           </label>
                         )}

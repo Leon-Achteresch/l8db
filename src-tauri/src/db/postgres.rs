@@ -25,6 +25,7 @@ pub struct PostgresAdapter {
     pool_state: PoolState,
     pool_key: String,
     ssl: SslMode,
+    read_only: bool,
 }
 
 impl PostgresAdapter {
@@ -38,6 +39,9 @@ impl PostgresAdapter {
             .dbname(&config.database)
             .ssl_mode(ssl.to_pg())
             .connect_timeout(Duration::from_secs(10));
+        if config.read_only {
+            pg.options(super::connection::READ_ONLY_OPTION);
+        }
         let pool_key = super::connection::connection_key(
             &format!("{pg:?}{:?}{}", config.password, ssl.as_url_param()),
             None,
@@ -47,6 +51,7 @@ impl PostgresAdapter {
             pool_state,
             pool_key,
             ssl,
+            read_only: config.read_only,
         }
     }
 
@@ -57,11 +62,13 @@ impl PostgresAdapter {
     ) -> Result<Self, String> {
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
         let pool_key = super::connection::connection_key(connection_string, database);
+        let read_only = super::connection::options_are_read_only(config.get_options());
         Ok(Self {
             config,
             pool_state,
             pool_key,
             ssl,
+            read_only,
         })
     }
 
@@ -99,6 +106,16 @@ impl PostgresAdapter {
         pool.get_owned()
             .await
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
+    }
+
+    fn ensure_writable(&self) -> Result<(), String> {
+        if self.read_only {
+            return Err(
+                "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden."
+                    .to_string(),
+            );
+        }
+        Ok(())
     }
 
     async fn timed<F, T>(&self, future: F) -> Result<T, String>
@@ -385,6 +402,7 @@ impl DatabaseAdapter for PostgresAdapter {
         ctid: &str,
         updates: &std::collections::HashMap<String, Option<String>>,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let ctid = ctid.trim();
         let ctid_valid = ctid.starts_with('(') && ctid.ends_with(')') && {
             let inner = &ctid[1..ctid.len() - 1];
@@ -446,8 +464,13 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let conn = self.get_conn().await?;
         let start = std::time::Instant::now();
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
 
-        self.timed(async {
+        let outcome = self.timed(async {
             let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
             let elapsed = start.elapsed().as_millis() as u64;
 
@@ -485,7 +508,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 execution_time_ms: elapsed,
             })
         })
-        .await
+        .await;
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
+        }
+        outcome
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -549,6 +576,7 @@ impl DatabaseAdapter for PostgresAdapter {
         body: &str,
         dry_run: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         let ddl = format!(
             "CREATE OR REPLACE VIEW {}.{} AS {}",
@@ -748,6 +776,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
@@ -811,6 +840,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut with_opts = Vec::new();
@@ -882,6 +912,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_role(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP ROLE {}", quote_ident(name));
@@ -892,6 +923,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -906,6 +938,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -966,6 +999,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         column: &AddColumnRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut sql = format!(
@@ -993,6 +1027,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
@@ -1032,6 +1067,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -1119,6 +1155,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn modify_privilege(&self, change: &PrivilegeChange) -> Result<(), String> {
+        self.ensure_writable()?;
         let valid_privileges = [
             "SELECT",
             "INSERT",
@@ -1489,6 +1526,7 @@ impl DatabaseAdapter for PostgresAdapter {
         name: &str,
         changes: &AlterSequenceRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let mut parts: Vec<String> = Vec::new();
@@ -1545,6 +1583,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = match schema {
@@ -1562,6 +1601,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
@@ -1595,6 +1635,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
+        self.ensure_writable()?;
         let ddl = Self::build_create_table_sql(req);
         let conn = self.get_conn().await?;
         conn.execute(&ddl as &str, &[]).await.map_err(map_pg_err)?;
@@ -1672,6 +1713,7 @@ impl DatabaseAdapter for PostgresAdapter {
         name: &str,
         concurrently: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let modifier = if concurrently { " CONCURRENTLY" } else { "" };
@@ -1688,6 +1730,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_materialized_view(&self, schema: &str, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -1705,6 +1748,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateMatviewRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let query = req.query.trim();
         if query.is_empty() {
             return Err("Die SELECT-Abfrage darf nicht leer sein.".to_string());
@@ -1829,6 +1873,7 @@ impl DatabaseAdapter for PostgresAdapter {
         enabled: bool,
         force: bool,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
@@ -1857,6 +1902,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         policy: &super::CreatePolicyRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = policy.name.trim();
         if name.is_empty() {
             return Err("Der Policy-Name darf nicht leer sein.".to_string());
@@ -1930,6 +1976,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_policy(&self, schema: &str, table: &str, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -2008,6 +2055,7 @@ impl DatabaseAdapter for PostgresAdapter {
         child_schema: &str,
         child_table: &str,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!(
@@ -2031,6 +2079,7 @@ impl DatabaseAdapter for PostgresAdapter {
         child_table: &str,
         bound: &str,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let trimmed = bound.trim();
         if trimmed.len() < 10 || !trimmed[..10].eq_ignore_ascii_case("for values") {
             return Err("Die Partition-Bindung muss mit FOR VALUES beginnen.".to_string());
@@ -2103,6 +2152,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreatePublicationRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Publikations-Name darf nicht leer sein.".to_string());
@@ -2156,6 +2206,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_publication(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP PUBLICATION {}", quote_ident(name));
@@ -2197,6 +2248,7 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateSubscriptionRequest,
     ) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = req.name.trim();
         if name.is_empty() {
             return Err("Der Subskriptions-Name darf nicht leer sein.".to_string());
@@ -2249,6 +2301,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_subscription(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(async {
             let sql = format!("DROP SUBSCRIPTION {}", quote_ident(name));
@@ -2294,6 +2347,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
+        self.ensure_writable()?;
         if pid <= 0 {
             return Err("Ungültige Prozess-ID.".to_string());
         }
@@ -2308,6 +2362,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn terminate_session(&self, pid: i32) -> Result<bool, String> {
+        self.ensure_writable()?;
         if pid <= 0 {
             return Err("Ungültige Prozess-ID.".to_string());
         }
@@ -2411,6 +2466,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn create_schema(&self, name: &str) -> Result<(), String> {
+        self.ensure_writable()?;
         let name = name.trim();
         if name.is_empty() {
             return Err("Der Schema-Name darf nicht leer sein.".to_string());
@@ -2425,6 +2481,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn drop_schema(&self, name: &str, cascade: bool) -> Result<(), String> {
+        self.ensure_writable()?;
         let lowered = name.trim().to_lowercase();
         if ["pg_catalog", "information_schema", "public", "pg_toast"].contains(&lowered.as_str()) {
             return Err(format!("Das Schema {name} darf nicht gelöscht werden."));
@@ -2581,6 +2638,11 @@ impl PostgresAdapter {
             .collect();
 
         let conn = self.get_conn().await?;
+        if self.read_only {
+            conn.simple_query("BEGIN TRANSACTION READ ONLY")
+                .await
+                .map_err(map_pg_err)?;
+        }
         let mut results = Vec::new();
         for stmt in statements {
             let full = format!("{};", stmt);
@@ -2598,6 +2660,9 @@ impl PostgresAdapter {
                     error: Some(map_pg_err(e)),
                 }),
             }
+        }
+        if self.read_only {
+            let _ = conn.simple_query("ROLLBACK").await;
         }
         Ok(results)
     }
@@ -2692,6 +2757,60 @@ mod tests {
                 "SELECT pg_drop_replication_slot('{sub}') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '{sub}' AND NOT active)"
             ))
             .await;
+    }
+
+    fn lab_read_only_adapter() -> PostgresAdapter {
+        let base = lab_connection_string();
+        let separator = if base.contains('?') { "&" } else { "?" };
+        let url = format!("{base}{separator}options=-c%20default_transaction_read_only%3Don");
+        PostgresAdapter::from_connection_string(&url, None, create_pool_state()).expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn read_only_connection_rejects_writes() {
+        let writer = lab_adapter();
+        lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_probe").await;
+        lab_execute(&writer, "CREATE TABLE l8db_read_only_probe (id int)").await;
+        lab_execute(&writer, "INSERT INTO l8db_read_only_probe VALUES (1)").await;
+
+        let reader = lab_read_only_adapter();
+        assert!(reader.execute_query("SELECT 1").await.is_ok());
+        assert!(reader
+            .execute_query("INSERT INTO l8db_read_only_probe VALUES (2)")
+            .await
+            .is_err());
+        assert!(reader
+            .execute_query(
+                "WITH w AS (INSERT INTO l8db_read_only_probe VALUES (3) RETURNING id) SELECT * FROM w"
+            )
+            .await
+            .is_err());
+        let _ = reader
+            .execute_query("SET default_transaction_read_only = off")
+            .await;
+        assert!(reader
+            .execute_query("INSERT INTO l8db_read_only_probe VALUES (4)")
+            .await
+            .is_err());
+        assert!(reader.drop_table("public", "l8db_read_only_probe").await.is_err());
+        assert!(reader.truncate_table("public", "l8db_read_only_probe").await.is_err());
+        assert!(reader
+            .update_row(
+                "public",
+                "l8db_read_only_probe",
+                "(0,1)",
+                &std::collections::HashMap::from([("id".to_string(), Some("9".to_string()))]),
+            )
+            .await
+            .is_err());
+
+        let rows = reader
+            .execute_query("SELECT count(*) AS c FROM l8db_read_only_probe")
+            .await
+            .expect("count");
+        assert_eq!(rows.rows.len(), 1);
+        lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_probe").await;
     }
 
     #[tokio::test]
