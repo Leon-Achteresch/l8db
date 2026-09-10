@@ -47,6 +47,8 @@ type DataTableHeaderCellProps = {
   filterValue: string;
   onFilterValueChange: (value: string) => void;
   compiledFilter: string;
+  filterOperators?: { key: string; label: string }[];
+  filterPrefix?: string;
   onApplyFilter?: (where: string, isRaw: boolean) => void;
   onApplyColumnFilter: () => void;
   onHideColumn: () => void;
@@ -68,6 +70,8 @@ export function DataTableHeaderCell({
   filterValue,
   onFilterValueChange,
   compiledFilter,
+  filterOperators = OPERATORS,
+  filterPrefix = "WHERE",
   onApplyFilter,
   onApplyColumnFilter,
   onHideColumn,
@@ -152,7 +156,7 @@ export function DataTableHeaderCell({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper">
-                    {OPERATORS.map((op) => (
+                    {filterOperators.map((op) => (
                       <SelectItem key={op.key} value={op.key}>
                         {op.label}
                       </SelectItem>
@@ -175,7 +179,7 @@ export function DataTableHeaderCell({
                 )}
               </div>
               <p className="font-mono text-xs text-muted-foreground">
-                {compiledFilter !== "" ? `WHERE ${compiledFilter}` : ""}
+                {compiledFilter !== "" ? `${filterPrefix} ${compiledFilter}` : ""}
               </p>
             </div>
             <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-end">
@@ -206,14 +210,14 @@ export function DataTableHeaderCell({
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onSortingChange([{ id: header.id, desc: false }])}
-          disabled={isFetching}
+          disabled={isFetching || !header.column.getCanSort()}
         >
           <ArrowUpIcon />
           Aufsteigend sortieren
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onSortingChange([{ id: header.id, desc: true }])}
-          disabled={isFetching}
+          disabled={isFetching || !header.column.getCanSort()}
         >
           <ArrowDownIcon />
           Absteigend sortieren

@@ -78,6 +78,7 @@ import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useResolvedHotkey } from "@/lib/hotkeys";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
+import { useSettingsStore } from "@/lib/settings";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
@@ -452,10 +453,18 @@ export function DataTable({
   emptyMessage,
   className,
   sorting,
+  sortableColumns,
   onSortingChange,
   isFetching = false,
   onSaveRow,
   onApplyFilter,
+  canEditCell,
+  filterableColumns,
+  compileColumnFilter,
+  filterOperators,
+  filterPrefix,
+  emptyEditValue,
+  cellEditorKind,
   page = 0,
   totalCount,
   pageSize = 100,
@@ -573,6 +582,7 @@ export function DataTable({
       ...columnNames.map(
         (column): ColumnDef<TableRow> => ({
           accessorKey: column,
+          enableSorting: !sortableColumns || sortableColumns.includes(column),
           size: 200,
           minSize: 80,
           maxSize: 850,
@@ -586,14 +596,18 @@ export function DataTable({
                 <button
                   type="button"
                   onClick={col.getToggleSortingHandler()}
-                  disabled={headerStateRef.current.isFetching}
+                  disabled={headerStateRef.current.isFetching || !col.getCanSort()}
                   className="group flex items-center gap-1 rounded-sm px-1 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink"
                 >
                   <DataTableHeaderName name={column} />
                   <span
                     className={cn(
                       "shrink-0 text-muted-foreground transition-colors",
-                      sorted ? "text-primary" : "opacity-0 group-hover:opacity-100",
+                      !col.getCanSort()
+                        ? "hidden"
+                        : sorted
+                          ? "text-primary"
+                          : "opacity-0 group-hover:opacity-100",
                     )}
                   >
                     {sorted === "asc" ? (
@@ -653,7 +667,7 @@ export function DataTable({
         }),
       ),
     ],
-    [columnNames, fkByColumn, onNavigateToTable, currentSchema, currentTable],
+    [columnNames, fkByColumn, onNavigateToTable, currentSchema, currentTable, sortableColumns],
   );
 
   const columnOrder = useMemo(() => [INDEX_COLUMN, ...order], [order]);
@@ -704,13 +718,21 @@ export function DataTable({
     getCoreRowModel: getCoreRowModel(),
   });
 
+  const uiScale = useSettingsStore((state) => state.uiScale);
+  const uiDensity = useSettingsStore((state) => state.uiDensity);
+  const estimatedRowHeight =
+    ((uiDensity === "compact" ? 25 : uiDensity === "spacious" ? 41 : 33) * uiScale) / 100;
   const rows = table.getRowModel().rows;
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 33,
+    estimateSize: () => estimatedRowHeight,
     overscan: 10,
+    useAnimationFrameWithResizeObserver: true,
   });
+  useEffect(() => {
+    if (estimatedRowHeight > 0) rowVirtualizer.measure();
+  }, [rowVirtualizer, estimatedRowHeight]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
@@ -809,50 +831,69 @@ export function DataTable({
       editingCell.ctid,
       editingCell.columnId,
       editingCell.originalValues,
-      editingCell.value === "" ? null : editingCell.value,
+      editingCell.value === "" ? (emptyEditValue ?? null) : editingCell.value,
     );
     if (ok) setEditingCell(null);
-  }, [editingCell, onSaveRow, isSaving, saveCellValue]);
+  }, [editingCell, onSaveRow, isSaving, saveCellValue, emptyEditValue]);
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
-    const sql = compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind);
+    const sql = (compileColumnFilter ?? compileSingleCondition)(
+      filterColumn,
+      filterOperator,
+      filterValue,
+      connection?.kind,
+    );
     if (sql) {
       onApplyFilter(sql, false);
     }
     setFilterColumn(null);
-  }, [filterColumn, filterOperator, filterValue, onApplyFilter, connection?.kind]);
+  }, [
+    filterColumn,
+    filterOperator,
+    filterValue,
+    onApplyFilter,
+    connection?.kind,
+    compileColumnFilter,
+  ]);
 
   const compiledFilter = useMemo(
     () =>
       filterColumn
-        ? (compileSingleCondition(filterColumn, filterOperator, filterValue, connection?.kind) ??
-          "")
+        ? ((compileColumnFilter ?? compileSingleCondition)(
+            filterColumn,
+            filterOperator,
+            filterValue,
+            connection?.kind,
+          ) ?? "")
         : "",
-    [filterColumn, filterOperator, filterValue, connection?.kind],
+    [filterColumn, filterOperator, filterValue, connection?.kind, compileColumnFilter],
   );
 
-  const handleCellEdit = useCallback((row: Row<TableRow>, columnId: string) => {
-    const ctid = row.original.__ctid__ as string | undefined;
-    if (!ctid) return;
-    const val = row.original[columnId];
-    let value: string;
-    if (val === null || val === undefined) {
-      value = "";
-    } else if (typeof val === "object") {
-      value = JSON.stringify(val);
-    } else {
-      value = String(val);
-    }
-    setEditingCell({
-      ctid,
-      rowIndex: row.index,
-      columnId,
-      value,
-      originalValues: { ...row.original },
-    });
-    setActiveCell(null);
-  }, []);
+  const handleCellEdit = useCallback(
+    (row: Row<TableRow>, columnId: string) => {
+      const ctid = row.original.__ctid__ as string | undefined;
+      if (!ctid || (canEditCell && !canEditCell(row.original, columnId))) return;
+      const val = row.original[columnId];
+      let value: string;
+      if (val === null || val === undefined) {
+        value = "";
+      } else if (typeof val === "object") {
+        value = JSON.stringify(val);
+      } else {
+        value = String(val);
+      }
+      setEditingCell({
+        ctid,
+        rowIndex: row.index,
+        columnId,
+        value,
+        originalValues: { ...row.original },
+      });
+      setActiveCell(null);
+    },
+    [canEditCell],
+  );
 
   useEffect(() => {
     if (!activeCell) return;
@@ -1251,7 +1292,13 @@ export function DataTable({
                   filterValue={filterValue}
                   onFilterValueChange={setFilterValue}
                   compiledFilter={filterColumn === header.id ? compiledFilter : ""}
-                  onApplyFilter={onApplyFilter}
+                  filterOperators={filterOperators}
+                  filterPrefix={filterPrefix}
+                  onApplyFilter={
+                    !filterableColumns || filterableColumns.includes(header.id)
+                      ? onApplyFilter
+                      : undefined
+                  }
                   onApplyColumnFilter={applyColumnFilter}
                   onHideColumn={() => setHidden(toggleHiddenColumn(order, hidden, header.id))}
                   canHide={visibleDataColumns.length > 1}
@@ -1295,6 +1342,9 @@ export function DataTable({
       filterValue,
       compiledFilter,
       onApplyFilter,
+      filterableColumns,
+      filterOperators,
+      filterPrefix,
       applyColumnFilter,
       pinnedSet,
     ],
@@ -1474,6 +1524,7 @@ export function DataTable({
                               canPickFk={canPickFk}
                               outgoingFkByColumn={outgoingFkByColumn}
                               onSaveRow={onSaveRow}
+                              canEditCell={canEditCell}
                               focusCell={focusCell}
                               handleCellEdit={handleCellEdit}
                               handleCellCopy={handleCellCopy}
@@ -1626,7 +1677,13 @@ export function DataTable({
           columnName={inspectCell.columnName}
           value={inspectCell.value}
           dataType={columnTypeByName.get(inspectCell.columnName) ?? null}
-          canEdit={!!onSaveRow && !!inspectCell.ctid && !!inspectCell.originalValues}
+          editorKind={cellEditorKind}
+          canEdit={
+            !!onSaveRow &&
+            !!inspectCell.ctid &&
+            !!inspectCell.originalValues &&
+            (!canEditCell || canEditCell(inspectCell.originalValues, inspectCell.columnName))
+          }
           isSaving={isSaving}
           onClose={() => setInspectCell(null)}
           onSave={async (next) => {

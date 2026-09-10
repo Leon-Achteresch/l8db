@@ -6,7 +6,6 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +20,7 @@ import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
+import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
@@ -35,8 +35,9 @@ import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveCapabilities } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
+import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import {
   useDeleteRowMutation,
@@ -49,6 +50,7 @@ import {
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
+import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
 import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
@@ -102,6 +104,8 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     return tabEntityType === "view";
   }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const saveRedisRow = useRedisRowEdit();
   const openTab = useTableTabs((state) => state.openTab);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
   const [selectedViewTab, setViewTab] = useState<TableDetailTab>("data");
@@ -148,6 +152,13 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     isView,
     page,
     filterRaw,
+  );
+  const tableRows = useMemo(
+    () =>
+      caps.query_language === "redis"
+        ? (data?.rows ?? []).map((row) => ({ ...row, __ctid__: JSON.stringify(row.key) }))
+        : (data?.rows ?? []),
+    [data?.rows, caps.query_language],
   );
   const { data: totalCount } = useTableRowCountQuery(schema, table, filter, filterRaw);
   const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
@@ -387,18 +398,30 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         <DataTable
           className="h-full min-h-0 flex-1"
           columns={data?.columns ?? []}
-          data={data?.rows ?? []}
+          data={tableRows}
           emptyMessage={emptyMessage}
           sorting={sorting}
+          sortableColumns={caps.query_language === "redis" ? ["key"] : undefined}
           onSortingChange={setSorting}
           isFetching={isFetching}
           onSaveRow={
-            isView || !caps.row_edit
-              ? undefined
-              : async (ctid, updates, oldValues) => {
-                  await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
-                }
+            caps.query_language === "redis"
+              ? connection?.readOnly
+                ? undefined
+                : saveRedisRow
+              : isView || !caps.row_edit
+                ? undefined
+                : async (ctid, updates, oldValues) => {
+                    await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
+                  }
           }
+          canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
+          cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
+          emptyEditValue={caps.query_language === "redis" ? "" : undefined}
+          filterableColumns={caps.query_language === "redis" ? ["key"] : undefined}
+          compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
+          filterOperators={caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined}
+          filterPrefix={caps.query_language === "redis" ? "MATCH" : undefined}
           onApplyFilter={caps.query_language === "json" ? undefined : handleFilterChange}
           revealColumn={revealColumn}
           page={page}
@@ -544,6 +567,9 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         <TableDetailTabBar tabs={availableTabs} />
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="table" />
+          {tableTab === "data" && caps.query_language === "redis" && (
+            <RedisKeyActions key={`${connection?.id}:${database}`} />
+          )}
           {tableTab === "data" && caps.row_edit && (
             <Button
               size="sm"
@@ -588,9 +614,11 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
                 <DropdownMenuItem onClick={() => void handleExport("json")}>
                   Als JSON exportieren
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport("sql")}>
-                  Als INSERT-SQL exportieren
-                </DropdownMenuItem>
+                {caps.query_language !== "redis" && caps.query_language !== "json" && (
+                  <DropdownMenuItem onClick={() => void handleExport("sql")}>
+                    Als INSERT-SQL exportieren
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -598,6 +626,13 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
       </div>
 
       <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {caps.query_language === "redis" && (
+          <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
+            Key, TTL und vollständige Strings per Doppelklick bearbeiten. Keys per Rechtsklick auf
+            den Spaltenkopf filtern. Sammlungen und gekürzte Werte unter „Key verwalten“ lesen und
+            ändern. Vorschau: bis zu 100 Einträge bzw. 4 KiB; size zeigt die Gesamtgröße.
+          </p>
+        )}
         {dataContent}
       </TabsContent>
 

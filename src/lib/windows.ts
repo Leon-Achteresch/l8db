@@ -2,6 +2,7 @@ import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { toast } from "sonner";
 import type { SavedConnection } from "@/lib/connections";
+import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 
 export async function openConnectionWindow(connection: SavedConnection): Promise<void> {
   const label = `conn-${connection.id}`.replace(/[^a-zA-Z0-9\-_]/g, "-");
@@ -17,6 +18,7 @@ export async function openConnectionWindow(connection: SavedConnection): Promise
     height: 820,
     minWidth: 760,
     minHeight: 560,
+    decorations: !USE_CUSTOM_WINDOW_CONTROLS,
     titleBarStyle: "overlay",
     hiddenTitle: true,
     trafficLightPosition: new LogicalPosition(12, 25),

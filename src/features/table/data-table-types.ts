@@ -31,6 +31,7 @@ export type DataTableProps = {
   emptyMessage: string;
   className?: string;
   sorting: SortingState;
+  sortableColumns?: string[];
   onSortingChange: OnChangeFn<SortingState>;
   isFetching?: boolean;
   onSaveRow?: (
@@ -38,6 +39,13 @@ export type DataTableProps = {
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
   ) => Promise<void>;
+  canEditCell?: (row: TableRow, column: string) => boolean;
+  filterableColumns?: string[];
+  compileColumnFilter?: (column: string, operator: string, value: string) => string | null;
+  filterOperators?: { key: string; label: string }[];
+  filterPrefix?: string;
+  emptyEditValue?: string;
+  cellEditorKind?: "text" | "json";
   onApplyFilter?: (where: string, isRaw: boolean) => void;
   page?: number;
   totalCount?: number;

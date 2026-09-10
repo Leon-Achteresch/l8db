@@ -1,71 +1,18 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { GitBranchIcon, Minus, PlugZap, RefreshCw, Settings, Square, X } from "lucide-react";
-import { motion } from "motion/react";
+import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
+import { AppHeaderNavigation } from "@/features/shell/app-header-navigation";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
-import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { WindowControls } from "@/features/shell/window-controls";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
+import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
-
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
-
-const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
-
-async function runWindowAction(action: "minimize" | "toggleMaximize" | "close") {
-  const win = getCurrentWindow();
-  if (action === "minimize") await win.minimize();
-  else if (action === "toggleMaximize") await win.toggleMaximize();
-  else await win.close();
-}
-
-function WindowControls() {
-  const base =
-    "inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground";
-  return (
-    <div
-      data-tauri-drag-region="false"
-      className="absolute right-0 top-0 z-30 flex h-full items-stretch"
-      onMouseDown={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        aria-label="Minimieren"
-        className={base}
-        onClick={() => void runWindowAction("minimize")}
-      >
-        <Minus className="size-4" strokeWidth={2} />
-      </button>
-      <button
-        type="button"
-        aria-label="Maximieren"
-        className={base}
-        onClick={() => void runWindowAction("toggleMaximize")}
-      >
-        <Square className="size-3.5" strokeWidth={2} />
-      </button>
-      <button
-        type="button"
-        aria-label="Schließen"
-        className={cn(base, "hover:bg-destructive hover:text-white")}
-        onClick={() => void runWindowAction("close")}
-      >
-        <X className="size-4" strokeWidth={2} />
-      </button>
-    </div>
-  );
-}
-
-function isNavActive(url: string, pathname: string) {
-  return url === "/" ? pathname === "/" : pathname.startsWith(url);
-}
 
 export function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -86,55 +33,16 @@ export function AppHeader() {
     <header
       data-tauri-drag-region="deep"
       className={cn(
-        "relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
+        "@container relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
         "border-b border-border/60",
         "bg-card/80 backdrop-blur-xl backdrop-saturate-150 dark:bg-background/72",
         IS_MAC && "pl-[72px]",
-        IS_WINDOWS && "pr-[140px]",
+        USE_CUSTOM_WINDOW_CONTROLS && "pr-[140px]",
       )}
     >
-      <nav data-tour="header-nav" className="flex items-center gap-1 px-3" aria-label="Bereiche">
-        <Link
-          to="/"
-          className="mr-1 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
-        >
-          l8db
-        </Link>
-        {appSidebarData.navMain.map((item) => {
-          const active = isNavActive(item.url, pathname);
-          return (
-            <Tooltip key={item.title} content={item.title} side="bottom">
-              <motion.div
-                layout="position"
-                transition={{ layout: SPRING_LAYOUT }}
-                className="relative"
-              >
-                {active && (
-                  <motion.span
-                    layoutId="header-nav-active"
-                    transition={SPRING_LAYOUT}
-                    className="absolute inset-0 rounded-full bg-primary/12"
-                  />
-                )}
-                <Link
-                  to={item.url}
-                  aria-label={item.title}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-                    "hover:bg-muted hover:text-foreground",
-                    active && "text-foreground",
-                  )}
-                >
-                  <item.icon className="size-4" strokeWidth={2} />
-                </Link>
-              </motion.div>
-            </Tooltip>
-          );
-        })}
-      </nav>
+      <AppHeaderNavigation pathname={pathname} />
 
-      <div className="flex min-w-0 flex-1 justify-center px-4">
+      <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
         <div className="flex w-full max-w-[640px] items-center gap-2">
           <ReadOnlyBadge />
           <div className="min-w-0 flex-1">
@@ -248,7 +156,7 @@ export function AppHeader() {
         </Tooltip>
       </nav>
 
-      {IS_WINDOWS ? <WindowControls /> : null}
+      {USE_CUSTOM_WINDOW_CONTROLS ? <WindowControls /> : null}
     </header>
   );
 }

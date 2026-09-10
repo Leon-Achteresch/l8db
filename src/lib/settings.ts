@@ -28,6 +28,7 @@ export interface SettingsState {
   queryTimeout: number;
   sshTrustNewHosts: boolean;
   transactionsEnabled: boolean;
+  transactionsPerTable: boolean;
   autoUpdateCheck: boolean;
   autoUpdateInstall: boolean;
   skippedUpdateVersion: string | null;
@@ -63,6 +64,8 @@ export interface SettingsState {
   highlightNullValues: boolean;
   searchIncludeColumns: boolean;
   uiDensity: UiDensity;
+  uiScale: number;
+  sidebarExtraCompact: boolean;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -70,6 +73,7 @@ export interface SettingsState {
   setQueryTimeout: (v: number) => void;
   setSshTrustNewHosts: (v: boolean) => void;
   setTransactionsEnabled: (v: boolean) => void;
+  setTransactionsPerTable: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
   setSkippedUpdateVersion: (v: string | null) => void;
@@ -105,9 +109,28 @@ export interface SettingsState {
   setHighlightNullValues: (v: boolean) => void;
   setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
+  setUiScale: (v: number) => void;
+  resetAppearance: () => void;
+  setSidebarExtraCompact: (value: boolean) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
+}
+
+export const UI_SCALE_MIN = 80;
+export const UI_SCALE_MAX = 150;
+export const UI_SCALE_STEP = 5;
+
+export function normalizeUiScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 100;
+  return Math.min(
+    UI_SCALE_MAX,
+    Math.max(UI_SCALE_MIN, Math.round(value / UI_SCALE_STEP) * UI_SCALE_STEP),
+  );
+}
+
+export function normalizeUiDensity(value: unknown): UiDensity {
+  return value === "compact" || value === "spacious" ? value : "normal";
 }
 
 const DEFAULT_SETTINGS = {
@@ -117,6 +140,7 @@ const DEFAULT_SETTINGS = {
   queryTimeout: 30,
   sshTrustNewHosts: false,
   transactionsEnabled: true,
+  transactionsPerTable: true,
   autoUpdateCheck: true,
   autoUpdateInstall: false,
   skippedUpdateVersion: null,
@@ -152,6 +176,8 @@ const DEFAULT_SETTINGS = {
   highlightNullValues: true,
   searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
+  uiScale: 100,
+  sidebarExtraCompact: false,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -172,6 +198,7 @@ export const useSettingsStore = create<SettingsState>()(
       setQueryTimeout: (queryTimeout) => set({ queryTimeout }),
       setSshTrustNewHosts: (sshTrustNewHosts) => set({ sshTrustNewHosts }),
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
+      setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
       setAutoUpdateCheck: (autoUpdateCheck) =>
         set((state) => ({
           autoUpdateCheck,
@@ -217,7 +244,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ confirmDestructiveQueries }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
-      setUiDensity: (uiDensity) => set({ uiDensity }),
+      setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
+      setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
+      setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
+      resetAppearance: () => set({ uiScale: 100, uiDensity: "normal", sidebarExtraCompact: false }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
       resetToDefaults: () =>
@@ -226,6 +256,18 @@ export const useSettingsStore = create<SettingsState>()(
           tourFinished: state.tourFinished,
         })),
     }),
-    { name: "l8db.settings" },
+    {
+      name: "l8db.settings",
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<SettingsState> | undefined;
+        return {
+          ...current,
+          ...saved,
+          uiScale: normalizeUiScale(saved?.uiScale),
+          uiDensity: normalizeUiDensity(saved?.uiDensity),
+          sidebarExtraCompact: saved?.sidebarExtraCompact === true,
+        };
+      },
+    },
   ),
 );

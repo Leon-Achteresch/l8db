@@ -1,5 +1,5 @@
 import { useHotkeys } from "@tanstack/react-hotkeys";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -68,7 +68,6 @@ import {
 } from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
 import {
-  beginTransaction,
   type ExplainNode,
   executeInTransaction,
   executeInTransactionWithParams,
@@ -91,6 +90,7 @@ import {
   resolveHotkey,
   useHotkeysStore,
 } from "@/lib/hotkeys";
+import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
@@ -108,14 +108,14 @@ import {
 } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
-import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
+import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 import { ServerOutputPanel } from "./server-output-panel";
 
 const QUERY_LANGUAGES = {
   sql: "SQL",
   cql: "CQL",
   json: "MongoDB-Befehle als JSON",
-  redis: "Redis-Befehle, eine pro Zeile",
+  redis: "Redis-Befehle, einer pro Zeile · eigene Verbindung je Ausführung",
 } as const;
 
 const EMPTY_BOOKMARKS: number[] = [];
@@ -131,6 +131,7 @@ interface QueryViewProps {
 }
 
 export function QueryView({ tabId }: QueryViewProps) {
+  const queryClient = useQueryClient();
   const workspace = useQueryWorkspace();
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
@@ -354,7 +355,9 @@ export function QueryView({ tabId }: QueryViewProps) {
     () =>
       caps.query_language === "json"
         ? "MongoDB JSON"
-        : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
+        : caps.query_language === "redis"
+          ? "Redis"
+          : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
     [connection?.kind, caps.query_language],
   );
 
@@ -397,7 +400,12 @@ export function QueryView({ tabId }: QueryViewProps) {
     async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
       const sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
-      if (!bound && !skipBind) {
+      if (
+        !bound &&
+        !skipBind &&
+        caps.query_language !== "redis" &&
+        caps.query_language !== "json"
+      ) {
         const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
         if (refs.length > 0) {
           setBindValues((previous) => {
@@ -444,13 +452,17 @@ export function QueryView({ tabId }: QueryViewProps) {
             : null;
       try {
         const store = useTransactionStore.getState();
-        const existingTx = getTransactionForConnection(connection.id);
+        const existingTx = getQueryTransaction(connection.id, database);
         const isDml = isTransactionalStatement(sql, connection.kind);
 
         if (existingTx) {
           const res = bound
-            ? await executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values)
-            : await executeInTransaction(existingTx.txId, sql);
+            ? await runManagedOperation(existingTx.txId, () =>
+                executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values),
+              )
+            : await runManagedOperation(existingTx.txId, () =>
+                executeInTransaction(existingTx.txId, sql),
+              );
           if (isDml) {
             store.addChange(existingTx.txId, {
               id: crypto.randomUUID(),
@@ -464,22 +476,14 @@ export function QueryView({ tabId }: QueryViewProps) {
           setResult(res);
           finishHistory({ rowCount: rowCountOf(res), error: null });
         } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
-          const txId = await beginTransaction(
-            connection.kind,
-            effectiveConnectionString(connection),
-            database ?? undefined,
-          );
-          store.addTransaction({
-            txId,
-            connectionId: connection.id,
-            connectionName: connection.name,
-            database: database ?? undefined,
-            changes: [],
-            startedAt: Date.now(),
+          const { txId } = await ensureManagedTransaction(connection, database ?? null, {
+            type: "query",
           });
           const res = bound
-            ? await executeInTransactionWithParams(txId, bound.sql, bound.values)
-            : await executeInTransaction(txId, sql);
+            ? await runManagedOperation(txId, () =>
+                executeInTransactionWithParams(txId, bound.sql, bound.values),
+              )
+            : await runManagedOperation(txId, () => executeInTransaction(txId, sql));
           store.addChange(txId, {
             id: crypto.randomUUID(),
             type: "query",
@@ -514,6 +518,12 @@ export function QueryView({ tabId }: QueryViewProps) {
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
+        if (caps.query_language === "redis") {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["rows", connection.id] }),
+            queryClient.invalidateQueries({ queryKey: ["count", connection.id] }),
+          ]);
+        }
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
@@ -525,6 +535,8 @@ export function QueryView({ tabId }: QueryViewProps) {
       markQueryTabExecuted,
       recordHistory,
       caps.transactions,
+      caps.query_language,
+      queryClient,
       collectOutput,
       tabId,
     ],
@@ -754,7 +766,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const handleOpenScriptDialog = useCallback(() => {
     if (!connection) return;
-    const existingTx = getTransactionForConnection(connection.id);
+    const existingTx = getQueryTransaction(connection.id, database);
     const hasDml = scriptSplit.statements.some((statement) =>
       isTransactionalStatement(statement.text, connection.kind),
     );
@@ -763,7 +775,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       setScriptMode("new-transaction");
     else setScriptMode("autocommit");
     setScriptDialogOpen(true);
-  }, [connection, caps.transactions, scriptSplit]);
+  }, [connection, database, caps.transactions, scriptSplit]);
 
   const runScript = useCallback(
     async (mode: ScriptRunMode) => {
@@ -794,23 +806,15 @@ export function QueryView({ tabId }: QueryViewProps) {
       setIsRunning(true);
 
       const store = useTransactionStore.getState();
-      let txId = getTransactionForConnection(connection.id)?.txId ?? null;
+      let txId = getQueryTransaction(connection.id, database)?.txId ?? null;
 
       try {
         if (!txId && mode === "new-transaction") {
-          txId = await beginTransaction(
-            connection.kind,
-            effectiveConnectionString(connection),
-            database ?? undefined,
-          );
-          store.addTransaction({
-            txId,
-            connectionId: connection.id,
-            connectionName: connection.name,
-            database: database ?? undefined,
-            changes: [],
-            startedAt: Date.now(),
-          });
+          txId = (
+            await ensureManagedTransaction(connection, database ?? null, {
+              type: "query",
+            })
+          ).txId;
           store.setPanelOpen(true);
         }
       } catch (err) {
@@ -833,7 +837,7 @@ export function QueryView({ tabId }: QueryViewProps) {
         const startedAt = performance.now();
         try {
           const res = txId
-            ? await executeInTransaction(txId, entry.sql)
+            ? await runManagedOperation(txId, () => executeInTransaction(txId!, entry.sql))
             : await executeQuery(
                 connection.kind,
                 effectiveConnectionString(connection),
@@ -1460,7 +1464,13 @@ export function QueryView({ tabId }: QueryViewProps) {
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <QueryEditorPane
-                    language={caps.query_language === "json" ? "json" : "sql"}
+                    language={
+                      caps.query_language === "redis"
+                        ? "redis"
+                        : caps.query_language === "json"
+                          ? "json"
+                          : "sql"
+                    }
                     ref={editorApiRef}
                     value={sql}
                     onChange={(v) => {

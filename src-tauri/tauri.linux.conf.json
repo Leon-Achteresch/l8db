@@ -1,0 +1,35 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "l8db",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 560,
+        "decorations": false,
+        "label": "main"
+      }
+    ]
+  },
+  "bundle": {
+    "linux": {
+      "deb": {
+        "section": "database",
+        "files": {
+          "/usr/share/metainfo/com.leon.l8db.metainfo.xml": "linux/com.leon.l8db.metainfo.xml"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/metainfo/com.leon.l8db.metainfo.xml": "linux/com.leon.l8db.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/com.leon.l8db.metainfo.xml": "linux/com.leon.l8db.metainfo.xml"
+        }
+      }
+    }
+  }
+}

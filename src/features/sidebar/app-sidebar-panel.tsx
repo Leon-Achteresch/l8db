@@ -68,7 +68,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -100,7 +99,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
@@ -108,6 +106,7 @@ import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
+import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
@@ -391,7 +390,7 @@ export function AppSidebarPanel() {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="start"
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+            className="flex max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-56 flex-col overflow-hidden"
           >
             <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
             {connections.length > 0 && (
@@ -409,82 +408,85 @@ export function AppSidebarPanel() {
                 />
               </div>
             )}
-            {connections.length === 0 ? (
-              <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
-            ) : filteredServerGroups.length === 0 ? (
-              <DropdownMenuItem disabled>Keine Treffer</DropdownMenuItem>
-            ) : (
-              filteredServerGroups.map((group) => (
-                <DropdownMenuGroup key={group.key}>
-                  {grouped && (
-                    <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
-                      <ProviderLogo
-                        providerId={providerFor(group.connections[0]).id}
-                        kind={group.kind}
-                        className="size-3"
-                      />
-                      <span className="truncate">{group.label}</span>
-                      <span className="ml-auto shrink-0 tabular-nums">
-                        {group.connections.length}
-                      </span>
-                      {favoriteServerKeys.includes(group.key) && (
-                        <StarIcon className="size-3 fill-current text-amber-500" />
-                      )}
-                    </DropdownMenuLabel>
-                  )}
-                  {group.connections.map((connection) => (
-                    <DropdownMenuItem
-                      key={connection.id}
-                      disabled={isSwitching}
-                      onSelect={() => {
-                        if (useConnectionSwitch.getState().isSwitching) return;
-                        if (connection.id === activeConnection?.id) return;
-                        void activateConnectionWithToast(connection.id).then((ok) => {
-                          if (ok) void navigate({ to: "/" });
-                        });
-                      }}
-                    >
-                      <ConnectionStatusIndicator connectionId={connection.id} />
-                      {!grouped ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {connections.length === 0 ? (
+                <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
+              ) : filteredServerGroups.length === 0 ? (
+                <DropdownMenuItem disabled>Keine Treffer</DropdownMenuItem>
+              ) : (
+                filteredServerGroups.map((group) => (
+                  <DropdownMenuGroup key={group.key}>
+                    {grouped && (
+                      <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
                         <ProviderLogo
-                          providerId={providerFor(connection).id}
-                          kind={connection.kind}
+                          providerId={providerFor(group.connections[0]).id}
+                          kind={group.kind}
+                          className="size-3"
                         />
-                      ) : null}
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                        <span className="truncate">{connection.name}</span>
-                        {grouped && connectionUser(connection) && (
-                          <span className="truncate font-mono text-[10px] text-muted-foreground">
-                            {connectionUser(connection)}
-                          </span>
+                        <span className="truncate">{group.label}</span>
+                        <span className="ml-auto shrink-0 tabular-nums">
+                          {group.connections.length}
+                        </span>
+                        {favoriteServerKeys.includes(group.key) && (
+                          <StarIcon className="size-3 fill-current text-amber-500" />
                         )}
-                        {connection.tags?.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                            style={{ backgroundColor: tag.color }}
-                          >
-                            {tag.name}
-                          </span>
-                        ))}
-                      </span>
-                      {isSwitching && switchTargetId === connection.id ? (
-                        <Spinner className="size-4" />
-                      ) : connection.id === activeConnection?.id ? (
-                        <CheckIcon className="size-4" />
-                      ) : null}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              ))
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/connections">
-                <SettingsIcon className="text-muted-foreground" />
-                Verbindungen verwalten
-              </Link>
-            </DropdownMenuItem>
+                      </DropdownMenuLabel>
+                    )}
+                    {group.connections.map((connection) => (
+                      <DropdownMenuItem
+                        key={connection.id}
+                        disabled={isSwitching}
+                        onSelect={() => {
+                          if (useConnectionSwitch.getState().isSwitching) return;
+                          if (connection.id === activeConnection?.id) return;
+                          void activateConnectionWithToast(connection.id).then((ok) => {
+                            if (ok) void navigate({ to: "/" });
+                          });
+                        }}
+                      >
+                        <ConnectionStatusIndicator connectionId={connection.id} />
+                        {!grouped ? (
+                          <ProviderLogo
+                            providerId={providerFor(connection).id}
+                            kind={connection.kind}
+                          />
+                        ) : null}
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <span className="truncate">{connection.name}</span>
+                          {grouped && connectionUser(connection) && (
+                            <span className="truncate font-mono text-[10px] text-muted-foreground">
+                              {connectionUser(connection)}
+                            </span>
+                          )}
+                          {connection.tags?.map((tag, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                              style={{ backgroundColor: tag.color }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </span>
+                        {isSwitching && switchTargetId === connection.id ? (
+                          <Spinner className="size-4" />
+                        ) : connection.id === activeConnection?.id ? (
+                          <CheckIcon className="size-4" />
+                        ) : null}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                ))
+              )}
+            </div>
+            <div className="mt-1 shrink-0 border-t border-border/70 pt-1">
+              <DropdownMenuItem asChild>
+                <Link to="/connections">
+                  <SettingsIcon className="text-muted-foreground" />
+                  Verbindungen verwalten
+                </Link>
+              </DropdownMenuItem>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
         {activeConnection ? (
@@ -605,20 +607,11 @@ export function AppSidebarPanel() {
       <SidebarContent>
         {activeConnection ? (
           <div className="px-2 pt-2" data-tour="sidebar-tabs">
-            <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
-              <TabsList className="w-full">
-                {sidebarTabs.map((tab) => (
-                  <TabsTrigger
-                    key={tab.value}
-                    value={tab.value}
-                    className="flex-1 px-0"
-                    aria-label={tab.label}
-                  >
-                    <tab.icon className="size-4" />
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <SidebarObjectTabs
+              tabs={sidebarTabs}
+              value={sidebarTab}
+              onValueChange={(value) => setSidebarTab(value as typeof sidebarTab)}
+            />
           </div>
         ) : null}
         <SidebarFavorites />
@@ -656,7 +649,8 @@ export function AppSidebarPanel() {
               <CompileInvalidButton types={INVALID_GROUP_TYPES[sidebarTab] ?? []} />
             ) : null}
           </div>
-          {sidebarTab === "tables" || sidebarTab === "views" ? (
+          {caps.query_language !== "redis" &&
+          (sidebarTab === "tables" || sidebarTab === "views") ? (
             <SidebarGroupAction
               onClick={() => {
                 setSearchModalMounted(true);
@@ -969,7 +963,10 @@ function SidebarEntityList({
       }
       await queryClient.invalidateQueries({ queryKey: ["tables"] });
       await queryClient.invalidateQueries({ queryKey: ["columns"] });
-      await queryClient.invalidateQueries({ queryKey: ["table-rows"] });
+      await queryClient.invalidateQueries({ queryKey: ["rows"] });
+      await queryClient.invalidateQueries({ queryKey: ["count"] });
+    } catch (error) {
+      toast.error(String(error));
     } finally {
       setActionLoading(false);
       setConfirmAction(null);
@@ -980,7 +977,9 @@ function SidebarEntityList({
     const id = openQueryTabWithSql(
       caps.query_language === "json"
         ? JSON.stringify({ find: itemName, filter: {} }, null, 2)
-        : `SELECT * FROM ${itemSchema}."${itemName}";`,
+        : caps.query_language === "redis"
+          ? "SCAN 0 MATCH * COUNT 100"
+          : `SELECT * FROM ${itemSchema}."${itemName}";`,
     );
     navigate({ to: "/query/$id", params: { id } });
   };
@@ -1066,14 +1065,18 @@ function SidebarEntityList({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction?.kind === "drop"
-                ? `Tabelle "${confirmAction.name}" löschen?`
-                : `Alle Daten in "${confirmAction?.name}" löschen?`}
+              {caps.query_language === "redis"
+                ? `Alle Keys in Datenbank ${activeDatabase ?? "0"} löschen?`
+                : confirmAction?.kind === "drop"
+                  ? `Tabelle "${confirmAction.name}" löschen?`
+                  : `Alle Daten in "${confirmAction?.name}" löschen?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmAction?.kind === "drop"
-                ? "Die Tabelle und alle enthaltenen Daten werden unwiderruflich gelöscht (DROP TABLE CASCADE)."
-                : "Alle Zeilen in dieser Tabelle werden unwiderruflich gelöscht (TRUNCATE TABLE). Die Tabellenstruktur bleibt erhalten."}
+              {caps.query_language === "redis"
+                ? "Alle Keys der ausgewählten Redis-Datenbank werden unwiderruflich gelöscht (FLUSHDB)."
+                : confirmAction?.kind === "drop"
+                  ? "Die Tabelle und alle enthaltenen Daten werden unwiderruflich gelöscht (DROP TABLE CASCADE)."
+                  : "Alle Zeilen in dieser Tabelle werden unwiderruflich gelöscht (TRUNCATE TABLE). Die Tabellenstruktur bleibt erhalten."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1187,18 +1190,26 @@ function SidebarEntityList({
                         }
                       >
                         <TrashIcon />
-                        Delete All Rows
+                        {caps.query_language === "redis" ? "Alle Keys löschen" : "Delete All Rows"}
                       </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem
-                        variant="destructive"
-                        onSelect={() =>
-                          setConfirmAction({ kind: "drop", schema: item.schema, name: item.name })
-                        }
-                      >
-                        <TrashIcon />
-                        Drop Table
-                      </ContextMenuItem>
+                      {caps.query_language !== "redis" && (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            variant="destructive"
+                            onSelect={() =>
+                              setConfirmAction({
+                                kind: "drop",
+                                schema: item.schema,
+                                name: item.name,
+                              })
+                            }
+                          >
+                            <TrashIcon />
+                            Drop Table
+                          </ContextMenuItem>
+                        </>
+                      )}
                     </ContextMenuContent>
                   </ContextMenu>
                 ) : (
