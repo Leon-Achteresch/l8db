@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -64,8 +64,6 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
-const routeApi = getRouteApi("/_app/_workspace/users/$name");
-
 const TABLE_PRIVS = [
   "SELECT",
   "INSERT",
@@ -109,8 +107,7 @@ function privKey(tp: TablePrivileges, priv: string): boolean {
   }
 }
 
-export function UsersView() {
-  const { name } = routeApi.useParams();
+export function UsersView({ name }: { name: string }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();

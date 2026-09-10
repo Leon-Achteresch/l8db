@@ -5,11 +5,12 @@ import { TableView } from "@/features/table/table-view";
 
 export const Route = createFileRoute("/_app/_workspace/tables/$schema/$table")({
   component: function TableRoute() {
-    const { column } = Route.useSearch();
+    const { schema, table } = Route.useParams();
+    const { type, fkFilter, fkRaw, column } = Route.useSearch();
     return (
       <>
         <TableColumnHighlight column={column} />
-        <TableView />
+        <TableView schema={schema} table={table} type={type} fkFilter={fkFilter} fkRaw={fkRaw} />
       </>
     );
   },
