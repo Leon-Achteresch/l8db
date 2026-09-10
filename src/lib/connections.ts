@@ -1,12 +1,8 @@
+import { createContext, useContext } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { sslModeFromUrl } from "@/lib/connection-url";
-import {
-  closeSshTunnel,
-  type DatabaseKind,
-  registerReadOnlyResolver,
-  type SslMode,
-} from "@/lib/db";
+import { closeSshTunnel, type DatabaseKind, type SslMode } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import {
   deleteSecret,
@@ -110,6 +106,23 @@ export function createConnectionId(): string {
   return createId();
 }
 
+export const windowConnectionId: string | null =
+  typeof window === "undefined"
+    ? null
+    : new URLSearchParams(window.location?.search ?? "").get("connection");
+
+export const isMainWindow = windowConnectionId === null;
+
+function readStoredActiveId(): string | null {
+  try {
+    const raw = window.localStorage.getItem("l8db.connections");
+    if (!raw) return null;
+    return (JSON.parse(raw) as { state?: { activeId?: string | null } }).state?.activeId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -206,11 +219,18 @@ export const useConnectionsStore = create<ConnectionsState>()(
       storage: createJSONStorage(() => scrubbingStorage),
       partialize: (state) => ({
         connections: state.connections,
-        activeId: state.activeId,
+        activeId: isMainWindow ? state.activeId : readStoredActiveId(),
       }),
     },
   ),
 );
+
+if (
+  windowConnectionId &&
+  useConnectionsStore.getState().connections.some((entry) => entry.id === windowConnectionId)
+) {
+  useConnectionsStore.setState({ activeId: windowConnectionId });
+}
 
 let secretsInitialized = false;
 
@@ -267,22 +287,23 @@ export function isReadOnlyConnection(
   return capabilitiesFor(connection.kind).read_only_mode;
 }
 
-registerReadOnlyResolver(() => {
-  const state = useConnectionsStore.getState();
-  const active = state.connections.find((connection) => connection.id === state.activeId);
-  return isReadOnlyConnection(active);
-});
+export const ConnectionScopeContext = createContext<string | null>(null);
+
+export function useActiveConnectionId(): string | null {
+  const scoped = useContext(ConnectionScopeContext);
+  return useConnectionsStore((state) => scoped ?? state.activeId);
+}
 
 export function useReadOnlyConnection(): boolean {
+  const id = useActiveConnectionId();
   return useConnectionsStore((state) =>
-    isReadOnlyConnection(
-      state.connections.find((connection) => connection.id === state.activeId) ?? null,
-    ),
+    isReadOnlyConnection(state.connections.find((connection) => connection.id === id) ?? null),
   );
 }
 
 export function useActiveConnection(): SavedConnection | null {
+  const id = useActiveConnectionId();
   return useConnectionsStore(
-    (state) => state.connections.find((connection) => connection.id === state.activeId) ?? null,
+    (state) => state.connections.find((connection) => connection.id === id) ?? null,
   );
 }

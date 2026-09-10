@@ -523,6 +523,38 @@ describe("Lesemodus", () => {
   });
 });
 
+describe("Lesemodus pro Verbindung", () => {
+  const other = {
+    ...direct,
+    id: "other",
+    name: "Other",
+    connectionString: "postgresql://user:pw@localhost:5432/other",
+  };
+
+  test("the connection string decides, not the active connection", async () => {
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }, other],
+      activeId: "other",
+    });
+    calls.length = 0;
+    await expect(
+      truncateTable(
+        "postgres",
+        effectiveConnectionString({ ...direct, readOnly: true }),
+        "public",
+        "t",
+      ),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("truncate_table");
+    useConnectionsStore.setState({ activeId: "direct" });
+    await truncateTable("postgres", effectiveConnectionString(other), "public", "t").catch(
+      () => undefined,
+    );
+    expect(calls).toContain("truncate_table");
+    useConnectionsStore.setState({ connections: [direct], activeId: null });
+  });
+});
+
 describe("Sichtbare Schemas", () => {
   test("filter keeps only selected schemas and falls back to all without a selection", () => {
     const all = ["HR", "SCOTT", "SYS", "APP"];

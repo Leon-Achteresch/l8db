@@ -4,6 +4,7 @@ import {
   type DatabaseKind,
   listSshTunnels,
   openSshTunnel,
+  registerReadOnlyResolver,
   testConnectionString,
 } from "@/lib/db";
 
@@ -90,6 +91,21 @@ export function readOnlyConnectionString(value: string): string {
   url.search = params.join("&");
   return url.toString();
 }
+
+registerReadOnlyResolver((connectionString) => {
+  const { connections, activeId } = useConnectionsStore.getState();
+  if (typeof connectionString === "string") {
+    const matches = connections.filter((entry) => {
+      try {
+        return effectiveConnectionString(entry) === connectionString;
+      } catch {
+        return false;
+      }
+    });
+    if (matches.length) return matches.some(isReadOnlyConnection);
+  }
+  return isReadOnlyConnection(connections.find((entry) => entry.id === activeId));
+});
 
 export function effectiveConnectionString(connection: SavedConnection): string {
   const base = isReadOnlyConnection(connection)

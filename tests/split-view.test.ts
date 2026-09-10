@@ -167,3 +167,18 @@ describe("split view", () => {
     expect(useSplitView.getState().panes).toEqual([orders, users]);
   });
 });
+
+describe("Verbindung pro Bereich", () => {
+  test("override is scoped to the active connection and cleared with it", () => {
+    const a = addConnection("A");
+    const b = addConnection("B");
+    useConnectionsStore.setState({ activeId: a.id });
+    useSplitView.getState().setPaneConnection("table:public.t", b.id);
+    expect(useSplitView.getState().paneConnections).toEqual({ [`${a.id}|table:public.t`]: b.id });
+    useSplitView.getState().setPaneConnection("table:public.t", null);
+    expect(useSplitView.getState().paneConnections).toEqual({});
+    useSplitView.getState().setPaneConnection("table:public.t", b.id);
+    useSplitView.getState().clearForConnection(b.id);
+    expect(useSplitView.getState().paneConnections).toEqual({});
+  });
+});

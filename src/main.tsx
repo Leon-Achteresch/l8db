@@ -6,7 +6,7 @@ import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
 import { initAutoUpdater } from "@/lib/auto-updater";
-import { initConnectionSecrets } from "@/lib/connections";
+import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
@@ -48,7 +48,7 @@ Promise.all([loadProviders(), initConnectionSecrets()])
       .catch((error) => extensionHost.manager.log("host", "error", String(error)));
   });
 
-if (!import.meta.env.DEV) {
+if (!import.meta.env.DEV && isMainWindow) {
   window.addEventListener("load", () => {
     initAutoUpdater();
   });
