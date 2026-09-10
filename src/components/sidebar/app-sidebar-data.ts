@@ -1,4 +1,4 @@
-import { Database, Home, Info, type LucideIcon } from "lucide-react";
+import { Home, Info, type LucideIcon } from "lucide-react";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 
@@ -25,7 +25,6 @@ export const appSidebarData: {
   },
   navMain: [
     { title: "Home", url: "/", icon: Home },
-    { title: "Verbindungen", url: "/connections", icon: Database },
     { title: "Über", url: "/about", icon: Info },
   ],
 };

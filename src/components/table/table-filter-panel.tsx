@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { AnimatePresence, motion } from "motion/react";
 import {
   ChevronDownIcon,
   Code2Icon,
@@ -21,7 +22,6 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 
 type FilterMode = "simple" | "sql";
 type Combinator = "AND" | "OR";
@@ -210,12 +210,13 @@ export function TableFilterPanel({
         >
           <FilterIcon className="size-4 text-muted-foreground" />
           Filter
-          <ChevronDownIcon
-            className={cn(
-              "size-4 text-muted-foreground transition-transform",
-              open && "rotate-180",
-            )}
-          />
+          <motion.span
+            animate={{ rotate: open ? 180 : 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="inline-flex"
+          >
+            <ChevronDownIcon className="size-4 text-muted-foreground" />
+          </motion.span>
         </button>
 
         {hasActiveFilter ? (
@@ -239,9 +240,20 @@ export function TableFilterPanel({
         )}
       </div>
 
-      {open ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-3">
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="filter-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{
+              height: { duration: 0.26, ease: [0.32, 0.72, 0, 1] },
+              opacity: { duration: 0.18 },
+            }}
+            className="overflow-hidden"
+          >
+          <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
             <Tabs
               value={mode}
               onValueChange={(value) => switchMode(value as FilterMode)}
@@ -410,8 +422,9 @@ export function TableFilterPanel({
               Filter anwenden
             </Button>
           </div>
-        </div>
-      ) : null}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
