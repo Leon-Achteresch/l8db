@@ -7,6 +7,7 @@ import {
   CodeIcon,
   Columns2Icon,
   CopyIcon,
+  NetworkIcon,
   PlayIcon,
   RotateCcwIcon,
   ShieldCheckIcon,
@@ -22,9 +23,10 @@ import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
+import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import {
   useForeignKeysQuery,
   useSchemasQuery,
@@ -44,13 +46,14 @@ interface ViewEditorViewProps {
 export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const capabilities = useActiveCapabilities();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const openTab = useTableTabs((state) => state.openTab);
   const { data: foreignKeys } = useForeignKeysQuery(schema, view);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
 
-  const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition">("data");
+  const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition" | "used-by">("data");
   const [filter, setFilter] = useState("");
   const [filterRaw, setFilterRaw] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -218,7 +221,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   return (
     <Tabs
       value={activeTab}
-      onValueChange={(v) => setActiveTab(v as "data" | "columns" | "definition")}
+      onValueChange={(v) => setActiveTab(v as "data" | "columns" | "definition" | "used-by")}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
@@ -235,6 +238,12 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             <CodeIcon className="size-3.5" />
             Definition
           </TabsTrigger>
+          {capabilities.used_by && (
+            <TabsTrigger value="used-by">
+              <NetworkIcon className="size-3.5" />
+              Used By
+            </TabsTrigger>
+          )}
         </TabsList>
       </div>
 
@@ -349,6 +358,10 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             )}
           </div>
         )}
+      </TabsContent>
+
+      <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableUsedByPanel schema={schema} name={view} />
       </TabsContent>
     </Tabs>
   );

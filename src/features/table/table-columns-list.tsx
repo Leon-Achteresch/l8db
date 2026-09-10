@@ -216,6 +216,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
 
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <motion.div
+            layout="position"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             onClick={() => setSelectedFilter("all")}
@@ -235,6 +236,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
           </motion.div>
 
           <motion.div
+            layout="position"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             onClick={() => setSelectedFilter("pk")}
@@ -254,6 +256,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
           </motion.div>
 
           <motion.div
+            layout="position"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             onClick={() => setSelectedFilter("not-null")}
@@ -273,6 +276,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
           </motion.div>
 
           <motion.div
+            layout="position"
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
             onClick={() => setSelectedFilter("has-default")}
@@ -385,7 +389,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
               return (
                 <motion.div
                   key={column.name}
-                  layout="position"
+                  layout
                   variants={{
                     hidden: { opacity: 0, y: 8 },
                     visible: { opacity: 1, y: 0 },

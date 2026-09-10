@@ -25,7 +25,7 @@ function provider(
     hint: "",
     hosts,
     driver: { type: "builtin" },
-    capabilities: { ssl: true, ssh: true, views: true },
+    capabilities: { ssl: true, ssh: true, views: true, read_only_mode: kind === "postgres" },
     driver_status: { available: true, detail: "", install: [] },
     ...extra,
   };
@@ -98,6 +98,7 @@ const {
 const { effectiveConnectionString, activateConnection, tunneledConnectionString } = await import(
   "../src/lib/ssh"
 );
+const { truncateTable, executeQuery } = await import("../src/lib/db");
 
 const direct = {
   id: "direct",
@@ -341,5 +342,181 @@ describe("Oracle Key-Value", () => {
       "User Id=DEV_ACHTERESCH;Password=***;Data Source=csorastby.rzhit.win:1521/sltest.rzhit.win",
     );
     expect(extractUrlPassword(kv)).toBe("XXX");
+  });
+  test("maps Oracle network errors to actionable messages", () => {
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12514: TNS:listener does not know of service"),
+    ).toContain("ORA-12514");
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12541: TNS:no listener"),
+    ).toContain("ORA-12541");
+    expect(
+      connectionError("Oracle-Verbindung fehlgeschlagen: ORA-12545: Connect failed because target host does not exist"),
+    ).toContain("ORA-12545");
+    expect(
+      connectionError(
+        "Oracle-Host csorastby.rzhit.win:1521 antwortet nicht (TCP-Timeout nach 8 s). Prüfe VPN, Firewall und Hostnamen.",
+      ),
+    ).toContain("TCP-Timeout nach 8 s");
+    expect(
+      connectionError("Oracle-Host db.internal kann nicht aufgelöst werden (DNS). Prüfe Hostnamen und VPN."),
+    ).toContain("DNS");
+  });
+});
+
+const {
+  buildConnectionExport,
+  parseConnectionImport,
+  resolveImport,
+  stripConnectionSecrets,
+} = await import("../src/lib/connection-export");
+
+describe("Connection profiles export/import", () => {
+  test("export strips passwords, tokens, SSH secrets and tunnel ports", () => {
+    const file = buildConnectionExport([
+      {
+        ...direct,
+        connectionString:
+          "postgresql://user:p%40ss@localhost:5432/app?sslmode=disable&token=abc&application_name=x",
+        tunnelPort: 6011,
+        tags: [{ name: "Prod", color: "#ef4444" }],
+        favorite: true,
+        color: "#ef4444",
+      },
+      { ...tunneled, tunnelPort: 6012, ssh: { ...tunneled.ssh, auth: "password" as const } },
+      {
+        id: "ora",
+        name: "Oracle",
+        kind: "oracle" as const,
+        connectionString: "user id=scott;password=tiger;data source=localhost/xe",
+        sslMode: "disable" as const,
+      },
+    ]);
+    expect(file.format).toBe("l8db-connections");
+    expect(file.version).toBe(1);
+    const text = JSON.stringify(file);
+    expect(text).not.toContain("p%40ss");
+    expect(text).not.toContain("token=abc");
+    expect(text).not.toContain("tiger");
+    expect(text).not.toContain("tunnelPort");
+    expect(file.connections[0].connectionString).toBe(
+      "postgresql://user@localhost:5432/app?sslmode=disable&application_name=x",
+    );
+    expect(file.connections[0].tags).toEqual([{ name: "Prod", color: "#ef4444" }]);
+    expect(file.connections[0].favorite).toBe(true);
+    expect(file.connections[0].color).toBe("#ef4444");
+    expect(file.connections[1].ssh?.host).toBe("bastion.example.com");
+    expect(file.connections[1].ssh?.keyFile).toBe("");
+    expect(file.connections[2].connectionString).toBe(
+      "user id=scott;data source=localhost/xe",
+    );
+    expect(stripConnectionSecrets("redis://:secret@localhost:6379/0")).toBe(
+      "redis://localhost:6379/0",
+    );
+  });
+  test("import rejects unknown formats and versions with a readable message", () => {
+    expect(parseConnectionImport("nicht json", []).error).toContain("JSON");
+    expect(parseConnectionImport(JSON.stringify({ format: "x", version: 1 }), []).error).toContain(
+      "l8db",
+    );
+    expect(
+      parseConnectionImport(
+        JSON.stringify({ format: "l8db-connections", version: 99, connections: [] }),
+        [],
+      ).error,
+    ).toContain("99");
+  });
+  test("import flags invalid profiles and duplicates, resolves skip or copy", () => {
+    const payload = JSON.stringify({
+      format: "l8db-connections",
+      version: 1,
+      connections: [
+        { ...direct, connectionString: "postgresql://user@localhost:5432/app?sslmode=disable" },
+        { id: "n", name: "Neu", kind: "mysql", connectionString: "mysql://root@localhost/db" },
+        { id: "bad", name: "Kaputt", kind: "foo", connectionString: "x" },
+        { id: "nix", kind: "postgres", connectionString: "postgres://u@h/db" },
+      ],
+    });
+    const parsed = parseConnectionImport(payload, [direct]);
+    expect(parsed.error).toBeNull();
+    expect(parsed.candidates).toHaveLength(4);
+    expect(parsed.candidates[0].duplicateOf?.id).toBe("direct");
+    expect(parsed.candidates[1].duplicateOf).toBeNull();
+    expect(parsed.candidates[2].error).toContain("foo");
+    expect(parsed.candidates[3].error).toContain("Name");
+    const all = new Set([0, 1, 2, 3]);
+    const skipped = resolveImport(parsed.candidates, all, "skip");
+    expect(skipped.map((connection) => connection.id)).toEqual(["n"]);
+    const copied = resolveImport(parsed.candidates, all, "copy");
+    expect(copied).toHaveLength(2);
+    expect(copied[0].id).not.toBe("direct");
+    expect(copied[0].name).toBe("Local (Kopie)");
+    expect(copied[0].tunnelPort).toBeNull();
+  });
+  test("addImported never overwrites existing profiles or activates a connection", () => {
+    useConnectionsStore.setState({ connections: [direct], activeId: null });
+    useConnectionsStore.getState().addImported([
+      { ...direct, name: "Überschrieben" },
+      { ...direct, id: "fresh", name: "Frisch" },
+    ]);
+    const state = useConnectionsStore.getState();
+    expect(state.activeId).toBeNull();
+    expect(state.connections.map((connection) => connection.name)).toEqual(["Local", "Frisch"]);
+  });
+});
+
+describe("Favorites and profile color", () => {
+  test("toggleFavorite persists without changing the active connection", () => {
+    useConnectionsStore.getState().toggleFavorite("direct");
+    expect(useConnectionsStore.getState().activeId).toBeNull();
+    expect(useConnectionsStore.getState().connections[0].favorite).toBe(true);
+    const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
+    expect(stored.state.connections[0].favorite).toBe(true);
+    useConnectionsStore.getState().toggleFavorite("direct");
+    expect(useConnectionsStore.getState().connections[0].favorite).toBe(false);
+  });
+  test("color is persisted and secrets stay scrubbed in storage", () => {
+    useConnectionsStore.getState().updateConnection("direct", { ...direct, color: "#3b82f6" });
+    const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
+    expect(stored.state.connections[0].color).toBe("#3b82f6");
+    expect(stored.state.connections[0].connectionString).not.toContain("p%40ss");
+  });
+});
+
+describe("Lesemodus", () => {
+  test("read-only postgres connections carry the server-side option", () => {
+    const readOnly = { ...direct, readOnly: true };
+    const url = new URL(effectiveConnectionString(readOnly));
+    expect(url.searchParams.get("options")).toBe("-c default_transaction_read_only=on");
+    expect(effectiveConnectionString({ ...direct, readOnly: false })).toBe(direct.connectionString);
+  });
+
+  test("providers without the capability ignore the flag", () => {
+    const mysql = {
+      ...direct,
+      id: "mysql-ro",
+      kind: "mysql" as const,
+      connectionString: "mysql://root:pw@localhost:3306/app",
+      readOnly: true,
+    };
+    expect(effectiveConnectionString(mysql)).toBe(mysql.connectionString);
+  });
+
+  test("write commands are blocked while a read-only connection is active", async () => {
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }],
+      activeId: "direct",
+    });
+    calls.length = 0;
+    await expect(
+      truncateTable("postgres", direct.connectionString, "public", "t"),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("truncate_table");
+    await executeQuery("postgres", direct.connectionString, "SELECT 1").catch(() => undefined);
+    expect(calls).toContain("execute_query");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: false }],
+      activeId: null,
+    });
   });
 });

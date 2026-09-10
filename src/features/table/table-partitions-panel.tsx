@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { LayersIcon, LinkIcon, PlusIcon, UnlinkIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { attachPartition, detachPartition } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { usePartitionInfoQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -219,8 +221,10 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
         ) : (
           <div className="flex flex-col gap-0.5">
             {data.partitions.map((part) => (
-              <div
+              <motion.div
                 key={`${part.schema}.${part.name}`}
+                layout
+                transition={{ layout: SPRING_LAYOUT }}
                 className="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-accent/60"
               >
                 <LinkIcon className="size-4 shrink-0 text-sky-500" />
@@ -237,7 +241,7 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
                   <UnlinkIcon className="size-3.5" />
                   Lösen
                 </Button>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}

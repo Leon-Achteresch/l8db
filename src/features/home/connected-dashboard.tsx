@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { connectionError, connectionSummary, providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import {
   useDatabaseOverviewQuery,
   useExtensionsQuery,
@@ -85,10 +86,12 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   }
 
   return (
-    <main className="workspace-canvas flex-1 overflow-auto">
+    <main className="workspace-canvas flex-1 overflow-auto" data-tour="dashboard">
       <motion.div
+        layout
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ layout: SPRING_LAYOUT }}
         className="mx-auto max-w-[1400px] px-6 py-8 lg:px-9"
       >
         <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
@@ -111,7 +114,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               <span className="max-w-72 truncate">{endpoint.host}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour="dashboard-actions">
             <Button
               variant="outline"
               size="sm"
@@ -202,22 +205,29 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               ) : filtered.length ? (
                 <div className="max-h-80 overflow-auto divide-y divide-border/60">
                   {filtered.map((table) => (
-                    <Link
+                    <motion.div
                       key={`${table.schema}.${table.name}`}
-                      to="/tables/$schema/$table"
-                      params={{ schema: table.schema, table: table.name }}
-                      onClick={() =>
-                        useTableTabs.getState().openTab({ schema: table.schema, table: table.name })
-                      }
-                      className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/60"
+                      layout="position"
+                      transition={{ layout: SPRING_LAYOUT }}
                     >
-                      <Table2 className="size-4 text-primary/80" />
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                        {table.name}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{table.schema}</span>
-                      <ArrowRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-                    </Link>
+                      <Link
+                        to="/tables/$schema/$table"
+                        params={{ schema: table.schema, table: table.name }}
+                        onClick={() =>
+                          useTableTabs
+                            .getState()
+                            .openTab({ schema: table.schema, table: table.name })
+                        }
+                        className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/60"
+                      >
+                        <Table2 className="size-4 text-primary/80" />
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                          {table.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{table.schema}</span>
+                        <ArrowRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                      </Link>
+                    </motion.div>
                   ))}
                 </div>
               ) : (

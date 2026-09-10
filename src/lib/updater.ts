@@ -4,14 +4,51 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 
 export const UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
+export type UpdatePromptState = {
+  update: Update | null;
+  open: boolean;
+};
+
 let pendingUpdate: Update | null = null;
+let promptOpen = false;
+let snapshot: UpdatePromptState = { update: null, open: false };
+const listeners = new Set<() => void>();
+
+function emit(): void {
+  snapshot = { update: pendingUpdate, open: promptOpen };
+  for (const listener of listeners) listener();
+}
 
 export function getPendingUpdate(): Update | null {
   return pendingUpdate;
 }
 
+export function getUpdatePromptState(): UpdatePromptState {
+  return snapshot;
+}
+
+export function subscribeUpdatePrompt(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 export function setPendingUpdate(update: Update | null): void {
   pendingUpdate = update;
+  if (!update) promptOpen = false;
+  emit();
+}
+
+export function presentUpdate(update: Update): void {
+  pendingUpdate = update;
+  promptOpen = true;
+  emit();
+}
+
+export function closeUpdatePrompt(): void {
+  promptOpen = false;
+  emit();
 }
 
 export async function getAppVersion(): Promise<string | null> {

@@ -1,7 +1,7 @@
 # L8DB-PLAN-018: Abfrageergebnisse lokal sortieren
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Ergebnisse
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

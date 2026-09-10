@@ -1,8 +1,10 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Star, Trash2 } from "lucide-react";
+import { motion } from "motion/react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -12,6 +14,7 @@ interface Props {
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleFavorite: () => void;
 }
 
 export function SavedConnectionChip({
@@ -21,14 +24,21 @@ export function SavedConnectionChip({
   onOpen,
   onEdit,
   onDelete,
+  onToggleFavorite,
 }: Props) {
   const provider = providerFor(connection);
+  const favorite = Boolean(connection.favorite);
   return (
-    <div
+    <motion.div
+      layout
+      transition={{ layout: SPRING_LAYOUT }}
       className={cn(
         "flex min-w-[12.5rem] items-center gap-2 rounded-2xl border bg-card/90 px-2.5 py-2 shadow-sm",
         active ? "border-primary ring-2 ring-primary/25" : "border-border/70",
       )}
+      style={
+        connection.color ? { borderLeftWidth: 4, borderLeftColor: connection.color } : undefined
+      }
     >
       <button
         type="button"
@@ -48,6 +58,22 @@ export function SavedConnectionChip({
       </button>
       <button
         type="button"
+        aria-label={
+          favorite
+            ? `${connection.name} aus Favoriten entfernen`
+            : `${connection.name} als Favorit markieren`
+        }
+        aria-pressed={favorite}
+        onClick={onToggleFavorite}
+        className={cn(
+          "grid size-7 place-items-center rounded-full hover:bg-muted",
+          favorite ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Star className={cn("size-3.5", favorite && "fill-current")} />
+      </button>
+      <button
+        type="button"
         aria-label={`${connection.name} bearbeiten`}
         onClick={onEdit}
         className="grid size-7 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -62,6 +88,6 @@ export function SavedConnectionChip({
       >
         <Trash2 className="size-3.5" />
       </button>
-    </div>
+    </motion.div>
   );
 }

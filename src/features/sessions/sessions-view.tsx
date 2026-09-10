@@ -1,28 +1,38 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ActivityIcon, LockIcon, OctagonXIcon, StopCircleIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  ActivityIcon,
+  CalendarClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LockIcon,
+} from "lucide-react";
+import { motion } from "motion/react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { cancelSession, terminateSession } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import {
+  type BlockingInfo,
+  computeBlocking,
+  EMPTY_SESSION_FILTERS,
+  filterSessions,
+  groupSessions,
+  type SessionFilters,
+  sessionStates,
+} from "@/lib/session-filters";
+import { useSessionViewPrefs } from "@/lib/session-view-prefs";
 import { effectiveConnectionString } from "@/lib/ssh";
 
-function formatTimestamp(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
+import { SchedulerJobsPanel } from "./scheduler-jobs-panel";
+import { SessionRow } from "./session-row";
+import { SessionsFilterBar } from "./sessions-filter-bar";
 
 export function SessionsView() {
   const connection = useActiveConnection();
@@ -30,8 +40,58 @@ export function SessionsView() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("sessions");
   const [actingPid, setActingPid] = useState<number | null>(null);
+  const [filters, setFilters] = useState<SessionFilters>(EMPTY_SESSION_FILTERS);
+  const [highlightedPid, setHighlightedPid] = useState<number | null>(null);
   const { data: sessions, isLoading, isError, error } = useSessionsQuery();
   const { data: locks } = useLocksQuery();
+  const capabilities = useActiveCapabilities();
+  const showBlocking = Boolean(capabilities?.sessions && capabilities?.locks);
+  const grouping = useSessionViewPrefs((s) => s.grouping);
+  const collapsedGroups = useSessionViewPrefs((s) => s.collapsedGroups);
+  const setGrouping = useSessionViewPrefs((s) => s.setGrouping);
+  const toggleGroup = useSessionViewPrefs((s) => s.toggleGroup);
+  const setCollapsedGroups = useSessionViewPrefs((s) => s.setCollapsedGroups);
+
+  const allSessions = useMemo(() => sessions ?? [], [sessions]);
+  const blocking = useMemo(
+    () => (showBlocking ? computeBlocking(allSessions) : new Map<number, BlockingInfo>()),
+    [allSessions, showBlocking],
+  );
+  const blockedCount = useMemo(
+    () => [...blocking.values()].filter((info) => info.blockedBy.length > 0).length,
+    [blocking],
+  );
+  const states = useMemo(() => sessionStates(allSessions), [allSessions]);
+  const filtered = useMemo(() => filterSessions(allSessions, filters), [allSessions, filters]);
+  const groups = useMemo(() => groupSessions(filtered, grouping), [filtered, grouping]);
+
+  useEffect(() => {
+    if (highlightedPid === null) return;
+    const timer = window.setTimeout(() => setHighlightedPid(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [highlightedPid]);
+
+  const jumpToSession = (pid: number) => {
+    const target = filtered.find((s) => s.pid === pid);
+    if (!target) {
+      toast.info(
+        allSessions.some((s) => s.pid === pid)
+          ? `Sitzung ${pid} ist durch die Filter ausgeblendet.`
+          : `Sitzung ${pid} ist nicht mehr vorhanden.`,
+      );
+      return;
+    }
+    if (grouping !== "none") {
+      const key = grouping === "user" ? target.user : target.application || "";
+      if (collapsedGroups.includes(key)) toggleGroup(key);
+    }
+    setHighlightedPid(pid);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`session-row-${pid}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  };
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -98,112 +158,129 @@ export function SessionsView() {
         <ActivityIcon className="size-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight">Sitzungen & Locks</h1>
         <span className="text-xs text-muted-foreground">aktualisiert alle 5 s</span>
+        {blockedCount > 0 && (
+          <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-[10px]">
+            {blockedCount} blockiert
+          </Badge>
+        )}
       </header>
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="w-fit shrink-0">
           <TabsTrigger value="sessions" className="gap-1.5 text-xs">
             <ActivityIcon className="size-3.5" />
-            Sitzungen ({sessions?.length ?? 0})
+            Sitzungen (
+            {filtered.length === allSessions.length
+              ? allSessions.length
+              : `${filtered.length}/${allSessions.length}`}
+            )
           </TabsTrigger>
           <TabsTrigger value="locks" className="gap-1.5 text-xs">
             <LockIcon className="size-3.5" />
             Locks ({locks?.length ?? 0})
           </TabsTrigger>
+          {capabilities?.scheduler_jobs && (
+            <TabsTrigger value="jobs" className="gap-1.5 text-xs">
+              <CalendarClockIcon className="size-3.5" />
+              Jobs
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="sessions" className="min-h-0 flex-1 overflow-auto rounded-lg border">
-          {isLoading ? (
-            <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-              <Spinner />
-              Lade Sitzungen…
-            </div>
-          ) : isError ? (
-            <p className="p-8 text-center text-sm text-destructive">{String(error)}</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-muted/60 text-left text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">PID</th>
-                  <th className="px-3 py-2 font-medium">Benutzer</th>
-                  <th className="px-3 py-2 font-medium">App</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Wartet auf</th>
-                  <th className="px-3 py-2 font-medium">Query</th>
-                  <th className="px-3 py-2 font-medium">Start</th>
-                  <th className="px-3 py-2 text-right font-medium">Aktionen</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {(sessions ?? []).map((session) => (
-                  <tr key={session.pid} className="hover:bg-muted/40">
-                    <td className="px-3 py-2 font-mono tabular-nums">
-                      {session.pid}
-                      {session.is_self && (
-                        <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[9px]">
-                          ich
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{session.user}</td>
-                    <td className="max-w-32 truncate px-3 py-2 text-muted-foreground">
-                      {session.application || "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {session.state ? (
-                        <Badge
-                          variant={session.state === "active" ? "default" : "outline"}
-                          className="px-1.5 py-0 text-[10px]"
-                        >
-                          {session.state}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-muted-foreground">
-                      {session.wait_event ?? "—"}
-                    </td>
-                    <td
-                      className="max-w-md truncate px-3 py-2 font-mono text-muted-foreground"
-                      title={session.query}
-                    >
-                      {session.query || "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
-                      {formatTimestamp(session.query_start)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 gap-1 px-2 text-[11px]"
-                        disabled={actingPid === session.pid}
-                        onClick={() => void handleCancel(session.pid)}
-                        title="Laufende Abfrage abbrechen (Verbindung bleibt)"
-                      >
-                        <StopCircleIcon className="size-3.5" />
-                        Abbrechen
-                      </Button>
-                      {!session.is_self && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                          disabled={actingPid === session.pid}
-                          onClick={() => void handleTerminate(session.pid)}
-                          title="Sitzung hart beenden (Transaktionen gehen verloren)"
-                        >
-                          <OctagonXIcon className="size-3.5" />
-                          Beenden
-                        </Button>
-                      )}
-                    </td>
+        <TabsContent value="jobs" className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+            <SchedulerJobsPanel />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="sessions" className="flex min-h-0 flex-1 flex-col gap-2">
+          <SessionsFilterBar
+            filters={filters}
+            onFiltersChange={setFilters}
+            states={states}
+            grouping={grouping}
+            onGroupingChange={setGrouping}
+            shown={filtered.length}
+            total={allSessions.length}
+            groupCount={groups.length}
+            onExpandAll={() => setCollapsedGroups([])}
+            onCollapseAll={() => setCollapsedGroups(groups.map((g) => g.key))}
+          />
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+                <Spinner />
+                Lade Sitzungen…
+              </div>
+            ) : isError ? (
+              <p className="p-8 text-center text-sm text-destructive">{String(error)}</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/60 text-left text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">PID</th>
+                    <th className="px-3 py-2 font-medium">Benutzer</th>
+                    <th className="px-3 py-2 font-medium">App</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Blockierung</th>
+                    <th className="px-3 py-2 font-medium">Wartet auf</th>
+                    <th className="px-3 py-2 font-medium">Query</th>
+                    <th className="px-3 py-2 font-medium">Start</th>
+                    <th className="px-3 py-2 text-right font-medium">Aktionen</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {groups.map((group) => {
+                    const collapsed = grouping !== "none" && collapsedGroups.includes(group.key);
+                    return (
+                      <Fragment key={grouping === "none" ? "__all__" : `g-${group.key}`}>
+                        {grouping !== "none" && (
+                          <tr
+                            className="cursor-pointer bg-muted/30 hover:bg-muted/50"
+                            onClick={() => toggleGroup(group.key)}
+                          >
+                            <td colSpan={9} className="px-3 py-1.5 font-medium">
+                              <span className="inline-flex items-center gap-1.5">
+                                {collapsed ? (
+                                  <ChevronRightIcon className="size-3.5" />
+                                ) : (
+                                  <ChevronDownIcon className="size-3.5" />
+                                )}
+                                {group.label}
+                                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                  {group.sessions.length}
+                                </Badge>
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                        {!collapsed &&
+                          group.sessions.map((session) => (
+                            <SessionRow
+                              key={session.pid}
+                              session={session}
+                              blocking={blocking.get(session.pid)}
+                              highlighted={highlightedPid === session.pid}
+                              acting={actingPid === session.pid}
+                              onJump={jumpToSession}
+                              onCancel={(pid) => void handleCancel(pid)}
+                              onTerminate={(pid) => void handleTerminate(pid)}
+                            />
+                          ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+            {!isLoading && !isError && filtered.length === 0 && (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                {allSessions.length === 0
+                  ? "Keine Sitzungen."
+                  : "Keine Sitzungen entsprechen den Filtern."}
+              </p>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="locks" className="min-h-0 flex-1 overflow-auto rounded-lg border">
@@ -219,8 +296,10 @@ export function SessionsView() {
             </thead>
             <tbody className="divide-y divide-border/50">
               {(locks ?? []).map((lock, index) => (
-                <tr
+                <motion.tr
                   key={`${lock.pid}-${lock.lock_type}-${lock.relation ?? ""}-${lock.mode}-${index}`}
+                  layout="position"
+                  transition={{ layout: SPRING_LAYOUT }}
                   className="hover:bg-muted/40"
                 >
                   <td className="px-3 py-2 font-mono tabular-nums">{lock.pid}</td>
@@ -235,7 +314,7 @@ export function SessionsView() {
                       {lock.granted ? "gewährt" : "wartet"}
                     </Badge>
                   </td>
-                </tr>
+                </motion.tr>
               ))}
             </tbody>
           </table>
