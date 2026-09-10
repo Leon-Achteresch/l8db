@@ -177,3 +177,7 @@ export function statementAtOffset(sql: string, offset: number): SqlStatement | n
   }
   return null;
 }
+
+export function sqlToRun(sql: string, selectedSql: string): string {
+  return selectedSql.trim() ? selectedSql : sql;
+}

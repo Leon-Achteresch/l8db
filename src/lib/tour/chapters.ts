@@ -205,7 +205,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "query-run",
         title: "Ausführen und Explain",
-        body: "Ausführen schickt die Anweisung an die aktive Datenbank. Explain zeigt den Plan ohne Seiteneffekt, Explain Analyze misst die echte Ausführung. Ergebnisse exportierst du als CSV oder JSON.",
+        body: "Ausführen schickt die Anweisung an die aktive Datenbank — ist Text markiert, läuft nur die Markierung. Explain zeigt den Plan ohne Seiteneffekt, Explain Analyze misst die echte Ausführung. Ergebnisse exportierst du als CSV oder JSON.",
         target: "[data-tour='query-run']",
         side: "bottom",
       },
