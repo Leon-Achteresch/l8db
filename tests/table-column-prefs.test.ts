@@ -13,11 +13,13 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const {
+  formatVisibleColumnNames,
   moveColumn,
   reorderVisibleColumns,
   resolveColumnPrefs,
   tableColumnPrefKey,
   toggleHiddenColumn,
+  togglePinnedColumn,
   useTableColumnPrefs,
 } = await import("../src/lib/table-column-prefs");
 
@@ -87,5 +89,50 @@ describe("table column prefs store", () => {
     useTableColumnPrefs.getState().resetPref(keyA);
     expect(useTableColumnPrefs.getState().prefs[keyA]).toBeUndefined();
     expect(useTableColumnPrefs.getState().prefs[keyB]).toEqual({ order: ["id"], hidden: [] });
+  });
+});
+
+describe("Spalten fixieren", () => {
+  test("fixierte Spalten stehen in ihrer Reihenfolge vorn", () => {
+    const resolved = resolveColumnPrefs(["id", "email", "name"], {
+      order: ["email", "name", "id"],
+      hidden: [],
+      pinned: ["name", "id"],
+    });
+    expect(resolved.pinned).toEqual(["name", "id"]);
+    expect(resolved.order).toEqual(["name", "id", "email"]);
+  });
+
+  test("entfernt gelöschte Spalten aus der Fixierung", () => {
+    const resolved = resolveColumnPrefs(["id"], {
+      order: ["id"],
+      hidden: [],
+      pinned: ["gone", "id", "id"],
+    });
+    expect(resolved.pinned).toEqual(["id"]);
+  });
+
+  test("togglePinnedColumn fixiert und löst", () => {
+    expect(togglePinnedColumn(["id", "name"], [], "name")).toEqual(["name"]);
+    expect(togglePinnedColumn(["id", "name"], ["name"], "name")).toEqual([]);
+    expect(togglePinnedColumn(["id", "name"], [], "weg")).toEqual([]);
+  });
+
+  test("speichert Fixierung im Store", () => {
+    const key = tableColumnPrefKey("conn-a", "public", "users");
+    useTableColumnPrefs.getState().setPref(key, { order: ["id"], hidden: [], pinned: ["id"] });
+    expect(useTableColumnPrefs.getState().prefs[key]?.pinned).toEqual(["id"]);
+  });
+});
+
+describe("formatVisibleColumnNames", () => {
+  test("kopiert sichtbare Spalten in Grid-Reihenfolge ohne interne Spalten", () => {
+    expect(formatVisibleColumnNames(["name", "__ctid__", "id", "email"], ["email"])).toBe(
+      "name, id",
+    );
+  });
+
+  test("liefert leeren Text ohne sichtbare Spalten", () => {
+    expect(formatVisibleColumnNames([], [])).toBe("");
   });
 });

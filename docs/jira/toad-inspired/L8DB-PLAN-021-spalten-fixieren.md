@@ -1,7 +1,7 @@
 # L8DB-PLAN-021: Beliebige Datenspalten links fixieren
 
 Typ: Story · Priorität: **P2** · Schätzung: **2 SP** · Bereich: Grid
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
