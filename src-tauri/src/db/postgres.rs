@@ -135,6 +135,66 @@ impl DatabaseAdapter for PostgresAdapter {
         result
     }
 
+    async fn list_columns(
+        &self,
+        schema: Option<&str>,
+        table: Option<&str>,
+    ) -> Result<Vec<ColumnInfo>, String> {
+        let (client, handle) = self.connect().await?;
+        let result = match (schema, table) {
+            (Some(s), Some(t)) => {
+                client
+                    .query(
+                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                         FROM information_schema.columns c \
+                         WHERE c.table_schema = $1 AND c.table_name = $2 \
+                         ORDER BY c.ordinal_position",
+                        &[&s, &t],
+                    )
+                    .await
+            }
+            (Some(s), None) => {
+                client
+                    .query(
+                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                         FROM information_schema.columns c \
+                         JOIN information_schema.tables t \
+                           ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
+                         WHERE t.table_type = 'BASE TABLE' AND c.table_schema = $1 \
+                         ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                        &[&s],
+                    )
+                    .await
+            }
+            _ => {
+                client
+                    .query(
+                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                         FROM information_schema.columns c \
+                         JOIN information_schema.tables t \
+                           ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
+                         WHERE t.table_type = 'BASE TABLE' \
+                           AND c.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                         ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                        &[],
+                    )
+                    .await
+            }
+        };
+        let result = result.map_err(|e| e.to_string()).map(|rows| {
+            rows.into_iter()
+                .map(|row| ColumnInfo {
+                    schema: row.get(0),
+                    table: row.get(1),
+                    name: row.get(2),
+                    data_type: row.get(3),
+                })
+                .collect()
+        });
+        handle.abort();
+        result
+    }
+
     async fn fetch_rows(
         &self,
         schema: &str,
@@ -290,6 +350,58 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map(|_| ())
                 .map_err(|e| e.to_string())
+        }
+        .await;
+
+        handle.abort();
+        result
+    }
+
+    async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        let (client, handle) = self.connect().await?;
+        let start = std::time::Instant::now();
+
+        let result = async {
+            let messages = client.simple_query(sql).await.map_err(|e| e.to_string())?;
+            let elapsed = start.elapsed().as_millis() as u64;
+
+            let mut columns: Vec<String> = Vec::new();
+            let mut rows: Vec<serde_json::Value> = Vec::new();
+            let mut rows_affected: Option<u64> = None;
+
+            for msg in messages {
+                match msg {
+                    SimpleQueryMessage::Row(row) => {
+                        if columns.is_empty() {
+                            columns = row
+                                .columns()
+                                .iter()
+                                .map(|c| c.name().to_string())
+                                .collect();
+                        }
+                        let mut obj = serde_json::Map::new();
+                        for (i, col) in columns.iter().enumerate() {
+                            let val = row
+                                .get(i)
+                                .map(|v| serde_json::Value::String(v.to_string()))
+                                .unwrap_or(serde_json::Value::Null);
+                            obj.insert(col.clone(), val);
+                        }
+                        rows.push(serde_json::Value::Object(obj));
+                    }
+                    SimpleQueryMessage::CommandComplete(count) => {
+                        rows_affected = Some(count);
+                    }
+                    _ => {}
+                }
+            }
+
+            Ok(QueryResult {
+                columns,
+                rows,
+                rows_affected,
+                execution_time_ms: elapsed,
+            })
         }
         .await;
 

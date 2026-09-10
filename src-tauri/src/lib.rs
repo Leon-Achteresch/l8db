@@ -19,7 +19,9 @@ pub fn run() {
             db::commands::list_tables,
             db::commands::fetch_table_rows,
             db::commands::count_table_rows,
-            db::commands::update_row
+            db::commands::update_row,
+            db::commands::list_all_columns,
+            db::commands::execute_query
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
