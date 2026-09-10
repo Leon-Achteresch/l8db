@@ -163,8 +163,10 @@ export function TableTabs() {
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema: tab.schema, table: tab.table },
-        search:
-          (tab.entityType ?? "table") === "view" ? { type: "view" } : {},
+        search: () =>
+          (tab.entityType ?? "table") === "view"
+            ? { type: "view" as const }
+            : {},
       });
     } else {
       void navigate({ to: "/query/$id", params: { id: tab.id } });

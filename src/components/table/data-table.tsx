@@ -279,6 +279,7 @@ export function DataTable({
           </span>
         ),
         enableSorting: false,
+        enableResizing: false,
         cell: (info) => (
           <span className="font-mono text-xs tabular-nums text-muted-foreground/60 select-none">
             {info.row.index + 1 + page * pageSize}
@@ -289,6 +290,9 @@ export function DataTable({
       ...columnNames.map(
         (column): ColumnDef<TableRow> => ({
           accessorKey: column,
+          size: 200,
+          minSize: 80,
+          maxSize: 850,
           header: ({ column: col }: HeaderContext<TableRow, unknown>) => {
             const typeInfo = getColumnTypeInfo(column, data);
             const sorted = col.getIsSorted();
@@ -335,7 +339,7 @@ export function DataTable({
           cell: (info) => {
             const value = info.getValue();
             return (
-              <div className="max-w-[28rem] truncate text-left">
+              <div className="truncate text-left">
                 {renderValue(value)}
               </div>
             );
@@ -352,6 +356,7 @@ export function DataTable({
     state: { sorting },
     onSortingChange,
     manualSorting: true,
+    columnResizeMode: "onChange",
     getRowId: (row, index) => {
       const ctid = row["__ctid__"] as string | undefined;
       return ctid ?? `row-${index}`;
@@ -517,9 +522,10 @@ export function DataTable({
         className={cn(
           "relative min-h-0 flex-1 overflow-auto transition-opacity",
           isFetching && "opacity-85",
+          table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
         )}
       >
-        <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+        <table className="min-w-full border-separate border-spacing-0 text-sm table-fixed" style={{ width: table.getTotalSize() }}>
           <thead className="sticky top-0 z-10 select-none">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -533,10 +539,10 @@ export function DataTable({
                         <ContextMenuTrigger asChild>
                           <th
                             className={cn(
-                              "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs",
+                              "border-b border-r border-border bg-muted/80 px-3 py-2 text-left align-middle backdrop-blur-md shadow-xs relative",
                               index === 0 && "w-12 sticky left-0 z-30 border-r border-border text-center bg-muted/95",
-                              index > 0 && "min-w-[10rem]",
                             )}
+                            style={{ width: header.getSize() }}
                           >
                             {header.isPlaceholder
                               ? null
@@ -544,6 +550,23 @@ export function DataTable({
                                   header.column.columnDef.header,
                                   header.getContext(),
                                 )}
+                            {header.column.getCanResize() && (
+                              <div
+                                onDoubleClick={() => header.column.resetSize()}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  header.getResizeHandler()(e);
+                                }}
+                                onTouchStart={(e) => {
+                                  e.stopPropagation();
+                                  header.getResizeHandler()(e);
+                                }}
+                                className={cn(
+                                  "absolute -right-px top-0 z-40 h-full w-2 cursor-col-resize select-none touch-none",
+                                  header.column.getIsResizing() ? "bg-primary" : "bg-transparent hover:bg-primary/30",
+                                )}
+                              />
+                            )}
                           </th>
                         </ContextMenuTrigger>
                       </PopoverAnchor>
@@ -705,6 +728,7 @@ export function DataTable({
                           return (
                             <td
                               key={cell.id}
+                              style={{ width: cell.column.getSize() }}
                               className="w-12 border-b border-r border-border sticky left-0 z-10 bg-primary/[0.06] text-center px-1 py-1"
                             >
                               <div className="flex flex-col items-center gap-0.5">
@@ -742,7 +766,8 @@ export function DataTable({
                         return (
                           <td
                             key={cell.id}
-                            className="px-3 py-0 align-middle border-b border-r border-border/30 relative"
+                            style={{ width: cell.column.getSize() }}
+                            className="px-3 py-0 align-middle border-b border-r border-border/30 relative overflow-hidden"
                           >
                             <input
                               type="text"
@@ -771,8 +796,9 @@ export function DataTable({
                           key={cell.id}
                           onClick={() => setActiveCell({ rowIndex, columnId })}
                           onDoubleClick={onSaveRow ? beginCellEdit : undefined}
+                          style={{ width: cell.column.getSize() }}
                           className={cn(
-                            "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left",
+                            "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
                             cellIndex === 0 &&
                               "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
                             isActive && "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
