@@ -35,11 +35,14 @@ pub struct TableData {
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
     async fn test_connection(&self) -> Result<(), String>;
-    async fn list_tables(&self) -> Result<Vec<TableInfo>, String>;
+    async fn list_databases(&self) -> Result<Vec<String>, String>;
+    async fn list_schemas(&self) -> Result<Vec<String>, String>;
+    async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String>;
     async fn fetch_rows(
         &self,
         schema: &str,
         table: &str,
+        filter: Option<&str>,
         limit: i64,
     ) -> Result<TableData, String>;
 }
@@ -53,10 +56,11 @@ pub fn create_adapter(config: ConnectionConfig) -> Box<dyn DatabaseAdapter> {
 pub fn create_adapter_from_string(
     kind: DatabaseKind,
     connection_string: &str,
+    database: Option<&str>,
 ) -> Result<Box<dyn DatabaseAdapter>, String> {
     match kind {
         DatabaseKind::Postgres => Ok(Box::new(
-            postgres::PostgresAdapter::from_connection_string(connection_string)?,
+            postgres::PostgresAdapter::from_connection_string(connection_string, database)?,
         )),
     }
 }

@@ -32,11 +32,28 @@ export interface TableData {
   rows: Record<string, unknown>[];
 }
 
+export async function listDatabases(
+  kind: DatabaseKind,
+  connectionString: string,
+): Promise<string[]> {
+  return invoke("list_databases", { kind, connectionString });
+}
+
+export async function listSchemas(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<string[]> {
+  return invoke("list_schemas", { kind, connectionString, database });
+}
+
 export async function listTables(
   kind: DatabaseKind,
   connectionString: string,
+  database?: string,
+  schema?: string,
 ): Promise<TableInfo[]> {
-  return invoke("list_tables", { kind, connectionString });
+  return invoke("list_tables", { kind, connectionString, database, schema });
 }
 
 export async function fetchTableRows(
@@ -44,13 +61,17 @@ export async function fetchTableRows(
   connectionString: string,
   schema: string,
   table: string,
+  filter?: string,
   limit?: number,
+  database?: string,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
     connectionString,
+    database,
     schema,
     table,
+    filter: filter && filter.trim() !== "" ? filter : undefined,
     limit,
   });
 }
