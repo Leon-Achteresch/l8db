@@ -1,11 +1,10 @@
-import { Command } from "lucide-react";
+import { Link, useRouterState } from "@tanstack/react-router";
 
-import { NavUser } from "@/components/sidebar/nav-user";
 import {
   appSidebarData,
-  type AppSidebarNavItem,
   type AppSidebarUser,
 } from "@/components/sidebar/app-sidebar-data";
+import { NavUser } from "@/components/sidebar/nav-user";
 import {
   Sidebar,
   SidebarContent,
@@ -19,16 +18,12 @@ import {
 } from "@/components/ui/sidebar";
 
 type AppSidebarIconRailProps = {
-  activeItem: AppSidebarNavItem;
-  onNavSelect: (item: AppSidebarNavItem) => void;
   user: AppSidebarUser;
 };
 
-export function AppSidebarIconRail({
-  activeItem,
-  onNavSelect,
-  user,
-}: AppSidebarIconRailProps) {
+export function AppSidebarIconRail({ user }: AppSidebarIconRailProps) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
   return (
     <Sidebar
       collapsible="none"
@@ -38,15 +33,14 @@ export function AppSidebarIconRail({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-              <a href="#">
+              <Link to="/">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Command className="size-4" />
+                  <img src="/logo.png" alt="logo" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Acme Inc</span>
-                  <span className="truncate text-xs">Enterprise</span>
+                  <span className="truncate font-medium">l8db</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -58,16 +52,15 @@ export function AppSidebarIconRail({
               {appSidebarData.navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    tooltip={{
-                      children: item.title,
-                      hidden: false,
-                    }}
-                    onClick={() => onNavSelect(item)}
-                    isActive={activeItem.title === item.title}
+                    asChild
+                    tooltip={{ children: item.title, hidden: false }}
+                    isActive={pathname === item.url}
                     className="px-2.5 md:px-2"
                   >
-                    <item.icon />
-                    <span>{item.title}</span>
+                    <Link to={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

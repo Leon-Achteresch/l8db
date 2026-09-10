@@ -1,58 +1,84 @@
-import type {
-  AppSidebarMail,
-  AppSidebarNavItem,
-} from "@/components/sidebar/app-sidebar-data";
-import { Label } from "@/components/ui/label";
+import { Link } from "@tanstack/react-router";
+import {
+  CheckIcon,
+  ChevronsUpDownIcon,
+  DatabaseIcon,
+  SettingsIcon,
+} from "lucide-react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
-  SidebarInput,
 } from "@/components/ui/sidebar";
-import { Switch } from "@/components/ui/switch";
+import { useConnections } from "@/lib/connections";
 
-type AppSidebarPanelProps = {
-  activeItem: AppSidebarNavItem;
-  mails: AppSidebarMail[];
-};
+export function AppSidebarPanel() {
+  const { connections, activeConnection, setActiveId } = useConnections();
 
-export function AppSidebarPanel({ activeItem, mails }: AppSidebarPanelProps) {
   return (
     <Sidebar collapsible="none" className="hidden flex-1 md:flex">
       <SidebarHeader className="gap-3.5 border-b p-4">
-        <div className="flex w-full items-center justify-between">
-          <div className="text-base font-medium text-foreground">
-            {activeItem.title}
-          </div>
-          <Label className="flex items-center gap-2 text-sm">
-            <span>Unreads</span>
-            <Switch className="shadow-none" />
-          </Label>
-        </div>
-        <SidebarInput placeholder="Type to search..." />
+        <div className="text-base font-medium text-foreground">Verbindung</div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <DatabaseIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span className="flex-1 truncate">
+                {activeConnection ? activeConnection.name : "Keine Verbindung"}
+              </span>
+              <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+          >
+            <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
+            {connections.length === 0 ? (
+              <DropdownMenuItem disabled>
+                Keine Verbindungen gespeichert
+              </DropdownMenuItem>
+            ) : (
+              connections.map((connection) => (
+                <DropdownMenuItem
+                  key={connection.id}
+                  onSelect={() => setActiveId(connection.id)}
+                >
+                  <DatabaseIcon className="text-muted-foreground" />
+                  <span className="flex-1 truncate">{connection.name}</span>
+                  {connection.id === activeConnection?.id ? (
+                    <CheckIcon className="size-4" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/connections">
+                <SettingsIcon className="text-muted-foreground" />
+                Verbindungen verwalten
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="px-0">
-          <SidebarGroupContent>
-            {mails.map((mail) => (
-              <a
-                href="#"
-                key={mail.email}
-                className="flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight whitespace-nowrap last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              >
-                <div className="flex w-full items-center gap-2">
-                  <span>{mail.name}</span>
-                  <span className="ml-auto text-xs">{mail.date}</span>
-                </div>
-                <span className="font-medium">{mail.subject}</span>
-                <span className="line-clamp-2 w-[260px] text-xs whitespace-break-spaces">
-                  {mail.teaser}
-                </span>
-              </a>
-            ))}
-          </SidebarGroupContent>
+          <SidebarGroupContent />
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
