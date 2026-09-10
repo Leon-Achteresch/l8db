@@ -226,8 +226,8 @@ const SEARCH_ITEMS: SearchItem[] = [
     tabId: "about",
     tabLabel: "Über & Updates",
     title: "Bug melden",
-    description: "Bugreport per E-Mail mit Diagnose-Informationen senden.",
-    keywords: ["bug", "fehler", "melden", "report", "email", "mail", "support"],
+    description: "Problem beschreiben und auf GitHub melden, kopieren oder per E-Mail senden.",
+    keywords: ["bug", "fehler", "melden", "report", "github", "issue", "email", "mail", "support"],
   },
 ];
 

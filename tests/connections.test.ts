@@ -37,6 +37,12 @@ const PROVIDERS = [
   provider("neon", "postgres", ["postgresql", "postgres"], [".neon.tech"]),
   provider("cloud-postgres", "postgres", ["postgresql", "postgres"], [".rds.amazonaws.com"]),
   provider("mysql", "mysql", ["mysql", "mariadb"], ["localhost"], { default_port: 3306 }),
+  provider("mongodb", "mongodb", ["mongodb", "mongodb+srv"], ["localhost"], {
+    default_port: 27017,
+  }),
+  provider("atlas", "mongodb", ["mongodb", "mongodb+srv"], [".mongodb.net"], {
+    default_port: null,
+  }),
   provider("sqlite", "sqlite", ["sqlite", "file"], [], { default_port: null, file_based: true }),
   provider("redis", "redis", ["redis", "rediss"], ["localhost"], { default_port: 6379 }),
   provider("oracle", "oracle", ["oracle"], ["localhost"], { default_port: 1521 }),
@@ -173,12 +179,17 @@ describe("PostgreSQL URLs", () => {
 describe("Other providers", () => {
   test("detects the driver family from the URL scheme or a file path", () => {
     expect(kindFromUrl("mysql://root@localhost/db")).toBe("mysql");
+    const atlas = "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/";
+    expect(kindFromUrl(atlas)).toBe("mongodb");
+    expect(detectProvider(atlas)).toBe("atlas");
     expect(kindFromUrl("redis://localhost:6379/0")).toBe("redis");
     expect(kindFromUrl("/tmp/app.db")).toBe("sqlite");
     expect(kindFromUrl("C:\\data\\app.sqlite")).toBe("sqlite");
     expect(kindFromUrl("nope://x")).toBeUndefined();
   });
   test("validates per family and normalizes file paths", () => {
+    const atlas = "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/";
+    expect(parseConnectionUrl(atlas).toString()).toBe(atlas);
     expect(parseConnectionUrl("redis://localhost:6379/0").hostname).toBe("localhost");
     expect(() => parseConnectionUrl("mysql://localhost/db")).toThrow("Benutzer");
     expect(() => parseConnectionUrl("mysql://root@localhost/db", "postgres")).toThrow(

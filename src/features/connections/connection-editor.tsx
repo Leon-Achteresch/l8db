@@ -209,9 +209,16 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       if (!value.trim()) throw new Error("Gib eine Verbindungs-URL ein, z. B. postgresql://…");
       return parseConnectionUrl(value, quickKind).toString();
     }
-    if (info.file_based)
-      return parseConnectionUrl(mode === "string" ? value : file, kind).toString();
-    if (mode === "string") return withSsl(parseConnectionUrl(value, kind).toString());
+    if (mode === "string") {
+      const inputKind = kindFromUrl(value) ?? kind;
+      const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
+      if (inputInfo.file_based) return parseConnectionUrl(value, inputKind).toString();
+      const connectionString = parseConnectionUrl(value, inputKind).toString();
+      return inputInfo.capabilities.ssl
+        ? withSslModeParam(connectionString, ssl)
+        : connectionString;
+    }
+    if (info.file_based) return parseConnectionUrl(file, kind).toString();
     if (mode === "tns") {
       const alias = tnsAlias.trim();
       if (!alias) throw new Error("Wähle einen TNS-Alias aus.");
@@ -245,13 +252,16 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     if (next === mode) return;
     try {
       if (next !== "string" && value.trim()) {
-        if (info.file_based) setFile(filePath(value));
+        const inputKind = kindFromUrl(value) ?? kind;
+        const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
+        setProvider(detectProvider(value, inputKind));
+        if (inputInfo.file_based) setFile(filePath(value));
         else {
-          const url = parseConnectionUrl(value, kind);
-          const alias = kind === "oracle" ? oracleConnectString(url) : null;
+          const url = parseConnectionUrl(value, inputKind);
+          const alias = inputKind === "oracle" ? oracleConnectString(url) : null;
           if (alias) setTnsAlias(alias);
           setHost(url.hostname);
-          setPort(url.port || String(info.default_port ?? ""));
+          setPort(url.port || String(inputInfo.default_port ?? ""));
           setDatabase(decodeURIComponent(url.pathname.slice(1)));
           setUser(decodeURIComponent(url.username));
           setPassword(decodeURIComponent(url.password));
@@ -283,9 +293,11 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       const connectionString = parseConnectionUrl(value, quickKind).toString();
       return { connectionString, secret: "", ssh: null, kind: quickKind };
     }
+    const inputKind = mode === "string" ? (kindFromUrl(value) ?? kind) : kind;
+    const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
     const connectionString = makeUrl();
-    const target = info.file_based ? null : parseConnectionUrl(connectionString, kind);
-    const useSsh = caps.ssh && sshEnabled;
+    const target = inputInfo.file_based ? null : parseConnectionUrl(connectionString, inputKind);
+    const useSsh = inputInfo.capabilities.ssh && sshEnabled;
     if (useSsh) {
       validatePort(sshPort);
       if (!sshHost.trim() || !sshUser.trim())
@@ -300,7 +312,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     return {
       connectionString,
       secret,
-      kind,
+      kind: inputKind,
       ssh:
         useSsh && target
           ? {
@@ -310,7 +322,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
               auth: sshAuth,
               keyFile: sshKey.trim(),
               remoteHost: target.hostname.replace(/^\[|\]$/g, ""),
-              remotePort: Number(target.port || info.default_port || 0),
+              remotePort: Number(target.port || inputInfo.default_port || 0),
             }
           : null,
     };
@@ -390,6 +402,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     try {
       if (!name.trim()) throw new Error("Gib der Verbindung einen Namen.");
       const config = await configuration();
+      const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
       const dbPassword = extractUrlPassword(config.connectionString);
       if (connection && useConnectionsStore.getState().activeId === id) {
@@ -425,10 +438,11 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
         ssh: config.ssh,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
-        readOnly: quickSave ? (connection?.readOnly ?? false) : readOnly && caps.read_only_mode,
+        readOnly:
+          quickSave ? (connection?.readOnly ?? false) : readOnly && configInfo.capabilities.read_only_mode,
         schemas: quickSave
           ? (connection?.schemas ?? null)
-          : caps.schemas && schemaFilter.length
+          : configInfo.capabilities.schemas && schemaFilter.length
             ? schemaFilter
             : null,
         color: quickSave ? (connection?.color ?? null) : color,
@@ -745,10 +759,11 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                           placeholder={info.placeholder}
                           value={value}
                           onChange={(event) => {
-                            setValue(event.target.value);
-                            if (caps.ssl) setSsl(sslModeFromUrl(event.target.value));
-                            if (event.target.value.trim())
-                              setProvider(detectProvider(event.target.value, kind));
+                            const nextValue = event.target.value;
+                            setValue(nextValue);
+                            if (caps.ssl) setSsl(sslModeFromUrl(nextValue));
+                            const inputKind = kindFromUrl(nextValue);
+                            if (inputKind) setProvider(detectProvider(nextValue, inputKind));
                           }}
                           autoComplete="off"
                           spellCheck={false}
