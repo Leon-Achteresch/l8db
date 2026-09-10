@@ -1,11 +1,11 @@
 import { CopyIcon, EraserIcon, TerminalIcon, XIcon } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { copyText } from "@/lib/clipboard";
 import { type ServerOutputEntry, useServerOutputStore } from "@/lib/server-output";
 
 interface ServerOutputPanelProps {
@@ -52,7 +52,7 @@ export function ServerOutputPanel({
   const handleCopy = async () => {
     if (rows.length === 0) return;
     try {
-      await navigator.clipboard.writeText(asText(rows));
+      await copyText(asText(rows));
       toast.success("Server-Ausgabe kopiert");
     } catch {
       toast.error("Kopieren fehlgeschlagen");

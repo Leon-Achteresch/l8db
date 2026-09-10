@@ -1,6 +1,6 @@
 [package]
 name = "l8db"
-version = "0.2.0"
+version = "0.3.0"
 description = "Fast, native desktop client for PostgreSQL and other databases."
 authors = ["Leon Achteresch"]
 edition = "2021"
@@ -52,6 +52,7 @@ scylla = "1"
 futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
 odbc-api = { version = "29", optional = true }
+tauri-plugin-clipboard-manager = "2"
 
 [features]
 default = []

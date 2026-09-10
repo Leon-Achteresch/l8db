@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
+import { copyText } from "@/lib/clipboard";
 
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
@@ -35,7 +36,7 @@ export function SettingsAboutTab() {
     const info = diagnosticInfo();
 
     try {
-      await navigator.clipboard.writeText(info);
+      await copyText(info);
       setCopied(true);
       toast.success("Diagnose-Informationen in die Zwischenablage kopiert");
       setTimeout(() => setCopied(false), 2000);

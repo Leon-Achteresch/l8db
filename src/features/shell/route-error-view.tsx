@@ -13,6 +13,7 @@ import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { copyText } from "@/lib/clipboard";
 import { recordDiagnosticError } from "@/lib/diagnostics";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
   async function copyDetails() {
     const payload = [message, stack].filter(Boolean).join("\n\n");
     try {
-      await navigator.clipboard.writeText(payload);
+      await copyText(payload);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
