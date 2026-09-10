@@ -30,6 +30,7 @@ export interface SettingsState {
   transactionsEnabled: boolean;
   autoUpdateCheck: boolean;
   autoUpdateInstall: boolean;
+  skippedUpdateVersion: string | null;
   tourFinished: boolean;
   editorTabSize: number;
   editorKeywordCase: SqlKeywordCase;
@@ -70,6 +71,7 @@ export interface SettingsState {
   setTransactionsEnabled: (v: boolean) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
+  setSkippedUpdateVersion: (v: string | null) => void;
   setTourFinished: (v: boolean) => void;
   setEditorTabSize: (v: number) => void;
   setEditorKeywordCase: (v: SqlKeywordCase) => void;
@@ -115,6 +117,7 @@ const DEFAULT_SETTINGS = {
   transactionsEnabled: true,
   autoUpdateCheck: true,
   autoUpdateInstall: false,
+  skippedUpdateVersion: null,
   tourFinished: false,
   editorTabSize: 2,
   editorKeywordCase: "upper" as SqlKeywordCase,
@@ -172,6 +175,7 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
       setEditorTabSize: (editorTabSize) => set({ editorTabSize }),
       setEditorKeywordCase: (editorKeywordCase) => set({ editorKeywordCase }),
