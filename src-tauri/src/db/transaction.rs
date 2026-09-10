@@ -15,6 +15,15 @@ use super::{
     map_pg_err, mssql, mysql, oracle, quote_ident, sqlite, DatabaseAdapter, QueryResult, TxSession,
 };
 
+#[path = "transaction_read.rs"]
+mod read;
+
+pub use read::TransactionTableRead;
+
+#[cfg(test)]
+#[path = "transaction_table_tests.rs"]
+mod table_tests;
+
 static TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn validate_ctid(ctid: &str) -> Result<String, String> {

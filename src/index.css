@@ -310,7 +310,7 @@
 }
 .eyebrow {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -470,4 +470,102 @@
 .driver-active [data-tour-ui],
 .driver-active [data-tour-ui] * {
   pointer-events: auto;
+}
+
+:root {
+  --ui-density-step: 0rem;
+  --ui-cell-padding: 0.375rem;
+}
+
+:root[data-ui-density="compact"] {
+  --ui-density-step: -0.25rem;
+  --ui-cell-padding: 0.125rem;
+}
+
+:root[data-ui-density="spacious"] {
+  --ui-density-step: 0.375rem;
+  --ui-cell-padding: 0.625rem;
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-button"][data-size="default"] {
+  height: calc(2rem + var(--ui-density-step) * 2);
+  padding-block: max(0.125rem, calc(0.5rem + var(--ui-density-step)));
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-button"][data-size="sm"] {
+  height: calc(1.75rem + var(--ui-density-step));
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-button"][data-size="lg"] {
+  height: calc(3rem + var(--ui-density-step) * 2);
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu"] {
+  gap: max(0.125rem, calc(0.25rem + var(--ui-density-step) / 2));
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-action"] {
+  top: calc(0.375rem + var(--ui-density-step));
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) :is(
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="context-menu-item"],
+  [data-slot="context-menu-checkbox-item"],
+  [data-slot="context-menu-radio-item"],
+  [data-slot="context-menu-sub-trigger"],
+  [data-slot="select-item"]
+) {
+  padding-block: max(0.125rem, calc(0.375rem + var(--ui-density-step)));
+}
+
+:root[data-ui-scale] .text-\[8px\] {
+  font-size: 0.5rem;
+}
+
+:root[data-ui-scale] .text-\[9px\] {
+  font-size: 0.5625rem;
+}
+
+:root[data-ui-scale] .text-\[10px\] {
+  font-size: 0.625rem;
+}
+
+:root[data-ui-scale] .text-\[11px\] {
+  font-size: 0.6875rem;
+}
+
+:root[data-ui-scale] .text-\[12px\] {
+  font-size: 0.75rem;
+}
+
+:root[data-ui-scale] .text-\[13px\] {
+  font-size: 0.8125rem;
+}
+
+:root[data-ui-scale] .text-\[15px\] {
+  font-size: 0.9375rem;
+}
+
+:root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-sub-button"] {
+  height: calc(1.75rem + var(--ui-density-step));
+}
+
+:root[data-sidebar-extra-compact="true"][data-ui-density] [data-slot="sidebar-menu-button"]:is([data-size="default"], [data-size="sm"]),
+:root[data-sidebar-extra-compact="true"][data-ui-density] [data-slot="sidebar-menu-sub-button"] {
+  height: 1.25rem;
+  min-height: 1.25rem;
+  padding-block: 0;
+  line-height: 1.25rem;
+}
+
+:root[data-sidebar-extra-compact="true"][data-ui-density] :is([data-slot="sidebar-menu"], [data-slot="sidebar-menu-sub"]) {
+  gap: 0;
+}
+
+:root[data-sidebar-extra-compact="true"][data-ui-density] [data-slot="sidebar-menu-button"]:not([data-size="lg"]) ~ :is([data-slot="sidebar-menu-action"], [data-slot="sidebar-menu-badge"]) {
+  top: 0;
 }

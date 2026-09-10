@@ -4,11 +4,12 @@ import { Database, LockKeyhole } from "lucide-react";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
-import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 
 export function WorkspaceStatus() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const caps = useActiveCapabilities();
   const schema = useActiveSchema();
   const fetching = useIsFetching({
     predicate: (query) => Boolean(connection) && query.queryKey[1] === connection?.id,
@@ -38,7 +39,13 @@ export function WorkspaceStatus() {
           <span className="hidden items-center gap-1 sm:flex">
             <LockKeyhole className="size-3" />
             {connection.ssh?.host ? "SSH · " : ""}
-            {connection.sslMode === "disable" ? "TLS aus" : `TLS ${connection.sslMode}`}
+            {caps.query_language === "redis"
+              ? connection.connectionString.startsWith("rediss:")
+                ? "TLS"
+                : "TLS aus"
+              : connection.sslMode === "disable"
+                ? "TLS aus"
+                : `TLS ${connection.sslMode}`}
           </span>
         )}
       </div>

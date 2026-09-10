@@ -40,7 +40,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
         <label
           key={option.value}
           className={cn(
-            "relative isolate flex-1 cursor-pointer rounded-lg px-3 py-2 text-center text-xs font-medium transition-colors has-focus-visible:outline-2 has-focus-visible:outline-ring has-focus-visible:outline-offset-2",
+            "relative isolate flex-1 cursor-pointer rounded-lg px-3 py-[max(0.125rem,calc(0.5rem+var(--ui-density-step)))] text-center text-xs font-medium transition-colors has-focus-visible:outline-2 has-focus-visible:outline-ring has-focus-visible:outline-offset-2",
             value === option.value
               ? "text-foreground"
               : "text-muted-foreground hover:text-foreground",

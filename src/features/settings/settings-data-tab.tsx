@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useSettingsStore } from "@/lib/settings";
+import { useTransactionStore } from "@/lib/transactions";
 
 const ROW_LIMIT_PRESETS = [50, 100, 500, 1000];
 
@@ -11,16 +12,19 @@ export function SettingsDataTab() {
     rowLimit,
     queryTimeout,
     transactionsEnabled,
+    transactionsPerTable,
     confirmDestructiveQueries,
     highlightNullValues,
     searchIncludeColumns,
     setRowLimit,
     setQueryTimeout,
     setTransactionsEnabled,
+    setTransactionsPerTable,
     setConfirmDestructiveQueries,
     setHighlightNullValues,
     setSearchIncludeColumns,
   } = useSettingsStore();
+  const hasTransactions = useTransactionStore((state) => state.transactions.length > 0);
 
   return (
     <div className="space-y-4">
@@ -97,6 +101,22 @@ export function SettingsDataTab() {
             checked={transactionsEnabled}
             onCheckedChange={setTransactionsEnabled}
             aria-label="Transaktionen aktivieren"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Transaktionen pro Tabelle"
+          description={
+            hasTransactions
+              ? "Zum Wechseln zuerst offene Transaktionen abschließen."
+              : "Tabellen getrennt committen. Für abhängige Änderungen ausschalten: dann gilt eine gemeinsame Transaktion pro Datenbank. SQLite verwendet immer den gemeinsamen Modus. SQL im Editor bleibt im Tabellenmodus separat."
+          }
+        >
+          <Switch
+            checked={transactionsPerTable}
+            onCheckedChange={setTransactionsPerTable}
+            disabled={hasTransactions || !transactionsEnabled}
+            aria-label="Transaktionen pro Tabelle"
           />
         </SettingsRow>
 

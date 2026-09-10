@@ -108,6 +108,7 @@ export interface Capabilities {
   sessions: boolean;
   locks: boolean;
   transactions: boolean;
+  table_transactions: boolean;
   row_edit: boolean;
   ddl: boolean;
   alter_columns: boolean;
@@ -559,9 +560,11 @@ export async function fetchTableRows(
   sort?: TableRowSort,
   isView?: boolean,
   allowRaw?: boolean,
+  txId?: string,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
+    txId,
     connectionString,
     database,
     schema,
@@ -584,9 +587,11 @@ export async function countTableRows(
   filter?: string,
   database?: string,
   allowRaw?: boolean,
+  txId?: string,
 ): Promise<number> {
   return invoke("count_table_rows", {
     kind,
+    txId,
     connectionString,
     database,
     schema,

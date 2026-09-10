@@ -3,11 +3,6 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
-## [0.4.1] - 2026-09-09
-
-### Fixes
-- Windows-Releasebuild durch portable CSP-Prüfung reparieren (#32)
-
 ## [0.3.53] - 2026-09-09
 
 ### Fixes

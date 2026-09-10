@@ -39,6 +39,7 @@ pub struct Capabilities {
     pub sessions: bool,
     pub locks: bool,
     pub transactions: bool,
+    pub table_transactions: bool,
     pub row_edit: bool,
     pub ddl: bool,
     pub alter_columns: bool,
@@ -91,6 +92,7 @@ const NONE: Capabilities = Capabilities {
     sessions: false,
     locks: false,
     transactions: false,
+    table_transactions: false,
     row_edit: false,
     ddl: false,
     alter_columns: false,
@@ -183,12 +185,14 @@ impl DatabaseKind {
                 sessions: true,
                 locks: true,
                 transactions: true,
+                table_transactions: true,
                 row_edit: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
                 sessions: true,
                 transactions: true,
+                table_transactions: true,
                 row_edit: true,
                 ..SQL_COMMON
             },
@@ -198,6 +202,7 @@ impl DatabaseKind {
                 ssh: false,
                 functions: false,
                 transactions: true,
+                table_transactions: false,
                 row_edit: true,
                 ..SQL_COMMON
             },
@@ -212,6 +217,7 @@ impl DatabaseKind {
                 sessions: true,
                 sequences: true,
                 transactions: true,
+                table_transactions: true,
                 row_edit: true,
                 ..SQL_COMMON
             },
@@ -239,6 +245,7 @@ impl DatabaseKind {
                 sequences: true,
                 sessions: true,
                 transactions: true,
+                table_transactions: true,
                 row_edit: true,
                 ..SQL_COMMON
             },

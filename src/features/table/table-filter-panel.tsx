@@ -88,6 +88,8 @@ export function TableFilterPanel({
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
   const json = caps.query_language === "json";
+  const redis = caps.query_language === "redis";
+  const native = json || redis;
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<FilterMode>("simple");
   const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
@@ -99,7 +101,7 @@ export function TableFilterPanel({
     [conditions, combinator, kind],
   );
 
-  const draft = json || mode === "sql" ? sql.trim() : compiledSimple;
+  const draft = native || mode === "sql" ? sql.trim() : compiledSimple;
   const hasActiveFilter = activeFilter.trim() !== "";
   const isDirty = draft !== activeFilter.trim();
 
@@ -128,7 +130,7 @@ export function TableFilterPanel({
   };
 
   const apply = () => {
-    onApply(draft, json || mode === "sql");
+    onApply(draft, native || mode === "sql");
     setOpen(true);
   };
 
@@ -191,7 +193,7 @@ export function TableFilterPanel({
             className="overflow-hidden"
           >
             <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
-              {!json && (
+              {!native && (
                 <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
                   <TabsList>
                     <TabsTrigger value="simple">
@@ -206,7 +208,18 @@ export function TableFilterPanel({
                 </Tabs>
               )}
 
-              {json ? (
+              {redis ? (
+                <Input
+                  aria-label="Redis-Key-Pattern"
+                  value={sql}
+                  onChange={(event) => setSql(event.target.value)}
+                  placeholder={caps.filter_hint}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") apply();
+                  }}
+                  className="font-mono text-xs"
+                />
+              ) : json ? (
                 <Textarea
                   aria-label="MongoDB-Filter"
                   value={sql}

@@ -61,22 +61,30 @@ export function databaseFromConnectionString(connectionString: string): string |
 
 export function useActiveDatabase(): string | null {
   const connection = useActiveConnection();
+  const capabilities = useCapabilities(connection?.kind);
   const selected = useDbSelectionStore((state) =>
     connection ? (state.databaseByConnection[connection.id] ?? null) : null,
   );
   if (!connection) {
     return null;
   }
-  return selected ?? databaseFromConnectionString(connection.connectionString);
+  return (
+    selected ??
+    databaseFromConnectionString(connection.connectionString) ??
+    (capabilities.query_language === "redis" ? "0" : null)
+  );
 }
 
 export function useActiveSchema(): string {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const capabilities = useCapabilities(connection?.kind);
   const schemas = useSchemasQuery().data;
   const selected = useDbSelectionStore((state) =>
     connection ? (state.schemaByConnection[connection.id] ?? null) : null,
   );
+  if (capabilities.query_language === "redis") return "keys";
+  if (capabilities.query_language === "json" && database) return database;
   if (selected && (!schemas || schemas.includes(selected))) return selected;
   if (database && schemas?.includes(database)) return database;
   if (!schemas?.length || schemas.includes("public")) return "public";

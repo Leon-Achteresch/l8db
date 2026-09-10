@@ -78,6 +78,26 @@ monaco.languages.setMonarchTokensProvider("plsql", {
   keywords: [...sqlLanguage.keywords, ...plsqlKeywords],
 });
 
+monaco.languages.register({ id: "redis" });
+monaco.languages.setLanguageConfiguration("redis", {
+  comments: { lineComment: "#" },
+  brackets: [],
+  autoClosingPairs: [
+    { open: '"', close: '"' },
+    { open: "'", close: "'" },
+  ],
+});
+monaco.languages.setMonarchTokensProvider("redis", {
+  tokenizer: {
+    root: [
+      [/^\s*#.*/, "comment"],
+      [/^\s*[A-Za-z][A-Za-z0-9_.]*/, "keyword"],
+      [/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/, "string"],
+      [/\b\d+\b/, "number"],
+    ],
+  },
+});
+
 const transparent = "#00000000";
 
 monaco.editor.defineTheme("l8db-light", {

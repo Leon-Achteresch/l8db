@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.leon.l8db</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>l8db</name>
+  <summary>Native database client for PostgreSQL and other databases</summary>
+  <developer id="com.leon">
+    <name>Leon Achteresch</name>
+  </developer>
+  <developer_name>Leon Achteresch</developer_name>
+  <description>
+    <p>l8db is a fast, native desktop client for PostgreSQL and other databases. Browse database schemas and tables, edit data, and run SQL queries in a dedicated desktop workspace.</p>
+  </description>
+  <launchable type="desktop-id">l8db.desktop</launchable>
+  <provides>
+    <binary>l8db</binary>
+  </provides>
+  <url type="homepage">https://github.com/Leon-Achteresch/l8db</url>
+  <url type="bugtracker">https://github.com/Leon-Achteresch/l8db/issues</url>
+  <categories>
+    <category>Development</category>
+    <category>Database</category>
+  </categories>
+</component>

@@ -125,8 +125,28 @@ pub async fn fetch_table_rows(
     order_desc: Option<bool>,
     is_view: Option<bool>,
     allow_raw: Option<bool>,
+    tx_id: Option<String>,
+    tx_state: tauri::State<'_, TransactionState>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<TableData, String> {
+    if let Some(tx_id) = tx_id {
+        return tx_state
+            .fetch_rows(
+                &tx_id,
+                super::transaction::TransactionTableRead {
+                    schema,
+                    table,
+                    filter,
+                    limit: limit.unwrap_or(100),
+                    offset: offset.unwrap_or(0),
+                    order_by,
+                    order_desc: order_desc.unwrap_or(false),
+                    is_view: is_view.unwrap_or(false),
+                    allow_raw: allow_raw.unwrap_or(false),
+                },
+            )
+            .await;
+    }
     create_adapter_from_string(
         kind,
         &connection_string,
@@ -202,8 +222,21 @@ pub async fn count_table_rows(
     table: String,
     filter: Option<String>,
     allow_raw: Option<bool>,
+    tx_id: Option<String>,
+    tx_state: tauri::State<'_, TransactionState>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<i64, String> {
+    if let Some(tx_id) = tx_id {
+        return tx_state
+            .count_rows(
+                &tx_id,
+                &schema,
+                &table,
+                filter.as_deref(),
+                allow_raw.unwrap_or(false),
+            )
+            .await;
+    }
     create_adapter_from_string(
         kind,
         &connection_string,

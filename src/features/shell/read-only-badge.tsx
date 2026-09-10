@@ -20,7 +20,7 @@ export function ReadOnlyBadge({ className }: Props) {
       aria-label="Verbindung im Lesemodus"
     >
       <Eye className="size-3.5" />
-      Lesemodus
+      <span className="@max-[14rem]/header-search:sr-only">Lesemodus</span>
     </span>
   );
 }

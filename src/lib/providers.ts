@@ -30,6 +30,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   sessions: true,
   locks: true,
   transactions: true,
+  table_transactions: true,
   row_edit: true,
   ddl: true,
   alter_columns: true,
@@ -186,6 +187,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      table_transactions: false,
       read_only_mode: false,
       full_table_export: false,
       schema_snapshot: false,

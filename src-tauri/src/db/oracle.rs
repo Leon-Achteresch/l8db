@@ -2417,6 +2417,32 @@ pub fn tx_finish(c: &mut Connection, commit: bool) -> Result<(), String> {
     result.map_err(map_err)
 }
 
+pub fn tx_fetch_rows(
+    c: &Connection,
+    request: &super::transaction::TransactionTableRead,
+) -> Result<TableData, String> {
+    let columns = table_columns(c, &request.schema, &request.table, false)?;
+    let sql = format!(
+        "SELECT {} FROM {}.{} t{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+        if request.is_view { "t.*" } else { ROWID_SELECT },
+        quote(&request.schema),
+        quote(&request.table),
+        where_clause(request.filter.as_deref(), request.allow_raw)?,
+        request.order_sql(&columns, super::provider::DatabaseKind::Oracle),
+        request.offset.max(0),
+        request.limit.max(1),
+    );
+    let (cols, rows) = run_query(c, &sql)?;
+    Ok(TableData {
+        columns: if columns.is_empty() {
+            cols.clone()
+        } else {
+            columns
+        },
+        rows: rows_to_objects(&cols, rows),
+    })
+}
+
 pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     let statement = prepare(sql);

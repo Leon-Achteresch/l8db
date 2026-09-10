@@ -3,14 +3,15 @@ import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
+import { SettingsAppearance } from "@/features/settings/settings-appearance";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
 import { TourSection } from "@/features/settings/tour-section";
-import { type UiDensity, useSettingsStore } from "@/lib/settings";
+import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsGeneralTab() {
   const { theme, setTheme } = useTheme();
-  const { uiDensity, setUiDensity, resetToDefaults } = useSettingsStore();
+  const { resetToDefaults } = useSettingsStore();
 
   const handleReset = () => {
     resetToDefaults();
@@ -19,7 +20,7 @@ export function SettingsGeneralTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="@container space-y-4">
       <div>
         <h2 className="text-base font-semibold tracking-tight">Allgemein</h2>
         <p className="text-xs text-muted-foreground">
@@ -41,21 +42,7 @@ export function SettingsGeneralTab() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          title="UI-Dichte"
-          description="Abstände von Tabellen, Listen und Steuerelementen optimieren."
-        >
-          <SegmentedControl
-            value={uiDensity}
-            onChange={(val) => setUiDensity(val as UiDensity)}
-            label="UI-Dichte"
-            options={[
-              { value: "compact", label: "Kompakt" },
-              { value: "normal", label: "Standard" },
-              { value: "spacious", label: "Großzügig" },
-            ]}
-          />
-        </SettingsRow>
+        <SettingsAppearance />
 
         <SettingsTableTabs />
 

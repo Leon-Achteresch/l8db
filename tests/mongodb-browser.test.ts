@@ -30,10 +30,18 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
                   connectionString: `mongodb://l8db:l8db_test_only@127.0.0.1:27018/${database}?authSource=admin`,
                   sslMode: "disable",
                   ssh: null,
+                  schemas: [database],
                 },
               ],
               activeId: "mongo-lab",
             },
+            version: 0,
+          }),
+        );
+        localStorage.setItem(
+          "l8db.db-selection",
+          JSON.stringify({
+            state: { databaseByConnection: {}, schemaByConnection: { "mongo-lab": "public" } },
             version: 0,
           }),
         );
@@ -159,6 +167,19 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: "l8db_browser_second", exact: true }).click();
       await page.getByText("other", { exact: true }).first().waitFor();
+      const collectionCalls = await page.evaluate(() =>
+        (
+          window as unknown as { mongoCalls: { command: string; args: Record<string, unknown> }[] }
+        ).mongoCalls.filter((call) => call.command === "list_tables"),
+      );
+      expect(collectionCalls.some((call) => call.args.schema === "public")).toBe(false);
+      expect(
+        collectionCalls.some(
+          (call) =>
+            call.args.database === "l8db_browser_second" &&
+            call.args.schema === "l8db_browser_second",
+        ),
+      ).toBe(true);
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: database, exact: true }).click();
       await page.getByText("items", { exact: true }).first().waitFor();

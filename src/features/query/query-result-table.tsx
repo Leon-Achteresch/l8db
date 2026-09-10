@@ -34,6 +34,7 @@ import {
   sortRankFor,
   toggleResultSort,
 } from "@/lib/result-grid";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const PINNED_COLUMNS = [0];
@@ -56,6 +57,16 @@ export const QueryResultTable = memo(function QueryResultTable({
   onInspect,
 }: QueryResultTableProps) {
   const workspace = useQueryWorkspace();
+  const uiScale = useSettingsStore((state) => state.uiScale);
+  const uiDensity = useSettingsStore((state) => state.uiDensity);
+  const rowHeight =
+    (Math.max(
+      Math.max(workspace.resultRowHeight, workspace.resultFontSize + 12) +
+        (uiDensity === "compact" ? -8 : uiDensity === "spacious" ? 8 : 0),
+      workspace.resultFontSize + 8,
+    ) *
+      uiScale) /
+    100;
   const [sorts, setSorts] = useState<ResultSort[]>([]);
   const [filters, setFilters] = useState<ResultFilters>({});
   const [filterRowOpen, setFilterRowOpen] = useState(false);
@@ -90,12 +101,13 @@ export const QueryResultTable = memo(function QueryResultTable({
   const rowVirtualizer = useVirtualizer({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => Math.max(workspace.resultRowHeight, workspace.resultFontSize + 12),
+    estimateSize: () => rowHeight,
     overscan: 10,
+    useAnimationFrameWithResizeObserver: true,
   });
   useEffect(() => {
-    rowVirtualizer.measure();
-  }, [rowVirtualizer, workspace.resultFontSize, workspace.resultRowHeight, workspace.resultView]);
+    if (rowHeight > 0) rowVirtualizer.measure();
+  }, [rowVirtualizer, rowHeight]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
@@ -122,7 +134,7 @@ export const QueryResultTable = memo(function QueryResultTable({
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.font = `${workspace.resultFontSize}px ${getComputedStyle(document.body).fontFamily}`;
+    context.font = `${(workspace.resultFontSize * uiScale) / 100}px ${getComputedStyle(document.body).fontFamily}`;
     const nextWidths = Object.fromEntries(
       columns.map((column) => [column, Math.ceil(context.measureText(column).width) + 48]),
     );
@@ -397,14 +409,14 @@ export const QueryResultTable = memo(function QueryResultTable({
                   ref={rowVirtualizer.measureElement}
                   data-index={rowIdx}
                   style={{
-                    height: Math.max(workspace.resultRowHeight, workspace.resultFontSize + 12),
+                    height: rowHeight,
                   }}
                   className={cn(
                     "group hover:bg-muted/50",
                     workspace.stripedRows && rowIdx % 2 !== 0 ? "bg-muted/20" : "bg-background",
                   )}
                 >
-                  <td className="sticky left-0 border-b border-r bg-inherit px-3 py-1 text-right font-mono text-xs text-muted-foreground">
+                  <td className="sticky left-0 border-b border-r bg-inherit px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] text-right font-mono text-xs text-muted-foreground">
                     {rowIdx + 1}
                   </td>
                   {dataColumnWindow.map((item) => {
@@ -430,10 +442,10 @@ export const QueryResultTable = memo(function QueryResultTable({
                       <td
                         key={col}
                         data-col={col}
-                        style={{ fontSize: workspace.resultFontSize }}
+                        style={{ fontSize: `${workspace.resultFontSize / 16}rem` }}
                         title={isNull ? undefined : text}
                         className={cn(
-                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-1 font-mono",
+                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] font-mono",
                           isNull && "text-muted-foreground/50 italic",
                         )}
                       >

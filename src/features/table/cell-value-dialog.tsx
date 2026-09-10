@@ -21,6 +21,7 @@ type CellValueDialogProps = {
   columnName: string;
   value: unknown;
   dataType?: string | null;
+  editorKind?: "text" | "json";
   canEdit: boolean;
   isSaving: boolean;
   onSave: (next: string | null) => Promise<void>;
@@ -31,16 +32,18 @@ export function CellValueDialog({
   columnName,
   value,
   dataType,
+  editorKind,
   canEdit,
   isSaving,
   onSave,
   onClose,
 }: CellValueDialogProps) {
-  const kind = useMemo(() => detectCellEditorKind(value, dataType), [value, dataType]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState<CellDraft>(() =>
-    toCellDraft(value, detectCellEditorKind(value, dataType)),
+  const kind = useMemo(
+    () => editorKind ?? detectCellEditorKind(value, dataType),
+    [value, dataType, editorKind],
   );
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<CellDraft>(() => toCellDraft(value, kind));
 
   const validation = validateCellDraft(draft, kind);
   const isDirty = isCellDraftDirty(value, draft, kind);

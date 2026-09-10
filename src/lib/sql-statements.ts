@@ -21,6 +21,19 @@ function isSpace(ch: string): boolean {
 }
 
 export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResult {
+  if (dialect === "redis") {
+    let offset = 0;
+    const statements: SqlStatement[] = [];
+    for (const line of sql.split("\n")) {
+      const text = line.trim();
+      if (text && !text.startsWith("#")) {
+        const start = offset + line.indexOf(text);
+        statements.push({ text, start, end: start + text.length });
+      }
+      offset += line.length + 1;
+    }
+    return { statements, unterminated: false };
+  }
   if (dialect === "mongodb") {
     const text = sql.trim();
     const start = sql.indexOf(text);

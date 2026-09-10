@@ -5,6 +5,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
+import { initAppearance } from "@/lib/appearance";
 import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
@@ -16,6 +17,8 @@ import { restoreSshTunnel } from "@/lib/ssh";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
+const disposeAppearance = initAppearance();
+if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
 
 const queryClient = createAppQueryClient();
 const extensionHost = createExtensionHost();

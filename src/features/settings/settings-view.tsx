@@ -67,7 +67,7 @@ export function SettingsView() {
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1 overflow-x-clip">
+          <section className="@container min-w-0 flex-1 overflow-x-clip">
             <motion.div
               key={searchQuery ? "search" : activeTab}
               initial={{ opacity: 0, y: 6 }}
