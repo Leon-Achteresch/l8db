@@ -20,7 +20,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { SqlEditor } from "@/components/sql-editor";
 import { cn } from "@/lib/utils";
 
 type FilterMode = "simple" | "sql";
@@ -373,27 +373,20 @@ export function TableFilterPanel({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Textarea
+              <SqlEditor
                 value={sql}
-                onChange={(event) => setSql(event.target.value)}
-                onKeyDown={(event) => {
-                  if (
-                    (event.metaKey || event.ctrlKey) &&
-                    event.key === "Enter"
-                  ) {
-                    apply();
-                  }
-                }}
-                spellCheck={false}
+                onChange={setSql}
+                onSubmit={apply}
+                columns={columns}
                 placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
-                className="min-h-20 font-mono text-xs"
+                className="h-36"
               />
               <p className="text-xs text-muted-foreground">
-                SQL-Bedingung ohne <code className="font-mono">WHERE</code>.
-                Verfügbare Spalten:{" "}
-                <span className="font-mono">
-                  {columns.length > 0 ? columns.join(", ") : "–"}
-                </span>
+                SQL-Bedingung ohne <code className="font-mono">WHERE</code>.{" "}
+                <kbd className="rounded border bg-muted px-1 font-mono text-[10px]">
+                  ⌘/Strg + ⏎
+                </kbd>{" "}
+                wendet an · Spaltennamen werden vorgeschlagen.
               </p>
             </div>
           )}
