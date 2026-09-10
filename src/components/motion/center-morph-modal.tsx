@@ -280,6 +280,7 @@ export function CenterMorphModalContent({
                     unfolding silhouette without introducing another panel layer. */}
                 <div className="flex w-full flex-col items-center py-8">
                   <motion.div
+                    layout
                     ref={panelRef}
                     id={context.contentId}
                     role="dialog"

@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 const STACK = [
   { name: "Tauri v2", detail: "Nativer Shell" },
@@ -27,10 +28,11 @@ export function AboutStack() {
         {STACK.map((item, index) => (
           <motion.div
             key={item.name}
+            layout
             initial={{ opacity: 0, scale: 0.94 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true, margin: "-30px" }}
-            transition={{ duration: 0.35, delay: index * 0.05 }}
+            transition={{ duration: 0.35, delay: index * 0.05, layout: SPRING_LAYOUT }}
           >
             <Badge variant="secondary" className="h-auto gap-2 rounded-2xl px-3.5 py-2 text-[13px]">
               <span className="font-semibold text-foreground">{item.name}</span>

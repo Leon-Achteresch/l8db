@@ -18,6 +18,16 @@ test("SDK builds an independent package with bundled code and assets", async () 
     const module = { exports: {} as { activate?: unknown } };
     new Function("module", "exports", archive.files[archive.manifest.main])(module, module.exports);
     expect(typeof module.exports.activate).toBe("function");
+    const cli = await Bun.build({ entrypoints: ["packages/extension-sdk/src/cli.ts"], target: "bun", format: "esm" });
+    expect(cli.success).toBe(true);
+    const executable = join(root, "standalone-cli.js");
+    await writeFile(executable, await cli.outputs[0].text());
+    const output = join(root, "example.l8db-extension");
+    const process = Bun.spawn([Bun.which("bun")!, executable, "pack", root, output], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const diagnostics = await new Response(process.stderr).text();
+    expect(diagnostics).toBe("");
+    expect(await process.exited).toBe(0);
+    expect(JSON.parse(await readFile(output, "utf8")).manifest.id).toBe(manifest.id);
     await symlink(join(root, "src/extension.ts"), join(root, "assets/link.txt"));
     await expect(packageExtension(root)).rejects.toThrow("symlinks");
   } finally { await rm(root, { recursive: true, force: true }) }
