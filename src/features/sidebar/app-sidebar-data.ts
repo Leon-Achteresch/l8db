@@ -1,5 +1,6 @@
 import {
   FileText,
+  GaugeIcon,
   GitCompare,
   Home,
   Info,
@@ -22,6 +23,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     { title: "Übersicht", url: "/", icon: Home },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
+    { title: "Monitor", url: "/monitor", icon: GaugeIcon },
     { title: "Query Builder", url: "/query-builder", icon: Table2 },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
