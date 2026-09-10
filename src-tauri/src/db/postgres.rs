@@ -198,6 +198,34 @@ impl DatabaseAdapter for PostgresAdapter {
         result
     }
 
+    async fn count_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+    ) -> Result<i64, String> {
+        let (client, handle) = self.connect().await?;
+        let where_clause = match filter {
+            Some(expression) if !expression.trim().is_empty() => {
+                format!(" WHERE {}", expression.trim())
+            }
+            _ => String::new(),
+        };
+        let sql = format!(
+            "SELECT COUNT(*) FROM {}.{}{}",
+            quote_ident(schema),
+            quote_ident(table),
+            where_clause,
+        );
+        let result = client
+            .query_one(&sql, &[])
+            .await
+            .map_err(|e| e.to_string())
+            .map(|row| row.get::<_, i64>(0));
+        handle.abort();
+        result
+    }
+
     async fn update_row(
         &self,
         schema: &str,

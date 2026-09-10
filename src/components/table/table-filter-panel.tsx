@@ -22,29 +22,14 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  OPERATORS,
+  compileSingleCondition,
+  operatorNeedsValue,
+} from "@/lib/sql-filter";
 
 type FilterMode = "simple" | "sql";
 type Combinator = "AND" | "OR";
-
-interface OperatorDef {
-  key: string;
-  label: string;
-  needsValue: boolean;
-}
-
-const OPERATORS: OperatorDef[] = [
-  { key: "eq", label: "ist gleich", needsValue: true },
-  { key: "neq", label: "ist ungleich", needsValue: true },
-  { key: "gt", label: "ist größer als", needsValue: true },
-  { key: "gte", label: "ist größer/gleich", needsValue: true },
-  { key: "lt", label: "ist kleiner als", needsValue: true },
-  { key: "lte", label: "ist kleiner/gleich", needsValue: true },
-  { key: "contains", label: "enthält", needsValue: true },
-  { key: "startsWith", label: "beginnt mit", needsValue: true },
-  { key: "endsWith", label: "endet mit", needsValue: true },
-  { key: "isNull", label: "ist leer", needsValue: false },
-  { key: "isNotNull", label: "ist nicht leer", needsValue: false },
-];
 
 interface Condition {
   id: string;
@@ -64,71 +49,12 @@ function emptyCondition(column = ""): Condition {
   return { id: createId(), column, operator: "eq", value: "" };
 }
 
-function operatorNeedsValue(key: string): boolean {
-  return OPERATORS.find((operator) => operator.key === key)?.needsValue ?? true;
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
-}
-
-function quoteLiteral(value: string): string {
-  const trimmed = value.trim();
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return trimmed;
-  }
-  if (trimmed === "true" || trimmed === "false" || trimmed === "null") {
-    return trimmed;
-  }
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function quoteLike(value: string): string {
-  return value.replace(/'/g, "''").replace(/([%_\\])/g, "\\$1");
-}
-
-function compileCondition(condition: Condition): string | null {
-  if (!condition.column) {
-    return null;
-  }
-  if (operatorNeedsValue(condition.operator) && condition.value === "") {
-    return null;
-  }
-  const column = quoteIdent(condition.column);
-  switch (condition.operator) {
-    case "eq":
-      return `${column} = ${quoteLiteral(condition.value)}`;
-    case "neq":
-      return `${column} <> ${quoteLiteral(condition.value)}`;
-    case "gt":
-      return `${column} > ${quoteLiteral(condition.value)}`;
-    case "gte":
-      return `${column} >= ${quoteLiteral(condition.value)}`;
-    case "lt":
-      return `${column} < ${quoteLiteral(condition.value)}`;
-    case "lte":
-      return `${column} <= ${quoteLiteral(condition.value)}`;
-    case "contains":
-      return `${column}::text ILIKE '%${quoteLike(condition.value)}%'`;
-    case "startsWith":
-      return `${column}::text ILIKE '${quoteLike(condition.value)}%'`;
-    case "endsWith":
-      return `${column}::text ILIKE '%${quoteLike(condition.value)}'`;
-    case "isNull":
-      return `${column} IS NULL`;
-    case "isNotNull":
-      return `${column} IS NOT NULL`;
-    default:
-      return null;
-  }
-}
-
 function compileConditions(
   conditions: Condition[],
   combinator: Combinator,
 ): string {
   const parts = conditions
-    .map(compileCondition)
+    .map((c) => compileSingleCondition(c.column, c.operator, c.value))
     .filter((part): part is string => part !== null);
   if (parts.length === 0) {
     return "";

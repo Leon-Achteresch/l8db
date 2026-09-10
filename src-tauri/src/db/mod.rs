@@ -47,6 +47,12 @@ pub trait DatabaseAdapter: Send + Sync {
         order_by: Option<&str>,
         order_desc: bool,
     ) -> Result<TableData, String>;
+    async fn count_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+    ) -> Result<i64, String>;
     async fn update_row(
         &self,
         schema: &str,

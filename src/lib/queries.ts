@@ -4,6 +4,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
+  countTableRows,
   fetchTableRows,
   listDatabases,
   listSchemas,
@@ -104,6 +105,36 @@ export function useTableRowsQuery(
       }
       return undefined;
     },
+  });
+}
+
+export function useTableRowCountQuery(
+  schema: string,
+  table: string,
+  filter?: string,
+) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: [
+      "count",
+      connection?.id,
+      database,
+      schema,
+      table,
+      filter ?? "",
+    ],
+    queryFn: () =>
+      countTableRows(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        filter,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

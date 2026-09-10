@@ -84,6 +84,24 @@ export async function fetchTableRows(
   });
 }
 
+export async function countTableRows(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  filter?: string,
+  database?: string,
+): Promise<number> {
+  return invoke("count_table_rows", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    filter: filter && filter.trim() !== "" ? filter : undefined,
+  });
+}
+
 export async function updateRow(
   kind: DatabaseKind,
   connectionString: string,
