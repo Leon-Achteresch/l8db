@@ -1,7 +1,7 @@
 # L8DB-PLAN-009: Nur markiertes SQL ausführen
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Editor
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
