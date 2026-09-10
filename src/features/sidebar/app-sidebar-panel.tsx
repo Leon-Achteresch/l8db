@@ -951,6 +951,8 @@ interface SidebarRoleListProps {
   isError: boolean;
   error: unknown;
 }
+
+function SidebarRoleList({
   items,
   isLoading,
   isError,
