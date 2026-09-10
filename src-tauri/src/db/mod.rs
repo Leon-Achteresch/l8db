@@ -32,12 +32,33 @@ pub struct TableData {
     pub rows: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ColumnInfo {
+    pub schema: String,
+    pub table: String,
+    pub name: String,
+    pub data_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QueryResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<serde_json::Value>,
+    pub rows_affected: Option<u64>,
+    pub execution_time_ms: u64,
+}
+
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
     async fn test_connection(&self) -> Result<(), String>;
     async fn list_databases(&self) -> Result<Vec<String>, String>;
     async fn list_schemas(&self) -> Result<Vec<String>, String>;
     async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String>;
+    async fn list_columns(
+        &self,
+        schema: Option<&str>,
+        table: Option<&str>,
+    ) -> Result<Vec<ColumnInfo>, String>;
     async fn fetch_rows(
         &self,
         schema: &str,
@@ -60,6 +81,7 @@ pub trait DatabaseAdapter: Send + Sync {
         ctid: &str,
         updates: &std::collections::HashMap<String, Option<String>>,
     ) -> Result<(), String>;
+    async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
 }
 
 pub fn create_adapter(config: ConnectionConfig) -> Box<dyn DatabaseAdapter> {
