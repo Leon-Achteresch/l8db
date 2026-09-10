@@ -1,11 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import type { TableDetailTab } from "@/lib/table-detail-tabs";
+
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
 export type UiDensity = "compact" | "normal" | "spacious";
 export type SslDefaultMode = "prefer" | "require" | "disable" | "verify-full";
 
 export interface SettingsState {
+  hiddenTableDetailTabs: TableDetailTab[];
+  setTableDetailTabVisible: (tab: TableDetailTab, visible: boolean) => void;
+  resetTableDetailTabs: () => void;
   rowLimit: number;
   editorFontSize: number;
   queryTimeout: number;
@@ -46,6 +51,7 @@ export interface SettingsState {
 }
 
 const DEFAULT_SETTINGS = {
+  hiddenTableDetailTabs: [] as TableDetailTab[],
   rowLimit: 100,
   editorFontSize: 13,
   queryTimeout: 30,
@@ -70,6 +76,13 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       ...DEFAULT_SETTINGS,
+      setTableDetailTabVisible: (tab, visible) =>
+        set((state) => ({
+          hiddenTableDetailTabs: visible
+            ? state.hiddenTableDetailTabs.filter((id) => id !== tab)
+            : [...new Set([...state.hiddenTableDetailTabs, tab])],
+        })),
+      resetTableDetailTabs: () => set({ hiddenTableDetailTabs: [] }),
       setRowLimit: (rowLimit) => set({ rowLimit }),
       setEditorFontSize: (editorFontSize) => set({ editorFontSize }),
       setQueryTimeout: (queryTimeout) => set({ queryTimeout }),
