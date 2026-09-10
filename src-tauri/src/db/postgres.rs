@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{ColumnInfo, ConnectionConfig, DatabaseAdapter, QueryResult, TableData, TableInfo};
+use super::{map_pg_err, quote_ident, ColumnInfo, ConnectionConfig, DatabaseAdapter, QueryResult, TableData, TableInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -81,28 +81,6 @@ impl PostgresAdapter {
         timeout(QUERY_TIMEOUT, future)
             .await
             .map_err(|_| "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string())?
-    }
-}
-
-fn quote_ident(ident: &str) -> String {
-    format!("\"{}\"", ident.replace('"', "\"\""))
-}
-
-fn map_pg_err(e: tokio_postgres::Error) -> String {
-    if let Some(db_err) = e.as_db_error() {
-        let mut msg = format!("{}: {}", db_err.severity(), db_err.message());
-        if let Some(detail) = db_err.detail() {
-            msg.push_str(&format!("\nDetail: {detail}"));
-        }
-        if let Some(hint) = db_err.hint() {
-            msg.push_str(&format!("\nHinweis: {hint}"));
-        }
-        if let Some(pos) = db_err.position() {
-            msg.push_str(&format!("\nPosition: {pos:?}"));
-        }
-        msg
-    } else {
-        format!("Datenbankfehler: {e}")
     }
 }
 

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod pool;
+pub mod transaction;
 mod postgres;
 
 use async_trait::async_trait;
@@ -92,6 +93,28 @@ pub trait DatabaseAdapter: Send + Sync {
         schema: &str,
         view: &str,
     ) -> Result<String, String>;
+}
+
+pub(crate) fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
+    if let Some(db_err) = e.as_db_error() {
+        let mut msg = format!("{}: {}", db_err.severity(), db_err.message());
+        if let Some(detail) = db_err.detail() {
+            msg.push_str(&format!("\nDetail: {detail}"));
+        }
+        if let Some(hint) = db_err.hint() {
+            msg.push_str(&format!("\nHinweis: {hint}"));
+        }
+        if let Some(pos) = db_err.position() {
+            msg.push_str(&format!("\nPosition: {pos:?}"));
+        }
+        msg
+    } else {
+        format!("Datenbankfehler: {e}")
+    }
 }
 
 pub fn create_adapter(config: ConnectionConfig, pool_state: PoolState) -> Box<dyn DatabaseAdapter> {

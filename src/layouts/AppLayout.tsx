@@ -2,6 +2,7 @@ import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { TableTabs } from "@/components/table/table-tabs";
+import { TransactionPanel } from "@/components/transaction-panel";
 import {
   SidebarInset,
   SidebarProvider,
@@ -11,9 +12,11 @@ import {
   selectSidebarPanelWidth,
   useSidebarPanel,
 } from "@/lib/sidebar-panel";
+import { useTransactionStore } from "@/lib/transactions";
 
 export function AppLayout() {
   const panelWidth = useSidebarPanel(selectSidebarPanelWidth);
+  const panelOpen = useTransactionStore((s) => s.panelOpen);
 
   return (
     <SidebarProvider
@@ -31,7 +34,10 @@ export function AppLayout() {
           <TableTabs />
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <Outlet />
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+          {panelOpen && <TransactionPanel />}
         </div>
       </SidebarInset>
     </SidebarProvider>

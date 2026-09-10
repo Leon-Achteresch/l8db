@@ -306,6 +306,7 @@ function SidebarEntityList({
           matchRoute({
             to: "/tables/$schema/$table",
             params: { schema: item.schema, table: item.name },
+            search: type === "view" ? { type: "view" } : {},
           }),
         );
         return (

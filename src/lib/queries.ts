@@ -4,6 +4,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
+  beginTransaction,
   countTableRows,
   fetchTableRows,
   getViewDefinition,
@@ -11,9 +12,14 @@ import {
   listSchemas,
   listTables,
   listViews,
-  updateRow,
+  updateRowInTransaction,
+  type TableData,
   type TableRowSort,
 } from "@/lib/db";
+import {
+  getTransactionForConnection,
+  useTransactionStore,
+} from "@/lib/transactions";
 
 function sortingToRowSort(sorting: SortingState): TableRowSort | undefined {
   const active = sorting[0];
@@ -187,18 +193,79 @@ export function useUpdateRowMutation(schema: string, table: string) {
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ ctid, updates }: { ctid: string; updates: Record<string, string | null> }) =>
-      updateRow(
-        connection!.kind,
-        connection!.connectionString,
+    mutationFn: async ({
+      ctid,
+      updates,
+      oldValues,
+    }: {
+      ctid: string;
+      updates: Record<string, string | null>;
+      oldValues: Record<string, unknown>;
+    }) => {
+      const store = useTransactionStore.getState();
+      let tx = getTransactionForConnection(connection!.id);
+
+      if (!tx) {
+        const txId = await beginTransaction(
+          connection!.kind,
+          connection!.connectionString,
+          database ?? undefined,
+        );
+        const newTx = {
+          txId,
+          connectionId: connection!.id,
+          connectionName: connection!.name,
+          database: database ?? undefined,
+          changes: [],
+          startedAt: Date.now(),
+        };
+        store.addTransaction(newTx);
+        tx = newTx;
+      }
+
+      const newCtid = await updateRowInTransaction(
+        tx.txId,
         schema,
         table,
         ctid,
         updates,
-        database ?? undefined,
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["rows"] });
+      );
+
+      store.addChange(tx.txId, {
+        id: crypto.randomUUID(),
+        type: "update",
+        timestamp: Date.now(),
+        schema,
+        table,
+        ctid,
+        oldValues,
+        newValues: updates,
+      });
+
+      store.setPanelOpen(true);
+
+      return { newCtid };
+    },
+    onSuccess: (result, { ctid, updates }) => {
+      queryClient.setQueriesData<TableData>(
+        { queryKey: ["rows"] },
+        (old) => {
+          if (!old) return old;
+          const idx = old.rows.findIndex(
+            (r) => (r as Record<string, unknown>).__ctid__ === ctid,
+          );
+          if (idx === -1) return old;
+          const updatedRows = [...old.rows];
+          updatedRows[idx] = {
+            ...updatedRows[idx],
+            __ctid__: result.newCtid,
+            ...Object.fromEntries(
+              Object.entries(updates).map(([k, v]) => [k, v]),
+            ),
+          };
+          return { ...old, rows: updatedRows };
+        },
+      );
     },
   });
 }

@@ -227,6 +227,7 @@ function renderValue(value: unknown) {
 type EditingRow = {
   ctid: string;
   values: Record<string, string>;
+  originalValues: Record<string, unknown>;
 };
 
 type DataTableProps = {
@@ -237,7 +238,7 @@ type DataTableProps = {
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   isFetching?: boolean;
-  onSaveRow?: (ctid: string, updates: Record<string, string | null>) => Promise<void>;
+  onSaveRow?: (ctid: string, updates: Record<string, string | null>, oldValues: Record<string, unknown>) => Promise<void>;
   onApplyFilter?: (where: string) => void;
   page?: number;
   totalCount?: number;
@@ -376,7 +377,7 @@ export function DataTable({
       for (const [col, val] of Object.entries(editingRow.values)) {
         updates[col] = val === "" ? null : val;
       }
-      await onSaveRow(editingRow.ctid, updates);
+      await onSaveRow(editingRow.ctid, updates, editingRow.originalValues);
       setEditingRow(null);
       toast.success("Zeile gespeichert.");
     } catch (err) {
@@ -419,7 +420,7 @@ export function DataTable({
           values[col] = String(val);
         }
       }
-      setEditingRow({ ctid, values });
+      setEditingRow({ ctid, values, originalValues: { ...row.original } });
       setActiveCell(null);
     },
     [columnNames],

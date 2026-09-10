@@ -1,4 +1,5 @@
 use super::pool::PoolState;
+use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, ColumnInfo, ConnectionConfig, DatabaseKind,
     QueryResult, TableData, TableInfo,
@@ -171,4 +172,56 @@ pub async fn get_view_definition(
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .get_view_definition(&schema, &view)
         .await
+}
+
+#[tauri::command]
+pub async fn begin_transaction(
+    #[allow(unused_variables)] kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<String, String> {
+    tx_state
+        .begin(&connection_string, database.as_deref(), pool_state.inner())
+        .await
+}
+
+#[tauri::command]
+pub async fn execute_in_transaction(
+    tx_id: String,
+    sql: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<QueryResult, String> {
+    tx_state.execute(&tx_id, &sql).await
+}
+
+#[tauri::command]
+pub async fn update_row_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    ctid: String,
+    updates: std::collections::HashMap<String, Option<String>>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<String, String> {
+    tx_state
+        .update_row(&tx_id, &schema, &table, &ctid, &updates)
+        .await
+}
+
+#[tauri::command]
+pub async fn commit_transaction(
+    tx_id: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<(), String> {
+    tx_state.commit(&tx_id).await
+}
+
+#[tauri::command]
+pub async fn rollback_transaction(
+    tx_id: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<(), String> {
+    tx_state.rollback(&tx_id).await
 }
