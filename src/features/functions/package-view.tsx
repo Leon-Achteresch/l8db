@@ -17,6 +17,11 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import {
+  PACKAGE_OUTLINE_DEFAULT_WIDTH,
+  packageOutlinePrefKey,
+  usePackageViewPrefs,
+} from "@/lib/package-view-prefs";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -47,6 +52,11 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const revealLine = activeMember
     ? members.find((m) => m.name === activeMember)?.line
     : members[0]?.line;
+  const outlineKey = packageOutlinePrefKey(connection?.id ?? "", schema, name);
+  const outlineWidth = usePackageViewPrefs(
+    (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
+  );
+  const setOutlineWidth = usePackageViewPrefs((state) => state.setWidth);
 
   useEffect(() => {
     openPackageTab({ schema, name });
@@ -150,6 +160,8 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
             <PackageMemberOutline
               members={members}
               activeName={activeMember}
+              width={outlineWidth}
+              onWidthChange={(next) => setOutlineWidth(outlineKey, next)}
               onSelect={(m) => setActiveMember(m.name)}
             />
           ) : null}
