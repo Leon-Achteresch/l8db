@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { executeQuery, validateSql } from "@/lib/db";
-import { monaco } from "@/lib/monaco";
+import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useFunctionDefinitionQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -306,8 +306,11 @@ function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
       onChangeRef.current?.(editor.getValue());
     });
 
+    const formatAction = addSqlFormatAction(editor);
+
     return () => {
       changeSub.dispose();
+      formatAction.dispose();
       editor.dispose();
       editorRef.current = null;
     };

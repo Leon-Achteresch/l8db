@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { useTheme } from "next-themes";
 
-import { monaco } from "@/lib/monaco";
+import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { cn } from "@/lib/utils";
 
 interface SqlEditorProps {
@@ -89,6 +89,8 @@ export function SqlEditor({
       onSubmitRef.current?.();
     });
 
+    const formatAction = addSqlFormatAction(editor);
+
     const completion = monaco.languages.registerCompletionItemProvider("sql", {
       provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
         const word = model.getWordUntilPosition(position);
@@ -115,6 +117,7 @@ export function SqlEditor({
     return () => {
       changeSub.dispose();
       completion.dispose();
+      formatAction.dispose();
       editor.dispose();
       editorRef.current = null;
     };

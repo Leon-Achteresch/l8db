@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
-import { monaco } from "@/lib/monaco";
+import { addSqlFormatAction, monaco } from "@/lib/monaco";
 
 interface SchemaRegistry {
   schemas: string[];
@@ -614,6 +614,8 @@ export function QueryEditorPane({
       onRunRef.current();
     });
 
+    const formatAction = addSqlFormatAction(editor);
+
     const completionProvider = monaco.languages.registerCompletionItemProvider(
       "sql",
       {
@@ -630,6 +632,7 @@ export function QueryEditorPane({
     return () => {
       changeSub.dispose();
       completionProvider.dispose();
+      formatAction.dispose();
       editor.dispose();
       editorRef.current = null;
     };
