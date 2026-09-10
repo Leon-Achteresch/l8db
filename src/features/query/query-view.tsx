@@ -5,10 +5,10 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangleIcon,
   BookmarkIcon,
+  BookmarkPlusIcon,
   DownloadIcon,
   FileIcon,
   GaugeIcon,
-  BookmarkPlusIcon,
   HistoryIcon,
   ListOrderedIcon,
   LoaderIcon,
@@ -21,9 +21,8 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,20 +32,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
+import { BindParamsDialog } from "@/features/query/bind-params-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
-import { QueryEditorPane, type QueryEditorApi } from "@/features/query/query-editor-pane";
+import { type QueryEditorApi, QueryEditorPane } from "@/features/query/query-editor-pane";
 import { QueryHistoryPanel } from "@/features/query/query-history-panel";
 import { QueryPerfPanel } from "@/features/query/query-perf-panel";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { SaveQueryDialog } from "@/features/query/save-query-dialog";
+import { ScriptResultList, type ScriptRunEntry } from "@/features/query/script-result-list";
+import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
 import { SnippetMenu } from "@/features/query/snippet-menu";
-import {
-  ScriptResultList,
-  type ScriptRunEntry,
-} from "@/features/query/script-result-list";
-import { BindParamsDialog } from "@/features/query/bind-params-dialog";
-import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import {
   type BindParamRef,
@@ -69,23 +65,20 @@ import {
   type QueryResult,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { openSqlFileAsTab, useQueryFile } from "@/lib/hooks/use-query-file";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { useSettingsStore } from "@/lib/settings";
-import {
-  collectServerOutput,
-  toggleServerOutput,
-  useServerOutputStore,
-} from "@/lib/server-output";
-import { ServerOutputPanel } from "./server-output-panel";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { useQueryRevealStore } from "@/lib/query-reveal";
+import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
+import { useSettingsStore } from "@/lib/settings";
 import { splitSqlStatements, statementAtOffset } from "@/lib/sql-statements";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
+import { ServerOutputPanel } from "./server-output-panel";
 
 const QUERY_LANGUAGES = {
   sql: "SQL",
@@ -329,36 +322,64 @@ export function QueryView({ tabId }: QueryViewProps) {
           return;
         }
       }
-    setIsRunning(true);
-    setError(null);
-    const startedAt = performance.now();
-    const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
-      recordHistory({
-        connectionId: connection.id,
-        database: database ?? null,
-        sql,
-        durationMs: Math.round(performance.now() - startedAt),
-        rowCount: outcome.rowCount,
-        error: outcome.error ? outcome.error.slice(0, 500) : null,
-      });
-    };
-    const rowCountOf = (res: QueryResult): number | null =>
-      res.columns.length > 0
-        ? res.rows.length
-        : res.rows_affected != null
-          ? Number(res.rows_affected)
-          : null;
-    try {
-      const store = useTransactionStore.getState();
-      const existingTx = getTransactionForConnection(connection.id);
-      const isDml = DML_PATTERN.test(sql.trim());
+      setIsRunning(true);
+      setError(null);
+      const startedAt = performance.now();
+      const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
+        recordHistory({
+          connectionId: connection.id,
+          database: database ?? null,
+          sql,
+          durationMs: Math.round(performance.now() - startedAt),
+          rowCount: outcome.rowCount,
+          error: outcome.error ? outcome.error.slice(0, 500) : null,
+        });
+      };
+      const rowCountOf = (res: QueryResult): number | null =>
+        res.columns.length > 0
+          ? res.rows.length
+          : res.rows_affected != null
+            ? Number(res.rows_affected)
+            : null;
+      try {
+        const store = useTransactionStore.getState();
+        const existingTx = getTransactionForConnection(connection.id);
+        const isDml = DML_PATTERN.test(sql.trim());
 
-      if (existingTx) {
-        const res = bound
-          ? await executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values)
-          : await executeInTransaction(existingTx.txId, sql);
-        if (isDml) {
-          store.addChange(existingTx.txId, {
+        if (existingTx) {
+          const res = bound
+            ? await executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values)
+            : await executeInTransaction(existingTx.txId, sql);
+          if (isDml) {
+            store.addChange(existingTx.txId, {
+              id: crypto.randomUUID(),
+              type: "query",
+              timestamp: Date.now(),
+              sql,
+              rowsAffected: res.rows_affected,
+            });
+            store.setPanelOpen(true);
+          }
+          setResult(res);
+          finishHistory({ rowCount: rowCountOf(res), error: null });
+        } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
+          const txId = await beginTransaction(
+            connection.kind,
+            effectiveConnectionString(connection),
+            database ?? undefined,
+          );
+          store.addTransaction({
+            txId,
+            connectionId: connection.id,
+            connectionName: connection.name,
+            database: database ?? undefined,
+            changes: [],
+            startedAt: Date.now(),
+          });
+          const res = bound
+            ? await executeInTransactionWithParams(txId, bound.sql, bound.values)
+            : await executeInTransaction(txId, sql);
+          store.addChange(txId, {
             id: crypto.randomUUID(),
             type: "query",
             timestamp: Date.now(),
@@ -366,63 +387,35 @@ export function QueryView({ tabId }: QueryViewProps) {
             rowsAffected: res.rows_affected,
           });
           store.setPanelOpen(true);
+          setResult(res);
+          finishHistory({ rowCount: rowCountOf(res), error: null });
+        } else {
+          const res = bound
+            ? await executeQueryWithParams(
+                connection.kind,
+                effectiveConnectionString(connection),
+                bound.sql,
+                bound.values,
+                database ?? undefined,
+              )
+            : await executeQuery(
+                connection.kind,
+                effectiveConnectionString(connection),
+                sql,
+                database ?? undefined,
+              );
+          setResult(res);
+          finishHistory({ rowCount: rowCountOf(res), error: null });
         }
-        setResult(res);
-        finishHistory({ rowCount: rowCountOf(res), error: null });
-      } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
-        const txId = await beginTransaction(
-          connection.kind,
-          effectiveConnectionString(connection),
-          database ?? undefined,
-        );
-        store.addTransaction({
-          txId,
-          connectionId: connection.id,
-          connectionName: connection.name,
-          database: database ?? undefined,
-          changes: [],
-          startedAt: Date.now(),
-        });
-        const res = bound
-          ? await executeInTransactionWithParams(txId, bound.sql, bound.values)
-          : await executeInTransaction(txId, sql);
-        store.addChange(txId, {
-          id: crypto.randomUUID(),
-          type: "query",
-          timestamp: Date.now(),
-          sql,
-          rowsAffected: res.rows_affected,
-        });
-        store.setPanelOpen(true);
-        setResult(res);
-        finishHistory({ rowCount: rowCountOf(res), error: null });
-      } else {
-        const res = bound
-          ? await executeQueryWithParams(
-              connection.kind,
-              effectiveConnectionString(connection),
-              bound.sql,
-              bound.values,
-              database ?? undefined,
-            )
-          : await executeQuery(
-              connection.kind,
-              effectiveConnectionString(connection),
-              sql,
-              database ?? undefined,
-            );
-        setResult(res);
-        finishHistory({ rowCount: rowCountOf(res), error: null });
+      } catch (err) {
+        const message = String(err);
+        setError(message);
+        setResult(null);
+        finishHistory({ rowCount: null, error: message });
+      } finally {
+        await collectOutput();
+        setIsRunning(false);
       }
-    } catch (err) {
-      const message = String(err);
-      setError(message);
-      setResult(null);
-      finishHistory({ rowCount: null, error: message });
-    } finally {
-      await collectOutput();
-      setIsRunning(false);
-    }
     },
     [connection, database, recordHistory, caps.transactions, caps.bind_parameters, collectOutput],
   );
@@ -717,7 +710,10 @@ export function QueryView({ tabId }: QueryViewProps) {
         transition={{ layout: SPRING_LAYOUT }}
         className="flex h-full min-w-0 flex-1 flex-col"
       >
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card/60 px-3" data-tour="query-toolbar">
+        <div
+          className="flex h-11 shrink-0 items-center gap-2 border-b bg-card/60 px-3"
+          data-tour="query-toolbar"
+        >
           <Button
             size="sm"
             variant="default"
@@ -866,12 +862,19 @@ export function QueryView({ tabId }: QueryViewProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => void handleFileOpen()}>SQL-Datei öffnen…</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void handleFileSave(false)} disabled={!sql.trim() && !filePath}>
+              <DropdownMenuItem onClick={() => void handleFileOpen()}>
+                SQL-Datei öffnen…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => void handleFileSave(false)}
+                disabled={!sql.trim() && !filePath}
+              >
                 {filePath ? "Speichern" : "Speichern unter…"}
               </DropdownMenuItem>
               {filePath && (
-                <DropdownMenuItem onClick={() => void handleFileSave(true)}>Speichern unter…</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleFileSave(true)}>
+                  Speichern unter…
+                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

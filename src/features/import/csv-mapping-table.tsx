@@ -6,11 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  isRequiredColumn,
-  type CsvColumnMapping,
-  type ImportTargetColumn,
-} from "@/lib/csv-import";
+import { type CsvColumnMapping, type ImportTargetColumn, isRequiredColumn } from "@/lib/csv-import";
 
 const NO_TARGET = "__skip__";
 
@@ -75,7 +71,10 @@ export function CsvMappingTable({
                         <SelectItem
                           key={target.name}
                           value={target.name}
-                          disabled={target.is_generated || (usedTargets.has(target.name) && target.name !== mapping?.target)}
+                          disabled={
+                            target.is_generated ||
+                            (usedTargets.has(target.name) && target.name !== mapping?.target)
+                          }
                         >
                           <span className="flex items-center gap-2">
                             <span className="font-mono">{target.name}</span>

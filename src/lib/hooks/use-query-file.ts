@@ -70,7 +70,9 @@ export function useQueryFile(tabId: string) {
       if (!saveAs && tab.filePath) {
         const changed = await detectExternalChange(tabId);
         if (changed) {
-          toast.warning("Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.");
+          toast.warning(
+            "Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.",
+          );
           return false;
         }
       }

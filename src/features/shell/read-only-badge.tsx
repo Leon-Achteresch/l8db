@@ -16,6 +16,7 @@ export function ReadOnlyBadge({ className }: Props) {
         className,
       )}
       title="Lesemodus: Schreibzugriffe sind für diese Verbindung gesperrt."
+      role="status"
       aria-label="Verbindung im Lesemodus"
     >
       <Eye className="size-3.5" />

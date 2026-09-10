@@ -109,7 +109,10 @@ export function UpdateAvailableDialog() {
             {highlights.length > 0 ? (
               <div className="space-y-2">
                 {highlights.map((item) => (
-                  <div key={item} className="flex items-start gap-2.5 text-xs leading-snug text-foreground/90">
+                  <div
+                    key={item}
+                    className="flex items-start gap-2.5 text-xs leading-snug text-foreground/90"
+                  >
                     <Check className="mt-0.5 size-3.5 shrink-0 stroke-[2.5] text-primary" />
                     <span>{item}</span>
                   </div>
@@ -120,7 +123,9 @@ export function UpdateAvailableDialog() {
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-bold tracking-tight">v{update.version}</span>
               {currentVersion ? (
-                <span className="text-xs text-muted-foreground line-through">v{currentVersion}</span>
+                <span className="text-xs text-muted-foreground line-through">
+                  v{currentVersion}
+                </span>
               ) : null}
               <span className="text-[0.6875rem] text-muted-foreground">
                 {published ? `• ${published}` : "• Bereit zur Installation"}

@@ -2,9 +2,9 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
-pub mod export;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+pub mod export;
 mod mongodb;
 mod mssql;
 mod mysql;
@@ -445,11 +445,7 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         Err(unsupported("Prozeduren"))
     }
-    async fn compile_object(
-        &self,
-        oid: &str,
-        object_type: &str,
-    ) -> Result<CompileResult, String> {
+    async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
         let _ = (oid, object_type);
         Err(unsupported("Objekte kompilieren"))
     }
@@ -479,11 +475,7 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = (schema, term, limit);
         Err(unsupported("Quelltextsuche"))
     }
-    async fn list_used_by(
-        &self,
-        schema: &str,
-        name: &str,
-    ) -> Result<Vec<DependencyInfo>, String> {
+    async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let _ = (schema, name);
         Err(unsupported("Verwendungsnachweis"))
     }

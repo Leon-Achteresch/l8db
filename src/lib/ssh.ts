@@ -12,11 +12,7 @@ export { closeSshTunnel, listSshTunnels, openSshTunnel } from "@/lib/db";
 import { toast } from "sonner";
 import { create } from "zustand";
 
-import {
-  isReadOnlyConnection,
-  type SavedConnection,
-  useConnectionsStore,
-} from "@/lib/connections";
+import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { loadSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
@@ -213,7 +209,9 @@ async function performActivation(
         const current = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
         if (!current) return { ok: false, error: "Verbindung wurde entfernt." };
         await testConnectionString(current.kind, effectiveConnectionString(current));
-        if (useConnectionsStore.getState().connections.find((entry) => entry.id === id) !== current) {
+        if (
+          useConnectionsStore.getState().connections.find((entry) => entry.id === id) !== current
+        ) {
           return {
             ok: false,
             error: "Die Verbindung wurde während des Tests geändert. Bitte erneut verbinden.",
@@ -269,7 +267,9 @@ export async function activateConnectionWithToast(
     ? useConnectionsStore.getState().connections.find((entry) => entry.id === id)
     : null;
   const label = target?.name ?? "Verbindung";
-  const pending = id ? toast.loading(`Verbinde mit „${label}“…`) : toast.loading("Trenne Verbindung…");
+  const pending = id
+    ? toast.loading(`Verbinde mit „${label}“…`)
+    : toast.loading("Trenne Verbindung…");
   const outcome = await activateConnection(id, sshPassword);
   toast.dismiss(pending);
   if (!outcome.ok) {

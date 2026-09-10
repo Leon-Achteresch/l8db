@@ -44,8 +44,7 @@ export function SessionsFilterBar({
   onCollapseAll,
 }: SessionsFilterBarProps) {
   const active = isSessionFilterActive(filters);
-  const update = (patch: Partial<SessionFilters>) =>
-    onFiltersChange({ ...filters, ...patch });
+  const update = (patch: Partial<SessionFilters>) => onFiltersChange({ ...filters, ...patch });
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -65,14 +64,9 @@ export function SessionsFilterBar({
       />
       <Select
         value={filters.state || ALL_STATES}
-        onValueChange={(value) =>
-          update({ state: value === ALL_STATES ? "" : value })
-        }
+        onValueChange={(value) => update({ state: value === ALL_STATES ? "" : value })}
       >
-        <SelectTrigger
-          className="h-8 w-32 text-xs"
-          aria-label="Nach Status filtern"
-        >
+        <SelectTrigger className="h-8 w-32 text-xs" aria-label="Nach Status filtern">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -124,12 +118,7 @@ export function SessionsFilterBar({
       </Select>
       {grouping !== "none" && (
         <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={onExpandAll}
-          >
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={onExpandAll}>
             Alle auf
           </Button>
           <Button

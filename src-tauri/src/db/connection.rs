@@ -11,7 +11,11 @@ pub const READ_ONLY_OPTION: &str = "-c default_transaction_read_only=on";
 
 pub fn options_are_read_only(options: Option<&str>) -> bool {
     options
-        .map(|value| value.replace(' ', "").contains("default_transaction_read_only=on"))
+        .map(|value| {
+            value
+                .replace(' ', "")
+                .contains("default_transaction_read_only=on")
+        })
         .unwrap_or(false)
 }
 
@@ -118,7 +122,9 @@ mod tests {
         assert!(!connection_string_is_read_only(
             "postgres://user@localhost/app?options=-c%20search_path%3Dpublic"
         ));
-        assert!(!connection_string_is_read_only("postgres://user@localhost/app"));
+        assert!(!connection_string_is_read_only(
+            "postgres://user@localhost/app"
+        ));
         let (config, _) = parse_connection(url, None).unwrap();
         assert!(options_are_read_only(config.get_options()));
     }

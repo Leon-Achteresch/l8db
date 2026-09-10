@@ -192,7 +192,8 @@ const SEARCH_ITEMS: SearchItem[] = [
     tabId: "about",
     tabLabel: "Über & Updates",
     title: "Systemdiagnose",
-    description: "Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte kopieren.",
+    description:
+      "Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte kopieren.",
     keywords: ["diagnose", "system", "info", "kopieren", "fehlerbericht", "support"],
   },
 ];

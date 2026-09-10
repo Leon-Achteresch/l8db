@@ -13,19 +13,19 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useActiveConnection } from "@/lib/connections";
 import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
 import {
+  type BlockingInfo,
   computeBlocking,
   EMPTY_SESSION_FILTERS,
   filterSessions,
   groupSessions,
-  sessionStates,
-  type BlockingInfo,
   type SessionFilters,
+  sessionStates,
 } from "@/lib/session-filters";
 import { useSessionViewPrefs } from "@/lib/session-view-prefs";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -169,9 +169,11 @@ export function SessionsView() {
         <TabsList className="w-fit shrink-0">
           <TabsTrigger value="sessions" className="gap-1.5 text-xs">
             <ActivityIcon className="size-3.5" />
-            Sitzungen ({filtered.length === allSessions.length
+            Sitzungen (
+            {filtered.length === allSessions.length
               ? allSessions.length
-              : `${filtered.length}/${allSessions.length}`})
+              : `${filtered.length}/${allSessions.length}`}
+            )
           </TabsTrigger>
           <TabsTrigger value="locks" className="gap-1.5 text-xs">
             <LockIcon className="size-3.5" />
@@ -229,8 +231,7 @@ export function SessionsView() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {groups.map((group) => {
-                    const collapsed =
-                      grouping !== "none" && collapsedGroups.includes(group.key);
+                    const collapsed = grouping !== "none" && collapsedGroups.includes(group.key);
                     return (
                       <Fragment key={grouping === "none" ? "__all__" : `g-${group.key}`}>
                         {grouping !== "none" && (

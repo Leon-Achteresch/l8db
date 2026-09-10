@@ -25,24 +25,20 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useActiveConnection } from "@/lib/connections";
-import {
-  type TableExportProgress,
-  cancelTableExport,
-  exportTableCsv,
-} from "@/lib/db";
+import { cancelTableExport, exportTableCsv, type TableExportProgress } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import {
+  applyMasks,
+  type ColumnMask,
   CSV_DELIMITERS,
   CSV_QUOTES,
-  type ColumnMask,
   type CsvLineEnding,
   type CsvOptions,
+  csvOptionsError,
+  csvPreview,
   DEFAULT_CSV_OPTIONS,
   DEFAULT_MASK_TEXT,
   type MaskMode,
-  applyMasks,
-  csvOptionsError,
-  csvPreview,
   serializeCsv,
 } from "@/lib/export";
 import { useExportTemplatesStore } from "@/lib/export-templates";
@@ -105,10 +101,7 @@ export function CsvExportDialog({
   const totalRows = fullExport?.totalRows ?? null;
   const needsConfirm = fullMode && totalRows !== null && totalRows > CONFIRM_ROWS;
 
-  const maskedRows = useMemo(
-    () => applyMasks(columns, rows, masks),
-    [columns, rows, masks],
-  );
+  const maskedRows = useMemo(() => applyMasks(columns, rows, masks), [columns, rows, masks]);
 
   const preview = useMemo(() => {
     if (optionError) return "";
@@ -315,10 +308,7 @@ export function CsvExportDialog({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="csv-delimiter">Trennzeichen</Label>
-            <Select
-              value={options.delimiter}
-              onValueChange={(value) => update("delimiter", value)}
-            >
+            <Select value={options.delimiter} onValueChange={(value) => update("delimiter", value)}>
               <SelectTrigger id="csv-delimiter" size="sm">
                 <SelectValue />
               </SelectTrigger>

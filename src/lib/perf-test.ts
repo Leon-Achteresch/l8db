@@ -1,11 +1,7 @@
 import type { DatabaseKind, ExplainNode } from "@/lib/db";
-import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import { planMetrics } from "@/lib/explain-compare";
-import {
-  EXPLAIN_FILE_KIND,
-  EXPLAIN_FILE_VERSION,
-  type SavedExplainPlan,
-} from "@/lib/explain-file";
+import { EXPLAIN_FILE_KIND, EXPLAIN_FILE_VERSION, type SavedExplainPlan } from "@/lib/explain-file";
+import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 
 export const PERF_FILE_KIND = "l8db.perf-test";
 export const PERF_FILE_VERSION = 1;
@@ -218,10 +214,7 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export function defaultPerfFileName(context: {
-  table?: string;
-  capturedAt?: Date;
-}): string {
+export function defaultPerfFileName(context: { table?: string; capturedAt?: Date }): string {
   const at = context.capturedAt ?? new Date();
   const stamp = `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
   const slug = (context.table ?? "perf")
@@ -248,7 +241,9 @@ function validateNode(node: unknown, path: string): ExplainNode {
     if (!Array.isArray(children)) {
       throw new Error(`Ungültiger Planknoten bei ${path}: "Plans" muss eine Liste sein.`);
     }
-    children.forEach((child, index) => validateNode(child, `${path}.Plans[${index}]`));
+    for (const [index, child] of children.entries()) {
+      validateNode(child, `${path}.Plans[${index}]`);
+    }
   }
   return node as unknown as ExplainNode;
 }

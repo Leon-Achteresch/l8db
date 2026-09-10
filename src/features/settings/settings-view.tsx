@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
 import { SettingsDataTab } from "@/features/settings/settings-data-tab";
 import { SettingsEditorTab } from "@/features/settings/settings-editor-tab";
@@ -10,6 +9,7 @@ import { SettingsSearch } from "@/features/settings/settings-search";
 import { SettingsSearchResults } from "@/features/settings/settings-search-results";
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SettingsSidebar } from "@/features/settings/settings-sidebar";
+import { SPRING_LAYOUT } from "@/lib/ease";
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState("general");

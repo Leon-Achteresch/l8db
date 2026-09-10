@@ -94,10 +94,9 @@ pub async fn pg_session(
     let buffer_key = key.to_string();
     tokio::spawn(async move {
         loop {
-            let message = std::future::poll_fn(|cx| {
-                std::pin::Pin::new(&mut connection).poll_message(cx)
-            })
-            .await;
+            let message =
+                std::future::poll_fn(|cx| std::pin::Pin::new(&mut connection).poll_message(cx))
+                    .await;
             match message {
                 Some(Ok(AsyncMessage::Notice(notice))) => push(
                     &buffer_key,

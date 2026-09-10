@@ -86,10 +86,7 @@ export function DriversView() {
           Treiberstatus wird geladen …
         </div>
       ) : (
-        <motion.div
-          layout
-          className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-        >
+        <motion.div layout className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {summaries.map((summary) => (
             <DriverCard
               key={summary.kind}

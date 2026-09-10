@@ -7,7 +7,7 @@ import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsSqlPreview } from "@/features/settings/settings-sql-preview";
 import { useActiveConnection } from "@/lib/connections";
 import { capabilitiesFor } from "@/lib/providers";
-import { useSettingsStore, type SqlKeywordCase } from "@/lib/settings";
+import { type SqlKeywordCase, useSettingsStore } from "@/lib/settings";
 import { sqlDialectForKind, sqlDialectLabel, supportsSqlFormatting } from "@/lib/sql-format";
 
 export function SettingsEditorTab() {
@@ -156,11 +156,7 @@ export function SettingsEditorTab() {
           title="Code-Minimap"
           description="Verkleinerte Übersicht des gesamten SQL-Skripts am rechten Rand."
         >
-          <Switch
-            checked={editorMinimap}
-            onCheckedChange={setEditorMinimap}
-            aria-label="Minimap"
-          />
+          <Switch checked={editorMinimap} onCheckedChange={setEditorMinimap} aria-label="Minimap" />
         </SettingsRow>
       </div>
 

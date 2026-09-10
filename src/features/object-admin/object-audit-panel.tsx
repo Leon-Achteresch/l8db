@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
-import { objectAuditInfo, type ObjectAdminType } from "@/lib/db";
+import { type ObjectAdminType, objectAuditInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 

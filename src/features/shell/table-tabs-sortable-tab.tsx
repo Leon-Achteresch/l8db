@@ -143,10 +143,14 @@ export function TableTabsSortableTab({
             <Icon className={cn("size-3.5 shrink-0", iconColor)} />
             <span className="truncate font-medium">{label}</span>
             {tab.kind === "query" && tab.externalChange && (
-              <span className="shrink-0 text-amber-500" title="Datei extern geändert">!</span>
+              <span className="shrink-0 text-amber-500" title="Datei extern geändert">
+                !
+              </span>
             )}
             {tab.kind === "query" && isQueryTabDirty(tab) && (
-              <span className="shrink-0 text-amber-500" title="Ungespeicherte Änderungen">●</span>
+              <span className="shrink-0 text-amber-500" title="Ungespeicherte Änderungen">
+                ●
+              </span>
             )}
           </button>
           <button

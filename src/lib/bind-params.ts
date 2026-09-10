@@ -285,7 +285,9 @@ export function buildParameterizedQuery(
 ): ParameterizedQuery {
   const refs = detectBindParams(sql);
   const order = new Map<string, number>();
-  refs.forEach((ref, index) => order.set(`${ref.named ? ":" : "$"}${ref.name}`, index + 1));
+  for (const [index, ref] of refs.entries()) {
+    order.set(`${ref.named ? ":" : "$"}${ref.name}`, index + 1);
+  }
   const occurrences = scanBindParams(sql);
   let out = "";
   let cursor = 0;

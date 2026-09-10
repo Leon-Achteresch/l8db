@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { sslModeFromUrl } from "@/lib/connection-url";
-import { closeSshTunnel, type DatabaseKind, registerReadOnlyResolver, type SslMode } from "@/lib/db";
+import {
+  closeSshTunnel,
+  type DatabaseKind,
+  registerReadOnlyResolver,
+  type SslMode,
+} from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import {
   deleteSecret,
@@ -156,9 +161,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
       toggleFavorite: (id) =>
         set((state) => ({
           connections: state.connections.map((connection) =>
-            connection.id === id
-              ? { ...connection, favorite: !connection.favorite }
-              : connection,
+            connection.id === id ? { ...connection, favorite: !connection.favorite } : connection,
           ),
         })),
       addImported: (imported) =>

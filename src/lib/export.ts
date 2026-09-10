@@ -222,8 +222,7 @@ export function sqlLiteral(value: unknown, column: string): string {
     return quoteSqlString(value);
   }
   if (value instanceof Date) {
-    if (Number.isNaN(value.getTime()))
-      throw new UnsupportedValueError(column, "Ungültiges Datum.");
+    if (Number.isNaN(value.getTime())) throw new UnsupportedValueError(column, "Ungültiges Datum.");
     return quoteSqlString(value.toISOString());
   }
   if (typeof value === "object") {

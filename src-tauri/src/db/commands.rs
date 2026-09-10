@@ -3,13 +3,12 @@ use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
     AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
-    ConnectionConfig,
-    ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest, CreatePublicationRequest,
-    CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest, DatabaseKind,
-    CompileResult, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo,
-    PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo,
-    SchedulerJobInfo, SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
+    CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
+    DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
+    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -259,7 +258,11 @@ pub async fn search_columns(
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .search_columns(schema.as_deref(), &term, limit.unwrap_or(500).clamp(1, 2000))
+    .search_columns(
+        schema.as_deref(),
+        &term,
+        limit.unwrap_or(500).clamp(1, 2000),
+    )
     .await
 }
 
@@ -279,7 +282,11 @@ pub async fn search_source(
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .search_source(schema.as_deref(), &term, limit.unwrap_or(200).clamp(1, 1000))
+    .search_source(
+        schema.as_deref(),
+        &term,
+        limit.unwrap_or(200).clamp(1, 1000),
+    )
     .await
 }
 
