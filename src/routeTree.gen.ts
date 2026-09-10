@@ -26,6 +26,7 @@ import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._work
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
 import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
+import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
 import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
 import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
@@ -129,6 +130,12 @@ const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
   path: '/monitor',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceInvalidObjectsRoute =
+  AppWorkspaceInvalidObjectsRouteImport.update({
+    id: '/invalid-objects',
+    path: '/invalid-objects',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
 const AppWorkspaceImportRoute = AppWorkspaceImportRouteImport.update({
   id: '/import',
   path: '/import',
@@ -250,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/import': typeof AppWorkspaceImportRoute
+  '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
   '/query': typeof AppWorkspaceQueryRouteWithChildren
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
@@ -285,6 +293,7 @@ export interface FileRoutesByTo {
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/import': typeof AppWorkspaceImportRoute
+  '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
@@ -322,6 +331,7 @@ export interface FileRoutesById {
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
   '/_app/_workspace/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/_app/_workspace/import': typeof AppWorkspaceImportRoute
+  '/_app/_workspace/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/_app/_workspace/monitor': typeof AppWorkspaceMonitorRoute
   '/_app/_workspace/query': typeof AppWorkspaceQueryRouteWithChildren
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/enums'
     | '/er-diagram'
     | '/import'
+    | '/invalid-objects'
     | '/monitor'
     | '/query'
     | '/query-builder'
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | '/enums'
     | '/er-diagram'
     | '/import'
+    | '/invalid-objects'
     | '/monitor'
     | '/query-builder'
     | '/replication'
@@ -431,6 +443,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/enums'
     | '/_app/_workspace/er-diagram'
     | '/_app/_workspace/import'
+    | '/_app/_workspace/invalid-objects'
     | '/_app/_workspace/monitor'
     | '/_app/_workspace/query'
     | '/_app/_workspace/query-builder'
@@ -583,6 +596,13 @@ declare module '@tanstack/react-router' {
       path: '/monitor'
       fullPath: '/monitor'
       preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/invalid-objects': {
+      id: '/_app/_workspace/invalid-objects'
+      path: '/invalid-objects'
+      fullPath: '/invalid-objects'
+      preLoaderRoute: typeof AppWorkspaceInvalidObjectsRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/import': {
@@ -752,6 +772,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
   AppWorkspaceErDiagramRoute: typeof AppWorkspaceErDiagramRoute
   AppWorkspaceImportRoute: typeof AppWorkspaceImportRoute
+  AppWorkspaceInvalidObjectsRoute: typeof AppWorkspaceInvalidObjectsRoute
   AppWorkspaceMonitorRoute: typeof AppWorkspaceMonitorRoute
   AppWorkspaceQueryRoute: typeof AppWorkspaceQueryRouteWithChildren
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
@@ -779,6 +800,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,
   AppWorkspaceErDiagramRoute: AppWorkspaceErDiagramRoute,
   AppWorkspaceImportRoute: AppWorkspaceImportRoute,
+  AppWorkspaceInvalidObjectsRoute: AppWorkspaceInvalidObjectsRoute,
   AppWorkspaceMonitorRoute: AppWorkspaceMonitorRoute,
   AppWorkspaceQueryRoute: AppWorkspaceQueryRouteWithChildren,
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,

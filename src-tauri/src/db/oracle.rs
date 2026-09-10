@@ -9,10 +9,11 @@ use super::pool::PoolState;
 use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
-    ColumnInfo, CompileResult, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo, ForeignKeyInfo,
-    FunctionInfo, IndexInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
+    DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, QueryResult,
+    SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo,
+    TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -918,6 +919,114 @@ impl DatabaseAdapter for OracleAdapter {
             line,
             position,
         })
+    }
+
+    async fn list_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidObjectInfo>, String> {
+        let sql = format!(
+            "SELECT owner, object_name, object_type, status FROM all_objects WHERE status = 'INVALID' AND {} AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') ORDER BY object_type, object_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| {
+                let owner = s(r, 0);
+                let name = s(r, 1);
+                let object_type = s(r, 2);
+                InvalidObjectInfo {
+                    oid: format!("{owner}\u{1f}{name}\u{1f}{object_type}"),
+                    schema: owner,
+                    name,
+                    object_type: object_type.clone(),
+                    status: s(r, 3),
+                }
+            })
+            .collect())
+    }
+
+    async fn list_compile_errors(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<CompileErrorInfo>, String> {
+        let sql = format!(
+            "SELECT owner, name, type, line, position, text FROM all_errors WHERE {} ORDER BY owner, name, type, sequence",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| CompileErrorInfo {
+                schema: s(r, 0),
+                name: s(r, 1),
+                object_type: s(r, 2),
+                line: s(r, 3).parse::<i32>().ok(),
+                position: s(r, 4).parse::<i32>().ok(),
+                message: s(r, 5),
+            })
+            .collect())
+    }
+
+    async fn compile_invalid_objects(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<InvalidCompileOutcome>, String> {
+        let invalid = self.list_invalid_objects(schema).await?;
+        let mut out = Vec::new();
+        for item in invalid {
+            if item.object_type.eq_ignore_ascii_case("SYNONYM") {
+                out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: "INVALID".to_string(),
+                    message: Some("Synonyme können nicht kompiliert werden".to_string()),
+                    line: None,
+                    position: None,
+                });
+                continue;
+            }
+            let object_arg = match item.object_type.to_uppercase().as_str() {
+                "PACKAGE" => "package_spec",
+                "PACKAGE BODY" => "package_body",
+                "FUNCTION" => "function",
+                "PROCEDURE" => "procedure",
+                "TRIGGER" => "trigger",
+                "VIEW" => "view",
+                "MATERIALIZED VIEW" => "view",
+                "TYPE" => "type",
+                "TYPE BODY" => "type_body",
+                _ => "routine",
+            };
+            match self.compile_object(&item.oid, object_arg).await {
+                Ok(res) => out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: res.status,
+                    message: res.message,
+                    line: res.line,
+                    position: res.position,
+                }),
+                Err(e) => out.push(InvalidCompileOutcome {
+                    schema: item.schema,
+                    name: item.name,
+                    object_type: item.object_type,
+                    oid: item.oid,
+                    status: "INVALID".to_string(),
+                    message: Some(e),
+                    line: None,
+                    position: None,
+                }),
+            }
+        }
+        Ok(out)
     }
 
     async fn start_debug_session(
