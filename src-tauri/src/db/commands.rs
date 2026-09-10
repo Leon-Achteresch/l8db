@@ -230,6 +230,45 @@ pub async fn update_row_in_transaction(
 }
 
 #[tauri::command]
+pub async fn insert_row_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    values: std::collections::HashMap<String, Option<String>>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<serde_json::Value, String> {
+    tx_state
+        .insert_row(&tx_id, &schema, &table, &values)
+        .await
+}
+
+#[tauri::command]
+pub async fn duplicate_row_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    ctid: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<serde_json::Value, String> {
+    tx_state
+        .duplicate_row(&tx_id, &schema, &table, &ctid)
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_row_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    ctid: String,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<(), String> {
+    tx_state
+        .delete_row(&tx_id, &schema, &table, &ctid)
+        .await
+}
+
+#[tauri::command]
 pub async fn commit_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,

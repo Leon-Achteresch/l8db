@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { CodeIcon, TableIcon, ZapIcon } from "lucide-react";
+import { CodeIcon, PlusIcon, TableIcon, ZapIcon } from "lucide-react";
+import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
@@ -17,6 +19,9 @@ import {
   useTableRowsQuery,
   useTableRowCountQuery,
   useUpdateRowMutation,
+  useInsertRowMutation,
+  useDuplicateRowMutation,
+  useDeleteRowMutation,
   useViewsQuery,
   useForeignKeysQuery,
   PAGE_SIZE,
@@ -65,10 +70,43 @@ export function TableView() {
   );
   const { data: totalCount } = useTableRowCountQuery(schema, table, filter);
   const updateRowMutation = useUpdateRowMutation(schema, table);
+  const insertRowMutation = useInsertRowMutation(schema, table);
+  const duplicateRowMutation = useDuplicateRowMutation(schema, table);
+  const deleteRowMutation = useDeleteRowMutation(schema, table);
 
   const handleFilterChange = (newFilter: string) => {
     setFilter(newFilter);
     setPage(0);
+  };
+
+  const handleAddRow = async () => {
+    try {
+      await insertRowMutation.mutateAsync({});
+      toast.success("Neue Zeile hinzugefügt.");
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const handleDuplicateRow = async (ctid: string) => {
+    try {
+      await duplicateRowMutation.mutateAsync(ctid);
+      toast.success("Zeile dupliziert.");
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const handleDeleteRow = async (
+    ctid: string,
+    oldValues: Record<string, unknown>,
+  ) => {
+    try {
+      await deleteRowMutation.mutateAsync({ ctid, oldValues });
+      toast.success("Zeile gelöscht.");
+    } catch (err) {
+      toast.error(typeof err === "string" ? err : String(err));
+    }
   };
 
   const handleNavigateToTable = useMemo(() => {
@@ -163,6 +201,8 @@ export function TableView() {
         currentSchema={schema}
         currentTable={table}
         onNavigateToTable={handleNavigateToTable}
+        onDuplicateRow={isView ? undefined : handleDuplicateRow}
+        onDeleteRow={isView ? undefined : handleDeleteRow}
       />
     </div>
   );
@@ -215,6 +255,18 @@ export function TableView() {
             Trigger
           </TabsTrigger>
         </TabsList>
+        {tableTab === "data" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
+            onClick={handleAddRow}
+            disabled={insertRowMutation.isPending}
+          >
+            <PlusIcon className="size-3.5" />
+            Neue Zeile
+          </Button>
+        )}
       </div>
 
       <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">

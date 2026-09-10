@@ -7,10 +7,13 @@ import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
   beginTransaction,
   countTableRows,
+  deleteRowInTransaction,
+  duplicateRowInTransaction,
   fetchTableRows,
   getErSchema,
   getFunctionDefinition,
   getViewDefinition,
+  insertRowInTransaction,
   listAllColumns,
   listDatabases,
   listExtensions,
@@ -29,8 +32,10 @@ import {
 import {
   getTransactionForConnection,
   useTransactionStore,
+  type ActiveTransaction,
   type TransactionChange,
 } from "@/lib/transactions";
+import type { SavedConnection } from "@/lib/connections";
 
 const CONNECTION_QUERY_ROOTS = new Set([
   "databases",
@@ -505,6 +510,172 @@ export function useUpdateRowMutation(schema: string, table: string) {
           };
           return { ...old, rows: updatedRows };
         },
+      );
+    },
+  });
+}
+
+async function ensureTransaction(
+  connection: SavedConnection,
+  database: string | null,
+): Promise<ActiveTransaction> {
+  const store = useTransactionStore.getState();
+  const existing = getTransactionForConnection(connection.id);
+  if (existing) return existing;
+
+  const txId = await beginTransaction(
+    connection.kind,
+    connection.connectionString,
+    database ?? undefined,
+  );
+  const newTx: ActiveTransaction = {
+    txId,
+    connectionId: connection.id,
+    connectionName: connection.name,
+    database: database ?? undefined,
+    changes: [],
+    startedAt: Date.now(),
+  };
+  store.addTransaction(newTx);
+  return newTx;
+}
+
+function matchesTable(
+  queryKey: readonly unknown[],
+  root: string,
+  schema: string,
+  table: string,
+): boolean {
+  return queryKey[0] === root && queryKey[3] === schema && queryKey[4] === table;
+}
+
+export function useInsertRowMutation(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (values: Record<string, string | null>) => {
+      const store = useTransactionStore.getState();
+      const tx = await ensureTransaction(connection!, database ?? null);
+      const row = await insertRowInTransaction(tx.txId, schema, table, values);
+
+      const { __ctid__: ctid, ...rowValues } = row as {
+        __ctid__?: string;
+        [key: string]: unknown;
+      };
+
+      store.addChange(tx.txId, {
+        id: crypto.randomUUID(),
+        type: "insert",
+        timestamp: Date.now(),
+        schema,
+        table,
+        ctid: ctid,
+        rowValues,
+      });
+      store.setPanelOpen(true);
+
+      return { row };
+    },
+    onSuccess: ({ row }) => {
+      queryClient.setQueriesData<TableData>(
+        { predicate: (q) => matchesTable(q.queryKey, "rows", schema, table) },
+        (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
+      );
+      queryClient.setQueriesData<number>(
+        { predicate: (q) => matchesTable(q.queryKey, "count", schema, table) },
+        (old) => (typeof old === "number" ? old + 1 : old),
+      );
+    },
+  });
+}
+
+export function useDuplicateRowMutation(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ctid: string) => {
+      const store = useTransactionStore.getState();
+      const tx = await ensureTransaction(connection!, database ?? null);
+      const row = await duplicateRowInTransaction(tx.txId, schema, table, ctid);
+
+      const { __ctid__: newCtid, ...rowValues } = row as {
+        __ctid__?: string;
+        [key: string]: unknown;
+      };
+
+      store.addChange(tx.txId, {
+        id: crypto.randomUUID(),
+        type: "insert",
+        timestamp: Date.now(),
+        schema,
+        table,
+        ctid: newCtid,
+        rowValues,
+      });
+      store.setPanelOpen(true);
+
+      return { row };
+    },
+    onSuccess: ({ row }) => {
+      queryClient.setQueriesData<TableData>(
+        { predicate: (q) => matchesTable(q.queryKey, "rows", schema, table) },
+        (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
+      );
+      queryClient.setQueriesData<number>(
+        { predicate: (q) => matchesTable(q.queryKey, "count", schema, table) },
+        (old) => (typeof old === "number" ? old + 1 : old),
+      );
+    },
+  });
+}
+
+export function useDeleteRowMutation(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      ctid,
+      oldValues,
+    }: {
+      ctid: string;
+      oldValues: Record<string, unknown>;
+    }) => {
+      const store = useTransactionStore.getState();
+      const tx = await ensureTransaction(connection!, database ?? null);
+      await deleteRowInTransaction(tx.txId, schema, table, ctid);
+
+      store.addChange(tx.txId, {
+        id: crypto.randomUUID(),
+        type: "delete",
+        timestamp: Date.now(),
+        schema,
+        table,
+        ctid,
+        oldValues,
+      });
+      store.setPanelOpen(true);
+
+      return { ctid };
+    },
+    onSuccess: ({ ctid }) => {
+      queryClient.setQueriesData<TableData>(
+        { predicate: (q) => matchesTable(q.queryKey, "rows", schema, table) },
+        (old) =>
+          old
+            ? {
+                ...old,
+                rows: old.rows.filter(
+                  (r) => (r as Record<string, unknown>).__ctid__ !== ctid,
+                ),
+              }
+            : old,
+      );
+      queryClient.setQueriesData<number>(
+        { predicate: (q) => matchesTable(q.queryKey, "count", schema, table) },
+        (old) => (typeof old === "number" ? Math.max(0, old - 1) : old),
       );
     },
   });

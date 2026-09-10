@@ -141,3 +141,98 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 }
+
+.l8-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid oklch(0 0 0 / 8%);
+  box-shadow:
+    0 4px 24px -4px oklch(0 0 0 / 8%),
+    0 0 0 1px oklch(0 0 0 / 3%);
+  background: oklch(1 0 0 / 82%);
+  color: oklch(0.25 0 0);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark .l8-toast {
+  background: oklch(0.22 0 0 / 78%);
+  color: oklch(0.92 0 0);
+  border-color: oklch(1 0 0 / 8%);
+  box-shadow:
+    0 4px 24px -4px oklch(0 0 0 / 35%),
+    0 0 0 1px oklch(1 0 0 / 4%);
+}
+
+.l8-toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.l8-toast-title {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.l8-toast-description {
+  color: oklch(0.5 0 0);
+  font-size: 0.75rem;
+}
+
+.dark .l8-toast-description {
+  color: oklch(0.62 0 0);
+}
+
+.l8-toast--success .l8-toast-icon {
+  background: oklch(0.72 0.19 155 / 15%);
+  color: oklch(0.55 0.2 155);
+}
+
+.dark .l8-toast--success .l8-toast-icon {
+  background: oklch(0.72 0.19 155 / 12%);
+  color: oklch(0.78 0.17 155);
+}
+
+.l8-toast--error .l8-toast-icon {
+  background: oklch(0.63 0.24 25 / 12%);
+  color: oklch(0.58 0.24 25);
+}
+
+.dark .l8-toast--error .l8-toast-icon {
+  background: oklch(0.63 0.24 25 / 12%);
+  color: oklch(0.75 0.18 25);
+}
+
+.l8-toast--warning .l8-toast-icon {
+  background: oklch(0.8 0.16 80 / 15%);
+  color: oklch(0.7 0.16 70);
+}
+
+.dark .l8-toast--warning .l8-toast-icon {
+  background: oklch(0.8 0.16 80 / 12%);
+  color: oklch(0.82 0.14 80);
+}
+
+.l8-toast--info .l8-toast-icon {
+  background: oklch(0.6 0.18 250 / 12%);
+  color: oklch(0.55 0.2 250);
+}
+
+.dark .l8-toast--info .l8-toast-icon {
+  background: oklch(0.6 0.18 250 / 12%);
+  color: oklch(0.75 0.14 250);
+}

@@ -14,6 +14,21 @@ use super::{map_pg_err, quote_ident, QueryResult};
 
 static TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+fn validate_ctid(ctid: &str) -> Result<String, String> {
+    let ctid = ctid.trim();
+    let valid = ctid.starts_with('(') && ctid.ends_with(')') && {
+        let inner = &ctid[1..ctid.len() - 1];
+        let parts: Vec<&str> = inner.splitn(2, ',').collect();
+        parts.len() == 2
+            && parts[0].trim().parse::<u64>().is_ok()
+            && parts[1].trim().parse::<u64>().is_ok()
+    };
+    if !valid {
+        return Err("Ungültige ctid".to_string());
+    }
+    Ok(ctid.to_string())
+}
+
 struct TransactionEntry {
     conn: Mutex<PooledConnection<'static, PostgresConnectionManager<NoTls>>>,
 }
@@ -137,18 +152,7 @@ impl TransactionManager {
                 .clone()
         };
 
-        let ctid = ctid.trim();
-        let ctid_valid = ctid.starts_with('(') && ctid.ends_with(')') && {
-            let inner = &ctid[1..ctid.len() - 1];
-            let parts: Vec<&str> = inner.splitn(2, ',').collect();
-            parts.len() == 2
-                && parts[0].trim().parse::<u64>().is_ok()
-                && parts[1].trim().parse::<u64>().is_ok()
-        };
-        if !ctid_valid {
-            return Err("Ungültige ctid".to_string());
-        }
-
+        let ctid = validate_ctid(ctid)?;
         let conn = entry.conn.lock().await;
 
         let col_rows = conn
@@ -192,6 +196,164 @@ impl TransactionManager {
             Some(row) => Ok(row.get::<_, String>(0)),
             None => Err("Zeile nicht gefunden".to_string()),
         }
+    }
+
+    pub async fn insert_row(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, Option<String>>,
+    ) -> Result<serde_json::Value, String> {
+        let entry = {
+            self.transactions
+                .lock()
+                .await
+                .get(tx_id)
+                .ok_or_else(|| "Transaktion nicht gefunden".to_string())?
+                .clone()
+        };
+
+        let conn = entry.conn.lock().await;
+
+        let col_rows = conn
+            .query(
+                "SELECT column_name FROM information_schema.columns \
+                 WHERE table_schema = $1 AND table_name = $2",
+                &[&schema, &table],
+            )
+            .await
+            .map_err(map_pg_err)?;
+
+        let valid_columns: std::collections::HashSet<String> =
+            col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
+
+        let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+
+        let sql = if values.is_empty() {
+            format!(
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, ctid AS __l8_ctid) \
+                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+            )
+        } else {
+            let mut cols: Vec<String> = Vec::new();
+            let mut vals: Vec<String> = Vec::new();
+            for (col, val) in values {
+                if !valid_columns.contains(col) {
+                    return Err(format!("Unbekannte Spalte: {col}"));
+                }
+                cols.push(quote_ident(col));
+                vals.push(match val {
+                    None => "NULL".to_string(),
+                    Some(s) => format!("'{}'", s.replace('\'', "''")),
+                });
+            }
+            format!(
+                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, ctid AS __l8_ctid) \
+                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+                cols.join(", "),
+                vals.join(", "),
+            )
+        };
+
+        let rows = conn.query(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+        match rows.first() {
+            Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+            None => Err("Zeile konnte nicht eingefügt werden".to_string()),
+        }
+    }
+
+    pub async fn duplicate_row(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        ctid: &str,
+    ) -> Result<serde_json::Value, String> {
+        let entry = {
+            self.transactions
+                .lock()
+                .await
+                .get(tx_id)
+                .ok_or_else(|| "Transaktion nicht gefunden".to_string())?
+                .clone()
+        };
+
+        let ctid = validate_ctid(ctid)?;
+        let conn = entry.conn.lock().await;
+
+        let col_rows = conn
+            .query(
+                "SELECT column_name FROM information_schema.columns \
+                 WHERE table_schema = $1 AND table_name = $2 \
+                 AND is_generated <> 'ALWAYS' AND is_identity <> 'YES' \
+                 AND (column_default IS NULL OR column_default NOT LIKE 'nextval(%') \
+                 ORDER BY ordinal_position",
+                &[&schema, &table],
+            )
+            .await
+            .map_err(map_pg_err)?;
+
+        let cols: Vec<String> = col_rows
+            .iter()
+            .map(|r| quote_ident(&r.get::<_, String>(0)))
+            .collect();
+
+        let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+
+        let sql = if cols.is_empty() {
+            format!(
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, ctid AS __l8_ctid) \
+                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+            )
+        } else {
+            let col_list = cols.join(", ");
+            format!(
+                "WITH ins AS (INSERT INTO {target} ({col_list}) \
+                 SELECT {col_list} FROM {target} WHERE ctid = '{ctid}'::tid \
+                 RETURNING *, ctid AS __l8_ctid) \
+                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+            )
+        };
+
+        let rows = conn.query(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+        match rows.first() {
+            Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+            None => Err("Zeile konnte nicht dupliziert werden".to_string()),
+        }
+    }
+
+    pub async fn delete_row(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        ctid: &str,
+    ) -> Result<(), String> {
+        let entry = {
+            self.transactions
+                .lock()
+                .await
+                .get(tx_id)
+                .ok_or_else(|| "Transaktion nicht gefunden".to_string())?
+                .clone()
+        };
+
+        let ctid = validate_ctid(ctid)?;
+        let conn = entry.conn.lock().await;
+
+        let sql = format!(
+            "DELETE FROM {}.{} WHERE ctid = '{}'::tid",
+            quote_ident(schema),
+            quote_ident(table),
+            ctid,
+        );
+
+        let affected = conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+        if affected == 0 {
+            return Err("Zeile nicht gefunden".to_string());
+        }
+        Ok(())
     }
 
     pub async fn commit(&self, tx_id: &str) -> Result<(), String> {

@@ -364,6 +364,33 @@ export async function updateRowInTransaction(
   return invoke("update_row_in_transaction", { txId, schema, table, ctid, updates });
 }
 
+export async function insertRowInTransaction(
+  txId: string,
+  schema: string,
+  table: string,
+  values: Record<string, string | null>,
+): Promise<Record<string, unknown>> {
+  return invoke("insert_row_in_transaction", { txId, schema, table, values });
+}
+
+export async function duplicateRowInTransaction(
+  txId: string,
+  schema: string,
+  table: string,
+  ctid: string,
+): Promise<Record<string, unknown>> {
+  return invoke("duplicate_row_in_transaction", { txId, schema, table, ctid });
+}
+
+export async function deleteRowInTransaction(
+  txId: string,
+  schema: string,
+  table: string,
+  ctid: string,
+): Promise<void> {
+  await invoke("delete_row_in_transaction", { txId, schema, table, ctid });
+}
+
 export async function commitTransaction(txId: string): Promise<void> {
   await invoke("commit_transaction", { txId });
 }
