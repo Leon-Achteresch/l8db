@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
 
@@ -29,6 +30,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAboutRoute = AppAboutRouteImport.update({
   id: '/about',
   path: '/about',
@@ -44,11 +50,13 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/settings': typeof AppSettingsRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
@@ -57,19 +65,26 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/connections': typeof ConnectionsRoute
   '/_app/about': typeof AppAboutRoute
+  '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/connections' | '/about' | '/tables/$schema/$table'
+  fullPaths:
+    | '/'
+    | '/connections'
+    | '/about'
+    | '/settings'
+    | '/tables/$schema/$table'
   fileRoutesByTo: FileRoutesByTo
-  to: '/connections' | '/about' | '/' | '/tables/$schema/$table'
+  to: '/connections' | '/about' | '/settings' | '/' | '/tables/$schema/$table'
   id:
     | '__root__'
     | '/_app'
     | '/connections'
     | '/_app/about'
+    | '/_app/settings'
     | '/_app/'
     | '/_app/tables/$schema/$table'
   fileRoutesById: FileRoutesById
@@ -102,6 +117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/about': {
       id: '/_app/about'
       path: '/about'
@@ -121,12 +143,14 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
+  AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
+  AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
 }

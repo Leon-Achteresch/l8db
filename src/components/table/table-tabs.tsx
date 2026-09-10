@@ -3,7 +3,7 @@ import type * as React from "react";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { CopyIcon, XIcon } from "lucide-react";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
-import { useSortable, isSortableOperation } from "@dnd-kit/react/sortable";
+import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 
 import { cn } from "@/lib/utils";
@@ -115,7 +115,8 @@ function SortableTab({
 
 const sensors = [
   PointerSensor.configure({
-    activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })],
+    activationConstraints: () => [new PointerActivationConstraints.Distance({ value: 5 })],
+    preventActivation: () => false,
   }),
 ];
 
@@ -200,8 +201,11 @@ export function TableTabs() {
       sensors={sensors}
       onDragEnd={(event) => {
         const { operation, canceled } = event;
-        if (!canceled && isSortableOperation(operation) && operation.source) {
-          reorderTabs(operation.source.initialIndex, operation.source.index);
+        if (!canceled && isSortable(operation.source)) {
+          const source = operation.source;
+          if (source.initialIndex !== source.index) {
+            reorderTabs(source.initialIndex, source.index);
+          }
         }
       }}
     >
