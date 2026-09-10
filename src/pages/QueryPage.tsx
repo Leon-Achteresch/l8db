@@ -10,12 +10,22 @@ import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, listAllColumns, listTables, type QueryResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
+import { useTableTabs } from "@/lib/table-tabs";
 
-export function QueryPage() {
+interface QueryPageProps {
+  tabId: string;
+}
+
+export function QueryPage({ tabId }: QueryPageProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
 
-  const [sql, setSql] = useState("SELECT * FROM ");
+  const sql = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? tab.sql : "";
+  });
+  const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
+
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -83,7 +93,9 @@ export function QueryPage() {
     const onMove = (ev: PointerEvent) => {
       if (!dragStartRef.current) return;
       const delta = ev.clientY - dragStartRef.current.y;
-      setEditorHeight(Math.max(80, Math.min(700, dragStartRef.current.h + delta)));
+      setEditorHeight(
+        Math.max(80, Math.min(700, dragStartRef.current.h + delta)),
+      );
     };
 
     const onUp = () => {
@@ -106,17 +118,19 @@ export function QueryPage() {
         `${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`,
       );
     }
-    if (result.rows_affected !== null && result.rows_affected !== undefined && result.columns.length === 0) {
-      parts.push(
-        `${result.rows_affected} betroffen`,
-      );
+    if (
+      result.rows_affected !== null &&
+      result.rows_affected !== undefined &&
+      result.columns.length === 0
+    ) {
+      parts.push(`${result.rows_affected} betroffen`);
     }
     parts.push(`${result.execution_time_ms} ms`);
     return parts.join(" · ");
   })();
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+    <div className="flex h-full w-full flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <Button
           size="sm"
@@ -135,7 +149,7 @@ export function QueryPage() {
           onClick={() => {
             setResult(null);
             setError(null);
-            setSql("");
+            updateQuerySql(tabId, "");
           }}
           disabled={isRunning}
         >
@@ -157,13 +171,10 @@ export function QueryPage() {
         )}
       </div>
 
-      <div
-        style={{ height: editorHeight }}
-        className="w-full min-w-0 shrink-0 overflow-hidden"
-      >
+      <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
         <QueryEditorPane
           value={sql}
-          onChange={setSql}
+          onChange={(v) => updateQuerySql(tabId, v)}
           onRun={handleRun}
           registry={registry}
         />
