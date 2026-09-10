@@ -921,6 +921,19 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = name;
         Err(unsupported("Schema-Kopie"))
     }
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<u64, String> {
+        let _ = source_schema;
+        let _ = target_schema;
+        let _ = name;
+        let _ = limit;
+        Err(unsupported("Schema-Kopie"))
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

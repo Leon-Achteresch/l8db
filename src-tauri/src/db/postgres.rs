@@ -2581,6 +2581,71 @@ impl DatabaseAdapter for PostgresAdapter {
         Ok(ddl)
     }
 
+    async fn copy_schema_table_data(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        name: &str,
+        limit: i64,
+    ) -> Result<u64, String> {
+        self.ensure_writable()?;
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        if source_schema == target_schema {
+            return Err("Quell- und Zielschema sind identisch.".to_string());
+        }
+        if limit <= 0 {
+            return Err("Die Zeilenbegrenzung muss größer als 0 sein.".to_string());
+        }
+        let limit = limit.min(SCHEMA_COPY_MAX_ROWS);
+        let source_columns = self.list_table_columns_detailed(source_schema, name).await?;
+        if source_columns.is_empty() {
+            return Err(format!(
+                "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+            ));
+        }
+        let target_columns = self.list_table_columns_detailed(target_schema, name).await?;
+        if target_columns.is_empty() {
+            return Err(format!(
+                "Tabelle {target_schema}.{name} existiert nicht. Zuerst die Struktur kopieren."
+            ));
+        }
+        let shared: Vec<String> = source_columns
+            .iter()
+            .filter(|column| {
+                target_columns
+                    .iter()
+                    .any(|other| other.name == column.name)
+            })
+            .map(|column| quote_ident(&column.name))
+            .collect();
+        if shared.is_empty() {
+            return Err(format!(
+                "Keine gemeinsamen Spalten zwischen {source_schema}.{name} und {target_schema}.{name}."
+            ));
+        }
+        let columns = shared.join(", ");
+        let sql = format!(
+            "INSERT INTO {}.{} ({}) SELECT {} FROM {}.{} LIMIT {}",
+            quote_ident(target_schema),
+            quote_ident(name),
+            columns,
+            columns,
+            quote_ident(source_schema),
+            quote_ident(name),
+            limit
+        );
+        let mut conn = self.get_conn().await?;
+        self.timed(async move {
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            let affected = tx.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            tx.commit().await.map_err(map_pg_err)?;
+            Ok(affected)
+        })
+        .await
+    }
+
     async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
         build_object_ddl(req)
     }
@@ -3589,6 +3654,8 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 }
+
+const SCHEMA_COPY_MAX_ROWS: i64 = 100_000;
 
 fn normalize_definition(definition: &str) -> String {
     definition

@@ -1852,3 +1852,24 @@ pub async fn execute_schema_object_copy(
     .execute_schema_object_copy(&source_schema, &target_schema, &object_type, &name)
     .await
 }
+
+#[tauri::command]
+pub async fn copy_schema_table_data(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    source_schema: String,
+    target_schema: String,
+    name: String,
+    limit: i64,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<u64, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .copy_schema_table_data(&source_schema, &target_schema, &name, limit)
+    .await
+}
