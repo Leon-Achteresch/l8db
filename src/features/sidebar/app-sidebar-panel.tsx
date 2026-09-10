@@ -11,6 +11,7 @@ import {
   FileCodeIcon,
   FilterIcon,
   LayersIcon,
+  LinkIcon,
   ListIcon,
   ListOrderedIcon,
   NetworkIcon,
@@ -100,6 +101,7 @@ import { useCompileObject } from "@/features/functions/use-compile-object";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
+import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 import { TableSearchModal } from "@/features/sidebar/table-search-modal";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
@@ -124,6 +126,7 @@ import {
   useExtensionsQuery,
   useFunctionsQuery,
   useProceduresQuery,
+  useSynonymsQuery,
   useMaterializedViewsQuery,
   useRolesQuery,
   useSchemasQuery,
@@ -180,6 +183,12 @@ export function AppSidebarPanel() {
     error: proceduresErrorValue,
   } = useProceduresQuery();
   const {
+    data: synonyms,
+    isLoading: synonymsLoading,
+    isError: synonymsError,
+    error: synonymsErrorValue,
+  } = useSynonymsQuery();
+  const {
     data: extensions,
     isLoading: extensionsLoading,
     isError: extensionsError,
@@ -208,6 +217,7 @@ export function AppSidebarPanel() {
     | "functions"
     | "procedures"
     | "packages"
+    | "synonyms"
     | "extensions"
     | "roles"
     | "sequences"
@@ -231,6 +241,7 @@ export function AppSidebarPanel() {
       icon: PackageIcon,
       enabled: Boolean(packages?.length),
     },
+    { value: "synonyms", label: "Synonyme", icon: LinkIcon, enabled: caps.synonyms },
     { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
     { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
     { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
@@ -441,7 +452,9 @@ export function AppSidebarPanel() {
                     ? "Prozeduren"
                     : sidebarTab === "packages"
                       ? "Packages"
-                      : sidebarTab === "extensions"
+                      : sidebarTab === "synonyms"
+                        ? "Synonyme"
+                        : sidebarTab === "extensions"
                         ? "Packages"
                         : sidebarTab === "roles"
                           ? "Benutzer & Rollen"
@@ -504,6 +517,13 @@ export function AppSidebarPanel() {
                 isLoading={functionsLoading}
                 isError={functionsError}
                 error={functionsErrorValue}
+              />
+            ) : sidebarTab === "synonyms" ? (
+              <SidebarSynonymList
+                items={synonyms}
+                isLoading={synonymsLoading}
+                isError={synonymsError}
+                error={synonymsErrorValue}
               />
             ) : sidebarTab === "extensions" ? (
               <SidebarExtensionList

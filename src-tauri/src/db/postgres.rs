@@ -8,20 +8,25 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, SimpleQueryMessage};
 
 use super::pool::{PoolState, PoolUse};
+use super::server_output::{self, ServerMessage};
 use super::{
     map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
     AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
     AvailableExtensionInfo, ColumnInfo, CompileResult, ConnectionConfig, ConstraintInfo,
     CreateRoleOptions,
-    DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
+    DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo,
-    ColumnMatch, RolePrivileges, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode, TableData,
+    ColumnMatch, RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch,
+    SslMode, TableData,
     TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
 const SEARCH_SNIPPET_LEN: usize = 240;
+
+const PG_CRON_MISSING: &str =
+    "Die Erweiterung pg_cron ist in dieser Datenbank nicht installiert. Scheduler-Jobs stehen daher nicht zur Verfügung.";
 
 pub fn like_pattern(term: &str) -> String {
     let mut escaped = String::with_capacity(term.len() + 2);
@@ -424,6 +429,277 @@ impl DatabaseAdapter for PostgresAdapter {
             .collect())
     }
 
+    async fn list_used_by(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<DependencyInfo>, String> {
+        let conn = self.get_meta().await?;
+        let oid_row = conn
+            .query_opt(
+                "SELECT c.oid::text FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2",
+                &[&schema, &name],
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Systemkatalog nicht lesbar (fehlende Leserechte?): {}",
+                    map_pg_err(e)
+                )
+            })?;
+        let Some(oid_row) = oid_row else {
+            return Err(format!(
+                "Objekt {schema}.{name} wurde nicht gefunden oder ist für diesen Benutzer nicht sichtbar."
+            ));
+        };
+        let oid: String = oid_row.get(0);
+
+        let mut out: Vec<DependencyInfo> = Vec::new();
+
+        let views = self
+            .timed(async {
+                conn.query(
+                    "SELECT DISTINCT dn.nspname, dc.relname, dc.oid::text, \
+                            CASE dc.relkind WHEN 'm' THEN 'materialized_view'::text \
+                                 ELSE 'view'::text END \
+                     FROM pg_depend d \
+                     JOIN pg_rewrite r ON r.oid = d.objid \
+                     JOIN pg_class dc ON dc.oid = r.ev_class \
+                     JOIN pg_namespace dn ON dn.oid = dc.relnamespace \
+                     WHERE d.refobjid = $1::text::oid \
+                       AND d.classid = 'pg_rewrite'::regclass \
+                       AND dc.relkind IN ('v', 'm') \
+                       AND dc.oid <> $1::text::oid \
+                     ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Abhängige Views nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in views {
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: row.get(3),
+                status: "gültig".to_string(),
+                relation: "View-Definition".to_string(),
+                oid: row.get(2),
+                detail: String::new(),
+            });
+        }
+
+        let fks = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, c.relname, c.oid::text, con.conname \
+                     FROM pg_constraint con \
+                     JOIN pg_class c ON c.oid = con.conrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE con.contype = 'f' AND con.confrelid = $1::text::oid \
+                     ORDER BY 1, 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Fremdschlüssel nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in fks {
+            let constraint: String = row.get(3);
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: "table".to_string(),
+                status: "gültig".to_string(),
+                relation: "Fremdschlüssel".to_string(),
+                oid: row.get(2),
+                detail: constraint,
+            });
+        }
+
+        let triggers = self
+            .timed(async {
+                conn.query(
+                    "SELECT n.nspname, t.tgname, np.nspname, p.proname \
+                     FROM pg_trigger t \
+                     JOIN pg_class c ON c.oid = t.tgrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     JOIN pg_proc p ON p.oid = t.tgfoid \
+                     JOIN pg_namespace np ON np.oid = p.pronamespace \
+                     WHERE t.tgrelid = $1::text::oid AND NOT t.tgisinternal \
+                     ORDER BY 2",
+                    &[&oid],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Trigger nicht lesbar (fehlende Leserechte?): {}",
+                        map_pg_err(e)
+                    )
+                })
+            })
+            .await?;
+        for row in triggers {
+            let fn_schema: String = row.get(2);
+            let fn_name: String = row.get(3);
+            out.push(DependencyInfo {
+                owner: row.get(0),
+                name: row.get(1),
+                object_type: "trigger".to_string(),
+                status: "gültig".to_string(),
+                relation: "Trigger".to_string(),
+                oid: String::new(),
+                detail: format!("{fn_schema}.{fn_name}()"),
+            });
+        }
+
+        drop(conn);
+        let matches = self.search_source(None, name, 200).await.unwrap_or_default();
+        for m in matches {
+            if m.schema == schema && m.name == name {
+                continue;
+            }
+            if out
+                .iter()
+                .any(|dep| dep.owner == m.schema && dep.name == m.name)
+            {
+                continue;
+            }
+            out.push(DependencyInfo {
+                owner: m.schema,
+                name: m.name,
+                object_type: m.object_type,
+                status: "gültig".to_string(),
+                relation: "Quelltext".to_string(),
+                oid: m.oid,
+                detail: format!("Zeile {}: {}", m.line, m.snippet.trim()),
+            });
+        }
+
+        Ok(out)
+    }
+
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        let conn = self.get_meta().await?;
+        let installed = conn
+            .query_opt("SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'", &[])
+            .await
+            .map_err(map_pg_err)?;
+        if installed.is_none() {
+            return Err(PG_CRON_MISSING.to_string());
+        }
+        let with_details = conn
+            .query(
+                "SELECT j.jobid::text, j.jobname, j.schedule, j.command, j.active, \
+                        to_char(r.start_time, 'YYYY-MM-DD HH24:MI:SS'), r.status, r.return_message \
+                 FROM cron.job j \
+                 LEFT JOIN LATERAL ( \
+                     SELECT d.start_time, d.status, d.return_message \
+                     FROM cron.job_run_details d \
+                     WHERE d.jobid = j.jobid \
+                     ORDER BY d.start_time DESC LIMIT 1 \
+                 ) r ON true \
+                 ORDER BY j.jobid",
+                &[],
+            )
+            .await;
+        let rows = match with_details {
+            Ok(rows) => rows,
+            Err(_) => conn
+                .query(
+                    "SELECT jobid::text, jobname, schedule, command, active, \
+                            NULL::text, NULL::text, NULL::text \
+                     FROM cron.job ORDER BY jobid",
+                    &[],
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "pg_cron-Jobs sind nicht lesbar (fehlende Rechte auf cron.job?): {}",
+                        map_pg_err(e)
+                    )
+                })?,
+        };
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let id: String = row.get(0);
+                let name: Option<String> = row.get(1);
+                let status: Option<String> = row.get(6);
+                let message: Option<String> = row.get(7);
+                let failed = status
+                    .as_deref()
+                    .map(|s| !s.eq_ignore_ascii_case("succeeded"))
+                    .unwrap_or(false);
+                SchedulerJobInfo {
+                    owner: String::new(),
+                    name: name.unwrap_or_else(|| format!("job {id}")),
+                    enabled: row.get(4),
+                    state: if row.get::<_, bool>(4) {
+                        "AKTIV".to_string()
+                    } else {
+                        "INAKTIV".to_string()
+                    },
+                    schedule: row.get(2),
+                    command: row.get(3),
+                    last_run: row.get(5),
+                    last_status: status,
+                    last_error: if failed { message } else { None },
+                    next_run: None,
+                    id,
+                }
+            })
+            .collect())
+    }
+
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        conn.execute(
+            "SELECT cron.alter_job(job_id := $1::text::bigint, active := $2)",
+            &[&job_id, &enabled],
+        )
+        .await
+        .map_err(|e| {
+            format!(
+                "Job konnte nicht geändert werden (pg_cron vorhanden und Rechte gesetzt?): {}",
+                map_pg_err(e)
+            )
+        })?;
+        Ok(())
+    }
+
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        let row = conn
+            .query_opt(
+                "SELECT command FROM cron.job WHERE jobid = $1::text::bigint",
+                &[&job_id],
+            )
+            .await
+            .map_err(map_pg_err)?;
+        let Some(row) = row else {
+            return Err(format!("pg_cron-Job {job_id} existiert nicht mehr."));
+        };
+        let command: String = row.get(0);
+        conn.batch_execute(&command)
+            .await
+            .map_err(|e| format!("Job-Kommando fehlgeschlagen: {}", map_pg_err(e)))
+    }
+
     async fn fetch_rows(
         &self,
         schema: &str,
@@ -741,6 +1017,13 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(client) =
+            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
+        {
+            return self
+                .timed(server_output::pg_run_query(&client, sql, self.read_only))
+                .await;
+        }
         let conn = self.get_conn().await?;
         let start = std::time::Instant::now();
         if self.read_only {
@@ -2195,6 +2478,15 @@ impl DatabaseAdapter for PostgresAdapter {
         self.execute_script_impl(sql).await
     }
 
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        server_output::set_enabled(&self.pool_key, enabled);
+        Ok(())
+    }
+
+    async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
+        Ok(server_output::take(&self.pool_key))
+    }
+
     async fn preview_create_table_ddl(
         &self,
         req: &super::CreateTableRequest,
@@ -3199,6 +3491,11 @@ impl PostgresAdapter {
         sql: &str,
     ) -> Result<Vec<super::ScriptStatementResult>, String> {
         use super::ScriptStatementResult;
+        if let Some(client) =
+            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
+        {
+            return server_output::pg_run_script(&client, sql, self.read_only).await;
+        }
         let statements: Vec<&str> = sql
             .split(';')
             .map(|s| s.trim())

@@ -28,6 +28,9 @@ import {
   listProcedures,
   listIndexes,
   listLocks,
+  listSchedulerJobs,
+  listSynonyms,
+  listUsedBy,
   listMaterializedViews,
   listPublications,
   listRolePrivileges,
@@ -91,6 +94,9 @@ const CONNECTION_QUERY_ROOTS = new Set([
   "locks",
   "enums",
   "overview",
+  "used-by",
+  "synonyms",
+  "scheduler-jobs",
 ]);
 
 function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
@@ -951,6 +957,56 @@ export function useLocksQuery(refetchInterval = 5000) {
       listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "locks"),
     refetchInterval,
+  });
+}
+
+export function useUsedByQuery(schema: string, name: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["used-by", connection?.id, database, schema, name],
+    queryFn: () =>
+      listUsedBy(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        name,
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "used_by") && schema.length > 0 && name.length > 0,
+  });
+}
+
+export function useSynonymsQuery(schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["synonyms", connection?.id, database, schema ?? ""],
+    queryFn: () =>
+      listSynonyms(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+        schema,
+      ),
+    enabled: supports(connection, "synonyms"),
+  });
+}
+
+export function useSchedulerJobsQuery(refetchInterval = 15000) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["scheduler-jobs", connection?.id, database],
+    queryFn: () =>
+      listSchedulerJobs(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "scheduler_jobs"),
+    refetchInterval,
+    retry: false,
   });
 }
 

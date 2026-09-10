@@ -1,5 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ActivityIcon, ChevronDownIcon, ChevronRightIcon, LockIcon } from "lucide-react";
+import {
+  ActivityIcon,
+  CalendarClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LockIcon,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -24,6 +30,7 @@ import {
 import { useSessionViewPrefs } from "@/lib/session-view-prefs";
 import { effectiveConnectionString } from "@/lib/ssh";
 
+import { SchedulerJobsPanel } from "./scheduler-jobs-panel";
 import { SessionRow } from "./session-row";
 import { SessionsFilterBar } from "./sessions-filter-bar";
 
@@ -170,7 +177,19 @@ export function SessionsView() {
             <LockIcon className="size-3.5" />
             Locks ({locks?.length ?? 0})
           </TabsTrigger>
+          {capabilities?.scheduler_jobs && (
+            <TabsTrigger value="jobs" className="gap-1.5 text-xs">
+              <CalendarClockIcon className="size-3.5" />
+              Jobs
+            </TabsTrigger>
+          )}
         </TabsList>
+
+        <TabsContent value="jobs" className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
+            <SchedulerJobsPanel />
+          </div>
+        </TabsContent>
 
         <TabsContent value="sessions" className="flex min-h-0 flex-1 flex-col gap-2">
           <SessionsFilterBar

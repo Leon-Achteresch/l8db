@@ -16,6 +16,7 @@ mod postgres;
 pub mod provider;
 mod redis;
 pub mod secrets;
+pub mod server_output;
 mod sqlite;
 pub mod ssh;
 pub mod transaction;
@@ -171,6 +172,43 @@ pub struct SourceMatch {
     pub line: i32,
     pub snippet: String,
     pub occurrences: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DependencyInfo {
+    pub owner: String,
+    pub name: String,
+    pub object_type: String,
+    pub status: String,
+    pub relation: String,
+    pub oid: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SynonymInfo {
+    pub owner: String,
+    pub name: String,
+    pub target_owner: String,
+    pub target_name: String,
+    pub target_type: String,
+    pub db_link: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SchedulerJobInfo {
+    pub id: String,
+    pub owner: String,
+    pub name: String,
+    pub enabled: bool,
+    pub state: String,
+    pub schedule: String,
+    pub command: String,
+    pub last_run: Option<String>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub next_run: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -441,6 +479,29 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = (schema, term, limit);
         Err(unsupported("Quelltextsuche"))
     }
+    async fn list_used_by(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<DependencyInfo>, String> {
+        let _ = (schema, name);
+        Err(unsupported("Verwendungsnachweis"))
+    }
+    async fn list_synonyms(&self, schema: Option<&str>) -> Result<Vec<SynonymInfo>, String> {
+        let _ = schema;
+        Err(unsupported("Synonyme"))
+    }
+    async fn list_scheduler_jobs(&self) -> Result<Vec<SchedulerJobInfo>, String> {
+        Err(unsupported("Scheduler-Jobs"))
+    }
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        let _ = (job_id, enabled);
+        Err(unsupported("Scheduler-Jobs"))
+    }
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        let _ = job_id;
+        Err(unsupported("Scheduler-Jobs"))
+    }
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
         Err(unsupported("Extensions"))
     }
@@ -636,6 +697,13 @@ pub trait DatabaseAdapter: Send + Sync {
             });
         }
         Ok(results)
+    }
+    async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
+        let _ = enabled;
+        Err(unsupported("Server-Ausgabe"))
+    }
+    async fn take_server_output(&self) -> Result<Vec<server_output::ServerMessage>, String> {
+        Err(unsupported("Server-Ausgabe"))
     }
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
         let _ = req;
