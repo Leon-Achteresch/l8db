@@ -577,9 +577,10 @@ export function QueryEditorPane({
       scrollBeyondLastLine: false,
       wordWrap: "on",
       fontSize: 13,
+      lineHeight: 24,
       fontFamily:
         "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      padding: { top: 12, bottom: 12 },
+      padding: { top: 16, bottom: 16 },
       renderLineHighlight: "line",
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,

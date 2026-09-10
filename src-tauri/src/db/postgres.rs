@@ -1,48 +1,86 @@
 use std::str::FromStr;
+use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio_postgres::{Client, Config, NoTls, SimpleQueryMessage};
+use bb8::PooledConnection;
+use bb8_postgres::PostgresConnectionManager;
+use tokio::time::timeout;
+use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
+use super::pool::PoolState;
 use super::{ColumnInfo, ConnectionConfig, DatabaseAdapter, QueryResult, TableData, TableInfo};
+
+const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct PostgresAdapter {
     config: Config,
+    pool_state: PoolState,
+    pool_key: String,
 }
 
 impl PostgresAdapter {
-    pub fn from_config(config: ConnectionConfig) -> Self {
+    pub fn from_config(config: ConnectionConfig, pool_state: PoolState) -> Self {
         let mut pg = Config::new();
         pg.host(&config.host)
             .port(config.port)
             .user(&config.user)
             .password(&config.password)
-            .dbname(&config.database);
-        Self { config: pg }
+            .dbname(&config.database)
+            .connect_timeout(Duration::from_secs(10));
+        let pool_key = format!(
+            "{}:{}@{}:{}/{}",
+            config.user, config.password, config.host, config.port, config.database
+        );
+        Self {
+            config: pg,
+            pool_state,
+            pool_key,
+        }
     }
 
     pub fn from_connection_string(
         connection_string: &str,
         database: Option<&str>,
+        pool_state: PoolState,
     ) -> Result<Self, String> {
-        let mut config = Config::from_str(connection_string).map_err(|error| error.to_string())?;
+        let mut config =
+            Config::from_str(connection_string).map_err(|e| format!("Ungültiger Connection String: {e}"))?;
         if let Some(database) = database {
             if !database.is_empty() {
                 config.dbname(database);
             }
         }
-        Ok(Self { config })
+        config.connect_timeout(Duration::from_secs(10));
+        let pool_key = match database {
+            Some(db) if !db.is_empty() => format!("{connection_string}##{db}"),
+            _ => connection_string.to_string(),
+        };
+        Ok(Self {
+            config,
+            pool_state,
+            pool_key,
+        })
     }
 
-    async fn connect(&self) -> Result<(Client, tauri::async_runtime::JoinHandle<()>), String> {
-        let (client, connection) = self
-            .config
-            .connect(NoTls)
+    async fn get_conn(
+        &self,
+    ) -> Result<PooledConnection<'static, PostgresConnectionManager<NoTls>>, String> {
+        let pool = self
+            .pool_state
+            .get_pool(&self.pool_key, self.config.clone())
+            .await?;
+        pool.get_owned()
             .await
-            .map_err(|error| error.to_string())?;
-        let handle = tauri::async_runtime::spawn(async move {
-            let _ = connection.await;
-        });
-        Ok((client, handle))
+            .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
+    }
+
+    async fn timed<F, T>(&self, future: F) -> Result<T, String>
+    where
+        F: std::future::Future<Output = Result<T, String>>,
+    {
+        timeout(QUERY_TIMEOUT, future)
+            .await
+            .map_err(|_| "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string())?
     }
 }
 
@@ -50,39 +88,57 @@ fn quote_ident(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+fn map_pg_err(e: tokio_postgres::Error) -> String {
+    if let Some(db_err) = e.as_db_error() {
+        let mut msg = format!("{}: {}", db_err.severity(), db_err.message());
+        if let Some(detail) = db_err.detail() {
+            msg.push_str(&format!("\nDetail: {detail}"));
+        }
+        if let Some(hint) = db_err.hint() {
+            msg.push_str(&format!("\nHinweis: {hint}"));
+        }
+        if let Some(pos) = db_err.position() {
+            msg.push_str(&format!("\nPosition: {pos:?}"));
+        }
+        msg
+    } else {
+        format!("Datenbankfehler: {e}")
+    }
+}
+
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let (client, handle) = self.connect().await?;
-        let result = client
-            .simple_query("SELECT 1")
-            .await
-            .map(|_| ())
-            .map_err(|error| error.to_string());
-        handle.abort();
-        result
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.simple_query("SELECT 1")
+                .await
+                .map(|_| ())
+                .map_err(map_pg_err)
+        })
+        .await
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
-        let (client, handle) = self.connect().await?;
-        let result = client
-            .query(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query(
                 "SELECT datname FROM pg_database \
                  WHERE datistemplate = false AND datallowconn = true \
                  ORDER BY datname",
                 &[],
             )
             .await
-            .map_err(|error| error.to_string())
-            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect());
-        handle.abort();
-        result
+            .map_err(map_pg_err)
+            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect())
+        })
+        .await
     }
 
     async fn list_schemas(&self) -> Result<Vec<String>, String> {
-        let (client, handle) = self.connect().await?;
-        let result = client
-            .query(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query(
                 "SELECT schema_name FROM information_schema.schemata \
                  WHERE schema_name <> 'information_schema' \
                    AND schema_name NOT LIKE 'pg_%' \
@@ -90,18 +146,18 @@ impl DatabaseAdapter for PostgresAdapter {
                 &[],
             )
             .await
-            .map_err(|error| error.to_string())
-            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect());
-        handle.abort();
-        result
+            .map_err(map_pg_err)
+            .map(|rows| rows.into_iter().map(|row| row.get(0)).collect())
+        })
+        .await
     }
 
     async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
-        let (client, handle) = self.connect().await?;
-        let query = match schema {
-            Some(schema) => {
-                client
-                    .query(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(schema) => {
+                    conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.tables \
                          WHERE table_type = 'BASE TABLE' AND table_schema = $1 \
@@ -109,10 +165,9 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[&schema],
                     )
                     .await
-            }
-            None => {
-                client
-                    .query(
+                }
+                None => {
+                    conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.tables \
                          WHERE table_type = 'BASE TABLE' \
@@ -121,18 +176,18 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[],
                     )
                     .await
-            }
-        };
-        let result = query.map_err(|error| error.to_string()).map(|rows| {
-            rows.into_iter()
-                .map(|row| TableInfo {
-                    schema: row.get(0),
-                    name: row.get(1),
-                })
-                .collect()
-        });
-        handle.abort();
-        result
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| TableInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                    })
+                    .collect()
+            })
+        })
+        .await
     }
 
     async fn list_columns(
@@ -140,11 +195,11 @@ impl DatabaseAdapter for PostgresAdapter {
         schema: Option<&str>,
         table: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
-        let (client, handle) = self.connect().await?;
-        let result = match (schema, table) {
-            (Some(s), Some(t)) => {
-                client
-                    .query(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let result = match (schema, table) {
+                (Some(s), Some(t)) => {
+                    conn.query(
                         "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          WHERE c.table_schema = $1 AND c.table_name = $2 \
@@ -152,10 +207,9 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[&s, &t],
                     )
                     .await
-            }
-            (Some(s), None) => {
-                client
-                    .query(
+                }
+                (Some(s), None) => {
+                    conn.query(
                         "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
@@ -165,10 +219,9 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[&s],
                     )
                     .await
-            }
-            _ => {
-                client
-                    .query(
+                }
+                _ => {
+                    conn.query(
                         "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
@@ -179,20 +232,20 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[],
                     )
                     .await
-            }
-        };
-        let result = result.map_err(|e| e.to_string()).map(|rows| {
-            rows.into_iter()
-                .map(|row| ColumnInfo {
-                    schema: row.get(0),
-                    table: row.get(1),
-                    name: row.get(2),
-                    data_type: row.get(3),
-                })
-                .collect()
-        });
-        handle.abort();
-        result
+                }
+            };
+            result.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| ColumnInfo {
+                        schema: row.get(0),
+                        table: row.get(1),
+                        name: row.get(2),
+                        data_type: row.get(3),
+                    })
+                    .collect()
+            })
+        })
+        .await
     }
 
     async fn fetch_rows(
@@ -201,14 +254,14 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         filter: Option<&str>,
         limit: i64,
+        offset: i64,
         order_by: Option<&str>,
         order_desc: bool,
         is_view: bool,
     ) -> Result<TableData, String> {
-        let (client, handle) = self.connect().await?;
-
-        let result = async {
-            let column_rows = client
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let column_rows = conn
                 .query(
                     "SELECT column_name \
                      FROM information_schema.columns \
@@ -217,7 +270,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     &[&schema, &table],
                 )
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(map_pg_err)?;
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
 
             let where_clause = match filter {
@@ -229,44 +282,40 @@ impl DatabaseAdapter for PostgresAdapter {
             let order_clause = match order_by {
                 Some(column) if columns.iter().any(|name| name == column) => {
                     let direction = if order_desc { "DESC" } else { "ASC" };
-                    format!(
-                        " ORDER BY t.{} {}",
-                        quote_ident(column),
-                        direction
-                    )
+                    format!(" ORDER BY t.{} {}", quote_ident(column), direction)
                 }
                 _ => String::new(),
             };
-            let sql = if is_view {
-                format!(
-                    "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1",
-                    quote_ident(schema),
-                    quote_ident(table),
-                    where_clause,
-                    order_clause,
-                )
-            } else {
-                format!(
-                    "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1",
-                    quote_ident(schema),
-                    quote_ident(table),
-                    where_clause,
-                    order_clause,
-                )
+            let sql_with_ctid = format!(
+                "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
+                quote_ident(schema),
+                quote_ident(table),
+                where_clause,
+                order_clause,
+            );
+            let sql_without_ctid = format!(
+                "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
+                quote_ident(schema),
+                quote_ident(table),
+                where_clause,
+                order_clause,
+            );
+
+            let sql = if is_view { &sql_without_ctid } else { &sql_with_ctid };
+            let data_rows = match conn.query(sql, &[&limit, &offset]).await {
+                Ok(rows) => rows,
+                Err(_) if !is_view => {
+                    conn.query(&sql_without_ctid, &[&limit, &offset])
+                        .await
+                        .map_err(map_pg_err)?
+                }
+                Err(e) => return Err(map_pg_err(e)),
             };
-            let data_rows = client
-                .query(&sql, &[&limit])
-                .await
-                .map_err(|error| error.to_string())?;
-            let rows: Vec<serde_json::Value> =
-                data_rows.iter().map(|row| row.get(0)).collect();
+            let rows: Vec<serde_json::Value> = data_rows.iter().map(|row| row.get(0)).collect();
 
             Ok(TableData { columns, rows })
-        }
-        .await;
-
-        handle.abort();
-        result
+        })
+        .await
     }
 
     async fn count_rows(
@@ -275,26 +324,26 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
         filter: Option<&str>,
     ) -> Result<i64, String> {
-        let (client, handle) = self.connect().await?;
-        let where_clause = match filter {
-            Some(expression) if !expression.trim().is_empty() => {
-                format!(" WHERE {}", expression.trim())
-            }
-            _ => String::new(),
-        };
-        let sql = format!(
-            "SELECT COUNT(*) FROM {}.{}{}",
-            quote_ident(schema),
-            quote_ident(table),
-            where_clause,
-        );
-        let result = client
-            .query_one(&sql, &[])
-            .await
-            .map_err(|e| e.to_string())
-            .map(|row| row.get::<_, i64>(0));
-        handle.abort();
-        result
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let where_clause = match filter {
+                Some(expression) if !expression.trim().is_empty() => {
+                    format!(" WHERE {}", expression.trim())
+                }
+                _ => String::new(),
+            };
+            let sql = format!(
+                "SELECT COUNT(*) FROM {}.{}{}",
+                quote_ident(schema),
+                quote_ident(table),
+                where_clause,
+            );
+            conn.query_one(&sql, &[])
+                .await
+                .map_err(map_pg_err)
+                .map(|row| row.get::<_, i64>(0))
+        })
+        .await
     }
 
     async fn update_row(
@@ -316,17 +365,16 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Ungültige ctid".to_string());
         }
 
-        let (client, handle) = self.connect().await?;
-
-        let result = async {
-            let col_rows = client
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let col_rows = conn
                 .query(
                     "SELECT column_name FROM information_schema.columns \
                      WHERE table_schema = $1 AND table_name = $2",
                     &[&schema, &table],
                 )
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(map_pg_err)?;
 
             let valid_columns: std::collections::HashSet<String> =
                 col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
@@ -338,7 +386,6 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 let sql_val = match val {
                     None => "NULL".to_string(),
-                    Some(s) if s.is_empty() => "NULL".to_string(),
                     Some(s) => format!("'{}'", s.replace('\'', "''")),
                 };
                 set_parts.push(format!("{} = {}", quote_ident(col), sql_val));
@@ -356,24 +403,20 @@ impl DatabaseAdapter for PostgresAdapter {
                 ctid,
             );
 
-            client
-                .execute(sql.as_str(), &[])
+            conn.execute(sql.as_str(), &[])
                 .await
                 .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-        .await;
-
-        handle.abort();
-        result
+                .map_err(map_pg_err)
+        })
+        .await
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
-        let (client, handle) = self.connect().await?;
+        let conn = self.get_conn().await?;
         let start = std::time::Instant::now();
 
-        let result = async {
-            let messages = client.simple_query(sql).await.map_err(|e| e.to_string())?;
+        self.timed(async {
+            let messages = conn.simple_query(sql).await.map_err(map_pg_err)?;
             let elapsed = start.elapsed().as_millis() as u64;
 
             let mut columns: Vec<String> = Vec::new();
@@ -413,19 +456,16 @@ impl DatabaseAdapter for PostgresAdapter {
                 rows_affected,
                 execution_time_ms: elapsed,
             })
-        }
-        .await;
-
-        handle.abort();
-        result
+        })
+        .await
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
-        let (client, handle) = self.connect().await?;
-        let query = match schema {
-            Some(schema) => {
-                client
-                    .query(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let query = match schema {
+                Some(schema) => {
+                    conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.views \
                          WHERE table_schema = $1 \
@@ -433,10 +473,9 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[&schema],
                     )
                     .await
-            }
-            None => {
-                client
-                    .query(
+                }
+                None => {
+                    conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.views \
                          WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
@@ -444,18 +483,18 @@ impl DatabaseAdapter for PostgresAdapter {
                         &[],
                     )
                     .await
-            }
-        };
-        let result = query.map_err(|error| error.to_string()).map(|rows| {
-            rows.into_iter()
-                .map(|row| TableInfo {
-                    schema: row.get(0),
-                    name: row.get(1),
-                })
-                .collect()
-        });
-        handle.abort();
-        result
+                }
+            };
+            query.map_err(map_pg_err).map(|rows| {
+                rows.into_iter()
+                    .map(|row| TableInfo {
+                        schema: row.get(0),
+                        name: row.get(1),
+                    })
+                    .collect()
+            })
+        })
+        .await
     }
 
     async fn get_view_definition(
@@ -463,9 +502,9 @@ impl DatabaseAdapter for PostgresAdapter {
         schema: &str,
         view: &str,
     ) -> Result<String, String> {
-        let (client, handle) = self.connect().await?;
-        let result = client
-            .query_one(
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            conn.query_one(
                 "SELECT pg_get_viewdef(c.oid, true) \
                  FROM pg_class c \
                  JOIN pg_namespace n ON n.oid = c.relnamespace \
@@ -473,9 +512,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 &[&schema, &view],
             )
             .await
-            .map_err(|e| e.to_string())
-            .map(|row| row.get::<_, String>(0));
-        handle.abort();
-        result
+            .map_err(map_pg_err)
+            .map(|row| row.get::<_, String>(0))
+        })
+        .await
     }
 }

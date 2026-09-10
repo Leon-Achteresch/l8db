@@ -10,7 +10,7 @@ import { TableViewsPanel } from "@/components/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/components/table/view-definition-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { useTableRowsQuery, useUpdateRowMutation } from "@/lib/queries";
+import { useTableRowsQuery, useTableRowCountQuery, useUpdateRowMutation, PAGE_SIZE } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
@@ -23,14 +23,22 @@ export function TablePage() {
   const openTab = useTableTabs((state) => state.openTab);
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [page, setPage] = useState(0);
   const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
     schema,
     table,
     filter,
     sorting,
     isView,
+    page,
   );
+  const { data: totalCount } = useTableRowCountQuery(schema, table, filter);
   const updateRowMutation = useUpdateRowMutation(schema, table);
+
+  const handleFilterChange = (newFilter: string) => {
+    setFilter(newFilter);
+    setPage(0);
+  };
 
   useEffect(() => {
     openTab({ schema, table });
@@ -39,6 +47,7 @@ export function TablePage() {
   useEffect(() => {
     setFilter("");
     setSorting([]);
+    setPage(0);
   }, [schema, table]);
 
   if (!connection) {
@@ -64,7 +73,7 @@ export function TablePage() {
           schema={schema}
           table={table}
           activeFilter={filter}
-          onSelectView={setFilter}
+          onSelectView={handleFilterChange}
         />
       ) : null}
       {!isView ? (
@@ -73,7 +82,7 @@ export function TablePage() {
             key={`${schema}.${table}`}
             columns={data?.columns ?? []}
             activeFilter={filter}
-            onApply={setFilter}
+            onApply={handleFilterChange}
           />
         </div>
       ) : null}
@@ -119,7 +128,11 @@ export function TablePage() {
             onSortingChange={setSorting}
             isFetching={isFetching}
             onSaveRow={isView ? undefined : (ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
-            onApplyFilter={setFilter}
+            onApplyFilter={handleFilterChange}
+            page={page}
+            totalCount={totalCount ?? undefined}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
           />
         </div>
       )}
