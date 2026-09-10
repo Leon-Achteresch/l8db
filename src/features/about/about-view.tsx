@@ -1,11 +1,17 @@
-import { Button } from "@/components/ui/button";
+import { AboutFeatures } from "@/features/about/about-features";
+import { AboutFooter } from "@/features/about/about-footer";
+import { AboutHero } from "@/features/about/about-hero";
+import { AboutStack } from "@/features/about/about-stack";
 
 export function AboutView() {
   return (
-    <main className="text-center mx-auto">
-      <h1 className="text-3xl font-semibold">About</h1>
-      <p className="mt-6">l8db mit TanStack Router.</p>
-      <Button className="mt-6">Click me</Button>
+    <main className="workspace-canvas h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6 sm:px-6 sm:py-8">
+        <AboutHero />
+        <AboutFeatures />
+        <AboutStack />
+        <AboutFooter />
+      </div>
     </main>
   );
 }
