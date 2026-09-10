@@ -31,13 +31,13 @@ import {
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import {
-  PAGE_SIZE,
   useForeignKeysQuery,
   useSchemasQuery,
   useTableRowCountQuery,
   useTableRowsQuery,
   useViewDefinitionQuery,
 } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 
 interface ViewEditorViewProps {
@@ -52,6 +52,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const queryClient = useQueryClient();
   const openTab = useTableTabs((state) => state.openTab);
   const { data: foreignKeys } = useForeignKeysQuery(schema, view);
+  const rowLimit = useSettingsStore((s) => s.rowLimit);
 
   const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition">("data");
   const [filter, setFilter] = useState("");
@@ -270,7 +271,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
               onApplyFilter={handleFilterChange}
               page={page}
               totalCount={totalCount ?? undefined}
-              pageSize={PAGE_SIZE}
+              pageSize={rowLimit}
               onPageChange={setPage}
               foreignKeys={foreignKeys}
               currentSchema={schema}

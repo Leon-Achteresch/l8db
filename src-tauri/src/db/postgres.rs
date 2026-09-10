@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use tokio_postgres::{Config, NoTls, SimpleQueryMessage};
 
 use super::pool::PoolState;
-use super::{map_pg_err, quote_ident, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, SequenceInfo, TableData, TableInfo, TablePrivileges, TriggerInfo};
+use super::{map_pg_err, quote_ident, AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ConnectionConfig, ConstraintInfo, CreateRoleOptions, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchemaPrivileges, ScriptStatementResult, SequenceInfo, TableData, TableInfo, TablePrivileges, TriggerInfo};
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -1395,5 +1395,251 @@ impl DatabaseAdapter for PostgresAdapter {
             })
         })
         .await
+    }
+
+    async fn alter_sequence(&self, schema: &str, name: &str, changes: &AlterSequenceRequest) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(ref inc) = changes.increment_by {
+                parts.push(format!("INCREMENT BY {}", inc.trim()));
+            }
+            match &changes.min_value {
+                Some(v) if !v.trim().is_empty() => parts.push(format!("MINVALUE {}", v.trim())),
+                Some(_) => parts.push("NO MINVALUE".to_string()),
+                None => {}
+            }
+            match &changes.max_value {
+                Some(v) if !v.trim().is_empty() => parts.push(format!("MAXVALUE {}", v.trim())),
+                Some(_) => parts.push("NO MAXVALUE".to_string()),
+                None => {}
+            }
+            if let Some(cycle) = changes.cycle {
+                parts.push(if cycle { "CYCLE".to_string() } else { "NO CYCLE".to_string() });
+            }
+            if let Some(ref restart) = changes.restart_with {
+                if !restart.trim().is_empty() {
+                    parts.push(format!("RESTART WITH {}", restart.trim()));
+                }
+            }
+            if parts.is_empty() {
+                return Ok(());
+            }
+            let sql = format!("ALTER SEQUENCE {}.{} {}", quote_ident(schema), quote_ident(name), parts.join(" "));
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        }).await
+    }
+
+    async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
+        self.list_indexes_impl(schema, table).await
+    }
+
+    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String> {
+        self.list_constraints_impl(schema, table).await
+    }
+
+    async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = match schema {
+                Some(s) => format!("CREATE EXTENSION IF NOT EXISTS {} SCHEMA {}", quote_ident(name), quote_ident(s)),
+                None => format!("CREATE EXTENSION IF NOT EXISTS {}", quote_ident(name)),
+            };
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        }).await
+    }
+
+    async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
+            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            Ok(())
+        }).await
+    }
+
+    async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let rows = conn.query(
+                "SELECT ae.name, ae.default_version, ae.comment, \
+                        (SELECT true FROM pg_extension e WHERE e.extname = ae.name) IS NOT NULL AS installed \
+                 FROM pg_available_extensions ae \
+                 ORDER BY ae.name",
+                &[],
+            ).await.map_err(map_pg_err)?;
+            Ok(rows.into_iter().map(|row| AvailableExtensionInfo {
+                name: row.get(0),
+                default_version: row.get::<_, String>(1),
+                comment: row.get(2),
+                installed: row.get(3),
+            }).collect())
+        }).await
+    }
+
+    async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+        self.execute_script_impl(sql).await
+    }
+
+    async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
+        let ddl = Self::build_create_table_sql(req);
+        let conn = self.get_conn().await?;
+        conn.execute(&ddl as &str, &[]).await.map_err(map_pg_err)?;
+        Ok(())
+    }
+}
+
+impl PostgresAdapter {
+    async fn list_indexes_impl(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let rows = conn.query(
+                "SELECT i.relname, ix.indisunique, ix.indisprimary, a.attname, am.amname, pg_get_indexdef(i.oid) \
+                 FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 JOIN pg_index ix ON ix.indrelid = c.oid \
+                 JOIN pg_class i ON i.oid = ix.indexrelid \
+                 JOIN pg_am am ON am.oid = i.relam \
+                 CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ordinality) \
+                 JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum AND a.attnum > 0 \
+                 WHERE n.nspname = $1 AND c.relname = $2 \
+                 ORDER BY ix.indisprimary DESC, ix.indisunique DESC, i.relname, k.ordinality",
+                &[&schema, &table],
+            ).await.map_err(map_pg_err)?;
+
+            let mut indexes: Vec<IndexInfo> = Vec::new();
+            for row in &rows {
+                let name: String = row.get(0);
+                let col: String = row.get(3);
+                if let Some(idx) = indexes.iter_mut().find(|i| i.name == name) {
+                    idx.columns.push(col);
+                } else {
+                    indexes.push(IndexInfo {
+                        name,
+                        is_unique: row.get(1),
+                        is_primary: row.get(2),
+                        columns: vec![col],
+                        index_type: row.get(4),
+                        definition: row.get(5),
+                    });
+                }
+            }
+            Ok(indexes)
+        }).await
+    }
+
+    async fn list_constraints_impl(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, String> {
+        let conn = self.get_conn().await?;
+        self.timed(async {
+            let rows = conn.query(
+                "SELECT con.conname, \
+                        CASE con.contype \
+                            WHEN 'p' THEN 'PRIMARY KEY' \
+                            WHEN 'u' THEN 'UNIQUE' \
+                            WHEN 'f' THEN 'FOREIGN KEY' \
+                            WHEN 'c' THEN 'CHECK' \
+                            WHEN 'x' THEN 'EXCLUDE' \
+                            ELSE con.contype::text \
+                        END, \
+                        COALESCE(a.attname, ''), \
+                        pg_get_constraintdef(con.oid) \
+                 FROM pg_constraint con \
+                 JOIN pg_class c ON c.oid = con.conrelid \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 LEFT JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true \
+                 LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum \
+                 WHERE n.nspname = $1 AND c.relname = $2 \
+                 ORDER BY con.contype, con.conname, k.ordinality",
+                &[&schema, &table],
+            ).await.map_err(map_pg_err)?;
+
+            let mut constraints: Vec<ConstraintInfo> = Vec::new();
+            for row in &rows {
+                let name: String = row.get(0);
+                let col: String = row.get(2);
+                if let Some(con) = constraints.iter_mut().find(|c| c.name == name) {
+                    if !col.is_empty() && !con.columns.contains(&col) {
+                        con.columns.push(col);
+                    }
+                } else {
+                    constraints.push(ConstraintInfo {
+                        name,
+                        constraint_type: row.get(1),
+                        columns: if col.is_empty() { vec![] } else { vec![col] },
+                        definition: row.get(3),
+                    });
+                }
+            }
+            Ok(constraints)
+        }).await
+    }
+
+    async fn execute_script_impl(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
+        use super::ScriptStatementResult;
+        let statements: Vec<&str> = sql
+            .split(';')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let conn = self.get_conn().await?;
+        let mut results = Vec::new();
+        for stmt in statements {
+            let full = format!("{};", stmt);
+            match conn.execute(stmt, &[]).await {
+                Ok(n) => results.push(ScriptStatementResult {
+                    statement: full,
+                    success: true,
+                    rows_affected: Some(n),
+                    error: None,
+                }),
+                Err(e) => results.push(ScriptStatementResult {
+                    statement: full,
+                    success: false,
+                    rows_affected: None,
+                    error: Some(map_pg_err(e)),
+                }),
+            }
+        }
+        Ok(results)
+    }
+
+    fn build_create_table_sql(req: &super::CreateTableRequest) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        let mut pk_cols: Vec<String> = Vec::new();
+
+        for col in &req.columns {
+            let mut def = format!("{} {}", quote_ident(&col.name), col.data_type);
+            if !col.is_nullable {
+                def.push_str(" NOT NULL");
+            }
+            if let Some(d) = &col.default_value {
+                if !d.is_empty() {
+                    def.push_str(&format!(" DEFAULT {d}"));
+                }
+            }
+            if col.is_unique && !col.is_primary_key {
+                def.push_str(" UNIQUE");
+            }
+            parts.push(def);
+            if col.is_primary_key {
+                pk_cols.push(quote_ident(&col.name));
+            }
+        }
+
+        if !pk_cols.is_empty() {
+            parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+        }
+
+        let if_not_exists = if req.if_not_exists { "IF NOT EXISTS " } else { "" };
+        format!(
+            "CREATE TABLE {}{}.{} (\n  {}\n)",
+            if_not_exists,
+            quote_ident(&req.schema),
+            quote_ident(&req.name),
+            parts.join(",\n  "),
+        )
     }
 }

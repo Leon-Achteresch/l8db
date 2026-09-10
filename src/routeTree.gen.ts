@@ -15,7 +15,10 @@ import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSequencesRouteImport } from './routes/_app.sequences'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
+import { Route as AppImportRouteImport } from './routes/_app.import'
 import { Route as AppErDiagramRouteImport } from './routes/_app.er-diagram'
+import { Route as AppCreateTableRouteImport } from './routes/_app.create-table'
+import { Route as AppAvailableExtensionsRouteImport } from './routes/_app.available-extensions'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
 import { Route as AppQueryIndexRouteImport } from './routes/_app.query.index'
 import { Route as AppUsersNameRouteImport } from './routes/_app.users.$name'
@@ -56,9 +59,24 @@ const AppQueryRoute = AppQueryRouteImport.update({
   path: '/query',
   getParentRoute: () => AppRoute,
 } as any)
+const AppImportRoute = AppImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppErDiagramRoute = AppErDiagramRouteImport.update({
   id: '/er-diagram',
   path: '/er-diagram',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCreateTableRoute = AppCreateTableRouteImport.update({
+  id: '/create-table',
+  path: '/create-table',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAvailableExtensionsRoute = AppAvailableExtensionsRouteImport.update({
+  id: '/available-extensions',
+  path: '/available-extensions',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAboutRoute = AppAboutRouteImport.update({
@@ -118,7 +136,10 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/available-extensions': typeof AppAvailableExtensionsRoute
+  '/create-table': typeof AppCreateTableRoute
   '/er-diagram': typeof AppErDiagramRoute
+  '/import': typeof AppImportRoute
   '/query': typeof AppQueryRouteWithChildren
   '/sequences': typeof AppSequencesRoute
   '/settings': typeof AppSettingsRoute
@@ -135,7 +156,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/available-extensions': typeof AppAvailableExtensionsRoute
+  '/create-table': typeof AppCreateTableRoute
   '/er-diagram': typeof AppErDiagramRoute
+  '/import': typeof AppImportRoute
   '/sequences': typeof AppSequencesRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
@@ -154,7 +178,10 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/connections': typeof ConnectionsRoute
   '/_app/about': typeof AppAboutRoute
+  '/_app/available-extensions': typeof AppAvailableExtensionsRoute
+  '/_app/create-table': typeof AppCreateTableRoute
   '/_app/er-diagram': typeof AppErDiagramRoute
+  '/_app/import': typeof AppImportRoute
   '/_app/query': typeof AppQueryRouteWithChildren
   '/_app/sequences': typeof AppSequencesRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -175,7 +202,10 @@ export interface FileRouteTypes {
     | '/'
     | '/connections'
     | '/about'
+    | '/available-extensions'
+    | '/create-table'
     | '/er-diagram'
+    | '/import'
     | '/query'
     | '/sequences'
     | '/settings'
@@ -192,7 +222,10 @@ export interface FileRouteTypes {
   to:
     | '/connections'
     | '/about'
+    | '/available-extensions'
+    | '/create-table'
     | '/er-diagram'
+    | '/import'
     | '/sequences'
     | '/settings'
     | '/'
@@ -210,7 +243,10 @@ export interface FileRouteTypes {
     | '/_app'
     | '/connections'
     | '/_app/about'
+    | '/_app/available-extensions'
+    | '/_app/create-table'
     | '/_app/er-diagram'
+    | '/_app/import'
     | '/_app/query'
     | '/_app/sequences'
     | '/_app/settings'
@@ -275,11 +311,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQueryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/import': {
+      id: '/_app/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof AppImportRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/er-diagram': {
       id: '/_app/er-diagram'
       path: '/er-diagram'
       fullPath: '/er-diagram'
       preLoaderRoute: typeof AppErDiagramRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/create-table': {
+      id: '/_app/create-table'
+      path: '/create-table'
+      fullPath: '/create-table'
+      preLoaderRoute: typeof AppCreateTableRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/available-extensions': {
+      id: '/_app/available-extensions'
+      path: '/available-extensions'
+      fullPath: '/available-extensions'
+      preLoaderRoute: typeof AppAvailableExtensionsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/about': {
@@ -371,7 +428,10 @@ const AppQueryRouteWithChildren = AppQueryRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
+  AppAvailableExtensionsRoute: typeof AppAvailableExtensionsRoute
+  AppCreateTableRoute: typeof AppCreateTableRoute
   AppErDiagramRoute: typeof AppErDiagramRoute
+  AppImportRoute: typeof AppImportRoute
   AppQueryRoute: typeof AppQueryRouteWithChildren
   AppSequencesRoute: typeof AppSequencesRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -387,7 +447,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
+  AppAvailableExtensionsRoute: AppAvailableExtensionsRoute,
+  AppCreateTableRoute: AppCreateTableRoute,
   AppErDiagramRoute: AppErDiagramRoute,
+  AppImportRoute: AppImportRoute,
   AppQueryRoute: AppQueryRouteWithChildren,
   AppSequencesRoute: AppSequencesRoute,
   AppSettingsRoute: AppSettingsRoute,

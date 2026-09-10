@@ -2,9 +2,10 @@ use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
     create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
-    AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseKind,
-    DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
-    QueryResult, RoleInfo, RolePrivileges, SequenceInfo, TableData, TableInfo, TriggerInfo,
+    AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ConnectionConfig,
+    ConstraintInfo, CreateRoleOptions, CreateTableRequest, DatabaseKind, DetailedColumnInfo,
+    ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, PrivilegeChange, QueryResult,
+    RoleInfo, RolePrivileges, ScriptStatementResult, SequenceInfo, TableData, TableInfo, TriggerInfo,
 };
 
 #[tauri::command]
@@ -558,5 +559,113 @@ pub async fn list_sequences(
 ) -> Result<Vec<SequenceInfo>, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .list_sequences(schema.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn alter_sequence(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    name: String,
+    changes: AlterSequenceRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .alter_sequence(&schema, &name, &changes)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_indexes(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<IndexInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_indexes(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_constraints(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ConstraintInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_constraints(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn install_extension(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    name: String,
+    schema: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .install_extension(&name, schema.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn uninstall_extension(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .uninstall_extension(&name)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_available_extensions(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<AvailableExtensionInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_available_extensions()
+        .await
+}
+
+#[tauri::command]
+pub async fn execute_script(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    sql: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ScriptStatementResult>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .execute_script(&sql)
+        .await
+}
+
+#[tauri::command]
+pub async fn create_table(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: CreateTableRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .create_table(&request)
         .await
 }

@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "lint": "biome lint ./src",
+    "format": "biome format --write ./src",
+    "check": "biome check ./src"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -55,6 +58,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/router-plugin": "^1.168.10",
     "@tauri-apps/cli": "^2",
