@@ -7,7 +7,7 @@ import {
   User,
   type LucideIcon,
 } from "lucide-react";
-import { type CSSProperties } from "react";
+import { type CSSProperties, useEffect } from "react";
 
 import { AppHeaderSearch } from "@/components/app-header-search";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,11 @@ export function AppHeader() {
   const txCount = useTransactionStore((s) => s.transactions.length);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
   const togglePanel = useTransactionStore((s) => s.togglePanel);
+  const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
+
+  useEffect(() => {
+    syncWithBackend();
+  }, [syncWithBackend]);
 
   return (
     <header

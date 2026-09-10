@@ -8,11 +8,25 @@ import { QueryResultTable } from "@/components/query/QueryResultTable";
 import { SaveQueryDialog } from "@/components/query/SaveQueryDialog";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery, listAllColumns, listTables, type QueryResult } from "@/lib/db";
+import {
+  beginTransaction,
+  executeInTransaction,
+  executeQuery,
+  listAllColumns,
+  listTables,
+  type QueryResult,
+} from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import {
+  getTransactionForConnection,
+  useTransactionStore,
+} from "@/lib/transactions";
+
+const DML_PATTERN =
+  /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE)\b/i;
 
 interface QueryPageProps {
   tabId: string;
@@ -74,13 +88,56 @@ export function QueryPage({ tabId }: QueryPageProps) {
     setIsRunning(true);
     setError(null);
     try {
-      const res = await executeQuery(
-        connection.kind,
-        connection.connectionString,
-        sql,
-        database ?? undefined,
-      );
-      setResult(res);
+      const store = useTransactionStore.getState();
+      const existingTx = getTransactionForConnection(connection.id);
+      const isDml = DML_PATTERN.test(sql.trim());
+
+      if (existingTx) {
+        const res = await executeInTransaction(existingTx.txId, sql);
+        if (isDml) {
+          store.addChange(existingTx.txId, {
+            id: crypto.randomUUID(),
+            type: "query",
+            timestamp: Date.now(),
+            sql,
+            rowsAffected: res.rows_affected,
+          });
+          store.setPanelOpen(true);
+        }
+        setResult(res);
+      } else if (isDml) {
+        const txId = await beginTransaction(
+          connection.kind,
+          connection.connectionString,
+          database ?? undefined,
+        );
+        store.addTransaction({
+          txId,
+          connectionId: connection.id,
+          connectionName: connection.name,
+          database: database ?? undefined,
+          changes: [],
+          startedAt: Date.now(),
+        });
+        const res = await executeInTransaction(txId, sql);
+        store.addChange(txId, {
+          id: crypto.randomUUID(),
+          type: "query",
+          timestamp: Date.now(),
+          sql,
+          rowsAffected: res.rows_affected,
+        });
+        store.setPanelOpen(true);
+        setResult(res);
+      } else {
+        const res = await executeQuery(
+          connection.kind,
+          connection.connectionString,
+          sql,
+          database ?? undefined,
+        );
+        setResult(res);
+      }
     } catch (err) {
       setError(String(err));
       setResult(null);

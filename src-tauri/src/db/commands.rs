@@ -225,3 +225,10 @@ pub async fn rollback_transaction(
 ) -> Result<(), String> {
     tx_state.rollback(&tx_id).await
 }
+
+#[tauri::command]
+pub async fn list_transactions(
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<Vec<String>, String> {
+    Ok(tx_state.list_active_ids().await)
+}

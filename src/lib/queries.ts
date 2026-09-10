@@ -19,6 +19,7 @@ import {
 import {
   getTransactionForConnection,
   useTransactionStore,
+  type TransactionChange,
 } from "@/lib/transactions";
 
 function sortingToRowSort(sorting: SortingState): TableRowSort | undefined {
@@ -202,6 +203,28 @@ export function useUpdateRowMutation(schema: string, table: string) {
       updates: Record<string, string | null>;
       oldValues: Record<string, unknown>;
     }) => {
+      const changedUpdates: Record<string, string | null> = {};
+      const changedOld: Record<string, unknown> = {};
+      for (const [col, newVal] of Object.entries(updates)) {
+        const orig = oldValues[col];
+        let origStr: string | null;
+        if (orig === null || orig === undefined) {
+          origStr = null;
+        } else if (typeof orig === "object") {
+          origStr = JSON.stringify(orig);
+        } else {
+          origStr = String(orig);
+        }
+        if (newVal !== origStr) {
+          changedUpdates[col] = newVal;
+          changedOld[col] = orig;
+        }
+      }
+
+      if (Object.keys(changedUpdates).length === 0) {
+        return { newCtid: ctid };
+      }
+
       const store = useTransactionStore.getState();
       let tx = getTransactionForConnection(connection!.id);
 
@@ -216,7 +239,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
           connectionId: connection!.id,
           connectionName: connection!.name,
           database: database ?? undefined,
-          changes: [],
+          changes: [] as TransactionChange[],
           startedAt: Date.now(),
         };
         store.addTransaction(newTx);
@@ -228,7 +251,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
         schema,
         table,
         ctid,
-        updates,
+        changedUpdates,
       );
 
       store.addChange(tx.txId, {
@@ -238,8 +261,8 @@ export function useUpdateRowMutation(schema: string, table: string) {
         schema,
         table,
         ctid,
-        oldValues,
-        newValues: updates,
+        oldValues: changedOld,
+        newValues: changedUpdates,
       });
 
       store.setPanelOpen(true);

@@ -214,3 +214,7 @@ export async function commitTransaction(txId: string): Promise<void> {
 export async function rollbackTransaction(txId: string): Promise<void> {
   await invoke("rollback_transaction", { txId });
 }
+
+export async function listTransactions(): Promise<string[]> {
+  return invoke("list_transactions");
+}

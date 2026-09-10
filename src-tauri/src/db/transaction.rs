@@ -223,4 +223,8 @@ impl TransactionManager {
     pub async fn active_count(&self) -> usize {
         self.transactions.lock().await.len()
     }
+
+    pub async fn list_active_ids(&self) -> Vec<String> {
+        self.transactions.lock().await.keys().cloned().collect()
+    }
 }
