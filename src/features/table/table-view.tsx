@@ -41,6 +41,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import {
   useDeleteRowMutation,
+  useDetailedColumnsQuery,
   useDuplicateRowMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
@@ -89,7 +90,7 @@ export function TableView() {
   const [page, setPage] = useState(0);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
+  const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,
     filter,
@@ -99,6 +100,7 @@ export function TableView() {
     filterRaw,
   );
   const { data: totalCount } = useTableRowCountQuery(schema, table, filter, filterRaw);
+  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
   const updateRowMutation = useUpdateRowMutation(schema, table);
   const insertRowMutation = useInsertRowMutation(schema, table);
   const duplicateRowMutation = useDuplicateRowMutation(schema, table);
@@ -183,6 +185,13 @@ export function TableView() {
       setExporting(false);
     }
   };
+
+  const handleRefresh = useMemo(() => {
+    return async () => {
+      const result = await refetch();
+      if (result.error) throw result.error;
+    };
+  }, [refetch]);
 
   const handleNavigateToTable = useMemo(() => {
     return (targetSchema: string, targetTable: string, filterWhere?: string) => {
@@ -279,6 +288,8 @@ export function TableView() {
         onNavigateToTable={handleNavigateToTable}
         onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
         onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
+        columnDetails={columnDetails}
+        onRefresh={handleRefresh}
       />
     </div>
   );
@@ -290,7 +301,10 @@ export function TableView() {
         onValueChange={(v) => setViewTab(v as ViewTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="flex shrink-0 items-center border-b bg-muted/30 px-3" data-tour="table-toolbar">
+        <div
+          className="flex shrink-0 items-center border-b bg-muted/30 px-3"
+          data-tour="table-toolbar"
+        >
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="data">
               <TableIcon className="size-3.5" />
@@ -355,7 +369,10 @@ export function TableView() {
       onValueChange={(v) => setTableTab(v as TableTab)}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="flex shrink-0 items-center border-b bg-muted/30 px-3" data-tour="table-toolbar">
+      <div
+        className="flex shrink-0 items-center border-b bg-muted/30 px-3"
+        data-tour="table-toolbar"
+      >
         <TabsList variant="line" className="h-9">
           <TabsTrigger value="data">
             <TableIcon className="size-3.5" />

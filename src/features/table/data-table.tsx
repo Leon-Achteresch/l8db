@@ -25,7 +25,6 @@ import {
   ChevronRightIcon,
   CopyIcon,
   CopyPlusIcon,
-  DatabaseIcon,
   ExternalLinkIcon,
   FingerprintIcon,
   HashIcon,
@@ -48,14 +47,23 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { CellValueDialog } from "@/features/table/cell-value-dialog";
+import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import { DataTableColumnSettings } from "@/features/table/data-table-column-settings";
 import { DataTableHeaderCell } from "@/features/table/data-table-header-cell";
 import { DataTableHeaderName } from "@/features/table/data-table-header-name";
+import { FkValuePickerDialog } from "@/features/table/fk-value-picker-dialog";
+import {
+  type AutoRefreshConditions,
+  autoRefreshPauseReason,
+  shouldAutoRefresh,
+} from "@/lib/auto-refresh";
+import { buildRowUpdates, isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { useActiveConnection } from "@/lib/connections";
-import { type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
 import {
   describeGridSearch,
   findGridMatches,
@@ -80,6 +88,7 @@ import {
   togglePinnedColumn,
   useTableColumnLayout,
 } from "@/lib/table-column-prefs";
+import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
 const headerSensors = [
@@ -415,6 +424,20 @@ type EditingCell = {
   originalValues: Record<string, unknown>;
 };
 
+type InspectCell = {
+  columnName: string;
+  value: unknown;
+  ctid?: string;
+  originalValues?: Record<string, unknown>;
+};
+
+type FkPickerCell = {
+  columnName: string;
+  ctid: string;
+  originalValues: Record<string, unknown>;
+  currentValue: string | null;
+};
+
 type DataTableProps = {
   columns: string[];
   data: TableRow[];
@@ -439,6 +462,8 @@ type DataTableProps = {
   onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
   onDuplicateRow?: (ctid: string) => void;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
+  onRefresh?: () => void | Promise<void>;
+  columnDetails?: DetailedColumnInfo[];
 };
 
 export function DataTable({
@@ -461,8 +486,11 @@ export function DataTable({
   onNavigateToTable,
   onDuplicateRow,
   onDeleteRow,
+  onRefresh,
+  columnDetails,
 }: DataTableProps) {
   const connection = useActiveConnection();
+  const capabilities = useActiveCapabilities();
   const {
     order,
     hidden,
@@ -481,11 +509,12 @@ export function DataTable({
   } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
   const [activeCell, setActiveCell] = useState<GridCellRef | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
-  const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(
-    null,
-  );
+  const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
+  const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoRefreshMs, setAutoRefreshMs] = useState(0);
+  const [isWindowVisible, setIsWindowVisible] = useState(true);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
   const [filterOperator, setFilterOperator] = useState("eq");
   const [filterValue, setFilterValue] = useState("");
@@ -509,6 +538,19 @@ export function DataTable({
     }
     return map;
   }, [foreignKeys, currentSchema, currentTable]);
+
+  const outgoingFkByColumn = useMemo(() => {
+    const map = new Map<string, ForeignKeyInfo>();
+    if (!foreignKeys || !currentSchema || !currentTable) return map;
+    for (const fk of foreignKeys) {
+      if (fk.from_schema === currentSchema && fk.from_table === currentTable) {
+        map.set(fk.from_column, fk);
+      }
+    }
+    return map;
+  }, [foreignKeys, currentSchema, currentTable]);
+
+  const canPickFk = !!onSaveRow && capabilities.foreign_keys && !!currentSchema && !!currentTable;
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -714,34 +756,40 @@ export function DataTable({
     return true;
   }, [selectedRange, selectedCount, data]);
 
+  const saveCellValue = useCallback(
+    async (
+      ctid: string,
+      columnId: string,
+      originalValues: Record<string, unknown>,
+      next: string | null,
+    ) => {
+      if (!onSaveRow) return false;
+      setIsSaving(true);
+      try {
+        const updates = buildRowUpdates(columnNames, originalValues, columnId, next);
+        await onSaveRow(ctid, updates, originalValues);
+        toast.success("Zeile gespeichert.");
+        return true;
+      } catch (err) {
+        toast.error(typeof err === "string" ? err : String(err));
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [onSaveRow, columnNames],
+  );
+
   const handleSaveCell = useCallback(async () => {
     if (!editingCell || !onSaveRow || isSaving) return;
-    setIsSaving(true);
-    try {
-      const updates: Record<string, string | null> = {};
-      for (const col of columnNames) {
-        if (col === editingCell.columnId) {
-          updates[col] = editingCell.value === "" ? null : editingCell.value;
-        } else {
-          const origVal = editingCell.originalValues[col];
-          if (origVal === null || origVal === undefined) {
-            updates[col] = null;
-          } else if (typeof origVal === "object") {
-            updates[col] = JSON.stringify(origVal);
-          } else {
-            updates[col] = String(origVal);
-          }
-        }
-      }
-      await onSaveRow(editingCell.ctid, updates, editingCell.originalValues);
-      setEditingCell(null);
-      toast.success("Zeile gespeichert.");
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editingCell, onSaveRow, isSaving, columnNames]);
+    const ok = await saveCellValue(
+      editingCell.ctid,
+      editingCell.columnId,
+      editingCell.originalValues,
+      editingCell.value === "" ? null : editingCell.value,
+    );
+    if (ok) setEditingCell(null);
+  }, [editingCell, onSaveRow, isSaving, saveCellValue]);
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
@@ -793,6 +841,61 @@ export function DataTable({
       }
     });
   }, [editingCell]);
+
+  const columnTypeByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const col of columnDetails ?? []) map.set(col.name, col.data_type);
+    return map;
+  }, [columnDetails]);
+
+  const hasOpenTransaction = useTransactionStore((state) =>
+    connection ? state.transactions.some((tx) => tx.connectionId === connection.id) : false,
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const update = () => setIsWindowVisible(document.visibilityState !== "hidden");
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  const autoRefreshConditions = useMemo<AutoRefreshConditions>(
+    () => ({
+      intervalMs: autoRefreshMs,
+      isTabVisible: true,
+      isWindowVisible,
+      isEditing: editingCell !== null || inspectCell !== null || fkPickerCell !== null,
+      isSaving,
+      isFetching,
+      hasOpenTransaction,
+    }),
+    [
+      autoRefreshMs,
+      isWindowVisible,
+      editingCell,
+      inspectCell,
+      fkPickerCell,
+      isSaving,
+      isFetching,
+      hasOpenTransaction,
+    ],
+  );
+
+  const autoRefreshRef = useRef(autoRefreshConditions);
+  autoRefreshRef.current = autoRefreshConditions;
+  const autoRefreshPause = autoRefreshPauseReason(autoRefreshConditions);
+
+  useEffect(() => {
+    if (!onRefresh || autoRefreshMs <= 0) return;
+    const id = setInterval(() => {
+      if (!shouldAutoRefresh(autoRefreshRef.current)) return;
+      void Promise.resolve(onRefresh()).catch((err) => {
+        toast.error(typeof err === "string" ? err : String(err));
+      });
+    }, autoRefreshMs);
+    return () => clearInterval(id);
+  }, [onRefresh, autoRefreshMs]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -1256,21 +1359,42 @@ export function DataTable({
                                     >
                                       <CopyIcon className="size-3" />
                                     </button>
-                                    {value !== null &&
-                                      (typeof value === "object" ||
-                                        (typeof value === "string" && value.length > 50)) && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setInspectCell({ columnName: columnId, value });
-                                          }}
-                                          title="Anzeigen"
-                                          className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                                        >
-                                          <Maximize2Icon className="size-3" />
-                                        </button>
-                                      )}
+                                    {(isLargeCellValue(value) || (!!onSaveRow && !!rowCtid)) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setInspectCell({
+                                            columnName: columnId,
+                                            value,
+                                            ctid: rowCtid,
+                                            originalValues: { ...row.original },
+                                          });
+                                        }}
+                                        title={onSaveRow ? "Anzeigen / bearbeiten" : "Anzeigen"}
+                                        className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                                      >
+                                        <Maximize2Icon className="size-3" />
+                                      </button>
+                                    )}
+                                    {canPickFk && !!rowCtid && outgoingFkByColumn.has(columnId) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFkPickerCell({
+                                            columnName: columnId,
+                                            ctid: rowCtid,
+                                            originalValues: { ...row.original },
+                                            currentValue: valueToUpdateText(value),
+                                          });
+                                        }}
+                                        title="Fremdschlüsselwert wählen"
+                                        className="p-0.5 rounded text-muted-foreground hover:text-blue-500 hover:bg-muted transition-colors cursor-pointer"
+                                      >
+                                        <LinkIcon className="size-3" />
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1348,6 +1472,13 @@ export function DataTable({
                     : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
                 </span>
               )}
+              {onRefresh && (
+                <DataTableAutoRefresh
+                  intervalMs={autoRefreshMs}
+                  pauseReason={autoRefreshPause}
+                  onIntervalChange={setAutoRefreshMs}
+                />
+              )}
               {onPageChange && totalPages != null && totalPages > 1 && (
                 <div className="flex items-center gap-1">
                   <span className="mr-1">
@@ -1392,49 +1523,56 @@ export function DataTable({
         })()}
 
       {inspectCell && (
-        <Dialog open={true} onOpenChange={() => setInspectCell(null)}>
-          <DialogContent className="max-w-2xl sm:max-w-2xl border border-border bg-popover shadow-lg">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-                <DatabaseIcon className="size-4 text-primary" />
-                Spalte:{" "}
-                <span className="font-mono text-primary font-bold">{inspectCell.columnName}</span>
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3 my-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Zellendetails</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const stringVal =
-                      typeof inspectCell.value === "object"
-                        ? JSON.stringify(inspectCell.value, null, 2)
-                        : String(inspectCell.value);
-                    void navigator.clipboard.writeText(stringVal);
-                    toast.success("Kopiert!");
-                  }}
-                  className="h-7 text-xs gap-1.5 flex items-center justify-center rounded-md border border-input bg-background px-3 font-medium hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
-                >
-                  <CopyIcon className="size-3.5" />
-                  Kopieren
-                </button>
-              </div>
-              <div className="max-h-[60vh] overflow-auto rounded-lg border border-border/80 bg-muted/45 p-4 font-mono text-xs leading-relaxed shadow-inner">
-                {typeof inspectCell.value === "object" && inspectCell.value !== null ? (
-                  <pre className="text-purple-600 dark:text-purple-400 whitespace-pre-wrap [word-break:break-word]">
-                    {JSON.stringify(inspectCell.value, null, 2)}
-                  </pre>
-                ) : (
-                  <pre className="text-foreground whitespace-pre-wrap [word-break:break-word]">
-                    {String(inspectCell.value)}
-                  </pre>
-                )}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <CellValueDialog
+          columnName={inspectCell.columnName}
+          value={inspectCell.value}
+          dataType={columnTypeByName.get(inspectCell.columnName) ?? null}
+          canEdit={!!onSaveRow && !!inspectCell.ctid && !!inspectCell.originalValues}
+          isSaving={isSaving}
+          onClose={() => setInspectCell(null)}
+          onSave={async (next) => {
+            if (!inspectCell.ctid || !inspectCell.originalValues) return;
+            const ok = await saveCellValue(
+              inspectCell.ctid,
+              inspectCell.columnName,
+              inspectCell.originalValues,
+              next,
+            );
+            if (ok) setInspectCell(null);
+          }}
+        />
       )}
+
+      {fkPickerCell &&
+        (() => {
+          const fk = outgoingForeignKey(
+            foreignKeys,
+            currentSchema ?? "",
+            currentTable ?? "",
+            fkPickerCell.columnName,
+          );
+          const target = fk ? resolveFkTarget(fk, currentSchema ?? "", currentTable ?? "") : null;
+          if (!target) return null;
+          return (
+            <FkValuePickerDialog
+              columnName={fkPickerCell.columnName}
+              target={target}
+              currentValue={fkPickerCell.currentValue}
+              allowNull={isNullableColumn(columnDetails, fkPickerCell.columnName)}
+              isSaving={isSaving}
+              onClose={() => setFkPickerCell(null)}
+              onSelect={async (next) => {
+                const ok = await saveCellValue(
+                  fkPickerCell.ctid,
+                  fkPickerCell.columnName,
+                  fkPickerCell.originalValues,
+                  next,
+                );
+                if (ok) setFkPickerCell(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
