@@ -21,7 +21,9 @@ pub fn run() {
             db::commands::count_table_rows,
             db::commands::update_row,
             db::commands::list_all_columns,
-            db::commands::execute_query
+            db::commands::execute_query,
+            db::commands::list_views,
+            db::commands::get_view_definition
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

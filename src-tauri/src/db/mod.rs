@@ -67,6 +67,7 @@ pub trait DatabaseAdapter: Send + Sync {
         limit: i64,
         order_by: Option<&str>,
         order_desc: bool,
+        is_view: bool,
     ) -> Result<TableData, String>;
     async fn count_rows(
         &self,
@@ -82,6 +83,12 @@ pub trait DatabaseAdapter: Send + Sync {
         updates: &std::collections::HashMap<String, Option<String>>,
     ) -> Result<(), String>;
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String>;
+    async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String>;
+    async fn get_view_definition(
+        &self,
+        schema: &str,
+        view: &str,
+    ) -> Result<String, String>;
 }
 
 pub fn create_adapter(config: ConnectionConfig) -> Box<dyn DatabaseAdapter> {

@@ -6,9 +6,11 @@ import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
   countTableRows,
   fetchTableRows,
+  getViewDefinition,
   listDatabases,
   listSchemas,
   listTables,
+  listViews,
   updateRow,
   type TableRowSort,
 } from "@/lib/db";
@@ -58,6 +60,40 @@ export function useTablesQuery() {
         schema,
       ),
     enabled: Boolean(connection),
+  });
+}
+
+export function useViewsQuery() {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["views", connection?.id, database, schema],
+    queryFn: () =>
+      listViews(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
+  });
+}
+
+export function useViewDefinitionQuery(schema: string, view: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["view-definition", connection?.id, database, schema, view],
+    queryFn: () =>
+      getViewDefinition(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        view,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(view),
   });
 }
 

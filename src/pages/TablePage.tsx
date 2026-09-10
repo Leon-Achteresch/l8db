@@ -7,6 +7,7 @@ import { TriangleAlertIcon } from "lucide-react";
 import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
 import { TableViewsPanel } from "@/components/table/table-views-panel";
+import { ViewDefinitionPanel } from "@/components/table/view-definition-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { useTableRowsQuery, useUpdateRowMutation } from "@/lib/queries";
@@ -16,6 +17,8 @@ const routeApi = getRouteApi("/_app/tables/$schema/$table");
 
 export function TablePage() {
   const { schema, table } = routeApi.useParams();
+  const { type } = routeApi.useSearch();
+  const isView = type === "view";
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
   const [filter, setFilter] = useState("");
@@ -52,6 +55,9 @@ export function TablePage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {isView ? (
+        <ViewDefinitionPanel schema={schema} view={table} />
+      ) : null}
       <TableViewsPanel
         schema={schema}
         table={table}
@@ -107,7 +113,7 @@ export function TablePage() {
             sorting={sorting}
             onSortingChange={setSorting}
             isFetching={isFetching}
-            onSaveRow={(ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
+            onSaveRow={isView ? undefined : (ctid, updates) => updateRowMutation.mutateAsync({ ctid, updates })}
             onApplyFilter={setFilter}
           />
         </div>

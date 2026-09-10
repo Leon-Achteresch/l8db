@@ -1,15 +1,17 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
-import { PlayIcon, Trash2Icon } from "lucide-react";
+import { BookmarkIcon, PlayIcon, Trash2Icon } from "lucide-react";
 
 import { QueryEditorPane } from "@/components/query/QueryEditorPane";
 import { QueryResultTable } from "@/components/query/QueryResultTable";
+import { SaveQueryDialog } from "@/components/query/SaveQueryDialog";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, listAllColumns, listTables, type QueryResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useSchemasQuery } from "@/lib/queries";
+import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
 interface QueryPageProps {
@@ -25,6 +27,9 @@ export function QueryPage({ tabId }: QueryPageProps) {
     return tab?.kind === "query" ? tab.sql : "";
   });
   const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
+
+  const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +151,16 @@ export function QueryPage({ tabId }: QueryPageProps) {
           size="sm"
           variant="ghost"
           className="h-7 gap-1.5 px-3 text-xs"
+          onClick={() => setSaveDialogOpen(true)}
+          disabled={!sql.trim()}
+        >
+          <BookmarkIcon className="size-3" />
+          Speichern
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 px-3 text-xs"
           onClick={() => {
             setResult(null);
             setError(null);
@@ -190,6 +205,12 @@ export function QueryPage({ tabId }: QueryPageProps) {
       <div className="min-h-0 flex-1 border-t">
         <QueryResultTable result={result} isLoading={isRunning} error={error} />
       </div>
+
+      <SaveQueryDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        onSave={(name) => saveQuery(name, sql)}
+      />
     </div>
   );
 }

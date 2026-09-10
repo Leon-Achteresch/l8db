@@ -152,3 +152,28 @@ export async function executeQuery(
 ): Promise<QueryResult> {
   return invoke("execute_query", { kind, connectionString, database, sql });
 }
+
+export async function listViews(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+  schema?: string,
+): Promise<TableInfo[]> {
+  return invoke("list_views", { kind, connectionString, database, schema });
+}
+
+export async function getViewDefinition(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  view: string,
+  database?: string,
+): Promise<string> {
+  return invoke("get_view_definition", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    view,
+  });
+}

@@ -62,6 +62,7 @@ pub async fn fetch_table_rows(
     limit: Option<i64>,
     order_by: Option<String>,
     order_desc: Option<bool>,
+    is_view: Option<bool>,
 ) -> Result<TableData, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref())?
         .fetch_rows(
@@ -71,6 +72,7 @@ pub async fn fetch_table_rows(
             limit.unwrap_or(100),
             order_by.as_deref(),
             order_desc.unwrap_or(false),
+            is_view.unwrap_or(false),
         )
         .await
 }
@@ -124,5 +126,30 @@ pub async fn execute_query(
 ) -> Result<QueryResult, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref())?
         .execute_query(&sql)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_views(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<Vec<TableInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .list_views(schema.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn get_view_definition(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    view: String,
+) -> Result<String, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .get_view_definition(&schema, &view)
         .await
 }
