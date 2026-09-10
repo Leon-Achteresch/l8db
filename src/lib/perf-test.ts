@@ -69,7 +69,7 @@ export interface SavedPerfTest {
   connectionName: string;
   databaseKind: string;
   database: string | null;
-  definition: PerfTestDefinition;
+  definition: PerfTestDefinition | null;
   runs: PerfRun[];
 }
 
@@ -78,6 +78,7 @@ export interface PerfTestContext {
   databaseKind: string;
   database?: string | null;
   capturedAt?: Date;
+  analyze?: boolean;
 }
 
 export function normalizeRepeats(value: number): number {
@@ -188,22 +189,23 @@ export function summarizeRuns(runs: PerfRun[]): PerfRunSummary {
 }
 
 export function buildSavedPerfTest(
-  definition: PerfTestDefinition,
+  definition: PerfTestDefinition | null,
   runs: PerfRun[],
   sql: string,
   context: PerfTestContext,
 ): SavedPerfTest {
   const capturedAt = context.capturedAt ?? new Date();
+  const analyze = context.analyze ?? definition?.analyze ?? true;
   return {
     kind: PERF_FILE_KIND,
     version: PERF_FILE_VERSION,
     capturedAt: capturedAt.toISOString(),
-    mode: definition.analyze ? "ANALYZE" : "EXPLAIN",
+    mode: analyze ? "ANALYZE" : "EXPLAIN",
     sql,
     connectionName: context.connectionName,
     databaseKind: context.databaseKind,
     database: context.database ?? null,
-    definition: { ...definition },
+    definition: definition ? { ...definition } : null,
     runs,
   };
 }
@@ -251,7 +253,8 @@ function validateNode(node: unknown, path: string): ExplainNode {
   return node as unknown as ExplainNode;
 }
 
-function parseDefinition(value: unknown): PerfTestDefinition {
+function parseDefinition(value: unknown): PerfTestDefinition | null {
+  if (value === null || value === undefined) return null;
   if (!isRecord(value)) {
     throw new Error("Die Testdefinition fehlt in der Datei.");
   }
@@ -350,4 +353,26 @@ export function perfRunAsSavedPlan(saved: SavedPerfTest, run: PerfRun): SavedExp
     database: saved.database,
     plan: run.plan,
   };
+}
+
+const READ_ONLY_START = /^(select|with|table|values|show)\b/i;
+const WRITING_KEYWORD =
+  /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|call|do|vacuum|refresh)\b/i;
+
+export function stripSqlNoise(sql: string): string {
+  return sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/;+$/, "")
+    .trim();
+}
+
+export function isReadOnlyStatement(sql: string): boolean {
+  const cleaned = stripSqlNoise(sql);
+  if (cleaned.length === 0) return false;
+  if (cleaned.includes(";")) return false;
+  if (!READ_ONLY_START.test(cleaned)) return false;
+  return !WRITING_KEYWORD.test(cleaned);
 }
