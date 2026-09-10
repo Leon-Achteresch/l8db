@@ -42,6 +42,7 @@ export function ConnectionsView() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const toggleFavorite = useConnectionsStore((state) => state.toggleFavorite);
+  const duplicateConnection = useConnectionsStore((state) => state.duplicateConnection);
   const navigate = useNavigate();
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
@@ -70,6 +71,8 @@ export function ConnectionsView() {
         }}
         onEdit={() => openEditor(connection.id)}
         onDelete={() => setDeleteId(connection.id)}
+        onDuplicate={() => duplicateConnection(connection.id)}
+        onCreateSimilar={() => openEditor("new", connection)}
         onToggleFavorite={() => toggleFavorite(connection.id)}
       />
     );
