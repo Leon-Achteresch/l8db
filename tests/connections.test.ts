@@ -227,6 +227,14 @@ describe("Other providers", () => {
     expect(connectionError("Access denied for user 'root'@'localhost'")).toContain("Anmeldung");
     expect(connectionError("ORA-01017: invalid username/password")).toContain("Anmeldung");
   });
+  test("keeps MongoDB server-selection details actionable", () => {
+    const message = connectionError(
+      "MongoDB: Server selection timeout: No available servers for mongodb+srv://user:secret@cluster.mongodb.net/",
+    );
+    expect(message).toContain("Atlas-IP-Allowlist");
+    expect(message).toContain("No available servers");
+    expect(message).not.toContain("secret");
+  });
 });
 
 describe("Connection lifecycle", () => {
