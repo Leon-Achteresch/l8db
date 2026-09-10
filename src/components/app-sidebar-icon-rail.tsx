@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
 
 import { NavUser } from "@/components/nav-user";
 import {
@@ -15,9 +16,8 @@ import {
 
 export type AppSidebarNavItem = {
   title: string;
-  url: string;
+  url: "/" | "/about";
   icon: React.ReactNode;
-  isActive?: boolean;
 };
 
 type AppSidebarIconRailProps = {
@@ -27,16 +27,11 @@ type AppSidebarIconRailProps = {
     avatar: string;
   };
   navItems: AppSidebarNavItem[];
-  activeTitle?: string;
-  onNavSelect: (item: AppSidebarNavItem) => void;
 };
 
-export function AppSidebarIconRail({
-  user,
-  navItems,
-  activeTitle,
-  onNavSelect,
-}: AppSidebarIconRailProps) {
+export function AppSidebarIconRail({ user, navItems }: AppSidebarIconRailProps) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
   return (
     <Sidebar
       collapsible="none"
@@ -46,11 +41,11 @@ export function AppSidebarIconRail({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-              <a href="#">
+              <Link to="/">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <img src="/logo.png" alt="logo" />
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -60,18 +55,20 @@ export function AppSidebarIconRail({
           <SidebarGroupContent className="px-1.5 md:px-0">
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     tooltip={{
                       children: item.title,
                       hidden: false,
                     }}
-                    onClick={() => onNavSelect(item)}
-                    isActive={activeTitle === item.title}
+                    asChild
+                    isActive={pathname === item.url}
                     className="px-2.5 md:px-2"
                   >
-                    {item.icon}
-                    <span>{item.title}</span>
+                    <Link to={item.url}>
+                      {item.icon}
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
