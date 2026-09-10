@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
@@ -112,6 +113,7 @@ export function TableView() {
   const [insertError, setInsertError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
+  const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,
@@ -420,6 +422,9 @@ export function TableView() {
                   <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
                     Als CSV exportieren…
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                    Als XLSX exportieren…
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void handleExport("json")}>
                     Als JSON exportieren
                   </DropdownMenuItem>
@@ -465,6 +470,14 @@ export function TableView() {
           rows={exportRows}
           defaultFileName={`${table}.csv`}
           fullExport={fullExportSource}
+        />
+        <XlsxExportDialog
+          open={xlsxExportOpen}
+          onOpenChange={setXlsxExportOpen}
+          columns={exportColumns}
+          rows={exportRows}
+          defaultFileName={`${table}.xlsx`}
+          defaultSheetName={table}
         />
       </Tabs>
     );
@@ -572,6 +585,9 @@ export function TableView() {
                 <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
                   Als CSV exportieren…
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                  Als XLSX exportieren…
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleExport("json")}>
                   Als JSON exportieren
                 </DropdownMenuItem>
@@ -641,6 +657,14 @@ export function TableView() {
         rows={exportRows}
         defaultFileName={`${table}.csv`}
         fullExport={fullExportSource}
+      />
+      <XlsxExportDialog
+        open={xlsxExportOpen}
+        onOpenChange={setXlsxExportOpen}
+        columns={exportColumns}
+        rows={exportRows}
+        defaultFileName={`${table}.xlsx`}
+        defaultSheetName={table}
       />
     </Tabs>
   );
