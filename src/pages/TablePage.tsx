@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { getRouteApi } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import { TriangleAlertIcon } from "lucide-react";
 
 import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { useTableRowsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -18,21 +19,27 @@ export function TablePage() {
   const openTab = useTableTabs((state) => state.openTab);
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const { data, isLoading, isFetching, isPending, isError, error } =
-    useTableRowsQuery(schema, table, filter, sorting);
+  const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
+    schema,
+    table,
+    filter,
+    sorting,
+  );
 
   useEffect(() => {
     openTab({ schema, table });
   }, [schema, table, openTab]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     setFilter("");
     setSorting([]);
   }, [schema, table]);
 
   if (!connection) {
     return (
-      <p className="text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
+      <div className="flex flex-1 items-center justify-center p-6 bg-background">
+        <p className="text-sm text-muted-foreground font-medium">Keine Verbindung aktiv.</p>
+      </div>
     );
   }
 
@@ -52,17 +59,39 @@ export function TablePage() {
         />
       </div>
 
-      {isLoading || isPending ? (
-        <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-          <Spinner />
-          Lade Daten…
+      {isLoading ? (
+        <div className="flex-1 overflow-hidden border-t border-border bg-background p-4 space-y-3 select-none">
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24 bg-muted/50" />
+            <Skeleton className="h-8 w-32 bg-muted/50" />
+            <Skeleton className="h-8 w-20 bg-muted/50" />
+            <Skeleton className="h-8 w-40 bg-muted/50" />
+          </div>
+          <div className="space-y-3 mt-4">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="flex gap-3 items-center">
+                <Skeleton className="h-5 w-8 rounded-sm bg-muted/30" />
+                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : isError ? (
-        <p className="p-3 text-sm text-destructive">{String(error)}</p>
+        <div className="flex flex-1 items-center justify-center p-6 border-t border-border bg-background">
+          <div className="flex flex-col items-center gap-3 max-w-md text-center p-6 rounded-lg border border-destructive/20 bg-destructive/5 shadow-xs">
+            <TriangleAlertIcon className="size-8 text-destructive animate-bounce" />
+            <h3 className="text-sm font-semibold text-destructive">Fehler beim Laden der Tabelle</h3>
+            <p className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text">
+              {String(error)}
+            </p>
+          </div>
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
           <DataTable
-            key={`${schema}.${table}`}
             className="min-h-0 flex-1"
             columns={data?.columns ?? []}
             data={data?.rows ?? []}
