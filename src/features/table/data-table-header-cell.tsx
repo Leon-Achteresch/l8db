@@ -122,7 +122,12 @@ export function DataTableHeaderCell({
           </ContextMenuTrigger>
         </PopoverAnchor>
         {onApplyFilter && (
-          <PopoverContent align="start" sideOffset={4} className="w-80 p-0 gap-0">
+          <PopoverContent
+            align="start"
+            sideOffset={4}
+            className="w-80 p-0 gap-0"
+            onFocusOutside={(event) => event.preventDefault()}
+          >
             <div className="flex items-center gap-2 border-b px-3 py-2">
               <FilterIcon className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="font-mono text-[12px] font-semibold text-foreground/80 truncate">
@@ -213,10 +218,12 @@ export function DataTableHeaderCell({
           <>
             <ContextMenuSeparator />
             <ContextMenuItem
-              onClick={() => {
-                onFilterOpenChange(true);
-                onFilterOperatorChange("eq");
-                onFilterValueChange("");
+              onSelect={() => {
+                requestAnimationFrame(() => {
+                  onFilterOpenChange(true);
+                  onFilterOperatorChange("eq");
+                  onFilterValueChange("");
+                });
               }}
             >
               <FilterIcon />
