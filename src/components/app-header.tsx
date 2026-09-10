@@ -7,11 +7,11 @@ import {
   User,
   type LucideIcon,
 } from "lucide-react";
-import { type CSSProperties, useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 
 import { AppHeaderSearch } from "@/components/app-header-search";
-import { cn } from "@/lib/utils";
 import { useTransactionStore } from "@/lib/transactions";
+import { cn } from "@/lib/utils";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -72,35 +72,6 @@ export function AppHeader() {
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
       >
-        {navItems.map(({ to, label, icon: Icon }) => {
-          const active =
-            to === "/" ? pathname === "/" : pathname.startsWith(to);
-          return (
-            <Link
-              key={to}
-              to={to}
-              title={label}
-              aria-label={label}
-              className={cn(
-                "relative inline-flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-medium leading-none transition-all duration-150",
-                active
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              <Icon className="size-4 shrink-0" strokeWidth={2} />
-              {active && (
-                <span
-                  className="pointer-events-none absolute bottom-0 left-1 right-1 h-[1.5px] rounded-full bg-primary/70"
-                  aria-hidden
-                />
-              )}
-            </Link>
-          );
-        })}
-
-        <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden />
-
         <button
           type="button"
           onClick={togglePanel}
