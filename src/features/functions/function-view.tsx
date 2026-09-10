@@ -1,6 +1,6 @@
 import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -154,6 +154,7 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
+  const [externalValueVersion, setExternalValueVersion] = useState(0);
   const { resolvedTheme } = useTheme();
 
   onChangeRef.current = onChange;
@@ -223,6 +224,7 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
     const editor = editorRef.current;
     if (editor && editor.getValue() !== value) {
       editor.setValue(value);
+      setExternalValueVersion((v) => v + 1);
     }
   }, [value]);
 
@@ -249,7 +251,7 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
       timers.forEach(clearTimeout);
       decorations.clear();
     };
-  }, [revealLine, value]);
+  }, [revealLine, externalValueVersion]);
 
   return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
 }
