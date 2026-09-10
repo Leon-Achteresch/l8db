@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 
@@ -7,15 +8,19 @@ import {
   beginTransaction,
   countTableRows,
   fetchTableRows,
+  getErSchema,
   getFunctionDefinition,
   getViewDefinition,
+  listAllColumns,
   listDatabases,
   listExtensions,
   listForeignKeys,
   listFunctions,
+  listRolePrivileges,
   listRoles,
   listSchemas,
   listTables,
+  listTriggers,
   listViews,
   updateRowInTransaction,
   type TableData,
@@ -26,6 +31,62 @@ import {
   useTransactionStore,
   type TransactionChange,
 } from "@/lib/transactions";
+
+const CONNECTION_QUERY_ROOTS = new Set([
+  "databases",
+  "schemas",
+  "tables",
+  "views",
+  "columns",
+  "view-definition",
+  "functions",
+  "function-definition",
+  "extensions",
+  "roles",
+  "role-privileges",
+  "foreign-keys",
+  "triggers",
+  "er-schema",
+  "rows",
+  "count",
+  "all-tables",
+  "all-columns",
+]);
+
+function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {
+  const root = queryKey[0];
+  return (
+    typeof root === "string" &&
+    CONNECTION_QUERY_ROOTS.has(root) &&
+    queryKey[1] === connectionId
+  );
+}
+
+export function useRefreshConnection() {
+  const connection = useActiveConnection();
+  const queryClient = useQueryClient();
+  const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!connection || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await syncWithBackend();
+      await queryClient.invalidateQueries({
+        predicate: (query) => isConnectionQuery(query.queryKey, connection.id),
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [connection, isRefreshing, queryClient, syncWithBackend]);
+
+  return {
+    refresh,
+    isRefreshing,
+    canRefresh: Boolean(connection),
+  };
+}
 
 function sortingToRowSort(sorting: SortingState): TableRowSort | undefined {
   const active = sorting[0];
@@ -89,6 +150,25 @@ export function useViewsQuery() {
         schema,
       ),
     enabled: Boolean(connection),
+  });
+}
+
+export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW") {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  return useQuery({
+    queryKey: ["columns", connection?.id, database, schema, tableType],
+    queryFn: () =>
+      listAllColumns(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+        schema,
+        tableType,
+      ),
+    enabled: Boolean(connection),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -202,6 +282,41 @@ export function useForeignKeysQuery(schema: string, table: string) {
         database ?? undefined,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTriggersQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["triggers", connection?.id, database, schema, table],
+    queryFn: () =>
+      listTriggers(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useErSchemaQuery(schema?: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["er-schema", connection?.id, database, schema],
+    queryFn: () =>
+      getErSchema(
+        connection!.kind,
+        connection!.connectionString,
+        database ?? undefined,
+        schema,
+      ),
+    enabled: Boolean(connection),
     staleTime: 5 * 60 * 1000,
   });
 }

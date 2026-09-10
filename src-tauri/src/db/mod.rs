@@ -175,6 +175,7 @@ pub trait DatabaseAdapter: Send + Sync {
         &self,
         schema: Option<&str>,
         table: Option<&str>,
+        table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String>;
     async fn fetch_rows(
         &self,
@@ -207,6 +208,13 @@ pub trait DatabaseAdapter: Send + Sync {
         schema: &str,
         view: &str,
     ) -> Result<String, String>;
+    async fn update_view_definition(
+        &self,
+        schema: &str,
+        view: &str,
+        body: &str,
+        dry_run: bool,
+    ) -> Result<(), String>;
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String>;
     async fn get_function_definition(&self, oid: &str) -> Result<String, String>;
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String>;
@@ -222,6 +230,47 @@ pub trait DatabaseAdapter: Send + Sync {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ForeignKeyInfo>, String>;
+    async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String>;
+    async fn list_triggers(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<TriggerInfo>, String>;
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TriggerInfo {
+    pub trigger_name: String,
+    pub table_schema: String,
+    pub table_name: String,
+    pub event: String,
+    pub timing: String,
+    pub orientation: String,
+    pub function_schema: String,
+    pub function_name: String,
+    pub enabled: String,
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ERColumn {
+    pub name: String,
+    pub data_type: String,
+    pub is_primary_key: bool,
+    pub is_nullable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ERTable {
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<ERColumn>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ERSchema {
+    pub tables: Vec<ERTable>,
+    pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {

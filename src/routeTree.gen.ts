@@ -14,13 +14,16 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
+import { Route as AppErDiagramRouteImport } from './routes/_app.er-diagram'
 import { Route as AppAboutRouteImport } from './routes/_app.about'
 import { Route as AppQueryIndexRouteImport } from './routes/_app.query.index'
 import { Route as AppUsersNameRouteImport } from './routes/_app.users.$name'
 import { Route as AppQueryIdRouteImport } from './routes/_app.query.$id'
 import { Route as AppExtensionsNameRouteImport } from './routes/_app.extensions.$name'
+import { Route as AppViewEditorSchemaViewRouteImport } from './routes/_app.view-editor.$schema.$view'
 import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
 import { Route as AppFunctionsSchemaNameRouteImport } from './routes/_app.functions.$schema.$name'
+import { Route as AppTriggersSchemaTableTriggerRouteImport } from './routes/_app.triggers.$schema.$table.$trigger'
 
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
@@ -44,6 +47,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppQueryRoute = AppQueryRouteImport.update({
   id: '/query',
   path: '/query',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppErDiagramRoute = AppErDiagramRouteImport.update({
+  id: '/er-diagram',
+  path: '/er-diagram',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAboutRoute = AppAboutRouteImport.update({
@@ -71,6 +79,11 @@ const AppExtensionsNameRoute = AppExtensionsNameRouteImport.update({
   path: '/extensions/$name',
   getParentRoute: () => AppRoute,
 } as any)
+const AppViewEditorSchemaViewRoute = AppViewEditorSchemaViewRouteImport.update({
+  id: '/view-editor/$schema/$view',
+  path: '/view-editor/$schema/$view',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTablesSchemaTableRoute = AppTablesSchemaTableRouteImport.update({
   id: '/tables/$schema/$table',
   path: '/tables/$schema/$table',
@@ -81,11 +94,18 @@ const AppFunctionsSchemaNameRoute = AppFunctionsSchemaNameRouteImport.update({
   path: '/functions/$schema/$name',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTriggersSchemaTableTriggerRoute =
+  AppTriggersSchemaTableTriggerRouteImport.update({
+    id: '/triggers/$schema/$table/$trigger',
+    path: '/triggers/$schema/$table/$trigger',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/er-diagram': typeof AppErDiagramRoute
   '/query': typeof AppQueryRouteWithChildren
   '/settings': typeof AppSettingsRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
@@ -94,10 +114,13 @@ export interface FileRoutesByFullPath {
   '/query/': typeof AppQueryIndexRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
+  '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
+  '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
 }
 export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/about': typeof AppAboutRoute
+  '/er-diagram': typeof AppErDiagramRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/extensions/$name': typeof AppExtensionsNameRoute
@@ -106,12 +129,15 @@ export interface FileRoutesByTo {
   '/query': typeof AppQueryIndexRoute
   '/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
+  '/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
+  '/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/connections': typeof ConnectionsRoute
   '/_app/about': typeof AppAboutRoute
+  '/_app/er-diagram': typeof AppErDiagramRoute
   '/_app/query': typeof AppQueryRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
@@ -121,6 +147,8 @@ export interface FileRoutesById {
   '/_app/query/': typeof AppQueryIndexRoute
   '/_app/functions/$schema/$name': typeof AppFunctionsSchemaNameRoute
   '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
+  '/_app/view-editor/$schema/$view': typeof AppViewEditorSchemaViewRoute
+  '/_app/triggers/$schema/$table/$trigger': typeof AppTriggersSchemaTableTriggerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -128,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/connections'
     | '/about'
+    | '/er-diagram'
     | '/query'
     | '/settings'
     | '/extensions/$name'
@@ -136,10 +165,13 @@ export interface FileRouteTypes {
     | '/query/'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
+    | '/view-editor/$schema/$view'
+    | '/triggers/$schema/$table/$trigger'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connections'
     | '/about'
+    | '/er-diagram'
     | '/settings'
     | '/'
     | '/extensions/$name'
@@ -148,11 +180,14 @@ export interface FileRouteTypes {
     | '/query'
     | '/functions/$schema/$name'
     | '/tables/$schema/$table'
+    | '/view-editor/$schema/$view'
+    | '/triggers/$schema/$table/$trigger'
   id:
     | '__root__'
     | '/_app'
     | '/connections'
     | '/_app/about'
+    | '/_app/er-diagram'
     | '/_app/query'
     | '/_app/settings'
     | '/_app/'
@@ -162,6 +197,8 @@ export interface FileRouteTypes {
     | '/_app/query/'
     | '/_app/functions/$schema/$name'
     | '/_app/tables/$schema/$table'
+    | '/_app/view-editor/$schema/$view'
+    | '/_app/triggers/$schema/$table/$trigger'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -206,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQueryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/er-diagram': {
+      id: '/_app/er-diagram'
+      path: '/er-diagram'
+      fullPath: '/er-diagram'
+      preLoaderRoute: typeof AppErDiagramRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/about': {
       id: '/_app/about'
       path: '/about'
@@ -241,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppExtensionsNameRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/view-editor/$schema/$view': {
+      id: '/_app/view-editor/$schema/$view'
+      path: '/view-editor/$schema/$view'
+      fullPath: '/view-editor/$schema/$view'
+      preLoaderRoute: typeof AppViewEditorSchemaViewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tables/$schema/$table': {
       id: '/_app/tables/$schema/$table'
       path: '/tables/$schema/$table'
@@ -253,6 +304,13 @@ declare module '@tanstack/react-router' {
       path: '/functions/$schema/$name'
       fullPath: '/functions/$schema/$name'
       preLoaderRoute: typeof AppFunctionsSchemaNameRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/triggers/$schema/$table/$trigger': {
+      id: '/_app/triggers/$schema/$table/$trigger'
+      path: '/triggers/$schema/$table/$trigger'
+      fullPath: '/triggers/$schema/$table/$trigger'
+      preLoaderRoute: typeof AppTriggersSchemaTableTriggerRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -274,6 +332,7 @@ const AppQueryRouteWithChildren = AppQueryRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
+  AppErDiagramRoute: typeof AppErDiagramRoute
   AppQueryRoute: typeof AppQueryRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -281,10 +340,13 @@ interface AppRouteChildren {
   AppUsersNameRoute: typeof AppUsersNameRoute
   AppFunctionsSchemaNameRoute: typeof AppFunctionsSchemaNameRoute
   AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
+  AppViewEditorSchemaViewRoute: typeof AppViewEditorSchemaViewRoute
+  AppTriggersSchemaTableTriggerRoute: typeof AppTriggersSchemaTableTriggerRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAboutRoute: AppAboutRoute,
+  AppErDiagramRoute: AppErDiagramRoute,
   AppQueryRoute: AppQueryRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
@@ -292,6 +354,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppUsersNameRoute: AppUsersNameRoute,
   AppFunctionsSchemaNameRoute: AppFunctionsSchemaNameRoute,
   AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
+  AppViewEditorSchemaViewRoute: AppViewEditorSchemaViewRoute,
+  AppTriggersSchemaTableTriggerRoute: AppTriggersSchemaTableTriggerRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

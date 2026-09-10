@@ -17,7 +17,6 @@ import {
   BinaryIcon,
   BracesIcon,
   CalendarIcon,
-  CheckIcon,
   ChevronFirstIcon,
   ChevronLastIcon,
   ChevronLeftIcon,
@@ -372,9 +371,11 @@ function FkPreviewPopover({
   );
 }
 
-type EditingRow = {
+type EditingCell = {
   ctid: string;
-  values: Record<string, string>;
+  rowIndex: number;
+  columnId: string;
+  value: string;
   originalValues: Record<string, unknown>;
 };
 
@@ -419,7 +420,7 @@ export function DataTable({
 }: DataTableProps) {
   const [activeCell, setActiveCell] = useState<{ rowIndex: number; columnId: string } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ columnName: string; value: unknown } | null>(null);
-  const [editingRow, setEditingRow] = useState<EditingRow | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
   const [filterOperator, setFilterOperator] = useState("eq");
@@ -566,27 +567,34 @@ export function DataTable({
   const colSpan = table.getAllColumns().length || 1;
   const activeSort = sorting[0];
 
-  const handleSaveRow = useCallback(async () => {
-    if (!editingRow || !onSaveRow || isSaving) return;
+  const handleSaveCell = useCallback(async () => {
+    if (!editingCell || !onSaveRow || isSaving) return;
     setIsSaving(true);
     try {
       const updates: Record<string, string | null> = {};
-      for (const [col, val] of Object.entries(editingRow.values)) {
-        updates[col] = val === "" ? null : val;
+      for (const col of columnNames) {
+        if (col === editingCell.columnId) {
+          updates[col] = editingCell.value === "" ? null : editingCell.value;
+        } else {
+          const origVal = editingCell.originalValues[col];
+          if (origVal === null || origVal === undefined) {
+            updates[col] = null;
+          } else if (typeof origVal === "object") {
+            updates[col] = JSON.stringify(origVal);
+          } else {
+            updates[col] = String(origVal);
+          }
+        }
       }
-      await onSaveRow(editingRow.ctid, updates, editingRow.originalValues);
-      setEditingRow(null);
+      await onSaveRow(editingCell.ctid, updates, editingCell.originalValues);
+      setEditingCell(null);
       toast.success("Zeile gespeichert.");
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
     } finally {
       setIsSaving(false);
     }
-  }, [editingRow, onSaveRow, isSaving]);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingRow(null);
-  }, []);
+  }, [editingCell, onSaveRow, isSaving, columnNames]);
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
@@ -602,53 +610,57 @@ export function DataTable({
     [filterColumn, filterOperator, filterValue],
   );
 
-  const handleRowDoubleClick = useCallback(
-    (row: Row<TableRow>) => {
+  const handleCellEdit = useCallback(
+    (row: Row<TableRow>, columnId: string) => {
       const ctid = row.original["__ctid__"] as string | undefined;
       if (!ctid) return;
-      const values: Record<string, string> = {};
-      for (const col of columnNames) {
-        const val = row.original[col];
-        if (val === null || val === undefined) {
-          values[col] = "";
-        } else if (typeof val === "object") {
-          values[col] = JSON.stringify(val);
-        } else {
-          values[col] = String(val);
-        }
+      const val = row.original[columnId];
+      let value: string;
+      if (val === null || val === undefined) {
+        value = "";
+      } else if (typeof val === "object") {
+        value = JSON.stringify(val);
+      } else {
+        value = String(val);
       }
-      setEditingRow({ ctid, values, originalValues: { ...row.original } });
+      setEditingCell({
+        ctid,
+        rowIndex: row.index,
+        columnId,
+        value,
+        originalValues: { ...row.original },
+      });
       setActiveCell(null);
     },
-    [columnNames],
+    [],
   );
 
   useEffect(() => {
-    if (!editingRow || !tbodyRef.current) return;
+    if (!editingCell || !tbodyRef.current) return;
     requestAnimationFrame(() => {
       const tbody = tbodyRef.current;
       if (!tbody) return;
       const tr = Array.from(tbody.children).find(
         (child) =>
           child instanceof HTMLTableRowElement &&
-          child.dataset.ctid === editingRow.ctid,
+          child.dataset.ctid === editingCell.ctid,
       );
       if (tr instanceof HTMLTableRowElement) {
         tr.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     });
-  }, [editingRow]);
+  }, [editingCell]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (editingRow) {
+      if (editingCell) {
         if (e.key === "Escape") {
-          setEditingRow(null);
+          setEditingCell(null);
           return;
         }
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          void handleSaveRow();
+          void handleSaveCell();
           return;
         }
         return;
@@ -660,6 +672,13 @@ export function DataTable({
 
       if (e.key === "Escape") {
         setActiveCell(null);
+        return;
+      }
+
+      if (e.key === "Enter" && !e.shiftKey && onSaveRow && columnId !== INDEX_COLUMN) {
+        e.preventDefault();
+        const row = rows[rowIndex];
+        if (row) handleCellEdit(row, columnId);
         return;
       }
 
@@ -700,7 +719,7 @@ export function DataTable({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeCell, columnNames, rows, editingRow, handleSaveRow]);
+  }, [activeCell, columnNames, rows, editingCell, handleSaveCell, onSaveRow, handleCellEdit]);
 
   const handleCellCopy = (val: unknown) => {
     if (val === undefined || val === null) return;
@@ -894,12 +913,7 @@ export function DataTable({
               rows.map((row) => {
                 const rowIndex = row.index;
                 const rowCtid = row.original["__ctid__"] as string | undefined;
-                const isEditing = !!rowCtid && editingRow?.ctid === rowCtid;
-                const beginCellEdit = (e: React.MouseEvent) => {
-                  e.stopPropagation();
-                  if (!onSaveRow || isEditing) return;
-                  handleRowDoubleClick(row);
-                };
+                const isRowEditing = !!rowCtid && editingCell?.ctid === rowCtid;
 
                 return (
                   <tr
@@ -908,7 +922,7 @@ export function DataTable({
                     data-ctid={rowCtid}
                     className={cn(
                       "group/row",
-                      isEditing
+                      isRowEditing
                         ? "bg-primary/[0.03]"
                         : "bg-background hover:bg-muted/15",
                     )}
@@ -917,75 +931,45 @@ export function DataTable({
                       const columnId = cell.column.id;
                       const value =
                         cellIndex > 0 ? row.getValue(columnId) : undefined;
+                      const isCellEditing =
+                        isRowEditing && editingCell?.columnId === columnId;
                       const isActive =
-                        !isEditing &&
+                        !isRowEditing &&
                         activeCell?.rowIndex === rowIndex &&
                         activeCell.columnId === columnId;
 
-                      if (isEditing) {
-                        if (cellIndex === 0) {
-                          return (
-                            <td
-                              key={cell.id}
-                              style={{ width: cell.column.getSize() }}
-                              className="w-12 border-b border-r border-border sticky left-0 z-10 bg-primary/[0.06] text-center px-1 py-1"
-                            >
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="font-mono text-[10px] tabular-nums text-muted-foreground/60 select-none leading-none">
-                                  {rowIndex + 1}
-                                </span>
-                                <div className="flex items-center justify-center gap-0.5">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveRow()}
-                                  disabled={isSaving}
-                                  title="Speichern (Enter)"
-                                  className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10 transition-colors cursor-pointer disabled:opacity-50"
-                                >
-                                  {isSaving ? (
-                                    <Loader2Icon className="size-3.5 animate-spin" />
-                                  ) : (
-                                    <CheckIcon className="size-3.5" />
-                                  )}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleCancelEdit}
-                                  disabled={isSaving}
-                                  title="Abbrechen (Esc)"
-                                  className="p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
-                                >
-                                  <XIcon className="size-3.5" />
-                                </button>
-                                </div>
-                              </div>
-                            </td>
-                          );
-                        }
+                      if (isCellEditing && editingCell) {
                         return (
                           <td
                             key={cell.id}
                             style={{ width: cell.column.getSize() }}
-                            className="px-3 py-0 align-middle border-b border-r border-border/30 relative overflow-hidden"
+                            className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
                           >
-                            <input
-                              type="text"
-                              value={editingRow.values[columnId] ?? ""}
-                              onChange={(e) =>
-                                setEditingRow((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        values: { ...prev.values, [columnId]: e.target.value },
-                                      }
-                                    : prev,
-                                )
-                              }
-                              disabled={isSaving}
-                              placeholder="NULL"
-                              autoFocus={cellIndex === 1}
-                              className="w-full min-w-0 h-8 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
-                            />
+                            <div className="flex flex-col">
+                              <input
+                                type="text"
+                                value={editingCell.value}
+                                onChange={(e) =>
+                                  setEditingCell((prev) =>
+                                    prev ? { ...prev, value: e.target.value } : prev,
+                                  )
+                                }
+                                disabled={isSaving}
+                                placeholder="NULL"
+                                autoFocus
+                                className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
+                              />
+                              <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
+                                <span className="flex items-center gap-1">
+                                  <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">↵</kbd>
+                                  <span>Speichern</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">esc</kbd>
+                                  <span>Abbrechen</span>
+                                </span>
+                              </div>
+                            </div>
                           </td>
                         );
                       }
@@ -993,8 +977,14 @@ export function DataTable({
                       return (
                         <td
                           key={cell.id}
-                          onClick={() => setActiveCell({ rowIndex, columnId })}
-                          onDoubleClick={onSaveRow ? beginCellEdit : undefined}
+                          onClick={() => {
+                            if (editingCell) setEditingCell(null);
+                            setActiveCell({ rowIndex, columnId });
+                          }}
+                          onDoubleClick={onSaveRow && cellIndex > 0 ? (e) => {
+                            e.stopPropagation();
+                            handleCellEdit(row, columnId);
+                          } : undefined}
                           style={{ width: cell.column.getSize() }}
                           className={cn(
                             "px-3 py-1.5 align-middle border-b border-r border-border/30 transition-colors select-text relative cursor-default text-left overflow-hidden",
@@ -1075,7 +1065,7 @@ export function DataTable({
           ) : (
             <span>
               {onSaveRow
-                ? "Navigiere mit Pfeiltasten · Doppelklick zum Bearbeiten"
+                ? "Pfeiltasten navigieren · Enter oder Doppelklick zum Bearbeiten"
                 : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
             </span>
           )}

@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { TriangleAlertIcon } from "lucide-react";
+import { CodeIcon, TableIcon, TriangleAlertIcon } from "lucide-react";
 
 import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
+import { TableTriggersPanel } from "@/components/table/table-triggers-panel";
 import { TableViewsPanel } from "@/components/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/components/table/view-definition-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import {
   useTableRowsQuery,
@@ -44,6 +46,7 @@ export function TablePage() {
   }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
+  const [viewTab, setViewTab] = useState<"data" | "definition">("data");
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
@@ -90,6 +93,7 @@ export function TablePage() {
     setFilter(fkFilter ?? "");
     setSorting([]);
     setPage(0);
+    setViewTab("data");
   }, [schema, table, fkFilter]);
 
   if (!connection) {
@@ -105,60 +109,84 @@ export function TablePage() {
       ? "Keine Daten."
       : "Keine Zeilen für diesen Filter.";
 
+  if (isView) {
+    return (
+      <Tabs
+        value={viewTab}
+        onValueChange={(v) => setViewTab(v as "data" | "definition")}
+        className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+          <TabsList variant="line" className="h-9">
+            <TabsTrigger value="data">
+              <TableIcon className="size-3.5" />
+              Daten
+            </TabsTrigger>
+            <TabsTrigger value="definition">
+              <CodeIcon className="size-3.5" />
+              Definition
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {isLoading ? (
+            <TableSkeleton />
+          ) : isError ? (
+            <TableError error={error} />
+          ) : (
+            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+              <DataTable
+                className="h-full min-h-0 flex-1"
+                columns={data?.columns ?? []}
+                data={data?.rows ?? []}
+                emptyMessage={emptyMessage}
+                sorting={sorting}
+                onSortingChange={setSorting}
+                isFetching={isFetching}
+                onApplyFilter={handleFilterChange}
+                page={page}
+                totalCount={totalCount ?? undefined}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                foreignKeys={foreignKeys}
+                currentSchema={schema}
+                currentTable={table}
+                onNavigateToTable={handleNavigateToTable}
+              />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ViewDefinitionPanel schema={schema} view={table} />
+        </TabsContent>
+      </Tabs>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {isView ? (
-        <ViewDefinitionPanel schema={schema} view={table} />
-      ) : null}
-      {!isView ? (
-        <TableViewsPanel
-          schema={schema}
-          table={table}
+      <TableViewsPanel
+        schema={schema}
+        table={table}
+        activeFilter={filter}
+        onSelectView={handleFilterChange}
+      />
+      <TableTriggersPanel schema={schema} table={table} />
+      <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+        <TableFilterPanel
+          key={`${schema}.${table}`}
+          columns={data?.columns ?? []}
           activeFilter={filter}
-          onSelectView={handleFilterChange}
+          onApply={handleFilterChange}
         />
-      ) : null}
-      {!isView ? (
-        <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
-          <TableFilterPanel
-            key={`${schema}.${table}`}
-            columns={data?.columns ?? []}
-            activeFilter={filter}
-            onApply={handleFilterChange}
-          />
-        </div>
-      ) : null}
+      </div>
 
       {isLoading ? (
-        <div className="flex-1 overflow-hidden border-t border-border bg-background p-4 space-y-3 select-none">
-          <div className="flex gap-2">
-            <Skeleton className="h-8 w-24 bg-muted/50" />
-            <Skeleton className="h-8 w-32 bg-muted/50" />
-            <Skeleton className="h-8 w-20 bg-muted/50" />
-            <Skeleton className="h-8 w-40 bg-muted/50" />
-          </div>
-          <div className="space-y-3 mt-4">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="flex gap-3 items-center">
-                <Skeleton className="h-5 w-8 rounded-sm bg-muted/30" />
-                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-                <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <TableSkeleton />
       ) : isError ? (
-        <div className="flex flex-1 items-center justify-center p-6 border-t border-border bg-background">
-          <div className="flex flex-col items-center gap-3 max-w-md text-center p-6 rounded-lg border border-destructive/20 bg-destructive/5 shadow-xs">
-            <TriangleAlertIcon className="size-8 text-destructive animate-bounce" />
-            <h3 className="text-sm font-semibold text-destructive">Fehler beim Laden der Tabelle</h3>
-            <p className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text">
-              {String(error)}
-            </p>
-          </div>
-        </div>
+        <TableError error={error} />
       ) : (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
           <DataTable
@@ -169,7 +197,7 @@ export function TablePage() {
             sorting={sorting}
             onSortingChange={setSorting}
             isFetching={isFetching}
-            onSaveRow={isView ? undefined : async (ctid, updates, oldValues) => { await updateRowMutation.mutateAsync({ ctid, updates, oldValues }); }}
+            onSaveRow={async (ctid, updates, oldValues) => { await updateRowMutation.mutateAsync({ ctid, updates, oldValues }); }}
             onApplyFilter={handleFilterChange}
             page={page}
             totalCount={totalCount ?? undefined}
@@ -182,6 +210,44 @@ export function TablePage() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="flex-1 overflow-hidden border-t border-border bg-background p-4 space-y-3 select-none">
+      <div className="flex gap-2">
+        <Skeleton className="h-8 w-24 bg-muted/50" />
+        <Skeleton className="h-8 w-32 bg-muted/50" />
+        <Skeleton className="h-8 w-20 bg-muted/50" />
+        <Skeleton className="h-8 w-40 bg-muted/50" />
+      </div>
+      <div className="space-y-3 mt-4">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="flex gap-3 items-center">
+            <Skeleton className="h-5 w-8 rounded-sm bg-muted/30" />
+            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+            <Skeleton className="h-5 flex-1 rounded-sm bg-muted/30" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TableError({ error }: { error: unknown }) {
+  return (
+    <div className="flex flex-1 items-center justify-center p-6 border-t border-border bg-background">
+      <div className="flex flex-col items-center gap-3 max-w-md text-center p-6 rounded-lg border border-destructive/20 bg-destructive/5 shadow-xs">
+        <TriangleAlertIcon className="size-8 text-destructive animate-bounce" />
+        <h3 className="text-sm font-semibold text-destructive">Fehler beim Laden der Tabelle</h3>
+        <p className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text">
+          {String(error)}
+        </p>
+      </div>
     </div>
   );
 }

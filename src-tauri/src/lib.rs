@@ -4,6 +4,8 @@ mod db;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .invoke_handler(tauri::generate_handler![
@@ -19,6 +21,7 @@ pub fn run() {
             db::commands::execute_query,
             db::commands::list_views,
             db::commands::get_view_definition,
+            db::commands::update_view_definition,
             db::commands::begin_transaction,
             db::commands::execute_in_transaction,
             db::commands::update_row_in_transaction,
@@ -35,7 +38,9 @@ pub fn run() {
             db::commands::drop_role,
             db::commands::list_role_privileges,
             db::commands::modify_privilege,
-            db::commands::list_foreign_keys
+            db::commands::list_foreign_keys,
+            db::commands::get_er_schema,
+            db::commands::list_triggers
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

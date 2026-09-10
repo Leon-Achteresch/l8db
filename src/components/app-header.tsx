@@ -3,6 +3,7 @@ import {
   Database,
   GitBranchIcon,
   Home,
+  RefreshCw,
   Settings,
   User,
   type LucideIcon,
@@ -10,6 +11,7 @@ import {
 import { useEffect, type CSSProperties } from "react";
 
 import { AppHeaderSearch } from "@/components/app-header-search";
+import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +40,7 @@ export function AppHeader() {
   const panelOpen = useTransactionStore((s) => s.panelOpen);
   const togglePanel = useTransactionStore((s) => s.togglePanel);
   const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
+  const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
 
   useEffect(() => {
     syncWithBackend();
@@ -72,6 +75,27 @@ export function AppHeader() {
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         aria-label="Hauptnavigation"
       >
+        {canRefresh ? (
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={isRefreshing}
+            aria-label="Objekte aktualisieren"
+            title="Datenbankobjekte neu laden"
+            className={cn(
+              "inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-all duration-150 cursor-pointer",
+              "hover:bg-muted hover:text-foreground",
+              "disabled:pointer-events-none disabled:opacity-50",
+            )}
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
+            <RefreshCw
+              className={cn("size-4", isRefreshing && "animate-spin")}
+              strokeWidth={2}
+            />
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={togglePanel}

@@ -1,4 +1,4 @@
-import { Home, Info, SquareTerminalIcon, type LucideIcon } from "lucide-react";
+import { Home, Info, Network, SquareTerminalIcon, type LucideIcon } from "lucide-react";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 
@@ -26,6 +26,7 @@ export const appSidebarData: {
   navMain: [
     { title: "Home", url: "/", icon: Home },
     { title: "Query Editor", url: "/query", icon: SquareTerminalIcon },
+    { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Über", url: "/about", icon: Info },
   ],
 };
