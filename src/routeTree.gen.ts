@@ -10,63 +10,73 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ConnectionsRouteImport } from './routes/connections'
-import { Route as AboutRouteImport } from './routes/about'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as TablesSchemaTableRouteImport } from './routes/tables.$schema.$table'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppAboutRouteImport } from './routes/_app.about'
+import { Route as AppTablesSchemaTableRouteImport } from './routes/_app.tables.$schema.$table'
 
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const TablesSchemaTableRoute = TablesSchemaTableRouteImport.update({
+const AppAboutRoute = AppAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTablesSchemaTableRoute = AppTablesSchemaTableRouteImport.update({
   id: '/tables/$schema/$table',
   path: '/tables/$schema/$table',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
+  '/': typeof AppIndexRoute
   '/connections': typeof ConnectionsRoute
-  '/tables/$schema/$table': typeof TablesSchemaTableRoute
+  '/about': typeof AppAboutRoute
+  '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/connections': typeof ConnectionsRoute
-  '/tables/$schema/$table': typeof TablesSchemaTableRoute
+  '/about': typeof AppAboutRoute
+  '/': typeof AppIndexRoute
+  '/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
+  '/_app': typeof AppRouteWithChildren
   '/connections': typeof ConnectionsRoute
-  '/tables/$schema/$table': typeof TablesSchemaTableRoute
+  '/_app/about': typeof AppAboutRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/tables/$schema/$table': typeof AppTablesSchemaTableRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/connections' | '/tables/$schema/$table'
+  fullPaths: '/' | '/connections' | '/about' | '/tables/$schema/$table'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/connections' | '/tables/$schema/$table'
-  id: '__root__' | '/' | '/about' | '/connections' | '/tables/$schema/$table'
+  to: '/connections' | '/about' | '/' | '/tables/$schema/$table'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/connections'
+    | '/_app/about'
+    | '/_app/'
+    | '/_app/tables/$schema/$table'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
+  AppRoute: typeof AppRouteWithChildren
   ConnectionsRoute: typeof ConnectionsRoute
-  TablesSchemaTableRoute: typeof TablesSchemaTableRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -78,35 +88,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/tables/$schema/$table': {
-      id: '/tables/$schema/$table'
+    '/_app/about': {
+      id: '/_app/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AppAboutRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tables/$schema/$table': {
+      id: '/_app/tables/$schema/$table'
       path: '/tables/$schema/$table'
       fullPath: '/tables/$schema/$table'
-      preLoaderRoute: typeof TablesSchemaTableRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppTablesSchemaTableRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppAboutRoute: typeof AppAboutRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppTablesSchemaTableRoute: typeof AppTablesSchemaTableRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAboutRoute: AppAboutRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppTablesSchemaTableRoute: AppTablesSchemaTableRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
+  AppRoute: AppRouteWithChildren,
   ConnectionsRoute: ConnectionsRoute,
-  TablesSchemaTableRoute: TablesSchemaTableRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

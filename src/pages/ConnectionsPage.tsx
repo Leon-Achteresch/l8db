@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
+  ArrowLeftIcon,
   CheckIcon,
   PencilIcon,
   PlusIcon,
@@ -151,7 +153,15 @@ export function ConnectionsPage() {
   }
 
   return (
-    <main className="mx-auto grid w-full max-w-xl gap-6">
+    <main className="mx-auto grid w-full max-w-xl gap-6 p-6">
+      <div>
+        <Button variant="ghost" size="sm" asChild className="-ml-2">
+          <Link to="/">
+            <ArrowLeftIcon />
+            Zurück
+          </Link>
+        </Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Verbindungen</CardTitle>

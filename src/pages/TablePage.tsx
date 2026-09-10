@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { getRouteApi } from "@tanstack/react-router";
 import {
@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/table";
 import { useActiveConnection } from "@/lib/connections";
 import { useTableRowsQuery } from "@/lib/queries";
+import { useTableTabs } from "@/lib/table-tabs";
 
-const routeApi = getRouteApi("/tables/$schema/$table");
+const routeApi = getRouteApi("/_app/tables/$schema/$table");
 
 type Row = Record<string, unknown>;
 
@@ -37,7 +38,12 @@ function renderValue(value: unknown) {
 export function TablePage() {
   const { schema, table } = routeApi.useParams();
   const connection = useActiveConnection();
+  const openTab = useTableTabs((state) => state.openTab);
   const { data, isLoading, isError, error } = useTableRowsQuery(schema, table);
+
+  useEffect(() => {
+    openTab({ schema, table });
+  }, [schema, table, openTab]);
 
   const columns = useMemo<ColumnDef<Row>[]>(
     () =>
@@ -75,52 +81,47 @@ export function TablePage() {
   }
 
   return (
-    <div className="flex flex-1 ">
-      <div className="">
-        <Table>
-          <TableHeader>
-            {tableInstance.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
+    <div className="min-h-0 flex-1 overflow-auto [&>[data-slot=table-container]]:w-max [&>[data-slot=table-container]]:overflow-visible [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-background">
+      <Table>
+        <TableHeader>
+          {tableInstance.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {tableInstance.getRowModel().rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length || 1}
+                className="h-24 text-center text-muted-foreground"
+              >
+                Keine Daten.
+              </TableCell>
+            </TableRow>
+          ) : (
+            tableInstance.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
                 ))}
               </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {tableInstance.getRowModel().rows.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length || 1}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  Keine Daten.
-                </TableCell>
-              </TableRow>
-            ) : (
-              tableInstance.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </div>
   );
 }
