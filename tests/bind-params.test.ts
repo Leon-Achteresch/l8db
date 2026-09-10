@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildParameterizedQuery,
   detectBindParams,
+  inlineBindValues,
   normalizeBindValue,
   pgCastFor,
   validateBindParams,
@@ -71,10 +72,7 @@ describe("validateBindParams", () => {
       "1": { type: "numeric", value: "1,5" },
       "2": { type: "bool", value: "vielleicht" },
     });
-    expect(errors).toEqual([
-      "$1: Keine gültige Dezimalzahl.",
-      "$2: Nur true oder false erlaubt.",
-    ]);
+    expect(errors).toEqual(["$1: Keine gültige Dezimalzahl.", "$2: Nur true oder false erlaubt."]);
   });
 
   test("akzeptiert NULL ohne Wert", () => {
@@ -144,5 +142,16 @@ describe("Hilfsfunktionen", () => {
   test("normalizeBindValue normalisiert Boolean", () => {
     expect(normalizeBindValue({ type: "bool", value: "Yes" })).toBe("true");
     expect(normalizeBindValue({ type: "bool", value: "n" })).toBe("false");
+  });
+});
+
+describe("inlineBindValues", () => {
+  test("setzt Literale typgerecht ein", () => {
+    const sql = inlineBindValues("SELECT * FROM t WHERE a = :a AND b = :b AND c = :c AND d = :d", {
+      a: { type: "text", value: "O'Reilly" },
+      b: { type: "int", value: "42" },
+      c: { type: "null", value: "" },
+    });
+    expect(sql).toBe("SELECT * FROM t WHERE a = 'O''Reilly' AND b = 42 AND c = NULL AND d = NULL");
   });
 });
