@@ -2,6 +2,18 @@
   "name": "@l8db/extension-sdk",
   "version": "1.1.0",
   "type": "module",
+  "description": "Extension SDK for l8db.",
+  "author": "Leon Achteresch",
+  "license": "MIT",
+  "homepage": "https://github.com/Leon-Achteresch/l8db",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leon-Achteresch/l8db.git",
+    "directory": "packages/extension-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/Leon-Achteresch/l8db/issues"
+  },
   "bin": {
     "l8db-extension": "dist/cli.js"
   },
@@ -11,7 +23,6 @@
   "engines": {
     "bun": ">=1.3.0"
   },
-  "license": "MIT",
   "devDependencies": {
     "@l8db/extension-api": "^1.0.0"
   },

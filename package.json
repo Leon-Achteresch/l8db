@@ -3,6 +3,17 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "description": "Fast, native desktop client for PostgreSQL and other databases.",
+  "author": "Leon Achteresch",
+  "license": "MIT",
+  "homepage": "https://github.com/Leon-Achteresch/l8db",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leon-Achteresch/l8db.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Leon-Achteresch/l8db/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json && vite build",
