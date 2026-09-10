@@ -551,3 +551,35 @@ export async function listTriggers(
     table,
   });
 }
+
+export async function dropTable(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_table", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+  });
+}
+
+export async function truncateTable(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<void> {
+  await invoke("truncate_table", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+  });
+}
