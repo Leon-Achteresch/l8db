@@ -1,8 +1,9 @@
 use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
-    create_adapter, create_adapter_from_string, AlterRoleOptions, ColumnInfo, ConnectionConfig,
-    CreateRoleOptions, DatabaseKind, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
+    create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
+    AlterRoleOptions, ColumnInfo, ConnectionConfig, CreateRoleOptions, DatabaseKind,
+    DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, PrivilegeChange,
     QueryResult, RoleInfo, RolePrivileges, TableData, TableInfo, TriggerInfo,
 };
 
@@ -485,5 +486,64 @@ pub async fn list_triggers(
 ) -> Result<Vec<TriggerInfo>, String> {
     create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
         .list_triggers(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn list_table_columns_detailed(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<DetailedColumnInfo>, String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .list_table_columns_detailed(&schema, &table)
+        .await
+}
+
+#[tauri::command]
+pub async fn add_column(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    column: AddColumnRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .add_column(&schema, &table, &column)
+        .await
+}
+
+#[tauri::command]
+pub async fn alter_column(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    changes: AlterColumnRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .alter_column(&schema, &table, &changes)
+        .await
+}
+
+#[tauri::command]
+pub async fn drop_column(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    column: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref(), pool_state.inner().clone())?
+        .drop_column(&schema, &table, &column)
         .await
 }

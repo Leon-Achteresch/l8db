@@ -583,3 +583,99 @@ export async function truncateTable(
     table,
   });
 }
+
+export interface DetailedColumnInfo {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  column_default: string | null;
+  is_primary_key: boolean;
+  ordinal_position: number;
+  character_maximum_length: number | null;
+}
+
+export interface AddColumnRequest {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  default_value?: string;
+}
+
+export interface AlterColumnRequest {
+  old_name: string;
+  new_name?: string;
+  data_type?: string;
+  set_not_null?: boolean;
+  new_default?: string;
+  drop_default: boolean;
+}
+
+export async function listTableColumnsDetailed(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<DetailedColumnInfo[]> {
+  return invoke("list_table_columns_detailed", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+  });
+}
+
+export async function addColumn(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  column: AddColumnRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("add_column", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    column,
+  });
+}
+
+export async function alterColumn(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  changes: AlterColumnRequest,
+  database?: string,
+): Promise<void> {
+  await invoke("alter_column", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    changes,
+  });
+}
+
+export async function dropColumn(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  column: string,
+  database?: string,
+): Promise<void> {
+  await invoke("drop_column", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    column,
+  });
+}

@@ -15,9 +15,11 @@ import {
   PackageIcon,
   SearchIcon,
   SettingsIcon,
+  SquareTerminalIcon,
   TableIcon,
   TrashIcon,
   UsersIcon,
+  WrenchIcon,
 } from "lucide-react";
 
 import {
@@ -416,6 +418,7 @@ function SidebarEntityList({
   const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
+  const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
   const activeConnection = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -498,6 +501,33 @@ function SidebarEntityList({
       setActionLoading(false);
       setConfirmAction(null);
     }
+  };
+
+  const handleOpenInEditor = (itemSchema: string, itemName: string) => {
+    const id = crypto.randomUUID();
+    const sql = `SELECT * FROM ${itemSchema}."${itemName}";`;
+    const counter = useTableTabs.getState().queryCounter + 1;
+    useTableTabs.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          kind: "query" as const,
+          id,
+          title: `Query ${counter}`,
+          sql,
+        },
+      ],
+      queryCounter: counter,
+    }));
+    navigate({ to: "/query/$id", params: { id } });
+  };
+
+  const handleAlterTable = (itemSchema: string, itemName: string) => {
+    openAlterTableTab({ schema: itemSchema, table: itemName });
+    navigate({
+      to: "/alter-table/$schema/$table",
+      params: { schema: itemSchema, table: itemName },
+    });
   };
 
   return (
@@ -607,6 +637,19 @@ function SidebarEntityList({
                       {menuButton}
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem
+                        onSelect={() => handleOpenInEditor(item.schema, item.name)}
+                      >
+                        <SquareTerminalIcon />
+                        Im Editor öffnen
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() => handleAlterTable(item.schema, item.name)}
+                      >
+                        <WrenchIcon />
+                        Alter Table
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
                       <ContextMenuItem
                         variant="destructive"
                         onSelect={() =>
