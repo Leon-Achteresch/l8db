@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { CodeIcon, TableIcon, TriangleAlertIcon } from "lucide-react";
+import {
+  CodeIcon,
+  TableIcon,
+  TriangleAlertIcon,
+  ZapIcon,
+} from "lucide-react";
 
 import { DataTable } from "@/components/table/data-table";
 import { TableFilterPanel } from "@/components/table/table-filter-panel";
-import { TableTriggersPanel } from "@/components/table/table-triggers-panel";
+import { TableTriggersList } from "@/components/table/table-triggers-list";
 import { TableViewsPanel } from "@/components/table/table-views-panel";
 import { ViewDefinitionPanel } from "@/components/table/view-definition-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +28,9 @@ import {
 import { useTableTabs } from "@/lib/table-tabs";
 
 const routeApi = getRouteApi("/_app/tables/$schema/$table");
+
+type ViewTab = "data" | "definition";
+type TableTab = "data" | "triggers";
 
 export function TablePage() {
   const { schema, table } = routeApi.useParams();
@@ -46,7 +54,8 @@ export function TablePage() {
   }, [type, views, schema, table, tabEntityType]);
   const connection = useActiveConnection();
   const openTab = useTableTabs((state) => state.openTab);
-  const [viewTab, setViewTab] = useState<"data" | "definition">("data");
+  const [viewTab, setViewTab] = useState<ViewTab>("data");
+  const [tableTab, setTableTab] = useState<TableTab>("data");
   const [filter, setFilter] = useState(fkFilter ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
@@ -94,6 +103,7 @@ export function TablePage() {
     setSorting([]);
     setPage(0);
     setViewTab("data");
+    setTableTab("data");
   }, [schema, table, fkFilter]);
 
   if (!connection) {
@@ -109,11 +119,63 @@ export function TablePage() {
       ? "Keine Daten."
       : "Keine Zeilen für diesen Filter.";
 
+  const dataContent = isLoading ? (
+    <TableSkeleton />
+  ) : isError ? (
+    <TableError error={error} />
+  ) : (
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {!isView && (
+        <>
+          <TableViewsPanel
+            schema={schema}
+            table={table}
+            activeFilter={filter}
+            onSelectView={handleFilterChange}
+          />
+          <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+          <TableFilterPanel
+            key={`${schema}.${table}`}
+            columns={data?.columns ?? []}
+            activeFilter={filter}
+            onApply={handleFilterChange}
+          />
+          </div>
+        </>
+      )}
+      <DataTable
+        className="h-full min-h-0 flex-1"
+        columns={data?.columns ?? []}
+        data={data?.rows ?? []}
+        emptyMessage={emptyMessage}
+        sorting={sorting}
+        onSortingChange={setSorting}
+        isFetching={isFetching}
+        onSaveRow={
+          isView
+            ? undefined
+            : async (ctid, updates, oldValues) => {
+                await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
+              }
+        }
+        onApplyFilter={handleFilterChange}
+        page={page}
+        totalCount={totalCount ?? undefined}
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+        foreignKeys={foreignKeys}
+        currentSchema={schema}
+        currentTable={table}
+        onNavigateToTable={handleNavigateToTable}
+      />
+    </div>
+  );
+
   if (isView) {
     return (
       <Tabs
         value={viewTab}
-        onValueChange={(v) => setViewTab(v as "data" | "definition")}
+        onValueChange={(v) => setViewTab(v as ViewTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
         <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
@@ -130,32 +192,7 @@ export function TablePage() {
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {isLoading ? (
-            <TableSkeleton />
-          ) : isError ? (
-            <TableError error={error} />
-          ) : (
-            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-              <DataTable
-                className="h-full min-h-0 flex-1"
-                columns={data?.columns ?? []}
-                data={data?.rows ?? []}
-                emptyMessage={emptyMessage}
-                sorting={sorting}
-                onSortingChange={setSorting}
-                isFetching={isFetching}
-                onApplyFilter={handleFilterChange}
-                page={page}
-                totalCount={totalCount ?? undefined}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-                foreignKeys={foreignKeys}
-                currentSchema={schema}
-                currentTable={table}
-                onNavigateToTable={handleNavigateToTable}
-              />
-            </div>
-          )}
+          {dataContent}
         </TabsContent>
 
         <TabsContent value="definition" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -166,51 +203,32 @@ export function TablePage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <TableViewsPanel
-        schema={schema}
-        table={table}
-        activeFilter={filter}
-        onSelectView={handleFilterChange}
-      />
-      <TableTriggersPanel schema={schema} table={table} />
-      <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
-        <TableFilterPanel
-          key={`${schema}.${table}`}
-          columns={data?.columns ?? []}
-          activeFilter={filter}
-          onApply={handleFilterChange}
-        />
+    <Tabs
+      value={tableTab}
+      onValueChange={(v) => setTableTab(v as TableTab)}
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
+        <TabsList variant="line" className="h-9">
+          <TabsTrigger value="data">
+            <TableIcon className="size-3.5" />
+            Daten
+          </TabsTrigger>
+          <TabsTrigger value="triggers">
+            <ZapIcon className="size-3.5" />
+            Trigger
+          </TabsTrigger>
+        </TabsList>
       </div>
 
-      {isLoading ? (
-        <TableSkeleton />
-      ) : isError ? (
-        <TableError error={error} />
-      ) : (
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
-          <DataTable
-            className="h-full min-h-0 flex-1"
-            columns={data?.columns ?? []}
-            data={data?.rows ?? []}
-            emptyMessage={emptyMessage}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            isFetching={isFetching}
-            onSaveRow={async (ctid, updates, oldValues) => { await updateRowMutation.mutateAsync({ ctid, updates, oldValues }); }}
-            onApplyFilter={handleFilterChange}
-            page={page}
-            totalCount={totalCount ?? undefined}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPage}
-            foreignKeys={foreignKeys}
-            currentSchema={schema}
-            currentTable={table}
-            onNavigateToTable={handleNavigateToTable}
-          />
-        </div>
-      )}
-    </div>
+      <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {dataContent}
+      </TabsContent>
+
+      <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableTriggersList schema={schema} table={table} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
