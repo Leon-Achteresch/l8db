@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 
 import { useActiveConnection } from "@/lib/connections";
@@ -91,6 +91,17 @@ export function useTableRowsQuery(
         sort,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) => {
+      if (!previousData || !previousQuery) {
+        return undefined;
+      }
+      const previousKey = previousQuery.queryKey;
+      const previousSchema = previousKey[3];
+      const previousTable = previousKey[4];
+      if (previousSchema === schema && previousTable === table) {
+        return previousData;
+      }
+      return undefined;
+    },
   });
 }

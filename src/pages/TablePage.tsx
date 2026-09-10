@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { getRouteApi } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -18,18 +18,14 @@ export function TablePage() {
   const openTab = useTableTabs((state) => state.openTab);
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
-    schema,
-    table,
-    filter,
-    sorting,
-  );
+  const { data, isLoading, isFetching, isPending, isError, error } =
+    useTableRowsQuery(schema, table, filter, sorting);
 
   useEffect(() => {
     openTab({ schema, table });
   }, [schema, table, openTab]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFilter("");
     setSorting([]);
   }, [schema, table]);
@@ -56,7 +52,7 @@ export function TablePage() {
         />
       </div>
 
-      {isLoading ? (
+      {isLoading || isPending ? (
         <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
           <Spinner />
           Lade Daten…
@@ -66,6 +62,7 @@ export function TablePage() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border">
           <DataTable
+            key={`${schema}.${table}`}
             className="min-h-0 flex-1"
             columns={data?.columns ?? []}
             data={data?.rows ?? []}
