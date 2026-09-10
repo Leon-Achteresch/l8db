@@ -542,3 +542,52 @@ describe("Sichtbare Schemas", () => {
     expect(without.schemas).toBeNull();
   });
 });
+
+describe("Server groups", () => {
+  test("groups connections by kind and endpoint, siblings share a server", async () => {
+    const { groupByServer, siblingConnections, connectionUser, serverLabel } = await import(
+      "../src/lib/connection-groups"
+    );
+    const base = { sslMode: "prefer" as const, ssh: null };
+    const hr = {
+      ...base,
+      id: "hr",
+      name: "HR",
+      kind: "oracle" as const,
+      connectionString: "oracle://HR@db1.example.com:1521/ORCL",
+    };
+    const sales = {
+      ...base,
+      id: "sales",
+      name: "Sales",
+      kind: "oracle" as const,
+      connectionString: "oracle://SALES@DB1.example.com:1521/ORCL",
+    };
+    const other = {
+      ...base,
+      id: "other",
+      name: "Other",
+      kind: "oracle" as const,
+      connectionString: "oracle://HR@db2.example.com:1521/ORCL",
+    };
+    const pg = {
+      ...base,
+      id: "pg",
+      name: "PG",
+      kind: "postgres" as const,
+      connectionString: "postgresql://app@db1.example.com:1521/ORCL",
+    };
+    const groups = groupByServer([hr, sales, other, pg]);
+    expect(groups.map((group) => group.connections.map((entry) => entry.id))).toEqual([
+      ["hr", "sales"],
+      ["other"],
+      ["pg"],
+    ]);
+    expect(serverLabel(hr)).toBe("db1.example.com:1521/ORCL");
+    expect(connectionUser(sales)).toBe("SALES");
+    expect(siblingConnections([hr, sales, other, pg], hr).map((entry) => entry.id)).toEqual([
+      "sales",
+    ]);
+    expect(siblingConnections([hr], null)).toEqual([]);
+  });
+});
