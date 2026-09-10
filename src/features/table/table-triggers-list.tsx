@@ -74,7 +74,9 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                 {trigger.trigger_name}
               </span>
-              {isTriggerInvalid(invalidSet, schema, trigger.trigger_name) ? <InvalidMarker /> : null}
+              {isTriggerInvalid(invalidSet, schema, trigger.trigger_name) ? (
+                <InvalidMarker />
+              ) : null}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {trigger.timing} {trigger.event}
               </span>

@@ -11,10 +11,7 @@ import {
 import type { CompareObjectType } from "@/lib/compare-types";
 import { cn } from "@/lib/utils";
 
-const VISUAL: Record<
-  CompareObjectType,
-  { Icon: typeof TableIcon; className: string }
-> = {
+const VISUAL: Record<CompareObjectType, { Icon: typeof TableIcon; className: string }> = {
   table: { Icon: TableIcon, className: "text-emerald-500" },
   view: { Icon: EyeIcon, className: "text-cyan-500" },
   materialized_view: { Icon: LayersIcon, className: "text-teal-500" },

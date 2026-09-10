@@ -3,15 +3,9 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
-import {
-  effectiveConnectionString,
-} from "@/lib/ssh";
-import {
-  executeQuery,
-  executeQueryWithParams,
-  isReadOnlyActive,
-} from "@/lib/db";
+import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
   CoreServices,
@@ -145,7 +139,10 @@ export function createExtensionHost() {
         throw new ExtensionError("FilesystemError", String(error));
       }
     },
-    async runProcess(request: { command: string; options: ProcessOptions }): Promise<ProcessResult> {
+    async runProcess(request: {
+      command: string;
+      options: ProcessOptions;
+    }): Promise<ProcessResult> {
       try {
         return await tauriInvoke<ProcessResult>("extension_process_run", {
           command: request.command,

@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CompareSetupModal } from "@/features/compare/compare-setup-modal";
 import {
-  EMPTY_DATA_SIDE,
   type DataCompareSideSelection,
+  EMPTY_DATA_SIDE,
 } from "@/features/compare/data-compare-side-picker";
 import { DataCompareView } from "@/features/compare/data-compare-view";
 import { DefinitionCompareView } from "@/features/compare/definition-compare-view";
 import { SchemaSnapshotView } from "@/features/compare/schema-snapshot-view";
 import { SchemaCopyView } from "@/features/schema-copy/schema-copy-view";
-import { EMPTY_COMPARE_SIDE, type CompareSideSelection } from "@/lib/compare-types";
+import { type CompareSideSelection, EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
 import { useActiveConnection } from "@/lib/connections";
 import {
   databaseFromConnectionString,

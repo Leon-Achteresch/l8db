@@ -1,10 +1,10 @@
-import { matchesKeyboardEvent, type Hotkey } from "@tanstack/react-hotkeys";
+import { type Hotkey, matchesKeyboardEvent } from "@tanstack/react-hotkeys";
 import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
-import { commandById, useHotkeysStore } from "@/lib/hotkeys";
 import { buildEditorOptions } from "@/lib/editor-options";
+import { commandById, useHotkeysStore } from "@/lib/hotkeys";
 import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useQueryWorkspace } from "@/lib/query-workspace";

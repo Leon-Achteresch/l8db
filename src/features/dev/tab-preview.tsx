@@ -71,6 +71,7 @@ export function TabPreview({
       )}
     >
       <div
+        role="toolbar"
         aria-label="Tab-Leiste"
         className={cn(
           "flex min-w-0 items-center border-b border-border px-1",
@@ -119,6 +120,7 @@ export function TabPreview({
           </DropdownMenu>
         ) : (
           <div
+            role="group"
             className={cn(
               "flex h-full min-w-0 overflow-x-auto [scrollbar-width:none]",
               flat ? "items-center gap-1 px-1" : "items-stretch",

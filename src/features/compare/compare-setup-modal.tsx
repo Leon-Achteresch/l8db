@@ -21,7 +21,7 @@ import {
   supportedCompareObjectTypes,
 } from "@/lib/compare-types";
 import { providerFor } from "@/lib/connection-url";
-import { type SavedConnection } from "@/lib/connections";
+import type { SavedConnection } from "@/lib/connections";
 import { cn } from "@/lib/utils";
 
 interface DefinitionSetup {

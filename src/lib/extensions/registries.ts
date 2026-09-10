@@ -41,7 +41,12 @@ export interface CommandEntry {
 export class CommandRegistry {
   private commands = new Map<
     string,
-    { owner: string; title: string; icon?: string; handler?: (payload?: Json) => Promise<Json | void> }
+    {
+      owner: string;
+      title: string;
+      icon?: string;
+      handler?: (payload?: Json) => Promise<Json | void>;
+    }
   >();
   private menus: (MenuContribution & { owner: string })[] = [];
   reserve(manifest: ExtensionManifest): Disposable {
@@ -52,7 +57,10 @@ export class CommandRegistry {
     const menus = manifest.contributes?.menus ?? [];
     for (const menu of menus) {
       if (!entries.some((command) => command.id === menu.command))
-        throw new ExtensionError("CommandRegistrationError", `Unknown menu command ${menu.command}`);
+        throw new ExtensionError(
+          "CommandRegistrationError",
+          `Unknown menu command ${menu.command}`,
+        );
       if (
         (menu.location === "view/title" || menu.location === "view/item") &&
         !(manifest.contributes?.views ?? []).some((view) => view.id === menu.view)
@@ -60,7 +68,11 @@ export class CommandRegistry {
         throw new ExtensionError("CommandRegistrationError", `Unknown menu view ${menu.view}`);
     }
     for (const command of entries)
-      this.commands.set(command.id, { owner: manifest.id, title: command.title, icon: command.icon });
+      this.commands.set(command.id, {
+        owner: manifest.id,
+        title: command.title,
+        icon: command.icon,
+      });
     const owned = menus.map((menu) => ({ ...menu, owner: manifest.id }));
     this.menus.push(...owned);
     return {
@@ -96,8 +108,7 @@ export class CommandRegistry {
   }
   menusFor(location: MenuContribution["location"], view?: string) {
     return this.menus.filter(
-      (menu) =>
-        menu.location === location && (menu.view === undefined || menu.view === view),
+      (menu) => menu.location === location && (menu.view === undefined || menu.view === view),
     );
   }
   paletteCommands() {
@@ -186,7 +197,10 @@ export class ConfigurationRegistry {
 }
 const treeIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 export class ViewRegistry {
-  private views = new Map<string, { owner: string; title: string; location: "sidebar" | "panel" }>();
+  private views = new Map<
+    string,
+    { owner: string; title: string; location: "sidebar" | "panel" }
+  >();
   private trees = new Map<string, TreeItem[]>();
   reserve(manifest: ExtensionManifest): Disposable {
     const entries = manifest.contributes?.views ?? [];
@@ -221,8 +235,7 @@ export class ViewRegistry {
     }));
   }
   clear(owner: string) {
-    for (const [viewId, view] of this.views)
-      if (view.owner === owner) this.trees.delete(viewId);
+    for (const [viewId, view] of this.views) if (view.owner === owner) this.trees.delete(viewId);
   }
 }
 export function validateTreeItems(items: TreeItem[]) {
@@ -231,7 +244,8 @@ export function validateTreeItems(items: TreeItem[]) {
     if (depth > 8) throw new ExtensionError("ProtocolError", "View tree too deep");
     for (const item of entries) {
       if (++count > 500) throw new ExtensionError("ProtocolError", "View tree too large");
-      if (!item || typeof item !== "object") throw new ExtensionError("ProtocolError", "Invalid tree item");
+      if (!item || typeof item !== "object")
+        throw new ExtensionError("ProtocolError", "Invalid tree item");
       if (typeof item.id !== "string" || !treeIdPattern.test(item.id))
         throw new ExtensionError("ProtocolError", "Invalid tree item id");
       if (typeof item.label !== "string" || item.label.length === 0 || item.label.length > 256)
@@ -241,10 +255,12 @@ export function validateTreeItems(items: TreeItem[]) {
         (typeof item.description !== "string" || item.description.length > 256)
       )
         throw new ExtensionError("ProtocolError", "Invalid tree item description");
-      if (seen.includes(item.id)) throw new ExtensionError("ProtocolError", "Duplicate tree item id");
+      if (seen.includes(item.id))
+        throw new ExtensionError("ProtocolError", "Duplicate tree item id");
       const trail = [...seen, item.id];
       if (item.children !== undefined) {
-        if (!Array.isArray(item.children)) throw new ExtensionError("ProtocolError", "Invalid tree children");
+        if (!Array.isArray(item.children))
+          throw new ExtensionError("ProtocolError", "Invalid tree children");
         visit(item.children, depth + 1, trail);
       }
     }
@@ -278,16 +294,14 @@ export class StatusBarRegistry {
   }
   set(owner: string, itemId: string, update: StatusBarUpdate) {
     const entry = this.items.get(itemId);
-    if (!entry || entry.owner !== owner)
-      throw new ExtensionError("StatusBarNotFoundError", itemId);
+    if (!entry || entry.owner !== owner) throw new ExtensionError("StatusBarNotFoundError", itemId);
     if (typeof update.text !== "string" || update.text.length === 0 || update.text.length > 120)
       throw new ExtensionError("ProtocolError", "Invalid status bar text");
     entry.update = update;
   }
   hide(owner: string, itemId: string) {
     const entry = this.items.get(itemId);
-    if (!entry || entry.owner !== owner)
-      throw new ExtensionError("StatusBarNotFoundError", itemId);
+    if (!entry || entry.owner !== owner) throw new ExtensionError("StatusBarNotFoundError", itemId);
     entry.update = undefined;
   }
   list(): StatusBarSnapshot[] {
@@ -316,7 +330,8 @@ export class PanelRegistry {
     const entries = manifest.contributes?.panels ?? [];
     for (const panel of entries)
       if (this.panels.has(panel.id)) throw new ExtensionError("DuplicatePanelError", panel.id);
-    for (const panel of entries) this.panels.set(panel.id, { owner: manifest.id, title: panel.title });
+    for (const panel of entries)
+      this.panels.set(panel.id, { owner: manifest.id, title: panel.title });
     return {
       dispose: () => {
         for (const panel of entries) {
@@ -364,11 +379,21 @@ export class PanelRegistry {
       .map((state) => structuredClone(state));
   }
   clear(owner: string) {
-    for (const [key, state] of this.states) if (state.extensionId === owner) this.states.delete(key);
+    for (const [key, state] of this.states)
+      if (state.extensionId === owner) this.states.delete(key);
   }
 }
 export class PermissionManager {
-  readonly supported: Permission[] = ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute"];
+  readonly supported: Permission[] = [
+    "database:read",
+    "database:write",
+    "network",
+    "filesystem:extension-storage",
+    "filesystem",
+    "clipboard:read",
+    "clipboard:write",
+    "process:execute",
+  ];
   validate(manifest: ExtensionManifest, grants: Permission[]) {
     for (const grant of grants)
       if (!this.supported.includes(grant) || !manifest.permissions?.includes(grant))

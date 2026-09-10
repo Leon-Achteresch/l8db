@@ -1,8 +1,8 @@
 import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
-import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
+import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 

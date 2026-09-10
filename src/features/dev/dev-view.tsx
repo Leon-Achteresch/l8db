@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { TabPreview } from "./tab-preview";
 import { cn } from "@/lib/utils";
+import { TabPreview } from "./tab-preview";
 
 const variants = [
   {
