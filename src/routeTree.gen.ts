@@ -15,7 +15,6 @@ import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSessionsRouteImport } from './routes/_app.sessions'
 import { Route as AppSequencesRouteImport } from './routes/_app.sequences'
-import { Route as AppReproFilterRouteImport } from './routes/_app.repro-filter'
 import { Route as AppReplicationRouteImport } from './routes/_app.replication'
 import { Route as AppQueryRouteImport } from './routes/_app.query'
 import { Route as AppImportRouteImport } from './routes/_app.import'
@@ -64,11 +63,6 @@ const AppSessionsRoute = AppSessionsRouteImport.update({
 const AppSequencesRoute = AppSequencesRouteImport.update({
   id: '/sequences',
   path: '/sequences',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppReproFilterRoute = AppReproFilterRouteImport.update({
-  id: '/repro-filter',
-  path: '/repro-filter',
   getParentRoute: () => AppRoute,
 } as any)
 const AppReplicationRoute = AppReplicationRouteImport.update({
@@ -186,7 +180,6 @@ export interface FileRoutesByFullPath {
   '/import': typeof AppImportRoute
   '/query': typeof AppQueryRouteWithChildren
   '/replication': typeof AppReplicationRoute
-  '/repro-filter': typeof AppReproFilterRoute
   '/sequences': typeof AppSequencesRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
@@ -212,7 +205,6 @@ export interface FileRoutesByTo {
   '/er-diagram': typeof AppErDiagramRoute
   '/import': typeof AppImportRoute
   '/replication': typeof AppReplicationRoute
-  '/repro-filter': typeof AppReproFilterRoute
   '/sequences': typeof AppSequencesRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
@@ -242,7 +234,6 @@ export interface FileRoutesById {
   '/_app/import': typeof AppImportRoute
   '/_app/query': typeof AppQueryRouteWithChildren
   '/_app/replication': typeof AppReplicationRoute
-  '/_app/repro-filter': typeof AppReproFilterRoute
   '/_app/sequences': typeof AppSequencesRoute
   '/_app/sessions': typeof AppSessionsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -273,7 +264,6 @@ export interface FileRouteTypes {
     | '/import'
     | '/query'
     | '/replication'
-    | '/repro-filter'
     | '/sequences'
     | '/sessions'
     | '/settings'
@@ -299,7 +289,6 @@ export interface FileRouteTypes {
     | '/er-diagram'
     | '/import'
     | '/replication'
-    | '/repro-filter'
     | '/sequences'
     | '/sessions'
     | '/settings'
@@ -328,7 +317,6 @@ export interface FileRouteTypes {
     | '/_app/import'
     | '/_app/query'
     | '/_app/replication'
-    | '/_app/repro-filter'
     | '/_app/sequences'
     | '/_app/sessions'
     | '/_app/settings'
@@ -393,13 +381,6 @@ declare module '@tanstack/react-router' {
       path: '/sequences'
       fullPath: '/sequences'
       preLoaderRoute: typeof AppSequencesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/repro-filter': {
-      id: '/_app/repro-filter'
-      path: '/repro-filter'
-      fullPath: '/repro-filter'
-      preLoaderRoute: typeof AppReproFilterRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/replication': {
@@ -569,7 +550,6 @@ interface AppRouteChildren {
   AppImportRoute: typeof AppImportRoute
   AppQueryRoute: typeof AppQueryRouteWithChildren
   AppReplicationRoute: typeof AppReplicationRoute
-  AppReproFilterRoute: typeof AppReproFilterRoute
   AppSequencesRoute: typeof AppSequencesRoute
   AppSessionsRoute: typeof AppSessionsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -595,7 +575,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppImportRoute: AppImportRoute,
   AppQueryRoute: AppQueryRouteWithChildren,
   AppReplicationRoute: AppReplicationRoute,
-  AppReproFilterRoute: AppReproFilterRoute,
   AppSequencesRoute: AppSequencesRoute,
   AppSessionsRoute: AppSessionsRoute,
   AppSettingsRoute: AppSettingsRoute,

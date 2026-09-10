@@ -3,12 +3,12 @@ import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { StartupView } from "@/features/shell/startup-view";
+import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets } from "@/lib/connections";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { loadProviders } from "@/lib/providers";
 import { restoreSshTunnel } from "@/lib/ssh";
-import { checkForUpdates } from "@/lib/updater";
 import { router } from "./router";
 
 const queryClient = new QueryClient();
@@ -38,6 +38,6 @@ Promise.all([loadProviders(), initConnectionSecrets()])
 
 if (!import.meta.env.DEV) {
   window.addEventListener("load", () => {
-    void checkForUpdates();
+    initAutoUpdater();
   });
 }
