@@ -73,6 +73,7 @@ pub fn run() {
             db::commands::list_available_extensions,
             db::commands::execute_script,
             db::commands::create_table,
+            db::commands::preview_create_table_ddl,
             db::secrets::store_secret,
             db::secrets::load_secret,
             db::secrets::delete_secret,
