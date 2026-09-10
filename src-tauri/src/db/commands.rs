@@ -74,3 +74,18 @@ pub async fn fetch_table_rows(
         )
         .await
 }
+
+#[tauri::command]
+pub async fn update_row(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    ctid: String,
+    updates: std::collections::HashMap<String, Option<String>>,
+) -> Result<(), String> {
+    create_adapter_from_string(kind, &connection_string, database.as_deref())?
+        .update_row(&schema, &table, &ctid, &updates)
+        .await
+}

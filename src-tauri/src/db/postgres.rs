@@ -177,7 +177,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 _ => String::new(),
             };
             let sql = format!(
-                "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1",
+                "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1",
                 quote_ident(schema),
                 quote_ident(table),
                 where_clause,
@@ -191,6 +191,77 @@ impl DatabaseAdapter for PostgresAdapter {
                 data_rows.iter().map(|row| row.get(0)).collect();
 
             Ok(TableData { columns, rows })
+        }
+        .await;
+
+        handle.abort();
+        result
+    }
+
+    async fn update_row(
+        &self,
+        schema: &str,
+        table: &str,
+        ctid: &str,
+        updates: &std::collections::HashMap<String, Option<String>>,
+    ) -> Result<(), String> {
+        let ctid = ctid.trim();
+        let ctid_valid = ctid.starts_with('(') && ctid.ends_with(')') && {
+            let inner = &ctid[1..ctid.len() - 1];
+            let parts: Vec<&str> = inner.splitn(2, ',').collect();
+            parts.len() == 2
+                && parts[0].trim().parse::<u64>().is_ok()
+                && parts[1].trim().parse::<u64>().is_ok()
+        };
+        if !ctid_valid {
+            return Err("Ungültige ctid".to_string());
+        }
+
+        let (client, handle) = self.connect().await?;
+
+        let result = async {
+            let col_rows = client
+                .query(
+                    "SELECT column_name FROM information_schema.columns \
+                     WHERE table_schema = $1 AND table_name = $2",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let valid_columns: std::collections::HashSet<String> =
+                col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
+
+            let mut set_parts: Vec<String> = Vec::new();
+            for (col, val) in updates {
+                if !valid_columns.contains(col) {
+                    return Err(format!("Unbekannte Spalte: {col}"));
+                }
+                let sql_val = match val {
+                    None => "NULL".to_string(),
+                    Some(s) if s.is_empty() => "NULL".to_string(),
+                    Some(s) => format!("'{}'", s.replace('\'', "''")),
+                };
+                set_parts.push(format!("{} = {}", quote_ident(col), sql_val));
+            }
+
+            if set_parts.is_empty() {
+                return Ok(());
+            }
+
+            let sql = format!(
+                "UPDATE {}.{} SET {} WHERE ctid = '{}'::tid",
+                quote_ident(schema),
+                quote_ident(table),
+                set_parts.join(", "),
+                ctid,
+            );
+
+            client
+                .execute(sql.as_str(), &[])
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
         }
         .await;
 

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 
 import { useActiveConnection } from "@/lib/connections";
@@ -8,6 +8,7 @@ import {
   listDatabases,
   listSchemas,
   listTables,
+  updateRow,
   type TableRowSort,
 } from "@/lib/db";
 
@@ -102,6 +103,27 @@ export function useTableRowsQuery(
         return previousData;
       }
       return undefined;
+    },
+  });
+}
+
+export function useUpdateRowMutation(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ctid, updates }: { ctid: string; updates: Record<string, string | null> }) =>
+      updateRow(
+        connection!.kind,
+        connection!.connectionString,
+        schema,
+        table,
+        ctid,
+        updates,
+        database ?? undefined,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["rows"] });
     },
   });
 }
