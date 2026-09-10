@@ -1,7 +1,7 @@
 # L8DB-PLAN-007: Query-Tabs als SQL-Datei speichern
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Editor
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 

@@ -1,16 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
+  AlertTriangleIcon,
   BookmarkIcon,
   DownloadIcon,
+  FileIcon,
   GaugeIcon,
   HistoryIcon,
   LoaderIcon,
   PlayIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -35,13 +40,14 @@ import {
   type QueryResult,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { openSqlFileAsTab, useQueryFile } from "@/lib/hooks/use-query-file";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { useTableTabs } from "@/lib/table-tabs";
+import { isQueryTabDirty, useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
 
 const QUERY_LANGUAGES = {
@@ -60,12 +66,59 @@ interface QueryViewProps {
 export function QueryView({ tabId }: QueryViewProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const navigate = useNavigate();
 
   const sql = useTableTabs((state) => {
     const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
     return tab?.kind === "query" ? tab.sql : "";
   });
   const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
+  const filePath = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? (tab.filePath ?? null) : null;
+  });
+  const fileDirty = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? isQueryTabDirty(tab) : false;
+  });
+  const externalChange = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? Boolean(tab.externalChange) : false;
+  });
+  const { saveToFile, reloadFromFile, keepLocal, checkExternal } = useQueryFile(tabId);
+  const [fileBusy, setFileBusy] = useState(false);
+
+  useEffect(() => {
+    if (!filePath) return;
+    void checkExternal();
+    const onFocus = () => void checkExternal();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [filePath, checkExternal]);
+
+  const handleFileSave = useCallback(
+    async (saveAs: boolean) => {
+      if (fileBusy) return;
+      setFileBusy(true);
+      try {
+        await saveToFile(saveAs);
+      } finally {
+        setFileBusy(false);
+      }
+    },
+    [fileBusy, saveToFile],
+  );
+
+  const handleFileOpen = useCallback(async () => {
+    if (fileBusy) return;
+    setFileBusy(true);
+    try {
+      const id = await openSqlFileAsTab();
+      if (id) void navigate({ to: "/query/$id", params: { id } });
+    } finally {
+      setFileBusy(false);
+    }
+  }, [fileBusy, navigate]);
 
   const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
   const recordHistory = useQueryHistoryStore((state) => state.record);
@@ -304,12 +357,17 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   return (
     <div className="flex h-full w-full min-h-0">
-      <div className="flex h-full min-w-0 flex-1 flex-col">
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card/60 px-3">
+      <motion.div
+        layout
+        transition={{ layout: SPRING_LAYOUT }}
+        className="flex h-full min-w-0 flex-1 flex-col"
+      >
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card/60 px-3" data-tour="query-toolbar">
           <Button
             size="sm"
             variant="default"
             className="h-7 gap-1.5 px-3 text-xs"
+            data-tour="query-run"
             onClick={handleRun}
             disabled={isRunning || !connection}
           >
@@ -326,6 +384,34 @@ export function QueryView({ tabId }: QueryViewProps) {
             <BookmarkIcon className="size-3" />
             Speichern
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-3 text-xs"
+                disabled={fileBusy}
+                title={filePath ?? "SQL-Datei öffnen oder speichern"}
+              >
+                {fileBusy ? (
+                  <LoaderIcon className="size-3 animate-spin" />
+                ) : (
+                  <FileIcon className="size-3" />
+                )}
+                Datei
+                {fileDirty && <span className="text-amber-500">●</span>}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => void handleFileOpen()}>SQL-Datei öffnen…</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void handleFileSave(false)} disabled={!sql.trim() && !filePath}>
+                {filePath ? "Speichern" : "Speichern unter…"}
+              </DropdownMenuItem>
+              {filePath && (
+                <DropdownMenuItem onClick={() => void handleFileSave(true)}>Speichern unter…</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="sm"
             variant="ghost"
@@ -344,6 +430,7 @@ export function QueryView({ tabId }: QueryViewProps) {
             size="sm"
             variant="ghost"
             className="h-7 gap-1.5 px-3 text-xs"
+            data-tour="query-history"
             onClick={() => setHistoryOpen((open) => !open)}
             title="Verlauf und gespeicherte Queries"
           >
@@ -421,11 +508,40 @@ export function QueryView({ tabId }: QueryViewProps) {
           {error && !statusText && <span className="ml-auto text-xs text-destructive">Fehler</span>}
         </div>
 
+        {externalChange && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs">
+            <AlertTriangleIcon className="size-3.5 text-amber-500" />
+            <span className="min-w-0 flex-1 truncate">
+              Datei wurde außerhalb von l8db geändert
+              {fileDirty ? " – lokale Änderungen vorhanden" : ""}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              disabled={fileBusy}
+              onClick={() => void reloadFromFile()}
+            >
+              {fileDirty ? "Neu laden (lokale Änderungen verwerfen)" : "Neu laden"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              disabled={fileBusy}
+              onClick={() => void keepLocal()}
+            >
+              Lokale Fassung behalten
+            </Button>
+          </div>
+        )}
+
         <div style={{ height: editorHeight }} className="shrink-0 overflow-hidden">
           <QueryEditorPane
             value={sql}
             onChange={(v) => updateQuerySql(tabId, v)}
             onRun={handleRun}
+            onSave={() => void handleFileSave(false)}
             registry={registry}
           />
         </div>
@@ -457,7 +573,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           onOpenChange={setSaveDialogOpen}
           onSave={(name) => saveQuery(name, sql)}
         />
-      </div>
+      </motion.div>
       {historyOpen && (
         <QueryHistoryPanel
           connectionId={connection?.id ?? null}

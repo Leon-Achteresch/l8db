@@ -1,7 +1,7 @@
 # L8DB-PLAN-006: SQL-Dateien in einem Query-Tab öffnen
 
 Typ: Story · Priorität: **P1** · Schätzung: **2 SP** · Bereich: Editor
-Status: Vorschlag · Labels: `toad-inspired`, `l8db-backlog`
+Status: Umgesetzt · Labels: `toad-inspired`, `l8db-backlog`
 
 ## Nutzen und Ist-Stand
 
