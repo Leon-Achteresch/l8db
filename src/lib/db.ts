@@ -111,6 +111,7 @@ export interface Capabilities {
   column_search: boolean;
   source_search: boolean;
   schema_snapshot: boolean;
+  full_table_export: boolean;
   ssl: boolean;
   ssh: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
@@ -883,6 +884,52 @@ export async function csvImport(
   database?: string,
 ): Promise<CsvImportOutcome> {
   return invoke("csv_import", { kind, connectionString, database, request });
+}
+
+export interface TableExportRequest {
+  jobId: string;
+  schema: string;
+  table: string;
+  filter?: string | null;
+  allowRawFilter: boolean;
+  orderBy?: string | null;
+  orderDesc: boolean;
+  isView: boolean;
+  path: string;
+  options: {
+    delimiter: string;
+    quote: string;
+    header: boolean;
+    nullText: string;
+    lineEnding: string;
+    bom: boolean;
+  };
+  masks: { column: string; mode: "text" | "null"; text?: string | null }[];
+  maxRows?: number | null;
+}
+
+export interface TableExportOutcome {
+  rows: number;
+  path: string;
+  truncated: boolean;
+}
+
+export interface TableExportProgress {
+  jobId: string;
+  rows: number;
+}
+
+export async function exportTableCsv(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: TableExportRequest,
+  database?: string,
+): Promise<TableExportOutcome> {
+  return invoke("export_table_csv", { kind, connectionString, database, request });
+}
+
+export async function cancelTableExport(jobId: string): Promise<void> {
+  return invoke("cancel_table_export", { jobId });
 }
 
 export interface AddColumnRequest {

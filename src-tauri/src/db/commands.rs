@@ -130,6 +130,52 @@ pub async fn fetch_table_rows(
 }
 
 #[tauri::command]
+pub async fn export_table_csv(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::export::TableExportRequest,
+    app: tauri::AppHandle,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::export::TableExportOutcome, String> {
+    use tauri::Emitter;
+
+    if !kind.capabilities().full_table_export {
+        return Err(
+            "Vollständiger Tabellenexport wird für diesen Datenbanktyp nicht unterstützt."
+                .to_string(),
+        );
+    }
+    let adapter = create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?;
+    super::export::clear_cancel(&request.job_id);
+    let job_id = request.job_id.clone();
+    let handle = app.clone();
+    let result = adapter
+        .export_table_csv(&request, &move |rows| {
+            let _ = handle.emit(
+                "table-export-progress",
+                super::export::TableExportProgress {
+                    job_id: job_id.clone(),
+                    rows,
+                },
+            );
+        })
+        .await;
+    super::export::clear_cancel(&request.job_id);
+    result
+}
+
+#[tauri::command]
+pub fn cancel_table_export(job_id: String) {
+    super::export::request_cancel(&job_id);
+}
+
+#[tauri::command]
 pub async fn count_table_rows(
     kind: DatabaseKind,
     connection_string: String,

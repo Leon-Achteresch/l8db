@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   DEFAULT_CSV_OPTIONS,
+  type ColumnMask,
+  applyMasks,
+  maskedValue,
   UnsupportedValueError,
   buildInsertStatements,
   csvField,
@@ -146,5 +149,50 @@ describe("insert-export", () => {
 
   test("leere Zeilenmenge erzeugt leeren Inhalt", () => {
     expect(buildInsertStatements({ table: "t", columns: ["a"], rows: [] })).toBe("");
+  });
+});
+
+describe("Spaltenmaskierung", () => {
+  const columns = ["id", "email", "token"];
+  const rows = [
+    { id: 1, email: "a@b.de", token: "secret" },
+    { id: 2, email: "c@d.de", token: null },
+  ];
+  const masks: ColumnMask[] = [
+    { column: "email", mode: "text", text: "***" },
+    { column: "token", mode: "null" },
+  ];
+
+  test("maskedValue ersetzt nur gewählte Spalten", () => {
+    expect(maskedValue("id", 1, masks)).toBe(1);
+    expect(maskedValue("email", "a@b.de", masks)).toBe("***");
+    expect(maskedValue("token", "secret", masks)).toBeNull();
+  });
+
+  test("fester Text ohne Angabe ist leer", () => {
+    expect(maskedValue("a", "x", [{ column: "a", mode: "text" }])).toBe("");
+  });
+
+  test("applyMasks lässt Originalzeilen unverändert", () => {
+    const masked = applyMasks(columns, rows, masks);
+    expect(rows[0].email).toBe("a@b.de");
+    expect(masked[0].email).toBe("***");
+    expect(masked[0].token).toBeNull();
+    expect(masked[0].id).toBe(1);
+  });
+
+  test("ohne Masken bleibt die Referenz erhalten", () => {
+    expect(applyMasks(columns, rows, [])).toBe(rows);
+  });
+
+  test("Vorschau und Datei zeigen identisch maskierte Werte", () => {
+    const options = { ...DEFAULT_CSV_OPTIONS, nullText: "NULL" };
+    const masked = applyMasks(columns, rows, masks);
+    const file = serializeCsv(columns, masked, options);
+    const preview = csvPreview(columns, masked, options, 5);
+    expect(preview).toBe(file);
+    expect(file).not.toContain("a@b.de");
+    expect(file).not.toContain("secret");
+    expect(file.split("\n")[1]).toBe("1,***,NULL");
   });
 });
