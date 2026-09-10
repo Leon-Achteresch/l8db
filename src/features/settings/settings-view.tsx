@@ -23,8 +23,8 @@ export function SettingsView() {
   } = useSettingsStore();
 
   return (
-    <main className="workspace-canvas h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl px-6 py-8">
+    <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
+      <div className="w-full px-6 py-8">
         <h1 className="text-2xl font-semibold tracking-tight">Einstellungen</h1>
         <div className="mt-6 space-y-3">
           <SettingsRow title="Erscheinungsbild" description="Hell, dunkel oder dem System folgen.">

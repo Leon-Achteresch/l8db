@@ -6,6 +6,7 @@ import "../index.css";
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/features/shell/app-header";
+import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
 
 function RootComponent() {
   return (
@@ -13,10 +14,11 @@ function RootComponent() {
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
         <DbThemeRoot className="h-dvh">
           <AppHeader />
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
             <Outlet />
           </div>
         </DbThemeRoot>
+        <UpdateAvailableDialog />
         <Toaster />
       </ThemeProvider>
     </MotionConfig>

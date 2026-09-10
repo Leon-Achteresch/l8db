@@ -1,7 +1,11 @@
 import { toast } from "sonner";
 import { useSettingsStore } from "@/lib/settings";
-import { checkForUpdates, getPendingUpdate, installUpdateAndRelaunch } from "@/lib/updater";
-import { router } from "@/router";
+import {
+  checkForUpdates,
+  getPendingUpdate,
+  installUpdateAndRelaunch,
+  presentUpdate,
+} from "@/lib/updater";
 
 const STARTUP_DELAY_MS = 3000;
 
@@ -25,16 +29,7 @@ async function runStartupCheck(): Promise<void> {
       await installSilently();
       return;
     }
-    toast.info(`Version ${update.version} verfügbar`, {
-      description: "In den Einstellungen unter Updates installieren.",
-      duration: 20_000,
-      action: {
-        label: "Zu Updates",
-        onClick: () => {
-          void router.navigate({ to: "/settings" });
-        },
-      },
-    });
+    presentUpdate(update);
   } catch {
     return;
   }
@@ -50,11 +45,12 @@ async function installSilently(): Promise<void> {
     await installUpdateAndRelaunch(update);
   } catch {
     toast.error("Automatisches Update fehlgeschlagen", {
-      description: "Bitte in den Einstellungen unter Updates erneut versuchen.",
+      description: "Bitte das Update-Fenster erneut öffnen oder manuell installieren.",
       action: {
-        label: "Zu Updates",
+        label: "Anzeigen",
         onClick: () => {
-          void router.navigate({ to: "/settings" });
+          const pending = getPendingUpdate();
+          if (pending) presentUpdate(pending);
         },
       },
     });

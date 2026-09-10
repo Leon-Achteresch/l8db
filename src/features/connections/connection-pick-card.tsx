@@ -4,7 +4,7 @@ import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
-import { SPRING_PRESS } from "@/lib/ease";
+import { SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -36,7 +36,7 @@ export function ConnectionPickCard({
       animate={{ opacity: 1, y: 0 }}
       whileHover={reduce ? undefined : { y: -1 }}
       whileTap={reduce ? undefined : { scale: 0.99 }}
-      transition={SPRING_PRESS}
+      transition={{ ...SPRING_PRESS, layout: SPRING_LAYOUT }}
       className={cn(
         "flex min-h-[13.5rem] flex-col justify-between rounded-2xl border bg-card px-4 py-4",
         active ? "border-foreground/25" : "border-border",

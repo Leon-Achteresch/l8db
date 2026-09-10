@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
+import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,10 @@ import { cn } from "@/lib/utils";
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 
 const IS_WINDOWS = typeof navigator !== "undefined" && /Win/i.test(navigator.platform);
+
+function isNavActive(url: string, pathname: string) {
+  return url === "/" ? pathname === "/" : pathname.startsWith(url);
+}
 
 export function AppHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -36,14 +41,48 @@ export function AppHeader() {
         IS_WINDOWS && "pr-[140px]",
       )}
     >
+      <nav
+        className="flex items-center gap-1 px-3"
+        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        aria-label="Bereiche"
+      >
+        <Link
+          to="/"
+          aria-label="l8db"
+          className="mr-1 inline-flex h-7 shrink-0 items-center overflow-hidden"
+        >
+          <img src="/logo.png" alt="" className="h-5 w-[4.75rem] object-cover object-center" />
+        </Link>
+        {appSidebarData.navMain.map((item) => {
+          const active = isNavActive(item.url, pathname);
+          return (
+            <Tooltip key={item.title} content={item.title} side="bottom">
+              <Link
+                to={item.url}
+                aria-label={item.title}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                  "hover:bg-muted hover:text-foreground",
+                  active && "bg-primary/12 text-foreground",
+                )}
+              >
+                <item.icon className="size-4" strokeWidth={2} />
+              </Link>
+            </Tooltip>
+          );
+        })}
+      </nav>
+
       <div
         data-tauri-drag-region
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
-        className="flex-1 self-stretch"
-      />
-
-      <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4">
-        <div className="pointer-events-auto w-full max-w-[460px]">
+        className="flex min-w-0 flex-1 justify-center px-4"
+      >
+        <div
+          className="w-full max-w-[460px]"
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        >
           <AppHeaderSearch />
         </div>
       </div>
