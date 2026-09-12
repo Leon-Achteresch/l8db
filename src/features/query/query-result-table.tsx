@@ -451,14 +451,14 @@ export const QueryResultTable = memo(function QueryResultTable({
                 <td colSpan={columns.length + 1} className="p-0" />
               </tr>
             )}
-            {virtualRows.map((virtualRow, slot) => {
+            {virtualRows.map((virtualRow) => {
               const rowIdx = virtualRow.index;
               const row = visibleRows[rowIdx];
               const isMarked = markedRows.has(row);
               const originalIndex = originalIndices.get(row) ?? rowIdx;
               return (
                 <QueryResultRow
-                  key={slot}
+                  key={rowIdx}
                   row={row}
                   rowIdx={rowIdx}
                   originalIndex={originalIndex}

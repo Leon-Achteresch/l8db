@@ -152,7 +152,7 @@ L8DB_PERF_ENGINE=webkit bun run test:perf
 
 # Tabellen-Scrollperformance, 12. September 2026
 
-Die Tabellenansicht erreicht in den geprüften Scrollfällen ungefähr 60 FPS. Eine dauerhafte 60-FPS-Garantie ist nicht erreicht: Breite SQL-Ergebnisse zeigen in WebKit weiterhin einzelne Frames über 50 ms. Die Tests behalten diese Grenze und schlagen in diesen Fällen absichtlich fehl.
+Die Tabellenansicht erreicht in den geprüften Scrollfällen ungefähr 60 FPS. Eine dauerhafte 60-FPS-Garantie ist nicht erreicht: Breite SQL-Ergebnisse und der vollständige Workspace zeigen in WebKit weiterhin einzelne Frames über 50 ms. Die Tests behalten diese Grenze und schlagen in diesen Fällen absichtlich fehl.
 
 Die Tabellenansicht und SQL-Ergebnisse virtualisieren Zeilen und Spalten. Der Scrollpfad erzeugt nur die sichtbaren Zellen mit einem Puffer von mindestens 256 Pixeln je Richtung. Fixierte Spalten bleiben erhalten. Spalten werden einzeln nachgeladen; die bisherigen Viererblöcke erzeugten besonders in WebKit teure Render-Spitzen.
 
@@ -162,7 +162,7 @@ Normale Tabellenzellen bestehen aus einem Textelement in der Tabellenzelle. Die 
 
 ## Messungen dieses Durchgangs
 
-Apple M3, 16 GiB RAM, macOS 27.0, Bun 1.3.10, Playwright 1.63.0. Chromium 153.0.8010.12 und WebKit 26.6, 1.200 × 600 Pixel. Die Werte fassen vertikale, horizontale und diagonale Abschnitte zusammen; FPS sind der Bereich der Abschnittsmittel, p95 und Maximum jeweils der höchste Wert. WebKit-Standardfälle: zehn Sekunden je Achse. Chromium, lange Werte und Zoom: drei Sekunden je Achse.
+Apple M3, 16 GiB RAM, macOS 27.0, Bun 1.3.10, Playwright 1.63.0. Chromium 153.0.8010.12 und WebKit 26.6, 1.200 × 600 Pixel. Die Werte fassen vertikale, horizontale und diagonale Abschnitte zusammen; FPS sind der Bereich der Abschnittsmittel, p95 und Maximum jeweils der höchste Wert. WebKit-Standardfälle: zehn Sekunden je Achse. Chromium, lange Werte und Zoom: drei Sekunden je Achse. Andere Anwendungen liefen auf dem Rechner weiter; die Messungen stammen nicht von einem isolierten Testsystem.
 
 | Ansicht und Daten | Engine | FPS | p95 | Längster Frame | Prüfung |
 |---|---|---:|---:|---:|---|
@@ -171,13 +171,14 @@ Apple M3, 16 GiB RAM, macOS 27.0, Bun 1.3.10, Playwright 1.63.0. Chromium 153.0.
 | SQL-Ergebnis, 5.000 × 13/50 | WebKit | 59,94–60,01 | 18 ms | 41 ms | bestanden |
 | SQL-Ergebnis, 5.000 × 121 | WebKit | 59,78–60,02 | 18 ms | 60 ms | **fehlgeschlagen** |
 | SQL-Ergebnis, 20.000 × 121 | WebKit | 59,28–59,98 | 17 ms | 116 ms | **fehlgeschlagen** |
+| Vollständiger Workspace, 5.000 × 120, 1.600 × 900 Pixel | WebKit | 59,5 | 20 ms | 54 ms | **fehlgeschlagen** |
 | Beide Ansichten, 5.000 × 13/50/121 | Chromium | 60,00 | 16,8 ms | 16,8 ms | bestanden |
 | Beide Ansichten, 5.000 × 121, 100.000 Zeichen je Textwert | WebKit | 59,80–60,00 | 18 ms | 30 ms | bestanden |
 | Beide Ansichten, 5.000 × 121, 125 %, kompakt, Fremdschlüssel | WebKit | 59,80–60,15 | 19 ms | 32 ms | bestanden |
 
 Die breite Tabelle enthält beim Mount 26 von 20.000 Zeilen und 235 Zellen im DOM; Mount-Zeit 96 ms. Der Ausgangslauf dieses Durchgangs erreichte beim horizontalen Scrollen einer 5.000 × 121-Tabelle in WebKit etwa 52 FPS. Dessen kürzere Messdauer erlaubt keinen exakten statistischen Vorher-/Nachher-Faktor.
 
-Die beiden fehlgeschlagenen SQL-Fälle haben weiterhin gute Durchschnitts- und p95-Werte, erfüllen aber die Schranke für den längsten Frame nicht. Auch Wiederholungen der breiten 5.000-Zeilen-Ergebnisse zeigten solche Ausreißer. Die Ursache dieser verbleibenden Pausen ist nicht durch einen eindeutigen WebKit-Trace belegt; sie wird daher nicht pauschal dem Betriebssystem oder Garbage Collector zugeschrieben.
+Die fehlgeschlagenen SQL- und Workspace-Fälle haben weiterhin gute Durchschnitts- und p95-Werte, erfüllen aber die Schranke für den längsten Frame nicht. Auch Wiederholungen der breiten 5.000-Zeilen-Ergebnisse zeigten solche Ausreißer. Ein zusätzlicher WebKit-Inspector-Trace verzeichnete Style-Neuberechnungen bis 95 ms und Layout bis 96 ms; der längste JavaScript-Aufruf lag bei etwa 10 ms, die längste gemessene Garbage Collection bei 13,4 ms. Die verbleibenden Pausen werden deshalb nicht pauschal dem JavaScript-Garbage-Collector zugeschrieben. Profiling erzeugt Zusatzlast und ersetzt den normalen Benchmark nicht.
 
 ## Wiederholen
 
@@ -198,6 +199,8 @@ Der Komponententest prüft Tabellen und SQL-Ergebnisse mit 5.000 Zeilen und 13, 
 
 Die Schranken sind über 59 FPS im Mittel, p95 unter 21 ms, kein Frame ab 50 ms, weniger als 80 DOM-Zeilen und weniger als 1.200 DOM-Zellen. Die FPS-Toleranz berücksichtigt die Taktung einer 60-Hz-Messung; sie ist keine Garantie von 60 vollständig gerenderten Bildern pro Sekunde.
 
+Mit `L8DB_PERF_PROFILE=1` schreibt der Komponententest unter Chromium ein CPU-Profil, unter WebKit Timeline-, ScriptProfiler- und Heap-Ereignisse nach `/tmp/l8db-perf-<Ansicht>-<Spalten>.webkit-profile.json`. Der WebKit-Zugriff nutzt den internen Playwright-In-Process-Adapter; nach Playwright-Upgrades muss dieser optionale Diagnosepfad gegebenenfalls angepasst werden. Die Ereignisse folgen den offiziellen [Timeline](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/Timeline.json)-, [ScriptProfiler](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/ScriptProfiler.json)- und [Heap](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/Heap.json)-Protokollen.
+
 ## Aussagegrenzen
 
-Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. WebKit ist für macOS relevant, ersetzt aber keinen Test im nativen Tauri-WKWebView. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und Anteil über dem Framebudget separat ausgewiesen.
+Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. WebKit ist für macOS relevant, ersetzt aber keinen Test im nativen Tauri-WKWebView. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und der Anteil über 16,7 ms plus 2 ms Messtoleranz separat ausgewiesen.
