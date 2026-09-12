@@ -533,6 +533,8 @@ const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclien
 
 const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p \"$HOME/lib\" /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach /tmp/l8db-ic/ic.dmg && sh /Volumes/instantclient-basic-macos.arm64-*/install_ic.sh && for f in $(ls -td \"$HOME\"/Downloads/instantclient_* | head -1)/*.dylib*; do ln -sf \"$f\" \"$HOME/lib/\"; done && hdiutil detach /Volumes/instantclient-basic-macos.arm64-* && rm -rf /tmp/l8db-ic";
 
+const ORACLE_LINUX_INSTALL: &str = "(sudo apt install -y unzip libaio1t64 || sudo apt install -y unzip libaio1) && ([ -e /usr/lib/x86_64-linux-gnu/libaio.so.1 ] || sudo ln -sf libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1) && sudo mkdir -p /opt/oracle && sudo unzip -o \"$HOME\"/Downloads/instantclient-basic-linux*.zip -x 'META-INF/*' -d /opt/oracle && ls -d /opt/oracle/instantclient_* | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig && ldd /opt/oracle/instantclient_*/libclntsh.so | grep -E 'aio|not found'";
+
 fn oracle_macos_command() -> &'static str {
     if std::env::consts::ARCH == "aarch64" {
         ORACLE_MACOS_ARM64_INSTALL
@@ -544,7 +546,7 @@ fn oracle_macos_command() -> &'static str {
 fn oracle_hints() -> Vec<InstallHint> {
     vec![
         InstallHint { os: "macos", command: oracle_macos_command(), url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
-        InstallHint { os: "linux", command: "sudo apt install libaio1 && unzip instantclient-basic-linux.x64-*.zip -d /opt/oracle && echo /opt/oracle/instantclient_* | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig", url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },
+        InstallHint { os: "linux", command: ORACLE_LINUX_INSTALL, url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },
         InstallHint { os: "windows", command: "Instant Client Basic entpacken und den Ordner zur PATH-Variable hinzufügen", url: "https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html" },
     ]
 }
@@ -836,6 +838,20 @@ mod tests {
     fn duckdb_reports_rebuild() {
         let err = install_command(DatabaseKind::Duckdb).unwrap_err();
         assert!(err.contains("duckdb"), "{err}");
+    }
+
+    #[test]
+    fn linux_oracle_hint_survives_libaio_t64_rename() {
+        let hint = oracle_hints().into_iter().find(|h| h.os == "linux").unwrap();
+        let cmd = hint.command;
+        assert!(cmd.contains("libaio1t64 || sudo apt install -y unzip libaio1"), "{cmd}");
+        assert!(cmd.contains("ln -sf libaio.so.1t64"), "{cmd}");
+        assert!(cmd.contains("sudo mkdir -p /opt/oracle"), "{cmd}");
+        assert!(cmd.contains("sudo unzip"), "{cmd}");
+        assert!(cmd.contains("instantclient-basic-linux*.zip"), "{cmd}");
+        assert!(cmd.contains("ls -d /opt/oracle/instantclient_* | sudo tee"), "{cmd}");
+        assert!(!cmd.contains("echo /opt/oracle"), "{cmd}");
+        assert!(cmd.contains("ldd /opt/oracle/instantclient_*/libclntsh.so"), "{cmd}");
     }
 
     #[cfg(target_os = "macos")]
