@@ -3,6 +3,11 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.4.5] - 2026-09-12
+
+### Weitere Änderungen
+- Release: development into main
+
 ## [0.4.3] - 2026-09-10
 
 ### Weitere Änderungen
