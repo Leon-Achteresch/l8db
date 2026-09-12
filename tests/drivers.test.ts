@@ -33,7 +33,7 @@ const ORACLE_HINTS = [
   },
   {
     os: "linux",
-    command: "sudo apt install libaio1",
+    command: "sudo apt install -y unzip libaio1t64 || sudo apt install -y unzip libaio1",
     url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html",
   },
 ];

@@ -572,9 +572,11 @@ function Lines({ rows, shape, options }: ChartProps) {
 function Columns({ rows, shape, options }: ChartProps) {
   const data = series(rows, shape);
   const single = shape.metrics.length === 1;
+  const horizontal = options.horizontal;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
+        layout={horizontal ? "vertical" : "horizontal"}
         data={data}
         margin={{ top: 12, right: 8, left: -12, bottom: 0 }}
         barCategoryGap="25%"
@@ -582,13 +584,23 @@ function Columns({ rows, shape, options }: ChartProps) {
         {options.showGrid && (
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
         )}
-        <XAxis dataKey="name" tickLine={false} axisLine={false} tick={axisTick} minTickGap={8} />
-        <YAxis
+        <XAxis
+          dataKey={horizontal ? undefined : "name"}
+          type={horizontal ? "number" : "category"}
+          tickFormatter={horizontal ? fmtCompact : undefined}
           tickLine={false}
           axisLine={false}
           tick={axisTick}
-          tickFormatter={fmtCompact}
-          width={48}
+          minTickGap={8}
+        />
+        <YAxis
+          type={horizontal ? "category" : "number"}
+          dataKey={horizontal ? "name" : undefined}
+          tickLine={false}
+          axisLine={false}
+          tick={axisTick}
+          tickFormatter={horizontal ? undefined : fmtCompact}
+          width={horizontal ? 96 : 48}
         />
         <Tooltip
           cursor={{ fill: "var(--muted)" }}
@@ -610,7 +622,7 @@ function Columns({ rows, shape, options }: ChartProps) {
             {options.labels && (
               <LabelList
                 dataKey={m.key}
-                position="top"
+                position={horizontal ? "right" : "top"}
                 fontSize={10}
                 formatter={(v) => fmtCompact(toNumber(v))}
               />
@@ -876,8 +888,15 @@ export function legendFor(
   options: WidgetOptions,
 ) {
   const sum = (key: string) => rows.reduce((s, r) => s + toNumber(r[key]), 0);
+  if (kind === "column" && shape.metrics.length > 1)
+    return shape.metrics.map((m, i) => ({
+      name: m.label,
+      value: fmtNumber(sum(m.key)),
+      color: color(i + options.colorOffset),
+    }));
   switch (kind) {
     case "area":
+    case "line":
       return shape.metrics.map((m, i) => ({
         name: m.label,
         value: fmtNumber(sum(m.key)),

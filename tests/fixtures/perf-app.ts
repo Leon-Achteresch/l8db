@@ -15,142 +15,149 @@ export const CHART_KINDS = [
   "gauge",
 ];
 
-export async function seedApp(page: Page, tables: number): Promise<void> {
-  await page.addInitScript((count: number) => {
-    const names = Array.from({ length: count }, (_, i) => `table_${String(i).padStart(4, "0")}`);
-    const columns = Array.from({ length: 24 }, (_, i) => ({
-      name: i === 0 ? "id" : `col_${i}`,
-      data_type: i === 0 ? "integer" : i % 3 === 0 ? "text" : "numeric",
-      is_nullable: i !== 0,
-      column_default: null,
-      is_primary_key: i === 0,
-      ordinal_position: i + 1,
-      character_maximum_length: null,
-    }));
-    const rows = Array.from({ length: 500 }, (_, row) => {
-      const record: Record<string, unknown> = { __ctid__: `(0,${row})` };
-      for (const column of columns)
-        record[column.name] = column.name === "id" ? row : `value ${row * 13}`;
-      return record;
-    });
-    const invoke = async (command: string, args: Record<string, unknown> | undefined) => {
-      switch (command) {
-        case "list_databases":
-          return ["l8db_perf"];
-        case "list_schemas":
-          return ["public"];
-        case "list_tables":
-          return names.map((name) => ({ schema: "public", name }));
-        case "list_views":
-          return names.slice(0, 400).map((name) => ({ schema: "public", name: `v_${name}` }));
-        case "list_materialized_views":
-          return names.slice(0, 300).map((name) => ({
-            schema: "public",
-            name: `mv_${name}`,
-            is_populated: true,
-          }));
-        case "list_functions":
-        case "list_procedures":
-          return names.slice(0, 900).map((name, i) => ({
-            schema: "public",
-            name: `fn_${name}`,
-            identity_args: "integer, text",
-            return_type: "integer",
-            language: "plpgsql",
-            oid: String(10000 + i),
-          }));
-        case "list_sequences":
-          return names.slice(0, 800).map((name) => ({
-            schema: "public",
-            name: `${name}_id_seq`,
-            data_type: "bigint",
-            start_value: "1",
-            min_value: "1",
-            max_value: "9223372036854775807",
-            increment_by: "1",
-            cycle: false,
-            last_value: "42",
-          }));
-        case "list_roles":
-          return Array.from({ length: 600 }, (_, i) => ({
-            name: `role_${i}`,
-            oid: String(20000 + i),
-            superuser: false,
-            can_login: i % 2 === 0,
-            create_db: false,
-            create_role: false,
-            replication: false,
-            bypass_rls: false,
-            conn_limit: -1,
-            valid_until: null,
-            member_of: [],
-            members: [],
-          }));
-        case "list_all_columns":
-          return names.slice(0, 500).flatMap((table) =>
-            columns.map((column) => ({
+export async function seedApp(
+  page: Page,
+  tables: number,
+  grid = { rows: 500, columns: 24 },
+): Promise<void> {
+  await page.addInitScript(
+    ({ count, rowCount, columnCount }) => {
+      const names = Array.from({ length: count }, (_, i) => `table_${String(i).padStart(4, "0")}`);
+      const columns = Array.from({ length: columnCount }, (_, i) => ({
+        name: i === 0 ? "id" : `col_${i}`,
+        data_type: i === 0 ? "integer" : i % 3 === 0 ? "text" : "numeric",
+        is_nullable: i !== 0,
+        column_default: null,
+        is_primary_key: i === 0,
+        ordinal_position: i + 1,
+        character_maximum_length: null,
+      }));
+      const rows = Array.from({ length: rowCount }, (_, row) => {
+        const record: Record<string, unknown> = { __ctid__: `(0,${row})` };
+        for (const column of columns)
+          record[column.name] = column.name === "id" ? row : `value ${row * 13}`;
+        return record;
+      });
+      const invoke = async (command: string, args: Record<string, unknown> | undefined) => {
+        switch (command) {
+          case "list_databases":
+            return ["l8db_perf"];
+          case "list_schemas":
+            return ["public"];
+          case "list_tables":
+            return names.map((name) => ({ schema: "public", name }));
+          case "list_views":
+            return names.slice(0, 400).map((name) => ({ schema: "public", name: `v_${name}` }));
+          case "list_materialized_views":
+            return names.slice(0, 300).map((name) => ({
               schema: "public",
-              table,
-              name: column.name,
-              data_type: column.data_type,
-            })),
-          );
-        case "list_table_columns_detailed":
-          return columns;
-        case "fetch_table_rows":
-          return { columns: columns.map((column) => column.name), rows };
-        case "count_table_rows":
-          return rows.length;
-        case "get_database_overview":
-          return {
-            size_bytes: 123456789,
-            schemas: Array.from({ length: 8 }, (_, i) => ({
-              name: `schema_${i}`,
-              size_bytes: 10000000 - i * 900000,
-              table_count: 40,
-            })),
-            tables: names.map((name, i) => ({
+              name: `mv_${name}`,
+              is_populated: true,
+            }));
+          case "list_functions":
+          case "list_procedures":
+            return names.slice(0, 900).map((name, i) => ({
               schema: "public",
-              name,
-              size_bytes: 5000000 - i * 100,
-              row_estimate: 100000 - i,
-            })),
-          };
-        case "execute_query":
-          return String(args?.sql ?? "").includes("perf")
-            ? {
-                columns: ["label", "value", "value2"],
-                rows: Array.from({ length: 200 }, (_, i) => ({
-                  label: `bucket ${i}`,
-                  value: String(1000 + ((i * 37) % 900)),
-                  value2: String(500 + ((i * 17) % 400)),
-                })),
-                rows_affected: 200,
-                execution_time_ms: 4,
-              }
-            : { columns: [], rows: [], rows_affected: 0, execution_time_ms: 1 };
-        case "load_secret":
-          return null;
-        default:
-          return [];
-      }
-    };
-    Object.assign(window, {
-      __TAURI_INTERNALS__: {
-        metadata: {
-          currentWindow: { label: "main" },
-          currentWebview: { windowLabel: "main", label: "main" },
+              name: `fn_${name}`,
+              identity_args: "integer, text",
+              return_type: "integer",
+              language: "plpgsql",
+              oid: String(10000 + i),
+            }));
+          case "list_sequences":
+            return names.slice(0, 800).map((name) => ({
+              schema: "public",
+              name: `${name}_id_seq`,
+              data_type: "bigint",
+              start_value: "1",
+              min_value: "1",
+              max_value: "9223372036854775807",
+              increment_by: "1",
+              cycle: false,
+              last_value: "42",
+            }));
+          case "list_roles":
+            return Array.from({ length: 600 }, (_, i) => ({
+              name: `role_${i}`,
+              oid: String(20000 + i),
+              superuser: false,
+              can_login: i % 2 === 0,
+              create_db: false,
+              create_role: false,
+              replication: false,
+              bypass_rls: false,
+              conn_limit: -1,
+              valid_until: null,
+              member_of: [],
+              members: [],
+            }));
+          case "list_all_columns":
+            return names.slice(0, 500).flatMap((table) =>
+              columns.map((column) => ({
+                schema: "public",
+                table,
+                name: column.name,
+                data_type: column.data_type,
+              })),
+            );
+          case "list_table_columns_detailed":
+            return columns;
+          case "fetch_table_rows":
+            return { columns: columns.map((column) => column.name), rows };
+          case "count_table_rows":
+            return rows.length;
+          case "get_database_overview":
+            return {
+              size_bytes: 123456789,
+              schemas: Array.from({ length: 8 }, (_, i) => ({
+                name: `schema_${i}`,
+                size_bytes: 10000000 - i * 900000,
+                table_count: 40,
+              })),
+              tables: names.map((name, i) => ({
+                schema: "public",
+                name,
+                size_bytes: 5000000 - i * 100,
+                row_estimate: 100000 - i,
+              })),
+            };
+          case "execute_query":
+            return String(args?.sql ?? "").includes("perf")
+              ? {
+                  columns: ["label", "value", "value2"],
+                  rows: Array.from({ length: 200 }, (_, i) => ({
+                    label: `bucket ${i}`,
+                    value: String(1000 + ((i * 37) % 900)),
+                    value2: String(500 + ((i * 17) % 400)),
+                  })),
+                  rows_affected: 200,
+                  execution_time_ms: 4,
+                }
+              : { columns: [], rows: [], rows_affected: 0, execution_time_ms: 1 };
+          case "load_secret":
+            return null;
+          default:
+            return [];
+        }
+      };
+      Object.assign(window, {
+        __TAURI_INTERNALS__: {
+          metadata: {
+            currentWindow: { label: "main" },
+            currentWebview: { windowLabel: "main", label: "main" },
+          },
+          transformCallback: (callback: unknown) => {
+            const id = Math.random();
+            Object.assign(window, { [`_${id}`]: callback });
+            return id;
+          },
+          convertFileSrc: (path: string) => path,
+          invoke,
         },
-        transformCallback: (callback: unknown) => {
-          const id = Math.random();
-          Object.assign(window, { [`_${id}`]: callback });
-          return id;
-        },
-        convertFileSrc: (path: string) => path,
-        invoke,
-      },
-    });
-  }, tables);
+      });
+    },
+    { count: tables, rowCount: grid.rows, columnCount: grid.columns },
+  );
 
   await page.addInitScript((charts: string[]) => {
     localStorage.setItem(

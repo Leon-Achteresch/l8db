@@ -1,6 +1,7 @@
 import { useDragOperation, useDroppable } from "@dnd-kit/react";
 
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { MasterDetailLink } from "@/features/shell/master-detail-link";
 import { SplitPane } from "@/features/shell/split-pane";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -33,6 +34,16 @@ export function SplitWorkspace() {
   const closePane = useSplitView((state) => state.closePane);
   const tabs = useTableTabs((state) => state.tabs);
 
+  const link = (index: number, vertical = false) => (
+    <MasterDetailLink
+      key={`${panes[0]}|${panes[index]}`}
+      master={tabs.find((item) => tabKey(item) === panes[0])}
+      detail={tabs.find((item) => tabKey(item) === panes[index])}
+      detailIndex={index}
+      vertical={vertical}
+    />
+  );
+
   const pane = (index: number) => {
     const key = panes[index];
     return (
@@ -52,17 +63,17 @@ export function SplitWorkspace() {
     panes.length === 2 ? (
       <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0 flex-1">
         {pane(0)}
-        <ResizableHandle withHandle />
+        {link(1)}
         {pane(1)}
       </ResizablePanelGroup>
     ) : panes.length === 3 ? (
       <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0 flex-1">
         {pane(0)}
-        <ResizableHandle withHandle />
+        {link(1)}
         <ResizablePanel id="split-stack" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="vertical" className="h-full">
             {pane(1)}
-            <ResizableHandle withHandle />
+            {link(2, true)}
             {pane(2)}
           </ResizablePanelGroup>
         </ResizablePanel>
@@ -72,15 +83,15 @@ export function SplitWorkspace() {
         <ResizablePanel id="split-top" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="horizontal" className="h-full">
             {pane(0)}
-            <ResizableHandle withHandle />
+            {link(1)}
             {pane(1)}
           </ResizablePanelGroup>
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        {link(2, true)}
         <ResizablePanel id="split-bottom" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="horizontal" className="h-full">
             {pane(2)}
-            <ResizableHandle withHandle />
+            {link(3)}
             {pane(3)}
           </ResizablePanelGroup>
         </ResizablePanel>

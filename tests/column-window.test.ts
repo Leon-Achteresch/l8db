@@ -1,11 +1,9 @@
 import { expect, test } from "bun:test";
 import { columnWindowRange } from "../src/lib/column-window";
 
-test("scrolling inside a column batch retains the rendered columns", () => {
+test("column windows retain only the requested overscan and pinned columns", () => {
   const range = { startIndex: 4, endIndex: 10, overscan: 2, count: 51 };
-  expect(columnWindowRange(range, [0])).toEqual(
-    columnWindowRange({ ...range, startIndex: 5, endIndex: 11 }, [0]),
-  );
+  expect(columnWindowRange(range, [0])).toEqual([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 });
 
 test("column windows cover the viewport and retain pinned columns across a wide table", () => {
