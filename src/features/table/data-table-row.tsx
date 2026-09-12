@@ -29,6 +29,8 @@ const focusEditInput = (el: HTMLInputElement | null) => {
 
 type DataTableRowProps = {
   row: Row<TableRow>;
+  isMarked: boolean;
+  toggleRowMarker: (row: TableRow) => void;
   columnWindow: ColumnWindowItem[];
   measureElement: (element: HTMLTableRowElement | null) => void;
   editingCell: EditingCell | null;
@@ -58,6 +60,9 @@ type DataTableRowProps = {
 
 export const DataTableRow = memo(function DataTableRow({
   row,
+  isMarked,
+  toggleRowMarker,
+  pageOffset,
   columnWindow,
   measureElement,
   editingCell,
@@ -88,9 +93,14 @@ export const DataTableRow = memo(function DataTableRow({
       data-index={rowIndex}
       data-row-index={rowIndex}
       data-ctid={rowCtid}
+      data-marked={isMarked || undefined}
       className={cn(
         "group/row",
-        isRowEditing ? "bg-primary/[0.03]" : "bg-background hover:bg-muted/15",
+        isMarked
+          ? "bg-primary/10"
+          : isRowEditing
+            ? "bg-primary/[0.03]"
+            : "bg-background hover:bg-muted/15",
       )}
     >
       {columnWindow.map((item) => {
@@ -163,7 +173,11 @@ export const DataTableRow = memo(function DataTableRow({
           <td
             key={cell.id}
             onClick={(event) => {
-              const extend = event.shiftKey && columnId !== "__row_index__";
+              if (cellIndex === 0) {
+                toggleRowMarker(row.original);
+                return;
+              }
+              const extend = event.shiftKey;
               if (
                 isActive &&
                 !extend &&
@@ -195,6 +209,9 @@ export const DataTableRow = memo(function DataTableRow({
               "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden",
               cellIndex === 0 &&
                 "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
+              cellIndex === 0 &&
+                isMarked &&
+                "bg-primary/15 text-primary group-hover/row:bg-primary/20",
               pinnedOffset !== null &&
                 "sticky z-10 bg-inherit border-r border-border shadow-[1px_0_0_0_var(--border)]",
               isSelected && "bg-primary/10",
@@ -208,7 +225,26 @@ export const DataTableRow = memo(function DataTableRow({
           >
             <div className="relative flex items-center justify-between gap-2 w-full h-5 text-left">
               <div className="min-w-0 flex-1 truncate text-left">
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                {cellIndex === 0 ? (
+                  <button
+                    type="button"
+                    aria-label={`Zeile ${rowIndex + 1 + pageOffset} markieren`}
+                    aria-pressed={isMarked}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+                    }}
+                    title="Zeile markieren / Markierung aufheben"
+                    className="absolute inset-0 w-full cursor-pointer text-center tabular-nums focus-visible:outline-2 focus-visible:outline-ring"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleRowMarker(row.original);
+                    }}
+                  >
+                    {rowIndex + 1 + pageOffset}
+                  </button>
+                ) : (
+                  flexRender(cell.column.columnDef.cell, cell.getContext())
+                )}
               </div>
               {isActive && cellIndex > 0 && (
                 <div className="absolute right-0 flex items-center gap-0.5 bg-background/90 backdrop-blur-xs pl-1 py-0.5 rounded shadow-sm border border-border/80 z-20">

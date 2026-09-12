@@ -7,7 +7,7 @@ import {
   FilterXIcon,
   Maximize2Icon,
 } from "lucide-react";
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { dbErrorCode } from "@/lib/db-error-codes";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
   activeFilterCount,
@@ -57,6 +59,23 @@ export const QueryResultTable = memo(function QueryResultTable({
   onInspect,
 }: QueryResultTableProps) {
   const workspace = useQueryWorkspace();
+  const selectionKey = useContext(MasterSelectionContext);
+  const masterCell = useMasterDetail((state) =>
+    selectionKey ? state.selections[selectionKey] : undefined,
+  );
+  useEffect(() => {
+    if (!selectionKey) return;
+    const saved = useMasterDetail.getState().selections[selectionKey];
+    if (
+      saved &&
+      (isLoading ||
+        error ||
+        !result?.rows[saved.rowIndex] ||
+        !Object.is(result.rows[saved.rowIndex][saved.column], saved.value))
+    ) {
+      useMasterDetail.getState().selectCell(selectionKey, null);
+    }
+  }, [selectionKey, result, isLoading, error]);
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
   const rowHeight =
@@ -83,6 +102,8 @@ export const QueryResultTable = memo(function QueryResultTable({
 
   const columns = useMemo(() => result?.columns ?? [], [result]);
   const rows = useMemo(() => result?.rows ?? [], [result]);
+  const { markedRows, toggleRowMarker } = useRowMarkers(rows);
+  const originalIndices = useMemo(() => new Map(rows.map((row, index) => [row, index])), [rows]);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
     () => applyResultView(rows, columns, sorts, deferredFilters),
@@ -403,21 +424,43 @@ export const QueryResultTable = memo(function QueryResultTable({
             {virtualRows.map((virtualRow) => {
               const rowIdx = virtualRow.index;
               const row = visibleRows[rowIdx];
+              const isMarked = markedRows.has(row);
+              const originalIndex = originalIndices.get(row) ?? rowIdx;
               return (
                 <tr
                   key={rowIdx}
                   ref={rowVirtualizer.measureElement}
                   data-index={rowIdx}
+                  data-marked={isMarked || undefined}
                   style={{
                     height: rowHeight,
                   }}
                   className={cn(
-                    "group hover:bg-muted/50",
-                    workspace.stripedRows && rowIdx % 2 !== 0 ? "bg-muted/20" : "bg-background",
+                    "group",
+                    isMarked
+                      ? "bg-primary/10"
+                      : workspace.stripedRows && rowIdx % 2 !== 0
+                        ? "bg-muted/20 hover:bg-muted/50"
+                        : "bg-background hover:bg-muted/50",
                   )}
                 >
-                  <td className="sticky left-0 border-b border-r bg-inherit px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] text-right font-mono text-xs text-muted-foreground">
-                    {rowIdx + 1}
+                  <td className="sticky left-0 z-10 border-b border-r bg-inherit p-0 text-right font-mono text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      aria-label={`Zeile ${rowIdx + 1} markieren`}
+                      aria-pressed={isMarked}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+                      }}
+                      title="Zeile markieren / Markierung aufheben"
+                      onClick={() => toggleRowMarker(row)}
+                      className={cn(
+                        "block w-full cursor-pointer px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] text-right tabular-nums focus-visible:outline-2 focus-visible:outline-ring",
+                        isMarked && "text-primary",
+                      )}
+                    >
+                      {rowIdx + 1}
+                    </button>
                   </td>
                   {dataColumnWindow.map((item) => {
                     if (item.spacer)
@@ -438,13 +481,33 @@ export const QueryResultTable = memo(function QueryResultTable({
                       : text.length > 200
                         ? `${text.slice(0, 200)}…`
                         : text;
+                    const selectMaster = () => {
+                      if (selectionKey)
+                        useMasterDetail.getState().selectCell(selectionKey, {
+                          column: col,
+                          rowIndex: originalIndex,
+                          value: raw,
+                        });
+                    };
                     return (
                       <td
                         key={col}
+                        tabIndex={selectionKey ? 0 : undefined}
+                        onFocus={selectMaster}
+                        onClick={selectMaster}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectMaster();
+                          }
+                        }}
                         data-col={col}
                         style={{ fontSize: `${workspace.resultFontSize / 16}rem` }}
                         title={isNull ? undefined : text}
                         className={cn(
+                          masterCell?.column === col &&
+                            masterCell.rowIndex === originalIndex &&
+                            "ring-1 ring-inset ring-primary bg-primary/10",
                           "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] font-mono",
                           isNull && "text-muted-foreground/50 italic",
                         )}

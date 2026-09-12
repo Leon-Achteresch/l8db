@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
+import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -35,6 +36,7 @@ export function WorkspaceLayout() {
   const split = useSplitView((state) => state.panes.length > 1);
   const reveal = useSplitView((state) => state.reveal);
   const routeKey = activeTab ? tabKey(activeTab) : "";
+  const selectionKey = usePaneSourceKey(routeKey || null);
   const previousKey = useRef(routeKey);
 
   useEffect(() => {
@@ -86,7 +88,9 @@ export function WorkspaceLayout() {
             <SplitWorkspace />
           ) : (
             <>
-              <Outlet />
+              <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
+                <Outlet />
+              </MasterSelectionContext.Provider>
               {activeTab && <NewPaneDropZone />}
             </>
           )}

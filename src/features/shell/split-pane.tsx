@@ -1,12 +1,18 @@
 import { useDraggable, useDroppable } from "@dnd-kit/react";
 import { useNavigate } from "@tanstack/react-router";
 import { GripVerticalIcon, XIcon } from "lucide-react";
-import { Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { toast } from "sonner";
 
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
 import { ConnectionScopeContext, useConnectionsStore } from "@/lib/connections";
+import {
+  MasterSelectionContext,
+  masterDetailKey,
+  useMasterDetail,
+  usePaneSourceKey,
+} from "@/lib/master-detail";
 import { ensurePassword } from "@/lib/password-prompt";
 import { usePaneConnectionId, useSplitView } from "@/lib/split-view";
 import { ensureSshTunnel } from "@/lib/ssh";
@@ -14,6 +20,12 @@ import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { type Tab, tabKey } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { WorkspacePaneContext } from "@/lib/workspace-pane";
+
+const MasterDetailResult = lazy(() =>
+  import("@/features/shell/master-detail-result").then((module) => ({
+    default: module.MasterDetailResult,
+  })),
+);
 
 const ACTIVE_VALUE = "__active__";
 
@@ -38,7 +50,12 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const navigate = useNavigate();
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
-  const key = tab ? tabKey(tab) : null;
+  const key = tab ? tabKey(tab) : `split-detail:${index}`;
+  const masterKey = useSplitView((state) => state.panes[0] ?? null);
+  const source = usePaneSourceKey(masterKey);
+  const target = usePaneSourceKey(key);
+  const linkKey = index > 0 ? masterDetailKey(source, target) : null;
+  const detailSql = useMasterDetail((state) => (linkKey ? state.scripts[linkKey] : undefined));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -105,9 +122,10 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
             <GripVerticalIcon className="size-3.5" />
           </span>
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
-            {tab ? tabLabel(tab) : "Leer"}
+            {index === 0 ? "Master · " : detailSql ? "Detail · " : ""}
+            {tab ? tabLabel(tab) : detailSql ? "SQL-Abfrage" : "Leer"}
           </span>
-          {tab ? (
+          {tab || detailSql ? (
             <Select value={overrideId ?? ACTIVE_VALUE} onValueChange={selectConnection}>
               <SelectTrigger
                 size="sm"
@@ -149,7 +167,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {tab ? (
+          {tab || detailSql ? (
             <ConnectionScopeContext.Provider value={overrideId}>
               <Suspense
                 fallback={
@@ -158,7 +176,13 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
                   </div>
                 }
               >
-                <TabPaneContent tab={tab} />
+                <MasterSelectionContext.Provider value={detailSql ? null : target}>
+                  {detailSql && source ? (
+                    <MasterDetailResult key={linkKey} source={source} sql={detailSql} />
+                  ) : tab ? (
+                    <TabPaneContent key={target} tab={tab} />
+                  ) : null}
+                </MasterSelectionContext.Provider>
               </Suspense>
             </ConnectionScopeContext.Provider>
           ) : (

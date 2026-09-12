@@ -36,7 +36,15 @@ import {
   XIcon,
 } from "lucide-react";
 import { animate } from "motion/react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { RegexSearchHelper } from "@/components/regex-search-helper";
 import {
@@ -75,7 +83,9 @@ import {
   summarizeSelection,
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useRowMarkers } from "@/lib/hooks/use-row-markers";
 import { useResolvedHotkey } from "@/lib/hotkeys";
+import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSettingsStore } from "@/lib/settings";
@@ -498,7 +508,26 @@ export function DataTable({
     renameProfile,
     deleteProfile,
   } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
-  const [activeCell, setActiveCell] = useState<GridCellRef | null>(null);
+  const { markedRows, toggleRowMarker } = useRowMarkers(data);
+  const selectionKey = useContext(MasterSelectionContext);
+  const [activeCell, setActiveCell] = useState<GridCellRef | null>(() => {
+    const saved = selectionKey ? useMasterDetail.getState().selections[selectionKey] : undefined;
+    return saved ? { rowIndex: saved.rowIndex, columnId: saved.column } : null;
+  });
+  useEffect(() => {
+    if (!selectionKey) return;
+    const row = activeCell ? data[activeCell.rowIndex] : undefined;
+    useMasterDetail.getState().selectCell(
+      selectionKey,
+      activeCell && row && Object.hasOwn(row, activeCell.columnId)
+        ? {
+            column: activeCell.columnId,
+            rowIndex: activeCell.rowIndex,
+            value: row[activeCell.columnId],
+          }
+        : null,
+    );
+  }, [selectionKey, activeCell, data]);
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
@@ -1512,6 +1541,8 @@ export function DataTable({
                             <DataTableRow
                               key={rowCtid ?? row.id}
                               row={row}
+                              isMarked={markedRows.has(row.original)}
+                              toggleRowMarker={toggleRowMarker}
                               columnWindow={columnWindow.items}
                               measureElement={rowVirtualizer.measureElement}
                               editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
