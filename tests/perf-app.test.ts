@@ -59,7 +59,7 @@ async function wheel(page: Page, x: number, y: number, steps: number, distance: 
   }
 }
 
-async function open(path: string, ready: string) {
+async function open(path: string, ready: string, grid?: { rows: number; columns: number }) {
   if (!(await Bun.file("dist/index.html").exists()))
     throw new Error("dist fehlt – vor dem Perf-Test 'bun run build' ausführen.");
   const server = Bun.serve({
@@ -79,7 +79,15 @@ async function open(path: string, ready: string) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await seedApp(page, TABLES);
+  await seedApp(page, TABLES, grid);
+  if (grid)
+    await page.addInitScript((rowLimit) => {
+      const saved = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
+      localStorage.setItem(
+        "l8db.settings",
+        JSON.stringify({ ...saved, state: { ...saved.state, rowLimit } }),
+      );
+    }, grid.rows);
   await page.goto(`http://localhost:${server.port}${path}`);
   await page.waitForSelector(ready, { timeout: 60000 });
   await page.waitForTimeout(2500);
@@ -186,4 +194,42 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     }
   },
   180000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Tabellenscrollen im vollständigen Workspace mit 5000 Zeilen und 120 Spalten",
+  async () => {
+    const app = await open("/tables/public/table_0000", 'tbody tr[data-index="0"]', {
+      rows: 5000,
+      columns: 120,
+    });
+    try {
+      const sample = await measure("workspace-table-scroll", app.page, async () => {
+        await app.page.evaluate(async () => {
+          let scroller = document.querySelector("tbody")!.parentElement as HTMLElement;
+          while (scroller && getComputedStyle(scroller).overflowY !== "auto")
+            scroller = scroller.parentElement!;
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              scroller.scrollTop += 120;
+              scroller.scrollLeft += now - start < 5000 ? 120 : -120;
+              if (now - start < 10000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        });
+      });
+      expect(sample.fps).toBeGreaterThan(59);
+      expect(sample.p95).toBeLessThan(21);
+      expect(sample.worst).toBeLessThan(50);
+      expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
 );

@@ -114,6 +114,7 @@ export interface DatasetFilter {
   column: string;
   operator: string;
   value: string;
+  dataType?: string;
 }
 
 export interface DatasetJoin {
@@ -572,7 +573,15 @@ export function buildSimpleSql(
     );
   const where = ds.filters
     .filter((f) => f.column)
-    .map((f) => compileConditionExpression(refExpr(f.column, ds, style), f.operator, f.value, kind))
+    .map((f) =>
+      compileConditionExpression(
+        refExpr(f.column, ds, style),
+        f.operator,
+        f.value,
+        kind,
+        f.dataType,
+      ),
+    )
     .filter((part): part is string => part !== null);
   const start = periodStart(period);
   if (ds.dateColumn && start)

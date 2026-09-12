@@ -1,7 +1,5 @@
 import { PlusIcon, Trash2Icon } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -9,13 +7,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
 import {
   type BuilderCondition,
   type ColumnOption,
   columnOptionValue,
   parseColumnOptionValue,
 } from "@/lib/query-builder";
-import { OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { operatorNeedsValue } from "@/lib/sql-filter";
 
 interface QueryBuilderConditionsProps {
   conditions: BuilderCondition[];
@@ -49,7 +49,12 @@ export function QueryBuilderConditions({
             <div key={condition.id} className="flex items-center gap-2">
               <Select
                 value={columnOptionValue(condition.source, condition.column)}
-                onValueChange={(value) => onChange(condition.id, parseColumnOptionValue(value))}
+                onValueChange={(value) =>
+                  onChange(condition.id, {
+                    ...parseColumnOptionValue(value),
+                    dataType: options.find((option) => option.value === value)?.dataType,
+                  })
+                }
               >
                 <SelectTrigger className="w-56">
                   <SelectValue placeholder="Spalte" />
@@ -62,27 +67,21 @@ export function QueryBuilderConditions({
                   ))}
                 </SelectContent>
               </Select>
-              <Select
-                value={condition.operator}
-                onValueChange={(value) => onChange(condition.id, { operator: value })}
-              >
-                <SelectTrigger className="w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {OPERATORS.map((operator) => (
-                    <SelectItem key={operator.key} value={operator.key}>
-                      {operator.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FilterOperatorSelect
+                operator={condition.operator}
+                value={condition.value}
+                onChange={(operator, value) => onChange(condition.id, { operator, value })}
+                className="w-44"
+                size="sm"
+              />
               {operatorNeedsValue(condition.operator) ? (
-                <Input
+                <FilterValueInput
+                  key={condition.operator}
+                  operator={condition.operator}
                   className="flex-1"
                   placeholder="Wert"
                   value={condition.value}
-                  onChange={(event) => onChange(condition.id, { value: event.target.value })}
+                  onValueChange={(value) => onChange(condition.id, { value })}
                 />
               ) : (
                 <div className="flex-1" />

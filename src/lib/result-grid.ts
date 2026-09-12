@@ -1,4 +1,11 @@
 import { gridCellText } from "@/lib/grid-search";
+import {
+  type FilterOperatorKey,
+  filterOperatorLabel,
+  operatorNeedsList,
+  operatorNeedsValue,
+  parseFilterList,
+} from "@/lib/sql-filter";
 
 export type ResultRow = Record<string, unknown>;
 
@@ -9,7 +16,14 @@ export interface ResultSort {
   direction: ResultSortDirection;
 }
 
-export type ResultFilterOperator = "contains" | "equals" | "is_null" | "not_null";
+export type ResultFilterOperator = FilterOperatorKey | "equals" | "is_null" | "not_null";
+
+export function normalizeResultFilterOperator(operator: ResultFilterOperator): FilterOperatorKey {
+  if (operator === "equals") return "eq";
+  if (operator === "is_null") return "isNull";
+  if (operator === "not_null") return "isNotNull";
+  return operator;
+}
 
 export interface ResultFilter {
   operator: ResultFilterOperator;
@@ -177,7 +191,9 @@ export function sortResultRows(
 
 export function isFilterActive(filter: ResultFilter | undefined): boolean {
   if (!filter) return false;
-  if (filter.operator === "is_null" || filter.operator === "not_null") return true;
+  const operator = normalizeResultFilterOperator(filter.operator);
+  if (!operatorNeedsValue(operator)) return true;
+  if (operatorNeedsList(operator)) return parseFilterList(filter.value).length > 0;
   return filter.value.trim() !== "";
 }
 
@@ -186,14 +202,40 @@ export function activeFilterCount(filters: ResultFilters): number {
 }
 
 export function matchesResultFilter(value: unknown, filter: ResultFilter): boolean {
-  if (filter.operator === "is_null") return isNullValue(value);
-  if (filter.operator === "not_null") return !isNullValue(value);
-  const needle = filter.value.trim().toLowerCase();
-  if (needle === "") return true;
+  const operator = normalizeResultFilterOperator(filter.operator);
+  if (operator === "isNull") return isNullValue(value);
+  if (operator === "isNotNull") return !isNullValue(value);
+  if (!isFilterActive(filter)) return true;
   if (isNullValue(value)) return false;
+  const needle = filter.value.trim().toLowerCase();
   const haystack = resultCellText(value).toLowerCase();
-  if (filter.operator === "equals") return haystack.trim() === needle;
-  return haystack.includes(needle);
+  if (operatorNeedsList(operator)) {
+    const includes = parseFilterList(filter.value).some(
+      (entry) => haystack.trim() === entry.trim().toLowerCase(),
+    );
+    return operator === "in" ? includes : !includes;
+  }
+  switch (operator) {
+    case "eq":
+      return haystack.trim() === needle;
+    case "neq":
+      return haystack.trim() !== needle;
+    case "contains":
+      return haystack.includes(needle);
+    case "startsWith":
+      return haystack.startsWith(needle);
+    case "endsWith":
+      return haystack.endsWith(needle);
+    default: {
+      const kind = detectColumnKind([{ value }, { value: filter.value }], "value");
+      const comparison = compareResultValues(value, filter.value, kind);
+      if (operator === "gt") return comparison > 0;
+      if (operator === "gte") return comparison >= 0;
+      if (operator === "lt") return comparison < 0;
+      if (operator === "lte") return comparison <= 0;
+      return false;
+    }
+  }
 }
 
 export function filterResultRows(rows: ResultRow[], filters: ResultFilters): ResultRow[] {
@@ -228,15 +270,9 @@ export function describeResultCount(visible: number, total: number): string {
   return `${visible} von ${total} ${unit}`;
 }
 
-export function resultFilterOperatorLabel(operator: ResultFilterOperator): string {
-  switch (operator) {
-    case "equals":
-      return "ist gleich";
-    case "is_null":
-      return "ist NULL";
-    case "not_null":
-      return "ist nicht NULL";
-    default:
-      return "enthält";
-  }
+export function resultFilterOperatorLabel(
+  operator: ResultFilterOperator,
+  translated = true,
+): string {
+  return filterOperatorLabel(normalizeResultFilterOperator(operator), translated);
 }

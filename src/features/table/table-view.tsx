@@ -50,7 +50,7 @@ import {
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
-import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
+import { canEditRedisCell, redisKeyFilter } from "@/lib/redis-commands";
 import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
@@ -359,6 +359,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
             <TableFilterPanel
               key={`${schema}.${table}`}
               columns={data?.columns ?? []}
+              columnDetails={columnDetails}
               activeFilter={filter}
               onApply={handleFilterChange}
               onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
@@ -420,9 +421,14 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
           emptyEditValue={caps.query_language === "redis" ? "" : undefined}
           filterableColumns={caps.query_language === "redis" ? ["key"] : undefined}
           compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
-          filterOperators={caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined}
-          filterPrefix={caps.query_language === "redis" ? "MATCH" : undefined}
-          onApplyFilter={caps.query_language === "json" ? undefined : handleFilterChange}
+          filterPrefix={
+            caps.query_language === "redis"
+              ? "MATCH"
+              : caps.query_language === "json"
+                ? "JSON"
+                : undefined
+          }
+          onApplyFilter={handleFilterChange}
           revealColumn={revealColumn}
           page={page}
           totalCount={totalCount ?? undefined}

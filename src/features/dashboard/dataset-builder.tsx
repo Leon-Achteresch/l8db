@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { queryErrorMessage } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -48,7 +50,7 @@ import type { DatabaseKind } from "@/lib/db";
 import { useActiveSchema } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
 import { useDetailedColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
-import { OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 import { FlowBuilder } from "./flow-builder";
 import { SqlEditor } from "./sql-editor";
@@ -423,7 +425,13 @@ function SimpleBuilder({
               onChange={(column) =>
                 onChange({
                   filters: s.filters.map((x) =>
-                    x.id === f.id ? { ...x, column: column ?? "" } : x,
+                    x.id === f.id
+                      ? {
+                          ...x,
+                          column: column ?? "",
+                          dataType: columns.find((entry) => entry.ref === column)?.type,
+                        }
+                      : x,
                   ),
                 })
               }
@@ -438,35 +446,27 @@ function SimpleBuilder({
               <XIcon />
             </Button>
             <div className="col-span-2 flex gap-1.5">
-              <Select
-                value={f.operator}
-                onValueChange={(operator) =>
+              <FilterOperatorSelect
+                operator={f.operator}
+                value={f.value}
+                onChange={(operator, value) =>
                   onChange({
-                    filters: s.filters.map((x) => (x.id === f.id ? { ...x, operator } : x)),
+                    filters: s.filters.map((x) => (x.id === f.id ? { ...x, operator, value } : x)),
                   })
                 }
-              >
-                <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {OPERATORS.map((op) => (
-                    <SelectItem key={op.key} value={op.key}>
-                      {op.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                className="h-8 flex-1 text-xs"
+                size="sm"
+              />
               {operatorNeedsValue(f.operator) && (
-                <Input
+                <FilterValueInput
+                  key={f.operator}
+                  operator={f.operator}
                   className="h-8 flex-1 text-xs"
                   placeholder="Wert"
                   value={f.value}
-                  onChange={(e) =>
+                  onValueChange={(value) =>
                     onChange({
-                      filters: s.filters.map((x) =>
-                        x.id === f.id ? { ...x, value: e.target.value } : x,
-                      ),
+                      filters: s.filters.map((x) => (x.id === f.id ? { ...x, value } : x)),
                     })
                   }
                 />

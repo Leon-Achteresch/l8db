@@ -81,13 +81,6 @@ export function redisReadCommand(key: string, type: string): string | null {
   }
 }
 
-export const REDIS_KEY_FILTER_OPERATORS = [
-  { key: "eq", label: "ist gleich" },
-  { key: "contains", label: "enthält" },
-  { key: "startsWith", label: "beginnt mit" },
-  { key: "endsWith", label: "endet mit" },
-];
-
 export function redisKeyFilter(column: string, operator: string, value: string): string | null {
   if (column !== "key" || !value) return null;
   const literal = value

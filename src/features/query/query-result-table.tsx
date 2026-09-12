@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { dbErrorCode } from "@/lib/db-error-codes";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
@@ -27,21 +27,24 @@ import {
   applyResultView,
   describeResultCount,
   isFilterActive,
+  normalizeResultFilterOperator,
   type ResultFilterOperator,
   type ResultFilters,
   type ResultSort,
-  resultCellText,
   resultFilterOperatorLabel,
   sortDirectionFor,
   sortRankFor,
   toggleResultSort,
 } from "@/lib/result-grid";
 import { useSettingsStore } from "@/lib/settings";
+import { changeFilterOperator, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
+
+import { QueryResultRow } from "./query-result-row";
 
 const PINNED_COLUMNS = [0];
 
-const FILTER_OPERATORS: ResultFilterOperator[] = ["contains", "equals", "is_null", "not_null"];
+const FILTER_OPERATORS = OPERATORS.map((operator) => operator.key);
 
 interface QueryResultTableProps {
   result: QueryResult | null;
@@ -76,6 +79,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       useMasterDetail.getState().selectCell(selectionKey, null);
     }
   }, [selectionKey, result, isLoading, error]);
+  const translatedOperators = useSettingsStore((state) => state.translateFilterOperators);
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
   const rowHeight =
@@ -114,17 +118,17 @@ export const QueryResultTable = memo(function QueryResultTable({
     () => [48, ...columns.map((column) => autoColumnWidths[column] ?? workspace.resultColumnWidth)],
     [columns, workspace.resultColumnWidth, autoColumnWidths],
   );
-  const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
-  const dataColumnWindow = useMemo(
-    () => columnWindow.items.filter((item) => item.index !== 0),
-    [columnWindow.items],
+  const tableWidth = useMemo(
+    () => columnWidths.reduce((sum, width) => sum + width, 0),
+    [columnWidths],
   );
   const rowVirtualizer = useVirtualizer({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
-    overscan: 10,
+    overscan: Math.ceil(256 / rowHeight),
     useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
   });
   useEffect(() => {
     if (rowHeight > 0) rowVirtualizer.measure();
@@ -133,6 +137,13 @@ export const QueryResultTable = memo(function QueryResultTable({
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
 
+  const columnWindow = useColumnWindow(scrollRef, columnWidths, PINNED_COLUMNS);
+  const dataColumnWindow = useMemo(
+    () => columnWindow.items.filter((item) => item.index !== 0),
+    [columnWindow.items],
+  );
+
+  const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
   const filterCount = activeFilterCount(filters);
   const viewActive = filterCount > 0 || sorts.length > 0;
 
@@ -283,14 +294,18 @@ export const QueryResultTable = memo(function QueryResultTable({
           )}
         </div>
       </div>
-      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        style={{ contain: "strict" }}
+        className="relative min-h-0 flex-1 overflow-auto"
+      >
         <table
           className="w-full border-separate border-spacing-0 text-sm"
           style={
             columnWindow.enabled || Object.keys(autoColumnWidths).length > 0
               ? {
                   tableLayout: "fixed",
-                  width: columnWidths.reduce((total, width) => total + width, 0),
+                  width: tableWidth,
                 }
               : undefined
           }
@@ -370,7 +385,9 @@ export const QueryResultTable = memo(function QueryResultTable({
                     operator: "contains" as ResultFilterOperator,
                     value: "",
                   };
-                  const needsValue = filter.operator === "contains" || filter.operator === "equals";
+                  const needsValue = operatorNeedsValue(
+                    normalizeResultFilterOperator(filter.operator),
+                  );
                   return (
                     <th key={col} className="border-b border-r bg-muted/70 px-1 py-1">
                       <div className="flex items-center gap-1">
@@ -384,25 +401,38 @@ export const QueryResultTable = memo(function QueryResultTable({
                                 isFilterActive(filter) && "text-primary",
                               )}
                             >
-                              {resultFilterOperatorLabel(filter.operator)}
+                              {resultFilterOperatorLabel(filter.operator, translatedOperators)}
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start">
                             {FILTER_OPERATORS.map((operator) => (
                               <DropdownMenuCheckboxItem
                                 key={operator}
-                                checked={filter.operator === operator}
-                                onCheckedChange={() => setFilter(col, { operator })}
+                                checked={
+                                  normalizeResultFilterOperator(filter.operator) === operator
+                                }
+                                onCheckedChange={() =>
+                                  setFilter(col, {
+                                    operator,
+                                    value: changeFilterOperator(
+                                      filter.value,
+                                      normalizeResultFilterOperator(filter.operator),
+                                      operator,
+                                    ),
+                                  })
+                                }
                               >
-                                {resultFilterOperatorLabel(operator)}
+                                {resultFilterOperatorLabel(operator, translatedOperators)}
                               </DropdownMenuCheckboxItem>
                             ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
                         {needsValue && (
-                          <Input
+                          <FilterValueInput
+                            key={filter.operator}
+                            operator={normalizeResultFilterOperator(filter.operator)}
                             value={filter.value}
-                            onChange={(event) => setFilter(col, { value: event.target.value })}
+                            onValueChange={(value) => setFilter(col, { value })}
                             placeholder="Filter"
                             aria-label={`Filter für ${col}`}
                             className="h-6 min-w-0 flex-1 px-1.5 font-mono text-xs"
@@ -421,113 +451,32 @@ export const QueryResultTable = memo(function QueryResultTable({
                 <td colSpan={columns.length + 1} className="p-0" />
               </tr>
             )}
-            {virtualRows.map((virtualRow) => {
+            {virtualRows.map((virtualRow, slot) => {
               const rowIdx = virtualRow.index;
               const row = visibleRows[rowIdx];
               const isMarked = markedRows.has(row);
               const originalIndex = originalIndices.get(row) ?? rowIdx;
               return (
-                <tr
-                  key={rowIdx}
-                  ref={rowVirtualizer.measureElement}
-                  data-index={rowIdx}
-                  data-marked={isMarked || undefined}
-                  style={{
-                    height: rowHeight,
-                  }}
-                  className={cn(
-                    "group",
-                    isMarked
-                      ? "bg-primary/10"
-                      : workspace.stripedRows && rowIdx % 2 !== 0
-                        ? "bg-muted/20 hover:bg-muted/50"
-                        : "bg-background hover:bg-muted/50",
-                  )}
-                >
-                  <td className="sticky left-0 z-10 border-b border-r bg-inherit p-0 text-right font-mono text-xs text-muted-foreground">
-                    <button
-                      type="button"
-                      aria-label={`Zeile ${rowIdx + 1} markieren`}
-                      aria-pressed={isMarked}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-                      }}
-                      title="Zeile markieren / Markierung aufheben"
-                      onClick={() => toggleRowMarker(row)}
-                      className={cn(
-                        "block w-full cursor-pointer px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] text-right tabular-nums focus-visible:outline-2 focus-visible:outline-ring",
-                        isMarked && "text-primary",
-                      )}
-                    >
-                      {rowIdx + 1}
-                    </button>
-                  </td>
-                  {dataColumnWindow.map((item) => {
-                    if (item.spacer)
-                      return (
-                        <td
-                          key={`gap-${item.index}`}
-                          aria-hidden
-                          colSpan={item.span}
-                          style={{ width: item.width, padding: 0 }}
-                        />
-                      );
-                    const col = columns[item.index - 1];
-                    const raw = row[col];
-                    const isNull = raw === null || raw === undefined;
-                    const text = resultCellText(raw);
-                    const display = isNull
-                      ? "NULL"
-                      : text.length > 200
-                        ? `${text.slice(0, 200)}…`
-                        : text;
-                    const selectMaster = () => {
-                      if (selectionKey)
-                        useMasterDetail.getState().selectCell(selectionKey, {
-                          column: col,
-                          rowIndex: originalIndex,
-                          value: raw,
-                        });
-                    };
-                    return (
-                      <td
-                        key={col}
-                        tabIndex={selectionKey ? 0 : undefined}
-                        onFocus={selectMaster}
-                        onClick={selectMaster}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            selectMaster();
-                          }
-                        }}
-                        data-col={col}
-                        style={{ fontSize: `${workspace.resultFontSize / 16}rem` }}
-                        title={isNull ? undefined : text}
-                        className={cn(
-                          masterCell?.column === col &&
-                            masterCell.rowIndex === originalIndex &&
-                            "ring-1 ring-inset ring-primary bg-primary/10",
-                          "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] font-mono",
-                          isNull && "text-muted-foreground/50 italic",
-                        )}
-                      >
-                        {onInspect ? (
-                          <button
-                            type="button"
-                            className="block w-full truncate text-left focus-visible:outline-2 focus-visible:outline-ring"
-                            title="Vollständigen Zellwert anzeigen"
-                            onClick={() => onInspect(col, raw, rowIdx + 1)}
-                          >
-                            {display}
-                          </button>
-                        ) : (
-                          display
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <QueryResultRow
+                  key={slot}
+                  row={row}
+                  rowIdx={rowIdx}
+                  originalIndex={originalIndex}
+                  isMarked={isMarked}
+                  toggleRowMarker={toggleRowMarker}
+                  selectionKey={selectionKey}
+                  activeColumn={
+                    masterCell?.rowIndex === originalIndex ? masterCell.column : undefined
+                  }
+                  rowHeight={rowHeight}
+                  stripedRows={workspace.stripedRows}
+                  fontSize={(workspace.resultFontSize * uiScale) / 100}
+                  columnScale={columnScale}
+                  columnWindow={dataColumnWindow}
+                  columns={columns}
+                  onInspect={onInspect}
+                  measureElement={rowVirtualizer.measureElement}
+                />
               );
             })}
             {paddingBottom > 0 && (

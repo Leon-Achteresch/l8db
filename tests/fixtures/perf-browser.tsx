@@ -3,20 +3,50 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryResultTable } from "../../src/features/query/query-result-table";
 import { DataTable } from "../../src/features/table/data-table";
+import { initAppearance } from "../../src/lib/appearance";
+import { useSettingsStore } from "../../src/lib/settings";
 
-const ROWS = 5000;
+const params = new URLSearchParams(location.search);
+const ROWS = Number(params.get("rows") ?? 5000);
+const duration = Number(params.get("duration") ?? 2000);
+const step = Number(params.get("step") ?? 120);
+useSettingsStore.setState({
+  uiScale: Number(params.get("scale") ?? 100),
+  uiDensity: (params.get("density") ?? "normal") as "normal" | "compact" | "spacious",
+});
+initAppearance();
+
+const foreignKeys =
+  params.get("fk") === "1"
+    ? [
+        {
+          constraint_name: "perf_fk",
+          from_schema: "public",
+          from_table: "perf_items",
+          from_column: "id",
+          to_schema: "public",
+          to_table: "parents",
+          to_column: "id",
+        },
+      ]
+    : undefined;
+const longText = "x".repeat(Number(params.get("textSize") ?? 0));
 const COLUMNS = Array.from(
   { length: Number(new URLSearchParams(location.search).get("columns") ?? 12) },
   (_, i) => `col_${i}`,
 );
 
-function makeRows() {
+function makeRows(asResult = false) {
   return Array.from({ length: ROWS }, (_, row) => {
-    const record: Record<string, unknown> = { __ctid__: `(0,${row})`, id: row };
+    const record: Record<string, unknown> = {
+      __ctid__: `(0,${row})`,
+      id: asResult ? String(row) : row,
+    };
     for (const column of COLUMNS) {
       const n = row * 31 + column.length;
-      record[column] =
-        n % 5 === 0
+      const value = longText
+        ? longText
+        : n % 5 === 0
           ? null
           : n % 5 === 1
             ? n
@@ -25,6 +55,12 @@ function makeRows() {
               : n % 5 === 3
                 ? { nested: n }
                 : `value ${n}`;
+      record[column] =
+        asResult && value !== null
+          ? typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value)
+          : value;
     }
     return record;
   });
@@ -32,35 +68,39 @@ function makeRows() {
 
 function App() {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data] = useState(makeRows);
+  const [data] = useState(() => (params.get("kind") === "result" ? [] : makeRows()));
   const [result] = useState(() =>
     new URLSearchParams(location.search).get("kind") !== "result"
       ? null
       : {
           columns: ["id", ...COLUMNS],
-          rows: data.map((row) =>
-            Object.fromEntries(
-              Object.entries(row).map(([key, value]) => [
-                key,
-                value === null
-                  ? null
-                  : typeof value === "object"
-                    ? JSON.stringify(value)
-                    : String(value),
-              ]),
-            ),
-          ),
-          rows_affected: data.length,
+          rows: makeRows(true) as Record<string, string | null>[],
+          rows_affected: ROWS,
           execution_time_ms: 0,
         },
   );
   if (new URLSearchParams(location.search).get("kind") === "result")
-    return <QueryResultTable result={result} isLoading={false} error={null} />;
+    return (
+      <QueryResultTable
+        result={result}
+        isLoading={false}
+        error={null}
+        onInspect={(column, value, row) => {
+          (window as unknown as { inspected: unknown }).inspected = { column, value, row };
+        }}
+      />
+    );
   return (
     <DataTable
       columns={["id", ...COLUMNS]}
       data={data}
       emptyMessage="leer"
+      foreignKeys={foreignKeys}
+      currentSchema="public"
+      currentTable="perf_items"
+      onNavigateToTable={(schema, table, filter) => {
+        (window as unknown as { navigated: unknown }).navigated = { schema, table, filter };
+      }}
       sorting={sorting}
       onSortingChange={setSorting}
       pageSize={ROWS}
@@ -86,65 +126,75 @@ async function measure() {
   if (!scroller) throw new Error("scroll container not found");
   const renderedRows = document.querySelectorAll("tbody tr[data-index]").length;
   const renderedCells = document.querySelectorAll("tbody td:not([aria-hidden])").length;
-  const frames: number[] = [];
-  let last = performance.now();
-  const end = last + 1500;
-  await new Promise<void>((resolve) => {
-    const frame = () => {
-      const now = performance.now();
-      frames.push(now - last);
-      last = now;
-      scroller.scrollTop += 120;
-      if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight)
-        scroller.scrollTop = 0;
-      if (now < end) requestAnimationFrame(frame);
-      else resolve();
+  await document.fonts.ready;
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const sample = async (axis: "vertical" | "horizontal" | "diagonal") => {
+    scroller.scrollTop = 0;
+    scroller.scrollLeft = 0;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const frames: number[] = [];
+    const heights = new Set<number>();
+    let previous = 0;
+    let start = 0;
+    let direction = 1;
+    await new Promise<void>((resolve) => {
+      const frame = (now: number) => {
+        if (!start) start = now;
+        if (previous) frames.push(now - previous);
+        previous = now;
+        if (axis !== "horizontal") {
+          scroller.scrollTop += step;
+          if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight)
+            scroller.scrollTop = 0;
+        }
+        if (axis !== "vertical") {
+          heights.add(
+            document.querySelector("tbody tr[data-index]")!.getBoundingClientRect().height,
+          );
+          scroller.scrollLeft += direction * step;
+          if (scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth) direction = -1;
+          if (scroller.scrollLeft <= 0) direction = 1;
+        }
+        if (now - start < duration) requestAnimationFrame(frame);
+        else resolve();
+      };
+      requestAnimationFrame(frame);
+    });
+    const sorted = [...frames].sort((a, b) => a - b);
+    return {
+      fps: (frames.length / frames.reduce((a, b) => a + b, 0)) * 1000,
+      p95: sorted[Math.floor(sorted.length * 0.95)],
+      p99: sorted[Math.floor(sorted.length * 0.99)],
+      worst: Math.max(...frames),
+      overBudgetPercent:
+        (frames.filter((frame) => frame > 1000 / 60 + 2).length / frames.length) * 100,
+      frames: frames.length,
+      heights: [...heights],
     };
-    requestAnimationFrame(frame);
-  });
-  const total = frames.reduce((a, b) => a + b, 0);
-  const fps = (frames.length / total) * 1000;
-  const worstFrameMs = Math.max(...frames);
+  };
+  const vertical = await sample("vertical");
   const rowsAfterScroll = document.querySelectorAll("tbody tr[data-index]").length;
+  const horizontal = await sample("horizontal");
+  const diagonal = await sample("diagonal");
   scroller.scrollTop = 0;
+  scroller.scrollLeft = 0;
   await new Promise((resolve) => setTimeout(resolve, 250));
-  const horizontalHeights = new Set<number>();
-  const horizontalFrames: number[] = [];
-  let horizontalLast = performance.now();
-  const horizontalEnd = horizontalLast + 2000;
-  let direction = 1;
-  await new Promise<void>((resolve) => {
-    const frame = () => {
-      const now = performance.now();
-      horizontalFrames.push(now - horizontalLast);
-      horizontalLast = now;
-      horizontalHeights.add(
-        document.querySelector("tbody tr[data-index]")!.getBoundingClientRect().height,
-      );
-      scroller.scrollLeft += direction * 120;
-      if (scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth) direction = -1;
-      if (scroller.scrollLeft <= 0) direction = 1;
-      if (now < horizontalEnd) requestAnimationFrame(frame);
-      else resolve();
-    };
-    requestAnimationFrame(frame);
-  });
-  const horizontalFps =
-    (horizontalFrames.length / horizontalFrames.reduce((a, b) => a + b, 0)) * 1000;
-  const horizontalWorstFrameMs = Math.max(...horizontalFrames);
-  const heapMb =
-    (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
+  const heapMb = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory
+    ?.usedJSHeapSize;
   return {
     mountMs,
     renderedRows,
     renderedCells,
     rowsAfterScroll,
-    fps,
-    worstFrameMs,
-    horizontalHeights: [...horizontalHeights],
-    horizontalFps,
-    horizontalWorstFrameMs,
-    heapMb: heapMb / 1024 / 1024,
+    fps: vertical.fps,
+    worstFrameMs: vertical.worst,
+    horizontalHeights: horizontal.heights,
+    horizontalFps: horizontal.fps,
+    horizontalWorstFrameMs: horizontal.worst,
+    vertical,
+    horizontal,
+    diagonal,
+    heapMb: heapMb === undefined ? null : heapMb / 1024 / 1024,
     totalRows: ROWS,
   };
 }
