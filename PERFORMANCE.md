@@ -180,6 +180,15 @@ Die breite Tabelle enthält beim Mount 26 von 20.000 Zeilen und 235 Zellen im DO
 
 Die fehlgeschlagenen SQL- und Workspace-Fälle haben weiterhin gute Durchschnitts- und p95-Werte, erfüllen aber die Schranke für den längsten Frame nicht. Auch Wiederholungen der breiten 5.000-Zeilen-Ergebnisse zeigten solche Ausreißer. Ein zusätzlicher WebKit-Inspector-Trace verzeichnete Style-Neuberechnungen bis 95 ms und Layout bis 96 ms; der längste JavaScript-Aufruf lag bei etwa 10 ms, die längste gemessene Garbage Collection bei 13,4 ms. Die verbleibenden Pausen werden deshalb nicht pauschal dem JavaScript-Garbage-Collector zugeschrieben. Profiling erzeugt Zusatzlast und ersetzt den normalen Benchmark nicht.
 
+Zusätzlich lief derselbe Produktions-Frontend-Bundle in einer separaten nativen Tauri-Instanz mit dem macOS-WKWebView und einem Rust-Debug-Build. Bei 20.000 × 121 Datenspalten wurden je Achse zehn Sekunden gemessen. Das Testfenster hatte 1.200 × 600 Pixel, der WebView-Inhalt 1.200 × 568 Pixel bei Gerätefaktor 1; der Fixture-Root blieb 600 Pixel hoch. Die Daten waren weiterhin synthetisch.
+
+| Native Tauri-Probe | FPS | p95 | Längster Frame |
+|---|---:|---:|---:|
+| Tabellenansicht, 20.000 × 121 | 59,95–60,06 | 19 ms | 50 ms |
+| SQL-Ergebnis, 20.000 × 121 | 59,74–60,03 | 17 ms | 84 ms |
+
+Damit überschritten auch beide nativen Proben die strikte Grenze von weniger als 50 ms. Die Ergebnisse belegen flüssige Abschnittsmittel, aber keine lückenlose 60-FPS-Zusage. Die native Probe war ein Komponententest im echten Tauri-Host und keine vollständige Workspace- oder Datenbankprüfung.
+
 ## Wiederholen
 
 Voraussetzungen: Bun 1.3.10 und installierte Playwright-Browser. Performanceprüfungen einzeln ausführen; parallele Builds oder Browserläufe verfälschen die Messung.
@@ -203,4 +212,4 @@ Mit `L8DB_PERF_PROFILE=1` schreibt der Komponententest unter Chromium ein CPU-Pr
 
 ## Aussagegrenzen
 
-Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. WebKit ist für macOS relevant, ersetzt aber keinen Test im nativen Tauri-WKWebView. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und der Anteil über 16,7 ms plus 2 ms Messtoleranz separat ausgewiesen.
+Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. Die Browser-Matrix ersetzt keinen nativen Tauri-Test; die ergänzende native Probe deckt nur die beschriebenen Komponenten und Daten ab. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und der Anteil über 16,7 ms plus 2 ms Messtoleranz separat ausgewiesen.
