@@ -62,6 +62,7 @@ export interface SettingsState {
   editorFormatLinesBetweenQueries: number;
   confirmDestructiveQueries: boolean;
   highlightNullValues: boolean;
+  translateFilterOperators: boolean;
   searchIncludeColumns: boolean;
   uiDensity: UiDensity;
   uiScale: number;
@@ -107,6 +108,7 @@ export interface SettingsState {
   setEditorFormatLinesBetweenQueries: (v: number) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
+  setTranslateFilterOperators: (value: boolean) => void;
   setSearchIncludeColumns: (v: boolean) => void;
   setUiDensity: (v: UiDensity) => void;
   setUiScale: (v: number) => void;
@@ -174,6 +176,7 @@ const DEFAULT_SETTINGS = {
   editorFormatLinesBetweenQueries: 2,
   confirmDestructiveQueries: true,
   highlightNullValues: true,
+  translateFilterOperators: true,
   searchIncludeColumns: true,
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
@@ -243,6 +246,7 @@ export const useSettingsStore = create<SettingsState>()(
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
+      setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
@@ -263,6 +267,7 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...current,
           ...saved,
+          translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,

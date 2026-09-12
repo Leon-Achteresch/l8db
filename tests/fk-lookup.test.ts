@@ -68,18 +68,18 @@ describe("buildFkSearchFilter", () => {
 
   test("durchsucht Schlüssel- und Anzeigespalten", () => {
     expect(buildFkSearchFilter("id", ["name"], "ada")).toBe(
-      `("id"::text ILIKE '%ada%' OR "name"::text ILIKE '%ada%')`,
+      `("id"::text ILIKE '%ada%' ESCAPE '!' OR "name"::text ILIKE '%ada%' ESCAPE '!')`,
     );
   });
 
   test("escaped Hochkommas und LIKE-Platzhalter", () => {
     const filter = buildFkSearchFilter("id", [], "50%_o'brien");
-    expect(filter).toBe(`("id"::text ILIKE '%50\\%\\_o''brien%')`);
+    expect(filter).toBe(`("id"::text ILIKE '%50!%!_o''brien%' ESCAPE '!')`);
   });
 
   test("dupliziert keine Spalte", () => {
     expect(buildFkSearchFilter("id", ["id", "name"], "x")).toBe(
-      `("id"::text ILIKE '%x%' OR "name"::text ILIKE '%x%')`,
+      `("id"::text ILIKE '%x%' ESCAPE '!' OR "name"::text ILIKE '%x%' ESCAPE '!')`,
     );
   });
 });

@@ -24,7 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -34,19 +33,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { SqlEditor } from "@/features/table/sql-editor";
 import { useActiveConnection } from "@/lib/connections";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
 import { useSettingsStore } from "@/lib/settings";
-import {
-  compileSingleCondition,
-  type FilterKind,
-  OPERATORS,
-  operatorNeedsValue,
-} from "@/lib/sql-filter";
+import { compileFilterConditions, filterSupportsOr, operatorNeedsValue } from "@/lib/sql-filter";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -68,18 +65,6 @@ function emptyCondition(column = ""): Condition {
 type Combinator = "AND" | "OR";
 type FilterMode = "simple" | "sql";
 type SearchMode = "objects" | "content";
-
-function compileConditions(
-  conditions: Condition[],
-  combinator: Combinator,
-  kind: FilterKind,
-): string {
-  const parts = conditions
-    .map((c) => compileSingleCondition(c.column, c.operator, c.value, kind))
-    .filter((part): part is string => part !== null);
-  if (parts.length === 0) return "";
-  return parts.join(` ${combinator} `);
-}
 
 function parsePatterns(raw: string, useRegex: boolean): ((name: string) => boolean)[] {
   const parts = splitSearchPatterns(raw);
@@ -207,13 +192,22 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
     return columnsByTable.get(key) ?? [];
   }, [selectedEntity, columnsByTable]);
 
+  const selectedColumnDetails = useMemo(() => {
+    if (!selectedEntity) return [];
+    return (
+      (selectedEntity.type === "table" ? tableColumns : viewColumns)?.filter(
+        (column) => column.schema === selectedEntity.schema && column.table === selectedEntity.name,
+      ) ?? []
+    );
+  }, [selectedEntity, tableColumns, viewColumns]);
+
   const kind = useActiveConnection()?.kind;
   const compiledSimple = useMemo(
-    () => compileConditions(conditions, combinator, kind),
-    [conditions, combinator, kind],
+    () => compileFilterConditions(conditions, combinator, kind, selectedColumnDetails),
+    [conditions, combinator, kind, selectedColumnDetails],
   );
-  const whereClause = filterMode === "sql" ? sql.trim() : compiledSimple;
-  const whereIsRaw = filterMode === "sql";
+  const whereClause = kind === "redis" || filterMode === "sql" ? sql.trim() : compiledSimple;
+  const whereIsRaw = kind === "redis" || filterMode === "sql";
 
   const updateCondition = (id: string, patch: Partial<Condition>) => {
     setConditions((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -456,23 +450,33 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                       </span>
                       {whereClause && (
                         <Badge variant="secondary" className="text-[10px]">
-                          WHERE
+                          {kind === "mongodb" ? "JSON" : kind === "redis" ? "MATCH" : "WHERE"}
                         </Badge>
                       )}
                     </div>
                     <div className="border-b px-3 py-2">
                       <Tabs
-                        value={filterMode}
+                        value={kind === "redis" ? "sql" : filterMode}
                         onValueChange={(v) => switchFilterMode(v as FilterMode)}
                       >
                         <TabsList className="w-full">
-                          <TabsTrigger value="simple" className="flex-1">
+                          <TabsTrigger
+                            value="simple"
+                            className="flex-1"
+                            disabled={kind === "redis"}
+                          >
                             <SlidersHorizontalIcon className="size-3" />
                             Einfach
                           </TabsTrigger>
                           <TabsTrigger value="sql" className="flex-1">
                             <Code2Icon className="size-3" />
-                            SQL
+                            {kind === "mongodb"
+                              ? "JSON"
+                              : kind === "redis"
+                                ? "MATCH"
+                                : kind === "cassandra"
+                                  ? "CQL"
+                                  : "SQL"}
                           </TabsTrigger>
                         </TabsList>
                       </Tabs>
@@ -480,7 +484,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
 
                     <ScrollArea className="min-h-0 flex-1">
                       <div className="space-y-2 p-3">
-                        {filterMode === "simple" ? (
+                        {filterMode === "simple" && kind !== "redis" ? (
                           <>
                             {conditions.map((condition, index) => (
                               <div key={condition.id} className="flex flex-col gap-1.5">
@@ -489,7 +493,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                     "Wo"
                                   ) : (
                                     <Select
-                                      value={combinator}
+                                      value={filterSupportsOr(kind) ? combinator : "AND"}
                                       onValueChange={(value) => setCombinator(value as Combinator)}
                                     >
                                       <SelectTrigger size="sm" className="w-20">
@@ -497,7 +501,9 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                       </SelectTrigger>
                                       <SelectContent position="popper">
                                         <SelectItem value="AND">und</SelectItem>
-                                        <SelectItem value="OR">oder</SelectItem>
+                                        {filterSupportsOr(kind) && (
+                                          <SelectItem value="OR">oder</SelectItem>
+                                        )}
                                       </SelectContent>
                                     </Select>
                                   )}
@@ -522,25 +528,15 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                       ))}
                                     </SelectContent>
                                   </Select>
-                                  <Select
-                                    value={condition.operator}
-                                    onValueChange={(value) =>
-                                      updateCondition(condition.id, {
-                                        operator: value,
-                                      })
+                                  <FilterOperatorSelect
+                                    operator={condition.operator}
+                                    value={condition.value}
+                                    onChange={(operator, value) =>
+                                      updateCondition(condition.id, { operator, value })
                                     }
-                                  >
-                                    <SelectTrigger size="sm" className="w-auto min-w-0 shrink-0">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent position="popper">
-                                      {OPERATORS.map((op) => (
-                                        <SelectItem key={op.key} value={op.key}>
-                                          {op.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                    className="w-auto min-w-0 shrink-0"
+                                    size="sm"
+                                  />
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -552,11 +548,13 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                                   </Button>
                                 </div>
                                 {operatorNeedsValue(condition.operator) && (
-                                  <Input
+                                  <FilterValueInput
+                                    key={condition.operator}
+                                    operator={condition.operator}
                                     value={condition.value}
-                                    onChange={(e) =>
+                                    onValueChange={(value) =>
                                       updateCondition(condition.id, {
-                                        value: e.target.value,
+                                        value,
                                       })
                                     }
                                     onKeyDown={(e) => {
@@ -580,10 +578,18 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                             </Button>
                             {compiledSimple && (
                               <p className="break-all font-mono text-[10px] text-muted-foreground">
-                                WHERE {compiledSimple}
+                                {kind === "mongodb" ? "JSON" : "WHERE"} {compiledSimple}
                               </p>
                             )}
                           </>
+                        ) : kind === "mongodb" || kind === "redis" ? (
+                          <Textarea
+                            value={sql}
+                            onChange={(event) => setSql(event.target.value)}
+                            aria-label={kind === "mongodb" ? "MongoDB-Filter" : "Redis-Key-Pattern"}
+                            placeholder={kind === "mongodb" ? '{"status": "active"}' : "user:*"}
+                            className="font-mono text-xs"
+                          />
                         ) : (
                           <SqlEditor
                             value={sql}

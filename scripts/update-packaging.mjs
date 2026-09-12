@@ -94,6 +94,13 @@ function resolveSha(asset, checksums, artifactsDir) {
   return "";
 }
 
+async function resolveLicenseSha(version) {
+  const url = `https://raw.githubusercontent.com/Leon-Achteresch/l8db/v${version}/LICENSE`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`LICENSE konnte nicht geladen werden (${response.status}).`);
+  return createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex");
+}
+
 const warnings = [];
 
 function warn(message) {
@@ -146,7 +153,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const packagingDir = path.join(repoRoot, "packaging");
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || (!args.release && !args.version)) {
     console.log(HELP);
@@ -167,6 +174,12 @@ function main() {
   const dmgSha = resolveSha(dmg, checksums, args.artifacts);
   const msiSha = resolveSha(msi, checksums, args.artifacts);
   const debSha = resolveSha(deb, checksums, args.artifacts);
+  let licenseSha = "";
+  try {
+    licenseSha = await resolveLicenseSha(version);
+  } catch (error) {
+    warn(error.message);
+  }
 
   if (!dmg) warn("Kein .dmg im Release gefunden (Homebrew-Cask bleibt auf altem Stand).");
   if (!msi) warn("Kein .msi im Release gefunden (winget bleibt auf altem Stand).");
@@ -214,6 +227,7 @@ function main() {
       [/^pkgver=.*$/m, `pkgver=${version}`],
       [/^pkgrel=.*$/m, "pkgrel=1"],
       [/^(sha256sums=\(')[a-fA-F0-9]{64}(')/m, debSha ? `$1${debSha}$2` : ""],
+      [/(^\s*')[a-fA-F0-9]{64}('(?:\s*)\)\s*$)/m, licenseSha ? `$1${licenseSha}$2` : ""],
     ]),
     patch(path.join(packagingDir, "aur", ".SRCINFO"), [
       [/^(\tpkgver = ).*$/m, `$1${version}`],
@@ -226,6 +240,7 @@ function main() {
         `\tsource = LICENSE-${version}::https://raw.githubusercontent.com/Leon-Achteresch/l8db/v${version}/LICENSE`,
       ],
       [/^(\tsha256sums = )[a-fA-F0-9]{64}$/m, debSha ? `$1${debSha}` : ""],
+      [/(\tsha256sums = )[a-fA-F0-9]{64}(?=\n\npkgname)/m, licenseSha ? `$1${licenseSha}` : ""],
     ]),
     patch(path.join(packagingDir, "flatpak", "com.leon.l8db.yml"), [
       [/^(\s*url: ).*\.deb$/m, `$1${debUrl}`],

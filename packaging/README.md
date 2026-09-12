@@ -94,12 +94,15 @@ brew uninstall --cask l8db
 
 Endnutzer: `brew tap Leon-Achteresch/tap && brew install --cask l8db`
 
+Mit Homebrew 6 muss ein Cask aus einem Drittanbieter-Tap vor der Installation
+einmal vertraut werden: `brew trust --cask Leon-Achteresch/tap/l8db`.
+
 Hinweise:
 - `sha256 :no_check` ist als Uebergang moeglich (im Cask dokumentiert), deaktiviert aber die
   Integritaetspruefung. Nur im eigenen Tap, nie fuer homebrew/cask.
-- Die App ist nicht notarisiert; das Cask entfernt deshalb im `postflight` das
-  Quarantaene-Attribut. Sobald Notarisierung im Release-Workflow eingerichtet ist, diesen Block
-  entfernen.
+- Die App ist nicht notarisiert. Gatekeeper kann den ersten Start deshalb blockieren;
+  Nutzer muessen die App einmal ueber den Finder mit „Oeffnen“ bestaetigen. Das Cask
+  entfernt das Quarantaene-Attribut bewusst nicht.
 - Ein Eintrag in `homebrew/homebrew-cask` selbst verlangt zusaetzlich eine gewisse
   Projekt-Reichweite (Sterne/Alter) - der eigene Tap ist der realistische Weg.
 

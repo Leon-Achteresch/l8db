@@ -25,6 +25,7 @@ export interface FlowCondition {
   ref: string;
   operator: string;
   value: string;
+  dataType?: string;
 }
 
 export interface FlowMetric {
@@ -349,6 +350,7 @@ export function buildFlowSql(flow: FlowGraph, kind: DatabaseKind | null, period:
         c.operator,
         c.value,
         kind,
+        c.dataType,
       );
       if (part) where.push(part);
     }

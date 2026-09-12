@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { CHARTS, type ChartKind, chartFits, type DatasetShape } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
-import { setPendingDrag } from "./dashboard-canvas";
 
 export const CHART_ICONS: Record<ChartKind, LucideIcon> = {
   kpi: HashIcon,
@@ -53,10 +52,10 @@ export function ChartPalette({
     <div className="p-3">
       <p className="mb-2 text-[11px] text-muted-foreground">
         {shape
-          ? "Ziehe ein Chart auf die Fläche rechts oder klicke es an. Ausgegraute Charts passen nicht zum gewählten Datensatz."
-          : "Wähle zuerst links einen Datensatz aus."}
+          ? "Wähle eine Darstellung. Unter jedem Chart siehst du, welche Daten er benötigt."
+          : "Wähle zuerst einen Datensatz aus."}
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {(Object.keys(CHARTS) as ChartKind[]).map((kind) => {
           const Icon = CHART_ICONS[kind];
           const problem = shape ? chartFits(kind, shape) : "Kein Datensatz";
@@ -65,14 +64,12 @@ export function ChartPalette({
             <button
               key={kind}
               type="button"
-              draggable={!disabled}
               disabled={disabled}
               title={problem ?? CHARTS[kind].hint}
-              onDragStart={(e) => setPendingDrag(e, kind)}
               onClick={() => onAdd(kind)}
               className={cn(
                 "flex flex-col items-start gap-1 rounded-xl border bg-card p-2.5 text-left transition-colors hover:border-primary/45",
-                disabled ? "cursor-not-allowed opacity-45" : "cursor-grab active:cursor-grabbing",
+                disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
               )}
             >
               <Icon className="size-4 text-lime-500" />

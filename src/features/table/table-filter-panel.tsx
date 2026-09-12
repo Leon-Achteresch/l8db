@@ -9,7 +9,6 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-
 import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -24,14 +23,12 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { useActiveConnection } from "@/lib/connections";
+import type { DetailedColumnInfo } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
-import {
-  compileSingleCondition,
-  type FilterKind,
-  OPERATORS,
-  operatorNeedsValue,
-} from "@/lib/sql-filter";
+import { compileFilterConditions, filterSupportsOr, operatorNeedsValue } from "@/lib/sql-filter";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -58,22 +55,9 @@ function emptyCondition(column = ""): Condition {
   return { id: createId(), column, operator: "eq", value: "" };
 }
 
-function compileConditions(
-  conditions: Condition[],
-  combinator: Combinator,
-  kind: FilterKind,
-): string {
-  const parts = conditions
-    .map((c) => compileSingleCondition(c.column, c.operator, c.value, kind))
-    .filter((part): part is string => part !== null);
-  if (parts.length === 0) {
-    return "";
-  }
-  return parts.join(` ${combinator} `);
-}
-
 interface TableFilterPanelProps {
   columns: string[];
+  columnDetails?: DetailedColumnInfo[];
   activeFilter: string;
   onApply: (where: string, isRaw: boolean) => void;
   onColumnSelect?: (column: string) => void;
@@ -81,6 +65,7 @@ interface TableFilterPanelProps {
 
 export function TableFilterPanel({
   columns,
+  columnDetails,
   activeFilter,
   onApply,
   onColumnSelect,
@@ -89,7 +74,7 @@ export function TableFilterPanel({
   const kind = useActiveConnection()?.kind;
   const json = caps.query_language === "json";
   const redis = caps.query_language === "redis";
-  const native = json || redis;
+  const native = redis;
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<FilterMode>("simple");
   const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
@@ -97,8 +82,8 @@ export function TableFilterPanel({
   const [sql, setSql] = useState("");
 
   const compiledSimple = useMemo(
-    () => compileConditions(conditions, combinator, kind),
-    [conditions, combinator, kind],
+    () => compileFilterConditions(conditions, combinator, kind, columnDetails),
+    [conditions, combinator, kind, columnDetails],
   );
 
   const draft = native || mode === "sql" ? sql.trim() : compiledSimple;
@@ -202,7 +187,7 @@ export function TableFilterPanel({
                     </TabsTrigger>
                     <TabsTrigger value="sql">
                       <Code2Icon />
-                      SQL
+                      {json ? "JSON" : kind === "cassandra" ? "CQL" : "SQL"}
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -219,7 +204,7 @@ export function TableFilterPanel({
                   }}
                   className="font-mono text-xs"
                 />
-              ) : json ? (
+              ) : json && mode === "sql" ? (
                 <Textarea
                   aria-label="MongoDB-Filter"
                   value={sql}
@@ -239,7 +224,7 @@ export function TableFilterPanel({
                           "Wo"
                         ) : (
                           <Select
-                            value={combinator}
+                            value={filterSupportsOr(kind) ? combinator : "AND"}
                             onValueChange={(value) => setCombinator(value as Combinator)}
                           >
                             <SelectTrigger size="sm" className="w-24 sm:w-full">
@@ -247,7 +232,7 @@ export function TableFilterPanel({
                             </SelectTrigger>
                             <SelectContent position="popper">
                               <SelectItem value="AND">und</SelectItem>
-                              <SelectItem value="OR">oder</SelectItem>
+                              {filterSupportsOr(kind) && <SelectItem value="OR">oder</SelectItem>}
                             </SelectContent>
                           </Select>
                         )}
@@ -272,32 +257,24 @@ export function TableFilterPanel({
                         </SelectContent>
                       </Select>
 
-                      <Select
-                        value={condition.operator}
-                        onValueChange={(value) =>
-                          updateCondition(condition.id, {
-                            operator: value,
-                          })
+                      <FilterOperatorSelect
+                        operator={condition.operator}
+                        value={condition.value}
+                        onChange={(operator, value) =>
+                          updateCondition(condition.id, { operator, value })
                         }
-                      >
-                        <SelectTrigger size="sm" className="w-full min-w-0 sm:w-auto sm:min-w-44">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent position="popper">
-                          {OPERATORS.map((operator) => (
-                            <SelectItem key={operator.key} value={operator.key}>
-                              {operator.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        className="w-full min-w-0 sm:w-auto sm:min-w-44"
+                        size="sm"
+                      />
 
                       {operatorNeedsValue(condition.operator) ? (
-                        <Input
+                        <FilterValueInput
+                          key={condition.operator}
+                          operator={condition.operator}
                           value={condition.value}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             updateCondition(condition.id, {
-                              value: event.target.value,
+                              value,
                             })
                           }
                           onKeyDown={(event) => {
@@ -330,8 +307,8 @@ export function TableFilterPanel({
                     Bedingung hinzufügen
                   </Button>
 
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {compiledSimple === "" ? "" : `WHERE ${compiledSimple}`}
+                  <p className="break-all font-mono text-xs text-muted-foreground">
+                    {compiledSimple === "" ? "" : `${json ? "JSON" : "WHERE"} ${compiledSimple}`}
                   </p>
                 </div>
               ) : (

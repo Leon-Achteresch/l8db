@@ -15,13 +15,22 @@ export function useColumnWindow(
     (range: Parameters<typeof columnWindowRange>[0]) => columnWindowRange(range, pinned),
     [pinned],
   );
+  const overscan = useMemo(() => {
+    const pinnedSet = new Set(pinned);
+    const narrowest = widths.reduce(
+      (min, width, index) => (pinnedSet.has(index) ? min : Math.min(min, width)),
+      Number.POSITIVE_INFINITY,
+    );
+    return Number.isFinite(narrowest) ? Math.ceil(256 / Math.max(1, narrowest)) : 2;
+  }, [widths, pinned]);
   const virtualizer = useVirtualizer({
     horizontal: true,
     useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
     count: widths.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => widths[index],
-    overscan: 2,
+    overscan,
     rangeExtractor,
     enabled,
     scrollPaddingStart: pinned.reduce((sum, index) => sum + widths[index], 0),

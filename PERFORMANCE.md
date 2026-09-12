@@ -149,3 +149,82 @@ L8DB_PERF_ENGINE=webkit bun run test:perf
 - Das ER-Diagramm wurde mit 120 Tabellen gemessen. `ReactFlow` läuft ohne `onlyRenderVisibleElements`, und das Fokus-Panel rendert einen Eintrag je Tabelle; sehr große Schemata sind damit nicht abgedeckt.
 - Die Sidebar-Virtualisierung setzt eine gleichmäßige Zeilenhöhe voraus. Listen mit aufgeklappten Untereinträgen sind deshalb bewusst ausgenommen und rendern weiterhin vollständig.
 - Gemessen wurde die Weboberfläche in headless Chromium und WebKit. CPU-, GPU- und Speicherverbrauch des laufenden Tauri-Prozesses auf echter Hardware wurden nicht erneut erhoben.
+
+# Tabellen-Scrollperformance, 12. September 2026
+
+Die Tabellenansicht erreicht in den geprüften Scrollfällen ungefähr 60 FPS. Eine dauerhafte 60-FPS-Garantie ist nicht erreicht: Breite SQL-Ergebnisse und der vollständige Workspace zeigen in WebKit weiterhin einzelne Frames über 50 ms. Die Tests behalten diese Grenze und schlagen in diesen Fällen absichtlich fehl.
+
+Die Tabellenansicht und SQL-Ergebnisse virtualisieren Zeilen und Spalten. Der Scrollpfad erzeugt nur die sichtbaren Zellen mit einem Puffer von mindestens 256 Pixeln je Richtung. Fixierte Spalten bleiben erhalten. Spalten werden einzeln nachgeladen; die bisherigen Viererblöcke erzeugten besonders in WebKit teure Render-Spitzen.
+
+Normale Tabellenzellen bestehen aus einem Textelement in der Tabellenzelle. Die Vorschau wird vor dem Rendern anhand von Spaltenbreite und Schriftgröße begrenzt. Objekte werden beim Scrollen nicht serialisiert. Originalwerte bleiben für Kopieren, Bearbeiten und Detailansicht erhalten. Zeilen und Zellen sind memoisiert; Layout-Containment begrenzt die Neuberechnung auf den Scrollbereich. Beide Virtualizer können Scrollupdates gemeinsam durch React verarbeiten, ohne pro Richtung einen synchronen Renderdurchlauf zu erzwingen.
+
+`getVirtualRowModel` ist ein flaches Zeilenmodell für die serverseitig sortierte Tabellenansicht. Es erzeugt TanStack-Zeilen bei Zugriff und hält höchstens 512 Zeilenobjekte im LRU-Cache. IDs und Originaldaten bleiben beim Verdrängen erhalten. Neue Datenreferenzen verwerfen das Modell. Hierarchische Tabellen mit Unterzeilen benötigen weiterhin das reguläre TanStack-Modell.
+
+## Messungen dieses Durchgangs
+
+Apple M3, 16 GiB RAM, macOS 27.0, Bun 1.3.10, Playwright 1.63.0. Chromium 153.0.8010.12 und WebKit 26.6, 1.200 × 600 Pixel. Die Werte fassen vertikale, horizontale und diagonale Abschnitte zusammen; FPS sind der Bereich der Abschnittsmittel, p95 und Maximum jeweils der höchste Wert. WebKit-Standardfälle: zehn Sekunden je Achse. Chromium, lange Werte und Zoom: drei Sekunden je Achse. Andere Anwendungen liefen auf dem Rechner weiter; die Messungen stammen nicht von einem isolierten Testsystem.
+
+| Ansicht und Daten | Engine | FPS | p95 | Längster Frame | Prüfung |
+|---|---|---:|---:|---:|---|
+| Tabelle, 5.000 × 13/50/121 | WebKit | 59,88–60,03 | 18 ms | 48 ms | bestanden |
+| Tabelle, 20.000 × 121 | WebKit | 59,86–59,99 | 18 ms | 49 ms | bestanden |
+| SQL-Ergebnis, 5.000 × 13/50 | WebKit | 59,94–60,01 | 18 ms | 41 ms | bestanden |
+| SQL-Ergebnis, 5.000 × 121 | WebKit | 59,78–60,02 | 18 ms | 60 ms | **fehlgeschlagen** |
+| SQL-Ergebnis, 20.000 × 121 | WebKit | 59,28–59,98 | 17 ms | 116 ms | **fehlgeschlagen** |
+| Vollständiger Workspace, 5.000 × 120, 1.600 × 900 Pixel | WebKit | 59,5 | 20 ms | 54 ms | **fehlgeschlagen** |
+| Beide Ansichten, 5.000 × 13/50/121 | Chromium | 60,00 | 16,8 ms | 16,8 ms | bestanden |
+| Beide Ansichten, 5.000 × 121, 100.000 Zeichen je Textwert | WebKit | 59,80–60,00 | 18 ms | 30 ms | bestanden |
+| Beide Ansichten, 5.000 × 121, 125 %, kompakt, Fremdschlüssel | WebKit | 59,80–60,15 | 19 ms | 32 ms | bestanden |
+
+Die breite Tabelle enthält beim Mount 26 von 20.000 Zeilen und 235 Zellen im DOM; Mount-Zeit 96 ms. Der Ausgangslauf dieses Durchgangs erreichte beim horizontalen Scrollen einer 5.000 × 121-Tabelle in WebKit etwa 52 FPS. Dessen kürzere Messdauer erlaubt keinen exakten statistischen Vorher-/Nachher-Faktor.
+
+Die fehlgeschlagenen SQL- und Workspace-Fälle haben weiterhin gute Durchschnitts- und p95-Werte, erfüllen aber die Schranke für den längsten Frame nicht. Auch Wiederholungen der breiten 5.000-Zeilen-Ergebnisse zeigten solche Ausreißer. Ein zusätzlicher WebKit-Inspector-Trace verzeichnete Style-Neuberechnungen bis 95 ms und Layout bis 96 ms; der längste JavaScript-Aufruf lag bei etwa 10 ms, die längste gemessene Garbage Collection bei 13,4 ms. Die verbleibenden Pausen werden deshalb nicht pauschal dem JavaScript-Garbage-Collector zugeschrieben. Profiling erzeugt Zusatzlast und ersetzt den normalen Benchmark nicht.
+
+Zusätzlich lief derselbe Produktions-Frontend-Bundle in einer separaten nativen Tauri-Instanz mit dem macOS-WKWebView und einem Rust-Debug-Build. Bei 20.000 × 121 Datenspalten wurden je Achse zehn Sekunden gemessen. Das Testfenster hatte 1.200 × 600 Pixel, der WebView-Inhalt 1.200 × 568 Pixel bei Gerätefaktor 1; der Fixture-Root blieb 600 Pixel hoch. Die Daten waren weiterhin synthetisch.
+
+| Native Tauri-Probe | FPS | p95 | Längster Frame |
+|---|---:|---:|---:|
+| Tabellenansicht, 20.000 × 121 | 59,95–60,06 | 19 ms | 50 ms |
+| SQL-Ergebnis, 20.000 × 121 | 59,74–60,03 | 17 ms | 84 ms |
+
+Damit überschritten auch beide nativen Proben die strikte Grenze von weniger als 50 ms. Die Ergebnisse belegen flüssige Abschnittsmittel, aber keine lückenlose 60-FPS-Zusage. Die native Probe war ein Komponententest im echten Tauri-Host und keine vollständige Workspace- oder Datenbankprüfung.
+
+## Wiederholen
+
+Voraussetzungen: Bun 1.3.10 und installierte Playwright-Browser. Performanceprüfungen einzeln ausführen; parallele Builds oder Browserläufe verfälschen die Messung.
+
+```sh
+L8DB_PERF_ENGINE=webkit bun run test:perf:scroll
+L8DB_PERF_ENGINE=chromium bun run test:perf:scroll
+
+L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_ENGINE=webkit L8DB_PERF_ROWS=20000 L8DB_PERF_DURATION=10000 bun test tests/perf-browser.test.ts -t '20000 × 121'
+
+L8DB_PERF_APP=1 L8DB_PERF_ENGINE=webkit bun test tests/perf-app.test.ts -t Tabellenscrollen
+```
+
+Die erste Anweisung baut die aktuelle Produktions-CSS. Nach weiteren Codeänderungen vor den direkten Testaufrufen erneut `bun run build` ausführen. `L8DB_PERF_REPORT_DIR` speichert JSON mit Browserversion, Bundle-/CSS-Hash, Messparametern, Framezeiten und Screenshots. Zusätzliche Fälle: `L8DB_PERF_TEXT_SIZE=100000`, `L8DB_PERF_FK=1`, `L8DB_PERF_SCALE=125`, `L8DB_PERF_DENSITY=compact`.
+
+Der Komponententest prüft Tabellen und SQL-Ergebnisse mit 5.000 Zeilen und 13, 50 sowie 121 Datenspalten. Je Achse wird zehn Sekunden lang mit 120 Pixeln pro Animationsframe gescrollt. Anschließend prüfen native Wheel-Ereignisse den sichtbaren Bereich auf leere Virtualisierungslücken. Funktionale Prüfungen decken unter anderem letzte Zeile/Spalte, Sortieren, Filter, Spaltenbreite, Fixieren, Ausblenden, Zellbearbeitung und den vollständigen Inhalt langer Werte ab.
+
+Die Schranken sind über 59 FPS im Mittel, p95 unter 21 ms, kein Frame ab 50 ms, weniger als 80 DOM-Zeilen und weniger als 1.200 DOM-Zellen. Die FPS-Toleranz berücksichtigt die Taktung einer 60-Hz-Messung; sie ist keine Garantie von 60 vollständig gerenderten Bildern pro Sekunde.
+
+Mit `L8DB_PERF_PROFILE=1` schreibt der Komponententest unter Chromium ein CPU-Profil, unter WebKit Timeline-, ScriptProfiler- und Heap-Ereignisse nach `/tmp/l8db-perf-<Ansicht>-<Spalten>.webkit-profile.json`. Der WebKit-Zugriff nutzt den internen Playwright-In-Process-Adapter; nach Playwright-Upgrades muss dieser optionale Diagnosepfad gegebenenfalls angepasst werden. Die Ereignisse folgen den offiziellen [Timeline](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/Timeline.json)-, [ScriptProfiler](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/ScriptProfiler.json)- und [Heap](https://github.com/WebKit/WebKit/blob/main/Source/JavaScriptCore/inspector/protocol/Heap.json)-Protokollen.
+
+## Aussagegrenzen
+
+Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. Die Browser-Matrix ersetzt keinen nativen Tauri-Test; die ergänzende native Probe deckt nur die beschriebenen Komponenten und Daten ab. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und der Anteil über 16,7 ms plus 2 ms Messtoleranz separat ausgewiesen.
+
+## Nachprüfung mit geringerer Hintergrundlast
+
+Als Zielumgebung wurde am 12. September der aktuelle M3-Mac ohne andere rechenintensive Apps festgelegt. Bei der Nachprüfung waren rund 2,4 GB RAM frei und die CPU vor dem Test etwa 86 % untätig. Die zuvor aktive Grafiklast war reduziert; reguläre Systemdienste und Entwicklungswerkzeuge liefen weiter. Das war kein vollständig isoliertes Betriebssystem.
+
+Die unveränderte native Tauri-Probe mit 20.000 × 121 Datenspalten und zehn Sekunden pro Achse ergab:
+
+| Ansicht | FPS | p95 | Längster Frame |
+|---|---:|---:|---:|
+| Tabelle | 59,64–60,03 | 18 ms | 98 ms |
+| SQL-Ergebnis | 59,85–60,02 | 18 ms | 68 ms |
+
+Der vollständige Workspace mit 5.000 × 120 Datenzellen erreichte in WebKit 57,6 FPS, p95 22 ms und maximal 45 ms. Damit bleiben die Abnahmeschwellen auch bei geringerer Hintergrundlast verletzt. Andere Apps erklären die verbleibenden Probleme nicht allein.
+
+Ein zusätzlicher Versuch halbierte den Zeilen- und Spaltenpuffer auf 128 Pixel. Die breite Tabellenansicht bestand damit die Komponentenprüfung einschließlich Wheel- und Funktionsprüfungen (60,03–60,05 FPS, maximal 40 ms, 177 DOM-Zellen beim Mount). Der Workspace verfehlte mit 59,8 FPS und maximal 51 ms weiterhin die Grenze; das SQL-Ergebnis zeigte einen Frame mit 108 ms. Der Versuch wurde verworfen, der Puffer bleibt bei 256 Pixeln. Diese einzelnen Läufe belegen keine statistisch gesicherte Verbesserung oder Verschlechterung der Ausreißer.

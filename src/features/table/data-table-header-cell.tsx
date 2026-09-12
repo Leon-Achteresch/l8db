@@ -12,7 +12,6 @@ import {
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -22,16 +21,10 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
 type DataTableHeaderCellProps = {
@@ -70,7 +63,7 @@ export function DataTableHeaderCell({
   filterValue,
   onFilterValueChange,
   compiledFilter,
-  filterOperators = OPERATORS,
+  filterOperators,
   filterPrefix = "WHERE",
   onApplyFilter,
   onApplyColumnFilter,
@@ -151,22 +144,23 @@ export function DataTableHeaderCell({
             <div className="space-y-2 px-3 py-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="w-6 shrink-0 text-xs text-muted-foreground">Wo</span>
-                <Select value={filterOperator} onValueChange={onFilterOperatorChange}>
-                  <SelectTrigger size="sm" className="min-w-44 flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper">
-                    {filterOperators.map((op) => (
-                      <SelectItem key={op.key} value={op.key}>
-                        {op.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FilterOperatorSelect
+                  operator={filterOperator}
+                  value={filterValue}
+                  onChange={(operator, value) => {
+                    onFilterOperatorChange(operator);
+                    onFilterValueChange(value);
+                  }}
+                  className="min-w-44 flex-1"
+                  size="sm"
+                  operators={filterOperators}
+                />
                 {operatorNeedsValue(filterOperator) ? (
-                  <Input
+                  <FilterValueInput
+                    key={filterOperator}
+                    operator={filterOperator}
                     value={filterValue}
-                    onChange={(event) => onFilterValueChange(event.target.value)}
+                    onValueChange={onFilterValueChange}
                     placeholder="Wert"
                     autoFocus
                     className="h-8 w-full min-w-0"
@@ -196,7 +190,7 @@ export function DataTableHeaderCell({
                 type="button"
                 size="sm"
                 onClick={onApplyColumnFilter}
-                disabled={operatorNeedsValue(filterOperator) && filterValue.trim() === ""}
+                disabled={compiledFilter === ""}
               >
                 <PlayIcon />
                 Filter anwenden

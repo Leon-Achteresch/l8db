@@ -102,7 +102,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[85svh] gap-4 overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Bug melden</DialogTitle>
           <DialogDescription>
@@ -111,7 +111,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3">
+        <div className="grid min-w-0 gap-3">
           <div className="grid gap-1.5">
             <Label htmlFor="bug-title">Titel</Label>
             <Input
@@ -143,13 +143,13 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
           </div>
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer select-none">Angehängte Umgebungsdaten</summary>
-            <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap text-foreground">
+            <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-foreground">
               {diagnostics || "Wird gesammelt…"}
             </pre>
           </details>
         </div>
 
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter className="flex-wrap sm:justify-between">
           <div className="flex gap-2">
             <Button
               variant="ghost"

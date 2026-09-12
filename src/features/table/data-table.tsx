@@ -6,7 +6,6 @@ import {
   type ColumnDef,
   type ColumnPinningState,
   flexRender,
-  getCoreRowModel,
   type HeaderContext,
   type Row,
   useReactTable,
@@ -36,7 +35,15 @@ import {
   XIcon,
 } from "lucide-react";
 import { animate } from "motion/react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { RegexSearchHelper } from "@/components/regex-search-helper";
 import {
@@ -75,12 +82,15 @@ import {
   summarizeSelection,
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
+import { useRowMarkers } from "@/lib/hooks/use-row-markers";
 import { useResolvedHotkey } from "@/lib/hotkeys";
+import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSettingsStore } from "@/lib/settings";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tableCellPreview } from "@/lib/table-cell-preview";
 import {
   formatVisibleColumnNames,
   reorderVisibleColumns,
@@ -90,6 +100,7 @@ import {
 } from "@/lib/table-column-prefs";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { getVirtualRowModel } from "@/lib/virtual-row-model";
 import { DataTableRow } from "./data-table-row";
 import type {
   DataTableProps,
@@ -240,71 +251,6 @@ function getColumnTypeInfo(col: string, rows: TableRow[], detail?: DetailedColum
   }
 }
 
-function renderValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/10 select-none">
-        NULL
-      </span>
-    );
-  }
-  if (typeof value === "boolean") {
-    return value ? (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 select-none">
-        <span className="size-1.5 rounded-full bg-emerald-500" />
-        true
-      </span>
-    ) : (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 select-none">
-        <span className="size-1.5 rounded-full bg-rose-500" />
-        false
-      </span>
-    );
-  }
-  if (typeof value === "number") {
-    return (
-      <span className="font-mono text-xs tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
-        {String(value)}
-      </span>
-    );
-  }
-  if (typeof value === "object") {
-    const isArray = Array.isArray(value);
-    const label = isArray ? `Array(${value.length})` : "Object";
-    return (
-      <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-full truncate select-none">
-        <span className="text-[10px] uppercase font-bold tracking-wide">
-          {isArray ? "[]" : "{}"}
-        </span>
-        <span className="truncate">{label}</span>
-      </span>
-    );
-  }
-
-  const str = String(value);
-  if (
-    str.length >= 10 &&
-    !Number.isNaN(Date.parse(str)) &&
-    (str.includes("-") || str.includes("T") || str.includes(":"))
-  ) {
-    return (
-      <span className="font-mono text-[12px] text-rose-600 dark:text-rose-400 bg-rose-500/[0.03] px-1 py-0.5 rounded border border-rose-500/5">
-        {str}
-      </span>
-    );
-  }
-
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
-    return (
-      <span className="font-mono text-[12px] text-amber-600 dark:text-amber-400 bg-amber-500/[0.03] px-1 py-0.5 rounded border border-amber-500/5">
-        {str}
-      </span>
-    );
-  }
-
-  return <span className="font-mono text-[13px] text-foreground/90">{str}</span>;
-}
-
 function formatFkFilter(column: string, value: unknown): string {
   if (value === null || value === undefined) return "";
   const escaped = String(value).replace(/'/g, "''");
@@ -381,7 +327,7 @@ function FkPreviewPopover({
       <HoverCardTrigger asChild>
         <div
           onClick={handleCtrlClick}
-          className="inline-flex items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
+          className="flex h-5 w-fit items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
         >
           <LinkIcon className="size-3 shrink-0 text-blue-500/60 group-hover/fk:text-blue-500 transition-colors" />
           <div className="truncate">{children}</div>
@@ -417,7 +363,9 @@ function FkPreviewPopover({
                   <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
                     {col}
                   </span>
-                  <span className="min-w-0 truncate">{renderValue(previewData[col])}</span>
+                  <span className="min-w-0 truncate">
+                    {tableCellPreview(previewData[col]).text}
+                  </span>
                 </div>
               ))}
               {previewColumns.length > 8 && (
@@ -498,7 +446,26 @@ export function DataTable({
     renameProfile,
     deleteProfile,
   } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
-  const [activeCell, setActiveCell] = useState<GridCellRef | null>(null);
+  const { markedRows, toggleRowMarker } = useRowMarkers(data);
+  const selectionKey = useContext(MasterSelectionContext);
+  const [activeCell, setActiveCell] = useState<GridCellRef | null>(() => {
+    const saved = selectionKey ? useMasterDetail.getState().selections[selectionKey] : undefined;
+    return saved ? { rowIndex: saved.rowIndex, columnId: saved.column } : null;
+  });
+  useEffect(() => {
+    if (!selectionKey) return;
+    const row = activeCell ? data[activeCell.rowIndex] : undefined;
+    useMasterDetail.getState().selectCell(
+      selectionKey,
+      activeCell && row && Object.hasOwn(row, activeCell.columnId)
+        ? {
+            column: activeCell.columnId,
+            rowIndex: activeCell.rowIndex,
+            value: row[activeCell.columnId],
+          }
+        : null,
+    );
+  }, [selectionKey, activeCell, data]);
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
@@ -544,6 +511,11 @@ export function DataTable({
     }
     return map;
   }, [foreignKeys, currentSchema, currentTable]);
+
+  const customCellColumns = useMemo(
+    () => new Set(onNavigateToTable && currentSchema && currentTable ? fkByColumn.keys() : []),
+    [onNavigateToTable, currentSchema, currentTable, fkByColumn],
+  );
 
   const canPickFk = !!onSaveRow && capabilities.foreign_keys && !!currentSchema && !!currentTable;
 
@@ -658,11 +630,11 @@ export function DataTable({
                   currentTable={currentTable}
                   onNavigate={onNavigateToTable}
                 >
-                  <div className="truncate text-left">{renderValue(value)}</div>
+                  <div className="truncate text-left">{tableCellPreview(value).text}</div>
                 </FkPreviewPopover>
               );
             }
-            return renderValue(value);
+            return tableCellPreview(value).text;
           },
         }),
       ),
@@ -715,7 +687,7 @@ export function DataTable({
       const ctid = row.__ctid__ as string | undefined;
       return ctid ?? `row-${index}`;
     },
-    getCoreRowModel: getCoreRowModel(),
+    getCoreRowModel: getVirtualRowModel(),
   });
 
   const uiScale = useSettingsStore((state) => state.uiScale);
@@ -727,8 +699,9 @@ export function DataTable({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
-    overscan: 10,
+    overscan: Math.ceil(256 / estimatedRowHeight),
     useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
   });
   useEffect(() => {
     if (estimatedRowHeight > 0) rowVirtualizer.measure();
@@ -736,6 +709,8 @@ export function DataTable({
   const virtualRows = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualRows[0]?.start ?? 0;
   const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
+  const tableWidth = table.getTotalSize();
+  const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
   const hasRowActions = !!onDuplicateRow || !!onDuplicateRowToEdit || !!onDeleteRow;
   const [menuRow, setMenuRow] = useState<{
     ctid: string;
@@ -843,6 +818,7 @@ export function DataTable({
       filterOperator,
       filterValue,
       connection?.kind,
+      columnDetails?.find((column) => column.name === filterColumn)?.data_type,
     );
     if (sql) {
       onApplyFilter(sql, false);
@@ -855,6 +831,7 @@ export function DataTable({
     onApplyFilter,
     connection?.kind,
     compileColumnFilter,
+    columnDetails,
   ]);
 
   const compiledFilter = useMemo(
@@ -865,9 +842,17 @@ export function DataTable({
             filterOperator,
             filterValue,
             connection?.kind,
+            columnDetails?.find((column) => column.name === filterColumn)?.data_type,
           ) ?? "")
         : "",
-    [filterColumn, filterOperator, filterValue, connection?.kind, compileColumnFilter],
+    [
+      filterColumn,
+      filterOperator,
+      filterValue,
+      connection?.kind,
+      compileColumnFilter,
+      columnDetails,
+    ],
   );
 
   const handleCellEdit = useCallback(
@@ -1444,6 +1429,7 @@ export function DataTable({
       )}
       <div
         ref={scrollRef}
+        style={{ contain: "strict" }}
         className={cn(
           "relative min-h-0 flex-1 basis-0 overflow-auto [scrollbar-gutter:stable] transition-opacity",
           isFetching && "opacity-85",
@@ -1463,7 +1449,7 @@ export function DataTable({
           >
             <table
               className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-              style={{ width: table.getTotalSize() }}
+              style={{ width: tableWidth }}
             >
               <colgroup>
                 {visibleColumns.map((column, index) => (
@@ -1512,6 +1498,11 @@ export function DataTable({
                             <DataTableRow
                               key={rowCtid ?? row.id}
                               row={row}
+                              table={table}
+                              visibleColumns={visibleColumns}
+                              customCellColumns={customCellColumns}
+                              isMarked={markedRows.has(row.original)}
+                              toggleRowMarker={toggleRowMarker}
                               columnWindow={columnWindow.items}
                               measureElement={rowVirtualizer.measureElement}
                               editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
@@ -1537,6 +1528,8 @@ export function DataTable({
                               columnPinning={columnPinning}
                               columns={columns}
                               pageOffset={page * pageSize}
+                              fontSize={(12 * uiScale) / 100}
+                              columnScale={columnScale}
                             />
                           );
                         })}

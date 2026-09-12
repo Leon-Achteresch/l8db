@@ -95,6 +95,7 @@ export function QueryBuilderView() {
       label: `${state.table}.${column.name}`,
       source: "base" as QuerySource,
       column: column.name,
+      dataType: column.dataType,
     }));
     if (state.join) {
       for (const column of joinColumns) {
@@ -103,6 +104,7 @@ export function QueryBuilderView() {
           label: `${state.join.table}.${column.name}`,
           source: "join",
           column: column.name,
+          dataType: column.dataType,
         });
       }
     }
@@ -195,6 +197,7 @@ export function QueryBuilderView() {
           id: createId(),
           source: first.source,
           column: first.column,
+          dataType: first.dataType,
           operator: "eq",
           value: "",
         },

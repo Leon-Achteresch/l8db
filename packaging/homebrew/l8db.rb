@@ -23,11 +23,10 @@
 # solange die Release-Artefakte noch nicht stabil sind; danach echten Hash setzen.
 
 cask "l8db" do
-  version "0.1.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  version "0.4.1"
+  sha256 "96bff31fea5b60569236aa348053385cbc5092ac6a875eb7f07fc77e97f55749"
 
-  url "https://github.com/Leon-Achteresch/l8db/releases/download/v#{version}/l8db_#{version}_universal.dmg",
-      verified: "github.com/Leon-Achteresch/l8db/"
+  url "https://github.com/Leon-Achteresch/l8db/releases/download/v#{version}/l8db_#{version}_universal.dmg"
   name "l8db"
   desc "Fast, native desktop client for PostgreSQL and other databases"
   homepage "https://github.com/Leon-Achteresch/l8db"
@@ -41,20 +40,9 @@ cask "l8db" do
   # aktualisiert sich also selbst. Deshalb meldet brew sie nicht als "outdated".
   auto_updates true
 
-  depends_on macos: ">= :big_sur"
+  depends_on macos: :monterey
 
   app "l8db.app"
-
-  # Die Bundles sind aktuell weder signiert noch notarisiert (im Release-Workflow
-  # sind nur TAURI_SIGNING_* fuer den Updater gesetzt, keine Apple-ID/Team-ID).
-  # Ohne Notarisierung blockiert Gatekeeper den ersten Start. Solange das so ist,
-  # entweder diese Zeile aktiv lassen oder Nutzer auf den Rechtsklick-Oeffnen-Weg
-  # hinweisen:
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/l8db.app"],
-                   sudo: false
-  end
 
   zap trash: [
     "~/Library/Application Support/com.leon.l8db",
