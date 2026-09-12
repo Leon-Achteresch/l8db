@@ -1,229 +1,153 @@
-import { useState } from "react";
+import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { newWorksheet, updateWorksheet } from "@/lib/chart-worksheet";
 import {
   CHARTS,
   type ChartKind,
   createId,
   type Dashboard,
-  datasetShape,
   settle,
   useDashboardsStore,
-  type Widget,
 } from "@/lib/dashboards";
-import { cn } from "@/lib/utils";
-import { ChartPalette } from "./chart-palette";
-import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
-import { WidgetCard } from "./widget-card";
-import { WidgetSettings } from "./widget-settings";
+import { CHART_ICONS } from "./chart-palette";
+import { ChartWorksheet } from "./chart-worksheet";
 
 export function ChartWorkspace({
   dashboard,
-  initialWidgetId,
+  selectedWidgetId,
   onWidgetChange,
-  selectedDatasetId,
-  onDatasetChange,
-  onData,
   onLayout,
 }: {
   dashboard: Dashboard;
-  initialWidgetId?: string;
+  selectedWidgetId?: string;
   onWidgetChange: (id: string) => void;
-  selectedDatasetId: string | null;
-  onDatasetChange: (id: string) => void;
-  onData: () => void;
   onLayout: () => void;
 }) {
-  const selectedId = initialWidgetId ?? dashboard.widgets[0]?.id ?? "";
-  const setSelectedId = onWidgetChange;
-  const [adding, setAdding] = useState(dashboard.widgets.length === 0);
-  const widget = dashboard.widgets.find((w) => w.id === selectedId) ?? dashboard.widgets[0];
-  const dataset = dashboard.datasets.find((d) => d.id === selectedDatasetId) ?? null;
-  const chartDataset = dashboard.datasets.find((d) => d.id === widget?.datasetId) ?? null;
-  const sql = useDatasetSql(chartDataset, widget?.period ?? "all");
-  const query = useSqlQuery(sql);
+  const widget = dashboard.widgets.find((w) => w.id === selectedWidgetId) ?? dashboard.widgets[0];
   const update = (patch: Partial<Dashboard> | ((d: Dashboard) => Partial<Dashboard>)) =>
     useDashboardsStore.getState().update(dashboard.id, patch);
-  const add = (kind: ChartKind) => {
-    const id = createId();
+  const add = (kind: ChartKind = "column") => {
+    const created = newWorksheet(dashboard, kind);
     update((d) => ({
-      widgets: [
-        ...d.widgets,
-        settle(
-          {
-            id,
-            chart: kind,
-            datasetId: selectedDatasetId,
-            title: "",
-            period: "all",
-            x: 0,
-            y: 0,
-            w: CHARTS[kind].w,
-            h: CHARTS[kind].h,
-          },
-          d.widgets,
-        ),
-      ],
+      widgets: [...d.widgets, created.widget],
+      datasets: [...d.datasets, created.dataset],
     }));
-    setSelectedId(id);
-    setAdding(false);
+    onWidgetChange(created.widget.id);
   };
-  const change = (patch: Partial<Widget>) =>
-    update((d) => ({
-      widgets: d.widgets.map((w) => (w.id === widget?.id ? { ...w, ...patch } : w)),
-    }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b px-5 py-3">
-        {dashboard.widgets.map((w, i) => (
-          <Button
-            key={w.id}
-            size="sm"
-            variant={!adding && w.id === widget?.id ? "secondary" : "ghost"}
-            onClick={() => {
-              setSelectedId(w.id);
-              setAdding(false);
-            }}
-          >
-            {w.title || `Chart ${i + 1} · ${CHARTS[w.chart].label}`}
-          </Button>
-        ))}
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-          Chart hinzufügen
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+        <nav aria-label="Charts" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {dashboard.widgets.map((w, i) => (
+            <Button
+              key={w.id}
+              size="sm"
+              variant={w.id === widget?.id ? "secondary" : "ghost"}
+              aria-current={w.id === widget?.id ? "page" : undefined}
+              onClick={() => onWidgetChange(w.id)}
+            >
+              {w.title || `Chart ${i + 1}`}
+            </Button>
+          ))}
+        </nav>
+        <Button size="sm" variant="outline" onClick={() => add()}>
+          <PlusIcon /> Chart hinzufügen
         </Button>
-        <Button size="sm" className="ml-auto" onClick={onLayout}>
-          Weiter zum Dashboard →
+        {widget && (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const id = createId();
+                update((d) => {
+                  const copy = settle(
+                    { ...structuredClone(widget), id, title: `${widget.title || "Chart"} (Kopie)` },
+                    d.widgets,
+                  );
+                  const source = d.datasets.find((dataset) => dataset.id === widget.datasetId);
+                  const next = { ...d, widgets: [...d.widgets, copy] };
+                  return source
+                    ? updateWorksheet(next, id, { dataset: source, widget: copy })
+                    : { widgets: next.widgets };
+                });
+                onWidgetChange(id);
+              }}
+            >
+              Duplizieren
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (!window.confirm(`Chart „${widget.title || "Ohne Titel"}“ löschen?`)) return;
+                update((d) => ({
+                  widgets: d.widgets.filter((w) => w.id !== widget.id),
+                  datasets: d.datasets.filter(
+                    (dataset) =>
+                      dataset.id !== widget.datasetId ||
+                      d.widgets.some((w) => w.id !== widget.id && w.datasetId === dataset.id),
+                  ),
+                }));
+              }}
+            >
+              Löschen
+            </Button>
+          </>
+        )}
+        <Button size="sm" onClick={onLayout}>
+          Zum Dashboard →
         </Button>
       </div>
-      {adding || !widget ? (
-        <div className="min-h-0 flex-1 overflow-auto p-6">
-          <div className="mx-auto max-w-3xl space-y-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Schritt 2 · Visualisieren</p>
-              <h2 className="mt-1 text-xl font-semibold">Was sollen deine Daten erzählen?</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Wähle einen Datensatz und eine Darstellung. Mehrere Charts können dieselbe Quelle
-                nutzen und unterschiedliche Kennzahlen zeigen.
-              </p>
-            </div>
-            {dataset ? (
-              <>
-                <Select value={selectedDatasetId ?? ""} onValueChange={onDatasetChange}>
-                  <SelectTrigger aria-label="Datensatz für neuen Chart" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dashboard.datasets.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <ChartPalette shape={datasetShape(dataset)} locked={false} onAdd={add} />
-              </>
-            ) : (
-              <Button onClick={onData}>Zuerst einen Datensatz vorbereiten</Button>
-            )}
-          </div>
-        </div>
+      {widget ? (
+        <ChartWorksheet key={widget.id} dashboard={dashboard} widget={widget} />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section aria-label="Chart-Vorschau" className="workspace-canvas min-w-0 p-6">
-            <p className="mb-4 text-xs text-muted-foreground">
-              Live-Vorschau · Änderungen werden automatisch gespeichert
-            </p>
-            <div
-              className={cn("mx-auto h-[440px] max-w-3xl", widget.chart === "kpi" && "max-w-md")}
-            >
-              <WidgetCard key={widget.id} dashboardId={dashboard.id} widgetId={widget.id} preview />
-            </div>
-            <Button
-              className="mt-4"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (widget.datasetId) onDatasetChange(widget.datasetId);
-                onData();
-              }}
-            >
-              Datenquelle bearbeiten
-            </Button>
-            {chartDataset && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2 mt-4"
-                onClick={() => {
-                  const source = {
-                    ...structuredClone(chartDataset),
-                    id: createId(),
-                    name: `${chartDataset.name} · ${widget.title || CHARTS[widget.chart].label}`,
-                  };
-                  update((d) => ({
-                    datasets: [...d.datasets, source],
-                    widgets: d.widgets.map((w) =>
-                      w.id === widget.id ? { ...w, datasetId: source.id } : w,
-                    ),
-                  }));
-                  onDatasetChange(source.id);
-                  onData();
-                }}
-              >
-                Daten nur für diesen Chart anpassen
-              </Button>
-            )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              Eine eigene Datenauswahl lässt dich Gruppierung und Filter ändern, ohne andere Charts
-              zu verändern.
-            </p>
-          </section>
-          <aside
-            aria-label="Chart bearbeiten"
-            className="min-w-0 space-y-5 overflow-y-auto border-l bg-card pt-5"
-          >
-            <div className="px-4">
-              <h2 className="font-semibold">Chart bearbeiten</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Daten, Kennzahlen und Aussehen an einem Ort.
+        <div className="grid flex-1 place-items-center overflow-y-auto p-8">
+          <div className="max-w-2xl space-y-6">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Dein erster Chart</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+                Was möchtest du herausfinden?
+              </h1>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
+                Füge einen Chart hinzu, wähle eine Tabelle oder View und ziehe ihre Felder in den
+                Chart. Filter und Berechnungen stellst du direkt dort ein.
               </p>
             </div>
-            <WidgetSettings
-              inline
-              open
-              onOpenChange={() => {}}
-              widget={widget}
-              dashboardId={dashboard.id}
-              rows={query.data?.rows ?? []}
-              onChange={change}
-              onRemove={() => {
-                update((d) => ({ widgets: d.widgets.filter((w) => w.id !== widget.id) }));
-              }}
-              onDuplicate={() => {
-                const id = createId();
-                update((d) => ({
-                  widgets: [
-                    ...d.widgets,
-                    settle(
-                      {
-                        ...structuredClone(widget),
-                        id,
-                        title: `${widget.title || CHARTS[widget.chart].label} (Kopie)`,
-                      },
-                      d.widgets,
-                    ),
-                  ],
-                }));
-                setSelectedId(id);
-              }}
-            />
-          </aside>
+            <div className="grid grid-cols-2 gap-3">
+              {(
+                [
+                  ["column", "Werte vergleichen", "Zum Beispiel Umsatz pro Land"],
+                  ["line", "Entwicklung sehen", "Zum Beispiel Bestellungen pro Monat"],
+                  ["donut", "Anteile verstehen", "Zum Beispiel Kunden nach Tarif"],
+                  ["kpi", "Eine Zahl im Blick", "Zum Beispiel Anzahl Bestellungen"],
+                ] as const
+              ).map(([kind, title, hint]) => {
+                const Icon = CHART_ICONS[kind];
+                return (
+                  <button
+                    type="button"
+                    key={kind}
+                    onClick={() => add(kind)}
+                    className="space-y-2 rounded-xl border bg-card p-5 text-left transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <Icon className="size-5 text-primary" />
+                    <span className="block text-sm font-semibold">{title}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                    <span className="block text-xs font-medium">
+                      {CHARTS[kind].label} hinzufügen →
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <Button onClick={() => add()}>
+              <PlusIcon /> Ersten Chart hinzufügen
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Den Chart-Typ kannst du jederzeit ändern. Du brauchst keine SQL-Kenntnisse.
+            </p>
+          </div>
         </div>
       )}
     </div>

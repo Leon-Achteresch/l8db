@@ -30,6 +30,7 @@ export type ChartKind =
   | "table";
 
 export interface WidgetOptions {
+  horizontal: boolean;
   showValue: boolean;
   showDelta: boolean;
   showLegend: boolean;
@@ -45,6 +46,7 @@ export interface WidgetOptions {
 }
 
 export const DEFAULT_OPTIONS: WidgetOptions = {
+  horizontal: false,
   showValue: true,
   showDelta: true,
   showLegend: true,
@@ -110,6 +112,7 @@ export interface DatasetMetric {
 }
 
 export interface DatasetFilter {
+  rangeId?: string;
   id: string;
   column: string;
   operator: string;
@@ -356,6 +359,7 @@ export const CHARTS: Record<ChartKind, ChartDef> = {
 };
 
 export const OPTION_LABEL: Record<keyof WidgetOptions, string> = {
+  horizontal: "Horizontale Balken",
   showValue: "Kopfzahl anzeigen",
   showDelta: "Trend-Badge anzeigen",
   showLegend: "Legende anzeigen",
@@ -559,7 +563,9 @@ export function buildSimpleSql(
   const metrics = ds.metrics.filter((m) => m.agg === "count" || m.column);
   select.push(...metrics.map((m, i) => `${aggExpr(m, ds, style)} AS ${q(metricKey(i))}`));
   if (select.length === 0) select.push("*");
-  const grouped = metrics.some((m) => m.agg !== "none") && groups.length > 0;
+  const grouped =
+    metrics.some((m) => m.agg !== "none") &&
+    (groups.length > 0 || metrics.some((m) => m.agg === "none" && m.column));
   if (grouped)
     groups.push(
       ...metrics.filter((m) => m.agg === "none" && m.column).map((m) => aggExpr(m, ds, style)),

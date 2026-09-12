@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { colorSeries } from "@/lib/chart-worksheet";
 import { queryErrorMessage } from "@/lib/connection-url";
 import {
   applyOptions,
@@ -60,8 +61,12 @@ export function WidgetCardInner({
     () => (rawShape ? applyOptions(rawShape, rawRows, options) : null),
     [rawShape, rawRows, options],
   );
-  const shape = applied?.shape ?? null;
-  const rows = applied?.rows ?? EMPTY_ROWS;
+  const colored = useMemo(
+    () => (applied ? colorSeries(widget.chart, applied.shape, applied.rows) : null),
+    [applied, widget.chart],
+  );
+  const shape = colored?.shape ?? null;
+  const rows = colored?.rows ?? EMPTY_ROWS;
   const problem = shape ? chartFits(widget.chart, shape) : "Kein Datensatz zugewiesen";
   const isTime =
     (dataset?.mode === "simple" && dataset.simple.dimension?.bucket !== "none") ||
