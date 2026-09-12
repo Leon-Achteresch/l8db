@@ -23,9 +23,11 @@ const EMPTY_WIDGETS: Widget[] = [];
 export const DashboardCanvas = memo(function DashboardCanvas({
   dashboardId,
   selectedDatasetId,
+  onEdit,
 }: {
   dashboardId: string;
   selectedDatasetId: string | null;
+  onEdit?: (id: string) => void;
 }) {
   const widgets = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.widgets ?? EMPTY_WIDGETS,
@@ -110,7 +112,11 @@ export const DashboardCanvas = memo(function DashboardCanvas({
         >
           {widgets.map((w) => (
             <div key={w.id} className="[&_.react-resizable-handle]:z-10">
-              <WidgetCard dashboardId={dashboardId} widgetId={w.id} />
+              <WidgetCard
+                dashboardId={dashboardId}
+                widgetId={w.id}
+                onEdit={onEdit ? () => onEdit(w.id) : undefined}
+              />
             </div>
           ))}
         </GridLayout>
@@ -121,7 +127,8 @@ export const DashboardCanvas = memo(function DashboardCanvas({
             <LayoutDashboardIcon className="mx-auto mb-3 size-8 text-muted-foreground/60" />
             <p className="text-sm font-medium">Noch keine Charts</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Baue links einen Datensatz zusammen und ziehe dann ein Chart aus der Palette hierher.
+              Erstelle im Bereich Charts deine Visualisierungen. Hier kannst du sie anschließend
+              anordnen.
             </p>
           </div>
         </div>

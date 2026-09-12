@@ -27,6 +27,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { IconButton } from "@/components/icon-button";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { useSettingsStore } from "@/lib/settings";
@@ -161,7 +162,9 @@ function StepNodeView({ data, selected }: NodeProps<StepNode>) {
           </div>
         </div>
         {data.onRemove && (
-          <button
+          <IconButton
+            variant="ghost"
+            size="icon-xs"
             type="button"
             aria-label="Knoten entfernen"
             onClick={(e) => {
@@ -171,7 +174,7 @@ function StepNodeView({ data, selected }: NodeProps<StepNode>) {
             className="nodrag rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <XIcon className="size-3" />
-          </button>
+          </IconButton>
         )}
       </div>
       {type !== "output" && (
@@ -418,7 +421,7 @@ function NodeConfig({
                 }
                 columns={columns}
               />
-              <Button
+              <IconButton
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Bedingung entfernen"
@@ -427,7 +430,7 @@ function NodeConfig({
                 }
               >
                 <XIcon />
-              </Button>
+              </IconButton>
               <div className="col-span-2 flex gap-1.5">
                 <FilterOperatorSelect
                   operator={c.operator}
@@ -558,7 +561,7 @@ function NodeConfig({
                       </SelectContent>
                     </Select>
                     {d.metrics.length > 1 && (
-                      <Button
+                      <IconButton
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Kennzahl entfernen"
@@ -567,7 +570,7 @@ function NodeConfig({
                         }
                       >
                         <XIcon />
-                      </Button>
+                      </IconButton>
                     )}
                   </div>
                   {m.agg !== "count" && (

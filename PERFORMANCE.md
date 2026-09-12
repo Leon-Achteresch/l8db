@@ -213,3 +213,18 @@ Mit `L8DB_PERF_PROFILE=1` schreibt der Komponententest unter Chromium ein CPU-Pr
 ## Aussagegrenzen
 
 Die Messung nutzt `requestAnimationFrame` in headless Playwright mit Produktionscode und simulierten Datenbankantworten. Sie misst Main-Thread-Frameabstände, keine vollständige GPU-Present-Telemetrie. Die Browser-Matrix ersetzt keinen nativen Tauri-Test; die ergänzende native Probe deckt nur die beschriebenen Komponenten und Daten ab. Betriebssystemlast, Garbage Collection, Bildschirmfrequenz, Hardware und unbeschränkt große Datenmengen schließen eine allgemeine dauerhafte 60-FPS-Garantie aus. Auch ein bestandener Test kann einzelne Frames über 16,7 ms enthalten; deshalb werden p95, p99, Maximum und der Anteil über 16,7 ms plus 2 ms Messtoleranz separat ausgewiesen.
+
+## Nachprüfung mit geringerer Hintergrundlast
+
+Als Zielumgebung wurde am 12. September der aktuelle M3-Mac ohne andere rechenintensive Apps festgelegt. Bei der Nachprüfung waren rund 2,4 GB RAM frei und die CPU vor dem Test etwa 86 % untätig. Die zuvor aktive Grafiklast war reduziert; reguläre Systemdienste und Entwicklungswerkzeuge liefen weiter. Das war kein vollständig isoliertes Betriebssystem.
+
+Die unveränderte native Tauri-Probe mit 20.000 × 121 Datenspalten und zehn Sekunden pro Achse ergab:
+
+| Ansicht | FPS | p95 | Längster Frame |
+|---|---:|---:|---:|
+| Tabelle | 59,64–60,03 | 18 ms | 98 ms |
+| SQL-Ergebnis | 59,85–60,02 | 18 ms | 68 ms |
+
+Der vollständige Workspace mit 5.000 × 120 Datenzellen erreichte in WebKit 57,6 FPS, p95 22 ms und maximal 45 ms. Damit bleiben die Abnahmeschwellen auch bei geringerer Hintergrundlast verletzt. Andere Apps erklären die verbleibenden Probleme nicht allein.
+
+Ein zusätzlicher Versuch halbierte den Zeilen- und Spaltenpuffer auf 128 Pixel. Die breite Tabellenansicht bestand damit die Komponentenprüfung einschließlich Wheel- und Funktionsprüfungen (60,03–60,05 FPS, maximal 40 ms, 177 DOM-Zellen beim Mount). Der Workspace verfehlte mit 59,8 FPS und maximal 51 ms weiterhin die Grenze; das SQL-Ergebnis zeigte einen Frame mit 108 ms. Der Versuch wurde verworfen, der Puffer bleibt bei 256 Pixeln. Diese einzelnen Läufe belegen keine statistisch gesicherte Verbesserung oder Verschlechterung der Ausreißer.
