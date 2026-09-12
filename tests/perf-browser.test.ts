@@ -1,8 +1,21 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { profileWebKit } from "./fixtures/perf-webkit-profile";
+
+type Sample = {
+  fps: number;
+  p95: number;
+  p99: number;
+  worst: number;
+  overBudgetPercent: number;
+  frames: number;
+};
 
 type PerfResult = {
+  vertical: Sample;
+  horizontal: Sample;
+  diagonal: Sample;
   mountMs: number;
   renderedRows: number;
   renderedCells: number;
@@ -12,7 +25,7 @@ type PerfResult = {
   horizontalHeights: number[];
   horizontalFps: number;
   horizontalWorstFrameMs: number;
-  heapMb: number;
+  heapMb: number | null;
   totalRows: number;
 };
 
@@ -27,10 +40,18 @@ const CSS =
   ".h-full{height:100%}.border-spacing-0{border-spacing:0}.table-fixed{table-layout:fixed}.min-w-full{min-width:100%}" +
   ".truncate{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.sticky{position:sticky}.top-0{top:0}.left-0{left:0}";
 
+const ROWS = Number(process.env.L8DB_PERF_ROWS ?? 5000);
+const DURATION = Number(process.env.L8DB_PERF_DURATION ?? 2000);
+const TEXT_SIZE = Number(process.env.L8DB_PERF_TEXT_SIZE ?? 0);
+const SCALE = Number(process.env.L8DB_PERF_SCALE ?? 100);
+const DENSITY = process.env.L8DB_PERF_DENSITY ?? "normal";
+const STEP = Number(process.env.L8DB_PERF_STEP ?? 120);
+const FK = process.env.L8DB_PERF_FK === "1";
+
 for (const kind of ["table", "result"])
   for (const columns of [12, 49, 120]) {
     test.skipIf(!process.env.L8DB_PERF_BROWSER)(
-      `${kind}: FPS, DOM-Größe und Mount-Zeit bei 5.000 × ${columns + 1} Zellen`,
+      `${kind}: FPS, DOM-Größe und Mount-Zeit bei ${ROWS} × ${columns + 1} Zellen`,
       async () => {
         const bundle = await Bun.build({
           entrypoints: ["tests/fixtures/perf-browser.tsx"],
@@ -84,16 +105,68 @@ for (const kind of ["table", "result"])
         ).launch({ headless: true });
         try {
           const page = await browser.newPage({ viewport: { width: 1200, height: 600 } });
+          const profiler =
+            process.env.L8DB_PERF_PROFILE && !WEBKIT
+              ? await page.context().newCDPSession(page)
+              : null;
+          if (profiler) {
+            await profiler.send("Profiler.enable");
+            await profiler.send("Profiler.start");
+          }
           const errors: string[] = [];
           page.on("pageerror", (error) => errors.push(error.message));
-          await page.goto(`http://localhost:${server.port}?columns=${columns}&kind=${kind}`);
+          await page.goto(
+            `http://localhost:${server.port}?columns=${columns}&kind=${kind}&rows=${ROWS}&duration=${DURATION}&textSize=${TEXT_SIZE}&scale=${SCALE}&density=${DENSITY}&step=${STEP}&fk=${FK ? 1 : 0}`,
+          );
+          const stopWebKitProfile =
+            process.env.L8DB_PERF_PROFILE && WEBKIT
+              ? await profileWebKit(page, `/tmp/l8db-perf-${kind}-${columns}.webkit-profile.json`)
+              : null;
           await page.waitForFunction(() => "result" in window);
           const result = (await page.evaluate(
             () => (window as unknown as { result: Promise<PerfResult> }).result,
           )) as PerfResult;
+          await stopWebKitProfile?.();
+          if (profiler) {
+            const profile = await profiler.send("Profiler.stop");
+            await Bun.write(
+              `/tmp/l8db-perf-${kind}-${columns}.cpuprofile`,
+              JSON.stringify(profile.profile),
+            );
+          }
           console.log(
-            `perf ${kind}/${columns}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb.toFixed(1)} MB, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
+            `perf ${kind}/${columns}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb === null ? "n/a" : `${result.heapMb.toFixed(1)} MB`}, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
           );
+          for (const axis of ["vertical", "horizontal", "diagonal"] as const)
+            console.log(`${kind}/${columns} ${axis}: ${JSON.stringify(result[axis])}`);
+          if (process.env.L8DB_PERF_REPORT_DIR) {
+            const name = `${WEBKIT ? "webkit" : "chromium"}-${kind}-${ROWS}-${columns}-${TEXT_SIZE}-${SCALE}-${DENSITY}-${FK ? "fk" : "plain"}`;
+            await Bun.write(
+              resolve(process.env.L8DB_PERF_REPORT_DIR, `${name}.json`),
+              JSON.stringify(
+                {
+                  browser: browser.version(),
+                  engine: WEBKIT ? "webkit" : "chromium",
+                  sourceHash: Bun.hash(source).toString(16),
+                  styleHash: Bun.hash(css).toString(16),
+                  foreignKeys: FK,
+                  rows: ROWS,
+                  columns: columns + 1,
+                  duration: DURATION,
+                  textSize: TEXT_SIZE,
+                  scale: SCALE,
+                  density: DENSITY,
+                  step: STEP,
+                  ...result,
+                },
+                null,
+                2,
+              ),
+            );
+            await page.screenshot({
+              path: resolve(process.env.L8DB_PERF_REPORT_DIR, `${name}.png`),
+            });
+          }
           expect(errors).toEqual([]);
           expect(result.renderedRows).toBeGreaterThan(0);
           expect(result.renderedRows).toBeLessThan(80);
@@ -101,11 +174,82 @@ for (const kind of ["table", "result"])
           expect(result.rowsAfterScroll).toBeLessThan(80);
           expect(result.renderedCells).toBeLessThan(1200);
           expect(result.mountMs).toBeLessThan(3000);
-          expect(result.fps).toBeGreaterThan(55);
-          expect(result.worstFrameMs).toBeLessThan(60);
-          expect(result.horizontalFps).toBeGreaterThan(WEBKIT ? 50 : 55);
-          expect(result.horizontalWorstFrameMs).toBeLessThan(WEBKIT ? 80 : 60);
-          if (stylesheet && kind === "table") expect(result.horizontalHeights).toEqual([33]);
+          for (const axis of ["vertical", "horizontal", "diagonal"] as const) {
+            expect(result[axis].fps).toBeGreaterThan(59);
+            expect(result[axis].p95).toBeLessThan(21);
+            expect(result[axis].worst).toBeLessThan(50);
+            expect(result[axis].frames).toBeGreaterThan((DURATION / 1000) * 55);
+          }
+          if (stylesheet && kind === "table") {
+            const height =
+              ((DENSITY === "compact" ? 24 : DENSITY === "spacious" ? 40 : 32) * SCALE) / 100 + 1;
+            expect(result.horizontalHeights).toEqual([height]);
+          }
+          const scrollBox = await page.locator(".overflow-auto").first().boundingBox();
+          if (!scrollBox) throw new Error("scroll container has no bounds");
+          await page.mouse.move(
+            scrollBox.x + scrollBox.width / 2,
+            scrollBox.y + scrollBox.height / 2,
+          );
+          for (let turn = 0; turn < 16; turn++) {
+            const direction = turn % 8 < 4 ? 1 : -1;
+            await page.mouse.wheel(240 * direction, 240 * direction);
+            await page.waitForTimeout(32);
+            const coverage = await page.evaluate(() => {
+              const scroller = document.querySelector(".overflow-auto")!;
+              const box = scroller.getBoundingClientRect();
+              const header = document.querySelector("thead")!.getBoundingClientRect();
+              return [header.bottom + 10, box.bottom - 20].every((y) => {
+                const cell = document.elementFromPoint(box.left + 80, y)?.closest("td");
+                return !!cell?.closest("tr[data-index]") && !cell.hasAttribute("aria-hidden");
+              });
+            });
+            expect(coverage).toBe(true);
+          }
+          await page
+            .locator(".overflow-auto")
+            .first()
+            .evaluate((element) => {
+              element.scrollTop = 0;
+              element.scrollLeft = 0;
+            });
+          await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
+          if (FK && kind === "table") {
+            const cell = page.locator('tbody tr[data-index="1"] td[data-col="id"]');
+            await cell
+              .locator('[data-slot="hover-card-trigger"]')
+              .click({ modifiers: ["ControlOrMeta"] });
+            expect(
+              await page.evaluate(() => (window as unknown as { navigated: unknown }).navigated),
+            ).toEqual({ schema: "public", table: "parents", filter: '"id" = 1' });
+          }
+          if (TEXT_SIZE > 0) {
+            const cell = page.locator('tbody tr[data-index="0"] td[data-col="col_0"]');
+            expect((await cell.textContent())!.length).toBeLessThanOrEqual(
+              kind === "table" ? 501 : 201,
+            );
+            if (kind === "table") {
+              await cell.dblclick();
+              expect((await page.locator("tbody input").inputValue()).length).toBe(TEXT_SIZE);
+              await page.locator("tbody input").press("Escape");
+              await cell.click();
+              await page.getByTitle("Anzeigen / bearbeiten", { exact: true }).click();
+              await page.getByRole("dialog").waitFor();
+              expect(await page.getByRole("dialog").locator("pre").textContent()).toBe(
+                "x".repeat(TEXT_SIZE),
+              );
+              await page.keyboard.press("Escape");
+            } else {
+              await cell.getByRole("button").click();
+              expect(
+                await page.evaluate(
+                  () =>
+                    (window as unknown as { inspected: { value: string } }).inspected.value.length,
+                ),
+              ).toBe(TEXT_SIZE);
+              expect((await cell.getAttribute("title"))!.length).toBeLessThanOrEqual(201);
+            }
+          }
           if (columns === 49) {
             const unchanged = await page.evaluate(async () => {
               const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
@@ -115,7 +259,7 @@ for (const kind of ["table", "result"])
               const row = document.querySelector('tbody tr[data-index="0"]')!;
               const cells = [...row.children];
               const headers = [...document.querySelectorAll("thead th")];
-              scroller.scrollLeft = 850;
+              scroller.scrollLeft = 680;
               await settle();
               return {
                 cells:
@@ -173,8 +317,10 @@ for (const kind of ["table", "result"])
                 element.scrollLeft = element.scrollWidth;
                 element.scrollTop = element.scrollHeight;
               });
-            await page.waitForFunction(() =>
-              document.querySelector('tbody tr[data-index="4999"] td[data-col="col_119"]'),
+            await page.waitForFunction(
+              (last) =>
+                document.querySelector(`tbody tr[data-index="${last}"] td[data-col="col_119"]`),
+              ROWS - 1,
             );
             expect(await page.locator("tbody td:not([aria-hidden])").count()).toBeLessThan(1200);
             await page
@@ -241,9 +387,7 @@ for (const kind of ["table", "result"])
               await page
                 .getByRole("textbox", { name: "Filter für col_119", exact: true })
                 .fill("__no_matching_value__");
-              await page.waitForFunction(() =>
-                document.body.textContent?.includes("0 von 5000 Zeilen"),
-              );
+              await page.waitForFunction(() => document.body.textContent?.includes("0 von "));
               await page.getByRole("textbox", { name: "Filter für col_119", exact: true }).fill("");
               await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
             }
@@ -254,6 +398,6 @@ for (const kind of ["table", "result"])
           server.stop(true);
         }
       },
-      60000,
+      Math.max(60000, DURATION * 3 + 30000),
     );
   }

@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  ChevronRight,
   Download,
   KeyRound,
   Pencil,
@@ -25,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   connectionUser,
   groupByServer,
@@ -57,6 +59,8 @@ export function ConnectionsView() {
   const activeId = useConnectionsStore((state) => state.activeId);
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
+  const collapsedServerKeys = useConnectionsStore((state) => state.collapsedServerKeys);
+  const setServerCollapsed = useConnectionsStore((state) => state.setServerCollapsed);
   const [editorId, setEditorId] = useState<string | null>(connections.length ? null : "new");
   const [template, setTemplate] = useState<SavedConnection | null>(null);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
@@ -88,7 +92,7 @@ export function ConnectionsView() {
     serverOrder,
   );
   const groups = sortServerGroups(groupByServer(visible), favoriteServerKeys, serverOrder);
-  const grouped = groups.some((group) => group.connections.length > 1);
+  const grouped = allGroups.some((group) => group.connections.length > 1);
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
     setTemplate(from);
@@ -281,24 +285,35 @@ export function ConnectionsView() {
               ) : grouped ? (
                 <div className="flex w-full flex-col gap-5 self-start py-1">
                   {groups.map((group) => (
-                    <section key={group.key} className="flex flex-col gap-2.5">
+                    <Collapsible
+                      key={group.key}
+                      open={!collapsedServerKeys.includes(group.key)}
+                      onOpenChange={(open) => setServerCollapsed(group.key, !open)}
+                      className="flex flex-col"
+                    >
                       <header className="flex flex-wrap items-center gap-2 border-b pb-1.5">
-                        <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-muted/50">
-                          <ProviderLogo
-                            providerId={providerFor(group.connections[0]).id}
-                            kind={group.kind}
-                            className="size-3.5"
-                          />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-mono text-[13px] font-medium">
-                            {group.label}
+                        <CollapsibleTrigger
+                          className="group flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={group.label}
+                        >
+                          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+                          <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-muted/50">
+                            <ProviderLogo
+                              providerId={providerFor(group.connections[0]).id}
+                              kind={group.kind}
+                              className="size-3.5"
+                            />
                           </span>
-                          <span className="block text-[11px] text-muted-foreground">
-                            {group.connections.length}{" "}
-                            {group.connections.length === 1 ? "Schema" : "Schemas"}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-mono text-[13px] font-medium">
+                              {group.label}
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              {group.connections.length}{" "}
+                              {group.connections.length === 1 ? "Schema" : "Schemas"}
+                            </span>
                           </span>
-                        </span>
+                        </CollapsibleTrigger>
                         <div className="ml-auto flex flex-wrap items-center justify-end gap-1 max-sm:ml-8 max-sm:w-full max-sm:justify-start">
                           <Button
                             variant="ghost"
@@ -369,14 +384,16 @@ export function ConnectionsView() {
                           </Button>
                         </div>
                       </header>
-                      <motion.div
-                        layout
-                        transition={{ layout: SPRING_LAYOUT }}
-                        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-                      >
-                        {group.connections.map(renderCard)}
-                      </motion.div>
-                    </section>
+                      <CollapsibleContent>
+                        <motion.div
+                          layout
+                          transition={{ layout: SPRING_LAYOUT }}
+                          className="grid grid-cols-1 gap-3 pt-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+                        >
+                          {group.connections.map(renderCard)}
+                        </motion.div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ))}
                 </div>
               ) : (

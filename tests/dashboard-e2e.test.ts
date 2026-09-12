@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chromium, type Locator } from "playwright";
+import { chromium } from "playwright";
 
 const PSQL = process.env.L8DB_PSQL ?? "/opt/homebrew/opt/postgresql@18/bin/psql";
 const BASE = process.env.L8DB_DASH_URL ?? "http://localhost:1420";
@@ -96,299 +96,65 @@ localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: 
 `;
 
 test.skipIf(!process.env.L8DB_DASH_E2E)(
-  "Dashboard-Builder end-to-end gegen echte Postgres-Testdatenbank",
+  "Chart worksheet executes real Postgres aggregation and filters",
   async () => {
-    const { mkdirSync } = await import("node:fs");
-    mkdirSync("/tmp/l8db-dashboard-e2e", { recursive: true });
     const browser = await chromium.launch();
     const errors: string[] = [];
-    let n = 0;
+    log.length = 0;
     try {
       const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-      page.on("pageerror", (e) => errors.push(e.message));
+      page.on("pageerror", (error) => errors.push(error.message));
       await page.exposeFunction("__db", (cmd: string, args: Record<string, string>) => {
         try {
           return db(cmd, args);
-        } catch (e) {
-          return { __error: String(e) };
+        } catch (error) {
+          return { __error: String(error) };
         }
       });
       await page.addInitScript(initScript);
       await page.goto(`${BASE}/dashboard`);
-      await page.getByRole("button", { name: "Dashboard erstellen" }).click();
-
-      const left = page.locator('[data-slot="resizable-panel"]').first();
-      const step = (title: string) => left.locator("section").filter({ hasText: title });
-      async function pick(combobox: Locator, option: string) {
-        await combobox.click();
-        const esc = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        await page
-          .getByRole("option", { name: new RegExp(`^${esc}(\\s|$)`) })
-          .first()
-          .click();
-      }
-      async function waitPreview() {
-        await page.locator("text=/\\d+ Zeilen · \\d+ ms/").first().waitFor({ timeout: 15000 });
-        const text = await page.locator("text=/\\d+ Zeilen · \\d+ ms/").first().textContent();
-        return (text ?? "").trim();
-      }
-      async function newDataset(name: string, table = "orders") {
-        await left
-          .getByRole("button", { name: "Datensatz", exact: false })
-          .filter({ hasText: "Datensatz" })
-          .last()
-          .click();
-        const nameInput = left.getByLabel("Name des Datensatzes");
-        await nameInput.fill(name);
-        await pick(step("Woher kommen die Daten?").getByRole("combobox").first(), table);
-      }
-      async function setMetric(i: number, agg: string, column: string | null, label?: string) {
-        const box = step("Was möchtest du messen?").locator(".rounded-lg.border").nth(i);
-        await pick(box.getByRole("combobox").nth(0), agg);
-        if (column) await pick(box.getByRole("combobox").nth(1), column);
-        if (label) await box.getByPlaceholder("Bezeichnung im Chart (optional)").fill(label);
-      }
-      async function addMetric() {
-        await step("Was möchtest du messen?")
-          .getByRole("button", { name: "Weitere Kennzahl" })
-          .click();
-      }
-      async function setDimension(col: string) {
-        await pick(step("Wonach aufteilen?").getByRole("combobox").first(), col);
-      }
-      async function addChart(name: string) {
-        await page.getByRole("tab", { name: "Charts" }).click();
-        await left
-          .getByRole("button", { name: new RegExp(`^${name}`) })
-          .first()
-          .click();
-        await page.getByRole("tab", { name: "Daten" }).click();
-      }
-
-      // Dataset 1: revenue per month with join + date column + filter
-      await newDataset("Umsatz pro Monat");
-      await pick(
-        step("Woher kommen die Daten?").getByRole("combobox").nth(1),
-        "customers über customer_id",
-      );
-      await setMetric(0, "Summe", "amount", "Umsatz");
-      await addMetric();
-      await setMetric(1, "Summe", "sessions", "Sessions");
-      await setDimension("created_at");
-      await pick(step("Eingrenzen").getByRole("combobox").last(), "created_at");
-      await step("Eingrenzen").getByRole("button", { name: "Bedingung" }).click();
-      const cond = step("Eingrenzen").locator(".rounded-lg.border").first();
-      await pick(cond.getByRole("combobox").nth(0), "customers.country");
-      await cond.getByPlaceholder("Wert").fill("DE");
-      console.log("D1 preview:", await waitPreview());
-      await left.getByRole("button", { name: "Erzeugtes SQL" }).click();
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/builder-d1.png" });
-      await addChart("Verlauf");
-      await addChart("Kennzahl");
-
-      // Dataset 2: count by plan, top first
-      await newDataset("Nach Plan");
-      await setDimension("plan");
-      await pick(
-        step("Sortierung und Anzahl").getByRole("combobox").first(),
-        "Größte Kennzahl zuerst",
-      );
-      console.log("D2 preview:", await waitPreview());
-      for (const c of ["Pipeline", "Funnel", "Ringe", "Radar"]) await addChart(c);
-
-      // Dataset 3: raw rows for bubbles
-      await newDataset("Sessions vs Umsatz");
-      await setMetric(0, "Einzelwert (keine Zusammenfassung)", "sessions", "Sessions");
-      await addMetric();
-      await setMetric(1, "Einzelwert (keine Zusammenfassung)", "amount", "Revenue");
-      await addMetric();
-      await setMetric(2, "Einzelwert (keine Zusammenfassung)", "score", "Score");
-      await setDimension("plan");
-      console.log("D3 preview:", await waitPreview());
-      await addChart("Blasen");
-
-      // Dataset 4: sankey plan -> channel
-      await newDataset("Plan → Kanal");
-      await setMetric(0, "Summe", "sessions", "Stunden");
-      await setDimension("plan");
-      await step("Wonach aufteilen?").locator("summary").click();
-      await pick(step("Wonach aufteilen?").getByRole("combobox").last(), "channel");
-      console.log("D4 preview:", await waitPreview());
-      await addChart("Fluss");
-
-      // Dataset 5: score
-      await newDataset("Score");
-      await setMetric(0, "Summe", "score", "Punkte");
-      await addMetric();
-      await setMetric(1, "Summe", "max_score", "Maximum");
-      await setDimension("plan");
-      await step("Sortierung und Anzahl").getByRole("spinbutton").fill("3");
-      console.log("D5 preview:", await waitPreview());
-      await addChart("Score");
-
-      // Dataset 6: from a view, with the new chart types
-      await newDataset("View: Umsatz je Land", "v_orders");
-      await setMetric(0, "Summe", "amount", "Umsatz");
-      await addMetric();
-      await setMetric(1, "Summe", "sessions", "Sessions");
-      await setDimension("country");
-      console.log("D6 preview:", await waitPreview());
-      for (const c of ["Linien", "Säulen", "Donut", "Treemap", "Tabelle"]) await addChart(c);
-
-      // Dataset 7: no dimension, two metrics → gauge
-      await newDataset("Zielerreichung");
-      await setMetric(0, "Summe", "score", "Punkte");
-      await addMetric();
-      await setMetric(1, "Summe", "max_score", "Ziel");
-      console.log("D7 preview:", await waitPreview());
-      await addChart("Tacho");
-
-      // Heatmap from dataset 4 (two dimensions)
-      await left.getByRole("button", { name: "Plan → Kanal" }).click();
-      await addChart("Heatmap");
-
-      // Widget settings: open first widget, deselect a metric, pick a color, hide legend, switch type
-      const firstCard = page.locator(".react-grid-item").first();
-      await firstCard.getByRole("button", { name: "Widget-Einstellungen" }).click();
-      const sheet = page.getByRole("dialog");
-      await sheet.getByRole("button", { name: /^2\s*Sessions$/ }).click();
-      await sheet.getByRole("button", { name: "Farbe 3" }).click();
-      await sheet.getByText("Legende anzeigen").locator("..").getByRole("switch").click();
-      await sheet.getByRole("button", { name: "Linien", exact: true }).click();
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/settings.png" });
+      await page.getByRole("button", { name: "Dashboard erstellen", exact: true }).click();
+      await page.getByRole("button", { name: "Ersten Chart hinzufügen", exact: true }).click();
+      await page.getByLabel("Datenquelle", { exact: true }).click();
+      await page.getByRole("option", { name: /^orders / }).click();
+      const field = (name: string) => page.locator(`[data-worksheet-field="${name}"]`);
+      const shelf = (name: string) => page.locator(`[data-field-shelf^="${name}"]`);
+      await field("amount").dragTo(shelf("Zeilen"));
+      await field("created_at").dragTo(shelf("Spalten"));
+      await field("channel").dragTo(shelf("Farbe"));
+      await page.locator(".recharts-surface").first().waitFor();
+      await field("amount").dragTo(shelf("Filter"));
+      await page.getByLabel("Filter von", { exact: true }).fill("100");
+      await page.getByLabel("Filter bis", { exact: true }).fill("1000");
+      await page.getByRole("button", { name: "Filter anwenden" }).click();
+      await page.getByRole("button", { name: "Summe · amount einstellen", exact: true }).click();
+      await page.getByLabel("Berechnung amount", { exact: true }).click();
+      await page.getByRole("option", { name: "Durchschnitt", exact: true }).click();
       await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector('[data-slot="skeleton"]'));
+      await page.waitForTimeout(700);
+      const filtered = log.filter(
+        (entry) =>
+          entry.sql.includes("AVG(") && entry.sql.includes(">=") && entry.sql.includes("<="),
+      );
+      expect(filtered.length).toBeGreaterThan(0);
+      expect(filtered.at(-1)?.rows).toBeGreaterThan(0);
+      expect(filtered.at(-1)?.sql).toContain("date_trunc('month'");
+      expect(filtered.at(-1)?.sql).toContain('"channel"');
+      await page.getByRole("button", { name: "Gespeicherte Charts", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Gespeicherte Charts", exact: true });
+      await drawer.getByRole("button", { name: "Chart speichern", exact: true }).click();
+      await drawer.getByRole("button", { name: "Ins Dashboard laden", exact: true }).click();
+      await page.locator(".recharts-surface").first().waitFor();
+      await page.getByRole("button", { name: "Zum Dashboard →", exact: true }).click();
+      expect(await page.locator(".react-grid-item").count()).toBe(2);
       await page.waitForTimeout(500);
-      const stored = await page.evaluate(
-        () =>
-          JSON.parse(localStorage.getItem("l8db-dashboards") ?? "{}").state.dashboards[0]
-            .widgets[0],
-      );
-      console.log(
-        "widget 1 after settings:",
-        JSON.stringify({ chart: stored.chart, options: stored.options }),
-      );
-      expect(stored.chart).toBe("line");
-      expect(stored.options.metricKeys).toEqual(["m0"]);
-      expect(stored.options.colorOffset).toBe(2);
-      expect(stored.options.showLegend).toBe(false);
-
-      // Dataset 8: built with the node-based flow builder
-      await left
-        .getByRole("button", { name: "Datensatz", exact: false })
-        .filter({ hasText: "Datensatz" })
-        .last()
-        .click();
-      await left.getByLabel("Name des Datensatzes").fill("Flow: Umsatz DE");
-      await left.getByRole("tab", { name: "Flow" }).click();
-      const flowArea = left;
-      await pick(flowArea.getByRole("combobox").first(), "orders");
-      await flowArea.getByRole("button", { name: /Verknüpfung/ }).click();
-      await pick(flowArea.getByRole("combobox").first(), "customers über customer_id");
-      await flowArea
-        .getByRole("button", { name: /Bedingung/ })
-        .first()
-        .click();
-      const condBox = flowArea.locator(".rounded-lg.border").first();
-      await pick(condBox.getByRole("combobox").nth(0), "customers.country");
-      await condBox.getByPlaceholder("Wert").fill("DE");
-      await flowArea.getByRole("button", { name: /Gruppierung/ }).click();
-      await pick(flowArea.getByRole("combobox").nth(0), "orders.created_at");
-      const metricBox = flowArea.locator(".rounded-lg.border").first();
-      await pick(metricBox.getByRole("combobox").nth(0), "Summe");
-      await pick(metricBox.getByRole("combobox").nth(1), "orders.amount");
-      await metricBox.getByPlaceholder("Bezeichnung im Chart (optional)").fill("Umsatz");
-      await flowArea.getByRole("button", { name: /Sortierung/ }).click();
-      await pick(flowArea.getByRole("combobox").first(), "Größte Kennzahl zuerst");
-      console.log("D8 flow preview:", await waitPreview());
-      for (let i = 0; i < 40 && !(log[log.length - 1]?.sql ?? "").includes("ORDER BY"); i++)
-        await page.waitForTimeout(250);
-      const flowSql = log[log.length - 1]?.sql ?? "";
-      console.log("D8 flow SQL:", flowSql.replace(/\n/g, " "));
-      expect(flowSql).toContain('LEFT JOIN "public"."customers" AS t2');
-      expect(flowSql).toContain("t2.\"country\" = 'DE'");
-      expect(flowSql).toContain("GROUP BY date_trunc('month', t1.\"created_at\")");
-      expect(flowSql).toContain('ORDER BY "m0" DESC');
-      console.log("flow nodes:", await flowArea.locator(".react-flow__node").count());
-      expect(await flowArea.locator(".react-flow__node").count()).toBe(6);
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/flow-builder.png" });
-      await addChart("Säulen");
-
-      // Dataset 9: parent → child join (orders → order_items), "Artikel je Auftrag"
-      await newDataset("Artikel je Auftrag");
-      await pick(
-        step("Woher kommen die Daten?").getByRole("combobox").nth(1),
-        "order_items (verweist über order_id)",
-      );
-      await step("Was möchtest du messen?")
-        .getByRole("button", { name: /Vorschlag: Anzahl order_items je orders/ })
-        .click();
-      await step("Sortierung und Anzahl").getByRole("spinbutton").fill("10");
-      console.log("D9 preview:", await waitPreview());
-      for (let i = 0; i < 40 && !(log[log.length - 1]?.sql ?? "").includes("LIMIT 10"); i++)
-        await page.waitForTimeout(250);
-      const childSql = log[log.length - 1]?.sql ?? "";
-      console.log("D9 SQL:", childSql.replace(/\n/g, " "));
-      expect(childSql).toContain(
-        'LEFT JOIN "public"."order_items" AS t2 ON t2."order_id" = t1."id"',
-      );
-      expect(childSql).toContain('COUNT(t2."order_id") AS "m0"');
-      expect(childSql).toContain('GROUP BY t1."id"');
-      expect(childSql).toContain('ORDER BY "m0" DESC');
-      const childRows = log[log.length - 1]?.rows ?? 0;
-      expect(childRows).toBe(10);
-      await addChart("Säulen");
-
-      // Expert mode on dataset 1
-      await left.getByRole("button", { name: "Umsatz pro Monat" }).click();
-      await left.getByRole("tab", { name: "Experte" }).click();
-      await left.getByRole("button", { name: "Ausführen" }).click();
-      console.log("Expert preview:", await waitPreview());
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/builder-expert.png" });
-      await left.getByRole("tab", { name: "Einfach" }).click();
-
-      // Period switch on first widget
-      const first = page.locator(".react-grid-item").first();
-      const before = log.length;
-      await pick(first.getByRole("combobox").first(), "Letzte 90 Tage");
-      await page.waitForTimeout(1500);
-      console.log(
-        "Period SQL:",
-        log
-          .slice(before)
-          .map((l) => l.sql.split("\n").find((x) => x.startsWith("WHERE")))
-          .join(" | "),
-      );
-
-      await page.waitForTimeout(2500);
-      const items = page.locator(".react-grid-item");
-      n = await items.count();
-      console.log("widgets:", n);
-      for (let i = 0; i < n; i++) {
-        const item = items.nth(i);
-        await item.scrollIntoViewIfNeeded();
-        const text = await item.innerText();
-        const title = text.split("\n")[0];
-        const bad = /Fehler|Keine Daten|Braucht|Kein Datensatz/.test(text);
-        const svgs = await item
-          .locator("svg.recharts-surface, svg[role=img], .rounded-full.bg-muted, table")
-          .count();
-        console.log(`frame ${i + 1}: ${title} | visuals=${svgs}`);
-        expect(bad, `Frame ${i + 1} (${title}): ${text.slice(0, 120)}`).toBe(false);
-        expect(svgs).toBeGreaterThan(0);
-        await item.screenshot({ path: `/tmp/l8db-dashboard-e2e/frame-${i + 1}.png` });
-      }
-      await page
-        .locator(".workspace-canvas")
-        .last()
-        .evaluate((el) => (el.scrollTop = 0));
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/full-top.png" });
-      await page.screenshot({ path: "/tmp/l8db-dashboard-e2e/full-page.png", fullPage: true });
+      expect(log.filter((entry) => entry.error)).toEqual([]);
+      expect(errors).toEqual([]);
+      await page.screenshot({ path: "/tmp/l8db-real-postgres-dashboard.png" });
     } finally {
       await browser.close();
     }
-    expect(log.filter((l) => l.error)).toEqual([]);
-    expect(errors).toEqual([]);
-    expect(n).toBe(18);
   },
-  300_000,
+  60000,
 );

@@ -48,7 +48,7 @@ describe("buildSelectSql", () => {
     expect(sql).toBe(
       'SELECT "id", "name"\n' +
         'FROM "public"."users"\n' +
-        `WHERE "name"::text ILIKE '%o''x%' AND "age" >= 18 AND "deleted_at" IS NULL\n` +
+        `WHERE "name"::text ILIKE '%o''x%' ESCAPE '!' AND "age" >= 18 AND "deleted_at" IS NULL\n` +
         'ORDER BY "name" DESC\n' +
         "LIMIT 50;",
     );
@@ -136,7 +136,7 @@ describe("compileBuilderCondition", () => {
   test("escaped Literale und LIKE-Sonderzeichen", () => {
     expect(compileBuilderCondition('"a"', "eq", "o'x")).toBe(`"a" = 'o''x'`);
     expect(compileBuilderCondition('"a"', "startsWith", "50%")).toBe(
-      `"a"::text ILIKE '50\\%%'`,
+      `"a"::text ILIKE '50!%%' ESCAPE '!'`,
     );
     expect(compileBuilderCondition('"a"', "isNotNull", "")).toBe('"a" IS NOT NULL');
   });

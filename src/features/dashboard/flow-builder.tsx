@@ -27,6 +27,11 @@ import {
   XIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { IconButton } from "@/components/icon-button";
+import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
+import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { useSettingsStore } from "@/lib/settings";
+import type { FilterKind } from "@/lib/sql-filter";
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +75,7 @@ import {
 import { useActiveSchema } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
 import { useTablesQuery, useViewsQuery } from "@/lib/queries";
-import { OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
+import { filterOperatorLabel, operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 import { useRelations, useTablesColumns } from "./use-dataset-query";
 
@@ -100,7 +105,7 @@ interface ColumnOpt {
   type: string;
 }
 
-function summary(node: FlowNode, chain: FlowNode[]): string {
+function summary(node: FlowNode, chain: FlowNode[], translated: boolean, kind: FilterKind): string {
   const d = node.data;
   const label = (ref: string) => {
     const { nodeId, column } = splitRef(ref);
@@ -118,10 +123,7 @@ function summary(node: FlowNode, chain: FlowNode[]): string {
       const active = d.conditions.filter((c) => c.ref);
       return active.length
         ? active
-            .map(
-              (c) =>
-                `${label(c.ref)} ${OPERATORS.find((o) => o.key === c.operator)?.label ?? c.operator}`,
-            )
+            .map((c) => `${label(c.ref)} ${filterOperatorLabel(c.operator, translated, kind)}`)
             .join(", ")
         : "Keine Bedingung";
     }
@@ -160,7 +162,9 @@ function StepNodeView({ data, selected }: NodeProps<StepNode>) {
           </div>
         </div>
         {data.onRemove && (
-          <button
+          <IconButton
+            variant="ghost"
+            size="icon-xs"
             type="button"
             aria-label="Knoten entfernen"
             onClick={(e) => {
@@ -170,7 +174,7 @@ function StepNodeView({ data, selected }: NodeProps<StepNode>) {
             className="nodrag rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <XIcon className="size-3" />
-          </button>
+          </IconButton>
         )}
       </div>
       {type !== "output" && (
@@ -405,13 +409,19 @@ function NodeConfig({
                   onChange({
                     ...d,
                     conditions: d.conditions.map((x) =>
-                      x.id === c.id ? { ...x, ref: ref ?? "" } : x,
+                      x.id === c.id
+                        ? {
+                            ...x,
+                            ref: ref ?? "",
+                            dataType: columns.find((entry) => entry.ref === ref)?.type,
+                          }
+                        : x,
                     ),
                   })
                 }
                 columns={columns}
               />
-              <Button
+              <IconButton
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Bedingung entfernen"
@@ -420,39 +430,33 @@ function NodeConfig({
                 }
               >
                 <XIcon />
-              </Button>
+              </IconButton>
               <div className="col-span-2 flex gap-1.5">
-                <Select
-                  value={c.operator}
-                  onValueChange={(operator) =>
+                <FilterOperatorSelect
+                  operator={c.operator}
+                  value={c.value}
+                  onChange={(operator, value) =>
                     onChange({
                       ...d,
-                      conditions: d.conditions.map((x) => (x.id === c.id ? { ...x, operator } : x)),
+                      conditions: d.conditions.map((x) =>
+                        x.id === c.id ? { ...x, operator, value } : x,
+                      ),
                     })
                   }
-                >
-                  <SelectTrigger size="sm" className="h-8 flex-1 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {OPERATORS.map((op) => (
-                      <SelectItem key={op.key} value={op.key}>
-                        {op.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  className="h-8 flex-1 text-xs"
+                  size="sm"
+                />
                 {operatorNeedsValue(c.operator) && (
-                  <Input
+                  <FilterValueInput
+                    key={c.operator}
+                    operator={c.operator}
                     className="h-8 flex-1 text-xs"
                     placeholder="Wert"
                     value={c.value}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       onChange({
                         ...d,
-                        conditions: d.conditions.map((x) =>
-                          x.id === c.id ? { ...x, value: e.target.value } : x,
-                        ),
+                        conditions: d.conditions.map((x) => (x.id === c.id ? { ...x, value } : x)),
                       })
                     }
                   />
@@ -557,7 +561,7 @@ function NodeConfig({
                       </SelectContent>
                     </Select>
                     {d.metrics.length > 1 && (
-                      <Button
+                      <IconButton
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Kennzahl entfernen"
@@ -566,7 +570,7 @@ function NodeConfig({
                         }
                       >
                         <XIcon />
-                      </Button>
+                      </IconButton>
                     )}
                   </div>
                   {m.agg !== "count" && (
@@ -714,6 +718,8 @@ function FlowCanvas({
   dataset: Dataset;
   onChange: (patch: Partial<Dataset>) => void;
 }) {
+  const translatedOperators = useSettingsStore((state) => state.translateFilterOperators);
+  const kind = useActiveConnection()?.kind;
   const flow = dataset.flow ?? defaultFlow();
   const setFlow = (next: FlowGraph) => onChange({ flow: next });
   const chain = useMemo(() => flowChain(flow), [flow]);
@@ -750,7 +756,7 @@ function FlowCanvas({
     selected: n.id === selected?.id,
     data: {
       node: n,
-      text: summary(n, chain),
+      text: summary(n, chain, translatedOperators, kind),
       onRemove:
         n.data.type === "source" || n.data.type === "output"
           ? undefined

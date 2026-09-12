@@ -1,5 +1,5 @@
 import type { ForeignKeyInfo } from "@/lib/db";
-import { type FilterKind, quoteIdent, textMatch } from "@/lib/sql-filter";
+import { compileContentFilter, type FilterKind } from "@/lib/sql-filter";
 
 export type FkTarget = {
   schema: string;
@@ -67,11 +67,9 @@ export function buildFkSearchFilter(
 ): string {
   const term = search.trim();
   if (term === "") return "";
-  const pattern = escapeSqlLiteral(`%${escapeLikePattern(term)}%`);
-  const columns = [keyColumn, ...labelColumns.filter((col) => col !== keyColumn)];
-  const conditions = columns.map((col) => textMatch(quoteIdent(col, kind), pattern, kind));
-  if (conditions.length === 0) return "";
-  return `(${conditions.join(" OR ")})`;
+  const columns = [...new Set([keyColumn, ...labelColumns])];
+  const filter = compileContentFilter(columns, term, kind);
+  return filter ? (kind === "mongodb" ? filter : `(${filter})`) : "";
 }
 
 export function fkPageOffset(page: number, pageSize = FK_LOOKUP_PAGE_SIZE): number {

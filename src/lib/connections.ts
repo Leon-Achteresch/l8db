@@ -99,6 +99,7 @@ interface ConnectionsState {
   activeId: string | null;
   favoriteServerKeys: string[];
   serverOrder: string[];
+  collapsedServerKeys: string[];
   addConnection: (input: ConnectionInput) => SavedConnection;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
@@ -108,6 +109,7 @@ interface ConnectionsState {
   setActiveId: (id: string | null) => void;
   toggleServerFavorite: (key: string) => void;
   setServerOrder: (keys: string[]) => void;
+  setServerCollapsed: (key: string, collapsed: boolean) => void;
 }
 
 export function createConnectionId(): string {
@@ -171,6 +173,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
       activeId: null,
       favoriteServerKeys: [],
       serverOrder: [],
+      collapsedServerKeys: [],
       addConnection: (input) => {
         const connection: SavedConnection = { ...input, id: createId() };
         set((state) => ({
@@ -230,6 +233,12 @@ export const useConnectionsStore = create<ConnectionsState>()(
             : [...state.favoriteServerKeys, key],
         })),
       setServerOrder: (keys) => set({ serverOrder: keys }),
+      setServerCollapsed: (key, collapsed) =>
+        set((state) => ({
+          collapsedServerKeys: collapsed
+            ? [...new Set([...state.collapsedServerKeys, key])]
+            : state.collapsedServerKeys.filter((entry) => entry !== key),
+        })),
     }),
     {
       name: "l8db.connections",
@@ -239,6 +248,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
         activeId: isMainWindow ? state.activeId : readStoredActiveId(),
         favoriteServerKeys: state.favoriteServerKeys,
         serverOrder: state.serverOrder,
+        collapsedServerKeys: state.collapsedServerKeys,
       }),
     },
   ),

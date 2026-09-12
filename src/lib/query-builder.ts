@@ -15,6 +15,7 @@ export interface BuilderCondition {
   column: string;
   operator: string;
   value: string;
+  dataType?: string;
 }
 
 export interface BuilderOrder {
@@ -98,8 +99,9 @@ export function compileBuilderCondition(
   operator: string,
   value: string,
   kind?: FilterKind,
+  dataType?: string,
 ) {
-  return compileConditionExpression(columnExpression, operator, value, kind);
+  return compileConditionExpression(columnExpression, operator, value, kind, dataType);
 }
 
 function qualifiedTable(
@@ -156,6 +158,7 @@ export function buildSelectSql(state: QueryBuilderState): string {
         condition.operator,
         condition.value,
         state.kind,
+        condition.dataType,
       ),
     )
     .filter((part): part is string => part !== null);
@@ -179,6 +182,7 @@ export function buildSelectSql(state: QueryBuilderState): string {
 }
 
 export interface ColumnOption {
+  dataType?: string;
   value: string;
   label: string;
   source: QuerySource;
