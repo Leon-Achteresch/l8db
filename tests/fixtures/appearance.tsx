@@ -4,6 +4,7 @@ import { Table2 } from "lucide-react";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   Dialog,
   DialogContent,
@@ -75,10 +76,30 @@ function App() {
                 <SidebarWindow count={3000}>
                   {(index) => (
                     <SidebarMenuItem key={index} data-index={index}>
-                      <SidebarMenuButton>
-                        <Table2 />
-                        <span>ARTIKEL_{index}</span>
-                      </SidebarMenuButton>
+                      {index % 3 === 0 ? (
+                        <SidebarMenuButton>
+                          <Table2 />
+                          <span>ARTIKEL_{index}</span>
+                        </SidebarMenuButton>
+                      ) : (
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <SidebarMenuButton asChild={index % 3 === 1}>
+                              {index % 3 === 1 ? (
+                                <a href={`#artikel-${index}`}>
+                                  <Table2 />
+                                  <span>ARTIKEL_{index}</span>
+                                </a>
+                              ) : (
+                                <>
+                                  <Table2 />
+                                  <span>ARTIKEL_{index}</span>
+                                </>
+                              )}
+                            </SidebarMenuButton>
+                          </ContextMenuTrigger>
+                        </ContextMenu>
+                      )}
                     </SidebarMenuItem>
                   )}
                 </SidebarWindow>

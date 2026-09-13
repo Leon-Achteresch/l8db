@@ -33,7 +33,7 @@ function reset() {
   storage.clear();
   useConnectionsStore.setState({ connections: [], activeId: null });
   useTableTabs.setState({ tabs: [], tabsByConnection: {}, queryCounter: 0 });
-  useSplitView.setState({ panes: [], focusedPane: 0, byConnection: {} });
+  useSplitView.setState({ panes: [], focusedPane: 0, byConnection: {}, orientation: "horizontal" });
 }
 
 beforeEach(() => {
@@ -129,6 +129,25 @@ describe("split view", () => {
 
     useConnectionsStore.getState().setActiveId(a.id);
     expect(useSplitView.getState().panes).toEqual([users, null]);
+  });
+
+  test("Ausrichtung bleibt beim Tauschen, Rehydrieren und Verbindungswechsel erhalten", async () => {
+    const a = addConnection("a");
+    const b = addConnection("b");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    useSplitView.getState().addPane(users);
+    useSplitView.getState().setOrientation("vertical");
+    useSplitView.getState().swapPanes(0, 1);
+    await useSplitView.persist.rehydrate();
+    expect(useSplitView.getState().orientation).toBe("vertical");
+    expect(useSplitView.getState().panes).toEqual([null, users]);
+    useConnectionsStore.getState().setActiveId(b.id);
+    expect(useSplitView.getState().orientation).toBe("horizontal");
+    useConnectionsStore.getState().setActiveId(a.id);
+    expect(useSplitView.getState().orientation).toBe("vertical");
+    expect(useSplitView.getState().panes).toHaveLength(2);
   });
 
   test("setPane legt Tab per Drop in ein Pane und tauscht Duplikate", () => {

@@ -155,3 +155,9 @@ describe("inlineBindValues", () => {
     expect(sql).toBe("SELECT * FROM t WHERE a = 'O''Reilly' AND b = 42 AND c = NULL AND d = NULL");
   });
 });
+
+
+test("Oracle bind queries use native parameters without PostgreSQL casts", () => {
+  const result = buildParameterizedQuery("SELECT * FROM T WHERE REF = :ref", { ref: { type: "int", value: "42" } }, "oracle");
+  expect(result).toEqual({ sql: "SELECT * FROM T WHERE REF = $1", values: ["42"] });
+});

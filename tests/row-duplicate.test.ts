@@ -45,14 +45,10 @@ describe("buildDuplicatePrefill", () => {
   });
 
   test("markiert Primärschlüsselspalten ohne Default und behält deren Wert", () => {
-    const prefill = buildDuplicatePrefill(
-      ["code", "label"],
-      { code: "AB", label: "x" },
-      [
-        { name: "code", is_primary_key: true, column_default: null },
-        { name: "label", is_primary_key: false, column_default: null },
-      ],
-    );
+    const prefill = buildDuplicatePrefill(["code", "label"], { code: "AB", label: "x" }, [
+      { name: "code", is_primary_key: true, column_default: null },
+      { name: "label", is_primary_key: false, column_default: null },
+    ]);
     expect(prefill.code).toEqual({
       mode: "value",
       value: "AB",
@@ -73,16 +69,21 @@ describe("buildDuplicatePrefill", () => {
   });
 
   test("überspringt explizit generierte Spalten und wandelt Nicht-Strings", () => {
-    const prefill = buildDuplicatePrefill(
-      ["amount", "calc"],
-      { amount: 5, calc: 10 },
-      [
-        { name: "amount", is_primary_key: false, column_default: null },
-        { name: "calc", is_primary_key: false, column_default: null, is_generated: true },
-      ],
-    );
+    const prefill = buildDuplicatePrefill(["amount", "calc"], { amount: 5, calc: 10 }, [
+      { name: "amount", is_primary_key: false, column_default: null },
+      { name: "calc", is_primary_key: false, column_default: null, is_generated: true },
+    ]);
     expect(prefill.calc).toBeUndefined();
     expect(prefill.amount.value).toBe("5");
+  });
+
+  test("erhält JSON-Objekte und Arrays als bearbeitbare JSON-Werte", () => {
+    const prefill = buildDuplicatePrefill(["payload", "tags"], {
+      payload: { enabled: true, count: 2 },
+      tags: ["a", "b"],
+    });
+    expect(JSON.parse(prefill.payload.value)).toEqual({ enabled: true, count: 2 });
+    expect(JSON.parse(prefill.tags.value)).toEqual(["a", "b"]);
   });
 
   test("funktioniert ohne Spaltenmetadaten", () => {
@@ -100,9 +101,7 @@ describe("buildDuplicatePrefill", () => {
 
 describe("describeInsertError", () => {
   test("erklärt Unique-Verletzungen", () => {
-    const message = describeInsertError(
-      'duplicate key value violates unique constraint "t_pkey"',
-    );
+    const message = describeInsertError('duplicate key value violates unique constraint "t_pkey"');
     expect(message).toContain("Konflikt");
     expect(message).toContain("t_pkey");
   });
