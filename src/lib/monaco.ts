@@ -1,13 +1,12 @@
-import "monaco-editor/esm/vs/editor/edcore.main";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
-import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
+import * as monaco from "monaco-editor/editor/editor.api";
+import "monaco-editor/languages/definitions/sql/register";
 import {
   conf as sqlConf,
   language as sqlLanguage,
-} from "monaco-editor/esm/vs/basic-languages/sql/sql";
-import "monaco-editor/esm/vs/language/json/monaco.contribution";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+} from "monaco-editor/languages/definitions/sql/sql";
+import "monaco-editor/language/json/monaco.contribution";
+import EditorWorker from "monaco-editor/editor/editor.worker?worker";
+import JsonWorker from "monaco-editor/language/json/json.worker?worker";
 import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";

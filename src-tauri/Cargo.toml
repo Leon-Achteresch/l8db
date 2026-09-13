@@ -27,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
 bytes = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 postgres-native-tls = "0.5"
@@ -76,4 +76,3 @@ tiberius = { version = "0.12", default-features = false, features = ["tds73", "n
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
-
