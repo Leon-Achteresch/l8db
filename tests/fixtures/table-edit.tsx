@@ -42,11 +42,36 @@ function App() {
         onSortingChange={() => {}}
         currentSchema="public"
         currentTable="customers"
+        columnDetails={[
+          {
+            name: "id",
+            data_type: "integer",
+            is_nullable: false,
+            column_default: "nextval('customers_id_seq')",
+            is_primary_key: true,
+            ordinal_position: 1,
+            character_maximum_length: null,
+          },
+        ]}
+        onInsertRow={async (values) => {
+          window.testInserts.push(values);
+          if (values.email === "conflict@example.test") {
+            throw new Error('duplicate key value violates unique constraint "customers_email_key"');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          setRows((prev) => [
+            ...prev,
+            {
+              __ctid__: `(0,${prev.length + 1})`,
+              id: String(prev.length + 1),
+              email: values.email ?? "",
+              city: values.city ?? "",
+            },
+          ]);
+        }}
         onSaveRow={async (ctid, updates) => {
           window.testSaves.push({ ctid, updates });
-          setRows((prev) =>
-            prev.map((r) => (r.__ctid__ === ctid ? { ...r, ...updates } : r)),
-          );
+          setRows((prev) => prev.map((r) => (r.__ctid__ === ctid ? { ...r, ...updates } : r)));
         }}
       />
     </div>
@@ -54,6 +79,7 @@ function App() {
 }
 
 window.testSaves = [];
+window.testInserts = [];
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider attribute="class" defaultTheme="dark">
     <HotkeysProvider>

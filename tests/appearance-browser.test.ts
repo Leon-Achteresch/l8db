@@ -263,6 +263,23 @@ for (const engine of [chromium, webkit]) {
             expect(
               await button.evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize)),
             ).toBeCloseTo((14 * scale) / 100, 1);
+            const rows = await page.getByTestId("sidebar-scroll").evaluate((node) =>
+              [...node.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')].map(
+                (row) => ({
+                  height: row.getBoundingClientRect().height,
+                  font: Number.parseFloat(getComputedStyle(row).fontSize),
+                  pitch: row.parentElement!.nextElementSibling
+                    ? row.parentElement!.nextElementSibling.getBoundingClientRect().top -
+                      row.parentElement!.getBoundingClientRect().top
+                    : null,
+                }),
+              ),
+            );
+            for (const row of rows) {
+              expect(row.height).toBeCloseTo((20 * scale) / 100, 1);
+              expect(row.font).toBeCloseTo((14 * scale) / 100, 1);
+              if (row.pitch !== null) expect(row.pitch).toBeCloseTo((20 * scale) / 100, 1);
+            }
             for (const fraction of [0, 0.5, 1]) {
               await page.getByTestId("sidebar-scroll").evaluate((node, value) => {
                 node.scrollTop = (node.scrollHeight - node.clientHeight) * value;

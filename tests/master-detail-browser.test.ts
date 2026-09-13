@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { chromium } from "playwright";
 import { seedApp } from "./fixtures/perf-app";
+import { replaceSql } from "./fixtures/sql-editor";
 
 for (const emptyDetail of [false, true]) {
   test.skipIf(!process.env.L8DB_MASTER_DETAIL_BROWSER_URL)(
@@ -72,10 +73,8 @@ for (const emptyDetail of [false, true]) {
         await page.getByRole("dialog").locator(".monaco-editor[role=code]").waitFor();
         const editedSql =
           'SELECT * FROM "public"."table_0001" WHERE "id"::text = :master::text LIMIT 25';
-        const editor = page.getByRole("dialog").locator(".monaco-editor .view-lines");
-        await editor.click({ position: { x: 30, y: 10 } });
-        await page.keyboard.press("ControlOrMeta+a");
-        await page.keyboard.type(editedSql);
+        const editor = page.getByRole("dialog").locator(".monaco-editor");
+        await replaceSql(page, editor, editedSql);
         await page.screenshot({ path: "/tmp/l8db-master-detail-editor.png" });
         await page.getByRole("button", { name: "Speichern & anwenden" }).click();
         await page.getByText("detail-1", { exact: true }).waitFor();
@@ -106,6 +105,18 @@ for (const emptyDetail of [false, true]) {
               ).length,
           ),
         ).toBe(0);
+        await link.click();
+        await page.getByText("Gespeicherte SQL-Vorlagen", { exact: true }).click();
+        await page.getByRole("button", { name: "SQL laden", exact: true }).click();
+        await page.getByRole("button", { name: "Speichern & anwenden" }).click();
+        await page.getByText("detail-4", { exact: true }).waitFor();
+        const restored = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("l8db.master-detail") ?? "{}"),
+        );
+        expect(Object.values(restored.state.scripts)).toEqual([editedSql]);
+        expect(Object.values(restored.state.savedScripts)).toEqual([
+          { master: "table_0000", detail: emptyDetail ? "Detail" : "table_0001", sql: editedSql },
+        ]);
         expect(errors).toEqual([]);
       } catch (error) {
         console.error(errors);
