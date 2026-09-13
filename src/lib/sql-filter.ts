@@ -336,8 +336,8 @@ export function compileFilterConditions(
           condition.operator,
           condition.value,
           kind,
-          columnDetails?.find((column) => column.name === condition.column)?.data_type ??
-            condition.dataType,
+          condition.dataType ??
+            columnDetails?.find((column) => column.name === condition.column)?.data_type,
         ),
       )
       .filter((part): part is string => part !== null),

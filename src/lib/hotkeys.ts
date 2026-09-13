@@ -293,6 +293,16 @@ export const HOTKEY_COMMANDS: HotkeyCommand[] = [
     reference: "VS Code: Symbol suchen",
   },
   {
+    id: "query.cancel",
+    label: "Laufende Abfrage abbrechen",
+    description: "Fordert den Abbruch der laufenden Abfrage an",
+    routeScope: "query",
+    origin: "l8db",
+    area: "SQL-Editor",
+    defaultHotkey: "Mod+Shift+Backspace",
+    requiresConnection: true,
+  },
+  {
     id: "query.run",
     routeScope: "query",
     label: "Abfrage ausführen",

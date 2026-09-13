@@ -3,6 +3,7 @@ import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
+import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsAppearance } from "@/features/settings/settings-appearance";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
@@ -47,6 +48,8 @@ export function SettingsGeneralTab() {
         <SettingsTableTabs />
 
         <TourSection />
+
+        <PortableWorkspacePanel />
 
         <SettingsRow
           title="Werkseinstellungen"

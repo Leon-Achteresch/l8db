@@ -6,7 +6,7 @@ import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { commandById, emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
 import { navigateToTab } from "@/lib/tab-navigation";
-import { hasUnexecutedQueryChanges, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function AppHotkeys() {
@@ -50,7 +50,7 @@ export function AppHotkeys() {
     if (!key) return;
     const index = tabs.findIndex((tab) => tabKey(tab) === key);
     const tab = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === key);
-    if (tab?.kind === "query" && hasUnexecutedQueryChanges(tab)) {
+    if (tab?.kind === "query" && queryNeedsCloseConfirmation(tab)) {
       window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: key }));
       return;
     }

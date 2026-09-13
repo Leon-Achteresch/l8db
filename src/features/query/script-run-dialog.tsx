@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,7 +26,8 @@ interface ScriptRunDialogProps {
   statementCount: number;
   mode: ScriptRunMode;
   unterminated: boolean;
-  onConfirm: () => void;
+  onConfirm: (mode: ScriptRunMode, stopOnError: boolean) => void;
+  transactions?: boolean;
 }
 
 export function ScriptRunDialog({
@@ -35,7 +37,16 @@ export function ScriptRunDialog({
   mode,
   unterminated,
   onConfirm,
+  transactions = false,
 }: ScriptRunDialogProps) {
+  const [selectedMode, setSelectedMode] = useState(mode);
+  const [stopOnError, setStopOnError] = useState(true);
+  useEffect(() => {
+    if (open) {
+      setSelectedMode(mode);
+      setStopOnError(true);
+    }
+  }, [open, mode]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -47,15 +58,45 @@ export function ScriptRunDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 text-xs">
-          <p>{SCRIPT_RUN_MODE_TEXT[mode]}</p>
+          <label className="grid gap-2">
+            Transaktion
+            <select
+              aria-label="Skript-Transaktion"
+              className="rounded border bg-background p-2"
+              value={selectedMode}
+              onChange={(event) => setSelectedMode(event.target.value as ScriptRunMode)}
+              disabled={mode === "existing-transaction"}
+            >
+              {mode === "existing-transaction" ? (
+                <option value="existing-transaction">Offene Transaktion verwenden</option>
+              ) : (
+                <>
+                  <option value="autocommit">Autocommit</option>
+                  {transactions && (
+                    <option value="new-transaction">Neue Transaktion, danach prüfen</option>
+                  )}
+                </>
+              )}
+            </select>
+          </label>
+          <p>{SCRIPT_RUN_MODE_TEXT[selectedMode]}</p>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selectedMode !== "autocommit" || stopOnError}
+              disabled={selectedMode !== "autocommit"}
+              onChange={(event) => setStopOnError(event.target.checked)}
+            />
+            Bei Fehler stoppen
+          </label>
           <p>
-            Beim ersten Fehler stoppt der Ablauf; die restlichen Statements bleiben unausgeführt und
-            werden in der Ergebnisliste als solche gekennzeichnet.
+            In einer Transaktion stoppt der Ablauf beim ersten Fehler. Bei Autocommit können Sie das
+            Fortsetzen ausdrücklich wählen.
           </p>
           {unterminated && (
             <p className="text-amber-600 dark:text-amber-400">
-              Das Skript enthält ein nicht abgeschlossenes Literal oder einen offenen Kommentar. Es
-              können nur die davor liegenden Statements ausgeführt werden.
+              Das Skript enthält ein nicht abgeschlossenes Literal oder einen offenen Kommentar.
+              Bitte schließen Sie es vor der Ausführung.
             </p>
           )}
         </div>
@@ -63,7 +104,11 @@ export function ScriptRunDialog({
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Abbrechen
           </Button>
-          <Button size="sm" onClick={onConfirm} disabled={statementCount === 0}>
+          <Button
+            size="sm"
+            onClick={() => onConfirm(selectedMode, selectedMode !== "autocommit" || stopOnError)}
+            disabled={statementCount === 0 || unterminated}
+          >
             Skript ausführen
           </Button>
         </DialogFooter>

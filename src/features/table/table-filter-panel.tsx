@@ -23,12 +23,20 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { FilterExpressionInput } from "@/features/filters/filter-expression-input";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { useActiveConnection } from "@/lib/connections";
 import type { DetailedColumnInfo } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import {
+  normalizeFilterExpressionQuotes,
+  type ParsedFilter,
+  parseFilterExpression,
+} from "@/lib/filter-parser";
+import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { compileFilterConditions, filterSupportsOr, operatorNeedsValue } from "@/lib/sql-filter";
+import type { FilterCondition as Condition } from "@/lib/table-view-state";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -36,13 +44,6 @@ const SqlEditor = lazy(() =>
 
 type FilterMode = "simple" | "sql";
 type Combinator = "AND" | "OR";
-
-interface Condition {
-  id: string;
-  column: string;
-  operator: string;
-  value: string;
-}
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -56,6 +57,7 @@ function emptyCondition(column = ""): Condition {
 }
 
 interface TableFilterPanelProps {
+  stateKey?: string;
   columns: string[];
   columnDetails?: DetailedColumnInfo[];
   activeFilter: string;
@@ -64,6 +66,7 @@ interface TableFilterPanelProps {
 }
 
 export function TableFilterPanel({
+  stateKey,
   columns,
   columnDetails,
   activeFilter,
@@ -75,11 +78,15 @@ export function TableFilterPanel({
   const json = caps.query_language === "json";
   const redis = caps.query_language === "redis";
   const native = redis;
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<FilterMode>("simple");
-  const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
-  const [combinator, setCombinator] = useState<Combinator>("AND");
-  const [sql, setSql] = useState("");
+  const [open, setOpen] = useTableViewState(stateKey, "filterOpen", false);
+  const [mode, setMode] = useTableViewState(stateKey, "filterMode", "simple");
+  const [conditions, setConditions] = useTableViewState(stateKey, "filterConditions", () => [
+    emptyCondition(),
+  ]);
+  const [combinator, setCombinator] = useTableViewState(stateKey, "filterCombinator", "AND");
+  const [sql, setSql] = useTableViewState(stateKey, "filterSql", "");
+  const [parseError, setParseError] = useState("");
+  const [badgeDraft, setBadgeDraft] = useState<string | null>(null);
 
   const compiledSimple = useMemo(
     () => compileFilterConditions(conditions, combinator, kind, columnDetails),
@@ -107,22 +114,50 @@ export function TableFilterPanel({
     });
   };
 
+  const importFilter = (parsed: ParsedFilter) => {
+    setConditions(parsed.conditions.map((condition) => ({ ...condition, id: createId() })));
+    setCombinator(parsed.combinator);
+    setParseError("");
+  };
+
   const switchMode = (next: FilterMode) => {
-    if (next === "sql" && sql.trim() === "" && compiledSimple !== "") {
+    if (next === mode) return;
+    setParseError("");
+    if (next === "simple" && !json && sql.trim() !== compiledSimple) {
+      if (sql.trim()) {
+        try {
+          importFilter(parseFilterExpression(sql, columns, kind));
+        } catch (cause) {
+          setParseError(
+            cause instanceof Error ? cause.message : "Filter konnte nicht gelesen werden.",
+          );
+          return;
+        }
+      } else {
+        setConditions([emptyCondition()]);
+        setCombinator("AND");
+      }
+    }
+    if (next === "sql" && (!json || !sql.trim())) {
       setSql(compiledSimple);
     }
     setMode(next);
   };
 
   const apply = () => {
-    onApply(draft, native || mode === "sql");
+    const next =
+      !native && !json && mode === "sql" ? normalizeFilterExpressionQuotes(draft) : draft;
+    if (next !== draft) setSql(next);
+    onApply(next, native || mode === "sql");
     setOpen(true);
   };
 
   const reset = () => {
+    setBadgeDraft(null);
     setConditions([emptyCondition()]);
     setCombinator("AND");
     setSql("");
+    setParseError("");
     onApply("", false);
   };
 
@@ -147,9 +182,57 @@ export function TableFilterPanel({
 
         {hasActiveFilter ? (
           <Badge variant="secondary" className="min-w-0 gap-1 font-normal">
-            <span className="max-w-[50vw] truncate font-mono text-xs sm:max-w-80">
-              {activeFilter}
-            </span>
+            {badgeDraft !== null ? (
+              <input
+                ref={(input) => input?.focus()}
+                aria-label="Aktiven Filter bearbeiten"
+                value={badgeDraft}
+                onChange={(event) => setBadgeDraft(event.target.value)}
+                onBlur={() => setBadgeDraft(null)}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setBadgeDraft(null);
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    const next =
+                      native || json
+                        ? badgeDraft.trim()
+                        : normalizeFilterExpressionQuotes(badgeDraft.trim());
+                    setBadgeDraft(null);
+                    if (next === activeFilter.trim()) return;
+                    if (!next) {
+                      reset();
+                      return;
+                    }
+                    setSql(next);
+                    setMode("sql");
+                    setParseError("");
+                    onApply(next, true);
+                  }
+                }}
+                style={{ width: `${Math.max(12, badgeDraft.length + 2)}ch` }}
+                className="max-w-[50vw] min-w-0 rounded-sm bg-background px-1 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-80"
+              />
+            ) : (
+              <button
+                type="button"
+                onDoubleClick={() => setBadgeDraft(activeFilter)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setBadgeDraft(activeFilter);
+                  }
+                }}
+                aria-label="Aktiven Filter bearbeiten"
+                title="Doppelklicken zum Bearbeiten"
+                className="max-w-[50vw] cursor-text truncate rounded-sm font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-80"
+              >
+                {activeFilter}
+              </button>
+            )}
             <button
               type="button"
               onClick={reset}
@@ -193,6 +276,12 @@ export function TableFilterPanel({
                 </Tabs>
               )}
 
+              {parseError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {parseError}
+                </p>
+              )}
+
               {redis ? (
                 <Input
                   aria-label="Redis-Key-Pattern"
@@ -214,6 +303,14 @@ export function TableFilterPanel({
                 />
               ) : mode === "simple" ? (
                 <div className="space-y-2">
+                  {!json && (
+                    <FilterExpressionInput
+                      key={stateKey}
+                      columns={columns}
+                      kind={kind}
+                      onImport={importFilter}
+                    />
+                  )}
                   {conditions.map((condition, index) => (
                     <div
                       key={condition.id}
@@ -241,7 +338,7 @@ export function TableFilterPanel({
                       <Select
                         value={condition.column}
                         onValueChange={(value) => {
-                          updateCondition(condition.id, { column: value });
+                          updateCondition(condition.id, { column: value, dataType: undefined });
                           onColumnSelect?.(value);
                         }}
                       >
@@ -322,7 +419,10 @@ export function TableFilterPanel({
                   >
                     <SqlEditor
                       value={sql}
-                      onChange={setSql}
+                      onChange={(value) => {
+                        setSql(value);
+                        setParseError("");
+                      }}
                       onSubmit={apply}
                       columns={columns}
                       placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"

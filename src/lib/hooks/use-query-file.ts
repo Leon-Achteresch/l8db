@@ -62,46 +62,55 @@ export async function detectExternalChange(tabId: string): Promise<boolean> {
   return changed || Boolean(tab.externalChange);
 }
 
-export function useQueryFile(tabId: string) {
-  const saveToFile = useCallback(
-    async (saveAs: boolean): Promise<boolean> => {
-      const tab = findQueryTab(tabId);
-      if (!tab) return false;
-      if (!saveAs && tab.filePath) {
-        const changed = await detectExternalChange(tabId);
-        if (changed) {
-          toast.warning(
-            "Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.",
-          );
-          return false;
-        }
-      }
-      let path = tab.filePath;
-      if (saveAs || !path) {
-        const picked = await save({
-          defaultPath: tab.filePath ?? defaultSqlFileName(tab.title),
-          filters: SQL_FILTERS,
-        });
-        if (!picked) return false;
-        path = picked;
-      }
-      try {
-        await writeTextFile(path, tab.sql);
-      } catch (error) {
-        toast.error(`Datei konnte nicht gespeichert werden: ${errorMessage(error)}`);
+export async function saveQueryTabFile(tabId: string, saveAs = false): Promise<boolean> {
+  try {
+    const tab = findQueryTab(tabId);
+    if (!tab) return false;
+    if (!saveAs && tab.filePath) {
+      const changed = await detectExternalChange(tabId);
+      if (changed) {
+        toast.warning(
+          "Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.",
+        );
         return false;
       }
-      const meta = await readFileMeta(path);
-      const store = useTableTabs.getState();
-      if (path !== tab.filePath) {
-        store.bindQueryTabFile(tabId, { path, title: sqlFileTitle(path), mtime: meta.mtime });
-      } else {
-        store.markQueryTabSaved(tabId, meta.mtime);
-      }
-      return true;
-    },
-    [tabId],
-  );
+    }
+    let path = tab.filePath;
+    if (saveAs || !path) {
+      const picked = await save({
+        defaultPath: tab.filePath ?? defaultSqlFileName(tab.title),
+        filters: SQL_FILTERS,
+      });
+      if (!picked) return false;
+      path = picked;
+    }
+    try {
+      await writeTextFile(path, tab.sql);
+    } catch (error) {
+      toast.error(`Datei konnte nicht gespeichert werden: ${errorMessage(error)}`);
+      return false;
+    }
+    const meta = await readFileMeta(path);
+    const store = useTableTabs.getState();
+    if (path !== tab.filePath) {
+      store.bindQueryTabFile(tabId, {
+        path,
+        title: sqlFileTitle(path),
+        mtime: meta.mtime,
+        savedSql: tab.sql,
+      });
+    } else {
+      store.markQueryTabSaved(tabId, meta.mtime, tab.sql);
+    }
+    return true;
+  } catch (error) {
+    toast.error(`Datei konnte nicht gespeichert werden: ${errorMessage(error)}`);
+    return false;
+  }
+}
+
+export function useQueryFile(tabId: string) {
+  const saveToFile = useCallback((saveAs: boolean) => saveQueryTabFile(tabId, saveAs), [tabId]);
 
   const reloadFromFile = useCallback(async (): Promise<boolean> => {
     const tab = findQueryTab(tabId);

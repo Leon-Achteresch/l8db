@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -38,25 +39,25 @@ export interface SqlObjectEdit {
   apply: () => Promise<void>;
 }
 
-export function useSqlObjectEdit(label: string, source: string): SqlObjectEdit {
+export function useSqlObjectEdit(label: string, source: string, objectKey: string): SqlObjectEdit {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [sql, setSql] = useState("");
+  const [draft, setDraft, clearSavedDraft] = useObjectDraft(objectKey, label, source);
+  const editing = draft !== null;
+  const sql = draft ?? "";
+  const setSql = setDraft;
   const [state, setState] = useState<SqlEditState>({ status: "idle" });
 
   const start = useCallback(() => {
-    setEditing(true);
     setSql(source);
     setState({ status: "idle" });
-  }, [source]);
+  }, [source, setSql]);
 
   const cancel = useCallback(() => {
-    setEditing(false);
-    setSql("");
+    setDraft(null);
     setState({ status: "idle" });
-  }, []);
+  }, [setDraft]);
 
   const check = useCallback(async () => {
     if (!connection) return;
@@ -91,12 +92,11 @@ export function useSqlObjectEdit(label: string, source: string): SqlObjectEdit {
       await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
       await queryClient.invalidateQueries({ queryKey: ["functions"] });
       await queryClient.invalidateQueries({ queryKey: ["procedures"] });
-      setEditing(false);
-      setSql("");
+      clearSavedDraft(sql);
     } catch (e) {
       setState({ status: "error", scope: "apply", message: String(e) });
     }
-  }, [connection, database, label, queryClient, sql]);
+  }, [connection, database, label, queryClient, sql, clearSavedDraft]);
 
   return { editing, sql, setSql, state, start, cancel, check, apply };
 }
@@ -117,7 +117,7 @@ export function SqlEditActions({ edit }: { edit: SqlObjectEdit }) {
     <>
       <Button variant="ghost" size="xs" onClick={edit.cancel} disabled={busy}>
         <UndoIcon data-icon="inline-start" />
-        Abbrechen
+        Entwurf verwerfen
       </Button>
       <Button
         variant="outline"
@@ -154,8 +154,9 @@ export function SqlEditActions({ edit }: { edit: SqlObjectEdit }) {
 export function SqlEditHint() {
   return (
     <div className="border-b bg-amber-500/5 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-      Änderungen sind noch nicht in der Datenbank. <b>Nur prüfen</b> kompiliert testweise und rollt
-      zurück, <b>In Datenbank speichern</b> führt das SQL aus und ersetzt das Objekt dauerhaft.
+      Entwurf lokal gespeichert. Änderungen sind noch nicht in der Datenbank. <b>Nur prüfen</b>{" "}
+      kompiliert testweise und rollt zurück, <b>In Datenbank speichern</b> führt das SQL aus und
+      ersetzt das Objekt dauerhaft.
     </div>
   );
 }

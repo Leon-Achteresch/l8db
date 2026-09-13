@@ -1,10 +1,8 @@
 import {
-  FileText,
   GaugeIcon,
   GitCompare,
   HammerIcon,
   Home,
-  Info,
   LayoutDashboard,
   type LucideIcon,
   Network,
@@ -32,7 +30,5 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
     { title: "Gespeicherte Pläne", url: "/saved-plan", icon: RouteIcon },
-    { title: "Über", url: "/about", icon: Info },
-    { title: "Release Notes", url: "/release-notes", icon: FileText },
   ],
 };

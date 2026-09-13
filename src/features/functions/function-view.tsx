@@ -40,7 +40,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const isInvalid = isFunctionInvalid(invalidSet, schema, name);
-  const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "");
+  const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "", `function:${schema}:${oid}`);
 
   useEffect(() => {
     if (oid) {

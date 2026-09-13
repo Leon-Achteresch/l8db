@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
+import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import type { ToolId } from "@/lib/tool-tabs";
 
 export type TableTab = {
@@ -24,10 +25,14 @@ export type QueryTab = {
   bookmarks?: number[];
   autoRun?: boolean;
 };
-export type QueryFileInfo = { path: string; mtime: number | null };
+export type QueryFileInfo = { path: string; mtime: number | null; savedSql?: string };
 
 export function isQueryTabDirty(tab: QueryTab): boolean {
   return tab.filePath !== undefined && tab.sql !== (tab.savedSql ?? "");
+}
+
+export function queryNeedsCloseConfirmation(tab: QueryTab): boolean {
+  return isQueryTabDirty(tab) || (!tab.filePath && tab.sql.trim().length > 0);
 }
 
 export function hasUnexecutedQueryChanges(tab: QueryTab): boolean {
@@ -99,10 +104,18 @@ function readPersistedActiveConnectionId(): string | null {
   }
 }
 
+export type ClosedTab = Tab & {
+  recoveryId?: string;
+  closedAt?: number;
+  closedConnectionId?: string | null;
+  closedConnectionName?: string;
+  closedDatabase?: string | null;
+};
+
 interface TabsState {
   tabs: Tab[];
   tabsByConnection: Record<string, Tab[]>;
-  recentlyClosed: Tab[];
+  recentlyClosed: ClosedTab[];
   openTab: (tab: Omit<TableTab, "kind">) => void;
   openQueryTab: () => string;
   openQueryTabWithSql: (sql: string, title?: string, autoRun?: boolean) => string;
@@ -122,13 +135,15 @@ interface TabsState {
   closeTabsToRight: (key: string) => void;
   closeAllTabs: () => void;
   reopenLastTab: () => Tab | null;
+  reopenClosedTab: (id: string) => Tab | null;
+  forgetClosedTab: (id: string) => void;
   clearTabsForConnection: (connectionId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
   markQueryTabExecuted: (id: string, sql: string) => void;
   openFileQueryTab: (file: QueryFileInfo & { sql: string; title: string }) => string;
   bindQueryTabFile: (id: string, file: QueryFileInfo & { title: string }) => void;
-  markQueryTabSaved: (id: string, mtime: number | null) => void;
+  markQueryTabSaved: (id: string, mtime: number | null, savedSql?: string) => void;
   setQueryTabExternalChange: (id: string, changed: boolean, mtime?: number | null) => void;
   reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
   toggleQueryBookmark: (id: string, line: number) => void;
@@ -157,11 +172,28 @@ export function nextQueryTitle(tabs: Tab[]): string {
   return `Query ${n}`;
 }
 
-const MAX_RECENTLY_CLOSED = 10;
+const MAX_RECENTLY_CLOSED = 100;
 
-function pushRecentlyClosed(current: Tab[], closed: Tab[]): Tab[] {
+function pushRecentlyClosed(current: ClosedTab[], closed: Tab[]): ClosedTab[] {
   if (closed.length === 0) return current;
-  return [...closed, ...current].slice(0, MAX_RECENTLY_CLOSED);
+  const { connections, activeId } = useConnectionsStore.getState();
+  const connection = connections.find((entry) => entry.id === activeId);
+  const database = activeId
+    ? (useDbSelectionStore.getState().databaseByConnection[activeId] ??
+      (connection ? databaseFromConnectionString(connection.connectionString) : null))
+    : null;
+  return [
+    ...closed.map((tab) => ({
+      ...tab,
+      recoveryId: crypto.randomUUID(),
+      closedAt: Date.now(),
+      closedConnectionId: activeId,
+      closedConnectionName: connection?.name,
+      closedDatabase: database,
+      ...(tab.kind === "query" ? { autoRun: false } : {}),
+    })),
+    ...current,
+  ].slice(0, MAX_RECENTLY_CLOSED);
 }
 
 function storeFor(
@@ -375,21 +407,51 @@ export const useTableTabs = create<TabsState>()(
         })),
 
       reopenLastTab: () => {
+        const next = get().recentlyClosed.find(
+          (entry) => (entry.closedConnectionId ?? null) === useConnectionsStore.getState().activeId,
+        );
+        return next?.recoveryId ? get().reopenClosedTab(next.recoveryId) : null;
+      },
+
+      reopenClosedTab: (id) => {
         const state = get();
-        const [next, ...rest] = state.recentlyClosed;
-        if (!next) return null;
-        const key = tabKey(next);
-        if (state.tabs.some((t) => tabKey(t) === key)) {
-          set({ recentlyClosed: rest });
-          return next;
-        }
-        const restored: Tab = next.kind === "query" ? { ...next, id: next.id } : { ...next };
+        const next = state.recentlyClosed.find((entry) => entry.recoveryId === id);
+        if (!next || (next.closedConnectionId ?? null) !== useConnectionsStore.getState().activeId)
+          return null;
+        const {
+          recoveryId: _id,
+          closedAt: _time,
+          closedConnectionId: _connection,
+          closedConnectionName: _name,
+          closedDatabase: database,
+          ...tab
+        } = next;
+        if (next.closedConnectionId && database)
+          useDbSelectionStore.getState().setDatabase(next.closedConnectionId, database);
+        const restored: Tab = tab.kind === "query" ? { ...tab, autoRun: false } : tab;
+        const existing = state.tabs.find((entry) => tabKey(entry) === tabKey(restored));
+        if (
+          existing?.kind === "query" &&
+          restored.kind === "query" &&
+          existing.sql !== restored.sql
+        )
+          restored.id = crypto.randomUUID();
         set((current) => ({
-          ...storeFor([...current.tabs, restored], current),
-          recentlyClosed: rest,
+          ...storeFor(
+            current.tabs.some((entry) => tabKey(entry) === tabKey(restored))
+              ? current.tabs
+              : [...current.tabs, restored],
+            current,
+          ),
+          recentlyClosed: current.recentlyClosed.filter((entry) => entry.recoveryId !== id),
         }));
         return restored;
       },
+
+      forgetClosedTab: (id) =>
+        set((state) => ({
+          recentlyClosed: state.recentlyClosed.filter((entry) => entry.recoveryId !== id),
+        })),
 
       clearTabsForConnection: (connectionId) =>
         set((state) => {
@@ -456,7 +518,7 @@ export const useTableTabs = create<TabsState>()(
             patchQueryTab(state.tabs, id, {
               filePath: file.path,
               title: file.title,
-              savedSql: tab.sql,
+              savedSql: file.savedSql ?? tab.sql,
               fileMtime: file.mtime,
               externalChange: false,
             }),
@@ -464,13 +526,13 @@ export const useTableTabs = create<TabsState>()(
           );
         }),
 
-      markQueryTabSaved: (id, mtime) =>
+      markQueryTabSaved: (id, mtime, savedSql) =>
         set((state) => {
           const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
           if (!tab || tab.kind !== "query") return state;
           return storeFor(
             patchQueryTab(state.tabs, id, {
-              savedSql: tab.sql,
+              savedSql: savedSql ?? tab.sql,
               fileMtime: mtime,
               externalChange: false,
             }),
@@ -570,6 +632,7 @@ export const useTableTabs = create<TabsState>()(
       },
       partialize: (state) => ({
         tabsByConnection: state.tabsByConnection,
+        recentlyClosed: state.recentlyClosed,
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<TabsState> | undefined;
@@ -577,6 +640,7 @@ export const useTableTabs = create<TabsState>()(
         const key = keyForConnection(useConnectionsStore.getState().activeId);
         return {
           ...currentState,
+          recentlyClosed: stored?.recentlyClosed ?? [],
           tabsByConnection,
           tabs: tabsByConnection[key] ?? [],
         };

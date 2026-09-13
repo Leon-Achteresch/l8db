@@ -79,7 +79,7 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       segmentStart = index;
     }
 
-    if (ch === "-" && sql[index + 1] === "-") {
+    if ((ch === "-" && sql[index + 1] === "-") || (dialect === "mysql" && ch === "#")) {
       const newline = sql.indexOf("\n", index);
       index = newline < 0 ? length : newline + 1;
       continue;
@@ -161,10 +161,11 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       hasCode = true;
       const prev = sql[index - 1];
       const backslashEscapes =
-        dialect !== "oracle" &&
-        (prev === "E" || prev === "e") &&
-        !isWordChar(sql[index - 2]) &&
-        sql[index - 2] !== ".";
+        dialect === "mysql" ||
+        (dialect !== "oracle" &&
+          (prev === "E" || prev === "e") &&
+          !isWordChar(sql[index - 2]) &&
+          sql[index - 2] !== ".");
       index += 1;
       let closed = false;
       while (index < length) {
@@ -191,13 +192,18 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       continue;
     }
 
-    if (ch === '"') {
+    if (ch === '"' || ch === "`" || ch === "[") {
+      const close = ch === "[" ? "]" : ch;
       hasCode = true;
       index += 1;
       let closed = false;
       while (index < length) {
-        if (sql[index] === '"') {
-          if (sql[index + 1] === '"') {
+        if (dialect === "mysql" && sql[index] === "\\") {
+          index += 2;
+          continue;
+        }
+        if (sql[index] === close) {
+          if (sql[index + 1] === close) {
             index += 2;
             continue;
           }

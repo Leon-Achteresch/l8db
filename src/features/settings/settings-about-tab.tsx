@@ -1,4 +1,5 @@
-import { Bug, Check, Copy, ExternalLink, Terminal } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Bug, Check, Copy, ExternalLink, Info, Terminal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,18 @@ export function SettingsAboutTab() {
           Versionsstatus, automatische Aktualisierungen und Systeminformationen.
         </p>
       </div>
+
+      <SettingsRow
+        title="Über l8db"
+        description="Informationen zur App, Funktionen und Technologien."
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/about">
+            <Info className="size-3.5" />
+            <span>Über anzeigen</span>
+          </Link>
+        </Button>
+      </SettingsRow>
 
       <UpdateSection />
 

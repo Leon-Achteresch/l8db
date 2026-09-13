@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 type QueryResultCellProps = {
   column: string;
   value: unknown;
+  row: Record<string, unknown>;
   rowIndex: number;
   originalIndex: number;
   selectionKey: string | null;
@@ -19,6 +20,7 @@ type QueryResultCellProps = {
 export const QueryResultCell = memo(function QueryResultCell({
   column,
   value,
+  row,
   rowIndex,
   originalIndex,
   selectionKey,
@@ -36,6 +38,7 @@ export const QueryResultCell = memo(function QueryResultCell({
         column,
         rowIndex: originalIndex,
         value,
+        row,
       });
   };
   return (

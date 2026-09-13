@@ -1,64 +1,30 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-
+import { RefreshCwIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
-import { useActiveConnection } from "@/lib/connections";
-import { executeQueryWithParams } from "@/lib/db";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import { bindMasterDetail, masterDetailScriptError, useMasterDetail } from "@/lib/master-detail";
-import { effectiveConnectionString } from "@/lib/ssh";
+import { useMasterDetailQuery } from "@/lib/hooks/use-master-detail-query";
 
-export function MasterDetailResult({ source, sql }: { source: string; sql: string }) {
-  const connection = useActiveConnection();
-  const database = useActiveDatabase();
-  const capabilities = useActiveCapabilities();
-  const selection = useMasterDetail((state) => state.selections[source]);
-  const [settledSelection, setSettledSelection] = useState(selection);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettledSelection(selection), 150);
-    return () => clearTimeout(timer);
-  }, [selection]);
-  const validation = masterDetailScriptError(sql);
-  const supported = capabilities.query_language === "sql" && capabilities.bind_parameters;
-  const result = useQuery({
-    queryKey: [
-      "master-detail",
-      connection?.id,
-      database,
-      source,
-      sql,
-      settledSelection?.column,
-      settledSelection?.value,
-    ],
-    queryFn: async () => {
-      if (!connection || !settledSelection || validation || !supported)
-        throw new Error("Keine gültige Master-Detail-Verknüpfung.");
-      const bound = bindMasterDetail(sql, settledSelection.value);
-      return executeQueryWithParams(
-        connection.kind,
-        effectiveConnectionString(connection),
-        bound.sql,
-        bound.params,
-        database ?? undefined,
-      );
-    },
-    enabled: Boolean(
-      connection && settledSelection && !validation && supported && selection === settledSelection,
-    ),
-    retry: false,
-    refetchOnWindowFocus: false,
-    gcTime: 0,
-  });
+export function MasterDetailResult({
+  source,
+  sql,
+  column,
+  preview = false,
+}: {
+  source: string;
+  sql: string;
+  column?: string;
+  preview?: boolean;
+}) {
+  const { query, selection, supported, waiting, error } = useMasterDetailQuery(source, sql, column);
   if (!supported)
     return (
-      <p className="p-4 text-sm text-muted-foreground">
+      <p role="alert" className="p-4 text-sm text-muted-foreground">
         Diese Verbindung unterstützt keine SQL-Bind-Parameter für Master-Detail.
       </p>
     );
-  if (validation)
+  if (error)
     return (
       <p role="alert" className="p-4 text-sm text-destructive">
-        {validation}
+        {error}
       </p>
     );
   if (!selection)
@@ -67,34 +33,47 @@ export function MasterDetailResult({ source, sql }: { source: string; sql: strin
         Wähle eine Zelle im Master, um die Details zu laden.
       </p>
     );
-  if (selection !== settledSelection || result.isPending)
+  if (waiting || query.isPending)
     return (
       <p role="status" className="p-4 text-sm text-muted-foreground">
         Details werden geladen…
       </p>
     );
-  if (result.error)
+  if (query.error)
     return (
-      <p role="alert" className="overflow-auto p-4 text-sm text-destructive">
-        {String(result.error)}
-      </p>
+      <div role="alert" className="overflow-auto p-4 text-sm text-destructive">
+        <p>{query.error.message}</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => void query.refetch()}>
+          Erneut versuchen
+        </Button>
+      </div>
     );
+  const count = query.data?.rows.length ?? 0;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-        Master: {selection.column} · {result.data?.rows.length ?? 0} Zeilen
+      <div className="flex shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1">
+          {preview ? "Vorschau" : "Details"} · {count} {count === 1 ? "Datensatz" : "Datensätze"} ·
+          Master-Zeile {selection.rowIndex + 1}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Details aktualisieren"
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          <RefreshCwIcon className="size-3" />
+        </Button>
       </div>
       <DataTable
-        columns={result.data?.columns ?? []}
-        data={result.data?.rows ?? []}
-        emptyMessage="Keine passenden Details."
+        columns={query.data?.columns ?? []}
+        data={query.data?.rows ?? []}
+        emptyMessage="Keine passenden Details für diese Master-Zeile."
         sorting={[]}
         sortableColumns={[]}
         onSortingChange={() => {}}
-        isFetching={result.isFetching}
-        onRefresh={() => {
-          void result.refetch();
-        }}
+        isFetching={query.isFetching}
       />
     </div>
   );

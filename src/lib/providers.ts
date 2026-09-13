@@ -55,6 +55,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   schema_object_copy: true,
   migration_script: true,
   server_output: true,
+  query_cancel: true,
   ssl: true,
   ssh: true,
   query_language: "sql",
@@ -98,6 +99,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
       csv_import: false,
@@ -127,6 +129,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
       csv_import: false,
@@ -156,6 +159,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
       schema_snapshot: false,
@@ -187,6 +191,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_cancel: true,
       table_transactions: false,
       read_only_mode: false,
       full_table_export: false,

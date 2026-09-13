@@ -1,7 +1,8 @@
 import { CameraIcon, CopyIcon, FileCodeIcon, GitCompareIcon, TableIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnalysisWorkspaceBar } from "@/features/compare/analysis-workspace-bar";
 import { CompareSetupModal } from "@/features/compare/compare-setup-modal";
 import {
   type DataCompareSideSelection,
@@ -86,6 +87,25 @@ export function CompareView() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <AnalysisWorkspaceBar
+        value={{ tab: tab === "data" ? "data" : "definitions", left, right, dataLeft, dataRight }}
+        onLoad={(value) => {
+          const source = value.tab === "data" ? value.dataLeft : value.left;
+          if (source.connectionId !== connection?.id) {
+            toast.error("Bitte zuerst die Quellverbindung dieses Arbeitsstands aktivieren.");
+            return;
+          }
+          if (value.tab === "data" && !dataCompareEnabled) {
+            toast.error("Diese Verbindung unterstützt keinen Datenvergleich.");
+            return;
+          }
+          setTab(value.tab);
+          setLeft(value.left);
+          setRight(value.right);
+          setDataLeft(value.dataLeft);
+          setDataRight(value.dataRight);
+        }}
+      />
       <Tabs
         value={tab}
         onValueChange={(value) => setTab(value as CompareTab)}

@@ -33,6 +33,7 @@ type DataTableColumnSettingsProps = {
   onCopyColumnNames: () => void;
   profiles: TableLayoutProfile[];
   canUseProfiles: boolean;
+  onImportLegacy?: () => void;
   onSaveProfile: (name: string) => void;
   onApplyProfile: (id: string) => void;
   onRenameProfile: (id: string, name: string) => void;
@@ -53,6 +54,7 @@ export function DataTableColumnSettings({
   onCopyColumnNames,
   profiles,
   canUseProfiles,
+  onImportLegacy,
   onSaveProfile,
   onApplyProfile,
   onRenameProfile,
@@ -108,6 +110,11 @@ export function DataTableColumnSettings({
         >
           <PinOffIcon />
           Fixierungen aufheben
+        </ContextMenuItem>
+      )}
+      {onImportLegacy && (
+        <ContextMenuItem onSelect={onImportLegacy}>
+          Altes Layout für diese Datenbank übernehmen
         </ContextMenuItem>
       )}
       {canUseProfiles && (

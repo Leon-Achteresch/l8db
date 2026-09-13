@@ -64,7 +64,7 @@ export function buildDuplicatePrefill(
 
     prefill[column] = {
       mode: "value",
-      value: typeof raw === "string" ? raw : String(raw),
+      value: typeof raw === "object" ? JSON.stringify(raw) : String(raw),
       isPrimaryKey,
       cleared: false,
     };

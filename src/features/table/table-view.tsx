@@ -1,6 +1,5 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import type { SortingState } from "@tanstack/react-table";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
@@ -14,12 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { DataTable } from "@/features/table/data-table";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
+import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
@@ -28,21 +29,19 @@ import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
-
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
-
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
+import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
-  useDuplicateRowMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
   useTableRowCountQuery,
@@ -51,15 +50,16 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
-import type { DuplicatePrefill } from "@/lib/row-duplicate";
-import { buildDuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
+import { describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
+import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import {
   availableTableDetailTabs,
   resolveTableDetailTab,
   type TableDetailTab,
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
+import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 const ViewDefinitionPanel = lazy(() =>
@@ -108,26 +108,25 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
   const saveRedisRow = useRedisRowEdit();
   const openTab = useTableTabs((state) => state.openTab);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
-  const [selectedViewTab, setViewTab] = useState<TableDetailTab>("data");
-  const [selectedTableTab, setTableTab] = useState<TableDetailTab>("data");
+  const stateKey = tableViewStateKey(connection?.id, database, schema, table);
+  const [selectedTab, setDetailTab] = useTableViewState(stateKey, "detailTab", "data");
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const availableTabs = availableTableDetailTabs(isView, caps);
   const visibleTabs = availableTabs.filter((tab) => !hiddenTabs.includes(tab.id));
-  const viewTab = resolveTableDetailTab(selectedViewTab, visibleTabs);
-  const tableTab = resolveTableDetailTab(selectedTableTab, visibleTabs);
+  const viewTab = resolveTableDetailTab(selectedTab, visibleTabs);
+  const tableTab = resolveTableDetailTab(selectedTab, visibleTabs);
 
   useEffect(() => {
-    if (isView && viewTab) setViewTab(viewTab);
-    if (!isView && tableTab) setTableTab(tableTab);
-  }, [isView, viewTab, tableTab]);
-  const [filter, setFilter] = useState(fkFilter ?? "");
-  const [filterRaw, setFilterRaw] = useState(fkRaw ?? false);
-  const [sorting, setSorting] = useState<SortingState>([]);
+    if (isView && viewTab) setDetailTab(viewTab);
+    if (!isView && tableTab) setDetailTab(tableTab);
+  }, [isView, viewTab, tableTab, setDetailTab]);
+  const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
+  const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
+  const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);
   const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useTableViewState(stateKey, "page", 0);
   const [addRowOpen, setAddRowOpen] = useState(false);
-  const [duplicatePrefill, setDuplicatePrefill] = useState<DuplicatePrefill | null>(null);
   const [insertError, setInsertError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
@@ -161,10 +160,14 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     [data?.rows, caps.query_language],
   );
   const { data: totalCount } = useTableRowCountQuery(schema, table, filter, filterRaw);
+  useEffect(() => {
+    if (totalCount === undefined || isFetching) return;
+    const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
+    if (page > lastPage) setPage(lastPage);
+  }, [totalCount, isFetching, rowLimit, page, setPage]);
   const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
   const updateRowMutation = useUpdateRowMutation(schema, table);
   const insertRowMutation = useInsertRowMutation(schema, table);
-  const duplicateRowMutation = useDuplicateRowMutation(schema, table);
   const deleteRowMutation = useDeleteRowMutation(schema, table);
 
   const handleFilterChange = (newFilter: string, raw = true) => {
@@ -174,12 +177,10 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
   };
 
   const handleInsertRow = async (values: Record<string, string | null>) => {
-    const wasDuplicate = duplicatePrefill !== null;
     try {
       await insertRowMutation.mutateAsync(values);
-      toast.success(wasDuplicate ? "Zeile als neue Zeile eingefügt." : "Neue Zeile hinzugefügt.");
+      toast.success("Neue Zeile hinzugefügt.");
       setInsertError(null);
-      setDuplicatePrefill(null);
       setAddRowOpen(false);
     } catch (err) {
       const message = describeInsertError(err);
@@ -192,22 +193,6 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     setAddRowOpen(open);
     if (!open) {
       setInsertError(null);
-      setDuplicatePrefill(null);
-    }
-  };
-
-  const handleDuplicateRowToEdit = (_ctid: string, values: Record<string, unknown>) => {
-    setInsertError(null);
-    setDuplicatePrefill(buildDuplicatePrefill(data?.columns ?? [], values, columnDetails));
-    setAddRowOpen(true);
-  };
-
-  const handleDuplicateRow = async (ctid: string) => {
-    try {
-      await duplicateRowMutation.mutateAsync(ctid);
-      toast.success("Zeile dupliziert.");
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
     }
   };
 
@@ -320,13 +305,17 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
   }, [isView, type, routeNavigate]);
 
   useEffect(() => {
-    setFilter(fkFilter ?? "");
+    if (fkFilter === undefined) return;
+    setFilter(fkFilter);
     setFilterRaw(fkRaw ?? false);
     setSorting([]);
     setPage(0);
-    setViewTab("data");
-    setTableTab("data");
-  }, [schema, table, fkFilter, fkRaw]);
+    setDetailTab("data");
+    void routeNavigate({
+      search: (previous) => ({ ...previous, fkFilter: undefined, fkRaw: undefined }),
+      replace: true,
+    });
+  }, [fkFilter, fkRaw, routeNavigate, setFilter, setFilterRaw, setSorting, setPage, setDetailTab]);
 
   useEffect(() => {
     if (column && !isLoading) setRevealColumn({ name: column, nonce: Date.now() });
@@ -350,14 +339,32 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
             schema={schema}
             table={table}
             activeFilter={filter}
-            onSelectView={handleFilterChange}
+            filterRaw={filterRaw}
+            onSelectView={(nextFilter, raw, saved) => {
+              handleFilterChange(nextFilter, raw);
+              if (stateKey && saved?.state)
+                useTableViewStateStore.getState().patch(stateKey, {
+                  ...saved.state,
+                  filter: nextFilter,
+                  filterRaw: raw ?? false,
+                  page: 0,
+                });
+              if (connection && saved?.layout)
+                useTableColumnPrefs
+                  .getState()
+                  .setPref(
+                    tableColumnPrefKey(connection.id, schema, table, database),
+                    saved.layout,
+                  );
+            }}
           />
           <div
             className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
             data-tour="table-filter"
           >
             <TableFilterPanel
-              key={`${schema}.${table}`}
+              key={stateKey}
+              stateKey={stateKey}
               columns={data?.columns ?? []}
               columnDetails={columnDetails}
               activeFilter={filter}
@@ -397,13 +404,19 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         />
       ) : (
         <DataTable
+          key={stateKey}
+          stateKey={stateKey}
+          scrollIdentity={JSON.stringify([filter, filterRaw, sorting, page, rowLimit])}
           className="h-full min-h-0 flex-1"
           columns={data?.columns ?? []}
           data={tableRows}
           emptyMessage={emptyMessage}
           sorting={sorting}
           sortableColumns={caps.query_language === "redis" ? ["key"] : undefined}
-          onSortingChange={setSorting}
+          onSortingChange={(update) => {
+            setSorting(update);
+            setPage(0);
+          }}
           isFetching={isFetching}
           onSaveRow={
             caps.query_language === "redis"
@@ -439,8 +452,13 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
           currentSchema={schema}
           currentTable={table}
           onNavigateToTable={handleNavigateToTable}
-          onDuplicateRow={isView || !caps.row_edit ? undefined : handleDuplicateRow}
-          onDuplicateRowToEdit={isView || !caps.row_edit ? undefined : handleDuplicateRowToEdit}
+          onInsertRow={
+            isView || !caps.row_edit || connection?.readOnly
+              ? undefined
+              : async (values) => {
+                  await insertRowMutation.mutateAsync(values);
+                }
+          }
           onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
           columnDetails={columnDetails}
           onRefresh={handleRefresh}
@@ -453,7 +471,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     return (
       <Tabs
         value={viewTab}
-        onValueChange={(v) => setViewTab(v as TableDetailTab)}
+        onValueChange={(v) => setDetailTab(v as TableDetailTab)}
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       >
         <div
@@ -465,21 +483,26 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
             <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
             {viewTab === "data" && data && (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1.5 px-2.5 text-xs"
-                    disabled={exporting}
-                  >
-                    {exporting ? (
-                      <LoaderIcon className="size-3.5 animate-spin" />
-                    ) : (
-                      <DownloadIcon className="size-3.5" />
-                    )}
-                    Export
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        aria-label="Export"
+                        disabled={exporting}
+                      >
+                        {exporting ? (
+                          <LoaderIcon className="size-3.5 animate-spin" />
+                        ) : (
+                          <DownloadIcon className="size-3.5" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Export</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
                     Als CSV exportieren…
@@ -550,6 +573,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
           fullExport={fullExportSource}
         />
         <XlsxExportDialog
+          fullExport={fullExportSource}
           open={xlsxExportOpen}
           onOpenChange={setXlsxExportOpen}
           columns={exportColumns}
@@ -564,7 +588,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
   return (
     <Tabs
       value={tableTab}
-      onValueChange={(v) => setTableTab(v as TableDetailTab)}
+      onValueChange={(v) => setDetailTab(v as TableDetailTab)}
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div
@@ -574,43 +598,68 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         <TableDetailTabBar tabs={availableTabs} />
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="table" />
+          {tableTab === "data" &&
+            connection &&
+            !connection.readOnly &&
+            caps.row_edit &&
+            caps.transactions && (
+              <PasteRowsDialog
+                key={stateKey ?? table}
+                connection={connection}
+                database={database}
+                schema={schema}
+                table={table}
+                onComplete={() => {
+                  void refetch();
+                }}
+              />
+            )}
           {tableTab === "data" && caps.query_language === "redis" && (
             <RedisKeyActions key={`${connection?.id}:${database}`} />
           )}
           {tableTab === "data" && caps.row_edit && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-2.5 text-xs"
-              data-tour="table-add"
-              onClick={() => {
-                setInsertError(null);
-                setDuplicatePrefill(null);
-                setAddRowOpen(true);
-              }}
-              disabled={insertRowMutation.isPending}
-            >
-              <PlusIcon className="size-3.5" />
-              Neue Zeile
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  aria-label="Neue Zeile"
+                  data-tour="table-add"
+                  onClick={() => {
+                    setInsertError(null);
+                    setAddRowOpen(true);
+                  }}
+                  disabled={insertRowMutation.isPending}
+                >
+                  <PlusIcon className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Neue Zeile</TooltipContent>
+            </Tooltip>
           )}
           {tableTab === "data" && data && (
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-2.5 text-xs"
-                  disabled={exporting}
-                >
-                  {exporting ? (
-                    <LoaderIcon className="size-3.5 animate-spin" />
-                  ) : (
-                    <DownloadIcon className="size-3.5" />
-                  )}
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-7"
+                      aria-label="Export"
+                      disabled={exporting}
+                    >
+                      {exporting ? (
+                        <LoaderIcon className="size-3.5 animate-spin" />
+                      ) : (
+                        <DownloadIcon className="size-3.5" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Export</TooltipContent>
+              </Tooltip>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
                   Als CSV exportieren…
@@ -693,7 +742,6 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         columns={data?.columns ?? []}
         isPending={insertRowMutation.isPending}
         onSubmit={handleInsertRow}
-        prefill={duplicatePrefill}
         errorMessage={insertError}
       />
 
@@ -706,6 +754,7 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
         fullExport={fullExportSource}
       />
       <XlsxExportDialog
+        fullExport={fullExportSource}
         open={xlsxExportOpen}
         onOpenChange={setXlsxExportOpen}
         columns={exportColumns}

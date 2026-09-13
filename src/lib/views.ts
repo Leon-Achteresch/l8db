@@ -1,11 +1,25 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { TableColumnPref } from "@/lib/table-column-prefs";
+import type { TableViewState } from "@/lib/table-view-state";
 
 export interface SavedView {
   id: string;
   name: string;
   filter: string;
   color: string;
+  filterRaw?: boolean;
+  state?: Partial<TableViewState>;
+  layout?: TableColumnPref;
+}
+
+export function savedViewKey(
+  connectionId: string,
+  database: string | null,
+  schema: string,
+  table: string,
+): string {
+  return JSON.stringify([connectionId, database, schema, table]);
 }
 
 export const VIEW_COLORS = [

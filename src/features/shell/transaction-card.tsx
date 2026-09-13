@@ -73,6 +73,17 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         </div>
       </div>
 
+      {tx.lastError && (
+        <div role="alert" className="space-y-1 border-b p-3 text-xs text-destructive">
+          <p>
+            Eine Operation wurde abgebrochen oder ist fehlgeschlagen. Serverzustand und bisherige
+            Änderungen vor einem Commit prüfen; gegebenenfalls Rollback ausführen.
+          </p>
+          <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-words">
+            {tx.lastError}
+          </pre>
+        </div>
+      )}
       {tx.scope?.type === "table" && (
         <p className="px-3 pt-2 text-[10px] text-muted-foreground">
           Eigene Transaktion für diese Tabelle. Trigger und Kaskaden gehören ebenfalls dazu.

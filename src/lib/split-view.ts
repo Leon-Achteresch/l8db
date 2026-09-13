@@ -12,12 +12,17 @@ function keyForConnection(id: string | null | undefined): string {
   return id ?? NONE_KEY;
 }
 
+export type SplitOrientation = "horizontal" | "vertical";
+
 export type SplitSnapshot = {
+  orientation?: SplitOrientation;
   panes: (string | null)[];
   focusedPane: number;
 };
 
 interface SplitState {
+  orientation: SplitOrientation;
+  setOrientation: (orientation: SplitOrientation) => void;
   panes: (string | null)[];
   focusedPane: number;
   byConnection: Record<string, SplitSnapshot>;
@@ -37,14 +42,18 @@ interface SplitState {
 function snapshot(
   panes: (string | null)[],
   focusedPane: number,
-  state: { byConnection: Record<string, SplitSnapshot> },
+  state: { byConnection: Record<string, SplitSnapshot>; orientation: SplitOrientation },
 ): Pick<SplitState, "panes" | "focusedPane" | "byConnection"> {
   return {
     panes,
     focusedPane,
     byConnection: {
       ...state.byConnection,
-      [keyForConnection(useConnectionsStore.getState().activeId)]: { panes, focusedPane },
+      [keyForConnection(useConnectionsStore.getState().activeId)]: {
+        panes,
+        focusedPane,
+        orientation: state.orientation,
+      },
     },
   };
 }
@@ -60,6 +69,12 @@ export const useSplitView = create<SplitState>()(
     (set) => ({
       panes: [],
       focusedPane: 0,
+      orientation: "horizontal",
+      setOrientation: (orientation) =>
+        set((state) => ({
+          ...snapshot(state.panes, state.focusedPane, { ...state, orientation }),
+          orientation,
+        })),
       byConnection: {},
       paneConnections: {},
 
@@ -166,7 +181,13 @@ export const useSplitView = create<SplitState>()(
             ),
           );
           if (keyForConnection(useConnectionsStore.getState().activeId) === connectionId) {
-            return { panes: [], focusedPane: 0, byConnection, paneConnections };
+            return {
+              panes: [],
+              focusedPane: 0,
+              orientation: "horizontal",
+              byConnection,
+              paneConnections,
+            };
           }
           return { byConnection, paneConnections };
         }),
@@ -187,6 +208,7 @@ export const useSplitView = create<SplitState>()(
           paneConnections: stored?.paneConnections ?? {},
           panes: byConnection[key]?.panes ?? [],
           focusedPane: byConnection[key]?.focusedPane ?? 0,
+          orientation: byConnection[key]?.orientation ?? "horizontal",
         };
       },
     },
@@ -213,6 +235,7 @@ useConnectionsStore.subscribe((state, previous) => {
   useSplitView.setState({
     panes: current.byConnection[nextKey]?.panes ?? [],
     focusedPane: current.byConnection[nextKey]?.focusedPane ?? 0,
+    orientation: current.byConnection[nextKey]?.orientation ?? "horizontal",
   });
 });
 

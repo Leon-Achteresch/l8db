@@ -72,6 +72,7 @@ export function SettingsSecurityTab() {
               { value: "prefer", label: "Bevorzugen" },
               { value: "require", label: "Erzwingen" },
               { value: "disable", label: "Deaktiviert" },
+              { value: "verify-full", label: "Zertifikat prüfen" },
             ]}
           />
         </SettingsRow>

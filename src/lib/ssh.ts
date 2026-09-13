@@ -267,7 +267,6 @@ async function performActivation(
   }
 }
 
-const ACTIVATION_TIMEOUT_MS = 30_000;
 let activationQueue: Promise<unknown> = Promise.resolve();
 
 export function activateConnection(
@@ -275,15 +274,7 @@ export function activateConnection(
   sshPassword?: string | null,
 ): Promise<TunnelOutcome> {
   const result = activationQueue.then(async () => {
-    const outcome = await Promise.race([
-      performActivation(id, sshPassword),
-      new Promise<TunnelOutcome>((resolve) =>
-        setTimeout(() => {
-          useConnectionSwitch.setState({ targetId: null, isSwitching: false });
-          resolve({ ok: false, error: "Zeitüberschreitung beim Verbindungswechsel." });
-        }, ACTIVATION_TIMEOUT_MS),
-      ),
-    ]);
+    const outcome = await performActivation(id, sshPassword);
     if (!outcome.ok) {
       useConnectionSwitch.setState({ errorId: id ?? useConnectionsStore.getState().activeId });
     }

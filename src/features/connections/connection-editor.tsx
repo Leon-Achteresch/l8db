@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { withTimeout } from "@/lib/async";
+import { initialSslMode } from "@/lib/connection-defaults";
 import { serverLabel } from "@/lib/connection-groups";
 import {
   connectionError,
@@ -126,7 +127,9 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const defaults = template
     ? { ...connectionSummary(template.connectionString, template.kind), user: "" }
     : placeholderDefaults(info);
-  const [ssl, setSsl] = useState<SslMode>(seed?.sslMode ?? sslModeFromUrl(value));
+  const [ssl, setSsl] = useState<SslMode>(
+    initialSslMode(value, useSettingsStore.getState().sslDefaultMode, seed?.sslMode),
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [host, setHost] = useState(defaults.host);
   const [port, setPort] = useState(defaults.port);
@@ -209,7 +212,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     setPort(nextDefaults.port);
     setDatabase(nextDefaults.database);
     setUser(nextDefaults.user);
-    if (!value) setSsl(next.hosts.includes("localhost") ? "prefer" : "require");
+    if (!value) setSsl(useSettingsStore.getState().sslDefaultMode);
     setStep(2);
   }
 
@@ -600,7 +603,13 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                   value={value}
                   onChange={(event) => {
                     setValue(event.target.value);
-                    if (event.target.value.trim()) setSsl(sslModeFromUrl(event.target.value));
+                    if (event.target.value.trim())
+                      setSsl(
+                        initialSslMode(
+                          event.target.value,
+                          useSettingsStore.getState().sslDefaultMode,
+                        ),
+                      );
                   }}
                   autoComplete="off"
                   spellCheck={false}
@@ -773,7 +782,13 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                           onChange={(event) => {
                             const nextValue = event.target.value;
                             setValue(nextValue);
-                            if (caps.ssl) setSsl(sslModeFromUrl(nextValue));
+                            if (caps.ssl)
+                              setSsl(
+                                initialSslMode(
+                                  nextValue,
+                                  useSettingsStore.getState().sslDefaultMode,
+                                ),
+                              );
                             const inputKind = kindFromUrl(nextValue);
                             if (inputKind) setProvider(detectProvider(nextValue, inputKind));
                           }}

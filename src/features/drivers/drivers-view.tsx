@@ -54,8 +54,8 @@ export function DriversView() {
   const handleRecheck = async (kind: DatabaseKind) => {
     try {
       await refreshDriverStatus(kind);
-    } catch {
-      return;
+    } catch (error) {
+      toast.error(`Treiberstatus konnte nicht geprüft werden: ${String(error)}`);
     }
   };
 

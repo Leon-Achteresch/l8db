@@ -18,6 +18,7 @@ import {
   BinaryIcon,
   BracesIcon,
   CalendarIcon,
+  CheckIcon,
   ChevronFirstIcon,
   ChevronLastIcon,
   ChevronLeftIcon,
@@ -46,6 +47,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { RegexSearchHelper } from "@/components/regex-search-helper";
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -83,10 +85,17 @@ import {
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
+import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { useResolvedHotkey } from "@/lib/hotkeys";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { describeRegexError, insertRegexPattern } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
+import {
+  buildDuplicatePrefill,
+  type DuplicatePrefill,
+  describeInsertError,
+} from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { compileSingleCondition } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -101,6 +110,7 @@ import {
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { getVirtualRowModel } from "@/lib/virtual-row-model";
+import { DataTableDraftRow } from "./data-table-draft-row";
 import { DataTableRow } from "./data-table-row";
 import type {
   DataTableProps,
@@ -396,6 +406,8 @@ function FkPreviewPopover({
 }
 
 export function DataTable({
+  stateKey,
+  scrollIdentity = "",
   columns: columnNames,
   data,
   emptyMessage,
@@ -421,14 +433,14 @@ export function DataTable({
   currentSchema,
   currentTable,
   onNavigateToTable,
-  onDuplicateRow,
-  onDuplicateRowToEdit,
+  onInsertRow,
   onDeleteRow,
   onRefresh,
   columnDetails,
   revealColumn,
 }: DataTableProps) {
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
   const {
     order,
@@ -441,12 +453,23 @@ export function DataTable({
     isCustomized,
     profiles,
     canUseProfiles,
+    hasLegacy,
+    importLegacy,
     saveProfile,
     applyProfile,
     renameProfile,
     deleteProfile,
-  } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames);
-  const { markedRows, toggleRowMarker } = useRowMarkers(data);
+  } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames, database);
+  const markerKeys = useMemo(
+    () =>
+      (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
+    [columnDetails],
+  );
+  const { markedRows, toggleRowMarker, hasEphemeralMarkers } = useRowMarkers(
+    data,
+    stateKey ?? JSON.stringify([connection?.id, database, currentSchema, currentTable]),
+    markerKeys,
+  );
   const selectionKey = useContext(MasterSelectionContext);
   const [activeCell, setActiveCell] = useState<GridCellRef | null>(() => {
     const saved = selectionKey ? useMasterDetail.getState().selections[selectionKey] : undefined;
@@ -462,6 +485,7 @@ export function DataTable({
             column: activeCell.columnId,
             rowIndex: activeCell.rowIndex,
             value: row[activeCell.columnId],
+            row,
           }
         : null,
     );
@@ -471,6 +495,48 @@ export function DataTable({
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [draft, setDraft] = useState<DuplicatePrefill | null>(null);
+  const [insertError, setInsertError] = useState<string | null>(null);
+  const [isInserting, setIsInserting] = useState(false);
+  const insertInFlight = useRef(false);
+  const draftRef = useRef<HTMLTableSectionElement>(null);
+  const [draftHeight, setDraftHeight] = useState(0);
+  const hasDraft = draft !== null;
+
+  useEffect(() => {
+    const element = draftRef.current;
+    if (!hasDraft || !element) {
+      setDraftHeight(0);
+      return;
+    }
+    const measure = () => setDraftHeight(element.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasDraft]);
+
+  const saveDraft = async () => {
+    if (!draft || !onInsertRow || insertInFlight.current) return;
+    const values = Object.fromEntries(
+      Object.entries(draft).flatMap(([column, field]) =>
+        field.mode === "default" ? [] : [[column, field.mode === "null" ? null : field.value]],
+      ),
+    );
+    insertInFlight.current = true;
+    setIsInserting(true);
+    setInsertError(null);
+    try {
+      await onInsertRow(values);
+      setDraft(null);
+      toast.success("Zeile als neue Zeile eingefügt.");
+    } catch (error) {
+      setInsertError(describeInsertError(error));
+    } finally {
+      insertInFlight.current = false;
+      setIsInserting(false);
+    }
+  };
   const [togglingColumn, setTogglingColumn] = useState<string | null>(null);
   const [autoRefreshMs, setAutoRefreshMs] = useState(0);
   const [isWindowVisible, setIsWindowVisible] = useState(true);
@@ -676,10 +742,18 @@ export function DataTable({
   }, [matches]);
   const activeMatch = matches[matchIndex] ?? null;
 
+  const [savedColumnSizing, setColumnSizing] = useTableViewState(stateKey, "columnSizing", {});
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnOrder, columnVisibility, columnPinning },
+    state: {
+      sorting,
+      columnOrder,
+      columnVisibility,
+      columnPinning,
+      columnSizing: savedColumnSizing,
+    },
+    onColumnSizingChange: setColumnSizing,
     onSortingChange,
     manualSorting: true,
     columnResizeMode: "onChange",
@@ -697,6 +771,7 @@ export function DataTable({
   const rows = table.getRowModel().rows;
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
+    scrollMargin: draftHeight,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
     overscan: Math.ceil(256 / estimatedRowHeight),
@@ -706,12 +781,16 @@ export function DataTable({
   useEffect(() => {
     if (estimatedRowHeight > 0) rowVirtualizer.measure();
   }, [rowVirtualizer, estimatedRowHeight]);
+  useTableScrollState(scrollRef, stateKey, scrollIdentity);
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const paddingTop = virtualRows[0]?.start ?? 0;
-  const paddingBottom = rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 0);
+  const paddingTop = Math.max(0, (virtualRows[0]?.start ?? 0) - draftHeight);
+  const paddingBottom = Math.max(
+    0,
+    rowVirtualizer.getTotalSize() - ((virtualRows.at(-1)?.end ?? draftHeight) - draftHeight),
+  );
   const tableWidth = table.getTotalSize();
   const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
-  const hasRowActions = !!onDuplicateRow || !!onDuplicateRowToEdit || !!onDeleteRow;
+  const hasRowActions = !!onInsertRow || !!onDeleteRow;
   const [menuRow, setMenuRow] = useState<{
     ctid: string;
     rowIndex: number;
@@ -880,7 +959,10 @@ export function DataTable({
     [canEditCell],
   );
 
+  const previousActiveCell = useRef(activeCell);
   useEffect(() => {
+    if (previousActiveCell.current === activeCell) return;
+    previousActiveCell.current = activeCell;
     if (!activeCell) return;
     rowVirtualizer.scrollToIndex(activeCell.rowIndex, { align: "auto" });
     const columnIndex = visibleColumns.findIndex((column) => column.id === activeCell.columnId);
@@ -963,13 +1045,14 @@ export function DataTable({
       intervalMs: autoRefreshMs,
       isTabVisible: true,
       isWindowVisible,
-      isEditing: editingCell !== null || inspectCell !== null || fkPickerCell !== null,
+      isEditing: hasDraft || editingCell !== null || inspectCell !== null || fkPickerCell !== null,
       isSaving,
       isFetching,
       hasOpenTransaction,
     }),
     [
       autoRefreshMs,
+      hasDraft,
       isWindowVisible,
       editingCell,
       inspectCell,
@@ -1111,6 +1194,8 @@ export function DataTable({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-draft-row], [data-draft-controls]")) return;
       if (editingCell) {
         if (e.key === "Escape") {
           setEditingCell(null);
@@ -1124,7 +1209,6 @@ export function DataTable({
         return;
       }
 
-      const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
 
       if (!activeCell) return;
@@ -1250,6 +1334,7 @@ export function DataTable({
                         onCopyColumnNames={copyColumnNames}
                         profiles={profiles}
                         canUseProfiles={canUseProfiles}
+                        onImportLegacy={hasLegacy ? importLegacy : undefined}
                         onSaveProfile={saveProfile}
                         onApplyProfile={applyProfile}
                         onRenameProfile={renameProfile}
@@ -1314,6 +1399,8 @@ export function DataTable({
       copyColumnNames,
       profiles,
       canUseProfiles,
+      hasLegacy,
+      importLegacy,
       saveProfile,
       applyProfile,
       renameProfile,
@@ -1341,6 +1428,11 @@ export function DataTable({
         <div className="absolute top-0 left-0 right-0 z-50 h-0.5 w-full bg-primary/20 overflow-hidden">
           <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />
         </div>
+      )}
+      {hasEphemeralMarkers && (
+        <p role="status" className="border-b px-3 py-1 text-xs text-muted-foreground">
+          Ohne stabilen Zeilenschlüssel bleiben Markierungen nur bis zum nächsten Laden erhalten.
+        </p>
       )}
       {searchOpen && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
@@ -1427,6 +1519,46 @@ export function DataTable({
           </button>
         </div>
       )}
+      {draft && (
+        <div
+          data-draft-controls
+          className="shrink-0 border-b border-primary/30 bg-primary/5 px-3 py-2"
+        >
+          <div className="flex items-center gap-3">
+            <CopyPlusIcon className="size-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1 text-xs">
+              <span className="font-medium">Neue Zeile · Entwurf</span>
+              <span className="ml-2 text-muted-foreground">
+                Werte bearbeiten, dann speichern. Schlüsselwerte prüfen.
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={isInserting}
+              onClick={() => {
+                setDraft(null);
+                setInsertError(null);
+              }}
+            >
+              Verwerfen
+            </Button>
+            <Button size="sm" disabled={isInserting} onClick={() => void saveDraft()}>
+              {isInserting ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : (
+                <CheckIcon className="size-3.5" />
+              )}
+              Speichern
+            </Button>
+          </div>
+          {insertError && (
+            <p role="alert" className="mt-2 whitespace-pre-wrap text-xs text-destructive">
+              {insertError}
+            </p>
+          )}
+        </div>
+      )}
       <div
         ref={scrollRef}
         style={{ contain: "strict" }}
@@ -1457,6 +1589,16 @@ export function DataTable({
                 ))}
               </colgroup>
               {tableHeader}
+              {draft && (
+                <tbody ref={draftRef}>
+                  <DataTableDraftRow
+                    columns={visibleColumns}
+                    fields={draft}
+                    disabled={isInserting}
+                    onChange={setDraft}
+                  />
+                </tbody>
+              )}
               <ContextMenu>
                 <ContextMenuTrigger asChild>
                   <tbody
@@ -1548,18 +1690,22 @@ export function DataTable({
                       Zeile {menuRow.rowIndex + 1 + page * pageSize}
                     </ContextMenuLabel>
                     <ContextMenuSeparator />
-                    {onDuplicateRow && (
-                      <ContextMenuItem onClick={() => onDuplicateRow(menuRow.ctid)}>
-                        <CopyPlusIcon />
-                        Zeile duplizieren
-                      </ContextMenuItem>
-                    )}
-                    {onDuplicateRowToEdit && (
+                    {onInsertRow && (
                       <ContextMenuItem
-                        onClick={() => onDuplicateRowToEdit(menuRow.ctid, menuRow.original)}
+                        disabled={hasDraft || isSaving}
+                        onClick={() => {
+                          setEditingCell(null);
+                          setActiveCell(null);
+                          setSelectionAnchor(null);
+                          setInsertError(null);
+                          setDraft(
+                            buildDuplicatePrefill(columnNames, menuRow.original, columnDetails),
+                          );
+                          scrollRef.current?.scrollTo({ top: 0, left: 0 });
+                        }}
                       >
                         <CopyPlusIcon />
-                        Als neue Zeile duplizieren
+                        Zeile duplizieren
                       </ContextMenuItem>
                     )}
                     {onDeleteRow && (

@@ -9,6 +9,7 @@ import { initAppearance } from "@/lib/appearance";
 import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
+import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { loadProviders } from "@/lib/providers";
@@ -18,6 +19,8 @@ import { router } from "./router";
 
 installDiagnosticsErrorCapture();
 const disposeAppearance = initAppearance();
+const executionSettings = initExecutionSettings();
+if (import.meta.hot) import.meta.hot.dispose(executionSettings.dispose);
 if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
 
 const queryClient = createAppQueryClient();
@@ -41,7 +44,7 @@ function render() {
   );
 }
 
-Promise.all([loadProviders(), initConnectionSecrets()])
+Promise.all([executionSettings.ready, loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
   .catch(() => undefined)
   .finally(() => {
