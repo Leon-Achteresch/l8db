@@ -30,6 +30,8 @@ globalScope.MonacoEnvironment = {
   },
 };
 
+void new EditorWorker();
+
 const plsqlKeywords = [
   "BODY",
   "BULK",
