@@ -598,7 +598,15 @@ export function QueryView({ tabId }: QueryViewProps) {
       markQueryTabExecuted(tabId, pending);
       void runSql(inlineBindValues(pending, bindValues), undefined, true);
     }
-  }, [bindPendingSql, bindValues, markQueryTabExecuted, runSql, caps.bind_parameters, tabId, connection?.kind]);
+  }, [
+    bindPendingSql,
+    bindValues,
+    markQueryTabExecuted,
+    runSql,
+    caps.bind_parameters,
+    tabId,
+    connection?.kind,
+  ]);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);
