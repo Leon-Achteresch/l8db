@@ -4058,10 +4058,7 @@ pub async fn run_params_query(
         .map(|value| value as &(dyn ToSql + Sync))
         .collect();
 
-    let statement = client
-        .prepare(trimmed)
-        .await
-        .map_err(map_pg_err)?;
+    let statement = client.prepare(trimmed).await.map_err(map_pg_err)?;
     if statement.columns().is_empty() {
         let affected = client
             .execute(&statement, &values)
@@ -4084,10 +4081,7 @@ pub async fn run_params_query(
         "WITH __l8_bind AS ({}) SELECT to_jsonb(__l8_bind) FROM __l8_bind",
         trimmed
     );
-    let wrapped_statement = client
-        .prepare(&wrapped)
-        .await
-        .map_err(map_pg_err)?;
+    let wrapped_statement = client.prepare(&wrapped).await.map_err(map_pg_err)?;
     let data = client
         .query(&wrapped_statement, &values)
         .await
