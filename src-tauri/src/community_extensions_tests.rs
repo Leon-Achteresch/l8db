@@ -1,14 +1,19 @@
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "l8db-extensions-{}-{}",
+            "l8db-extensions-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
         ensure_directory(&path).unwrap();
         Self(path)
