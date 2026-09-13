@@ -27,7 +27,8 @@ fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(super::execution::query_duration())
+            .connect_timeout(super::execution::connection_duration())
             .build()
             .expect("HTTP-Client")
     })

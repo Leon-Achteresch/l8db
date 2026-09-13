@@ -4,6 +4,7 @@ pub mod commands;
 mod connection;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+pub mod execution;
 pub mod export;
 mod mongodb;
 mod mssql;
@@ -17,6 +18,7 @@ pub mod provider;
 mod redis;
 pub mod secrets;
 pub mod server_output;
+mod sql_script;
 mod sqlite;
 pub mod ssh;
 pub mod transaction;
@@ -735,12 +737,16 @@ pub trait DatabaseAdapter: Send + Sync {
         let mut results = Vec::new();
         for statement in split_statements(sql) {
             let result = self.execute_query(&statement).await;
+            let failed = result.is_err();
             results.push(ScriptStatementResult {
                 statement: statement.clone(),
                 success: result.is_ok(),
                 rows_affected: result.as_ref().ok().and_then(|r| r.rows_affected),
                 error: result.err(),
             });
+            if failed {
+                break;
+            }
         }
         Ok(results)
     }
@@ -1318,39 +1324,7 @@ pub fn unsupported(feature: &str) -> String {
 }
 
 pub(crate) fn split_statements(sql: &str) -> Vec<String> {
-    let mut statements = Vec::new();
-    let mut current = String::new();
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    for ch in sql.chars() {
-        match quote {
-            Some(q) => {
-                current.push(ch);
-                if escaped {
-                    escaped = false;
-                } else if ch == '\\' && q != '`' {
-                    escaped = true;
-                } else if ch == q {
-                    quote = None;
-                }
-            }
-            None if ch == '\'' || ch == '"' || ch == '`' => {
-                quote = Some(ch);
-                current.push(ch);
-            }
-            None if ch == ';' => {
-                if !current.trim().is_empty() {
-                    statements.push(current.trim().to_string());
-                }
-                current.clear();
-            }
-            None => current.push(ch),
-        }
-    }
-    if !current.trim().is_empty() {
-        statements.push(current.trim().to_string());
-    }
-    statements
+    sql_script::split(sql)
 }
 
 pub(crate) fn row_key(row: &serde_json::Value, pk: &[String]) -> Option<String> {
@@ -1394,9 +1368,9 @@ pub(crate) async fn timed<T, F>(future: F) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
-    tokio::time::timeout(std::time::Duration::from_secs(30), future)
+    tokio::time::timeout(execution::query_duration(), future)
         .await
-        .map_err(|_| "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string())?
+        .map_err(|_| execution::timeout_message())?
 }
 
 pub(crate) fn create_table_sql(
@@ -2094,3 +2068,6 @@ pub fn validate_table_filter(filter: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod master_detail_tests;

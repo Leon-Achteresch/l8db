@@ -60,6 +60,7 @@ pub struct Capabilities {
     pub debugger: bool,
     pub bind_parameters: bool,
     pub server_output: bool,
+    pub query_cancel: bool,
     pub used_by: bool,
     pub synonyms: bool,
     pub scheduler_jobs: bool,
@@ -117,6 +118,7 @@ const NONE: Capabilities = Capabilities {
     scheduler_jobs: false,
     object_admin: false,
     server_output: false,
+    query_cancel: false,
     ssl: true,
     ssh: true,
     query_language: "sql",
@@ -157,6 +159,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                query_cancel: true,
                 object_admin: true,
                 bind_parameters: true,
                 server_output: true,
@@ -197,6 +200,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Sqlite => Capabilities {
+                query_cancel: true,
                 databases: false,
                 ssl: false,
                 ssh: false,
@@ -233,6 +237,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                bind_parameters: true,
                 databases: false,
                 ssl: false,
                 procedures: true,

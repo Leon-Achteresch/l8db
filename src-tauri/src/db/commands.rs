@@ -1,3 +1,8 @@
+#[tauri::command]
+pub fn configure_execution_defaults(query_timeout: u64, connection_timeout: u64) {
+    super::execution::configure_defaults(query_timeout, connection_timeout);
+}
+
 use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
@@ -48,10 +53,17 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
 pub async fn test_connection(
     config: ConnectionConfig,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<(), String> {
-    create_adapter(config, pool_state.inner().clone())?
-        .test_connection()
+    super::execution::run(options, false, async {
+        super::execution::connect(async {
+            create_adapter(config, pool_state.inner().clone())?
+                .test_connection()
+                .await
+        })
         .await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -59,10 +71,26 @@ pub async fn test_connection_string(
     kind: DatabaseKind,
     connection_string: String,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<(), String> {
-    create_adapter_from_string(kind, &connection_string, None, pool_state.inner().clone())?
-        .test_connection()
-        .await
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            super::execution::connect(async {
+                create_adapter_from_string(
+                    kind,
+                    &connection_string,
+                    None,
+                    pool_state.inner().clone(),
+                )?
+                .test_connection()
+                .await
+            })
+            .await
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -70,10 +98,26 @@ pub async fn list_databases(
     kind: DatabaseKind,
     connection_string: String,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<String>, String> {
-    create_adapter_from_string(kind, &connection_string, None, pool_state.inner().clone())?
-        .list_databases()
-        .await
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            super::execution::connect(async {
+                create_adapter_from_string(
+                    kind,
+                    &connection_string,
+                    None,
+                    pool_state.inner().clone(),
+                )?
+                .list_databases()
+                .await
+            })
+            .await
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -82,14 +126,25 @@ pub async fn list_schemas(
     connection_string: String,
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<String>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .list_schemas()
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            super::execution::connect(async {
+                create_adapter_from_string(
+                    kind,
+                    &connection_string,
+                    database.as_deref(),
+                    pool_state.inner().clone(),
+                )?
+                .list_schemas()
+                .await
+            })
+            .await
+        },
+    )
     .await
 }
 
@@ -128,41 +183,49 @@ pub async fn fetch_table_rows(
     tx_id: Option<String>,
     tx_state: tauri::State<'_, TransactionState>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<TableData, String> {
-    if let Some(tx_id) = tx_id {
-        return tx_state
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            if let Some(tx_id) = tx_id {
+                return tx_state
+                    .fetch_rows(
+                        &tx_id,
+                        super::transaction::TransactionTableRead {
+                            schema,
+                            table,
+                            filter,
+                            limit: limit.unwrap_or(100),
+                            offset: offset.unwrap_or(0),
+                            order_by,
+                            order_desc: order_desc.unwrap_or(false),
+                            is_view: is_view.unwrap_or(false),
+                            allow_raw: allow_raw.unwrap_or(false),
+                        },
+                    )
+                    .await;
+            }
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
             .fetch_rows(
-                &tx_id,
-                super::transaction::TransactionTableRead {
-                    schema,
-                    table,
-                    filter,
-                    limit: limit.unwrap_or(100),
-                    offset: offset.unwrap_or(0),
-                    order_by,
-                    order_desc: order_desc.unwrap_or(false),
-                    is_view: is_view.unwrap_or(false),
-                    allow_raw: allow_raw.unwrap_or(false),
-                },
+                &schema,
+                &table,
+                filter.as_deref(),
+                limit.unwrap_or(100),
+                offset.unwrap_or(0),
+                order_by.as_deref(),
+                order_desc.unwrap_or(false),
+                is_view.unwrap_or(false),
+                allow_raw.unwrap_or(false),
             )
-            .await;
-    }
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .fetch_rows(
-        &schema,
-        &table,
-        filter.as_deref(),
-        limit.unwrap_or(100),
-        offset.unwrap_or(0),
-        order_by.as_deref(),
-        order_desc.unwrap_or(false),
-        is_view.unwrap_or(false),
-        allow_raw.unwrap_or(false),
+            .await
+        },
     )
     .await
 }
@@ -225,29 +288,37 @@ pub async fn count_table_rows(
     tx_id: Option<String>,
     tx_state: tauri::State<'_, TransactionState>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<i64, String> {
-    if let Some(tx_id) = tx_id {
-        return tx_state
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            if let Some(tx_id) = tx_id {
+                return tx_state
+                    .count_rows(
+                        &tx_id,
+                        &schema,
+                        &table,
+                        filter.as_deref(),
+                        allow_raw.unwrap_or(false),
+                    )
+                    .await;
+            }
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
             .count_rows(
-                &tx_id,
                 &schema,
                 &table,
                 filter.as_deref(),
                 allow_raw.unwrap_or(false),
             )
-            .await;
-    }
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .count_rows(
-        &schema,
-        &table,
-        filter.as_deref(),
-        allow_raw.unwrap_or(false),
+            .await
+        },
     )
     .await
 }
@@ -438,14 +509,22 @@ pub async fn execute_query(
     database: Option<String>,
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .execute_query(&sql)
+    super::execution::run_query(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .execute_query(&sql)
+            .await
+        },
+    )
     .await
 }
 
@@ -457,14 +536,22 @@ pub async fn execute_query_with_params(
     sql: String,
     params: Vec<Option<String>>,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .execute_query_with_params(&sql, &params)
+    super::execution::run_query(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .execute_query_with_params(&sql, &params)
+            .await
+        },
+    )
     .await
 }
 
@@ -533,21 +620,32 @@ pub async fn begin_transaction(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
     tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<String, String> {
-    if super::connection::connection_string_is_read_only(&connection_string) {
-        return Err(
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            super::execution::connect(async {
+                if super::connection::connection_string_is_read_only(&connection_string) {
+                    return Err(
             "Lesemodus: Transaktionen mit Schreibzugriff sind für diese Verbindung gesperrt."
                 .to_string(),
         );
-    }
-    tx_state
-        .begin(
-            kind,
-            &connection_string,
-            database.as_deref(),
-            pool_state.inner(),
-        )
-        .await
+                }
+                tx_state
+                    .begin(
+                        kind,
+                        &connection_string,
+                        database.as_deref(),
+                        pool_state.inner(),
+                    )
+                    .await
+            })
+            .await
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -555,8 +653,12 @@ pub async fn execute_in_transaction(
     tx_id: String,
     sql: String,
     tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    tx_state.execute(&tx_id, &sql).await
+    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
+        tx_state.execute(&tx_id, &sql).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -565,8 +667,12 @@ pub async fn execute_in_transaction_with_params(
     sql: String,
     params: Vec<Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    tx_state.execute_with_params(&tx_id, &sql, &params).await
+    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
+        tx_state.execute_with_params(&tx_id, &sql, &params).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1065,15 +1171,30 @@ pub async fn csv_import(
     connection_string: String,
     database: Option<String>,
     request: crate::db::CsvImportRequest,
+    app: tauri::AppHandle,
+    options: Option<super::execution::ExecutionOptions>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<crate::db::CsvImportOutcome, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .csv_import(&request)
+    use tauri::Emitter;
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    super::execution::with_progress(
+        move |rows| {
+            let _ = app.emit(
+                "csv-import-progress",
+                serde_json::json!({ "jobId": job_id, "rows": rows }),
+            );
+        },
+        super::execution::run(options, true, async {
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .csv_import(&request)
+            .await
+        }),
+    )
     .await
 }
 
@@ -1274,14 +1395,22 @@ pub async fn execute_script(
     database: Option<String>,
     sql: String,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<Vec<ScriptStatementResult>, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .execute_script(&sql)
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .execute_script(&sql)
+            .await
+        },
+    )
     .await
 }
 
@@ -1983,4 +2112,9 @@ pub async fn copy_schema_table_data(
     )?
     .copy_schema_table_data(&source_schema, &target_schema, &name, limit)
     .await
+}
+
+#[tauri::command]
+pub fn cancel_execution(job_id: String) -> Result<bool, String> {
+    super::execution::cancel(&job_id)
 }

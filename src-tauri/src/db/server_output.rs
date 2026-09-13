@@ -6,7 +6,7 @@ use serde::Serialize;
 use tokio_postgres::{AsyncMessage, Client, Config, SimpleQueryMessage};
 
 use super::connection::tls_connector;
-use super::{map_pg_err, QueryResult, ScriptStatementResult, SslMode};
+use super::{map_pg_err, QueryResult, SslMode};
 
 const MAX_MESSAGES: usize = 2000;
 
@@ -22,7 +22,7 @@ pub struct ServerMessage {
 struct Registry {
     enabled: HashSet<String>,
     buffers: HashMap<String, Arc<Mutex<Vec<ServerMessage>>>>,
-    sessions: HashMap<String, Arc<Client>>,
+    sessions: HashMap<String, Arc<super::execution::PgSession>>,
 }
 
 fn registry() -> &'static Mutex<Registry> {
@@ -72,7 +72,7 @@ pub async fn pg_session(
     key: &str,
     config: &Config,
     ssl: SslMode,
-) -> Result<Option<Arc<Client>>, String> {
+) -> Result<Option<Arc<super::execution::PgSession>>, String> {
     if !is_enabled(key) {
         return Ok(None);
     }
@@ -81,7 +81,7 @@ pub async fn pg_session(
         reg.sessions.get(key).cloned()
     };
     if let Some(client) = existing {
-        if !client.is_closed() {
+        if client.available().await {
             return Ok(Some(client));
         }
         let mut reg = registry().lock().expect("server output registry");
@@ -112,7 +112,7 @@ pub async fn pg_session(
             }
         }
     });
-    let client = Arc::new(client);
+    let client = Arc::new(super::execution::PgSession::new(client));
     let mut reg = registry().lock().expect("server output registry");
     reg.sessions.insert(key.to_string(), client.clone());
     Ok(Some(client))
@@ -173,45 +173,4 @@ pub async fn pg_run_query(
         let _ = client.simple_query("ROLLBACK").await;
     }
     outcome
-}
-
-pub async fn pg_run_script(
-    client: &Client,
-    sql: &str,
-    read_only: bool,
-) -> Result<Vec<ScriptStatementResult>, String> {
-    let statements: Vec<&str> = sql
-        .split(';')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    if read_only {
-        client
-            .simple_query("BEGIN TRANSACTION READ ONLY")
-            .await
-            .map_err(map_pg_err)?;
-    }
-    let mut results = Vec::new();
-    for stmt in statements {
-        let full = format!("{};", stmt);
-        match client.execute(stmt, &[]).await {
-            Ok(n) => results.push(ScriptStatementResult {
-                statement: full,
-                success: true,
-                rows_affected: Some(n),
-                error: None,
-            }),
-            Err(e) => results.push(ScriptStatementResult {
-                statement: full,
-                success: false,
-                rows_affected: None,
-                error: Some(map_pg_err(e)),
-            }),
-        }
-    }
-    if read_only {
-        let _ = client.simple_query("ROLLBACK").await;
-    }
-    Ok(results)
 }

@@ -3,13 +3,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use bb8::PooledConnection;
-use bb8_postgres::PostgresConnectionManager;
-use postgres_native_tls::MakeTlsConnector;
 use tokio::sync::Mutex;
 use tokio_postgres::SimpleQueryMessage;
 
-use super::pool::{PoolState, PoolUse};
+use super::pool::PoolState;
 use super::provider::DatabaseKind;
 use super::{
     map_pg_err, mssql, mysql, oracle, quote_ident, sqlite, DatabaseAdapter, QueryResult, TxSession,
@@ -44,7 +41,7 @@ fn validate_ctid(ctid: &str) -> Result<String, String> {
 type OracleConn = Arc<std::sync::Mutex<oracle::Connection>>;
 
 enum TransactionEntry {
-    Pg(Box<Mutex<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>>>),
+    Pg(super::execution::PgSession, super::SslMode),
     Oracle(OracleConn),
     Generic(Generic),
 }
@@ -317,6 +314,14 @@ pub fn create_transaction_state() -> TransactionState {
 }
 
 impl TransactionManager {
+    pub async fn supports_cancel(&self, tx_id: &str) -> bool {
+        match self.entry(tx_id).await.as_deref() {
+            Ok(TransactionEntry::Pg(..)) => true,
+            Ok(TransactionEntry::Generic(g)) => g.kind == DatabaseKind::Sqlite,
+            _ => false,
+        }
+    }
+
     async fn insert_entry(&self, entry: TransactionEntry) -> String {
         let tx_id = format!("tx_{}", TX_COUNTER.fetch_add(1, Ordering::Relaxed));
         self.transactions
@@ -375,18 +380,13 @@ impl TransactionManager {
             }
         }
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-        let pool_key = super::connection::connection_key(connection_string, database);
-        let pool = pool_state
-            .get_pool(&pool_key, config, ssl, PoolUse::Query)
-            .await?;
-        let conn = pool
-            .get_owned()
-            .await
-            .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
-
+        let conn = super::execution::connect_postgres(&config, ssl).await?;
         conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
         Ok(self
-            .insert_entry(TransactionEntry::Pg(Box::new(Mutex::new(conn))))
+            .insert_entry(TransactionEntry::Pg(
+                super::execution::PgSession::new(conn),
+                ssl,
+            ))
             .await)
     }
 
@@ -397,64 +397,75 @@ impl TransactionManager {
         params: &[Option<String>],
     ) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
-        let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+        let (session, ssl) = match &*entry {
+            TransactionEntry::Pg(c, ssl) => (c, *ssl),
             _ => {
                 return Err(super::unsupported("Bind-Parameter"));
             }
         };
-        let conn = conn.lock().await;
-        super::postgres::run_params_query(&conn, sql, params).await
+        let conn = session.lock().await?;
+        let outcome = super::execution::postgres(
+            &conn,
+            ssl,
+            Some(session),
+            super::postgres::run_params_query(&conn, sql, params),
+        )
+        .await;
+        session.finish(outcome)
     }
 
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
-        let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+        let (session, ssl) = match &*entry {
+            TransactionEntry::Pg(c, ssl) => (c, *ssl),
             TransactionEntry::Oracle(c) => {
                 let sql = sql.to_string();
                 return ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await;
             }
             TransactionEntry::Generic(g) => return g.execute(sql).await,
         };
-        let conn = conn.lock().await;
-        let start = std::time::Instant::now();
-        let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
-        futures_util::pin_mut!(messages);
+        let conn = session.lock().await?;
+        let outcome = super::execution::postgres(&conn, ssl, Some(session), async {
+            let start = std::time::Instant::now();
+            let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
+            futures_util::pin_mut!(messages);
 
-        let mut columns: Vec<String> = Vec::new();
-        let mut rows: Vec<serde_json::Value> = Vec::new();
-        let mut rows_affected: Option<u64> = None;
+            let mut columns: Vec<String> = Vec::new();
+            let mut rows: Vec<serde_json::Value> = Vec::new();
+            let mut rows_affected: Option<u64> = None;
 
-        while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
-            match msg {
-                SimpleQueryMessage::Row(row) => {
-                    if columns.is_empty() {
-                        columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+            while let Some(msg) = messages.try_next().await.map_err(map_pg_err)? {
+                match msg {
+                    SimpleQueryMessage::Row(row) => {
+                        if columns.is_empty() {
+                            columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                        }
+                        let mut obj = serde_json::Map::new();
+                        for (i, col) in columns.iter().enumerate() {
+                            let val = row
+                                .get(i)
+                                .map(|v| serde_json::Value::String(v.to_string()))
+                                .unwrap_or(serde_json::Value::Null);
+                            obj.insert(col.clone(), val);
+                        }
+                        rows.push(serde_json::Value::Object(obj));
                     }
-                    let mut obj = serde_json::Map::new();
-                    for (i, col) in columns.iter().enumerate() {
-                        let val = row
-                            .get(i)
-                            .map(|v| serde_json::Value::String(v.to_string()))
-                            .unwrap_or(serde_json::Value::Null);
-                        obj.insert(col.clone(), val);
+                    SimpleQueryMessage::CommandComplete(count) => {
+                        rows_affected = Some(count);
                     }
-                    rows.push(serde_json::Value::Object(obj));
+                    _ => {}
                 }
-                SimpleQueryMessage::CommandComplete(count) => {
-                    rows_affected = Some(count);
-                }
-                _ => {}
             }
-        }
 
-        Ok(QueryResult {
-            columns,
-            rows,
-            rows_affected,
-            execution_time_ms: start.elapsed().as_millis() as u64,
+            Ok(QueryResult {
+                columns,
+                rows,
+                rows_affected,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            })
         })
+        .await;
+        session.finish(outcome)
     }
 
     pub async fn update_row(
@@ -467,7 +478,7 @@ impl TransactionManager {
     ) -> Result<String, String> {
         let entry = self.entry(tx_id).await?;
         let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+            TransactionEntry::Pg(c, _) => c,
             TransactionEntry::Oracle(c) => {
                 let (schema, table, ctid, updates) = (
                     schema.to_string(),
@@ -486,7 +497,7 @@ impl TransactionManager {
         };
 
         let ctid = validate_ctid(ctid)?;
-        let conn = conn.lock().await;
+        let conn = conn.lock().await?;
 
         let col_rows = conn
             .query(
@@ -553,7 +564,7 @@ impl TransactionManager {
     ) -> Result<serde_json::Value, String> {
         let entry = self.entry(tx_id).await?;
         let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+            TransactionEntry::Pg(c, _) => c,
             TransactionEntry::Oracle(c) => {
                 let (schema, table, values) =
                     (schema.to_string(), table.to_string(), values.clone());
@@ -564,7 +575,7 @@ impl TransactionManager {
             }
             TransactionEntry::Generic(g) => return g.insert_row(schema, table, values).await,
         };
-        let conn = conn.lock().await;
+        let conn = conn.lock().await?;
 
         let col_rows = conn
             .query(
@@ -635,7 +646,7 @@ impl TransactionManager {
     ) -> Result<serde_json::Value, String> {
         let entry = self.entry(tx_id).await?;
         let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+            TransactionEntry::Pg(c, _) => c,
             TransactionEntry::Oracle(c) => {
                 let (schema, table, ctid) =
                     (schema.to_string(), table.to_string(), ctid.to_string());
@@ -648,7 +659,7 @@ impl TransactionManager {
         };
 
         let ctid = validate_ctid(ctid)?;
-        let conn = conn.lock().await;
+        let conn = conn.lock().await?;
 
         let col_rows = conn
             .query(
@@ -713,7 +724,7 @@ impl TransactionManager {
     ) -> Result<(), String> {
         let entry = self.entry(tx_id).await?;
         let conn = match &*entry {
-            TransactionEntry::Pg(c) => c,
+            TransactionEntry::Pg(c, _) => c,
             TransactionEntry::Oracle(c) => {
                 let (schema, table, ctid) =
                     (schema.to_string(), table.to_string(), ctid.to_string());
@@ -726,7 +737,7 @@ impl TransactionManager {
         };
 
         let ctid = validate_ctid(ctid)?;
-        let conn = conn.lock().await;
+        let conn = conn.lock().await?;
 
         let sql = format!(
             "DELETE FROM {}.{} WHERE ctid = '{}'::tid",
@@ -756,38 +767,33 @@ impl TransactionManager {
     }
 
     pub async fn commit(&self, tx_id: &str) -> Result<(), String> {
-        let entry = {
-            self.transactions
-                .lock()
-                .await
-                .remove(tx_id)
-                .ok_or_else(|| "Transaktion nicht gefunden".to_string())?
-        };
-        match &*entry {
-            TransactionEntry::Pg(c) => {
-                c.lock()
-                    .await
-                    .simple_query("COMMIT")
-                    .await
-                    .map_err(map_pg_err)?;
+        let entry = self.entry(tx_id).await?;
+        let outcome = match &*entry {
+            TransactionEntry::Pg(c, _) => {
+                let conn = c.lock().await?;
+                conn.simple_query("SELECT 1").await.map_err(|error| {
+                    format!(
+                        "Commit nicht ausgeführt; Transaktion prüfen und zurückrollen: {}",
+                        map_pg_err(error)
+                    )
+                })?;
+                conn.simple_query("COMMIT").await.map_err(map_pg_err)?;
                 Ok(())
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, true)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.commit().await,
+        };
+        if outcome.is_ok() {
+            self.transactions.lock().await.remove(tx_id);
         }
+        outcome
     }
 
     pub async fn rollback(&self, tx_id: &str) -> Result<(), String> {
-        let entry = {
-            self.transactions
-                .lock()
-                .await
-                .remove(tx_id)
-                .ok_or_else(|| "Transaktion nicht gefunden".to_string())?
-        };
-        match &*entry {
-            TransactionEntry::Pg(c) => {
-                c.lock()
+        let entry = self.entry(tx_id).await?;
+        let outcome = match &*entry {
+            TransactionEntry::Pg(c, _) => {
+                c.lock_for_cleanup()
                     .await
                     .simple_query("ROLLBACK")
                     .await
@@ -796,11 +802,11 @@ impl TransactionManager {
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, false)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.rollback().await,
+        };
+        if outcome.is_ok() {
+            self.transactions.lock().await.remove(tx_id);
         }
-    }
-
-    pub async fn active_count(&self) -> usize {
-        self.transactions.lock().await.len()
+        outcome
     }
 
     pub async fn list_active_ids(&self) -> Vec<String> {

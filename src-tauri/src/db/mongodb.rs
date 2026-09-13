@@ -101,15 +101,23 @@ impl MongoAdapter {
         let uri = self.uri.clone();
         let shared = self
             .pool_state
-            .shared(&self.key, || async move {
-                let mut options = mongodb::options::ClientOptions::parse(&uri)
-                    .await
-                    .map_err(map_err)?;
-                options.server_selection_timeout = Some(std::time::Duration::from_secs(10));
-                options.connect_timeout = Some(std::time::Duration::from_secs(10));
-                options.app_name.get_or_insert_with(|| "l8db".to_string());
-                Client::with_options(options).map_err(map_err)
-            })
+            .shared(
+                &format!(
+                    "{}#connect-{}",
+                    self.key,
+                    super::execution::connection_duration().as_secs()
+                ),
+                || async move {
+                    let mut options = mongodb::options::ClientOptions::parse(&uri)
+                        .await
+                        .map_err(map_err)?;
+                    options.server_selection_timeout =
+                        Some(super::execution::connection_duration());
+                    options.connect_timeout = Some(super::execution::connection_duration());
+                    options.app_name.get_or_insert_with(|| "l8db".to_string());
+                    Client::with_options(options).map_err(map_err)
+                },
+            )
             .await?;
         Ok((*shared).clone())
     }

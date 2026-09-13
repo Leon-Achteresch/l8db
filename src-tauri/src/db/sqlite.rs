@@ -237,14 +237,64 @@ where
     T: Send + 'static,
     F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
 {
-    tokio::task::spawn_blocking(move || {
-        let guard = conn
-            .lock()
-            .map_err(|_| "SQLite-Verbindung ist blockiert".to_string())?;
-        f(&guard)
-    })
-    .await
-    .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))?
+    let cancel = super::execution::cancellation_token();
+    let pending_cancel = cancel.clone();
+    let duration = super::execution::query_duration();
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let (result_sender, mut result_receiver) = tokio::sync::oneshot::channel();
+    let (release_sender, release_receiver) = tokio::sync::oneshot::channel::<()>();
+    let work = tokio::task::spawn_blocking(move || {
+        let outcome = (|| {
+            let guard = conn
+                .lock()
+                .map_err(|_| "SQLite-Verbindung ist blockiert".to_string())?;
+            if pending_cancel.is_cancelled() {
+                return Err("Abfrage abgebrochen, bevor sie gestartet wurde.".to_string());
+            }
+            let _ = sender.send(guard.get_interrupt_handle());
+            let result = f(&guard);
+            let _ = result_sender.send(result);
+            let _ = release_receiver.blocking_recv();
+            Ok(())
+        })();
+        outcome
+    });
+    let handle = match receiver.await {
+        Ok(handle) => handle,
+        Err(_) => {
+            work.await
+                .map_err(|error| format!("SQLite-Task fehlgeschlagen: {error}"))??;
+            return Err("SQLite-Abfrage konnte nicht gestartet werden.".into());
+        }
+    };
+    let timed_out = tokio::select! {
+        biased;
+        result = &mut result_receiver => {
+            drop(handle);
+            let _ = release_sender.send(());
+            work.await.map_err(|error| format!("SQLite-Task fehlgeschlagen: {error}"))??;
+            return result.map_err(|error| format!("SQLite-Ergebnis fehlt: {error}"))?;
+        }
+        _ = cancel.cancelled() => false,
+        _ = tokio::time::sleep(duration) => true,
+    };
+    handle.interrupt();
+    let outcome = result_receiver
+        .await
+        .map_err(|error| format!("SQLite-Ergebnis fehlt: {error}"))?;
+    drop(handle);
+    let _ = release_sender.send(());
+    work.await
+        .map_err(|error| format!("SQLite-Task fehlgeschlagen: {error}"))??;
+
+    match outcome {
+        Err(error) if error.to_lowercase().contains("interrupt") => Err(if timed_out {
+            format!("Query-Timeout nach {} Sekunden: Abfrage vom Server abgebrochen. Transaktionszustand prüfen.", duration.as_secs())
+        } else {
+            "Abfrage vom Server abgebrochen. Transaktionszustand prüfen.".into()
+        }),
+        other => other,
+    }
 }
 
 struct SqliteTx {
@@ -761,6 +811,42 @@ mod tests {
 
     fn adapter() -> SqliteAdapter {
         SqliteAdapter::new(":memory:", create_pool_state(), "test".to_string()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn cancellation_interrupts_only_its_query() {
+        let db = adapter();
+        let options = super::super::execution::ExecutionOptions {
+            job_id: Some("sqlite-cancel-test".into()),
+            ..Default::default()
+        };
+        let query = super::super::execution::run(Some(options), true, db.execute_query("WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n"));
+        let cancellation = async {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            assert!(super::super::execution::cancel("sqlite-cancel-test").unwrap());
+        };
+        let (result, _) = tokio::join!(query, cancellation);
+        assert!(result.unwrap_err().contains("vom Server abgebrochen"));
+        assert!(!super::super::execution::cancel("sqlite-cancel-test").unwrap());
+        let next = db.execute_query("SELECT 42 AS answer").await.unwrap();
+        assert_eq!(next.rows[0]["answer"], 42);
+    }
+
+    #[tokio::test]
+    async fn configured_timeout_interrupts_sqlite_and_preserves_followup() {
+        let db = adapter();
+        let started = std::time::Instant::now();
+        let options = super::super::execution::ExecutionOptions {
+            query_timeout: Some(5),
+            ..Default::default()
+        };
+        let result = super::super::execution::run(Some(options), true, db.execute_query("WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<1000000000) SELECT sum(x) FROM n")).await;
+        assert!(result
+            .unwrap_err()
+            .contains("Query-Timeout nach 5 Sekunden"));
+        assert!(started.elapsed() >= std::time::Duration::from_secs(5));
+        assert!(started.elapsed() < std::time::Duration::from_secs(15));
+        assert!(db.execute_query("SELECT 1").await.is_ok());
     }
 
     #[test]

@@ -143,18 +143,26 @@ impl CassandraAdapter {
         let (nodes, user, keyspace) =
             (self.nodes.clone(), self.user.clone(), self.keyspace.clone());
         self.pool_state
-            .shared(&self.key, || async move {
-                let mut builder = SessionBuilder::new()
-                    .known_nodes(&nodes)
-                    .connection_timeout(std::time::Duration::from_secs(10));
-                if let Some((u, p)) = user {
-                    builder = builder.user(u, p);
-                }
-                if let Some(ks) = keyspace {
-                    builder = builder.use_keyspace(ks, true);
-                }
-                timed(async { builder.build().await.map_err(map_err) }).await
-            })
+            .shared(
+                &format!(
+                    "{}#connect-{}",
+                    self.key,
+                    super::execution::connection_duration().as_secs()
+                ),
+                || async move {
+                    let mut builder = SessionBuilder::new()
+                        .known_nodes(&nodes)
+                        .connection_timeout(super::execution::connection_duration());
+                    if let Some((u, p)) = user {
+                        builder = builder.user(u, p);
+                    }
+                    if let Some(ks) = keyspace {
+                        builder = builder.use_keyspace(ks, true);
+                    }
+                    super::execution::connect(async { builder.build().await.map_err(map_err) })
+                        .await
+                },
+            )
             .await
     }
 

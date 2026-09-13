@@ -249,7 +249,7 @@ impl MysqlAdapter {
                 || async move { Ok::<Pool, String>(Pool::new(opts)) },
             )
             .await?;
-        timed(async { pool.get_conn().await.map_err(map_err) }).await
+        super::execution::connect(async { pool.get_conn().await.map_err(map_err) }).await
     }
 
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
@@ -332,7 +332,10 @@ impl TxSession for MysqlTx {
 #[async_trait]
 impl DatabaseAdapter for MysqlAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let mut conn = timed(async { Conn::new(self.opts.clone()).await.map_err(map_err) }).await?;
+        let mut conn = super::execution::connect(async {
+            Conn::new(self.opts.clone()).await.map_err(map_err)
+        })
+        .await?;
         conn.query_drop("SELECT 1").await.map_err(map_err)?;
         conn.disconnect().await.map_err(map_err)
     }
@@ -476,7 +479,10 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
-        let mut conn = timed(async { Conn::new(self.opts.clone()).await.map_err(map_err) }).await?;
+        let mut conn = super::execution::connect(async {
+            Conn::new(self.opts.clone()).await.map_err(map_err)
+        })
+        .await?;
         conn.query_drop("START TRANSACTION")
             .await
             .map_err(map_err)?;

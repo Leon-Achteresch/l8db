@@ -85,8 +85,8 @@ impl TransactionManager {
                     rows: result.rows,
                 })
             }
-            TransactionEntry::Pg(c) => {
-                let conn = c.lock().await;
+            TransactionEntry::Pg(c, _) => {
+                let conn = c.lock().await?;
                 conn.batch_execute("SAVEPOINT l8_read")
                     .await
                     .map_err(map_pg_err)?;
@@ -161,8 +161,8 @@ impl TransactionManager {
                 );
                 count_value(&g.execute(&sql).await?.rows)
             }
-            TransactionEntry::Pg(c) => {
-                let conn = c.lock().await;
+            TransactionEntry::Pg(c, _) => {
+                let conn = c.lock().await?;
                 let sql = format!(
                     "SELECT COUNT(*) FROM {}.{}{}",
                     quote_ident(schema),

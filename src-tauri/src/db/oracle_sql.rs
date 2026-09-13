@@ -140,9 +140,59 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
     out
 }
 
+pub(super) fn bind_statement(sql: &str, count: usize) -> Result<(String, Vec<usize>), String> {
+    let mut replacements = Vec::new();
+    let mut used = Vec::new();
+    for token in tokens(sql) {
+        if &sql[token.clone()] != "$" {
+            continue;
+        }
+        let mut end = token.end;
+        while sql.as_bytes().get(end).is_some_and(u8::is_ascii_digit) {
+            end += 1;
+        }
+        if end == token.end {
+            continue;
+        }
+        let index = sql[token.end..end]
+            .parse::<usize>()
+            .map_err(|_| "Ungültiger Oracle-Bind-Parameter".to_string())?;
+        if index == 0 || index > count {
+            return Err(format!("Für ${index} fehlt ein Bind-Wert."));
+        }
+        if !used.contains(&index) {
+            used.push(index);
+        }
+        replacements.push((token.start..end, format!(":l8db_{index}")));
+    }
+    if used.len() != count {
+        return Err("Die Anzahl der Oracle-Bind-Werte passt nicht zur Abfrage.".to_string());
+    }
+    let mut statement = sql.to_string();
+    for (range, replacement) in replacements.into_iter().rev() {
+        statement.replace_range(range, &replacement);
+    }
+    Ok((prepare(&statement), used))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binds_numbered_parameters_without_touching_literals_or_comments() {
+        let sql = "SELECT $2, $1, $2, '$1', q'[it's $2]', nq'{$1}', \"$1\", name$1 FROM dual -- $3\nWHERE x = $1 /* $9 */";
+        let (bound, used) = bind_statement(sql, 2).unwrap();
+        assert_eq!(used, vec![2, 1]);
+        assert_eq!(bound, "SELECT :l8db_2, :l8db_1, :l8db_2, '$1', q'[it's $2]', nq'{$1}', \"$1\", name$1 FROM dual -- $3\nWHERE x = :l8db_1");
+        assert!(bind_statement("SELECT $0 FROM dual", 1).is_err());
+        assert!(bind_statement("SELECT $2 FROM dual", 1).is_err());
+        assert!(bind_statement("SELECT '$1' FROM dual", 1).is_err());
+        assert_eq!(
+            bind_statement("SELECT $10 FROM dual", 10).unwrap_err(),
+            "Die Anzahl der Oracle-Bind-Werte passt nicht zur Abfrage."
+        );
+    }
 
     const BODY: &str = "CREATE /* header */ OR REPLACE PACKAGE BODY demo AS\nPROCEDURE p IS\nx VARCHAR2(100) := q'[it's text;\n/\n-- not a comment]';\nBEGIN NULL; END p;\nEND demo;";
 
