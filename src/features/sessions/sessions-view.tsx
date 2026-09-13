@@ -8,10 +8,10 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TableDataError } from "@/features/table/table-data-error";
 import { useActiveConnection } from "@/lib/connections";
 import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -40,7 +40,7 @@ export function SessionsView() {
   const [actingPid, setActingPid] = useState<number | null>(null);
   const [filters, setFilters] = useState<SessionFilters>(EMPTY_SESSION_FILTERS);
   const [highlightedPid, setHighlightedPid] = useState<number | null>(null);
-  const { data: sessions, isLoading, isError, error } = useSessionsQuery();
+  const { data: sessions, isLoading, isError, error, refetch } = useSessionsQuery();
   const { data: locks } = useLocksQuery();
   const capabilities = useActiveCapabilities();
   const showBlocking = Boolean(capabilities?.sessions && capabilities?.locks);
@@ -211,7 +211,11 @@ export function SessionsView() {
                 Lade Sitzungen…
               </div>
             ) : isError ? (
-              <p className="p-8 text-center text-sm text-destructive">{String(error)}</p>
+              <TableDataError
+                title="Sitzungen konnten nicht geladen werden"
+                error={error}
+                onRetry={() => void refetch()}
+              />
             ) : (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-muted/60 text-left text-muted-foreground">

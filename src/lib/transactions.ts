@@ -18,6 +18,7 @@ export interface TransactionChange {
 }
 
 export interface ActiveTransaction {
+  lastError?: string;
   txId: string;
   connectionId: string;
   connectionName: string;

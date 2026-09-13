@@ -1,4 +1,4 @@
-import { useHotkeys } from "@tanstack/react-hotkeys";
+import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -68,6 +68,7 @@ import {
 } from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
 import {
+  confirmSqlExecution,
   type ExplainNode,
   executeInTransaction,
   executeInTransactionWithParams,
@@ -89,6 +90,7 @@ import {
   onHotkeyAction,
   resolveHotkey,
   useHotkeysStore,
+  useResolvedHotkey,
 } from "@/lib/hotkeys";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { useCapabilities } from "@/lib/providers";
@@ -98,6 +100,7 @@ import { useQueryRevealStore } from "@/lib/query-reveal";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { runSqlScript } from "@/lib/script-runner";
 import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
 import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
@@ -108,6 +111,7 @@ import {
 } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
+import { cancelTask, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 import { ServerOutputPanel } from "./server-output-panel";
 
@@ -215,6 +219,17 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const activeJob = useTasksStore((state) => state.tasks.find((task) => task.id === activeJobId));
+  const stopActiveJob = useCallback(() => {
+    if (activeJobId) void cancelTask(activeJobId).catch((failure) => toast.error(String(failure)));
+  }, [activeJobId]);
+  useEffect(() => onHotkeyAction("query.cancel", stopActiveJob), [stopActiveJob]);
+  const cancelHotkey = useResolvedHotkey("query.cancel");
+  useHotkey(cancelHotkey, stopActiveJob, {
+    enabled: Boolean(activeJob?.cancellable),
+    ignoreInputs: false,
+  });
   const runningRef = useRef(false);
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
@@ -430,6 +445,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       }
       runningRef.current = true;
       setIsRunning(true);
+      const executionOptions = { onJob: setActiveJobId, confirmed: true };
       setScriptEntries(null);
       setScriptActiveIndex(null);
       setError(null);
@@ -451,6 +467,12 @@ export function QueryView({ tabId }: QueryViewProps) {
             ? Number(res.rows_affected)
             : null;
       try {
+        await confirmSqlExecution(
+          connection.kind,
+          effectiveConnectionString(connection),
+          sql,
+          database ?? undefined,
+        );
         const store = useTransactionStore.getState();
         const existingTx = getQueryTransaction(connection.id, database);
         const isDml = isTransactionalStatement(sql, connection.kind);
@@ -458,10 +480,15 @@ export function QueryView({ tabId }: QueryViewProps) {
         if (existingTx) {
           const res = bound
             ? await runManagedOperation(existingTx.txId, () =>
-                executeInTransactionWithParams(existingTx.txId, bound.sql, bound.values),
+                executeInTransactionWithParams(
+                  existingTx.txId,
+                  bound.sql,
+                  bound.values,
+                  executionOptions,
+                ),
               )
             : await runManagedOperation(existingTx.txId, () =>
-                executeInTransaction(existingTx.txId, sql),
+                executeInTransaction(existingTx.txId, sql, executionOptions),
               );
           if (isDml) {
             store.addChange(existingTx.txId, {
@@ -481,9 +508,11 @@ export function QueryView({ tabId }: QueryViewProps) {
           });
           const res = bound
             ? await runManagedOperation(txId, () =>
-                executeInTransactionWithParams(txId, bound.sql, bound.values),
+                executeInTransactionWithParams(txId, bound.sql, bound.values, executionOptions),
               )
-            : await runManagedOperation(txId, () => executeInTransaction(txId, sql));
+            : await runManagedOperation(txId, () =>
+                executeInTransaction(txId, sql, executionOptions),
+              );
           store.addChange(txId, {
             id: crypto.randomUUID(),
             type: "query",
@@ -502,12 +531,14 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bound.sql,
                 bound.values,
                 database ?? undefined,
+                executionOptions,
               )
             : await executeQuery(
                 connection.kind,
                 effectiveConnectionString(connection),
                 sql,
                 database ?? undefined,
+                executionOptions,
               );
           setResult(res);
           finishHistory({ rowCount: rowCountOf(res), error: null });
@@ -562,12 +593,12 @@ export function QueryView({ tabId }: QueryViewProps) {
     setBindDialogOpen(false);
     setBindPendingSql(null);
     if (caps.bind_parameters) {
-      void runSql(pending, buildParameterizedQuery(pending, bindValues));
+      void runSql(pending, buildParameterizedQuery(pending, bindValues, connection?.kind));
     } else {
       markQueryTabExecuted(tabId, pending);
       void runSql(inlineBindValues(pending, bindValues), undefined, true);
     }
-  }, [bindPendingSql, bindValues, markQueryTabExecuted, runSql, caps.bind_parameters, tabId]);
+  }, [bindPendingSql, bindValues, markQueryTabExecuted, runSql, caps.bind_parameters, tabId, connection?.kind]);
 
   const handleRun = useCallback(() => {
     setEditorFocus(false);
@@ -778,124 +809,43 @@ export function QueryView({ tabId }: QueryViewProps) {
   }, [connection, database, caps.transactions, scriptSplit]);
 
   const runScript = useCallback(
-    async (mode: ScriptRunMode) => {
-      if (!connection || isRunning || runningRef.current) return;
-      const statements = scriptSplit.statements;
-      if (statements.length === 0) return;
-
-      const entries: ScriptRunEntry[] = statements.map((statement, index) => ({
-        index,
-        sql: statement.text,
-        start: statement.start,
-        end: statement.end,
-        status: "pending",
-        durationMs: null,
-        rowCount: null,
-        rowsAffected: null,
-        error: null,
-      }));
-
+    async (mode: ScriptRunMode, stopOnError = true) => {
+      if (!connection || runningRef.current) return;
+      runningRef.current = true;
+      setIsRunning(true);
       setScriptNote(SCRIPT_MODE_NOTE[mode]);
-      setScriptEntries(entries.map((entry) => ({ ...entry })));
       setScriptActiveIndex(null);
       setStatementError(null);
       setStatementRange(null);
       setError(null);
       setEditorFocus(false);
-      runningRef.current = true;
-      setIsRunning(true);
-
-      const store = useTransactionStore.getState();
-      let txId = getQueryTransaction(connection.id, database)?.txId ?? null;
-
       try {
-        if (!txId && mode === "new-transaction") {
-          txId = (
-            await ensureManagedTransaction(connection, database ?? null, {
-              type: "query",
-            })
-          ).txId;
-          store.setPanelOpen(true);
-        }
-      } catch (err) {
-        setError(String(err));
+        const outcome = await runSqlScript({
+          connection,
+          database,
+          sql,
+          mode,
+          stopOnError,
+          onJob: setActiveJobId,
+          onProgress: setScriptEntries,
+        });
+        setScriptEntries(outcome.entries);
+        setResult(outcome.error ? null : outcome.lastResult);
+        setError(outcome.error);
+        const failed = outcome.entries.find((entry) => entry.status === "error");
+        if (failed) {
+          setStatementRange({ start: failed.start, end: failed.end });
+          setScriptActiveIndex(failed.index);
+        } else setScriptActiveIndex(outcome.entries.length - 1);
+      } catch (failure) {
+        setError(String(failure));
+      } finally {
+        await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
-        return;
       }
-
-      let lastResult: QueryResult | null = null;
-      let failed = false;
-
-      for (const entry of entries) {
-        if (failed) {
-          entry.status = "skipped";
-          continue;
-        }
-        entry.status = "running";
-        setScriptEntries(entries.map((item) => ({ ...item })));
-        const startedAt = performance.now();
-        try {
-          const res = txId
-            ? await runManagedOperation(txId, () => executeInTransaction(txId!, entry.sql))
-            : await executeQuery(
-                connection.kind,
-                effectiveConnectionString(connection),
-                entry.sql,
-                database ?? undefined,
-              );
-          entry.status = "success";
-          entry.durationMs = Math.round(performance.now() - startedAt);
-          entry.rowCount = res.columns.length > 0 ? res.rows.length : null;
-          entry.rowsAffected = res.rows_affected == null ? null : Number(res.rows_affected);
-          lastResult = res;
-          entry.result = res;
-          if (txId && isTransactionalStatement(entry.sql, connection.kind)) {
-            store.addChange(txId, {
-              id: crypto.randomUUID(),
-              type: "query",
-              timestamp: Date.now(),
-              sql: entry.sql,
-              rowsAffected: res.rows_affected,
-            });
-          }
-          recordHistory({
-            connectionId: connection.id,
-            database: database ?? null,
-            sql: entry.sql,
-            durationMs: entry.durationMs,
-            rowCount: entry.rowCount ?? entry.rowsAffected,
-            error: null,
-          });
-        } catch (err) {
-          const message = String(err);
-          entry.status = "error";
-          entry.error = message;
-          entry.durationMs = Math.round(performance.now() - startedAt);
-          failed = true;
-          setError(message);
-          setStatementRange({ start: entry.start, end: entry.end });
-          setScriptActiveIndex(entry.index);
-          recordHistory({
-            connectionId: connection.id,
-            database: database ?? null,
-            sql: entry.sql,
-            durationMs: entry.durationMs,
-            rowCount: null,
-            error: message.slice(0, 500),
-          });
-        }
-        setScriptEntries(entries.map((item) => ({ ...item })));
-      }
-
-      setScriptEntries(entries.map((item) => ({ ...item })));
-      setResult(failed ? null : lastResult);
-      if (!failed) setScriptActiveIndex(entries.length - 1);
-      await collectOutput();
-      runningRef.current = false;
-      setIsRunning(false);
     },
-    [connection, database, isRunning, recordHistory, scriptSplit, collectOutput],
+    [connection, database, sql, collectOutput],
   );
 
   const handleSelectScriptEntry = useCallback(
@@ -1062,6 +1012,22 @@ export function QueryView({ tabId }: QueryViewProps) {
             >
               <ListOrderedIcon className="size-3" />
               Skript
+            </Button>
+          )}
+          {isRunning && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
+              onClick={stopActiveJob}
+              title={
+                activeJob?.cancellable
+                  ? shortcutLabel("query.cancel")
+                  : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch. Das konfigurierte Timeout bleibt wirksam."
+              }
+            >
+              {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
             </Button>
           )}
           {caps.query_language === "sql" && (
@@ -1660,9 +1626,10 @@ export function QueryView({ tabId }: QueryViewProps) {
           statementCount={scriptSplit.statements.length}
           mode={scriptMode}
           unterminated={scriptSplit.unterminated}
-          onConfirm={() => {
+          transactions={caps.transactions}
+          onConfirm={(mode, stopOnError) => {
             setScriptDialogOpen(false);
-            void runScript(scriptMode);
+            void runScript(mode, stopOnError);
           }}
         />
 
@@ -1692,7 +1659,13 @@ export function QueryView({ tabId }: QueryViewProps) {
       {historyOpen && (
         <QueryHistoryPanel
           connectionId={connection?.id ?? null}
-          onLoad={(loaded) => updateQuerySql(tabId, loaded)}
+          onLoad={(loaded, mode) => {
+            if (mode === "replace") updateQuerySql(tabId, loaded);
+            else {
+              const id = useTableTabs.getState().openQueryTabWithSql(loaded);
+              void navigate({ to: "/query/$id", params: { id } });
+            }
+          }}
           onClose={() => setHistoryOpen(false)}
         />
       )}

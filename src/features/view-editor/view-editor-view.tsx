@@ -27,6 +27,7 @@ import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import {
   useForeignKeysQuery,
   useSchemasQuery,
@@ -59,7 +60,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
 
-  const { data, isLoading, isFetching, isError, error } = useTableRowsQuery(
+  const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     view,
     filter,
@@ -72,7 +73,11 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(schema, view);
 
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft, clearSavedDraft] = useObjectDraft(
+    `view-editor:${schema}.${view}`,
+    `${schema}.${view}`,
+    definition ?? "",
+  );
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [compileStatus, setCompileStatus] = useState<"idle" | "ok" | "error">("idle");
@@ -82,7 +87,6 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   const isDirty = draft !== null && draft !== definition;
 
   useEffect(() => {
-    setDraft(null);
     setCompileStatus("idle");
     setCompileError(null);
   }, [schema, view, definition]);
@@ -196,7 +200,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
         database ?? undefined,
       );
       toast.success("View-Definition aktualisiert.");
-      setDraft(null);
+      clearSavedDraft(currentValue);
       setCompileStatus("idle");
       setCompileError(null);
       await queryClient.invalidateQueries({ queryKey: ["view-definition"] });
@@ -206,7 +210,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     } finally {
       setBusy(false);
     }
-  }, [connection, schema, view, currentValue, database, queryClient]);
+  }, [connection, schema, view, currentValue, database, queryClient, clearSavedDraft]);
 
   if (!connection) {
     return (
@@ -251,7 +255,11 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
         {isLoading ? (
           <TableDataSkeleton />
         ) : isError ? (
-          <TableDataError title="Fehler beim Laden der View" error={error} />
+          <TableDataError
+            title="Fehler beim Laden der View"
+            error={error}
+            onRetry={() => void refetch()}
+          />
         ) : (
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <DataTable

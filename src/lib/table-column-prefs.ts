@@ -30,8 +30,15 @@ interface TableColumnPrefsState {
   setProfiles: (key: string, profiles: TableLayoutProfile[]) => void;
 }
 
-export function tableColumnPrefKey(connectionId: string, schema: string, table: string): string {
-  return `${connectionId}:${schema}.${table}`;
+export function tableColumnPrefKey(
+  connectionId: string,
+  schema: string,
+  table: string,
+  database?: string | null,
+): string {
+  return database === undefined
+    ? `${connectionId}:${schema}.${table}`
+    : JSON.stringify([connectionId, database, schema, table]);
 }
 
 export function resolveColumnPrefs(
@@ -217,9 +224,22 @@ export function useTableColumnLayout(
   schema: string | undefined,
   table: string | undefined,
   columns: string[],
+  database?: string | null,
 ) {
   const key =
-    connectionId && schema && table ? tableColumnPrefKey(connectionId, schema, table) : null;
+    connectionId && schema && table
+      ? tableColumnPrefKey(connectionId, schema, table, database)
+      : null;
+  const legacyKey =
+    connectionId && schema && table && database !== undefined
+      ? tableColumnPrefKey(connectionId, schema, table)
+      : null;
+  const legacyPref = useTableColumnPrefs((state) =>
+    legacyKey ? state.prefs[legacyKey] : undefined,
+  );
+  const legacyProfiles = useTableColumnPrefs((state) =>
+    legacyKey ? state.profiles?.[legacyKey] : undefined,
+  );
   const saved = useTableColumnPrefs((state) => (key ? state.prefs[key] : undefined));
   const setPref = useTableColumnPrefs((state) => state.setPref);
   const resetPref = useTableColumnPrefs((state) => state.resetPref);
@@ -306,7 +326,19 @@ export function useTableColumnLayout(
     setEphemeral(undefined);
   }, [key, resetPref]);
 
+  const importLegacy = useCallback(() => {
+    if (!key) return;
+    if (legacyPref) setPref(key, legacyPref);
+    if (legacyProfiles?.length)
+      setProfilesFor(
+        key,
+        legacyProfiles.reduce((all, profile) => upsertLayoutProfile(all, profile), profiles),
+      );
+  }, [key, legacyPref, legacyProfiles, profiles, setPref, setProfilesFor]);
+
   return {
+    hasLegacy: Boolean(legacyPref || legacyProfiles?.length),
+    importLegacy,
     order: resolved.order,
     hidden: resolved.hidden,
     pinned: resolved.pinned,

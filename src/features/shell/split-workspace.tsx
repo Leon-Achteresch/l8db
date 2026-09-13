@@ -28,6 +28,7 @@ export function NewPaneDropZone() {
 }
 
 export function SplitWorkspace() {
+  const orientation = useSplitView((state) => state.orientation);
   const panes = useSplitView((state) => state.panes);
   const focusedPane = useSplitView((state) => state.focusedPane);
   const focusPane = useSplitView((state) => state.focusPane);
@@ -61,9 +62,9 @@ export function SplitWorkspace() {
 
   const layout =
     panes.length === 2 ? (
-      <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0 flex-1">
+      <ResizablePanelGroup orientation={orientation} className="h-full min-h-0 flex-1">
         {pane(0)}
-        {link(1)}
+        {link(1, orientation === "vertical")}
         {pane(1)}
       </ResizablePanelGroup>
     ) : panes.length === 3 ? (

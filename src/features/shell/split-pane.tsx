@@ -56,6 +56,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const target = usePaneSourceKey(key);
   const linkKey = index > 0 ? masterDetailKey(source, target) : null;
   const detailSql = useMasterDetail((state) => (linkKey ? state.scripts[linkKey] : undefined));
+  const sourceColumn = useMasterDetail((state) =>
+    linkKey ? state.sourceColumns[linkKey] : undefined,
+  );
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -178,7 +181,12 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
               >
                 <MasterSelectionContext.Provider value={detailSql ? null : target}>
                   {detailSql && source ? (
-                    <MasterDetailResult key={linkKey} source={source} sql={detailSql} />
+                    <MasterDetailResult
+                      key={linkKey}
+                      source={source}
+                      sql={detailSql}
+                      column={sourceColumn}
+                    />
                   ) : tab ? (
                     <TabPaneContent key={target} tab={tab} />
                   ) : null}

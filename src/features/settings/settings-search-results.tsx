@@ -252,6 +252,14 @@ const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["extension", "plugin", "erweiterung", "community", "paket", "installieren"],
   },
   {
+    id: "about",
+    tabId: "about",
+    tabLabel: "Über & Updates",
+    title: "Über l8db",
+    description: "Informationen zur App, Funktionen und Technologien.",
+    keywords: ["über", "about", "l8db", "funktionen", "technologien"],
+  },
+  {
     id: "updates",
     tabId: "about",
     tabLabel: "Über & Updates",

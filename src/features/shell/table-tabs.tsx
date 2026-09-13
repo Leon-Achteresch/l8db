@@ -1,7 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronDownIcon, Columns2Icon, FolderOpenIcon, PlusIcon, SquareIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  Columns2Icon,
+  FolderOpenIcon,
+  PlusIcon,
+  Rows2Icon,
+  SquareIcon,
+} from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,14 +30,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
 import { copyText } from "@/lib/clipboard";
-import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
+import { openSqlFileAsTab, saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import {
-  hasUnexecutedQueryChanges,
   isQueryTabDirty,
+  queryNeedsCloseConfirmation,
   type Tab,
   tabKey,
   useTableTabs,
@@ -45,6 +54,8 @@ export function TableTabs() {
   const closeTabsToRight = useTableTabs((state) => state.closeTabsToRight);
   const closeAllTabs = useTableTabs((state) => state.closeAllTabs);
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
+  const orientation = useSplitView((state) => state.orientation);
+  const setOrientation = useSplitView((state) => state.setOrientation);
   const panes = useSplitView((state) => state.panes);
   const focusedPane = useSplitView((state) => state.focusedPane);
   const addPane = useSplitView((state) => state.addPane);
@@ -88,8 +99,45 @@ export function TableTabs() {
     }
   };
 
+  const [savingClose, setSavingClose] = useState(false);
+  const [pendingKeys, setPendingKeys] = useState<string[]>([]);
+
+  const saveAndClose = async () => {
+    if (!pendingClose || savingClose) return;
+    const pending = pendingClose;
+    setSavingClose(true);
+    try {
+      for (const key of pendingKeys) {
+        const tab = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === key);
+        if (
+          tab?.kind === "query" &&
+          queryNeedsCloseConfirmation(tab) &&
+          !(await saveQueryTabFile(tab.id))
+        )
+          return;
+      }
+      const changed = useTableTabs
+        .getState()
+        .tabs.some(
+          (tab) =>
+            pendingKeys.includes(tabKey(tab)) &&
+            tab.kind === "query" &&
+            queryNeedsCloseConfirmation(tab),
+        );
+      if (changed) {
+        toast.warning("Ein Entwurf wurde während des Speicherns geändert. Bitte erneut speichern.");
+        return;
+      }
+      setPendingClose(null);
+      executeClose(pending);
+    } finally {
+      setSavingClose(false);
+    }
+  };
+
   const requestClose = (pending: NonNullable<typeof pendingClose>, closingTabs: Tab[]) => {
-    if (closingTabs.some((tab) => tab.kind === "query" && hasUnexecutedQueryChanges(tab))) {
+    if (closingTabs.some((tab) => tab.kind === "query" && queryNeedsCloseConfirmation(tab))) {
+      setPendingKeys(closingTabs.map(tabKey));
       setPendingClose(pending);
       return;
     }
@@ -312,6 +360,23 @@ export function TableTabs() {
       >
         <Columns2Icon className="size-3.5" />
       </button>
+      {panes.length === 2 && (
+        <button
+          type="button"
+          onClick={() => setOrientation(orientation === "horizontal" ? "vertical" : "horizontal")}
+          title={orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander"}
+          aria-label={
+            orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander"
+          }
+          className={iconButton}
+        >
+          {orientation === "horizontal" ? (
+            <Rows2Icon className="size-3.5" />
+          ) : (
+            <Columns2Icon className="size-3.5" />
+          )}
+        </button>
+      )}
       {split && (
         <button type="button" onClick={collapse} title="Einzelansicht" className={iconButton}>
           <SquareIcon className="size-3.5" />
@@ -328,21 +393,25 @@ export function TableTabs() {
       <AlertDialog
         open={pendingClose !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingClose(null);
+          if (!open && !savingClose) setPendingClose(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Änderungen nicht ausgeführt</AlertDialogTitle>
+            <AlertDialogTitle>Ungespeicherte Änderungen</AlertDialogTitle>
             <AlertDialogDescription>
-              Die Änderungen in diesem Query Editor wurden noch nicht ausgeführt. Möchtest du den
-              Tab wirklich schließen?
+              SQL-Dateien und Entwürfe wurden noch nicht gespeichert. Geschlossene Tabs bleiben in
+              der Entwurfswiederherstellung verfügbar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogCancel disabled={savingClose}>Abbrechen</AlertDialogCancel>
+            <Button disabled={savingClose} onClick={() => void saveAndClose()}>
+              {savingClose ? "Speichern…" : "Speichern und schließen"}
+            </Button>
             <AlertDialogAction
               variant="destructive"
+              disabled={savingClose}
               onClick={() => {
                 if (!pendingClose) return;
                 const pending = pendingClose;
@@ -350,7 +419,7 @@ export function TableTabs() {
                 executeClose(pending);
               }}
             >
-              Trotzdem schließen
+              Verwerfen und schließen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

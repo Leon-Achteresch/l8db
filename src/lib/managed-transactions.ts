@@ -79,6 +79,14 @@ export async function runManagedOperation<T>(txId: string, op: () => Promise<T>)
   }));
   try {
     return await op();
+  } catch (error) {
+    useTransactionStore.setState((state) => ({
+      panelOpen: true,
+      transactions: state.transactions.map((tx) =>
+        tx.txId === txId ? { ...tx, lastError: String(error) } : tx,
+      ),
+    }));
+    throw error;
   } finally {
     useTransactionStore.setState((state) => {
       const busyTransactions = { ...state.busyTransactions };

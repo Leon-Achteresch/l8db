@@ -1,16 +1,21 @@
 import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
+import { useState } from "react";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
 import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { DraftRecoveryDialog } from "./draft-recovery-dialog";
 
 export function WorkspaceStatus() {
   const connection = useActiveConnection();
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const database = useActiveDatabase();
   const caps = useActiveCapabilities();
   const schema = useActiveSchema();
+  const activeTasks = useTasksStore((state) => state.tasks.filter(isTaskActive).length);
   const fetching = useIsFetching({
     predicate: (query) => Boolean(connection) && query.queryKey[1] === connection?.id,
   });
@@ -34,6 +39,21 @@ export function WorkspaceStatus() {
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <ExtensionStatusBarItems side="right" />
+        <button
+          type="button"
+          onClick={() => setRecoveryOpen(true)}
+          className="rounded px-1 hover:text-foreground focus-visible:outline-2"
+        >
+          Entwürfe
+        </button>
+        <DraftRecoveryDialog open={recoveryOpen} onOpenChange={setRecoveryOpen} />
+        <button
+          type="button"
+          onClick={() => useTasksStore.setState({ open: true })}
+          className="rounded px-1 hover:text-foreground focus-visible:outline-2"
+        >
+          Aufgaben{activeTasks ? ` (${activeTasks})` : ""}
+        </button>
         {Boolean(fetching) && <span role="status">Daten werden geladen…</span>}
         {connection && (
           <span className="hidden items-center gap-1 sm:flex">

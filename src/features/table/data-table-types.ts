@@ -26,6 +26,8 @@ export type FkPickerCell = {
 };
 
 export type DataTableProps = {
+  stateKey?: string;
+  scrollIdentity?: string;
   columns: string[];
   data: TableRow[];
   emptyMessage: string;
@@ -55,8 +57,7 @@ export type DataTableProps = {
   currentSchema?: string;
   currentTable?: string;
   onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
-  onDuplicateRow?: (ctid: string) => void;
-  onDuplicateRowToEdit?: (ctid: string, values: Record<string, unknown>) => void;
+  onInsertRow?: (values: Record<string, string | null>) => Promise<void>;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];

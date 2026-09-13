@@ -90,6 +90,7 @@ export const QueryResultRow = memo(function QueryResultRow({
             key={col}
             column={col}
             value={row[col]}
+            row={row}
             rowIndex={rowIdx}
             originalIndex={originalIndex}
             selectionKey={selectionKey}

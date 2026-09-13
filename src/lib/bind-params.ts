@@ -1,3 +1,5 @@
+import type { DatabaseKind } from "@/lib/db";
+
 export type BindParamType = "text" | "int" | "numeric" | "bool" | "timestamp" | "null";
 
 export const BIND_PARAM_TYPES: BindParamType[] = [
@@ -282,6 +284,7 @@ export function validateBindParams(
 export function buildParameterizedQuery(
   sql: string,
   values: Record<string, BindParamValue | undefined>,
+  kind?: DatabaseKind,
 ): ParameterizedQuery {
   const refs = detectBindParams(sql);
   const order = new Map<string, number>();
@@ -299,7 +302,7 @@ export function buildParameterizedQuery(
     const entry = values[ref.name];
     const type: BindParamType = entry?.type ?? "text";
     out += sql.slice(cursor, occurrence.start);
-    out += `$${position}::${pgCastFor(type)}`;
+    out += kind === "oracle" ? `$${position}` : `$${position}::${pgCastFor(type)}`;
     cursor = occurrence.end;
   }
   out += sql.slice(cursor);

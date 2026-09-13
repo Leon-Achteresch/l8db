@@ -45,7 +45,7 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const source = current.data ?? "";
   const label = `${schema}.${name} (${activePart === "spec" ? "Spec" : "Body"})`;
   const oid = packageOid(schema, name, activePart);
-  const edit = useSqlObjectEdit(label, source);
+  const edit = useSqlObjectEdit(label, source, `package:${schema}:${label}`);
   const { compile, state: compileState, reset: resetCompile } = useCompileObject();
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);

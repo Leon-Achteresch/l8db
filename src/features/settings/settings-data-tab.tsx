@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 
@@ -26,6 +27,8 @@ export function SettingsDataTab() {
     setTranslateFilterOperators,
     setSearchIncludeColumns,
   } = useSettingsStore();
+  const historyLimit = useQueryHistoryStore((state) => state.retentionLimit);
+  const setHistoryLimit = useQueryHistoryStore((state) => state.setRetentionLimit);
   const hasTransactions = useTransactionStore((state) => state.transactions.length > 0);
 
   return (
@@ -38,6 +41,24 @@ export function SettingsDataTab() {
       </div>
 
       <div className="space-y-3">
+        <SettingsRow
+          title="Query-Verlauf je Verbindung"
+          description="50 bis 5000 Einträge. Ältere Einträge werden entfernt; dauerhaft gespeicherte Queries bleiben erhalten."
+        >
+          <Input
+            type="number"
+            min={50}
+            max={5000}
+            step={50}
+            aria-label="Query-Verlauf je Verbindung"
+            value={historyLimit}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (value >= 50 && value <= 5000) setHistoryLimit(value);
+            }}
+            className="h-8 w-24 text-xs"
+          />
+        </SettingsRow>
         <SettingsRow
           title="Standard-Zeilenlimit"
           description="Maximale Anzahl abgerufener Datensätze pro Tabelle (10 bis 5000)."
@@ -75,7 +96,7 @@ export function SettingsDataTab() {
 
         <SettingsRow
           title="Query-Timeout"
-          description="Maximale Ausführungszeit für Abfragen vor Abbruch (5 bis 300 Sekunden)."
+          description="Zeitgrenze für SQL-Ausführungen (5 bis 300 Sekunden). PostgreSQL und SQLite können den Abbruch bestätigen; bei anderen Treibern muss nach einem Timeout der Serverzustand geprüft werden."
         >
           <div className="flex items-center gap-2">
             <Input

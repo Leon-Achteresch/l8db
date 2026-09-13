@@ -39,6 +39,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 import { DashboardMetric } from "./dashboard-metric";
 
 const TABLE_LIST_LIMIT = 50;
+const MIN_OVERVIEW_SIZE_BYTES = 1024;
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
@@ -67,6 +68,12 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   const endpoint = connectionSummary(connection.connectionString, connection.kind);
   const provider = providerFor(connection);
   const caps = provider.capabilities;
+  const showStorageOverview =
+    caps.overview &&
+    (overview.isPending ||
+      overview.isError ||
+      (overview.data?.size_bytes ?? 0) >= MIN_OVERVIEW_SIZE_BYTES ||
+      overview.data?.schemas.some((entry) => entry.size_bytes >= MIN_OVERVIEW_SIZE_BYTES));
   const largestSchema = Math.max(
     1,
     ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
@@ -294,7 +301,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </section>
           </div>
           <aside className="space-y-6">
-            {caps.overview && (
+            {showStorageOverview && (
               <section className="rounded-2xl border bg-card p-5">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Speicher & Schemas</h2>

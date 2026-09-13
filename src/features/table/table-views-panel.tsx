@@ -1,93 +1,36 @@
-import { BookmarkPlusIcon, XIcon } from "lucide-react";
-import { motion } from "motion/react";
+import { BookmarkPlusIcon } from "lucide-react";
 import { useRef, useState } from "react";
-
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { SPRING_LAYOUT } from "@/lib/ease";
-import { useTableRowCountQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
-import { type SavedView, useViewsStore, VIEW_COLORS } from "@/lib/views";
-
-function formatCount(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
-  return String(count);
-}
-
-interface ViewChipProps {
-  schema: string;
-  table: string;
-  label: string;
-  filter: string;
-  color: string;
-  active: boolean;
-  onSelect: () => void;
-  onRemove?: () => void;
-}
-
-function ViewChip({
-  schema,
-  table,
-  label,
-  filter,
-  color,
-  active,
-  onSelect,
-  onRemove,
-}: ViewChipProps) {
-  const countQuery = useTableRowCountQuery(schema, table, filter);
-
-  return (
-    <motion.button
-      type="button"
-      layout
-      transition={{ layout: SPRING_LAYOUT }}
-      onClick={onSelect}
-      className={cn(
-        "group flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
-        active
-          ? "border border-border bg-background shadow-xs"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-      )}
-    >
-      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-      <span className={active ? "font-medium text-foreground" : ""}>{label}</span>
-      {countQuery.data !== undefined && (
-        <span className="text-xs text-muted-foreground">{formatCount(countQuery.data)}</span>
-      )}
-      {onRemove && (
-        <span
-          role="button"
-          tabIndex={-1}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          className="ml-0.5 hidden rounded-sm opacity-60 hover:opacity-100 group-hover:inline-flex"
-        >
-          <XIcon className="size-3" />
-        </span>
-      )}
-    </motion.button>
-  );
-}
+import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase } from "@/lib/db-selection";
+import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
+import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
+import { type SavedView, savedViewKey, useViewsStore, VIEW_COLORS } from "@/lib/views";
+import { TableViewChip } from "./table-view-chip";
 
 interface TableViewsPanelProps {
   schema: string;
   table: string;
   activeFilter: string;
-  onSelectView: (filter: string) => void;
+  filterRaw?: boolean;
+  onSelectView: (filter: string, raw?: boolean, view?: SavedView) => void;
 }
 
 export function TableViewsPanel({
   schema,
   table,
   activeFilter,
+  filterRaw = false,
   onSelectView,
 }: TableViewsPanelProps) {
-  const tableKey = `${schema}.${table}`;
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const tableKey = savedViewKey(connection?.id ?? "", database, schema, table);
+  const legacyKey = `${schema}.${table}`;
+  const legacy = useViewsStore((state) => state.views[legacyKey]);
   const savedViews = useViewsStore((s) => s.views[tableKey]) ?? [];
   const addView = useViewsStore((s) => s.addView);
   const removeView = useViewsStore((s) => s.removeView);
@@ -99,7 +42,20 @@ export function TableViewsPanel({
   const handleSave = () => {
     if (!newName.trim()) return;
     const color = VIEW_COLORS[savedViews.length % VIEW_COLORS.length];
-    addView(tableKey, { name: newName.trim(), filter: activeFilter, color });
+    const key = tableViewStateKey(connection?.id, database, schema, table);
+    const state = key ? useTableViewStateStore.getState().views[key] : undefined;
+    const layoutKey = connection
+      ? tableColumnPrefKey(connection.id, schema, table, database)
+      : undefined;
+    const layout = layoutKey ? useTableColumnPrefs.getState().prefs[layoutKey] : undefined;
+    addView(tableKey, {
+      name: newName.trim(),
+      filter: activeFilter,
+      filterRaw,
+      color,
+      state,
+      layout,
+    });
     setSaveOpen(false);
     setNewName("");
   };
@@ -108,7 +64,7 @@ export function TableViewsPanel({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-3 py-1.5 [scrollbar-width:thin]">
-      <ViewChip
+      <TableViewChip
         schema={schema}
         table={table}
         label="Alle"
@@ -119,19 +75,56 @@ export function TableViewsPanel({
       />
 
       {savedViews.map((view: SavedView) => (
-        <ViewChip
+        <TableViewChip
           key={view.id}
           schema={schema}
           table={table}
           label={view.name}
           filter={view.filter}
+          filterRaw={view.filterRaw}
           color={view.color}
           active={activeFilter !== "" && activeFilter === view.filter}
-          onSelect={() => onSelectView(view.filter)}
-          onRemove={() => removeView(tableKey, view.id)}
+          onSelect={() => onSelectView(view.filter, view.filterRaw, view)}
+          onRemove={() => {
+            removeView(tableKey, view.id);
+            toast("Ansicht entfernt", {
+              action: {
+                label: "Rückgängig",
+                onClick: () =>
+                  useViewsStore.setState((state) => ({
+                    views: { ...state.views, [tableKey]: [...(state.views[tableKey] ?? []), view] },
+                  })),
+              },
+            });
+          }}
         />
       ))}
 
+      {Boolean(legacy?.length) && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            for (const view of legacy ?? []) {
+              if (
+                !savedViews.some(
+                  (saved) => saved.name === view.name && saved.filter === view.filter,
+                )
+              )
+                addView(tableKey, {
+                  name: view.name,
+                  filter: view.filter,
+                  color: view.color,
+                  filterRaw: view.filterRaw,
+                });
+            }
+            toast.success("Alte Filter dieser Verbindung zugeordnet");
+          }}
+          title="Filter aus älteren Versionen besitzen keine Verbindungszuordnung. Hier bewusst für diese Tabelle übernehmen."
+        >
+          Alte Filter übernehmen ({legacy?.length})
+        </Button>
+      )}
       <Popover
         open={saveOpen}
         onOpenChange={(open) => {
@@ -143,7 +136,12 @@ export function TableViewsPanel({
         }}
       >
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="ml-1 shrink-0" title="View speichern">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-1 shrink-0"
+            title="Filter, Sortierung und Spalten als Ansicht speichern"
+          >
             <BookmarkPlusIcon className="size-4" />
           </Button>
         </PopoverTrigger>

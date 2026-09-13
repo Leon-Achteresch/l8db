@@ -2,6 +2,7 @@ import { FileUpIcon } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
 
 import { CsvImportPanel } from "./csv-import-panel";
@@ -9,6 +10,9 @@ import { SqlImportPanel } from "./sql-import-panel";
 
 export function ImportView() {
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const schema = useActiveSchema();
+  const scope = JSON.stringify([connection?.id, database, schema]);
   const csvEnabled = supports(connection, "csv_import");
 
   if (!connection) {
@@ -38,11 +42,11 @@ export function ImportView() {
         </div>
 
         <TabsContent value="sql" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <SqlImportPanel />
+          <SqlImportPanel key={scope} />
         </TabsContent>
         {csvEnabled && (
           <TabsContent value="csv" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <CsvImportPanel />
+            <CsvImportPanel key={scope} />
           </TabsContent>
         )}
       </Tabs>

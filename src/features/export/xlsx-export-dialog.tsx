@@ -1,9 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
 import { LoaderIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,8 +21,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import type { FullTableExportSource } from "@/features/export/csv-export-dialog";
+import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { applyMasks, type ColumnMask, DEFAULT_MASK_TEXT, type MaskMode } from "@/lib/export";
-import { buildXlsx, DEFAULT_SHEET_NAME, xlsxInputError } from "@/lib/xlsx";
+import { cancelTask } from "@/lib/tasks";
+import { DEFAULT_SHEET_NAME, xlsxInputError } from "@/lib/xlsx";
+import { runXlsxExport } from "@/lib/xlsx-export-runner";
 
 type XlsxExportDialogProps = {
   open: boolean;
@@ -33,6 +36,7 @@ type XlsxExportDialogProps = {
   rows: Record<string, unknown>[];
   defaultFileName: string;
   defaultSheetName?: string;
+  fullExport?: FullTableExportSource;
 };
 
 export function XlsxExportDialog({
@@ -42,7 +46,12 @@ export function XlsxExportDialog({
   rows,
   defaultFileName,
   defaultSheetName,
+  fullExport,
 }: XlsxExportDialogProps) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const [fullMode, setFullMode] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [sheetName, setSheetName] = useState(defaultSheetName ?? DEFAULT_SHEET_NAME);
   const [header, setHeader] = useState(true);
   const [nullText, setNullText] = useState("");
@@ -103,17 +112,20 @@ export function XlsxExportDialog({
     if (error) return;
     setBusy(true);
     try {
-      const bytes = buildXlsx({
-        columns: exportColumns,
-        rows: maskedRows,
-        options: { sheetName, header, nullText },
-      });
       const filePath = await save({
         defaultPath: defaultFileName,
         filters: [{ name: "Excel", extensions: ["xlsx"] }],
       });
       if (!filePath) return;
-      await writeFile(filePath, bytes);
+      await runXlsxExport({
+        path: filePath,
+        input: { columns: exportColumns, rows, options: { sheetName, header, nullText } },
+        masks,
+        source: fullMode ? fullExport : undefined,
+        connection,
+        database,
+        onJob: setJobId,
+      });
       toast.success(`Exportiert nach ${filePath.split("/").pop()}`);
       onOpenChange(false);
     } catch (err) {
@@ -133,80 +145,105 @@ export function XlsxExportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="xlsx-sheet">Blattname</Label>
-            <Input
-              id="xlsx-sheet"
-              value={sheetName}
-              onChange={(event) => setSheetName(event.target.value)}
-            />
+        {fullExport && (
+          <div className="space-y-2 text-xs">
+            <label className="flex items-center gap-2">
+              <Switch checked={fullMode} onCheckedChange={setFullMode} disabled={busy} />
+              Alle gefilterten Zeilen exportieren
+            </label>
+            {fullMode && (
+              <p className="text-muted-foreground">
+                Seitenweises Lesen, maximal 64 MiB Rohdaten. Änderungen während des Exports können
+                das Ergebnis beeinflussen; offene Tabellenänderungen sind nicht enthalten.
+              </p>
+            )}
+          </div>
+        )}
+        <fieldset disabled={busy} className="contents">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="xlsx-sheet">Blattname</Label>
+              <Input
+                id="xlsx-sheet"
+                value={sheetName}
+                onChange={(event) => setSheetName(event.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="xlsx-null">NULL-Darstellung</Label>
+              <Input
+                id="xlsx-null"
+                value={nullText}
+                placeholder="leer"
+                onChange={(event) => setNullText(event.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+              <Label htmlFor="xlsx-header">Kopfzeile</Label>
+              <Switch
+                id="xlsx-header"
+                checked={header}
+                onCheckedChange={setHeader}
+                aria-label="Kopfzeile"
+              />
+            </div>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="xlsx-null">NULL-Darstellung</Label>
-            <Input
-              id="xlsx-null"
-              value={nullText}
-              placeholder="leer"
-              onChange={(event) => setNullText(event.target.value)}
-            />
+            <Label>Spalten und Maskierung</Label>
+            <div className="max-h-52 space-y-1.5 overflow-auto rounded-md border p-2">
+              {columns.map((column) => {
+                const mask = maskFor(column);
+                return (
+                  <div key={column} className="flex items-center gap-2">
+                    <Switch
+                      checked={selected.includes(column)}
+                      onCheckedChange={(checked) => toggleColumn(column, checked)}
+                      aria-label={`Spalte ${column}`}
+                    />
+                    <span className="flex-1 truncate font-mono text-xs">{column}</span>
+                    <Select
+                      value={mask?.mode ?? "none"}
+                      onValueChange={(value) => setMaskMode(column, value as "none" | MaskMode)}
+                    >
+                      <SelectTrigger size="sm" className="w-32" aria-label={`Maskierung ${column}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Original</SelectItem>
+                        <SelectItem value="text">Fester Text</SelectItem>
+                        <SelectItem value="null">NULL</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      className="w-28"
+                      value={mask?.mode === "text" ? (mask.text ?? "") : ""}
+                      disabled={mask?.mode !== "text"}
+                      placeholder={DEFAULT_MASK_TEXT}
+                      aria-label={`Maskentext ${column}`}
+                      onChange={(event) => setMaskText(column, event.target.value)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
-
-          <div className="flex items-center justify-between rounded-md border px-3 py-2">
-            <Label htmlFor="xlsx-header">Kopfzeile</Label>
-            <Switch
-              id="xlsx-header"
-              checked={header}
-              onCheckedChange={setHeader}
-              aria-label="Kopfzeile"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-1.5">
-          <Label>Spalten und Maskierung</Label>
-          <div className="max-h-52 space-y-1.5 overflow-auto rounded-md border p-2">
-            {columns.map((column) => {
-              const mask = maskFor(column);
-              return (
-                <div key={column} className="flex items-center gap-2">
-                  <Switch
-                    checked={selected.includes(column)}
-                    onCheckedChange={(checked) => toggleColumn(column, checked)}
-                    aria-label={`Spalte ${column}`}
-                  />
-                  <span className="flex-1 truncate font-mono text-xs">{column}</span>
-                  <Select
-                    value={mask?.mode ?? "none"}
-                    onValueChange={(value) => setMaskMode(column, value as "none" | MaskMode)}
-                  >
-                    <SelectTrigger size="sm" className="w-32" aria-label={`Maskierung ${column}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Original</SelectItem>
-                      <SelectItem value="text">Fester Text</SelectItem>
-                      <SelectItem value="null">NULL</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    className="w-28"
-                    value={mask?.mode === "text" ? (mask.text ?? "") : ""}
-                    disabled={mask?.mode !== "text"}
-                    placeholder={DEFAULT_MASK_TEXT}
-                    aria-label={`Maskentext ${column}`}
-                    onChange={(event) => setMaskText(column, event.target.value)}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
+        </fieldset>
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         <DialogFooter>
+          {busy && jobId && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                void cancelTask(jobId).catch((failure) => toast.error(String(failure)))
+              }
+            >
+              Abbrechen
+            </Button>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Schließen
           </Button>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ import { useSavedQueriesStore } from "@/lib/saved-queries";
 
 interface QueryHistoryPanelProps {
   connectionId: string | null;
-  onLoad: (sql: string) => void;
+  onLoad: (sql: string, mode?: "new" | "replace") => void;
   onClose: () => void;
 }
 
@@ -54,6 +55,27 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
   const clearForConnection = useQueryHistoryStore((state) => state.clearForConnection);
   const savedQueries = useSavedQueriesStore((state) => state.queries);
   const deleteQuery = useSavedQueriesStore((state) => state.deleteQuery);
+  const limit = useQueryHistoryStore((state) => state.retentionLimit);
+  const restore = useQueryHistoryStore((state) => state.restore);
+  const undoableRemove = (id: string) => {
+    const entry = entries.find((item) => item.id === id);
+    if (!entry) return;
+    removeEntry(id);
+    toast("Verlaufseintrag entfernt", {
+      action: { label: "Rückgängig", onClick: () => restore([entry]) },
+    });
+  };
+  const undoableDelete = (id: string) => {
+    const entry = savedQueries.find((item) => item.id === id);
+    if (!entry) return;
+    deleteQuery(id);
+    toast("Query entfernt", {
+      action: {
+        label: "Rückgängig",
+        onClick: () => useSavedQueriesStore.getState().importQueries([entry]),
+      },
+    });
+  };
 
   const history = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -109,16 +131,23 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Suchen…"
+            aria-label="Query-Verlauf durchsuchen"
             className="h-8 pl-8 text-xs"
           />
         </div>
       </div>
 
+      <p className="border-b px-3 py-2 text-[10px] text-muted-foreground">
+        Bis zu {limit} Einträge je Verbindung. Sehr lange SQL-Texte werden gekennzeichnet gekürzt.
+        Aufbewahrung in den Einstellungen ändern.
+      </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "history" ? (
           history.length === 0 ? (
             <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-              Noch keine Queries ausgeführt.
+              {search
+                ? "Keine Treffer. Suche ändern oder leeren."
+                : "Noch keine Queries ausgeführt."}
             </p>
           ) : (
             <div className="divide-y divide-border/50">
@@ -128,7 +157,15 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                     variant="ghost"
                     size="sm"
                     className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                    onClick={() => clearForConnection(connectionId)}
+                    onClick={() => {
+                      const removed = entries.filter(
+                        (entry) => entry.connectionId === connectionId,
+                      );
+                      clearForConnection(connectionId);
+                      toast("Verlauf entfernt", {
+                        action: { label: "Rückgängig", onClick: () => restore(removed) },
+                      });
+                    }}
                   >
                     <Trash2Icon className="size-3" />
                     Verlauf dieser Verbindung löschen
@@ -145,32 +182,59 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                   <button
                     type="button"
                     className="block w-full text-left"
-                    onClick={() => onLoad(entry.sql)}
-                    title="In den Editor laden"
+                    onClick={() => onLoad(entry.sql, "new")}
+                    title="In neuem SQL-Tab öffnen"
                   >
                     <p className="truncate font-mono text-xs">{firstLine(entry.sql)}</p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
                       <span>{formatTime(entry.ranAt)}</span>
+                      {entry.database && <span>· {entry.database}</span>}
+                      {entry.truncated && (
+                        <span className="text-amber-600">
+                          · SQL gekürzt ({entry.sql.length}/{entry.originalSqlLength} Zeichen)
+                        </span>
+                      )}
                       {entry.durationMs != null && <span>· {entry.durationMs} ms</span>}
                       {entry.rowCount != null && <span>· {entry.rowCount} Zeilen</span>}
                       {entry.error && <span className="text-destructive">· Fehler</span>}
                     </p>
                   </button>
-                  <div className="mt-1 hidden gap-1 group-hover:flex">
+                  <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 gap-1 px-1.5 text-[11px]"
-                      onClick={() => onLoad(entry.sql)}
+                      onClick={() => onLoad(entry.sql, "new")}
                     >
                       <PlayIcon className="size-3" />
-                      Laden
+                      Neuer Tab
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-[11px]"
+                      onClick={() => onLoad(entry.sql, "replace")}
+                    >
+                      Editor ersetzen
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-[11px]"
+                      onClick={() => {
+                        useSavedQueriesStore
+                          .getState()
+                          .saveQuery(firstLine(entry.sql) || "Query", entry.sql);
+                        toast.success("Query dauerhaft gespeichert");
+                      }}
+                    >
+                      Dauerhaft speichern
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                      onClick={() => removeEntry(entry.id)}
+                      onClick={() => undoableRemove(entry.id)}
                     >
                       <Trash2Icon className="size-3" />
                       Löschen
@@ -218,29 +282,29 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
                 <button
                   type="button"
                   className="block w-full text-left"
-                  onClick={() => onLoad(item.sql)}
-                  title="In den Editor laden"
+                  onClick={() => onLoad(item.sql, "new")}
+                  title="In neuem SQL-Tab öffnen"
                 >
                   <p className="truncate text-xs font-medium">{item.name}</p>
                   <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
                     {firstLine(item.sql)}
                   </p>
                 </button>
-                <div className="mt-1 hidden gap-1 group-hover:flex">
+                <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 gap-1 px-1.5 text-[11px]"
-                    onClick={() => onLoad(item.sql)}
+                    onClick={() => onLoad(item.sql, "new")}
                   >
                     <PlayIcon className="size-3" />
-                    Laden
+                    Neuer Tab
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                    onClick={() => deleteQuery(item.id)}
+                    onClick={() => undoableDelete(item.id)}
                   >
                     <Trash2Icon className="size-3" />
                     Löschen
