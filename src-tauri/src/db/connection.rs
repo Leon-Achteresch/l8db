@@ -72,7 +72,7 @@ pub fn connection_key(value: &str, database: Option<&str>) -> String {
     hash.update(value.as_bytes());
     hash.update([0]);
     hash.update(database.unwrap_or_default().as_bytes());
-    format!("{:x}", hash.finalize())
+    super::hex_blob(hash.finalize().as_slice())
 }
 
 pub fn tls_connector(ssl: SslMode) -> Result<MakeTlsConnector, String> {
