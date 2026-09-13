@@ -1,5 +1,4 @@
 use futures_util::TryStreamExt;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use bb8::PooledConnection;
@@ -21,8 +20,6 @@ use super::{
     RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode,
     TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
-
-const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
 const SEARCH_SNIPPET_LEN: usize = 240;
 
@@ -87,7 +84,7 @@ impl PostgresAdapter {
             .password(&config.password)
             .dbname(&config.database)
             .ssl_mode(ssl.to_pg())
-            .connect_timeout(Duration::from_secs(10));
+            .connect_timeout(super::execution::connection_duration());
         if config.read_only {
             pg.options(super::connection::READ_ONLY_OPTION);
         }
@@ -167,13 +164,24 @@ impl PostgresAdapter {
         Ok(())
     }
 
+    async fn controlled<F, T>(
+        &self,
+        client: &tokio_postgres::Client,
+        future: F,
+    ) -> Result<T, String>
+    where
+        F: std::future::Future<Output = Result<T, String>>,
+    {
+        super::execution::postgres(client, self.ssl, None, future).await
+    }
+
     async fn timed<F, T>(&self, future: F) -> Result<T, String>
     where
         F: std::future::Future<Output = Result<T, String>>,
     {
-        timeout(QUERY_TIMEOUT, future).await.map_err(|_| {
-            "Query-Timeout: Die Abfrage hat länger als 30 Sekunden gedauert".to_string()
-        })?
+        timeout(super::execution::query_duration(), future)
+            .await
+            .map_err(|_| super::execution::timeout_message())?
     }
 }
 
@@ -1019,11 +1027,17 @@ impl DatabaseAdapter for PostgresAdapter {
         if let Some(client) =
             server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
         {
-            return self
-                .timed(server_output::pg_run_query(&client, sql, self.read_only))
-                .await;
+            let conn = client.lock().await?;
+            let outcome = super::execution::postgres(
+                &conn,
+                self.ssl,
+                Some(&client),
+                server_output::pg_run_query(&conn, sql, self.read_only),
+            )
+            .await;
+            return client.finish(outcome);
         }
-        let conn = self.get_conn().await?;
+        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         let start = std::time::Instant::now();
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
@@ -1032,7 +1046,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         let outcome = self
-            .timed(async {
+            .controlled(&conn, async {
                 let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
                 futures_util::pin_mut!(messages);
 
@@ -1083,13 +1097,15 @@ impl DatabaseAdapter for PostgresAdapter {
         sql: &str,
         params: &[Option<String>],
     ) -> Result<QueryResult, String> {
-        let conn = self.get_conn().await?;
+        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
                 .await
                 .map_err(map_pg_err)?;
         }
-        let outcome = self.timed(run_params_query(&conn, sql, params)).await;
+        let outcome = self
+            .controlled(&conn, run_params_query(&conn, sql, params))
+            .await;
         if self.read_only {
             let _ = conn.simple_query("ROLLBACK").await;
         }
@@ -1803,9 +1819,25 @@ impl DatabaseAdapter for PostgresAdapter {
             placeholders
         );
 
-        let conn = self.get_conn().await?;
-        let statement = conn.prepare(&sql).await.map_err(map_pg_err)?;
-        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+        let (conn, connection) = super::execution::connect(async {
+            self.config
+                .connect(super::connection::tls_connector(self.ssl)?)
+                .await
+                .map_err(map_pg_err)
+        })
+        .await?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let statement = self
+            .controlled(&conn, async {
+                conn.prepare(&sql).await.map_err(map_pg_err)
+            })
+            .await?;
+        self.controlled(&conn, async {
+            conn.simple_query("BEGIN").await.map_err(map_pg_err)
+        })
+        .await?;
 
         let mut inserted: u64 = 0;
         for (index, row) in request.rows.iter().enumerate() {
@@ -1813,23 +1845,28 @@ impl DatabaseAdapter for PostgresAdapter {
                 .iter()
                 .map(|v| v as &(dyn tokio_postgres::types::ToSql + Sync))
                 .collect();
-            match conn.execute(&statement, &params).await {
-                Ok(n) => inserted += n,
+            match self
+                .controlled(&conn, async {
+                    conn.execute(&statement, &params).await.map_err(map_pg_err)
+                })
+                .await
+            {
+                Ok(n) => {
+                    inserted += n;
+                    if (index + 1) % 100 == 0 || index + 1 == request.rows.len() {
+                        super::execution::progress(inserted);
+                    }
+                }
                 Err(err) => {
-                    let failed_column = err
-                        .as_db_error()
-                        .and_then(|d| d.column())
-                        .map(|c| c.to_string())
-                        .or_else(|| {
-                            let message = err.to_string();
-                            request
-                                .columns
-                                .iter()
-                                .find(|c| message.contains(c.as_str()))
-                                .cloned()
-                        });
-                    let message = map_pg_err(err);
-                    let _ = conn.simple_query("ROLLBACK").await;
+                    let failed_column = request
+                        .columns
+                        .iter()
+                        .find(|column| err.contains(column.as_str()))
+                        .cloned();
+                    let message = match tokio::time::timeout(super::execution::connection_duration(), conn.simple_query("ROLLBACK")).await {
+                        Ok(Ok(_)) => format!("{err} Import vollständig zurückgerollt."),
+                        _ => format!("{err} Rollback nicht bestätigt; Serverzustand vor erneutem Import prüfen."),
+                    };
                     return Ok(super::CsvImportOutcome {
                         inserted_rows: 0,
                         failed_row: Some((index + 1) as u32),
@@ -1840,9 +1877,30 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         }
 
-        if let Err(err) = conn.simple_query("COMMIT").await {
-            let message = map_pg_err(err);
-            let _ = conn.simple_query("ROLLBACK").await;
+        if super::execution::cancellation_token().is_cancelled() {
+            tokio::time::timeout(
+                super::execution::connection_duration(),
+                conn.simple_query("ROLLBACK"),
+            )
+            .await
+            .map_err(|_| {
+                "Abbruch angefordert, Rollback nicht bestätigt. Serverzustand prüfen.".to_string()
+            })?
+            .map_err(map_pg_err)?;
+            return Ok(super::CsvImportOutcome {
+                inserted_rows: 0,
+                failed_row: None,
+                failed_column: None,
+                error: Some("Import vom Benutzer abgebrochen und zurückgerollt.".into()),
+            });
+        }
+        if let Err(err) = self
+            .controlled(&conn, async {
+                conn.simple_query("COMMIT").await.map_err(map_pg_err)
+            })
+            .await
+        {
+            let message = format!("Commit-Ergebnis nicht bestätigt: {err}. Vor erneutem Import den Serverzustand prüfen.");
             return Ok(super::CsvImportOutcome {
                 inserted_rows: 0,
                 failed_row: None,
@@ -3917,44 +3975,22 @@ impl PostgresAdapter {
         &self,
         sql: &str,
     ) -> Result<Vec<super::ScriptStatementResult>, String> {
-        use super::ScriptStatementResult;
-        if let Some(client) =
-            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
-        {
-            return server_output::pg_run_script(&client, sql, self.read_only).await;
-        }
-        let statements: Vec<&str> = sql
-            .split(';')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let conn = self.get_conn().await?;
-        if self.read_only {
-            conn.simple_query("BEGIN TRANSACTION READ ONLY")
-                .await
-                .map_err(map_pg_err)?;
-        }
         let mut results = Vec::new();
-        for stmt in statements {
-            let full = format!("{};", stmt);
-            match conn.execute(stmt, &[]).await {
-                Ok(n) => results.push(ScriptStatementResult {
-                    statement: full,
-                    success: true,
-                    rows_affected: Some(n),
-                    error: None,
-                }),
-                Err(e) => results.push(ScriptStatementResult {
-                    statement: full,
-                    success: false,
-                    rows_affected: None,
-                    error: Some(map_pg_err(e)),
-                }),
+        for statement in super::sql_script::split_postgres(sql) {
+            let outcome = self.execute_query(&statement).await;
+            let failed = outcome.is_err();
+            results.push(super::ScriptStatementResult {
+                statement,
+                success: outcome.is_ok(),
+                rows_affected: outcome
+                    .as_ref()
+                    .ok()
+                    .and_then(|result| result.rows_affected),
+                error: outcome.err(),
+            });
+            if failed {
+                break;
             }
-        }
-        if self.read_only {
-            let _ = conn.simple_query("ROLLBACK").await;
         }
         Ok(results)
     }
@@ -4001,26 +4037,29 @@ impl PostgresAdapter {
     }
 }
 
+#[path = "postgres_bind.rs"]
+mod bind;
+
 pub async fn run_params_query(
     client: &tokio_postgres::Client,
     sql: &str,
     params: &[Option<String>],
 ) -> Result<QueryResult, String> {
-    use tokio_postgres::types::{ToSql, Type};
+    use tokio_postgres::types::ToSql;
 
     let trimmed = sql.trim().trim_end_matches(';').trim();
     if trimmed.is_empty() {
         return Err("Leere Abfrage".to_string());
     }
     let start = std::time::Instant::now();
-    let types: Vec<Type> = params.iter().map(|_| Type::TEXT).collect();
-    let values: Vec<&(dyn ToSql + Sync)> = params
+    let text_params: Vec<_> = params.iter().map(bind::TextParameter).collect();
+    let values: Vec<&(dyn ToSql + Sync)> = text_params
         .iter()
         .map(|value| value as &(dyn ToSql + Sync))
         .collect();
 
     let statement = client
-        .prepare_typed(trimmed, &types)
+        .prepare(trimmed)
         .await
         .map_err(map_pg_err)?;
     if statement.columns().is_empty() {
@@ -4046,7 +4085,7 @@ pub async fn run_params_query(
         trimmed
     );
     let wrapped_statement = client
-        .prepare_typed(&wrapped, &types)
+        .prepare(&wrapped)
         .await
         .map_err(map_pg_err)?;
     let data = client
@@ -4140,6 +4179,160 @@ mod tests {
     fn lab_adapter() -> PostgresAdapter {
         PostgresAdapter::from_connection_string(&lab_connection_string(), None, create_pool_state())
             .expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn qol_cancel_isolates_server_output_and_transaction_sessions() {
+        use crate::db::execution::{self, ExecutionOptions};
+        let adapter = lab_adapter();
+        adapter.set_server_output(true).await.unwrap();
+        let before = adapter
+            .execute_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap()
+            .rows[0]["pid"]
+            .clone();
+        let cancel = async {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert!(execution::cancel("pg-output-cancel").unwrap());
+        };
+        let query = execution::run(
+            Some(ExecutionOptions {
+                job_id: Some("pg-output-cancel".into()),
+                ..Default::default()
+            }),
+            true,
+            adapter.execute_query("SELECT pg_sleep(10)"),
+        );
+        let (result, _) = tokio::join!(query, cancel);
+        assert!(result.unwrap_err().contains("vom Server abgebrochen"));
+        let after = adapter
+            .execute_query("SELECT pg_backend_pid() AS pid")
+            .await
+            .unwrap()
+            .rows[0]["pid"]
+            .clone();
+        assert_ne!(before, after);
+        adapter.set_server_output(false).await.unwrap();
+
+        let manager = crate::db::transaction::create_transaction_state();
+        let tx = manager
+            .begin(
+                crate::db::DatabaseKind::Postgres,
+                &lab_connection_string(),
+                None,
+                &create_pool_state(),
+            )
+            .await
+            .unwrap();
+        let query = execution::run(
+            Some(ExecutionOptions {
+                job_id: Some("pg-tx-cancel".into()),
+                ..Default::default()
+            }),
+            true,
+            manager.execute(&tx, "SELECT pg_sleep(10)"),
+        );
+        let cancel = async {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert!(execution::cancel("pg-tx-cancel").unwrap());
+        };
+        let (result, _) = tokio::join!(query, cancel);
+        assert!(result.unwrap_err().contains("vom Server abgebrochen"));
+        assert!(manager
+            .execute(&tx, "SELECT 1")
+            .await
+            .unwrap_err()
+            .contains("zurückrollen"));
+        assert!(manager.commit(&tx).await.is_err());
+        assert!(manager.list_active_ids().await.contains(&tx));
+        manager.rollback(&tx).await.unwrap();
+        assert!(adapter.execute_query("SELECT 1").await.is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn qol_timeout_five_and_sixty_seconds_have_different_effects() {
+        use crate::db::execution::{self, ExecutionOptions};
+        let adapter = lab_adapter();
+        let started = std::time::Instant::now();
+        let result = execution::run(
+            Some(ExecutionOptions {
+                query_timeout: Some(5),
+                ..Default::default()
+            }),
+            true,
+            adapter.execute_query("SELECT pg_sleep(6)"),
+        )
+        .await;
+        assert!(result
+            .unwrap_err()
+            .contains("Query-Timeout nach 5 Sekunden"));
+        assert!(started.elapsed() >= std::time::Duration::from_secs(5));
+        assert!(execution::run(
+            Some(ExecutionOptions {
+                query_timeout: Some(60),
+                ..Default::default()
+            }),
+            true,
+            adapter.execute_query("SELECT pg_sleep(6)")
+        )
+        .await
+        .is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn qol_csv_failure_rolls_back_all_rows() {
+        let adapter = lab_adapter();
+        adapter.execute_query("DROP TABLE IF EXISTS public.l8db_qol_csv; CREATE TABLE public.l8db_qol_csv(id int NOT NULL, name text)").await.unwrap();
+        let outcome = adapter
+            .csv_import(&crate::db::CsvImportRequest {
+                schema: "public".into(),
+                table: "l8db_qol_csv".into(),
+                columns: vec!["id".into(), "name".into()],
+                rows: vec![
+                    vec![Some("1".into()), Some("a;b".into())],
+                    vec![Some("invalid".into()), Some("two".into())],
+                ],
+            })
+            .await
+            .unwrap();
+        assert_eq!(outcome.inserted_rows, 0);
+        assert_eq!(outcome.failed_row, Some(2));
+        assert!(outcome.error.unwrap().contains("vollständig zurückgerollt"));
+        let result = adapter
+            .execute_query("SELECT count(*) AS count FROM public.l8db_qol_csv")
+            .await
+            .unwrap();
+        assert_eq!(result.rows[0]["count"], "0");
+        adapter
+            .execute_query("DROP TABLE public.l8db_qol_csv")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn qol_script_preserves_literals_and_stops_on_failure() {
+        let adapter = lab_adapter();
+        adapter.execute_query("DROP TABLE IF EXISTS public.l8db_qol_script; CREATE TABLE public.l8db_qol_script(v text)").await.unwrap();
+        let outcome = adapter.execute_script("INSERT INTO public.l8db_qol_script VALUES ('a;b'); SELECT broken_column; INSERT INTO public.l8db_qol_script VALUES ('not-run');").await.unwrap();
+        assert_eq!(outcome.len(), 2);
+        assert!(outcome[0].success);
+        assert!(!outcome[1].success);
+        let rows = adapter
+            .execute_query("SELECT v FROM public.l8db_qol_script")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["v"], "a;b");
+        adapter
+            .execute_query("DROP TABLE public.l8db_qol_script")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

@@ -208,7 +208,15 @@ fn run_query(
     conn: &Connection,
     sql: &str,
 ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    let rows = conn.query(sql, &[]).map_err(map_err)?;
+    run_query_named(conn, sql, &[])
+}
+
+fn run_query_named(
+    conn: &Connection,
+    sql: &str,
+    params: &[(&str, &dyn oracle::sql_type::ToSql)],
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    let rows = conn.query_named(sql, params).map_err(map_err)?;
     let info: Vec<(String, OracleType)> = rows
         .column_info()
         .iter()
@@ -286,13 +294,13 @@ impl OracleAdapter {
         };
         let target = format!("{host}:{port}");
         tokio::time::timeout(
-            std::time::Duration::from_secs(8),
+            super::execution::connection_duration(),
             tokio::net::TcpStream::connect(target.as_str()),
         )
         .await
         .map_err(|_| {
             format!(
-                "Oracle-Host {host}:{port} antwortet nicht (TCP-Timeout nach 8 s). Prüfe VPN, Firewall und Hostnamen."
+                "Oracle-Host {host}:{port} antwortet nicht (TCP-Timeout). Prüfe VPN, Firewall und Hostnamen."
             )
         })?
         .map_err(|e| {
@@ -633,6 +641,54 @@ impl DatabaseAdapter for OracleAdapter {
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn execute_query_with_params(
+        &self,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
+        let start = std::time::Instant::now();
+        let (statement, indexes) = sql::bind_statement(sql, params.len())?;
+        let values = params.to_vec();
+        self.run(move |conn| {
+            let names: Vec<String> = indexes
+                .iter()
+                .map(|index| format!("l8db_{index}"))
+                .collect();
+            let binds: Vec<(&str, &dyn oracle::sql_type::ToSql)> = names
+                .iter()
+                .zip(&indexes)
+                .map(|(name, index)| {
+                    (
+                        name.as_str(),
+                        &values[index - 1] as &dyn oracle::sql_type::ToSql,
+                    )
+                })
+                .collect();
+            if is_query(&statement) {
+                let (columns, rows) = run_query_named(conn, &statement, &binds)?;
+                Ok(QueryResult {
+                    rows: rows_to_objects(&columns, rows),
+                    columns,
+                    rows_affected: None,
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                })
+            } else {
+                let affected = conn
+                    .execute_named(&statement, &binds)
+                    .map_err(map_err)?
+                    .row_count()
+                    .map_err(map_err)?;
+                Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    rows_affected: Some(affected),
+                    execution_time_ms: start.elapsed().as_millis() as u64,
+                })
+            }
+        })
+        .await
     }
 
     async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
@@ -1299,7 +1355,9 @@ impl DatabaseAdapter for OracleAdapter {
              JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
              JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
              JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
-             WHERE c.constraint_type = 'R' AND c.owner = {} AND c.table_name = {} ORDER BY c.constraint_name, cc.position",
+             WHERE c.constraint_type = 'R' AND ((c.owner = {} AND c.table_name = {}) OR (r.owner = {} AND r.table_name = {})) ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
+            lit(schema),
+            lit(table),
             lit(schema),
             lit(table)
         );
@@ -1816,6 +1874,35 @@ mod tests {
     }
 
     const NO_PRIV: &[&str] = &["ORA-01031", "ORA-27486", "ORA-01950", "ORA-00942"];
+
+    #[test]
+    fn oracle_advertises_native_bind_parameters() {
+        assert!(
+            super::super::provider::DatabaseKind::Oracle
+                .capabilities()
+                .bind_parameters
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_master_detail_bind_parameters() {
+        let url = std::env::var("L8DB_SMOKE_ORACLE_URL").expect("Oracle-Testverbindung fehlt");
+        let adapter = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "bind-test".into(),
+        )
+        .unwrap();
+        let result = adapter.execute_query_with_params(
+            "SELECT $1 AS FIRST_VALUE, $1 AS REPEATED_VALUE, $2 AS NULL_VALUE FROM DUAL WHERE 42 = $3",
+            &[Some("O'Reilly".into()), None, Some("42".into())],
+        ).await.unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0]["FIRST_VALUE"], "O'Reilly");
+        assert_eq!(result.rows[0]["REPEATED_VALUE"], "O'Reilly");
+        assert!(result.rows[0]["NULL_VALUE"].is_null());
+    }
 
     #[tokio::test]
     #[ignore]

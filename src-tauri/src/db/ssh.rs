@@ -334,8 +334,14 @@ impl SshTunnelManager {
 pub async fn open_ssh_tunnel(
     request: SshTunnelRequest,
     ssh_state: tauri::State<'_, SshState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<SshTunnelInfo, String> {
-    ssh_state.open(request).await
+    super::execution::run(
+        options,
+        false,
+        super::execution::connect(ssh_state.open(request)),
+    )
+    .await
 }
 
 #[tauri::command]

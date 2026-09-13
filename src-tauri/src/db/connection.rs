@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::time::Duration;
 
 use postgres_native_tls::MakeTlsConnector;
 use sha2::{Digest, Sha256};
@@ -61,7 +60,7 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
         Config::from_str(url.as_str()).map_err(|e| format!("Ungültiger Connection String: {e}"))?;
     config
         .ssl_mode(ssl.to_pg())
-        .connect_timeout(Duration::from_secs(10));
+        .connect_timeout(super::execution::connection_duration());
     if let Some(database) = database.filter(|db| !db.is_empty()) {
         config.dbname(database);
     }

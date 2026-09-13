@@ -327,7 +327,7 @@ impl MssqlAdapter {
         let client = match reused {
             Some(client) => client,
             None => {
-                timed(async {
+                super::execution::connect(async {
                     let tcp = TcpStream::connect(self.config.get_addr())
                         .await
                         .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;

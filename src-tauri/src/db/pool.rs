@@ -22,7 +22,7 @@ type PoolEntry = Arc<OnceCell<PgPool>>;
 type SharedEntry = Arc<OnceCell<Arc<dyn Any + Send + Sync>>>;
 
 pub struct PoolManager {
-    pools: Mutex<HashMap<(String, PoolUse), PoolEntry>>,
+    pools: Mutex<HashMap<(String, PoolUse, u64), PoolEntry>>,
     shared: Mutex<HashMap<String, SharedEntry>>,
 }
 
@@ -50,7 +50,11 @@ impl PoolManager {
         let entry = {
             let mut pools = self.pools.lock().await;
             pools
-                .entry((connection_key.to_string(), pool_use))
+                .entry((
+                    connection_key.to_string(),
+                    pool_use,
+                    super::execution::connection_duration().as_secs(),
+                ))
                 .or_default()
                 .clone()
         };
@@ -60,7 +64,7 @@ impl PoolManager {
                 Pool::builder()
                     .max_size(if pool_use == PoolUse::Query { 8 } else { 4 })
                     .min_idle(Some(0))
-                    .connection_timeout(Duration::from_secs(10))
+                    .connection_timeout(super::execution::connection_duration())
                     .idle_timeout(Some(Duration::from_secs(600)))
                     .build(manager)
                     .await
@@ -97,7 +101,7 @@ impl PoolManager {
         self.pools
             .lock()
             .await
-            .retain(|(key, _), _| key != connection_key);
+            .retain(|(key, _, _), _| key != connection_key);
         let prefix = format!("{connection_key}#");
         self.shared
             .lock()

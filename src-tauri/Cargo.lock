@@ -3598,6 +3598,7 @@ dependencies = [
  "async-trait",
  "bb8",
  "bb8-postgres",
+ "bytes",
  "chrono",
  "duckdb",
  "futures-util",

@@ -185,14 +185,14 @@ impl RedisAdapter {
 
     async fn connect(url: &str) -> Result<MultiplexedConnection, String> {
         let client = redis::Client::open(url).map_err(map_err)?;
-        let mut conn = timed(async {
+        let mut conn = super::execution::connect(async {
             client
                 .get_multiplexed_async_connection()
                 .await
                 .map_err(map_err)
         })
         .await?;
-        conn.set_response_timeout(std::time::Duration::from_secs(30));
+        conn.set_response_timeout(super::execution::query_duration());
         Ok(conn)
     }
 
@@ -203,6 +203,7 @@ impl RedisAdapter {
                 .shared(&self.key, || Self::connect(&self.url))
                 .await?;
             let mut conn = (*shared).clone();
+            conn.set_response_timeout(super::execution::query_duration());
             match redis::cmd("PING").query_async::<String>(&mut conn).await {
                 Ok(_) => return Ok(conn),
                 Err(error) if attempt == 0 && error.is_io_error() => {
