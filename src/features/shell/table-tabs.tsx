@@ -6,10 +6,12 @@ import {
   PlusIcon,
   Rows2Icon,
   SquareIcon,
+  SquareSplitHorizontalIcon,
 } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Tooltip } from "@/components/motion/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,6 +67,8 @@ export function TableTabs() {
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = panes.length > 1;
+  const orientationLabel =
+    orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander";
   const [pendingClose, setPendingClose] = useState<
     { type: "tab" | "others" | "right"; key: string } | { type: "all" } | null
   >(null);
@@ -288,17 +292,22 @@ export function TableTabs() {
         </nav>
         {overflow && (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Weitere geöffnete Objekte (${hiddenTabs.length})`}
-                title="Weitere geöffnete Objekte"
-                className={`${iconButton} w-11 gap-0.5 bg-primary/8 text-primary`}
-              >
-                <ChevronDownIcon className="size-3.5" />
-                <span className="text-[10px] tabular-nums">{hiddenTabs.length}</span>
-              </button>
-            </DropdownMenuTrigger>
+            <Tooltip
+              content={`Weitere geöffnete Objekte (${hiddenTabs.length})`}
+              side="bottom"
+              wrapperClassName="shrink-0"
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Weitere geöffnete Objekte (${hiddenTabs.length})`}
+                  className={`${iconButton} w-11 gap-0.5 bg-primary/8 text-primary`}
+                >
+                  <ChevronDownIcon className="size-3.5" />
+                  <span className="text-[10px] tabular-nums">{hiddenTabs.length}</span>
+                </button>
+              </DropdownMenuTrigger>
+            </Tooltip>
             <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
               <DropdownMenuLabel>Weitere geöffnete Objekte</DropdownMenuLabel>
               {hiddenTabs.map((tab) => (
@@ -341,55 +350,67 @@ export function TableTabs() {
           </DropdownMenu>
         )}
       </div>
-      <button
-        type="button"
-        onClick={handleNewQueryTab}
-        title="Neue Abfrage öffnen"
-        className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
-      >
-        <PlusIcon className="size-3.5" />
-      </button>
-      <div className="min-w-0 flex-1" />
-
-      <button
-        type="button"
-        onClick={handleSplit}
-        disabled={tabs.length === 0 || panes.length >= MAX_SPLIT_PANES}
-        title="Ansicht teilen"
-        className={iconButton}
-      >
-        <Columns2Icon className="size-3.5" />
-      </button>
-      {panes.length === 2 && (
+      <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
         <button
           type="button"
-          onClick={() => setOrientation(orientation === "horizontal" ? "vertical" : "horizontal")}
-          title={orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander"}
-          aria-label={
-            orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander"
-          }
+          onClick={handleNewQueryTab}
+          aria-label="Neue Abfrage öffnen"
+          className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
+        >
+          <PlusIcon className="size-3.5" />
+        </button>
+      </Tooltip>
+      <div className="min-w-0 flex-1" />
+
+      <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
+        <button
+          type="button"
+          onClick={handleSplit}
+          disabled={tabs.length === 0 || panes.length >= MAX_SPLIT_PANES}
+          aria-label="Ansicht teilen"
           className={iconButton}
         >
-          {orientation === "horizontal" ? (
-            <Rows2Icon className="size-3.5" />
-          ) : (
-            <Columns2Icon className="size-3.5" />
-          )}
+          <SquareSplitHorizontalIcon className="size-3.5" />
         </button>
+      </Tooltip>
+      {panes.length === 2 && (
+        <Tooltip content={orientationLabel} side="bottom" wrapperClassName="shrink-0">
+          <button
+            type="button"
+            onClick={() => setOrientation(orientation === "horizontal" ? "vertical" : "horizontal")}
+            aria-label={orientationLabel}
+            className={iconButton}
+          >
+            {orientation === "horizontal" ? (
+              <Rows2Icon className="size-3.5" />
+            ) : (
+              <Columns2Icon className="size-3.5" />
+            )}
+          </button>
+        </Tooltip>
       )}
       {split && (
-        <button type="button" onClick={collapse} title="Einzelansicht" className={iconButton}>
-          <SquareIcon className="size-3.5" />
-        </button>
+        <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">
+          <button
+            type="button"
+            onClick={collapse}
+            aria-label="Einzelansicht"
+            className={iconButton}
+          >
+            <SquareIcon className="size-3.5" />
+          </button>
+        </Tooltip>
       )}
-      <button
-        type="button"
-        onClick={() => void handleOpenSqlFile()}
-        title="SQL-Datei öffnen"
-        className={iconButton}
-      >
-        <FolderOpenIcon className="size-3.5" />
-      </button>
+      <Tooltip content="SQL-Datei öffnen" side="bottom" wrapperClassName="shrink-0">
+        <button
+          type="button"
+          onClick={() => void handleOpenSqlFile()}
+          aria-label="SQL-Datei öffnen"
+          className={iconButton}
+        >
+          <FolderOpenIcon className="size-3.5" />
+        </button>
+      </Tooltip>
       <AlertDialog
         open={pendingClose !== null}
         onOpenChange={(open) => {
