@@ -43,8 +43,8 @@ export const TOUR_CHAPTERS: TourChapter[] = [
     steps: [
       {
         id: "connections-page",
-        title: "Datenbank wählen",
-        body: "Hier liegen alle gespeicherten Verbindungen als Karten. Eine neue Engine legst du über die Kachel „Neu“ an. Passwörter landen im System-Schlüsselbund, nicht in der Verbindungs-URL.",
+        title: "Verbindungen",
+        body: "Hier liegen alle gespeicherten Verbindungen als Karten. Tippe auf eine Karte, um sie zu öffnen. Eine neue Verbindung legst du über „Neu“ an. Passwörter landen im System-Schlüsselbund.",
         route: "/connections",
         target: "[data-tour='connections-page']",
         side: "bottom",
@@ -63,7 +63,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "connection-editor",
         title: "Engine und Zugangsdaten",
-        body: "Wähle zuerst die Engine (Postgres, MySQL, SQLite, …). Danach Host, Port, Datenbank, Benutzer und Passwort — oder eine komplette URL. Optional: SSH-Tunnel, TLS-Modus und ein Verbindungstest, bevor du speicherst.",
+        body: "Zuerst die Datenbank wählen, danach Name, Host, Benutzer und Passwort. SSL, SSH und Farbe liegen unter „Erweitert“. Du kannst die Verbindung testen und speichern.",
         target: "[data-tour='connection-editor']",
         side: "right",
       },
