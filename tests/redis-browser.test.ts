@@ -272,15 +272,12 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.getByText("Keine Daten.", { exact: false }).first().waitFor();
       await page.goto("http://localhost:1420/connections");
       await page.getByRole("button", { name: "Neu", exact: true }).click();
-      await page
-        .getByRole("radiogroup", { name: "Erstellungsmodus" })
-        .getByText("Connection-String", { exact: true })
-        .click();
+      await page.getByRole("button", { name: "Ich habe schon einen Connection-String" }).click();
       await page.getByLabel("Name", { exact: true }).fill("Redis Connection Test");
-      await page.locator("#quick-connection-url").fill(`${provider}://127.0.0.1:6381/0`);
+      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:6381/0`);
       await page.getByRole("button", { name: "Testen", exact: true }).click();
       await page.getByText(/Erreichbar/).waitFor();
-      await page.locator("#quick-connection-url").fill(`${provider}://127.0.0.1:6381/9999`);
+      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:6381/9999`);
       await page.getByRole("button", { name: "Testen", exact: true }).click();
       await page.getByRole("alert").first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-redis-connection.png" });
