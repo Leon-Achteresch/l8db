@@ -50,7 +50,7 @@ export function SidebarPackageList({ items, isLoading, isError, error }: Sidebar
   }
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative">
+      <div className="sticky top-0 z-10 bg-sidebar py-1">
         <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <SidebarInput
           placeholder="Packages…"
