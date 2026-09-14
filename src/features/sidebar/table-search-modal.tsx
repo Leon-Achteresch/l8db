@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   Code2Icon,
+  Columns2Icon,
   ColumnsIcon,
   DatabaseIcon,
   EyeIcon,
@@ -35,6 +36,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { TableContentSearch } from "@/features/sidebar/table-content-search";
@@ -329,19 +331,25 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 )}
                 autoFocus
               />
-              <Toggle
-                size="sm"
-                variant="outline"
-                pressed={searchIncludeColumns}
-                onPressedChange={setSearchIncludeColumns}
-                aria-label="Spalten in Suche einbeziehen"
-                title={
-                  searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"
-                }
-                className="h-7 shrink-0 px-1.5"
-              >
-                <ColumnsIcon className="size-3.5" />
-              </Toggle>
+              <TooltipProvider delayDuration={350}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Toggle
+                      size="sm"
+                      variant="outline"
+                      pressed={searchIncludeColumns}
+                      onPressedChange={setSearchIncludeColumns}
+                      aria-label="Spalten in Suche einbeziehen"
+                      className="h-7 shrink-0 px-1.5"
+                    >
+                      <Columns2Icon className="size-3.5" />
+                    </Toggle>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Toggle
                 size="sm"
                 variant="outline"
