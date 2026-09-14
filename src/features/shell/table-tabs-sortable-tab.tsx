@@ -100,7 +100,7 @@ export function TableTabsSortableTab({
   onCopyFull,
   onSplit,
 }: TableTabsSortableTabProps) {
-  const { ref, isDragging } = useSortable({
+  const { ref, handleRef, isDragging } = useSortable({
     id: tabKey(tab),
     index,
     type: "tab",
@@ -134,6 +134,7 @@ export function TableTabsSortableTab({
         >
           <button
             type="button"
+            ref={handleRef}
             onClick={onNavigate}
             title={label}
             aria-pressed={isActive}
