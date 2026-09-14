@@ -5,6 +5,7 @@ import {
   BracesIcon,
   CheckIcon,
   ChevronsUpDownIcon,
+  Columns2Icon,
   ColumnsIcon,
   DatabaseIcon,
   EyeIcon,
@@ -101,6 +102,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -1044,17 +1046,23 @@ function SidebarEntityList({
           onRegexEnabledChange={(enabled) => setRegexEnabled("sidebar", enabled)}
           regexError={regexError}
         />
-        <Toggle
-          size="sm"
-          variant="outline"
-          pressed={searchIncludeColumns}
-          onPressedChange={setSearchIncludeColumns}
-          aria-label="Spalten in Suche einbeziehen"
-          title={searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
-          className="h-7 shrink-0 px-1.5"
-        >
-          <ColumnsIcon className="size-3.5" />
-        </Toggle>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              size="sm"
+              variant="outline"
+              pressed={searchIncludeColumns}
+              onPressedChange={setSearchIncludeColumns}
+              aria-label="Spalten in Suche einbeziehen"
+              className="h-7 shrink-0 px-1.5"
+            >
+              <Columns2Icon className="size-3.5" />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <AlertDialog
         open={confirmAction !== null}
