@@ -6,9 +6,11 @@ import {
   ChevronRight,
   Download,
   KeyRound,
+  MoreHorizontal,
   Pencil,
   Plus,
   Star,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -27,6 +29,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   connectionUser,
   groupByServer,
@@ -52,7 +61,6 @@ import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
-import { ConnectionSwitcher } from "./connection-switcher";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -71,6 +79,7 @@ export function ConnectionsView() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkGroup, setBulkGroup] = useState<ServerGroup | null>(null);
+  const [deleteGroup, setDeleteGroup] = useState<ServerGroup | null>(null);
   const toggleFavorite = useConnectionsStore((state) => state.toggleFavorite);
   const toggleServerFavorite = useConnectionsStore((state) => state.toggleServerFavorite);
   const setServerOrder = useConnectionsStore((state) => state.setServerOrder);
@@ -79,7 +88,6 @@ export function ConnectionsView() {
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
   const favoriteCount = connections.filter((connection) => connection.favorite).length;
-  const sortedConnections = sortConnectionsByName(connections);
   const filtered = favoritesOnly
     ? connections.filter(
         (connection) => connection.favorite || favoriteServerKeys.includes(serverKey(connection)),
@@ -87,7 +95,7 @@ export function ConnectionsView() {
     : connections;
   const visible = sortConnectionsByName(filtered);
   const allGroups = sortServerGroups(
-    groupByServer(sortedConnections),
+    groupByServer(sortConnectionsByName(connections)),
     favoriteServerKeys,
     serverOrder,
   );
@@ -180,37 +188,55 @@ export function ConnectionsView() {
           <div className="min-w-0">
             <p className="text-[11px] font-medium text-muted-foreground">l8db</p>
             <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight">
-              {editorId ? "Verbindung" : "Datenbank wählen"}
+              {editorId ? (selected ? "Verbindung bearbeiten" : "Neue Verbindung") : "Verbindungen"}
             </h1>
             {!editorId && (
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Verbindung öffnen oder eine neue anlegen.
+                Tippe auf eine Karte, um sie zu öffnen.
               </p>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {!editorId && (
+            {editorId && connections.length === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportOpen(true)}
+                aria-label="Verbindungen importieren"
+              >
+                <Upload className="size-4" />
+                Import
+              </Button>
+            )}
+            {!editorId && connections.length > 0 && (
               <>
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
-                  onClick={() => setImportOpen(true)}
-                  aria-label="Verbindungen importieren"
+                  data-tour="connection-add"
+                  onClick={() => openEditor("new")}
                 >
+                  <Plus className="size-4" />
+                  Neu
+                </Button>
+                <Button
+                  variant={favoritesOnly ? "secondary" : "outline"}
+                  size="sm"
+                  aria-pressed={favoritesOnly}
+                  onClick={() => setFavoritesOnly((value) => !value)}
+                >
+                  <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
+                  {favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
+                  {favoriteCount > 0 && !favoritesOnly ? ` (${favoriteCount})` : ""}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                   <Upload className="size-4" />
                   Import
                 </Button>
-                {connections.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setExportOpen(true)}
-                    aria-label="Verbindungen exportieren"
-                  >
-                    <Download className="size-4" />
-                    Export
-                  </Button>
-                )}
+                <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+                  <Download className="size-4" />
+                  Export
+                </Button>
               </>
             )}
             {connections.length > 0 && (
@@ -223,43 +249,6 @@ export function ConnectionsView() {
             )}
           </div>
         </header>
-        {!editorId && connections.length > 0 && (
-          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
-            <Button
-              variant={favoritesOnly ? "default" : "outline"}
-              size="sm"
-              aria-pressed={favoritesOnly}
-              onClick={() => setFavoritesOnly((value) => !value)}
-            >
-              <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
-              Nur Favoriten
-              {favoriteCount > 0 && <span className="text-xs opacity-70">({favoriteCount})</span>}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              data-tour="connection-add"
-              onClick={() => openEditor("new")}
-            >
-              <Plus className="size-4" />
-              Neu
-            </Button>
-          </div>
-        )}
-        {editorId && connections.length > 0 && (
-          <ConnectionSwitcher
-            connections={sortedConnections}
-            activeId={activeId}
-            connectingId={connectingId}
-            onOpen={(connection) => {
-              if (activeId === connection.id) void connect(null);
-              else void connect(connection.id);
-            }}
-            onEdit={(connection) => openEditor(connection.id)}
-            onDelete={(connection) => setDeleteId(connection.id)}
-            onToggleFavorite={(connection) => toggleFavorite(connection.id)}
-          />
-        )}
         <div className="flex min-h-0 flex-1 flex-col">
           {editorId ? (
             <ConnectionEditor
@@ -310,79 +299,80 @@ export function ConnectionsView() {
                             </span>
                             <span className="block text-[11px] text-muted-foreground">
                               {group.connections.length}{" "}
-                              {group.connections.length === 1 ? "Schema" : "Schemas"}
+                              {group.connections.length === 1 ? "Verbindung" : "Verbindungen"}
                             </span>
                           </span>
                         </CollapsibleTrigger>
-                        <div className="ml-auto flex flex-wrap items-center justify-end gap-1 max-sm:ml-8 max-sm:w-full max-sm:justify-start">
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={
-                              favoriteServerKeys.includes(group.key)
-                                ? `${group.label} aus Favoriten entfernen`
-                                : `${group.label} favorisieren`
-                            }
-                            onClick={() => toggleServerFavorite(group.key)}
-                          >
-                            <Star
-                              className={
-                                favoriteServerKeys.includes(group.key)
-                                  ? "size-3.5 fill-current text-amber-500"
-                                  : "size-3.5"
-                              }
-                            />
+                        {group.connections.length > 1 && group.kind === "oracle" && (
+                          <Button variant="outline" size="xs" onClick={() => setBulkGroup(group)}>
+                            <Pencil className="size-3.5" />
+                            Host &amp; Service bearbeiten
                           </Button>
+                        )}
+                        {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
                           <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`${group.label} nach oben verschieben`}
-                            disabled={allGroups[0]?.key === group.key}
-                            onClick={() => moveServerGroup(group.key, -1)}
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setSchemasToUser(group)}
                           >
-                            <ArrowUp className="size-3.5" />
+                            <KeyRound className="size-3.5" />
+                            Schema = Username
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`${group.label} nach unten verschieben`}
-                            disabled={allGroups.at(-1)?.key === group.key}
-                            onClick={() => moveServerGroup(group.key, 1)}
-                          >
-                            <ArrowDown className="size-3.5" />
-                          </Button>
-                          {group.connections.length > 1 && group.kind === "oracle" && (
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="xs"
-                              className="text-xs"
-                              onClick={() => setBulkGroup(group)}
+                              size="icon-xs"
+                              aria-label={`${group.label} Aktionen`}
                             >
-                              <Pencil className="size-3.5" />
-                              Host &amp; Service bearbeiten
+                              <MoreHorizontal className="size-3.5" />
                             </Button>
-                          )}
-                          {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              className="text-xs"
-                              onClick={() => setSchemasToUser(group)}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onSelect={() => openEditor("new", group.connections[0])}
                             >
-                              <KeyRound className="size-3.5" />
-                              Schema = Username
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => openEditor("new", group.connections[0])}
-                          >
-                            <Plus className="size-3.5" />
-                            Schema hinzufügen
-                          </Button>
-                        </div>
+                              <Plus className="size-3.5" />
+                              Weitere Verbindung
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => toggleServerFavorite(group.key)}>
+                              <Star
+                                className={
+                                  favoriteServerKeys.includes(group.key)
+                                    ? "size-3.5 fill-current text-amber-500"
+                                    : "size-3.5"
+                                }
+                              />
+                              {favoriteServerKeys.includes(group.key)
+                                ? "Aus Favoriten"
+                                : "Als Favorit"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              disabled={allGroups[0]?.key === group.key}
+                              onSelect={() => moveServerGroup(group.key, -1)}
+                            >
+                              <ArrowUp className="size-3.5" />
+                              Nach oben
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={allGroups.at(-1)?.key === group.key}
+                              onSelect={() => moveServerGroup(group.key, 1)}
+                            >
+                              <ArrowDown className="size-3.5" />
+                              Nach unten
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setDeleteGroup(group)}
+                            >
+                              <Trash2 className="size-3.5" />
+                              Alle löschen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </header>
                       <CollapsibleContent>
                         <motion.div
@@ -451,13 +441,54 @@ export function ConnectionsView() {
                   }
                   useConnectionsStore.getState().removeConnection(deleteId);
                   useTableTabs.getState().clearTabsForConnection(deleteId);
-                  if (editorId === deleteId) setEditorId(null);
+                  if (editorId === deleteId || !useConnectionsStore.getState().connections.length)
+                    setEditorId(useConnectionsStore.getState().connections.length ? null : "new");
                   toast.success("Verbindung entfernt");
                   setDeleteId(null);
                 }
               }}
             >
               Entfernen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(deleteGroup)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteGroup(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alle Verbindungen entfernen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Alle {deleteGroup?.connections.length} Verbindungen auf „{deleteGroup?.label}“ und die
+              gespeicherten Zugangsdaten werden aus l8db entfernt. Die Datenbank selbst bleibt
+              erhalten.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteGroup) return;
+                const ids = deleteGroup.connections.map((connection) => connection.id);
+                if (ids.some((id) => getTransactionForConnection(id))) {
+                  toast.error("Schließe zuerst die offenen Transaktionen ab.");
+                  return;
+                }
+                for (const id of ids) {
+                  useConnectionsStore.getState().removeConnection(id);
+                  useTableTabs.getState().clearTabsForConnection(id);
+                }
+                if (!useConnectionsStore.getState().connections.length) setEditorId("new");
+                else if (editorId && ids.includes(editorId)) setEditorId(null);
+                toast.success(`${ids.length} Verbindungen entfernt`);
+                setDeleteGroup(null);
+              }}
+            >
+              Alle entfernen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
