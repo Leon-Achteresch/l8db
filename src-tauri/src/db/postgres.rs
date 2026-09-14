@@ -2176,49 +2176,147 @@ impl DatabaseAdapter for PostgresAdapter {
     ) -> Result<Vec<ForeignKeyInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(async {
-            conn.query(
-                "SELECT \
-                     con.conname, \
-                     ns_from.nspname, \
-                     cl_from.relname, \
-                     att_from.attname, \
-                     ns_to.nspname, \
-                     cl_to.relname, \
-                     att_to.attname \
-                 FROM pg_constraint con \
-                 JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
-                 JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
-                 JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
-                 JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
-                 CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
-                     WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
-                 JOIN pg_attribute att_from \
-                     ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
-                 JOIN pg_attribute att_to \
-                     ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
-                 WHERE con.contype = 'f' \
-                   AND ( \
-                       (ns_from.nspname = $1 AND cl_from.relname = $2) \
-                       OR (ns_to.nspname = $1 AND cl_to.relname = $2) \
-                   ) \
-                 ORDER BY con.conname, u.ord",
-                &[&schema, &table],
-            )
-            .await
-            .map_err(map_pg_err)
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| ForeignKeyInfo {
-                        constraint_name: row.get(0),
-                        from_schema: row.get(1),
-                        from_table: row.get(2),
-                        from_column: row.get(3),
-                        to_schema: row.get(4),
-                        to_table: row.get(5),
-                        to_column: row.get(6),
-                    })
-                    .collect()
-            })
+            let direct: Vec<ForeignKeyInfo> = conn
+                .query(
+                    "SELECT \
+                         con.conname, \
+                         ns_from.nspname, \
+                         cl_from.relname, \
+                         att_from.attname, \
+                         ns_to.nspname, \
+                         cl_to.relname, \
+                         att_to.attname \
+                     FROM pg_constraint con \
+                     JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
+                     JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
+                     JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
+                     JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
+                     CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
+                         WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
+                     JOIN pg_attribute att_from \
+                         ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
+                     JOIN pg_attribute att_to \
+                         ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
+                     WHERE con.contype = 'f' \
+                       AND ( \
+                           (ns_from.nspname = $1 AND cl_from.relname = $2) \
+                           OR (ns_to.nspname = $1 AND cl_to.relname = $2) \
+                       ) \
+                     ORDER BY con.conname, u.ord",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .into_iter()
+                .map(|row| ForeignKeyInfo {
+                    constraint_name: row.get(0),
+                    from_schema: row.get(1),
+                    from_table: row.get(2),
+                    from_column: row.get(3),
+                    to_schema: row.get(4),
+                    to_table: row.get(5),
+                    to_column: row.get(6),
+                })
+                .collect();
+            if !direct.is_empty() {
+                return Ok(direct);
+            }
+            let kind: Option<String> = conn
+                .query_opt(
+                    "SELECT c.relkind::text FROM pg_class c \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .map(|row| row.get(0));
+            if !matches!(kind.as_deref(), Some("v") | Some("m")) {
+                return Ok(direct);
+            }
+            let view_cols: std::collections::HashSet<String> = conn
+                .query(
+                    "SELECT a.attname FROM pg_attribute a \
+                     JOIN pg_class c ON c.oid = a.attrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 \
+                       AND a.attnum > 0 AND NOT a.attisdropped",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .into_iter()
+                .map(|row| row.get(0))
+                .collect();
+            if view_cols.is_empty() {
+                return Ok(vec![]);
+            }
+            let base_tables: Vec<(String, String)> = conn
+                .query(
+                    "SELECT DISTINCT ns.nspname, cl.relname \
+                     FROM pg_depend d \
+                     JOIN pg_rewrite r ON r.oid = d.objid \
+                     JOIN pg_class vc ON vc.oid = r.ev_class \
+                     JOIN pg_namespace vns ON vns.oid = vc.relnamespace \
+                     JOIN pg_class cl ON cl.oid = d.refobjid \
+                     JOIN pg_namespace ns ON ns.oid = cl.relnamespace \
+                     WHERE vns.nspname = $1 AND vc.relname = $2 \
+                       AND cl.relkind IN ('r', 'p', 'f') \
+                       AND d.refobjid <> vc.oid",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .into_iter()
+                .map(|row| (row.get(0), row.get(1)))
+                .collect();
+            let mut inferred = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for (base_schema, base_table) in base_tables {
+                let base_fks = conn
+                    .query(
+                        "SELECT \
+                             con.conname, \
+                             att_from.attname, \
+                             ns_to.nspname, \
+                             cl_to.relname, \
+                             att_to.attname \
+                         FROM pg_constraint con \
+                         JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
+                         JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
+                         JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
+                         JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
+                         CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
+                             WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
+                         JOIN pg_attribute att_from \
+                             ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
+                         JOIN pg_attribute att_to \
+                             ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
+                         WHERE con.contype = 'f' \
+                           AND ns_from.nspname = $1 AND cl_from.relname = $2 \
+                         ORDER BY con.conname, u.ord",
+                        &[&base_schema, &base_table],
+                    )
+                    .await
+                    .map_err(map_pg_err)?;
+                for row in base_fks {
+                    let constraint_name: String = row.get(0);
+                    let from_column: String = row.get(1);
+                    if !view_cols.contains(&from_column) || !seen.insert(from_column.clone()) {
+                        continue;
+                    }
+                    inferred.push(ForeignKeyInfo {
+                        constraint_name,
+                        from_schema: schema.to_string(),
+                        from_table: table.to_string(),
+                        from_column,
+                        to_schema: row.get(2),
+                        to_table: row.get(3),
+                        to_column: row.get(4),
+                    });
+                }
+            }
+            Ok(inferred)
         })
         .await
     }
