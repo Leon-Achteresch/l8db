@@ -3,6 +3,19 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.4.29] - 2026-09-14
+
+### Features
+- add Tooltip wrappers and improve icon button accessibility
+- improve workspace workflows and data operations
+- centralize database execution and provider support
+
+### Fixes
+- repair updater manifest urls and action inputs
+- preload editor worker
+- migrate editor integration to 0.56
+- adapt application to dependency updates
+
 ## [0.4.5] - 2026-09-12
 
 ### Weitere Änderungen
