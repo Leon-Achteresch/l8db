@@ -723,6 +723,33 @@ describe("Passwort-Abfrage", () => {
     expect(injectUrlPassword("oracle://scott:@db.example.com:1521/ORCL", "tiger")).toBe(
       "oracle://scott:tiger@db.example.com:1521/ORCL",
     );
+    expect(injectUrlPassword("postgresql://alice:old@localhost/db", "neu")).toBe(
+      "postgresql://alice:neu@localhost/db",
+    );
+  });
+
+  test("ersetzt gespeichertes Passwort nach fehlgeschlagener Anmeldung", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    useConnectionsStore.setState({
+      connections: [
+        {
+          ...direct,
+          id: "retry-pw",
+          connectionString: "postgresql://user:alt@localhost:5432/app?sslmode=disable",
+        },
+      ],
+      activeId: "retry-pw",
+    });
+    await storeSecret("retry-pw", "alt");
+    const pending = ensurePassword("retry-pw", "Anmeldung fehlgeschlagen");
+    const resolve = usePasswordPrompt.getState().resolve;
+    expect(resolve).toBeTruthy();
+    resolve?.({ password: "neu", save: false });
+    expect(await pending).toBe(true);
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "neu",
+    );
+    expect(await loadSecret("retry-pw")).toBe("neu");
   });
 });
 

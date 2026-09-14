@@ -49,6 +49,7 @@ export async function ensurePassword(id: string, retryMessage?: string): Promise
   const connection = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
   if (!connection) return true;
   if (!retryMessage && !needsPassword(connection)) return true;
+  const hadPassword = extractUrlPassword(connection.connectionString) !== null;
   const answer = await requestPassword(connection, retryMessage ?? null);
   if (!answer) return false;
   if (!answer.password) return !retryMessage;
@@ -59,6 +60,8 @@ export async function ensurePassword(id: string, retryMessage?: string): Promise
         : entry,
     ),
   }));
-  if (answer.save) await storeSecret(id, answer.password).catch(() => undefined);
+  if (answer.save || (retryMessage && hadPassword)) {
+    await storeSecret(id, answer.password).catch(() => undefined);
+  }
   return true;
 }

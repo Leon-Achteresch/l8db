@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,6 +20,12 @@ export function PasswordPromptDialog() {
   const [password, setPassword] = useState("");
   const [save, setSave] = useState(false);
 
+  useEffect(() => {
+    if (!connection) return;
+    setPassword("");
+    setSave(Boolean(message));
+  }, [connection, message]);
+
   function finish(answer: { password: string; save: boolean } | null) {
     resolve?.(answer);
     setPassword("");
@@ -39,7 +45,9 @@ export function PasswordPromptDialog() {
           <DialogHeader>
             <DialogTitle>Passwort erforderlich</DialogTitle>
             <DialogDescription>
-              {`Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
+              {message
+                ? `Das gespeicherte Passwort für „${connection?.name}“ wurde abgelehnt.`
+                : `Für „${connection?.name}“ ist kein Passwort hinterlegt.`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
