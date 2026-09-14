@@ -1,8 +1,18 @@
-import { AppWindow, Copy, CopyPlus, Pencil, Play, Star, Trash2 } from "lucide-react";
+import {
+  AppWindow,
+  Copy,
+  CopyPlus,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -10,6 +20,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection } from "@/lib/connections";
 import { SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
@@ -108,31 +125,46 @@ export function ConnectionPickCard({
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
               </button>
-              <button
-                type="button"
-                aria-label={`${connection.name} in neuem Fenster öffnen`}
-                title="In neuem Fenster öffnen"
-                onClick={onOpenWindow}
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <AppWindow className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label={`${connection.name} bearbeiten`}
-                onClick={onEdit}
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Pencil className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label={`${connection.name} entfernen`}
-                onClick={onDelete}
-                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`${connection.name} Aktionen`}
+                    className="text-muted-foreground"
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onSelect={onOpen}>
+                    <Play className="size-3.5" />
+                    {active ? "Trennen" : "Öffnen"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onEdit}>
+                    <Pencil className="size-3.5" />
+                    Bearbeiten
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onOpenWindow}>
+                    <AppWindow className="size-3.5" />
+                    In neuem Fenster
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={onDuplicate}>
+                    <Copy className="size-3.5" />
+                    Duplizieren
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onCreateSimilar}>
+                    <CopyPlus className="size-3.5" />
+                    Ähnliche erstellen
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                    <Trash2 className="size-3.5" />
+                    Löschen
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           <button
