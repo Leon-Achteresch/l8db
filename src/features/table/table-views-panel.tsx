@@ -29,8 +29,6 @@ export function TableViewsPanel({
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const tableKey = savedViewKey(connection?.id ?? "", database, schema, table);
-  const legacyKey = `${schema}.${table}`;
-  const legacy = useViewsStore((state) => state.views[legacyKey]);
   const savedViews = useViewsStore((s) => s.views[tableKey]) ?? [];
   const addView = useViewsStore((s) => s.addView);
   const removeView = useViewsStore((s) => s.removeView);
@@ -100,31 +98,6 @@ export function TableViewsPanel({
         />
       ))}
 
-      {Boolean(legacy?.length) && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            for (const view of legacy ?? []) {
-              if (
-                !savedViews.some(
-                  (saved) => saved.name === view.name && saved.filter === view.filter,
-                )
-              )
-                addView(tableKey, {
-                  name: view.name,
-                  filter: view.filter,
-                  color: view.color,
-                  filterRaw: view.filterRaw,
-                });
-            }
-            toast.success("Alte Filter dieser Verbindung zugeordnet");
-          }}
-          title="Filter aus älteren Versionen besitzen keine Verbindungszuordnung. Hier bewusst für diese Tabelle übernehmen."
-        >
-          Alte Filter übernehmen ({legacy?.length})
-        </Button>
-      )}
       <Popover
         open={saveOpen}
         onOpenChange={(open) => {
