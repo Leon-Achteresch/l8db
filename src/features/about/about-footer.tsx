@@ -33,7 +33,7 @@ export function AboutFooter() {
             <p className="text-sm font-medium leading-tight">l8db · v0.1.0</p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               <Scale className="size-3" />
-              MIT · von Leon Achteresch
+              GPLv3 · von Leon Achteresch
             </p>
           </div>
         </div>
