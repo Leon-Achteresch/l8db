@@ -9,7 +9,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "hello",
         title: "Willkommen bei l8db",
-        body: "Das ist deine Desktop-Datenbankzentrale. Die Tour führt dich Kapitel für Kapitel durch Verbindungen, Explorer, Tabellen, SQL, Diagramme und Systemseiten. Links bleibt die Übersicht sichtbar — springe jederzeit, oder lass den Autopiloten klicken und navigieren.",
+        body: "Das ist deine Desktop-Datenbankzentrale. Die Tour führt dich Kapitel für Kapitel durch Verbindungen, Explorer, Tabellen, SQL, Diagramme und Systemseiten. Rechts unten bleibt die Übersicht sichtbar — springe jederzeit, minimiere sie mit „−“, oder lass den Autopiloten klicken und navigieren.",
         route: "/",
         side: "over",
       },
