@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { FilterExpressionInput } from "@/features/filters/filter-expression-input";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { useActiveConnection } from "@/lib/connections";
@@ -303,14 +302,6 @@ export function TableFilterPanel({
                 />
               ) : mode === "simple" ? (
                 <div className="space-y-2">
-                  {!json && (
-                    <FilterExpressionInput
-                      key={stateKey}
-                      columns={columns}
-                      kind={kind}
-                      onImport={importFilter}
-                    />
-                  )}
                   {conditions.map((condition, index) => (
                     <div
                       key={condition.id}

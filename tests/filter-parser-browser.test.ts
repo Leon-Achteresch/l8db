@@ -23,31 +23,38 @@ for (const engine of [chromium, webkit]) {
         });
         await page.goto(`${url}/tests/fixtures/filter-list.html`);
         await page.getByRole("button", { name: "Filter", exact: true }).click();
-        const input = page.getByRole("textbox", { name: "Filterausdruck", exact: true });
         const apply = page.getByRole("button", { name: "Filter anwenden", exact: true });
-        await input.fill(`"name" = '''ANG'''`);
-        await input.press("Enter");
+        const editor = page.locator(".monaco-editor .view-lines");
+        const replaceEditorText = async (text: string) => {
+          await editor.click();
+          await page.keyboard.press("ControlOrMeta+a");
+          await page.keyboard.insertText(text);
+        };
+        await page.getByRole("tab", { name: "SQL", exact: true }).click();
+        await replaceEditorText(`"name" = '''ANG'''`);
+        await page.getByRole("tab", { name: "Einfach", exact: true }).click();
         expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("ANG");
         expect(await page.getByLabel("Apply count").textContent()).toBe("0");
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(`"name" = 'ANG'`);
         expect(await page.getByLabel("Raw SQL").textContent()).toBe("false");
-        await input.fill("id = 1 OR id = 2 AND id = 3");
-        await page.getByRole("button", { name: "Ausdruck übernehmen" }).click();
+        await page.getByRole("tab", { name: "SQL", exact: true }).click();
+        await replaceEditorText("id = 1 OR id = 2 AND id = 3");
+        await page.getByRole("tab", { name: "Einfach", exact: true }).click();
         expect(
           await page.getByRole("alert").filter({ hasText: "Gemischte AND/OR" }).textContent(),
         ).toContain("Gemischte AND/OR");
-        expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("ANG");
-        expect(await apply.isDisabled()).toBe(true);
-        await input.fill(`name IN ('O''Brien', 'a,b') AND id >= 2`);
-        await input.press("Enter");
+        expect(
+          await page.getByRole("tab", { name: "SQL", exact: true }).getAttribute("aria-selected"),
+        ).toBe("true");
+        await replaceEditorText(`name IN ('O''Brien', 'a,b') AND id >= 2`);
+        await page.getByRole("tab", { name: "Einfach", exact: true }).click();
         await page.getByRole("button", { name: "Wert entfernen: O'Brien", exact: true }).waitFor();
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
           `"name" IN ('O''Brien', 'a,b') AND "id" >= 2`,
         );
         await page.getByRole("tab", { name: "SQL", exact: true }).click();
-        const editor = page.locator(".monaco-editor .view-lines");
         await editor.click();
         await page.keyboard.press("ControlOrMeta+a");
         await page.keyboard.insertText(`name = '''Berlin'''`);

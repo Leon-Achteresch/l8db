@@ -16,14 +16,12 @@ export function SettingsDataTab() {
     transactionsPerTable,
     confirmDestructiveQueries,
     highlightNullValues,
-    translateFilterOperators,
     setRowLimit,
     setQueryTimeout,
     setTransactionsEnabled,
     setTransactionsPerTable,
     setConfirmDestructiveQueries,
     setHighlightNullValues,
-    setTranslateFilterOperators,
   } = useSettingsStore();
   const historyLimit = useQueryHistoryStore((state) => state.retentionLimit);
   const setHistoryLimit = useQueryHistoryStore((state) => state.setRetentionLimit);
@@ -149,17 +147,6 @@ export function SettingsDataTab() {
             checked={confirmDestructiveQueries}
             onCheckedChange={setConfirmDestructiveQueries}
             aria-label="Destruktive Abfragen absichern"
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          title="Filteroperatoren übersetzen"
-          description="Bezeichnungen wie „ist gleich“ anzeigen. Ausgeschaltet erscheinen =, <>, IN, IS NULL und LIKE-Muster bzw. die nativen Operatoren der Datenbank."
-        >
-          <Switch
-            checked={translateFilterOperators}
-            onCheckedChange={setTranslateFilterOperators}
-            aria-label="Filteroperatoren übersetzen"
           />
         </SettingsRow>
 
