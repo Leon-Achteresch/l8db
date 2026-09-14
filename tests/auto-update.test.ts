@@ -7,12 +7,13 @@ const localStorageMock = {
   setItem: (key: string, value: string) => void storage.set(key, value),
   removeItem: (key: string) => void storage.delete(key),
 };
+const windowMock = Object.assign(new EventTarget(), { localStorage: localStorageMock });
 Object.defineProperty(globalThis, "localStorage", {
   value: localStorageMock,
   configurable: true,
 });
 Object.defineProperty(globalThis, "window", {
-  value: { localStorage: localStorageMock },
+  value: windowMock,
   configurable: true,
 });
 

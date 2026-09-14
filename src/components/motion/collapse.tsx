@@ -1,4 +1,3 @@
-import { motion } from "motion/react";
 import type { ReactNode, TransitionEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -47,16 +46,7 @@ export function Collapse({ open, children, className, durationMs = 240 }: Collap
       }}
       className={cn("motion-reduce:transition-none", className)}
     >
-      <div className="min-h-0 overflow-hidden">
-        <motion.div
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: Math.min(durationMs / 1000, 0.2), ease: "easeOut" }}
-          className="will-change-transform"
-        >
-          {children}
-        </motion.div>
-      </div>
+      <div className="min-h-0 overflow-hidden">{children}</div>
     </div>
   );
 }
