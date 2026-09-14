@@ -1,5 +1,5 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
@@ -36,6 +36,7 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
+import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
@@ -82,12 +83,21 @@ export interface TableViewProps {
   fkFilter?: string;
   fkRaw?: boolean;
   column?: string;
+  drawerId?: string;
 }
 
-export function TableView({ schema, table, type, fkFilter, fkRaw, column }: TableViewProps) {
-  const navigate = useNavigate();
+export function TableView({
+  schema,
+  table,
+  type,
+  fkFilter,
+  fkRaw,
+  column,
+  drawerId,
+}: TableViewProps) {
   const routeNavigate = routeApi.useNavigate();
   const pane = useWorkspacePane();
+  const inDrawer = drawerId !== undefined;
   const { data: views } = useViewsQuery();
   const { data: foreignKeys } = useForeignKeysQuery(schema, table);
   const tabEntityType = useTableTabs((state) => {
@@ -108,7 +118,8 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
   const saveRedisRow = useRedisRowEdit();
   const openTab = useTableTabs((state) => state.openTab);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
-  const stateKey = tableViewStateKey(connection?.id, database, schema, table);
+  const baseStateKey = tableViewStateKey(connection?.id, database, schema, table);
+  const stateKey = inDrawer ? `${baseStateKey}:drawer:${drawerId}` : baseStateKey;
   const [selectedTab, setDetailTab] = useTableViewState(stateKey, "detailTab", "data");
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
@@ -283,26 +294,25 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
 
   const handleNavigateToTable = useMemo(() => {
     return (targetSchema: string, targetTable: string, filterWhere?: string) => {
-      openTab({ schema: targetSchema, table: targetTable, entityType: "table" });
-      void navigate({
-        to: "/tables/$schema/$table",
-        params: { schema: targetSchema, table: targetTable },
-        search: filterWhere ? { fkFilter: filterWhere } : {},
-      });
+      useFkDrawerStack
+        .getState()
+        .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
     };
-  }, [openTab, navigate]);
+  }, []);
 
   useEffect(() => {
+    if (inDrawer) return;
     openTab({ schema, table, entityType: isView ? "view" : "table" });
-  }, [schema, table, isView, openTab]);
+  }, [schema, table, isView, openTab, inDrawer]);
 
   useEffect(() => {
+    if (inDrawer) return;
     if (!isView || type === "view" || (pane && !pane.focused)) return;
     void routeNavigate({
       search: { type: "view" },
       replace: true,
     });
-  }, [isView, type, routeNavigate]);
+  }, [isView, type, routeNavigate, pane, inDrawer]);
 
   useEffect(() => {
     if (fkFilter === undefined) return;
@@ -311,11 +321,22 @@ export function TableView({ schema, table, type, fkFilter, fkRaw, column }: Tabl
     setSorting([]);
     setPage(0);
     setDetailTab("data");
+    if (inDrawer) return;
     void routeNavigate({
       search: (previous) => ({ ...previous, fkFilter: undefined, fkRaw: undefined }),
       replace: true,
     });
-  }, [fkFilter, fkRaw, routeNavigate, setFilter, setFilterRaw, setSorting, setPage, setDetailTab]);
+  }, [
+    fkFilter,
+    fkRaw,
+    routeNavigate,
+    setFilter,
+    setFilterRaw,
+    setSorting,
+    setPage,
+    setDetailTab,
+    inDrawer,
+  ]);
 
   useEffect(() => {
     if (column && !isLoading) setRevealColumn({ name: column, nonce: Date.now() });
