@@ -3,6 +3,17 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.4.39] - 2026-09-14
+
+### Features
+- Verbindungsübersicht mit Aktionsmenüs und Gruppen-Löschen
+- Verbindungseditor auf zwei Schritte mit Erweitert-Bereich vereinfachen
+- install Oracle Instant Client on Windows via button
+
+### Fixes
+- gespeichertes Passwort nach abgelehnter Anmeldung aktualisieren
+- injectUrlPassword ersetzt bestehendes Passwort in der URL
+
 ## [0.4.31] - 2026-09-14
 
 - Keine Änderungen.
