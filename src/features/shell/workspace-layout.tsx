@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
+import { FkDrawerStack } from "@/features/table/fk-drawer-stack";
 import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
@@ -94,6 +95,7 @@ export function WorkspaceLayout() {
               {activeTab && <NewPaneDropZone />}
             </>
           )}
+          <FkDrawerStack />
         </div>
       </div>
     </DragDropProvider>
