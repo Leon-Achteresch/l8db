@@ -9,17 +9,30 @@ import { cn } from "@/lib/utils";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isResizing = useSidebarPanel((state) => state.isResizing);
+  const panelWidth = useSidebarPanel((state) => state.width);
   const { open } = useSidebar();
   const reduceMotion = useReducedMotion();
   const progress = useMotionValue(open ? 1 : 0);
-  const width = useTransform(progress, (value) => `calc(var(--sidebar-width) * ${value})`);
+  const liveWidth = useMotionValue(panelWidth);
+  const width = useTransform([progress, liveWidth], ([current, target]: number[]) =>
+    Math.round(current * target),
+  );
 
   useEffect(() => {
-    const animation = animate(
-      progress,
-      open ? 1 : 0,
-      reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 40 },
-    );
+    if (!useSidebarPanel.getState().isResizing) liveWidth.set(panelWidth);
+  }, [panelWidth, liveWidth]);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.set(open ? 1 : 0);
+      return;
+    }
+    const animation = animate(progress, open ? 1 : 0, {
+      type: "spring",
+      stiffness: 400,
+      damping: 40,
+      restDelta: 0.002,
+    });
 
     return () => animation.stop();
   }, [open, progress, reduceMotion]);
@@ -36,12 +49,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         className={cn(
           "relative h-full shrink-0 flex-row overflow-visible",
           "w-(--sidebar-width)",
-          isResizing && "[&_[data-slot=sidebar]]:transition-none",
+          isResizing && "[&_*]:transition-none!",
         )}
         {...props}
       >
         <AppSidebarPanel />
-        <AppSidebarResizeHandle />
+        <AppSidebarResizeHandle liveWidth={liveWidth} />
       </Sidebar>
     </motion.div>
   );
