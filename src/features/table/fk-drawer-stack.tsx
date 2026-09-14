@@ -69,7 +69,7 @@ function DrawerChrome({
         transformOrigin: "right center",
       }}
       className={cn(
-        "absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-200 ease-out",
+        "pointer-events-auto absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-200 ease-out",
         isBack ? "rounded-l-xl brightness-[0.94]" : "rounded-l-none",
       )}
     >
@@ -210,11 +210,8 @@ export function FkDrawerStack() {
         onClick={() => pop()}
         className="absolute inset-0 bg-black/25 supports-backdrop-filter:backdrop-blur-[1px]"
       />
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ perspective: "1800px", pointerEvents: "none" }}
-      >
-        <div className="absolute inset-0" style={{ pointerEvents: "auto" }}>
+      <div className="pointer-events-none absolute inset-0" style={{ perspective: "1800px" }}>
+        <div className="pointer-events-none absolute inset-0">
           {stack.map((entry, index) => {
             const depth = stack.length - 1 - index;
             const width = widths[entry.id] ?? defaultWidth(viewport);
