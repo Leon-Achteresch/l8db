@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OpenInQueryEditorButton } from "@/features/functions/use-sql-object-edit";
 import { QueryEditorPane } from "@/features/query/query-editor-pane";
 import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
@@ -35,6 +36,7 @@ import {
   useTableRowsQuery,
   useViewDefinitionQuery,
 } from "@/lib/queries";
+import { buildViewDdl } from "@/lib/query-builder";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -85,6 +87,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
 
   const currentValue = draft ?? definition ?? "";
   const isDirty = draft !== null && draft !== definition;
+  const ddl = currentValue ? buildViewDdl(connection?.kind, schema, view, currentValue) : "";
 
   useEffect(() => {
     setCompileStatus("idle");
@@ -328,6 +331,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                 {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
                 Kopieren
               </Button>
+              <OpenInQueryEditorButton sql={ddl} title={`${schema}.${view}`} />
               {isDirty && (
                 <Button
                   size="sm"
