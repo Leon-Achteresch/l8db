@@ -1,5 +1,5 @@
 import type { ReactNode, TransitionEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface CollapseProps {
@@ -9,28 +9,43 @@ interface CollapseProps {
   durationMs?: number;
 }
 
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 export function Collapse({ open, children, className, durationMs = 240 }: CollapseProps) {
   const [mounted, setMounted] = useState(open);
   const [shown, setShown] = useState(open);
-  const openRef = useRef(open);
-  openRef.current = open;
 
   useEffect(() => {
-    if (!open) {
-      setShown(false);
+    if (open) {
+      setMounted(true);
+      if (typeof requestAnimationFrame !== "function") {
+        setShown(true);
+        return;
+      }
+      const frame = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setShown(false);
+    if (prefersReducedMotion()) {
+      setMounted(false);
       return;
     }
-    setMounted(true);
-    const frame = requestAnimationFrame(() => {
-      if (openRef.current) setShown(true);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
+    if (typeof window === "undefined") {
+      setMounted(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), durationMs);
+    return () => window.clearTimeout(timer);
+  }, [open, durationMs]);
 
   const handleTransitionEnd = (event: TransitionEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.propertyName !== "grid-template-rows") return;
-    if (!openRef.current) setMounted(false);
+    if (!open) setMounted(false);
   };
 
   if (!mounted) return null;

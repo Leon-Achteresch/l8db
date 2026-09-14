@@ -26,6 +26,35 @@ const SEARCH_SNIPPET_LEN: usize = 240;
 const PG_CRON_MISSING: &str =
     "Die Erweiterung pg_cron ist in dieser Datenbank nicht installiert. Scheduler-Jobs stehen daher nicht zur Verfügung.";
 
+fn infer_view_foreign_keys(
+    view_schema: &str,
+    view_name: &str,
+    view_cols: &std::collections::HashSet<String>,
+    base_table_count: usize,
+    rows: impl IntoIterator<Item = (String, String, String, String, String)>,
+) -> Vec<ForeignKeyInfo> {
+    if base_table_count != 1 {
+        return Vec::new();
+    }
+    let mut inferred = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (constraint_name, from_column, to_schema, to_table, to_column) in rows {
+        if !view_cols.contains(&from_column) || !seen.insert(from_column.clone()) {
+            continue;
+        }
+        inferred.push(ForeignKeyInfo {
+            constraint_name,
+            from_schema: view_schema.to_string(),
+            from_table: view_name.to_string(),
+            from_column,
+            to_schema,
+            to_table,
+            to_column,
+        });
+    }
+    inferred
+}
+
 pub fn like_pattern(term: &str) -> String {
     let mut escaped = String::with_capacity(term.len() + 2);
     for ch in term.chars() {
@@ -2270,53 +2299,45 @@ impl DatabaseAdapter for PostgresAdapter {
                 .into_iter()
                 .map(|row| (row.get(0), row.get(1)))
                 .collect();
-            let mut inferred = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for (base_schema, base_table) in base_tables {
-                let base_fks = conn
-                    .query(
-                        "SELECT \
-                             con.conname, \
-                             att_from.attname, \
-                             ns_to.nspname, \
-                             cl_to.relname, \
-                             att_to.attname \
-                         FROM pg_constraint con \
-                         JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
-                         JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
-                         JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
-                         JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
-                         CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
-                             WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
-                         JOIN pg_attribute att_from \
-                             ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
-                         JOIN pg_attribute att_to \
-                             ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
-                         WHERE con.contype = 'f' \
-                           AND ns_from.nspname = $1 AND cl_from.relname = $2 \
-                         ORDER BY con.conname, u.ord",
-                        &[&base_schema, &base_table],
-                    )
-                    .await
-                    .map_err(map_pg_err)?;
-                for row in base_fks {
-                    let constraint_name: String = row.get(0);
-                    let from_column: String = row.get(1);
-                    if !view_cols.contains(&from_column) || !seen.insert(from_column.clone()) {
-                        continue;
-                    }
-                    inferred.push(ForeignKeyInfo {
-                        constraint_name,
-                        from_schema: schema.to_string(),
-                        from_table: table.to_string(),
-                        from_column,
-                        to_schema: row.get(2),
-                        to_table: row.get(3),
-                        to_column: row.get(4),
-                    });
-                }
+            if base_tables.len() != 1 {
+                return Ok(vec![]);
             }
-            Ok(inferred)
+            let (base_schema, base_table) = &base_tables[0];
+            let base_fks = conn
+                .query(
+                    "SELECT \
+                         con.conname, \
+                         att_from.attname, \
+                         ns_to.nspname, \
+                         cl_to.relname, \
+                         att_to.attname \
+                     FROM pg_constraint con \
+                     JOIN pg_class cl_from ON con.conrelid = cl_from.oid \
+                     JOIN pg_namespace ns_from ON cl_from.relnamespace = ns_from.oid \
+                     JOIN pg_class cl_to ON con.confrelid = cl_to.oid \
+                     JOIN pg_namespace ns_to ON cl_to.relnamespace = ns_to.oid \
+                     CROSS JOIN LATERAL unnest(con.conkey, con.confkey) \
+                         WITH ORDINALITY AS u(from_attnum, to_attnum, ord) \
+                     JOIN pg_attribute att_from \
+                         ON att_from.attrelid = con.conrelid AND att_from.attnum = u.from_attnum \
+                     JOIN pg_attribute att_to \
+                         ON att_to.attrelid = con.confrelid AND att_to.attnum = u.to_attnum \
+                     WHERE con.contype = 'f' \
+                       AND ns_from.nspname = $1 AND cl_from.relname = $2 \
+                     ORDER BY con.conname, u.ord",
+                    &[base_schema, base_table],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            Ok(infer_view_foreign_keys(
+                schema,
+                table,
+                &view_cols,
+                base_tables.len(),
+                base_fks
+                    .into_iter()
+                    .map(|row| (row.get(0), row.get(1), row.get(2), row.get(3), row.get(4))),
+            ))
         })
         .await
     }
@@ -4197,12 +4218,32 @@ pub async fn run_params_query(
 
 #[cfg(test)]
 mod tests {
-    use super::{like_pattern, source_snippet, PostgresAdapter};
+    use super::{infer_view_foreign_keys, like_pattern, source_snippet, PostgresAdapter};
 
     #[test]
     fn like_pattern_escapes_wildcards() {
         assert_eq!(like_pattern("a_b%c"), "%a\\_b\\%c%");
         assert_eq!(like_pattern("name"), "%name%");
+    }
+
+    #[test]
+    fn view_fk_inference_requires_a_single_base_table() {
+        let view_cols = ["user_id".to_string()].into_iter().collect();
+        let row = [(
+            "orders_user_fk".to_string(),
+            "user_id".to_string(),
+            "public".to_string(),
+            "users".to_string(),
+            "id".to_string(),
+        )];
+        assert!(
+            infer_view_foreign_keys("public", "orders_v", &view_cols, 2, row.clone()).is_empty()
+        );
+        let inferred = infer_view_foreign_keys("public", "orders_v", &view_cols, 1, row);
+        assert_eq!(inferred.len(), 1);
+        assert_eq!(inferred[0].from_table, "orders_v");
+        assert_eq!(inferred[0].from_column, "user_id");
+        assert_eq!(inferred[0].to_table, "users");
     }
 
     #[test]

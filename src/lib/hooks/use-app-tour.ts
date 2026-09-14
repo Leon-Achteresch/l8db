@@ -48,10 +48,14 @@ export function useAppTour() {
       destroySpotlight();
       return;
     }
-    const token = ++generation.current;
-    let cancelled = false;
     const step = TOUR_CHAPTERS[chapterIndex]?.steps[stepIndex];
     if (!step) return;
+    if (useTourStore.getState().waiting) {
+      showSpotlight(step, true);
+      return;
+    }
+    const token = ++generation.current;
+    let cancelled = false;
 
     async function present() {
       if (shouldSkipStep(step.skipIf)) {
