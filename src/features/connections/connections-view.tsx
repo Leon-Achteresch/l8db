@@ -69,7 +69,7 @@ export function ConnectionsView() {
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
   const collapsedServerKeys = useConnectionsStore((state) => state.collapsedServerKeys);
   const setServerCollapsed = useConnectionsStore((state) => state.setServerCollapsed);
-  const [editorId, setEditorId] = useState<string | null>(connections.length ? null : "new");
+  const [editorId, setEditorId] = useState<string | null>(null);
   const [template, setTemplate] = useState<SavedConnection | null>(null);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
@@ -192,7 +192,9 @@ export function ConnectionsView() {
             </h1>
             {!editorId && (
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Tippe auf eine Karte, um sie zu öffnen.
+                {connections.length === 0
+                  ? "Starte mit einer neuen Verbindung oder importiere Profile."
+                  : "Tippe auf eine Karte, um sie zu öffnen."}
               </p>
             )}
           </div>
@@ -208,7 +210,7 @@ export function ConnectionsView() {
                 Import
               </Button>
             )}
-            {!editorId && connections.length > 0 && (
+            {!editorId && (
               <>
                 <Button
                   variant="default"
@@ -219,24 +221,28 @@ export function ConnectionsView() {
                   <Plus className="size-4" />
                   Neu
                 </Button>
-                <Button
-                  variant={favoritesOnly ? "secondary" : "outline"}
-                  size="sm"
-                  aria-pressed={favoritesOnly}
-                  onClick={() => setFavoritesOnly((value) => !value)}
-                >
-                  <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
-                  {favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
-                  {favoriteCount > 0 && !favoritesOnly ? ` (${favoriteCount})` : ""}
-                </Button>
                 <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                   <Upload className="size-4" />
                   Import
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-                  <Download className="size-4" />
-                  Export
-                </Button>
+                {connections.length > 0 && (
+                  <>
+                    <Button
+                      variant={favoritesOnly ? "secondary" : "outline"}
+                      size="sm"
+                      aria-pressed={favoritesOnly}
+                      onClick={() => setFavoritesOnly((value) => !value)}
+                    >
+                      <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
+                      {favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
+                      {favoriteCount > 0 && !favoritesOnly ? ` (${favoriteCount})` : ""}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+                      <Download className="size-4" />
+                      Export
+                    </Button>
+                  </>
+                )}
               </>
             )}
             {connections.length > 0 && (
@@ -256,8 +262,28 @@ export function ConnectionsView() {
               connection={selected}
               template={template ?? undefined}
               onSaved={() => openEditor(null)}
-              onCancel={() => openEditor(connections.length ? null : "new")}
+              onCancel={() => openEditor(null)}
             />
+          ) : connections.length === 0 ? (
+            <section className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
+              <div className="flex w-full max-w-sm flex-col items-center gap-2 py-16 text-center">
+                <p className="text-sm font-medium">Noch keine Verbindung</p>
+                <p className="max-w-sm text-xs text-muted-foreground">
+                  Lege deine erste Verbindung an oder importiere bestehende Profile aus l8db oder
+                  Toad for Oracle.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button size="sm" data-tour="connection-add" onClick={() => openEditor("new")}>
+                    <Plus className="size-4" />
+                    Neue Verbindung
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                    <Upload className="size-4" />
+                    Importieren
+                  </Button>
+                </div>
+              </div>
+            </section>
           ) : (
             <section className="flex min-h-0 flex-1 items-center overflow-y-auto">
               {favoritesOnly && visible.length === 0 ? (
@@ -442,7 +468,7 @@ export function ConnectionsView() {
                   useConnectionsStore.getState().removeConnection(deleteId);
                   useTableTabs.getState().clearTabsForConnection(deleteId);
                   if (editorId === deleteId || !useConnectionsStore.getState().connections.length)
-                    setEditorId(useConnectionsStore.getState().connections.length ? null : "new");
+                    setEditorId(null);
                   toast.success("Verbindung entfernt");
                   setDeleteId(null);
                 }
@@ -482,7 +508,7 @@ export function ConnectionsView() {
                   useConnectionsStore.getState().removeConnection(id);
                   useTableTabs.getState().clearTabsForConnection(id);
                 }
-                if (!useConnectionsStore.getState().connections.length) setEditorId("new");
+                if (!useConnectionsStore.getState().connections.length) setEditorId(null);
                 else if (editorId && ids.includes(editorId)) setEditorId(null);
                 toast.success(`${ids.length} Verbindungen entfernt`);
                 setDeleteGroup(null);
