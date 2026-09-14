@@ -85,8 +85,17 @@ export function erFocusExists(schema: ERSchema, focus: ErFocus | null): boolean 
   return schema.tables.some((table) => erTableKeyOf(table) === start);
 }
 
+export function pruneDanglingErKeys(schema: ERSchema): ERSchema {
+  const keys = new Set(schema.tables.map(erTableKeyOf));
+  const hasBothEnds = (fk: ForeignKeyInfo) =>
+    keys.has(erTableKey(fk.from_schema, fk.from_table)) &&
+    keys.has(erTableKey(fk.to_schema, fk.to_table));
+  if (schema.foreign_keys.every(hasBothEnds)) return schema;
+  return { tables: schema.tables, foreign_keys: schema.foreign_keys.filter(hasBothEnds) };
+}
+
 export function filterErSchema(schema: ERSchema, focus: ErFocus | null): ERSchema {
-  if (!focus) return schema;
+  if (!focus) return pruneDanglingErKeys(schema);
   const keys = new Set(erFocusTableKeys(schema, focus));
   if (keys.size === 0) return EMPTY_ER_SCHEMA;
   const seen = new Set<string>();

@@ -106,6 +106,21 @@ describe("filterErSchema", () => {
     expect(filterErSchema(schema, null)).toBe(schema);
   });
 
+  test("ohne Fokus werden schemafremde Foreign Keys beschnitten", () => {
+    const withDangling: ERSchema = {
+      tables: [table("public", "orders")],
+      foreign_keys: [
+        fk("public.orders", "auth.users", "orders_users_fkey"),
+        fk("public.orders", "public.orders", "orders_self_fkey"),
+      ],
+    };
+    const filtered = filterErSchema(withDangling, null);
+    expect(filtered.tables).toHaveLength(1);
+    expect(filtered.foreign_keys.map((entry) => entry.constraint_name)).toEqual([
+      "orders_self_fkey",
+    ]);
+  });
+
   test("Foreign Keys werden auf den Ausschnitt begrenzt", () => {
     const filtered = filterErSchema(schema, { schema: "public", table: "orders", depth: 1 });
     expect(filtered.tables.map((t) => erTableKey(t.schema, t.name))).toEqual([
