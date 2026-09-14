@@ -606,16 +606,16 @@ export function AppSidebarPanel() {
           </div>
         ) : null}
       </SidebarHeader>
+      {activeConnection ? (
+        <div className="shrink-0 border-b px-2 py-2" data-tour="sidebar-tabs">
+          <SidebarObjectTabs
+            tabs={sidebarTabs}
+            value={sidebarTab}
+            onValueChange={(value) => setSidebarTab(value as typeof sidebarTab)}
+          />
+        </div>
+      ) : null}
       <SidebarContent>
-        {activeConnection ? (
-          <div className="px-2 pt-2" data-tour="sidebar-tabs">
-            <SidebarObjectTabs
-              tabs={sidebarTabs}
-              value={sidebarTab}
-              onValueChange={(value) => setSidebarTab(value as typeof sidebarTab)}
-            />
-          </div>
-        ) : null}
         <SidebarFavorites />
         <SidebarGroup>
           <div
@@ -1029,7 +1029,10 @@ function SidebarEntityList({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1" data-tour="sidebar-search">
+      <div
+        className="sticky top-0 z-10 flex items-center gap-1 bg-sidebar py-1"
+        data-tour="sidebar-search"
+      >
         <SidebarSearchInput
           placeholder={
             searchIncludeColumns
@@ -1345,7 +1348,7 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center">
+      <div className="sticky top-0 z-10 flex items-center bg-sidebar py-1">
         <SidebarSearchInput
           placeholder="Funktionen…"
           value={search}
