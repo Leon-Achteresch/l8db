@@ -142,10 +142,8 @@ jobs:
           releaseBody: ${{ needs.prepare.outputs.changelog }}
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
           updaterJsonPreferNsis: true
-          updaterJsonKeepUniversal: true
-          appVersion: ${{ needs.prepare.outputs.version }}
           args: ${{ matrix.args }}
 
   finalize:
@@ -161,6 +159,7 @@ jobs:
           gh release download "v${RELEASE_VERSION}" --pattern latest.json --dir "$RUNNER_TEMP/release"
           gh release view "v${RELEASE_VERSION}" --json assets > "$RUNNER_TEMP/release/assets.json"
           node .github/scripts/verify-release.mjs "$RUNNER_TEMP/release/latest.json" "$RUNNER_TEMP/release/assets.json" "$RELEASE_VERSION"
+          gh release upload "v${RELEASE_VERSION}" "$RUNNER_TEMP/release/latest.json" --clobber
       - name: Veröffentliche vollständigen Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
