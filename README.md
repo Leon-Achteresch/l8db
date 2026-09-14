@@ -3,7 +3,7 @@
 A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://tauri.app), React 19, and Rust.
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 [![CI](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml/badge.svg)](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml)
 
 ---
@@ -153,4 +153,4 @@ src-tauri/src/
 
 ## License
 
-MIT
+GNU General Public License v3.0 only

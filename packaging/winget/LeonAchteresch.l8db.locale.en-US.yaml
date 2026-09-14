@@ -11,7 +11,7 @@ PublisherSupportUrl: https://github.com/Leon-Achteresch/l8db/issues
 Author: Leon Achteresch
 PackageName: l8db
 PackageUrl: https://github.com/Leon-Achteresch/l8db
-License: MIT
+License: GPL-3.0-only
 LicenseUrl: https://github.com/Leon-Achteresch/l8db/blob/main/LICENSE
 Copyright: Copyright (c) 2026 Leon
 ShortDescription: A fast, native desktop client for PostgreSQL and other databases.

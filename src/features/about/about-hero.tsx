@@ -47,7 +47,7 @@ export function AboutHero() {
               Tauri v2 · React 19 · Rust
             </Badge>
             <Badge variant="outline" className="rounded-full px-3 font-normal">
-              MIT
+              GPLv3
             </Badge>
           </div>
         </motion.div>

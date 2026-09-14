@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Fast, native desktop client for PostgreSQL and other databases.",
   "author": "Leon Achteresch",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "homepage": "https://github.com/Leon-Achteresch/l8db",
   "repository": {
     "type": "git",

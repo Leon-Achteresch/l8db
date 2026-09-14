@@ -4,7 +4,7 @@ version = "0.4.0"
 description = "Fast, native desktop client for PostgreSQL and other databases."
 authors = ["Leon Achteresch"]
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-only"
 repository = "https://github.com/Leon-Achteresch/l8db"
 homepage = "https://github.com/Leon-Achteresch/l8db"
 
