@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   CheckCircleIcon,
   DatabaseIcon,
@@ -198,12 +199,16 @@ export function SqlEditFeedback({ state }: { state: SqlEditState }) {
 
 export function OpenInQueryEditorButton({ sql, title }: { sql: string; title: string }) {
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
+  const navigate = useNavigate();
   return (
     <Button
       variant="ghost"
       size="xs"
       disabled={!sql}
-      onClick={() => openQueryTabWithSql(sql, title)}
+      onClick={() => {
+        const id = openQueryTabWithSql(sql, title);
+        void navigate({ to: "/query/$id", params: { id } });
+      }}
       title="Öffnet den Quelltext als neuen SQL-Tab im Query-Editor."
     >
       <SquareArrowOutUpRightIcon data-icon="inline-start" />
