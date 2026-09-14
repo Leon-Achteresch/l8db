@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 const PEEK = 54;
 const MIN_WIDTH = 480;
 const MAX_WIDTH = 1320;
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function clampWidth(value: number, viewport: number) {
   const max = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, viewport - 64));
@@ -171,6 +173,9 @@ export function FkDrawerStack() {
   const [viewport, setViewport] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
+  const rootRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
     const onResize = () => setViewport(window.innerWidth);
@@ -179,11 +184,42 @@ export function FkDrawerStack() {
   }, []);
 
   useEffect(() => {
-    if (stack.length === 0) return;
+    if (stack.length === 0) {
+      if (wasOpen.current) openerRef.current?.focus();
+      openerRef.current = null;
+      wasOpen.current = false;
+      return;
+    }
+    if (!wasOpen.current && document.activeElement instanceof HTMLElement) {
+      openerRef.current = document.activeElement;
+    }
+    wasOpen.current = true;
+    const root = rootRef.current;
+    const focusables = () => {
+      if (!root) return [];
+      return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => !el.hasAttribute("disabled") && el.tabIndex !== -1 && el.offsetParent !== null,
+      );
+    };
+    const first = focusables()[0];
+    if (first && root && !root.contains(document.activeElement)) first.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
         useFkDrawerStack.getState().pop();
+        return;
+      }
+      if (event.key !== "Tab" || !root) return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const start = items[0];
+      const end = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === start) {
+        event.preventDefault();
+        end.focus();
+      } else if (!event.shiftKey && document.activeElement === end) {
+        event.preventDefault();
+        start.focus();
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -204,7 +240,14 @@ export function FkDrawerStack() {
   if (stack.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-label="Verknüpfte Datensätze">
+    <div
+      ref={rootRef}
+      className="fixed inset-0 z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Verknüpfte Datensätze"
+      tabIndex={-1}
+    >
       <div
         aria-hidden
         onClick={() => pop()}
