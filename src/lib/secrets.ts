@@ -93,7 +93,6 @@ export function injectUrlPassword(redactedUrl: string, password: string): string
   if (at < 0) return redactedUrl;
   const userinfo = authority.slice(0, at);
   const colon = userinfo.indexOf(":");
-  if (colon >= 0 && userinfo.slice(colon + 1)) return redactedUrl;
   const user = colon < 0 ? userinfo : userinfo.slice(0, colon);
   return `${prefix}${user}:${encodeURIComponent(password)}${authority.slice(at)}${tail}`;
 }
