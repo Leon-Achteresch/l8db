@@ -15,8 +15,9 @@ import {
   TypeIcon,
   XIcon,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useState } from "react";
+import { Collapse } from "@/components/motion/collapse";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -461,89 +462,79 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                     </div>
                   </div>
 
-                  <AnimatePresence initial={false}>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="border-t border-muted/40 bg-muted/10 p-4">
-                          <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
-                            <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                                Position
-                              </div>
-                              <div className="font-mono text-foreground font-semibold text-sm">
-                                {column.ordinal_position}
-                              </div>
-                            </div>
-                            <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                                Datentyp
-                              </div>
-                              <div
-                                className="font-mono text-foreground font-semibold text-sm truncate"
-                                title={column.data_type}
-                              >
-                                {column.data_type}
-                              </div>
-                            </div>
-                            <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                                Nullable
-                              </div>
-                              <div className="font-mono text-foreground font-semibold text-sm">
-                                {column.is_nullable ? "YES" : "NO"}
-                              </div>
-                            </div>
-                            <div className="bg-card border rounded-lg p-2.5">
-                              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                                Standardwert
-                              </div>
-                              <div
-                                className="font-mono text-foreground font-semibold text-sm truncate"
-                                title={column.column_default ?? "Keiner"}
-                              >
-                                {column.column_default ?? "NULL"}
-                              </div>
-                            </div>
+                  <Collapse open={isExpanded} durationMs={200}>
+                    <div className="border-t border-muted/40 bg-muted/10 p-4">
+                      <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+                        <div className="bg-card border rounded-lg p-2.5">
+                          <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                            Position
                           </div>
-
-                          <div className="mt-4 flex items-center justify-between border-t border-muted/30 pt-3">
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              Spalte für Abfragen kopieren oder im SQL Editor verwenden
-                            </span>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              className="h-7 gap-1.5 px-2.5 text-[11px]"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyText(column.name);
-                                setCopiedColumn(column.name);
-                                setTimeout(() => setCopiedColumn(null), 1500);
-                              }}
-                            >
-                              {copiedColumn === column.name ? (
-                                <>
-                                  <CheckCheckIcon className="size-3.5 text-emerald-500" />
-                                  Kopiert!
-                                </>
-                              ) : (
-                                <>
-                                  <CopyIcon className="size-3.5" />
-                                  Namen kopieren
-                                </>
-                              )}
-                            </Button>
+                          <div className="font-mono text-foreground font-semibold text-sm">
+                            {column.ordinal_position}
                           </div>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        <div className="bg-card border rounded-lg p-2.5">
+                          <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                            Datentyp
+                          </div>
+                          <div
+                            className="font-mono text-foreground font-semibold text-sm truncate"
+                            title={column.data_type}
+                          >
+                            {column.data_type}
+                          </div>
+                        </div>
+                        <div className="bg-card border rounded-lg p-2.5">
+                          <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                            Nullable
+                          </div>
+                          <div className="font-mono text-foreground font-semibold text-sm">
+                            {column.is_nullable ? "YES" : "NO"}
+                          </div>
+                        </div>
+                        <div className="bg-card border rounded-lg p-2.5">
+                          <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
+                            Standardwert
+                          </div>
+                          <div
+                            className="font-mono text-foreground font-semibold text-sm truncate"
+                            title={column.column_default ?? "Keiner"}
+                          >
+                            {column.column_default ?? "NULL"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between border-t border-muted/30 pt-3">
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          Spalte für Abfragen kopieren oder im SQL Editor verwenden
+                        </span>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          className="h-7 gap-1.5 px-2.5 text-[11px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyText(column.name);
+                            setCopiedColumn(column.name);
+                            setTimeout(() => setCopiedColumn(null), 1500);
+                          }}
+                        >
+                          {copiedColumn === column.name ? (
+                            <>
+                              <CheckCheckIcon className="size-3.5 text-emerald-500" />
+                              Kopiert!
+                            </>
+                          ) : (
+                            <>
+                              <CopyIcon className="size-3.5" />
+                              Namen kopieren
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </Collapse>
                 </motion.div>
               );
             })}
