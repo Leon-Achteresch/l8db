@@ -6,26 +6,24 @@ import { cn } from "@/lib/utils";
 const STEPS = [
   { id: 1, label: "Datenbank" },
   { id: 2, label: "Zugang" },
-  { id: 3, label: "Prüfen" },
 ] as const;
 
 interface Props {
-  step: 1 | 2 | 3;
-  onStep?: (step: 1 | 2 | 3) => void;
+  step: 1 | 2;
+  onStep?: (step: 1 | 2) => void;
 }
 
 export function SetupStepper({ step, onStep }: Props) {
   const reduce = useReducedMotion();
   return (
-    <ol className="grid grid-cols-3 gap-2" aria-label="Einrichtung">
+    <ol className="flex gap-2" aria-label="Einrichtung">
       {STEPS.map((item, index) => {
         const done = step > item.id;
         const active = step === item.id;
         return (
-          <li key={item.id}>
+          <li key={item.id} className="min-w-0 flex-1">
             <motion.button
               type="button"
-              layout
               transition={{ layout: SPRING }}
               disabled={!onStep || item.id > step}
               onClick={() => onStep?.(item.id)}
