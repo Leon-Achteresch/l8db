@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { verifyRelease } from "../.github/scripts/verify-release.mjs";
+import { normalizeManifest, verifyRelease } from "../.github/scripts/verify-release.mjs";
 
 function release() {
   const files = {
@@ -58,5 +58,21 @@ describe("release publication gate", () => {
     const clean = release();
     clean.manifest.platforms["linux-x86_64"].signature = "";
     expect(() => verifyRelease(clean.manifest, clean.assets, "0.3.0")).toThrow();
+  });
+  test("rewrites draft asset API urls to public download urls", () => {
+    const { manifest, assets } = release();
+    const withIds = assets.map((asset, index) => ({
+      ...asset,
+      apiUrl: `https://api.github.com/repos/Leon-Achteresch/l8db/releases/assets/${index}`,
+    }));
+    for (const [platform, entry] of Object.entries(manifest.platforms)) {
+      const index = withIds.findIndex((asset) => asset.name === entry.url.split("/").at(-1));
+      manifest.platforms[platform].url = withIds[index].apiUrl;
+    }
+    normalizeManifest(manifest, withIds, "0.3.0");
+    expect(() => verifyRelease(manifest, withIds, "0.3.0")).not.toThrow();
+    expect(manifest.platforms["windows-x86_64"].url).toBe(
+      "https://github.com/Leon-Achteresch/l8db/releases/download/v0.3.0/l8db-setup.exe",
+    );
   });
 });
