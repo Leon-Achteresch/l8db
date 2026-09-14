@@ -3,6 +3,7 @@ import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsAppearance } from "@/features/settings/settings-appearance";
 import { SettingsRow } from "@/features/settings/settings-row";
@@ -12,7 +13,8 @@ import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsGeneralTab() {
   const { theme, setTheme } = useTheme();
-  const { resetToDefaults } = useSettingsStore();
+  const { resetToDefaults, translateFilterOperators, setTranslateFilterOperators } =
+    useSettingsStore();
 
   const handleReset = () => {
     resetToDefaults();
@@ -46,6 +48,17 @@ export function SettingsGeneralTab() {
         <SettingsAppearance />
 
         <SettingsTableTabs />
+
+        <SettingsRow
+          title="Filteroperatoren übersetzen"
+          description="Bezeichnungen wie „ist gleich“ anzeigen. Ausgeschaltet erscheinen =, <>, IN, IS NULL und LIKE-Muster bzw. die nativen Operatoren der Datenbank."
+        >
+          <Switch
+            checked={translateFilterOperators}
+            onCheckedChange={setTranslateFilterOperators}
+            aria-label="Filteroperatoren übersetzen"
+          />
+        </SettingsRow>
 
         <TourSection />
 

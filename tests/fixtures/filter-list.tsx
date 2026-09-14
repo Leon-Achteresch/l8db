@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryResultTable } from "../../src/features/query/query-result-table";
-import { SettingsDataTab } from "../../src/features/settings/settings-data-tab";
+import { SettingsGeneralTab } from "../../src/features/settings/settings-general-tab";
 import { DataTable } from "../../src/features/table/data-table";
 import { TableFilterPanel } from "../../src/features/table/table-filter-panel";
 import { useConnectionsStore } from "../../src/lib/connections";
@@ -95,7 +95,7 @@ function App() {
     <div className="flex h-dvh flex-col p-4">
       <details>
         <summary>Einstellungen</summary>
-        <SettingsDataTab />
+        <SettingsGeneralTab />
       </details>
       <TableFilterPanel columns={columns} activeFilter={activeFilter} onApply={apply} />
       <output aria-label="Applied filter">{activeFilter}</output>

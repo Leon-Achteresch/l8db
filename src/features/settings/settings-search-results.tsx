@@ -13,8 +13,8 @@ interface SearchItem {
 const SEARCH_ITEMS: SearchItem[] = [
   {
     id: "filter-operators",
-    tabId: "data",
-    tabLabel: "Daten & Abfragen",
+    tabId: "general",
+    tabLabel: "Allgemein",
     title: "Filteroperatoren übersetzen",
     description:
       "Verständliche Bezeichnungen oder SQL-Syntax und native Datenbankoperatoren anzeigen.",
