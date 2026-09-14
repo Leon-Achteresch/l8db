@@ -70,6 +70,12 @@ import {
 } from "@/lib/auto-refresh";
 import { buildRowUpdates } from "@/lib/cell-editor";
 import { copyText } from "@/lib/clipboard";
+import {
+  COLUMN_SIZE_MAX,
+  COLUMN_SIZE_MIN,
+  fitHeaderColumnWidth,
+  measureHeaderTitleWidth,
+} from "@/lib/column-header-width";
 import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -622,8 +628,8 @@ export function DataTable({
           accessorKey: column,
           enableSorting: !sortableColumns || sortableColumns.includes(column),
           size: 200,
-          minSize: 80,
-          maxSize: 850,
+          minSize: COLUMN_SIZE_MIN,
+          maxSize: COLUMN_SIZE_MAX,
           header: ({ column: col }: HeaderContext<TableRow, unknown>) => {
             const typeInfo =
               headerStateRef.current.typeInfoByColumn.get(column) ?? getColumnTypeInfo(column, []);
@@ -1098,6 +1104,16 @@ export function DataTable({
     toast.success("Spaltennamen kopiert.");
   }, [order, hidden]);
 
+  const fitHeaderWidths = useCallback(() => {
+    const hiddenSet = new Set(hidden);
+    const next = { ...savedColumnSizing };
+    for (const column of order) {
+      if (hiddenSet.has(column)) continue;
+      next[column] = fitHeaderColumnWidth(measureHeaderTitleWidth(column), fkByColumn.has(column));
+    }
+    setColumnSizing(next);
+  }, [fkByColumn, hidden, order, savedColumnSizing, setColumnSizing]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: Treffer neu zählen bei Query- oder Datenwechsel
   useEffect(() => {
     setMatchIndex(0);
@@ -1331,6 +1347,7 @@ export function DataTable({
                         onReset={reset}
                         onShowAll={() => setHidden([])}
                         onUnpinAll={() => setPinned([])}
+                        onFitHeaderWidths={fitHeaderWidths}
                         onCopyColumnNames={copyColumnNames}
                         profiles={profiles}
                         canUseProfiles={canUseProfiles}
@@ -1397,6 +1414,7 @@ export function DataTable({
       reset,
       setPinned,
       copyColumnNames,
+      fitHeaderWidths,
       profiles,
       canUseProfiles,
       hasLegacy,

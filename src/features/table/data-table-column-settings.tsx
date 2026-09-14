@@ -1,7 +1,7 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { ClipboardCopyIcon, EyeIcon, PinOffIcon, RotateCcwIcon } from "lucide-react";
+import { ClipboardCopyIcon, EyeIcon, Maximize2Icon, PinOffIcon, RotateCcwIcon } from "lucide-react";
 
 import {
   ContextMenuItem,
@@ -30,6 +30,7 @@ type DataTableColumnSettingsProps = {
   onReset: () => void;
   onShowAll: () => void;
   onUnpinAll: () => void;
+  onFitHeaderWidths: () => void;
   onCopyColumnNames: () => void;
   profiles: TableLayoutProfile[];
   canUseProfiles: boolean;
@@ -51,6 +52,7 @@ export function DataTableColumnSettings({
   onReset,
   onShowAll,
   onUnpinAll,
+  onFitHeaderWidths,
   onCopyColumnNames,
   profiles,
   canUseProfiles,
@@ -127,6 +129,10 @@ export function DataTableColumnSettings({
         />
       )}
       <ContextMenuSeparator />
+      <ContextMenuItem onSelect={onFitHeaderWidths}>
+        <Maximize2Icon />
+        An Spaltentitel anpassen
+      </ContextMenuItem>
       <ContextMenuItem onSelect={onCopyColumnNames}>
         <ClipboardCopyIcon />
         Spaltennamen kopieren
