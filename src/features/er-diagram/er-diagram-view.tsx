@@ -459,16 +459,16 @@ function ERDiagramInner() {
   const activeSchema = useActiveSchema();
   const { data: fullSchema, isLoading, error } = useErSchemaQuery(activeSchema);
   const navigate = useNavigate();
-  const search = useSearch({ from: "/_app/_workspace/er-diagram" });
+  const search = useSearch({ from: "/_app/_workspace/er-diagram", shouldThrow: false });
 
   const focus = useMemo(() => {
-    if (!search.focusSchema || !search.focusTable) return null;
+    if (!search?.focusSchema || !search?.focusTable) return null;
     return {
       schema: search.focusSchema,
       table: search.focusTable,
       depth: parseErFocusDepth(search.depth),
     };
-  }, [search.focusSchema, search.focusTable, search.depth]);
+  }, [search?.focusSchema, search?.focusTable, search?.depth]);
 
   const focusKey = focus ? erTableKey(focus.schema, focus.table) : null;
   const focusMissing = Boolean(
@@ -520,12 +520,27 @@ function ERDiagramInner() {
     const version = ++layoutVersionRef.current;
 
     setLayoutReady(false);
-    computeElkLayout(erSchema.tables, erSchema.foreign_keys).then((positions) => {
+    const tables = erSchema.tables;
+    const foreignKeys = erSchema.foreign_keys;
+    const applyPositions = (positions: Map<string, { x: number; y: number }>) => {
       if (layoutVersionRef.current !== version) return;
-      const layoutedNodes = buildNodes(erSchema.tables, erSchema.foreign_keys, positions);
-      setNodes(layoutedNodes);
+      setNodes(buildNodes(tables, foreignKeys, positions));
       setEdges(builtEdges);
       setLayoutReady(true);
+    };
+    computeElkLayout(tables, foreignKeys).then(applyPositions, () => {
+      const columns = 4;
+      applyPositions(
+        new Map(
+          tables.map((table, index) => [
+            `${table.schema}.${table.name}`,
+            {
+              x: (index % columns) * (NODE_WIDTH + 60),
+              y: Math.floor(index / columns) * 420,
+            },
+          ]),
+        ),
+      );
     });
   }, [erSchema, builtEdges, setNodes, setEdges]);
 
