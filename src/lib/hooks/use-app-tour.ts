@@ -39,11 +39,12 @@ export function useAppTour() {
   const stepIndex = useTourStore((s) => s.stepIndex);
   const autoPilot = useTourStore((s) => s.autoPilot);
   const waiting = useTourStore((s) => s.waiting);
+  const minimized = useTourStore((s) => s.minimized);
   const runId = useTourStore((s) => s.runId);
   const generation = useRef(0);
 
   useEffect(() => {
-    if (!active) {
+    if (!active || minimized) {
       destroySpotlight();
       return;
     }
@@ -62,12 +63,6 @@ export function useAppTour() {
       if (step.openTx) useTransactionStore.getState().setPanelOpen(true);
       await goToStepRoute(step, navigate);
       if (cancelled || generation.current !== token) return;
-      if (
-        (step.id === "connection-editor" || step.id === "save-connection") &&
-        !document.querySelector("[data-tour='connection-editor']")
-      ) {
-        clickSelector("[data-tour='connection-add']");
-      }
       const baseline = useConnectionsStore.getState().connections.length;
       const alreadyMet =
         Boolean(step.wait) && isWaitMet(step.wait!, baseline, false, window.location.pathname);
@@ -99,10 +94,10 @@ export function useAppTour() {
     return () => {
       cancelled = true;
     };
-  }, [active, chapterIndex, stepIndex, autoPilot, navigate, runId]);
+  }, [active, minimized, chapterIndex, stepIndex, autoPilot, navigate, runId]);
 
   useEffect(() => {
-    if (!active || !waiting) return;
+    if (!active || !waiting || minimized) return;
     const { step } = currentTour();
     if (!step?.wait) return;
     const baseline = useTourStore.getState().waitBaseline;
@@ -123,7 +118,7 @@ export function useAppTour() {
       unsub();
       window.clearInterval(timer);
     };
-  }, [active, waiting, chapterIndex, stepIndex, pathname]);
+  }, [active, minimized, waiting, chapterIndex, stepIndex, pathname]);
 
   useEffect(() => {
     if (!active) return;
@@ -135,9 +130,10 @@ export function useAppTour() {
       )
         return;
       if (event.key === "Escape") {
-        useTourStore.getState().stop();
+        useTourStore.getState().setMinimized(true);
         return;
       }
+      if (useTourStore.getState().minimized) return;
       if (event.key === "ArrowRight") {
         event.preventDefault();
         advanceTour();

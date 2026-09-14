@@ -14,6 +14,9 @@ interface TourState {
   waitBaseline: number;
   clickDone: boolean;
   runId: number;
+  minimized: boolean;
+  offerOpen: boolean;
+  offerDismissed: boolean;
   startFromBeginning: () => void;
   resumeOrStart: () => void;
   stop: () => void;
@@ -22,6 +25,9 @@ interface TourState {
   markChapterDone: (id: string) => void;
   setWaiting: (waiting: boolean, hint: string | null, baseline?: number) => void;
   setClickDone: (value: boolean) => void;
+  setMinimized: (value: boolean) => void;
+  openOffer: () => void;
+  dismissOffer: () => void;
 }
 
 export const useTourStore = create<TourState>()(
@@ -37,6 +43,9 @@ export const useTourStore = create<TourState>()(
       waitBaseline: 0,
       clickDone: false,
       runId: 0,
+      minimized: false,
+      offerOpen: false,
+      offerDismissed: false,
       startFromBeginning: () => {
         useSettingsStore.getState().setTourFinished(false);
         set((state) => ({
@@ -48,6 +57,8 @@ export const useTourStore = create<TourState>()(
           waitHint: null,
           waitBaseline: 0,
           clickDone: false,
+          minimized: false,
+          offerOpen: false,
           runId: state.runId + 1,
         }));
       },
@@ -58,12 +69,21 @@ export const useTourStore = create<TourState>()(
           waiting: false,
           waitHint: null,
           clickDone: false,
+          minimized: false,
+          offerOpen: false,
           runId: state.runId + 1,
         }));
       },
       stop: () => {
         useSettingsStore.getState().setTourFinished(true);
-        set({ active: false, waiting: false, waitHint: null, clickDone: false });
+        set({
+          active: false,
+          waiting: false,
+          waitHint: null,
+          clickDone: false,
+          minimized: false,
+          offerOpen: false,
+        });
       },
       setAutoPilot: (autoPilot) => set({ autoPilot }),
       setPosition: (chapterIndex, stepIndex) =>
@@ -88,6 +108,13 @@ export const useTourStore = create<TourState>()(
           waitBaseline: waitBaseline ?? state.waitBaseline,
         })),
       setClickDone: (clickDone) => set({ clickDone }),
+      setMinimized: (minimized) =>
+        set((state) => ({
+          minimized,
+          runId: minimized === state.minimized ? state.runId : state.runId + 1,
+        })),
+      openOffer: () => set({ offerOpen: true }),
+      dismissOffer: () => set({ offerOpen: false, offerDismissed: true }),
     }),
     {
       name: "l8db.tour",
@@ -97,6 +124,7 @@ export const useTourStore = create<TourState>()(
         stepIndex: state.stepIndex,
         completedChapterIds: state.completedChapterIds,
         autoPilot: state.autoPilot,
+        offerDismissed: state.offerDismissed,
       }),
     },
   ),

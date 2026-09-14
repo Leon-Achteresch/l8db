@@ -25,12 +25,26 @@ export function prevTourPosition(chapterIndex: number, stepIndex: number) {
 
 export function selectorExists(selector: string) {
   if (typeof document === "undefined") return false;
-  return Boolean(document.querySelector(selector));
+  return Boolean(visibleElement(selector));
+}
+
+export function visibleElement(selector: string) {
+  if (typeof document === "undefined") return null;
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>(selector));
+  return (
+    nodes.find((node) => {
+      if (node.getAttribute("aria-hidden") === "true") return false;
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return false;
+      const style = window.getComputedStyle(node);
+      return style.visibility !== "hidden" && style.display !== "none";
+    }) ?? null
+  );
 }
 
 export function firstTableTarget() {
   if (typeof document === "undefined") return null;
-  return document.querySelector<HTMLElement>("[data-tour='sidebar-table']");
+  return visibleElement("[data-tour='sidebar-table']");
 }
 
 export function shouldSkipStep(skipIf: TourSkipIf | undefined) {
@@ -58,7 +72,7 @@ export function isWaitMet(wait: TourWait, baseline: number, clicked: boolean, pa
 }
 
 export function clickSelector(selector: string) {
-  const el = document.querySelector<HTMLElement>(selector);
+  const el = visibleElement(selector);
   if (!el) return false;
   el.click();
   return true;

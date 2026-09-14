@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { flattenTour, TOUR_CHAPTERS, tourProgress } from "../src/lib/tour/chapters";
-import { isWaitMet, nextTourPosition, prevTourPosition, shouldSkipStep } from "../src/lib/tour/conditions";
+import {
+  clickSelector,
+  isWaitMet,
+  nextTourPosition,
+  prevTourPosition,
+  selectorExists,
+  shouldSkipStep,
+} from "../src/lib/tour/conditions";
 
 describe("tour script", () => {
   test("hat eindeutige Kapitel- und Schritt-IDs", () => {
@@ -35,9 +42,9 @@ describe("tour script", () => {
 
 describe("tour waits", () => {
   test("route-Wartebedingung prüft den Pfad", () => {
-    expect(isWaitMet({ type: "route", includes: "/tables/" }, 0, false, "/tables/public/users")).toBe(
-      true,
-    );
+    expect(
+      isWaitMet({ type: "route", includes: "/tables/" }, 0, false, "/tables/public/users"),
+    ).toBe(true);
     expect(isWaitMet({ type: "route", includes: "/tables/" }, 0, false, "/query")).toBe(false);
   });
 
@@ -50,5 +57,38 @@ describe("tour waits", () => {
 describe("tour skip", () => {
   test("editor-open ist ohne DOM falsch", () => {
     expect(shouldSkipStep("editor-open")).toBe(false);
+  });
+
+  test("ohne DOM existiert kein Selektor und kein Klick", () => {
+    expect(selectorExists("[data-tour='connection-editor']")).toBe(false);
+    expect(clickSelector("[data-tour='connection-add']")).toBe(false);
+  });
+});
+
+describe("tour script vollständig", () => {
+  test("jeder Schritt hat Titel und Body", () => {
+    for (const entry of flattenTour()) {
+      expect(entry.step.title.trim().length).toBeGreaterThan(0);
+      expect(entry.step.body.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  test("jeder Warte-Schritt erklärt das Warten", () => {
+    for (const entry of flattenTour()) {
+      if (entry.step.wait) expect(entry.step.waitHint?.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  test("alle Targets sind data-tour-Selektoren", () => {
+    for (const entry of flattenTour()) {
+      if (entry.step.target) expect(entry.step.target.startsWith("[data-tour=")).toBe(true);
+      if (entry.step.autoClick) expect(entry.step.autoClick.startsWith("[data-tour=")).toBe(true);
+    }
+  });
+
+  test("Info-Schritte ohne Target blockieren nichts", () => {
+    const over = flattenTour().filter((entry) => !entry.step.target || entry.step.side === "over");
+    expect(over.length).toBeGreaterThan(0);
+    for (const entry of over) expect(entry.step.wait?.type).not.toBe("element");
   });
 });
