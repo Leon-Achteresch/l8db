@@ -228,13 +228,14 @@ export function FkDrawerStack() {
 
   const openInTab = useCallback(
     (schema: string, table: string) => {
+      clear();
       openTab({ schema, table, entityType: "table" });
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema, table },
       });
     },
-    [openTab, navigate],
+    [clear, openTab, navigate],
   );
 
   if (stack.length === 0) return null;
