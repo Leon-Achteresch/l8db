@@ -321,7 +321,7 @@ export async function activateConnectionWithToast(
       if (
         !(await ensurePassword(
           id,
-          `Anmeldung bei „${label}“ fehlgeschlagen. Passwort erneut eingeben.`,
+          `Anmeldung bei „${label}“ fehlgeschlagen (${outcome.error ?? "unbekannt"}). Passwort erneut eingeben.`,
         ))
       ) {
         if (useConnectionsStore.getState().activeId === id) await activateConnection(null);
