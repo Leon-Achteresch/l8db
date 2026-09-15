@@ -73,6 +73,10 @@ const plsqlKeywords = [
   "SLICE",
 ];
 
+monaco.editor.addKeybindingRules([
+  { keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, command: "editor.action.gotoLine" },
+]);
+
 monaco.languages.register({ id: "plsql" });
 monaco.languages.setLanguageConfiguration("plsql", sqlConf);
 monaco.languages.setMonarchTokensProvider("plsql", {
