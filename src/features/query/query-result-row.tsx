@@ -87,7 +87,7 @@ export const QueryResultRow = memo(function QueryResultRow({
         const col = columns[item.index - 1];
         return (
           <QueryResultCell
-            key={col}
+            key={`col-${item.index}`}
             column={col}
             value={row[col]}
             row={row}

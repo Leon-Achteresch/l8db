@@ -335,7 +335,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                 const rank = sortRankFor(sorts, col);
                 return (
                   <th
-                    key={col}
+                    key={`col-${item.index}`}
                     aria-sort={
                       direction === "asc"
                         ? "ascending"
@@ -389,7 +389,10 @@ export const QueryResultTable = memo(function QueryResultTable({
                     normalizeResultFilterOperator(filter.operator),
                   );
                   return (
-                    <th key={col} className="border-b border-r bg-muted/70 px-1 py-1">
+                    <th
+                      key={`col-${item.index}`}
+                      className="border-b border-r bg-muted/70 px-1 py-1"
+                    >
                       <div className="flex items-center gap-1">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
