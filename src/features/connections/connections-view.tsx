@@ -396,7 +396,6 @@ export function ConnectionsView() {
                         <Group className="size-3.5" />
                         Gruppen
                       </DropdownMenuItem>
-
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}

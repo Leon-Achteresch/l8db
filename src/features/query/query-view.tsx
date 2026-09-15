@@ -120,10 +120,10 @@ import {
 } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
+  type BookmarkSlots,
   isQueryTabDirty,
   normalizeBookmarks,
   useTableTabs,
-  type BookmarkSlots,
 } from "@/lib/table-tabs";
 import { cancelTask, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
@@ -285,7 +285,9 @@ export function QueryView({ tabId }: QueryViewProps) {
   const normalizedBookmarks = useMemo(() => normalizeBookmarks(bookmarks), [bookmarks]);
   const bookmarkSlots = useTableTabs((state) => {
     const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? (tab.bookmarkSlots ?? EMPTY_BOOKMARK_SLOTS) : EMPTY_BOOKMARK_SLOTS;
+    return tab?.kind === "query"
+      ? (tab.bookmarkSlots ?? EMPTY_BOOKMARK_SLOTS)
+      : EMPTY_BOOKMARK_SLOTS;
   });
 
   const [bindDialogOpen, setBindDialogOpen] = useState(false);
@@ -724,15 +726,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     } finally {
       setIsChecking(false);
     }
-  }, [
-    connection,
-    sql,
-    selectedSql,
-    cursorOffset,
-    workspace.runTarget,
-    database,
-    isChecking,
-  ]);
+  }, [connection, sql, selectedSql, cursorOffset, workspace.runTarget, database, isChecking]);
 
   const hasSelection = selectedSql.trim().length > 0;
 

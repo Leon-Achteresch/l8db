@@ -80,8 +80,14 @@ monaco.editor.addKeybindingRules([
   { keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, command: "editor.action.gotoLine" },
   { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.LeftArrow, command: "cursorWordLeft" },
   { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.RightArrow, command: "cursorWordRight" },
-  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow, command: "cursorWordLeftSelect" },
-  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow, command: "cursorWordRightSelect" },
+  {
+    keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow,
+    command: "cursorWordLeftSelect",
+  },
+  {
+    keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow,
+    command: "cursorWordRightSelect",
+  },
 ]);
 
 monaco.languages.register({ id: "plsql" });
@@ -266,7 +272,9 @@ function setSqlMarkers(model: monaco.editor.ITextModel, owner: string, markers: 
         const end = model.getPositionAt(Math.max(marker.end, marker.start + 1));
         return {
           severity:
-            marker.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+            marker.severity === "error"
+              ? monaco.MarkerSeverity.Error
+              : monaco.MarkerSeverity.Warning,
           message: marker.message,
           startLineNumber: start.lineNumber,
           startColumn: start.column,

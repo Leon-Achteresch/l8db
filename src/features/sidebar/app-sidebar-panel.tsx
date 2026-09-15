@@ -634,7 +634,7 @@ export function AppSidebarPanel() {
                 </Select>
               </div>
             )}
-            <DisconnectButton size="sm" className="w-full" />
+
           </div>
         ) : null}
       </SidebarHeader>
