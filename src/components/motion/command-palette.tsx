@@ -7,6 +7,7 @@ import { type LucideIcon, Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { rankCommands } from "@/lib/command-score";
 import { EASE_OUT } from "@/lib/ease";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
@@ -34,18 +35,6 @@ export interface CommandPaletteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   maxVisible?: number;
-}
-
-function fuzzyMatch(needle: string, hay: string) {
-  if (!needle) return true;
-  needle = needle.toLowerCase();
-  hay = hay.toLowerCase();
-  let i = 0;
-  for (const ch of hay) {
-    if (ch === needle[i]) i++;
-    if (i === needle.length) return true;
-  }
-  return false;
 }
 
 // Opened via a keyboard shortcut many times a day — entrance must read as
@@ -120,12 +109,7 @@ export function CommandPalette({
   }, [open]);
 
   const filtered = useMemo(() => {
-    const matches = query
-      ? items.filter((it) => {
-          const haystacks = [it.label, it.group ?? "", ...(it.keywords ?? [])];
-          return haystacks.some((h) => fuzzyMatch(query, h));
-        })
-      : items;
+    const matches = rankCommands(items, query);
     return maxVisible && matches.length > maxVisible ? matches.slice(0, maxVisible) : matches;
   }, [items, maxVisible, query]);
 
