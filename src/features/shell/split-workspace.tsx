@@ -37,8 +37,9 @@ export function SplitWorkspace() {
 
   const link = (index: number, vertical = false) => (
     <MasterDetailLink
-      key={`${panes[0]}|${panes[index]}`}
-      master={tabs.find((item) => tabKey(item) === panes[0])}
+      key={`${panes[index - 1]}|${panes[index]}`}
+      master={tabs.find((item) => tabKey(item) === panes[index - 1])}
+      masterIndex={index - 1}
       detail={tabs.find((item) => tabKey(item) === panes[index])}
       detailIndex={index}
       vertical={vertical}
