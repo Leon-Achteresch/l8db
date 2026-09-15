@@ -54,14 +54,17 @@ export function AppHotkeys() {
       window.dispatchEvent(new CustomEvent("l8db:request-close-tab", { detail: key }));
       return;
     }
-    useTableTabs.getState().closeTab(key);
-    const remaining = useTableTabs.getState().tabs;
-    if (remaining.length === 0) {
-      void navigate({ to: "/" });
+    const close = () => useTableTabs.getState().closeTab(key);
+    const next = tabs[index + 1] ?? tabs[index - 1];
+    if (!next) {
+      void navigate({ to: "/" }).finally(close);
       return;
     }
-    const next = remaining[Math.min(index, remaining.length - 1)];
-    if (next && tabKey(next) !== key) navigateToTab(navigate, next);
+    if (tabKey(next) === key) {
+      close();
+      return;
+    }
+    void Promise.resolve(navigateToTab(navigate, next)).finally(close);
   }, [activeKey, navigate]);
 
   const reopenTab = useCallback(() => {
