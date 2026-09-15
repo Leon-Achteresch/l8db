@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { isAuthFailure } from "@/lib/connection-url";
+import { connectionError, isAuthFailure } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { ensurePassword } from "@/lib/password-prompt";
 import { isConnectionQuery } from "@/lib/query-client";
@@ -35,7 +35,7 @@ export function ConnectionAuthGuard() {
         if (
           !(await ensurePassword(
             id,
-            `Anmeldung bei „${label}“ fehlgeschlagen. Passwort erneut eingeben.`,
+            `Anmeldung bei „${label}“ fehlgeschlagen (${connectionError(error)}). Passwort erneut eingeben.`,
           ))
         ) {
           if (useConnectionsStore.getState().activeId === id) await activateConnection(null);
