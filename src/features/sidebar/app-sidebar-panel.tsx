@@ -183,6 +183,7 @@ export function AppSidebarPanel() {
   const activeConnection = useActiveConnection();
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
@@ -197,13 +198,13 @@ export function AppSidebarPanel() {
   const serverGroups = useMemo(
     () =>
       sortServerGroups(
-        groupByServer(sortConnectionsByName(connections)),
+        groupByServer(sortConnectionsByName(connections), hostGroupRules),
         favoriteServerKeys,
         serverOrder,
       ),
-    [connections, favoriteServerKeys, serverOrder],
+    [connections, favoriteServerKeys, serverOrder, hostGroupRules],
   );
-  const grouped = serverGroups.some((group) => group.connections.length > 1);
+  const grouped = serverGroups.some((group) => group.connections.length > 1 || group.ruleId);
   const [connectionSearch, setConnectionSearch] = useState("");
   const connectionSearchRef = useRef<HTMLInputElement>(null);
   const connectionRegexEnabled = useRegexEnabled("sidebar");

@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import type { HostGroupRule } from "@/lib/connection-groups";
 import { sslModeFromUrl } from "@/lib/connection-url";
 import { closeSshTunnel, type DatabaseKind, type SslMode } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
@@ -100,6 +101,8 @@ interface ConnectionsState {
   favoriteServerKeys: string[];
   serverOrder: string[];
   collapsedServerKeys: string[];
+  hostGroupRules: HostGroupRule[];
+  setHostGroupRules: (rules: HostGroupRule[]) => void;
   addConnection: (input: ConnectionInput) => SavedConnection;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
@@ -174,6 +177,8 @@ export const useConnectionsStore = create<ConnectionsState>()(
       favoriteServerKeys: [],
       serverOrder: [],
       collapsedServerKeys: [],
+      hostGroupRules: [],
+      setHostGroupRules: (rules) => set({ hostGroupRules: rules }),
       addConnection: (input) => {
         const connection: SavedConnection = { ...input, id: createId() };
         set((state) => ({
@@ -249,6 +254,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
         favoriteServerKeys: state.favoriteServerKeys,
         serverOrder: state.serverOrder,
         collapsedServerKeys: state.collapsedServerKeys,
+        hostGroupRules: state.hostGroupRules,
       }),
     },
   ),

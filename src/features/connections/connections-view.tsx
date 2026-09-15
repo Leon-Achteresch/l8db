@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ChevronRight,
   Download,
+  Group,
   KeyRound,
   MoreHorizontal,
   Pencil,
@@ -39,9 +40,11 @@ import {
 import {
   connectionUser,
   groupByServer,
+  groupKey,
+  type HostGroupRule,
   type ServerGroup,
-  serverKey,
   sortServerGroups,
+  suggestHostPattern,
 } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import {
@@ -61,6 +64,7 @@ import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
+import { HostGroupRulesDialog } from "./host-group-rules-dialog";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
@@ -68,6 +72,10 @@ export function ConnectionsView() {
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
   const collapsedServerKeys = useConnectionsStore((state) => state.collapsedServerKeys);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
+  const [rulesDialog, setRulesDialog] = useState<{
+    draft: Omit<HostGroupRule, "id"> | null;
+  } | null>(null);
   const setServerCollapsed = useConnectionsStore((state) => state.setServerCollapsed);
   const [editorId, setEditorId] = useState<string | null>(null);
   const [template, setTemplate] = useState<SavedConnection | null>(null);
@@ -90,17 +98,22 @@ export function ConnectionsView() {
   const favoriteCount = connections.filter((connection) => connection.favorite).length;
   const filtered = favoritesOnly
     ? connections.filter(
-        (connection) => connection.favorite || favoriteServerKeys.includes(serverKey(connection)),
+        (connection) =>
+          connection.favorite || favoriteServerKeys.includes(groupKey(connection, hostGroupRules)),
       )
     : connections;
   const visible = sortConnectionsByName(filtered);
   const allGroups = sortServerGroups(
-    groupByServer(sortConnectionsByName(connections)),
+    groupByServer(sortConnectionsByName(connections), hostGroupRules),
     favoriteServerKeys,
     serverOrder,
   );
-  const groups = sortServerGroups(groupByServer(visible), favoriteServerKeys, serverOrder);
-  const grouped = allGroups.some((group) => group.connections.length > 1);
+  const groups = sortServerGroups(
+    groupByServer(visible, hostGroupRules),
+    favoriteServerKeys,
+    serverOrder,
+  );
+  const grouped = allGroups.some((group) => group.connections.length > 1 || group.ruleId);
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
     setTemplate(from);
@@ -237,6 +250,14 @@ export function ConnectionsView() {
                       {favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
                       {favoriteCount > 0 && !favoritesOnly ? ` (${favoriteCount})` : ""}
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRulesDialog({ draft: null })}
+                    >
+                      <Group className="size-4" />
+                      Gruppen
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
                       <Download className="size-4" />
                       Export
@@ -329,12 +350,14 @@ export function ConnectionsView() {
                             </span>
                           </span>
                         </CollapsibleTrigger>
-                        {group.connections.length > 1 && group.kind === "oracle" && (
-                          <Button variant="outline" size="xs" onClick={() => setBulkGroup(group)}>
-                            <Pencil className="size-3.5" />
-                            Host &amp; Service bearbeiten
-                          </Button>
-                        )}
+                        {group.connections.length > 1 &&
+                          !group.ruleId &&
+                          group.kind === "oracle" && (
+                            <Button variant="outline" size="xs" onClick={() => setBulkGroup(group)}>
+                              <Pencil className="size-3.5" />
+                              Host &amp; Service bearbeiten
+                            </Button>
+                          )}
                         {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
                           <Button
                             variant="outline"
@@ -373,6 +396,22 @@ export function ConnectionsView() {
                               {favoriteServerKeys.includes(group.key)
                                 ? "Aus Favoriten"
                                 : "Als Favorit"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                const first = group.connections[0];
+                                setRulesDialog({
+                                  draft:
+                                    group.ruleId || !first
+                                      ? null
+                                      : { name: "", pattern: suggestHostPattern(first) },
+                                });
+                              }}
+                            >
+                              <Group className="size-3.5" />
+                              {group.ruleId
+                                ? "Gruppierung bearbeiten"
+                                : "Ähnliche Hosts gruppieren"}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -430,6 +469,15 @@ export function ConnectionsView() {
           open={exportOpen}
           connections={connections}
           onOpenChange={setExportOpen}
+        />
+      )}
+      {rulesDialog && (
+        <HostGroupRulesDialog
+          open
+          draft={rulesDialog.draft}
+          onOpenChange={(open) => {
+            if (!open) setRulesDialog(null);
+          }}
         />
       )}
       {importOpen && <ConnectionImportDialog open={importOpen} onOpenChange={setImportOpen} />}
