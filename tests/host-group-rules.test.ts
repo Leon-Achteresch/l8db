@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { groupByServer, suggestHostPattern } from "@/lib/connection-groups";
+import { groupByServer, matchesConnectionQuery, suggestHostPattern } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 
 const c = (id: string, host: string) =>
@@ -18,4 +18,11 @@ test("rules", () => {
     ["other:5432/db", 1],
   ]);
   expect(suggestHostPattern(conns[0])).toBe("cslbl*");
+});
+
+test("search", () => {
+  const connection = c("hr", "cslbl01.corp");
+  expect(matchesConnectionQuery(connection, "HR")).toBe(true);
+  expect(matchesConnectionQuery(connection, "cslbl")).toBe(true);
+  expect(matchesConnectionQuery(connection, "missing")).toBe(false);
 });

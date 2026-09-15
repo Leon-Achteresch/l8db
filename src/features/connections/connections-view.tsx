@@ -1,20 +1,20 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  ChevronRight,
   Download,
   Group,
   KeyRound,
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Star,
   Trash2,
   Upload,
 } from "lucide-react";
-import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -29,7 +29,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,11 +36,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import {
   connectionUser,
   groupByServer,
   groupKey,
   type HostGroupRule,
+  matchesConnectionQuery,
   type ServerGroup,
   sortServerGroups,
   suggestHostPattern,
@@ -52,18 +54,19 @@ import {
   sortConnectionsByName,
   useConnectionsStore,
 } from "@/lib/connections";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { ensurePassword } from "@/lib/password-prompt";
 import { capabilitiesFor } from "@/lib/providers";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { getTransactionForConnection } from "@/lib/transactions";
+import { cn } from "@/lib/utils";
 import { openConnectionWindow } from "@/lib/windows";
 import { ConnectionBulkEditDialog } from "./connection-bulk-edit-dialog";
 import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
+import { ConnectionGroupNav } from "./connection-group-nav";
 import { ConnectionImportDialog } from "./connection-import-dialog";
-import { ConnectionPickCard } from "./connection-pick-card";
+import { CONNECTION_ROW_GRID, ConnectionPickCard } from "./connection-pick-card";
 import { HostGroupRulesDialog } from "./host-group-rules-dialog";
 
 export function ConnectionsView() {
@@ -71,19 +74,16 @@ export function ConnectionsView() {
   const activeId = useConnectionsStore((state) => state.activeId);
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
-  const collapsedServerKeys = useConnectionsStore((state) => state.collapsedServerKeys);
   const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
   const [rulesDialog, setRulesDialog] = useState<{
     draft: Omit<HostGroupRule, "id"> | null;
   } | null>(null);
-  const setServerCollapsed = useConnectionsStore((state) => state.setServerCollapsed);
   const [editorId, setEditorId] = useState<string | null>(null);
   const [template, setTemplate] = useState<SavedConnection | null>(null);
-  const isSwitching = useConnectionSwitch((state) => state.isSwitching);
-  const switchTargetId = useConnectionSwitch((state) => state.targetId);
-  const connectingId = isSwitching ? (switchTargetId ?? "disconnect") : null;
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState("all");
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkGroup, setBulkGroup] = useState<ServerGroup | null>(null);
@@ -93,27 +93,41 @@ export function ConnectionsView() {
   const setServerOrder = useConnectionsStore((state) => state.setServerOrder);
   const duplicateConnection = useConnectionsStore((state) => state.duplicateConnection);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
-  const favoriteCount = connections.filter((connection) => connection.favorite).length;
-  const filtered = favoritesOnly
-    ? connections.filter(
-        (connection) =>
-          connection.favorite || favoriteServerKeys.includes(groupKey(connection, hostGroupRules)),
+  const activeConnection = connections.find((connection) => connection.id === activeId);
+  const filtered = sortConnectionsByName(
+    connections.filter((connection) => {
+      if (
+        favoritesOnly &&
+        !connection.favorite &&
+        !favoriteServerKeys.includes(groupKey(connection, hostGroupRules))
       )
-    : connections;
-  const visible = sortConnectionsByName(filtered);
+        return false;
+      return matchesConnectionQuery(connection, query);
+    }),
+  );
   const allGroups = sortServerGroups(
     groupByServer(sortConnectionsByName(connections), hostGroupRules),
     favoriteServerKeys,
     serverOrder,
   );
   const groups = sortServerGroups(
-    groupByServer(visible, hostGroupRules),
+    groupByServer(filtered, hostGroupRules),
     favoriteServerKeys,
     serverOrder,
   );
   const grouped = allGroups.some((group) => group.connections.length > 1 || group.ruleId);
+  const effectiveKey =
+    selectedKey === "all" || groups.some((group) => group.key === selectedKey)
+      ? selectedKey
+      : "all";
+  const displayGroups =
+    grouped && effectiveKey !== "all"
+      ? groups.filter((group) => group.key === effectiveKey)
+      : groups;
+  const activeGroupKey = activeConnection ? groupKey(activeConnection, hostGroupRules) : null;
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
     setTemplate(from);
@@ -126,7 +140,6 @@ export function ConnectionsView() {
         key={connection.id}
         connection={connection}
         active={activeId === connection.id}
-        connecting={connectingId === connection.id}
         onOpen={() => {
           if (activeId === connection.id) void connect(null);
           else void connect(connection.id);
@@ -186,9 +199,116 @@ export function ConnectionsView() {
 
   async function connect(id: string | null) {
     if (useConnectionSwitch.getState().isSwitching) return;
+    if (id === null) {
+      await disconnectActiveConnection(queryClient);
+      return;
+    }
     if (await activateConnectionWithToast(id)) {
       await navigate({ to: "/" });
     }
+  }
+
+  function renderGroup(group: ServerGroup) {
+    const provider = providerFor(group.connections[0]);
+    return (
+      <section key={group.key} className="flex flex-col gap-1.5">
+        <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 bg-background/95 py-1.5 backdrop-blur-sm">
+          <span className="grid size-7 shrink-0 place-items-center rounded-md border bg-muted/40">
+            <ProviderLogo providerId={provider.id} kind={group.kind} className="size-3.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-mono text-[13px] font-medium">{group.label}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {group.connections.length}{" "}
+              {group.connections.length === 1 ? "Verbindung" : "Verbindungen"}
+              {` · ${provider.name}`}
+            </p>
+          </div>
+          {group.connections.length > 1 && !group.ruleId && group.kind === "oracle" && (
+            <Button variant="outline" size="xs" onClick={() => setBulkGroup(group)}>
+              <Pencil className="size-3.5" />
+              Host &amp; Service bearbeiten
+            </Button>
+          )}
+          {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
+            <Button variant="outline" size="xs" onClick={() => setSchemasToUser(group)}>
+              <KeyRound className="size-3.5" />
+              Schema = Username
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-xs" aria-label={`${group.label} Aktionen`}>
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onSelect={() => openEditor("new", group.connections[0])}>
+                <Plus className="size-3.5" />
+                Weitere Verbindung
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => toggleServerFavorite(group.key)}>
+                <Star
+                  className={
+                    favoriteServerKeys.includes(group.key)
+                      ? "size-3.5 fill-current text-amber-500"
+                      : "size-3.5"
+                  }
+                />
+                {favoriteServerKeys.includes(group.key) ? "Aus Favoriten" : "Als Favorit"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const first = group.connections[0];
+                  setRulesDialog({
+                    draft:
+                      group.ruleId || !first
+                        ? null
+                        : { name: "", pattern: suggestHostPattern(first) },
+                  });
+                }}
+              >
+                <Group className="size-3.5" />
+                {group.ruleId ? "Gruppierung bearbeiten" : "Ähnliche Hosts gruppieren"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={allGroups[0]?.key === group.key}
+                onSelect={() => moveServerGroup(group.key, -1)}
+              >
+                <ArrowUp className="size-3.5" />
+                Nach oben
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={allGroups.at(-1)?.key === group.key}
+                onSelect={() => moveServerGroup(group.key, 1)}
+              >
+                <ArrowDown className="size-3.5" />
+                Nach unten
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteGroup(group)}>
+                <Trash2 className="size-3.5" />
+                Alle löschen
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+        <div
+          className={cn(
+            CONNECTION_ROW_GRID,
+            "px-2 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase",
+          )}
+        >
+          <span>Name</span>
+          <span>Benutzer</span>
+          <span>Ziel / Schema</span>
+          <span>Tags</span>
+          <span className="text-right">Aktionen</span>
+        </div>
+        <div className="flex flex-col">{group.connections.map(renderCard)}</div>
+      </section>
+    );
   }
 
   return (
@@ -197,17 +317,16 @@ export function ConnectionsView() {
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
       <div className="relative flex h-full min-h-0 w-full flex-col px-4 py-4">
-        <header className="mb-4 flex shrink-0 items-end justify-between gap-3">
+        <header className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium text-muted-foreground">l8db</p>
-            <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight">
+            <h1 className="truncate text-xl font-semibold tracking-tight">
               {editorId ? (selected ? "Verbindung bearbeiten" : "Neue Verbindung") : "Verbindungen"}
             </h1>
             {!editorId && (
-              <p className="mt-1 text-[13px] text-muted-foreground">
+              <p className="mt-0.5 truncate text-[13px] tabular-nums text-muted-foreground">
                 {connections.length === 0
                   ? "Starte mit einer neuen Verbindung oder importiere Profile."
-                  : "Tippe auf eine Karte, um sie zu öffnen."}
+                  : `${connections.length} ${connections.length === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` · ${allGroups.length} ${allGroups.length === 1 ? "Gruppe" : "Gruppen"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
               </p>
             )}
           </div>
@@ -225,6 +344,29 @@ export function ConnectionsView() {
             )}
             {!editorId && (
               <>
+                {connections.length > 0 && (
+                  <>
+                    <div className="relative w-44 min-w-0 sm:w-56 md:w-72">
+                      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Name, Host, User…"
+                        aria-label="Verbindungen suchen"
+                        className="h-8 pl-8"
+                      />
+                    </div>
+                    <Button
+                      variant={favoritesOnly ? "secondary" : "ghost"}
+                      size="icon-sm"
+                      aria-pressed={favoritesOnly}
+                      aria-label={favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
+                      onClick={() => setFavoritesOnly((value) => !value)}
+                    >
+                      <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="default"
                   size="sm"
@@ -234,39 +376,33 @@ export function ConnectionsView() {
                   <Plus className="size-4" />
                   Neu
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-                  <Upload className="size-4" />
-                  Import
-                </Button>
                 {connections.length > 0 && (
-                  <>
-                    <Button
-                      variant={favoritesOnly ? "secondary" : "outline"}
-                      size="sm"
-                      aria-pressed={favoritesOnly}
-                      onClick={() => setFavoritesOnly((value) => !value)}
-                    >
-                      <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
-                      {favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
-                      {favoriteCount > 0 && !favoritesOnly ? ` (${favoriteCount})` : ""}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRulesDialog({ draft: null })}
-                    >
-                      <Group className="size-4" />
-                      Gruppen
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-                      <Download className="size-4" />
-                      Export
-                    </Button>
-                  </>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon-sm" aria-label="Weitere Aktionen">
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                        <Upload className="size-3.5" />
+                        Import
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setExportOpen(true)}>
+                        <Download className="size-3.5" />
+                        Export
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setRulesDialog({ draft: null })}>
+                        <Group className="size-3.5" />
+                        Gruppen
+                      </DropdownMenuItem>
+
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </>
             )}
-            {connections.length > 0 && (
+            {connections.length > 0 && editorId && (
               <Button variant="outline" size="sm" asChild>
                 <Link to="/">
                   <ArrowLeft className="size-4" />
@@ -305,162 +441,69 @@ export function ConnectionsView() {
                 </div>
               </div>
             </section>
+          ) : favoritesOnly && filtered.length === 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
+              <Star className="size-8 text-muted-foreground/60" />
+              <p className="text-sm font-medium">Noch keine Favoriten</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Markiere Verbindungen mit dem Stern, um sie hier schneller zu finden.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setFavoritesOnly(false)}>
+                Alle Verbindungen anzeigen
+              </Button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
+              <p className="text-sm font-medium">Keine Treffer</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Keine Verbindung passt zu „{query.trim()}“.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setQuery("")}>
+                Suche leeren
+              </Button>
+            </div>
+          ) : grouped ? (
+            <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border bg-card/40">
+              <aside className="hidden w-64 shrink-0 overflow-y-auto border-r p-2 md:block">
+                <ConnectionGroupNav
+                  groups={groups}
+                  selectedKey={effectiveKey}
+                  allCount={filtered.length}
+                  favoriteKeys={favoriteServerKeys}
+                  activeGroupKey={activeGroupKey}
+                  onSelect={setSelectedKey}
+                />
+              </aside>
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
+                <div className="mb-3 md:hidden">
+                  <ConnectionGroupNav
+                    groups={groups}
+                    selectedKey={effectiveKey}
+                    allCount={filtered.length}
+                    favoriteKeys={favoriteServerKeys}
+                    activeGroupKey={activeGroupKey}
+                    onSelect={setSelectedKey}
+                  />
+                </div>
+                <div className="flex flex-col gap-6">{displayGroups.map(renderGroup)}</div>
+              </div>
+            </div>
           ) : (
-            <section className="flex min-h-0 flex-1 items-center overflow-y-auto">
-              {favoritesOnly && visible.length === 0 ? (
-                <div className="flex w-full flex-col items-center gap-2 py-16 text-center">
-                  <Star className="size-8 text-muted-foreground/60" />
-                  <p className="text-sm font-medium">Noch keine Favoriten</p>
-                  <p className="max-w-sm text-xs text-muted-foreground">
-                    Markiere Verbindungen mit dem Stern, um sie hier schneller zu finden.
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => setFavoritesOnly(false)}>
-                    Alle Verbindungen anzeigen
-                  </Button>
-                </div>
-              ) : grouped ? (
-                <div className="flex w-full flex-col gap-5 self-start py-1">
-                  {groups.map((group) => (
-                    <Collapsible
-                      key={group.key}
-                      open={!collapsedServerKeys.includes(group.key)}
-                      onOpenChange={(open) => setServerCollapsed(group.key, !open)}
-                      className="flex flex-col"
-                    >
-                      <header className="flex flex-wrap items-center gap-2 border-b pb-1.5">
-                        <CollapsibleTrigger
-                          className="group flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label={group.label}
-                        >
-                          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-                          <span className="grid size-6 shrink-0 place-items-center rounded-md border bg-muted/50">
-                            <ProviderLogo
-                              providerId={providerFor(group.connections[0]).id}
-                              kind={group.kind}
-                              className="size-3.5"
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-mono text-[13px] font-medium">
-                              {group.label}
-                            </span>
-                            <span className="block text-[11px] text-muted-foreground">
-                              {group.connections.length}{" "}
-                              {group.connections.length === 1 ? "Verbindung" : "Verbindungen"}
-                            </span>
-                          </span>
-                        </CollapsibleTrigger>
-                        {group.connections.length > 1 &&
-                          !group.ruleId &&
-                          group.kind === "oracle" && (
-                            <Button variant="outline" size="xs" onClick={() => setBulkGroup(group)}>
-                              <Pencil className="size-3.5" />
-                              Host &amp; Service bearbeiten
-                            </Button>
-                          )}
-                        {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setSchemasToUser(group)}
-                          >
-                            <KeyRound className="size-3.5" />
-                            Schema = Username
-                          </Button>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={`${group.label} Aktionen`}
-                            >
-                              <MoreHorizontal className="size-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem
-                              onSelect={() => openEditor("new", group.connections[0])}
-                            >
-                              <Plus className="size-3.5" />
-                              Weitere Verbindung
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => toggleServerFavorite(group.key)}>
-                              <Star
-                                className={
-                                  favoriteServerKeys.includes(group.key)
-                                    ? "size-3.5 fill-current text-amber-500"
-                                    : "size-3.5"
-                                }
-                              />
-                              {favoriteServerKeys.includes(group.key)
-                                ? "Aus Favoriten"
-                                : "Als Favorit"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                const first = group.connections[0];
-                                setRulesDialog({
-                                  draft:
-                                    group.ruleId || !first
-                                      ? null
-                                      : { name: "", pattern: suggestHostPattern(first) },
-                                });
-                              }}
-                            >
-                              <Group className="size-3.5" />
-                              {group.ruleId
-                                ? "Gruppierung bearbeiten"
-                                : "Ähnliche Hosts gruppieren"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              disabled={allGroups[0]?.key === group.key}
-                              onSelect={() => moveServerGroup(group.key, -1)}
-                            >
-                              <ArrowUp className="size-3.5" />
-                              Nach oben
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={allGroups.at(-1)?.key === group.key}
-                              onSelect={() => moveServerGroup(group.key, 1)}
-                            >
-                              <ArrowDown className="size-3.5" />
-                              Nach unten
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() => setDeleteGroup(group)}
-                            >
-                              <Trash2 className="size-3.5" />
-                              Alle löschen
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </header>
-                      <CollapsibleContent>
-                        <motion.div
-                          layout
-                          transition={{ layout: SPRING_LAYOUT }}
-                          className="grid grid-cols-1 gap-3 pt-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-                        >
-                          {group.connections.map(renderCard)}
-                        </motion.div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </div>
-              ) : (
-                <motion.div
-                  layout
-                  transition={{ layout: SPRING_LAYOUT }}
-                  className="grid w-full grid-cols-1 gap-3 py-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-                >
-                  {visible.map(renderCard)}
-                </motion.div>
-              )}
-            </section>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card/40 p-3">
+              <div
+                className={cn(
+                  CONNECTION_ROW_GRID,
+                  "px-2 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase",
+                )}
+              >
+                <span>Name</span>
+                <span>Benutzer</span>
+                <span>Ziel / Schema</span>
+                <span>Tags</span>
+                <span className="text-right">Aktionen</span>
+              </div>
+              <div className="flex flex-col">{filtered.map(renderCard)}</div>
+            </div>
           )}
         </div>
       </div>

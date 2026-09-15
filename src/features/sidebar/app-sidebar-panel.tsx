@@ -28,6 +28,7 @@ import {
   StarIcon,
   TableIcon,
   TrashIcon,
+  UnplugIcon,
   UploadIcon,
   UsersIcon,
   WrenchIcon,
@@ -104,6 +105,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DisconnectButton,
+  disconnectActiveConnection,
+} from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -189,6 +194,7 @@ export function AppSidebarPanel() {
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const activeDatabase = useActiveDatabase();
@@ -498,6 +504,15 @@ export function AppSidebarPanel() {
               )}
             </div>
             <div className="mt-1 shrink-0 border-t border-border/70 pt-1">
+              {activeConnection ? (
+                <DropdownMenuItem
+                  disabled={isSwitching}
+                  onSelect={() => void disconnectActiveConnection(queryClient)}
+                >
+                  <UnplugIcon className="text-muted-foreground" />
+                  Verbindung trennen
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem asChild>
                 <Link to="/connections">
                   <SettingsIcon className="text-muted-foreground" />
@@ -619,6 +634,7 @@ export function AppSidebarPanel() {
                 </Select>
               </div>
             )}
+            <DisconnectButton size="sm" className="w-full" />
           </div>
         ) : null}
       </SidebarHeader>

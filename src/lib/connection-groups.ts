@@ -81,6 +81,25 @@ export function connectionUser(connection: Pick<SavedConnection, "connectionStri
   return connectionSummary(connection.connectionString, connection.kind).user;
 }
 
+export function matchesConnectionQuery(connection: SavedConnection, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const endpoint = connectionSummary(connection.connectionString, connection.kind);
+  return [
+    connection.name,
+    connection.kind,
+    endpoint.host,
+    endpoint.port,
+    endpoint.user,
+    endpoint.database,
+    ...(connection.tags?.map((tag) => tag.name) ?? []),
+    ...(connection.schemas ?? []),
+  ]
+    .join("\0")
+    .toLowerCase()
+    .includes(needle);
+}
+
 export function serverLabel(connection: Pick<SavedConnection, "connectionString" | "kind">) {
   const endpoint = connectionSummary(connection.connectionString, connection.kind);
   const host = endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;

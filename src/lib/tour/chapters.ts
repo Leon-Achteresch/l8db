@@ -44,7 +44,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "connections-page",
         title: "Verbindungen",
-        body: "Hier liegen alle gespeicherten Verbindungen als Karten. Tippe auf eine Karte, um sie zu öffnen. Eine neue Verbindung legst du über „Neu“ an. Passwörter landen im System-Schlüsselbund.",
+        body: "Hier liegen alle gespeicherten Verbindungen als Verzeichnis. Tippe auf eine Zeile, um sie zu öffnen. Eine neue Verbindung legst du über „Neu“ an. Passwörter landen im System-Schlüsselbund.",
         route: "/connections",
         target: "[data-tour='connections-page']",
         side: "bottom",

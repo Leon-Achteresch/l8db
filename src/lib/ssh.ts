@@ -290,8 +290,8 @@ export function activateConnection(
 ): Promise<TunnelOutcome> {
   const result = activationQueue.then(async () => {
     const outcome = await performActivation(id, sshPassword);
-    if (!outcome.ok) {
-      useConnectionSwitch.setState({ errorId: id ?? useConnectionsStore.getState().activeId });
+    if (!outcome.ok && id) {
+      useConnectionSwitch.setState({ errorId: id });
     }
     return outcome;
   });
