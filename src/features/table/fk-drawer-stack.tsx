@@ -71,7 +71,7 @@ function DrawerChrome({
         transformOrigin: "right center",
       }}
       className={cn(
-        "pointer-events-auto absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-200 ease-out",
+        "pointer-events-auto absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-250 ease-smooth-out",
         isBack ? "rounded-l-xl brightness-[0.94]" : "rounded-l-none",
       )}
     >

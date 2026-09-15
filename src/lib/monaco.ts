@@ -1,3 +1,4 @@
+import "monaco-editor/features/register.all";
 import * as monaco from "monaco-editor/editor/editor.api";
 import "monaco-editor/languages/definitions/sql/register";
 import {
