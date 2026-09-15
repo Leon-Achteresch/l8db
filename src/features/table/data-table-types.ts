@@ -56,7 +56,7 @@ export type DataTableProps = {
   foreignKeys?: ForeignKeyInfo[];
   currentSchema?: string;
   currentTable?: string;
-  onNavigateToTable?: (schema: string, table: string, filter?: string) => void;
+  onNavigateToTable?: (schema: string, table: string, filter?: string, inTab?: boolean) => void;
   onInsertRow?: (values: Record<string, string | null>) => Promise<void>;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;

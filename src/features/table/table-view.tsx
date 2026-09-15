@@ -1,5 +1,5 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
@@ -96,6 +96,7 @@ export function TableView({
   drawerId,
 }: TableViewProps) {
   const routeNavigate = routeApi.useNavigate();
+  const appNavigate = useNavigate();
   const pane = useWorkspacePane();
   const inDrawer = drawerId !== undefined;
   const { data: views } = useViewsQuery();
@@ -293,12 +294,22 @@ export function TableView({
   }, [refetch]);
 
   const handleNavigateToTable = useMemo(() => {
-    return (targetSchema: string, targetTable: string, filterWhere?: string) => {
-      useFkDrawerStack
-        .getState()
-        .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
+    return (targetSchema: string, targetTable: string, filterWhere?: string, inTab?: boolean) => {
+      if (!inTab) {
+        useFkDrawerStack
+          .getState()
+          .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
+        return;
+      }
+      useFkDrawerStack.getState().clear();
+      openTab({ schema: targetSchema, table: targetTable, entityType: "table" });
+      void appNavigate({
+        to: "/tables/$schema/$table",
+        params: { schema: targetSchema, table: targetTable },
+        search: filterWhere ? { fkFilter: filterWhere } : {},
+      });
     };
-  }, []);
+  }, [openTab, appNavigate]);
 
   useEffect(() => {
     if (inDrawer) return;

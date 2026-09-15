@@ -286,7 +286,7 @@ function FkPreviewPopover({
   value: unknown;
   currentSchema: string;
   currentTable: string;
-  onNavigate: (schema: string, table: string, filter?: string) => void;
+  onNavigate: (schema: string, table: string, filter?: string, inTab?: boolean) => void;
   children: React.ReactNode;
 }) {
   const connection = useActiveConnection();
@@ -400,7 +400,7 @@ function FkPreviewPopover({
             className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
             onClick={() => {
               const filterSql = formatFkFilter(targetColumn, value);
-              onNavigate(targetSchema, targetTable, filterSql);
+              onNavigate(targetSchema, targetTable, filterSql, true);
             }}
           >
             In {targetSchema}.{targetTable} anzeigen
