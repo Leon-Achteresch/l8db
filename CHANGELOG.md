@@ -3,6 +3,80 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.5.79] - 2026-09-15
+
+### Features
+- add connection group navigation and disconnect functionality
+- Vergleiche case-insensitiv, toleranterer SQL-Parser und E2E-Test gegen Postgres
+- ähnliche Hosts per frei definierbaren Mustern gruppieren
+- add monochromeCells setting and integrate into DataTableCell for conditional styling
+- implement numbered bookmark slots in the query editor with validation and UI updates
+- Spaltenbreiten-Einstellung, Zell-Edit per Blur und Icon-Morphing
+- SQL-Fehlermarkierung im Editor und PL/SQL-Mitglieder-Outline
+- SQL-Fehler mit Positionsangabe und Oracle Compile-Details
+- zustandsabhängige Icons mit morphicons animieren
+- native Browser-Features unterdrücken (Kontextmenü, Reload, Drucken, Suche, Zurück-Navigation, Ctrl+Wheel-Zoom, Bild-/Link-Drag)
+- Master-Detail verketten (Pane N-1 → N) und FK-SQL automatisch vorbelegen
+- extract constraints into dedicated component and tab
+- add provider-aware SSL defaults and support `encrypt` query parameter
+- Suchergebnisse nach Relevanz sortieren (exakt, Präfix, Wortanfang, Teiltreffer)
+- "In … anzeigen" öffnet neuen Tab statt Drawer
+- Angebot statt Autostart, Minimieren und besseres Spotlight
+- Spaltenbreiten an Titel anpassen
+- Collapse-Komponente für Höhen-Animationen
+- open FK references in stackable resizable 3D drawer
+- infer foreign keys for views from base tables
+- navigate to query editor after opening new tab
+- add OpenInQueryEditorButton to view editor toolbar
+- add tooltip to column search toggle in TableSearchModal
+- remove search include columns toggle and related store binding
+- replace auto-open "new" editor with empty-state view
+- Verbindungsübersicht mit Aktionsmenüs und Gruppen-Löschen
+- Verbindungseditor auf zwei Schritte mit Erweitert-Bereich vereinfachen
+- install Oracle Instant Client on Windows via button
+
+### Fixes
+- Biome-Formatierung und robusteren Timeout-Test
+- leeres Passwort vor dem Verbindungsaufbau klar melden statt ORA-01005
+- Passwort-Dialog bei jedem Auth-Fehler der aktiven Verbindung, Secrets beim Start sequenziell laden
+- fehlendes Passwort im Verbindungsstring aus dem Session-Cache nachziehen
+- Strg+Klick (Go to Definition) wiederherstellen – goToCommands explizit registrieren (fehlt in register.all von 0.56)
+- Keychain-Zugriffe in spawn_blocking auslagern, damit sie den Tokio-Runtime nicht blockieren
+- FK-Filter beim Öffnen in Tab übernehmen
+- Autocomplete wiederherstellen – suggestController explizit registrieren (fehlt in register.all von 0.56)
+- Drawer schließen, wenn Tabelle in Tab geöffnet wird
+- Verbindungstest beim Wechsel mit Timeout absichern, damit ein hängender Test nicht alle weiteren Wechsel blockiert
+- tote Idle-Verbindungen vor Nutzung per Ping erkennen und ersetzen
+- Provider-Liste nachladen, wenn der Start-Load fehlschlug (Oracle-Verbindungen wurden als Postgres angezeigt)
+- doppelte Spaltennamen im Ergebnis durchnummerieren (barcode, barcode1, …)
+- vor Verbindungswechsel zur Startseite navigieren, damit Tabs nicht in die neue Verbindung übernommen werden
+- Ergebnisspalten per Index keyen, damit doppelte Spaltennamen beim Scrollen nicht vervielfacht werden
+- Verbindungssuche findet Teiltreffer auch im Regex-Modus
+- Verbindungssuche filtert zuverlässig
+- aktiven Tab erst nach Navigation schließen, damit er nicht wieder erscheint
+- Strg+Pfeiltasten springen wortweise
+- Strg/Cmd+G springt zu Zeile statt Weitersuchen
+- Overscroll-Nachfedern im Tabellen-Scrollcontainer unterbinden
+- CodeRabbit-Major-Findings zu FK-Views, Collapse, Drawer und Tour
+- Collapse SSR-stabil machen und window-Mock reparieren
+- bei Verbindungswechsel zur Startseite navigieren
+- Sortable-Drag nur auf Tab-Label beschränken
+- Pointer-Events auf FK-Drawer-Chrome wiederherstellen
+- hängende FKs entfernen und Layout-Fallback
+- flüssiges Resize per MotionValue während des Ziehens
+- make search bars sticky and relocate sidebar tabs
+- gespeichertes Passwort nach abgelehnter Anmeldung aktualisieren
+- injectUrlPassword ersetzt bestehendes Passwort in der URL
+
+### Performance
+- user_objects statt all_objects fürs eigene Schema, Fetch-Batches auf 1000 erhöht
+
+### Änderungen
+- clean up code formatting and remove unnecessary lines
+- Legacy-Filter-Migrationsbutton entfernen
+- Collapse für Filter-Panel und Spaltenliste
+- remove FilterExpressionInput and move operator translation setting
+
 ## [0.5.2] - 2026-09-14
 
 ### Features
