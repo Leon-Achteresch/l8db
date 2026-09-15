@@ -284,6 +284,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             .iter()
             .map(|c| c.name_str().into_owned())
             .collect();
+        let columns = super::unique_column_names(columns);
         let rows: Vec<Row> = result.collect().await.map_err(map_err)?;
         let rows_affected = if columns.is_empty() {
             Some(result.affected_rows())

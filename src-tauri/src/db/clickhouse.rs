@@ -165,6 +165,7 @@ impl ClickhouseAdapter {
             .and_then(|m| m.as_array())
             .map(|m| m.iter().map(|c| text(&c["name"])).collect())
             .unwrap_or_default();
+        let columns = super::unique_column_names(columns);
         let rows: Vec<Vec<serde_json::Value>> = parsed
             .get("data")
             .and_then(|d| d.as_array())

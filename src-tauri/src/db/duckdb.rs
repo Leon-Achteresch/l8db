@@ -81,7 +81,7 @@ fn query_all(
             .map(|s| s.column_names())
             .unwrap_or_default();
     }
-    Ok((columns, rows))
+    Ok((super::unique_column_names(columns), rows))
 }
 
 fn text(v: &serde_json::Value) -> String {

@@ -126,6 +126,7 @@ fn read_cursor(
         .map_err(map_err)?
         .collect::<Result<_, _>>()
         .map_err(map_err)?;
+    let columns = super::unique_column_names(columns);
     let mut buffers = TextRowSet::for_cursor(500, &mut cursor, Some(65536)).map_err(map_err)?;
     let mut block = cursor.bind_buffer(&mut buffers).map_err(map_err)?;
     let mut rows = Vec::new();

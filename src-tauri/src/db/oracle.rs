@@ -232,7 +232,10 @@ fn run_query_named(
                 .collect(),
         );
     }
-    Ok((info.into_iter().map(|(name, _)| name).collect(), out))
+    Ok((
+        super::unique_column_names(info.into_iter().map(|(name, _)| name).collect()),
+        out,
+    ))
 }
 
 fn fetch(conn: &Connection, sql: &str) -> Result<Vec<Row>, String> {
