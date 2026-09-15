@@ -1,3 +1,4 @@
+import { withTimeout } from "@/lib/async";
 import { connectionError, isAuthFailure } from "@/lib/connection-url";
 import {
   closeSshTunnel,
@@ -227,7 +228,11 @@ async function performActivation(
       try {
         const current = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
         if (!current) return { ok: false, error: "Verbindung wurde entfernt." };
-        await testConnectionString(current.kind, effectiveConnectionString(current));
+        await withTimeout(
+          testConnectionString(current.kind, effectiveConnectionString(current)),
+          (useSettingsStore.getState().connectionTimeout + 5) * 1000,
+          "Verbindungstest hat nicht geantwortet (Timeout). Prüfe VPN und Host.",
+        );
         if (
           useConnectionsStore.getState().connections.find((entry) => entry.id === id) !== current
         ) {
