@@ -67,6 +67,7 @@ export interface SettingsState {
   uiDensity: UiDensity;
   uiScale: number;
   sidebarExtraCompact: boolean;
+  fitColumnsToHeader: boolean;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -114,6 +115,7 @@ export interface SettingsState {
   setUiScale: (v: number) => void;
   resetAppearance: () => void;
   setSidebarExtraCompact: (value: boolean) => void;
+  setFitColumnsToHeader: (value: boolean) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -181,6 +183,7 @@ const DEFAULT_SETTINGS = {
   uiDensity: "normal" as UiDensity,
   uiScale: 100,
   sidebarExtraCompact: false,
+  fitColumnsToHeader: true,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -251,7 +254,14 @@ export const useSettingsStore = create<SettingsState>()(
       setUiDensity: (uiDensity) => set({ uiDensity: normalizeUiDensity(uiDensity) }),
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
-      resetAppearance: () => set({ uiScale: 100, uiDensity: "normal", sidebarExtraCompact: false }),
+      setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
+      resetAppearance: () =>
+        set({
+          uiScale: 100,
+          uiDensity: "normal",
+          sidebarExtraCompact: false,
+          fitColumnsToHeader: true,
+        }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
       resetToDefaults: () =>
@@ -271,6 +281,7 @@ export const useSettingsStore = create<SettingsState>()(
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
+          fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
         };
       },
     },
