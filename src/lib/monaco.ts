@@ -75,6 +75,10 @@ const plsqlKeywords = [
 
 monaco.editor.addKeybindingRules([
   { keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, command: "editor.action.gotoLine" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.LeftArrow, command: "cursorWordLeft" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.RightArrow, command: "cursorWordRight" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow, command: "cursorWordLeftSelect" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow, command: "cursorWordRightSelect" },
 ]);
 
 monaco.languages.register({ id: "plsql" });
