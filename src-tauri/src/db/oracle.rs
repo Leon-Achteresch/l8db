@@ -300,10 +300,17 @@ fn run_query_named(
 }
 
 fn fetch(conn: &Connection, sql: &str) -> Result<Vec<Row>, String> {
-    conn.query(sql, &[])
+    let mut stmt = conn
+        .statement(sql)
+        .fetch_array_size(1000)
+        .build()
+        .map_err(map_err)?;
+    let rows = stmt
+        .query(&[])
         .map_err(map_err)?
         .map(|r| r.map_err(map_err))
-        .collect()
+        .collect::<Result<Vec<Row>, String>>()?;
+    Ok(rows)
 }
 
 impl OracleAdapter {
@@ -497,6 +504,17 @@ impl OracleAdapter {
             Ok(count)
         })
         .await
+    }
+
+    fn objects_source(&self, schema: Option<&str>) -> String {
+        match schema {
+            Some(s) if !s.eq_ignore_ascii_case(&self.user) => format!(
+                "(SELECT owner, object_name, object_type, status FROM all_objects WHERE owner = {})",
+                lit(s)
+            ),
+            _ => "(SELECT USER AS owner, object_name, object_type, status FROM user_objects)"
+                .to_string(),
+        }
     }
 
     fn owner_filter(schema: Option<&str>, column: &str) -> String {
@@ -916,7 +934,7 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
-        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type IN ('FUNCTION', 'PACKAGE') AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        let sql = format!("SELECT owner, object_name, object_type, status FROM {} WHERE object_type IN ('FUNCTION', 'PACKAGE') ORDER BY object_name", self.objects_source(schema));
         Ok(self
             .rows(sql)
             .await?
@@ -941,7 +959,7 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
-        let sql = format!("SELECT owner, object_name, object_type, status FROM all_objects WHERE object_type = 'PROCEDURE' AND {} ORDER BY object_name", Self::owner_filter(schema, "owner"));
+        let sql = format!("SELECT owner, object_name, object_type, status FROM {} WHERE object_type = 'PROCEDURE' ORDER BY object_name", self.objects_source(schema));
         Ok(self
             .rows(sql)
             .await?
@@ -1175,8 +1193,8 @@ impl DatabaseAdapter for OracleAdapter {
         schema: Option<&str>,
     ) -> Result<Vec<InvalidObjectInfo>, String> {
         let sql = format!(
-            "SELECT owner, object_name, object_type, status FROM all_objects WHERE status = 'INVALID' AND {} AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') ORDER BY object_type, object_name",
-            Self::owner_filter(schema, "owner")
+            "SELECT owner, object_name, object_type, status FROM {} WHERE status = 'INVALID' AND object_type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY','TRIGGER','VIEW','MATERIALIZED VIEW','TYPE','TYPE BODY','SYNONYM') ORDER BY object_type, object_name",
+            self.objects_source(schema)
         );
         Ok(self
             .rows(sql)
