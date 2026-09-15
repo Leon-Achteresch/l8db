@@ -769,6 +769,26 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(results)
     }
 
+    async fn validate_sql(&self, sql: &str) -> Result<(), String> {
+        let mut statements = Vec::new();
+        for raw in sql::split_statements(sql) {
+            let statement = prepare(&raw);
+            if !statement.trim().is_empty() {
+                statements.push(statement);
+            }
+        }
+        for statement in statements {
+            self.run_meta(move |c| {
+                c.statement(&statement)
+                    .build()
+                    .map(|_| ())
+                    .map_err(|e| map_sql_err(e, &statement))
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
         let sql = if enabled {
             "BEGIN DBMS_OUTPUT.ENABLE(NULL); END;"
@@ -1966,6 +1986,42 @@ mod tests {
         assert_eq!(result.rows[0]["FIRST_VALUE"], "O'Reilly");
         assert_eq!(result.rows[0]["REPEATED_VALUE"], "O'Reilly");
         assert!(result.rows[0]["NULL_VALUE"].is_null());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_validate_sql_parses_without_executing() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "validate".into(),
+        )
+        .unwrap();
+        let _ = a.execute_query("DROP TABLE L8DB_VALIDATE_PROBE").await;
+        a.validate_sql("CREATE TABLE L8DB_VALIDATE_PROBE (ID NUMBER PRIMARY KEY)")
+            .await
+            .expect("ddl parses");
+        assert!(
+            a.execute_query("SELECT COUNT(*) AS C FROM L8DB_VALIDATE_PROBE")
+                .await
+                .is_err(),
+            "validate must not execute"
+        );
+        a.validate_sql("SELECT 1 AS ONE FROM DUAL; SELECT 2 AS TWO FROM DUAL")
+            .await
+            .expect("script parses");
+        a.validate_sql("BEGIN NULL; END;")
+            .await
+            .expect("plsql parses");
+        assert!(a.validate_sql("SELECT FROM WHERE").await.is_err());
+        assert!(a
+            .validate_sql("CREATE TABL L8DB_VALIDATE_PROBE (ID NUMBER)")
+            .await
+            .is_err());
+        let _ = a.execute_query("DROP TABLE L8DB_VALIDATE_PROBE").await;
     }
 
     #[tokio::test]

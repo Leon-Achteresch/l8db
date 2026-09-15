@@ -11,8 +11,10 @@ export function SettingsAppearance() {
     uiDensity,
     sidebarExtraCompact,
     fitColumnsToHeader,
+    monochromeCells,
     setSidebarExtraCompact,
     setFitColumnsToHeader,
+    setMonochromeCells,
     setUiScale,
     setUiDensity,
     resetAppearance,
@@ -94,6 +96,16 @@ export function SettingsAppearance() {
         />
       </SettingsRow>
       <SettingsRow
+        title="Einfarbige Tabellenwerte"
+        description="Zellwerte schwarz bzw. im Darkmode weiß anzeigen statt nach Datentyp einzufärben."
+      >
+        <Switch
+          aria-label="Einfarbige Tabellenwerte"
+          checked={monochromeCells}
+          onCheckedChange={setMonochromeCells}
+        />
+      </SettingsRow>
+      <SettingsRow
         title="Darstellung zurücksetzen"
         description="Oberflächengröße, UI-Dichte, Spaltenbreiten und Seitenleistenabstände auf Standard zurücksetzen. Änderungen werden sofort angewendet und gespeichert."
       >
@@ -101,7 +113,11 @@ export function SettingsAppearance() {
           variant="outline"
           size="sm"
           disabled={
-            uiScale === 100 && uiDensity === "normal" && !sidebarExtraCompact && fitColumnsToHeader
+            uiScale === 100 &&
+            uiDensity === "normal" &&
+            !sidebarExtraCompact &&
+            fitColumnsToHeader &&
+            !monochromeCells
           }
           onClick={resetAppearance}
         >

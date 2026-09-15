@@ -336,6 +336,16 @@ export const HOTKEY_COMMANDS: HotkeyCommand[] = [
     origin: "l8db",
   },
   {
+    id: "query.check",
+    routeScope: "query",
+    label: "Abfrage prüfen (kompilieren)",
+    description: "Prüft das Editor-SQL ohne etwas auszuführen",
+    area: "SQL-Editor",
+    defaultHotkey: "Mod+Shift+K",
+    requiresConnection: true,
+    origin: "l8db",
+  },
+  {
     id: "query.save",
     routeScope: "query",
     label: "Abfrage speichern",

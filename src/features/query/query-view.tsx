@@ -13,6 +13,7 @@ import {
   Minimize2,
   PanelBottom,
   Play,
+  ShieldCheck,
   TextSelect,
 } from "lucide";
 import {
@@ -85,6 +86,7 @@ import {
   listTables,
   listViews,
   type QueryResult,
+  validateSql,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -117,7 +119,12 @@ import {
   statementAtOffset,
 } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
+import {
+  isQueryTabDirty,
+  normalizeBookmarks,
+  useTableTabs,
+  type BookmarkSlots,
+} from "@/lib/table-tabs";
 import { cancelTask, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -131,6 +138,7 @@ const QUERY_LANGUAGES = {
 } as const;
 
 const EMPTY_BOOKMARKS: number[] = [];
+const EMPTY_BOOKMARK_SLOTS: BookmarkSlots = {};
 
 const SCRIPT_MODE_NOTE: Record<ScriptRunMode, string> = {
   "existing-transaction": "läuft in offener Transaktion, kein Autocommit",
@@ -228,6 +236,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const activeJob = useTasksStore((state) => state.tasks.find((task) => task.id === activeJobId));
   const stopActiveJob = useCallback(() => {
@@ -271,8 +280,13 @@ export function QueryView({ tabId }: QueryViewProps) {
     return tab?.kind === "query" ? (tab.bookmarks ?? EMPTY_BOOKMARKS) : EMPTY_BOOKMARKS;
   });
   const setQueryBookmarks = useTableTabs((state) => state.setQueryBookmarks);
+  const setQueryBookmarkSlot = useTableTabs((state) => state.setQueryBookmarkSlot);
   const clearQueryBookmarks = useTableTabs((state) => state.clearQueryBookmarks);
   const normalizedBookmarks = useMemo(() => normalizeBookmarks(bookmarks), [bookmarks]);
+  const bookmarkSlots = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" ? (tab.bookmarkSlots ?? EMPTY_BOOKMARK_SLOTS) : EMPTY_BOOKMARK_SLOTS;
+  });
 
   const [bindDialogOpen, setBindDialogOpen] = useState(false);
   const [bindRefs, setBindRefs] = useState<BindParamRef[]>([]);
@@ -681,47 +695,94 @@ export function QueryView({ tabId }: QueryViewProps) {
     void runSql(statement.text);
   }, [cursorOffset, handleRunSelection, runSql, selectedSql, sql, connection?.kind]);
 
+  const handleCheck = useCallback(async () => {
+    const target = resolveQueryRunTarget(
+      sql,
+      selectedSql,
+      cursorOffset,
+      workspace.runTarget,
+      connection?.kind,
+    );
+    if (!connection || !target.trim() || isChecking) return;
+    setIsChecking(true);
+    setStatementError(null);
+    try {
+      await validateSql(
+        connection.kind,
+        effectiveConnectionString(connection),
+        target,
+        database ?? undefined,
+      );
+      setError(null);
+      setErrorSource(null);
+      toast.success("Fehlerfrei kompilierbar — nichts wurde ausgeführt.");
+    } catch (err) {
+      const message = String(err);
+      setError(message);
+      const base = locateText(editorSqlRef.current, target, cursorOffsetRef.current);
+      setErrorSource(base === null ? null : { text: target, base });
+    } finally {
+      setIsChecking(false);
+    }
+  }, [
+    connection,
+    sql,
+    selectedSql,
+    cursorOffset,
+    workspace.runTarget,
+    database,
+    isChecking,
+  ]);
+
   const hasSelection = selectedSql.trim().length > 0;
 
   const hotkeyOverrides = useHotkeysStore((state) => state.overrides);
   const shortcutLabel = (id: string) => formatHotkeyDisplay(resolveHotkey(id, hotkeyOverrides));
 
   useHotkeys(
-    (["query.run", "query.runSelection", "query.runStatement"] as const).flatMap((id) => {
-      const command = commandById(id);
-      if (!command) return [];
-      const skipMonaco = (event: KeyboardEvent) => {
-        const target = event.target as HTMLElement | null;
-        return Boolean(target?.closest?.(".monaco-editor"));
-      };
-      const runAction =
-        id === "query.run"
-          ? handleRun
-          : id === "query.runSelection"
-            ? handleRunSelection
-            : handleRunStatement;
-      const primary = (hotkeyOverrides[id] ?? command.defaultHotkey) as never;
-      const rows = [
-        {
-          hotkey: primary,
-          callback: (event: KeyboardEvent) => {
-            if (skipMonaco(event)) return;
-            runAction();
-          },
-          options: { enabled: connection !== null, ignoreInputs: false },
-        },
-      ];
-      if (!hotkeyOverrides[id]) {
-        for (const alias of command.aliases ?? []) {
-          rows.push({
-            hotkey: alias as never,
-            callback: () => runAction(),
+    (["query.run", "query.runSelection", "query.runStatement", "query.check"] as const).flatMap(
+      (id) => {
+        const command = commandById(id);
+        if (!command) return [];
+        const skipMonaco = (event: KeyboardEvent) => {
+          const target = event.target as HTMLElement | null;
+          return Boolean(target?.closest?.(".monaco-editor"));
+        };
+        const runAction =
+          id === "query.run"
+            ? handleRun
+            : id === "query.runSelection"
+              ? handleRunSelection
+              : id === "query.runStatement"
+                ? handleRunStatement
+                : handleCheck;
+        const primary = (hotkeyOverrides[id] ?? command.defaultHotkey) as never;
+        const rows = [
+          {
+            hotkey: primary,
+            callback: (event: KeyboardEvent) => {
+              if (skipMonaco(event)) return;
+              if (id === "query.check") void runAction();
+              else (runAction as () => void)();
+            },
             options: { enabled: connection !== null, ignoreInputs: false },
-          });
+          },
+        ];
+        if (!hotkeyOverrides[id]) {
+          for (const alias of command.aliases ?? []) {
+            rows.push({
+              hotkey: alias as never,
+              callback: () => {
+                if (id === "query.check") void runAction();
+                else (runAction as () => void)();
+              },
+              options: { enabled: connection !== null, ignoreInputs: false },
+            });
+          }
         }
-      }
-      return rows;
-    }),
+        return rows;
+      },
+    ),
     { preventDefault: true, stopPropagation: true },
   );
 
@@ -821,6 +882,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   useEffect(() => onHotkeyAction("query.run", handleRun), [handleRun]);
   useEffect(() => onHotkeyAction("query.runSelection", handleRunSelection), [handleRunSelection]);
   useEffect(() => onHotkeyAction("query.runStatement", handleRunStatement), [handleRunStatement]);
+  useEffect(() => onHotkeyAction("query.check", () => void handleCheck()), [handleCheck]);
   useEffect(() => onHotkeyAction("query.save", () => void handleFileSave(false)), [handleFileSave]);
   useEffect(
     () => onHotkeyAction("query.saveAs", () => void handleFileSave(true)),
@@ -1028,6 +1090,21 @@ export function QueryView({ tabId }: QueryViewProps) {
           >
             <ScanTextIcon className="size-3" />
             Statement
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 px-3 text-xs"
+            data-tour="query-check"
+            onClick={() => void handleCheck()}
+            disabled={isRunning || isChecking || !connection || !sql.trim()}
+            title={`Nur prüfen — kompiliert ohne etwas auszuführen (${shortcutLabel("query.check")})`}
+          >
+            <MorphIcon
+              icon={isChecking ? Loader : ShieldCheck}
+              className={cn("size-3", isChecking && "animate-spin")}
+            />
+            {isChecking ? "Prüfe…" : "Prüfen"}
           </Button>
           {caps.query_language === "sql" && (
             <Button
@@ -1469,6 +1546,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                     onSave={() => void handleFileSave(false)}
                     onRunSelection={handleRunSelection}
                     onRunStatement={handleRunStatement}
+                    onCheck={() => void handleCheck()}
                     onSelectionChange={setSelectedSql}
                     onCursorChange={setCursorOffset}
                     onPositionChange={setCursorPosition}
@@ -1476,6 +1554,8 @@ export function QueryView({ tabId }: QueryViewProps) {
                     error={editorError}
                     bookmarks={normalizedBookmarks}
                     onBookmarksChange={(lines) => setQueryBookmarks(tabId, lines)}
+                    bookmarkSlots={bookmarkSlots}
+                    onBookmarkSlotChange={(slot, line) => setQueryBookmarkSlot(tabId, slot, line)}
                     onSearchTabs={() => setTabSearchOpen(true)}
                     registry={registry}
                   />
