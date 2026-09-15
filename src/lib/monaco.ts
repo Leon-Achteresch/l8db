@@ -1,5 +1,6 @@
 import "monaco-editor/features/register.all";
 import "monaco-editor/editor/contrib/suggest/browser/suggestController";
+import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands";
 import * as monaco from "monaco-editor/editor/editor.api";
 import "monaco-editor/languages/definitions/sql/register";
 import {
