@@ -260,6 +260,13 @@ async function performActivation(
         ),
       }));
     }
+    if (id !== store.activeId && typeof document !== "undefined") {
+      const { router } = await import("@/router");
+      const { pathname } = router.state.location;
+      if (pathname !== "/" && !pathname.startsWith("/connections")) {
+        await router.navigate({ to: "/", replace: true });
+      }
+    }
     store.setActiveId(id);
     return { ok: true };
   } finally {
