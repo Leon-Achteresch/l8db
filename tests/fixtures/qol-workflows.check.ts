@@ -58,10 +58,10 @@ test("destructive SQL waits for confirmation and rejection never reaches the bac
 test("query and connection timeouts reach the bridge per execution", async () => {
   useSettingsStore.setState({ queryTimeout: 5, connectionTimeout: 60 });
   await executeQuery("postgres", connection.connectionString, "SELECT 1", "qol");
-  expect(calls[0].args.options).toMatchObject({ queryTimeout: 5, connectionTimeout: 60 });
+  expect(calls.filter((call) => call.command === "execute_query")[0].args.options).toMatchObject({ queryTimeout: 5, connectionTimeout: 60 });
   useSettingsStore.setState({ queryTimeout: 60 });
   await executeQuery("postgres", connection.connectionString, "SELECT 1", "qol");
-  expect(calls[1].args.options).toMatchObject({ queryTimeout: 60 });
+  expect(calls.filter((call) => call.command === "execute_query")[1].args.options).toMatchObject({ queryTimeout: 60 });
 });
 
 test("script mode leaves successful writes in a reviewable transaction and skips after errors", async () => {
