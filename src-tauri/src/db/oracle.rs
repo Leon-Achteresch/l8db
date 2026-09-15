@@ -146,6 +146,47 @@ fn map_err(e: oracle::Error) -> String {
     format!("Oracle: {e}")
 }
 
+fn map_sql_err(e: oracle::Error, sql: &str) -> String {
+    let offset = e.db_error().map_or(0, |db| db.offset() as usize);
+    let message = map_err(e);
+    if offset == 0 || offset > sql.len() || !sql.is_char_boundary(offset) {
+        return message;
+    }
+    format!("{message}\nPosition: {}", sql[..offset].chars().count() + 1)
+}
+
+fn check_compile(c: &Connection, sql: &str) -> Result<(), String> {
+    if c.last_warning().and_then(|w| w.oci_code()) != Some(24344) {
+        return Ok(());
+    }
+    let Some((owner, name, kind)) = sql::created_object(sql) else {
+        return Err("Oracle: ORA-24344: Objekt wurde mit Kompilierfehlern erstellt".to_string());
+    };
+    let owner = owner.map_or_else(
+        || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+        |o| lit(&o),
+    );
+    let rows = fetch(
+        c,
+        &format!(
+            "SELECT line, position, attribute, text FROM all_errors WHERE owner = {owner} AND name = {} AND type = {} ORDER BY sequence",
+            lit(&name),
+            lit(&kind)
+        ),
+    )?;
+    if !rows.iter().any(|r| s(r, 2) == "ERROR") {
+        return Ok(());
+    }
+    let details = rows
+        .iter()
+        .map(|r| format!("Zeile {}, Spalte {}: {}", s(r, 0), s(r, 1), s(r, 3).trim()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(format!(
+        "Oracle: ORA-24344: {kind} {name} wurde mit Kompilierfehlern erstellt\n{details}"
+    ))
+}
+
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
 const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
 
@@ -231,7 +272,9 @@ fn run_query_named(
     sql: &str,
     params: &[(&str, &dyn oracle::sql_type::ToSql)],
 ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    let rows = conn.query_named(sql, params).map_err(map_err)?;
+    let rows = conn
+        .query_named(sql, params)
+        .map_err(|e| map_sql_err(e, sql))?;
     let info: Vec<(String, OracleType)> = rows
         .column_info()
         .iter()
@@ -443,9 +486,12 @@ impl OracleAdapter {
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
         self.run(move |c| {
-            c.execute(&sql, &[])
-                .map_err(map_err)
-                .and_then(|st| st.row_count().map_err(map_err))
+            let count = c
+                .execute(&sql, &[])
+                .map_err(|e| map_sql_err(e, &sql))
+                .and_then(|st| st.row_count().map_err(map_err))?;
+            check_compile(c, &sql)?;
+            Ok(count)
         })
         .await
     }
@@ -695,7 +741,7 @@ impl DatabaseAdapter for OracleAdapter {
             } else {
                 let affected = conn
                     .execute_named(&statement, &binds)
-                    .map_err(map_err)?
+                    .map_err(|e| map_sql_err(e, &statement))?
                     .row_count()
                     .map_err(map_err)?;
                 Ok(QueryResult {
@@ -2563,8 +2609,9 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     }
     let affected = c
         .execute(statement, &[])
-        .map_err(map_err)
+        .map_err(|e| map_sql_err(e, statement))
         .and_then(|st| st.row_count().map_err(map_err))?;
+    check_compile(c, statement)?;
     Ok(QueryResult {
         columns: vec![],
         rows: vec![],

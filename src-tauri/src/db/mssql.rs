@@ -83,7 +83,12 @@ pub fn lit(value: &str) -> String {
 fn map_err(e: tiberius::error::Error) -> String {
     match e {
         tiberius::error::Error::Server(token) => {
-            format!("SQL Server {}: {}", token.code(), token.message())
+            format!(
+                "SQL Server {}: {} (line {})",
+                token.code(),
+                token.message(),
+                token.line()
+            )
         }
         other => format!("SQL Server: {other}"),
     }

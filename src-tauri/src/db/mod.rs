@@ -1310,8 +1310,8 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         if let Some(hint) = db_err.hint() {
             msg.push_str(&format!("\nHinweis: {hint}"));
         }
-        if let Some(pos) = db_err.position() {
-            msg.push_str(&format!("\nPosition: {pos:?}"));
+        if let Some(tokio_postgres::error::ErrorPosition::Original(pos)) = db_err.position() {
+            msg.push_str(&format!("\nPosition: {pos}"));
         }
         msg
     } else {
