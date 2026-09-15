@@ -245,8 +245,15 @@ export async function refreshDriverStatus(kind: DatabaseKind): Promise<DriverSta
   return status;
 }
 
+let retryAfter = 0;
+
 export function allProviders(): ProviderInfo[] {
-  return useProvidersStore.getState().providers;
+  const state = useProvidersStore.getState();
+  if (!state.loaded && Date.now() > retryAfter) {
+    retryAfter = Date.now() + 5000;
+    void loadProviders();
+  }
+  return state.providers;
 }
 
 export function providerById(id: string): ProviderInfo | undefined {
