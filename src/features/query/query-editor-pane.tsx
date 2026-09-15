@@ -5,7 +5,14 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { buildEditorOptions } from "@/lib/editor-options";
 import { commandById, useHotkeysStore } from "@/lib/hotkeys";
-import { addSqlFormatAction, monaco, overflowWidgetsDomNode } from "@/lib/monaco";
+import {
+  addSqlFormatAction,
+  attachPlsqlLint,
+  monaco,
+  overflowWidgetsDomNode,
+  type SqlErrorSource,
+  showSqlError,
+} from "@/lib/monaco";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
@@ -54,6 +61,7 @@ interface QueryEditorPaneProps {
   onCursorChange?: (offset: number) => void;
   onPositionChange?: (position: EditorPosition) => void;
   highlight?: EditorHighlight | null;
+  error?: SqlErrorSource | null;
   bookmarks?: number[];
   onBookmarksChange?: (lines: number[]) => void;
   onSearchTabs?: () => void;
@@ -101,6 +109,7 @@ export function QueryEditorPane({
   onCursorChange,
   onPositionChange,
   highlight,
+  error,
   bookmarks,
   onBookmarksChange,
   onSearchTabs,
@@ -293,6 +302,7 @@ export function QueryEditorPane({
     bookmarkDecorationsRef.current = editor.createDecorationsCollection([]);
     applyBookmarks(bookmarksRef.current);
     refreshLintMarkers(editor, registryRef.current);
+    const plsqlLint = attachPlsqlLint(editor);
 
     const selectionSub = editor.onDidChangeCursorSelection((event) => {
       const model = editor.getModel();
@@ -378,6 +388,7 @@ export function QueryEditorPane({
       container.removeEventListener("keydown", keydown, true);
       changeSub.dispose();
       selectionSub.dispose();
+      plsqlLint.dispose();
       intellisense.dispose();
       formatAction.dispose();
       decorationsRef.current = null;
@@ -388,6 +399,11 @@ export function QueryEditorPane({
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) showSqlError(editor, error ?? null);
+  }, [error]);
 
   useEffect(() => {
     const editor = editorRef.current;

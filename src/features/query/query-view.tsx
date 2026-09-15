@@ -4,30 +4,35 @@ import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
+  Columns2,
+  Download,
+  File as FileData,
+  Gauge,
+  Loader,
+  Maximize2,
+  Minimize2,
+  PanelBottom,
+  Play,
+  TextSelect,
+} from "lucide";
+import {
   AlertTriangleIcon,
   BookmarkIcon,
   BookmarkPlusIcon,
-  Columns2Icon,
-  DownloadIcon,
   FileIcon,
   GaugeIcon,
   HistoryIcon,
   ListOrderedIcon,
-  LoaderIcon,
-  Maximize2Icon,
-  Minimize2Icon,
-  PanelBottomIcon,
   PanelLeftIcon,
-  PlayIcon,
   ScanTextIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   TerminalIcon,
-  TextSelectIcon,
   TimerIcon,
   Trash2Icon,
   WandSparklesIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
@@ -93,6 +98,7 @@ import {
   useResolvedHotkey,
 } from "@/lib/hotkeys";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
+import { parsePlsqlMembers } from "@/lib/plsql";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
@@ -103,6 +109,7 @@ import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { runSqlScript } from "@/lib/script-runner";
 import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
+import { locateText } from "@/lib/sql-diagnostics";
 import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
 import {
   isTransactionalStatement,
@@ -113,6 +120,7 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 import { cancelTask, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
+import { cn } from "@/lib/utils";
 import { ServerOutputPanel } from "./server-output-panel";
 
 const QUERY_LANGUAGES = {
@@ -218,6 +226,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const activeJob = useTasksStore((state) => state.tasks.find((task) => task.id === activeJobId));
@@ -245,6 +254,14 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const [selectedSql, setSelectedSql] = useState("");
   const [cursorOffset, setCursorOffset] = useState(0);
+  const editorSqlRef = useRef(sql);
+  editorSqlRef.current = sql;
+  const cursorOffsetRef = useRef(cursorOffset);
+  cursorOffsetRef.current = cursorOffset;
+  const editorError = useMemo(
+    () => (error && errorSource ? { message: error, ...errorSource } : null),
+    [error, errorSource],
+  );
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1, offset: 0 });
   const [statementRange, setStatementRange] = useState<{ start: number; end: number } | null>(null);
   const [statementError, setStatementError] = useState<string | null>(null);
@@ -279,6 +296,9 @@ export function QueryView({ tabId }: QueryViewProps) {
   const revealRequest = useQueryRevealStore((state) => state.request);
   const clearReveal = useQueryRevealStore((state) => state.clearReveal);
 
+  const hasPackageMembers = useMemo(() => parsePlsqlMembers(sql).length > 0, [sql]);
+  const navigatorOpenedForTab = useRef<string | null>(null);
+
   useEffect(() => {
     setSelectedSql("");
     setCursorOffset(0);
@@ -288,6 +308,14 @@ export function QueryView({ tabId }: QueryViewProps) {
     setScriptEntries(null);
     setScriptActiveIndex(null);
   }, [tabId]);
+
+  useEffect(() => {
+    if (navigatorOpenedForTab.current === tabId) return;
+    navigatorOpenedForTab.current = tabId;
+    if (hasPackageMembers && !workspace.navigatorVisible) {
+      workspace.update({ navigatorVisible: true });
+    }
+  }, [tabId, hasPackageMembers, workspace]);
 
   useEffect(() => {
     if (!revealRequest || revealRequest.tabId !== tabId) return;
@@ -546,6 +574,8 @@ export function QueryView({ tabId }: QueryViewProps) {
       } catch (err) {
         const message = String(err);
         setError(message);
+        const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
+        setErrorSource(base === null ? null : { text: sql, base });
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
@@ -841,12 +871,16 @@ export function QueryView({ tabId }: QueryViewProps) {
         setResult(outcome.error ? null : outcome.lastResult);
         setError(outcome.error);
         const failed = outcome.entries.find((entry) => entry.status === "error");
+        setErrorSource(
+          failed ? { text: sql.slice(failed.start, failed.end), base: failed.start } : null,
+        );
         if (failed) {
           setStatementRange({ start: failed.start, end: failed.end });
           setScriptActiveIndex(failed.index);
         } else setScriptActiveIndex(outcome.entries.length - 1);
       } catch (failure) {
         setError(String(failure));
+        setErrorSource(null);
       } finally {
         await collectOutput();
         runningRef.current = false;
@@ -862,6 +896,7 @@ export function QueryView({ tabId }: QueryViewProps) {
       if (!runningRef.current) {
         setResult(entry.result ?? null);
         setError(entry.error);
+        setErrorSource({ text: sql.slice(entry.start, entry.end), base: entry.start });
       }
       setStatementRange({ start: entry.start, end: entry.end });
       const before = sql.slice(0, entry.start).split("\n");
@@ -966,21 +1001,6 @@ export function QueryView({ tabId }: QueryViewProps) {
         transition={{ layout: SPRING_LAYOUT }}
         className="flex h-full min-w-0 flex-1 flex-col"
       >
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-muted/20 px-4 text-xs">
-          <span className="flex items-center gap-2 font-semibold tracking-tight">
-            <TerminalIcon className="size-3.5" />
-            Query Studio
-          </span>
-          <span className="mx-1 h-3 w-px bg-border" />
-          <span className="size-1.5 shrink-0 rounded-full bg-current text-muted-foreground" />
-          <span className="truncate text-muted-foreground">
-            {connection?.name ?? "Keine Verbindung"}
-            {database ? ` / ${database}` : ""}
-          </span>
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-            {dialectLabel}
-          </span>
-        </div>
         <div
           className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-card px-3 py-2"
           data-tour="query-toolbar"
@@ -994,7 +1014,7 @@ export function QueryView({ tabId }: QueryViewProps) {
             disabled={isRunning || !connection || !sql.trim()}
             title={`${runLabel} (${shortcutLabel("query.run")})`}
           >
-            {hasSelection ? <TextSelectIcon className="size-3" /> : <PlayIcon className="size-3" />}
+            <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
             {runLabel}
           </Button>
           <Button
@@ -1089,11 +1109,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                 })
               }
             >
-              {workspace.layout === "vertical" ? (
-                <Columns2Icon className="size-3.5" />
-              ) : (
-                <PanelBottomIcon className="size-3.5" />
-              )}
+              <MorphIcon
+                icon={workspace.layout === "vertical" ? Columns2 : PanelBottom}
+                className="size-3.5"
+              />
             </Button>
             <Button
               size="icon-sm"
@@ -1103,11 +1122,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               aria-pressed={editorFocus}
               onClick={() => setEditorFocus(!editorFocus)}
             >
-              {editorFocus ? (
-                <Minimize2Icon className="size-3.5" />
-              ) : (
-                <Maximize2Icon className="size-3.5" />
-              )}
+              <MorphIcon icon={editorFocus ? Minimize2 : Maximize2} className="size-3.5" />
             </Button>
             <QueryEditorSettingsPopover />
           </div>
@@ -1223,11 +1238,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                       disabled={fileBusy}
                       title={filePath ?? "SQL-Datei öffnen oder speichern"}
                     >
-                      {fileBusy ? (
-                        <LoaderIcon className="size-3 animate-spin" />
-                      ) : (
-                        <FileIcon className="size-3" />
-                      )}
+                      <MorphIcon
+                        icon={fileBusy ? Loader : FileData}
+                        className={cn("size-3", fileBusy && "animate-spin")}
+                      />
                       Datei
                       {fileDirty && <span className="text-amber-500">●</span>}
                     </Button>
@@ -1297,11 +1311,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                   disabled={isRunning || planLoading || !sql.trim()}
                   title="Achtung: führt die Query wirklich aus und misst sie"
                 >
-                  {planLoading ? (
-                    <LoaderIcon className="size-3 animate-spin" />
-                  ) : (
-                    <GaugeIcon className="size-3" />
-                  )}
+                  <MorphIcon
+                    icon={planLoading ? Loader : Gauge}
+                    className={cn("size-3", planLoading && "animate-spin")}
+                  />
                   Explain Analyze
                 </Button>
                 <Button
@@ -1460,6 +1473,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                     onCursorChange={setCursorOffset}
                     onPositionChange={setCursorPosition}
                     highlight={statementRange}
+                    error={editorError}
                     bookmarks={normalizedBookmarks}
                     onBookmarksChange={(lines) => setQueryBookmarks(tabId, lines)}
                     onSearchTabs={() => setTabSearchOpen(true)}
@@ -1509,11 +1523,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                             className="h-7 gap-1.5 px-3 text-xs"
                             disabled={exporting}
                           >
-                            {exporting ? (
-                              <LoaderIcon className="size-3 animate-spin" />
-                            ) : (
-                              <DownloadIcon className="size-3" />
-                            )}
+                            <MorphIcon
+                              icon={exporting ? Loader : Download}
+                              className={cn("size-3", exporting && "animate-spin")}
+                            />
                             Export
                           </Button>
                         </DropdownMenuTrigger>

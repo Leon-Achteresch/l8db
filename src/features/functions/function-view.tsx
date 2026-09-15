@@ -1,4 +1,6 @@
-import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
+import { Hammer, Loader } from "lucide";
+import { TriangleAlertIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -10,15 +12,17 @@ import {
   SqlEditActions,
   SqlEditFeedback,
   SqlEditHint,
+  type SqlEditState,
   useSqlObjectEdit,
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
-import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -104,11 +108,11 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
             disabled={compileState.status === "loading"}
             title="Kompiliert das gespeicherte Objekt in der Datenbank neu — ohne den Quelltext zu ändern."
           >
-            {compileState.status === "loading" ? (
-              <LoaderIcon data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <HammerIcon data-icon="inline-start" />
-            )}
+            <MorphIcon
+              icon={compileState.status === "loading" ? Loader : Hammer}
+              data-icon="inline-start"
+              className={cn(compileState.status === "loading" && "animate-spin")}
+            />
             Kompilieren
           </Button>
         ) : null}
@@ -123,6 +127,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={compileResult?.line ?? line}
+        error={objectError(compileResult?.message, edit.state)}
       />
 
       {compileResult && compileResult.status !== "VALID" ? (
@@ -143,14 +148,28 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   );
 }
 
+export function objectError(
+  compileMessage: string | null | undefined,
+  state: SqlEditState,
+): string | null {
+  return state.status === "error" ? state.message : (compileMessage ?? null);
+}
+
 interface SqlEditorPaneProps {
   value: string;
   readOnly: boolean;
   onChange?: (value: string) => void;
   revealLine?: number;
+  error?: string | null;
 }
 
-export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEditorPaneProps) {
+export function SqlEditorPane({
+  value,
+  readOnly,
+  onChange,
+  revealLine,
+  error,
+}: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -204,9 +223,11 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
 
     const formatAction = addSqlFormatAction(editor);
     const intellisense = attachSqlIntellisense(editor);
+    const plsqlLint = attachPlsqlLint(editor);
 
     return () => {
       changeSub.dispose();
+      plsqlLint.dispose();
       formatAction.dispose();
       intellisense.dispose();
       editor.dispose();
@@ -231,6 +252,11 @@ export function SqlEditorPane({ value, readOnly, onChange, revealLine }: SqlEdit
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) showSqlError(editor, error ? { message: error } : null);
+  }, [error, externalValueVersion]);
 
   useEffect(() => {
     const editor = editorRef.current;
