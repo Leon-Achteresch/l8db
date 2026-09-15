@@ -129,6 +129,9 @@ fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> St
 }
 
 fn connect_sync(user: &str, password: &str, connect_string: &str) -> Result<Connection, String> {
+    if !user.is_empty() && password.is_empty() {
+        return Err("Oracle-Passwort fehlt: Die Verbindung wurde ohne Passwort aufgebaut. Bitte Passwort erneut eingeben.".to_string());
+    }
     let mut connector = Connector::new(user, password, connect_string);
     if user.eq_ignore_ascii_case("sys") {
         connector.privilege(oracle::Privilege::Sysdba);

@@ -468,7 +468,7 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
 }
 
 const AUTH_ERROR_PATTERN =
-  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005/i;
+  /password authentication|28P01|Access denied|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005|Oracle-Passwort fehlt/i;
 export const AUTH_FAILED_MESSAGE =
   "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
 
