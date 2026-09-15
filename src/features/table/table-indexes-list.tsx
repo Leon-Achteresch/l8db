@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRoundIcon, LayersIcon, LinkIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import { KeyRoundIcon, LayersIcon, PlusIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,42 +18,12 @@ import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
-import { useConstraintsQuery, useIndexesQuery } from "@/lib/queries";
+import { useIndexesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface TableIndexesListProps {
   schema: string;
   table: string;
-}
-
-function constraintTypeColor(type: string) {
-  switch (type) {
-    case "PRIMARY KEY":
-      return "text-amber-500";
-    case "UNIQUE":
-      return "text-blue-500";
-    case "FOREIGN KEY":
-      return "text-violet-500";
-    case "CHECK":
-      return "text-emerald-500";
-    case "EXCLUDE":
-      return "text-orange-500";
-    default:
-      return "text-muted-foreground";
-  }
-}
-
-function ConstraintTypeIcon({ type }: { type: string }) {
-  switch (type) {
-    case "PRIMARY KEY":
-      return <KeyRoundIcon className="size-4 text-amber-500" />;
-    case "FOREIGN KEY":
-      return <LinkIcon className="size-4 text-violet-500" />;
-    case "UNIQUE":
-      return <ShieldCheckIcon className="size-4 text-blue-500" />;
-    default:
-      return <ShieldCheckIcon className="size-4 text-emerald-500" />;
-  }
 }
 
 interface CreateIndexDialogProps {
@@ -150,11 +120,8 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
-  const { data: indexes, isLoading: indexesLoading } = useIndexesQuery(schema, table);
-  const { data: constraints, isLoading: constraintsLoading } = useConstraintsQuery(schema, table);
+  const { data: indexes, isLoading } = useIndexesQuery(schema, table);
   const [createOpen, setCreateOpen] = useState(false);
-
-  const isLoading = indexesLoading || constraintsLoading;
 
   const handleIndexCreated = async () => {
     await queryClient.invalidateQueries({
@@ -166,18 +133,16 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
         <Spinner />
-        Lade Indexes & Constraints…
+        Lade Indexes…
       </div>
     );
   }
 
-  const hasIndexes = (indexes?.length ?? 0) > 0;
-  const hasConstraints = (constraints?.length ?? 0) > 0;
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-4 py-2">
-        <span className="text-xs font-medium text-muted-foreground">Indexes & Constraints</span>
+        <span className="text-xs font-medium text-muted-foreground">Indexes</span>
+        <span className="ml-2 text-xs text-muted-foreground">{indexes?.length ?? 0}</span>
         <Button
           size="sm"
           variant="ghost"
@@ -189,142 +154,77 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
         </Button>
       </div>
 
-      {!hasIndexes && !hasConstraints ? (
+      {!indexes || indexes.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">Keine Indexes oder Constraints gefunden.</p>
+          <p className="text-sm text-muted-foreground">Keine Indexes gefunden.</p>
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {hasConstraints && (
-            <section>
-              <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
-                <ShieldCheckIcon className="size-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Constraints
-                </span>
-                <span className="ml-auto text-xs text-muted-foreground">{constraints!.length}</span>
-              </div>
-              <div className="divide-y">
-                {constraints!.map((con) => (
-                  <motion.div
-                    key={con.name}
-                    layout
-                    transition={{ layout: SPRING_LAYOUT }}
-                    className="px-4 py-3 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 shrink-0">
-                        <ConstraintTypeIcon type={con.constraint_type} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-sm font-medium font-mono text-foreground">
-                            {con.name}
-                          </span>
+          <section>
+            <div className="divide-y">
+              {indexes.map((idx) => (
+                <motion.div
+                  key={idx.name}
+                  layout
+                  transition={{ layout: SPRING_LAYOUT }}
+                  className="px-4 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 shrink-0">
+                      {idx.is_primary ? (
+                        <KeyRoundIcon className="size-4 text-amber-500" />
+                      ) : (
+                        <LayersIcon
+                          className={`size-4 ${idx.is_unique ? "text-blue-500" : "text-muted-foreground"}`}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-sm font-medium font-mono text-foreground">
+                          {idx.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {idx.index_type.toUpperCase()}
+                        </Badge>
+                        {idx.is_primary && (
                           <Badge
                             variant="outline"
-                            className={`text-[10px] px-1.5 py-0 font-medium ${constraintTypeColor(con.constraint_type)} border-current/20 bg-current/5`}
+                            className="text-[10px] px-1.5 py-0 text-amber-500 border-amber-500/20 bg-amber-500/5"
                           >
-                            {con.constraint_type}
+                            PRIMARY
                           </Badge>
-                        </div>
-                        {con.columns.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-1">
-                            {con.columns.map((col) => (
-                              <span
-                                key={col}
-                                className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                              >
-                                {col}
-                              </span>
-                            ))}
-                          </div>
                         )}
-                        <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
-                          {con.definition}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {hasIndexes && (
-            <section>
-              <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
-                <LayersIcon className="size-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Indexes
-                </span>
-                <span className="ml-auto text-xs text-muted-foreground">{indexes!.length}</span>
-              </div>
-              <div className="divide-y">
-                {indexes!.map((idx) => (
-                  <motion.div
-                    key={idx.name}
-                    layout
-                    transition={{ layout: SPRING_LAYOUT }}
-                    className="px-4 py-3 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 shrink-0">
-                        {idx.is_primary ? (
-                          <KeyRoundIcon className="size-4 text-amber-500" />
-                        ) : (
-                          <LayersIcon
-                            className={`size-4 ${idx.is_unique ? "text-blue-500" : "text-muted-foreground"}`}
-                          />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-sm font-medium font-mono text-foreground">
-                            {idx.name}
-                          </span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {idx.index_type.toUpperCase()}
+                        {idx.is_unique && !idx.is_primary && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5"
+                          >
+                            UNIQUE
                           </Badge>
-                          {idx.is_primary && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] px-1.5 py-0 text-amber-500 border-amber-500/20 bg-amber-500/5"
-                            >
-                              PRIMARY
-                            </Badge>
-                          )}
-                          {idx.is_unique && !idx.is_primary && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5"
-                            >
-                              UNIQUE
-                            </Badge>
-                          )}
-                        </div>
-                        {idx.columns.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-1">
-                            {idx.columns.map((col) => (
-                              <span
-                                key={col}
-                                className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                              >
-                                {col}
-                              </span>
-                            ))}
-                          </div>
                         )}
-                        <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
-                          {idx.definition}
-                        </p>
                       </div>
+                      {idx.columns.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {idx.columns.map((col) => (
+                            <span
+                              key={col}
+                              className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                            >
+                              {col}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
+                        {idx.definition}
+                      </p>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
-            </section>
-          )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 

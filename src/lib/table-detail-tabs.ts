@@ -6,6 +6,7 @@ export type TableDetailTab =
   | "definition"
   | "triggers"
   | "indexes"
+  | "constraints"
   | "rls"
   | "partitions"
   | "used-by"
@@ -23,6 +24,7 @@ export const TABLE_DETAIL_TABS: {
   { id: "definition", label: "Definition", entity: "view" },
   { id: "triggers", label: "Trigger", entity: "table", capability: "triggers" },
   { id: "indexes", label: "Indexes", entity: "table", capability: "indexes" },
+  { id: "constraints", label: "Constraints", entity: "table", capability: "constraints" },
   { id: "rls", label: "RLS", entity: "table", capability: "rls" },
   { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
   { id: "used-by", label: "Used By", capability: "used_by" },

@@ -23,6 +23,7 @@ import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { TableColumnsList } from "@/features/table/table-columns-list";
+import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
@@ -734,6 +735,10 @@ export function TableView({
 
       <TabsContent value="indexes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableIndexesList schema={schema} table={table} />
+      </TabsContent>
+
+      <TabsContent value="constraints" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableConstraintsList schema={schema} table={table} />
       </TabsContent>
 
       <TabsContent value="rls" className="flex min-h-0 flex-1 flex-col overflow-hidden">
