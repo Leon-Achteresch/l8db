@@ -16,7 +16,7 @@ import { create } from "zustand";
 
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { ensurePassword } from "@/lib/password-prompt";
-import { loadSecret } from "@/lib/secrets";
+import { extractUrlPassword, injectUrlPassword, loadSecret, peekSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
 
@@ -109,9 +109,12 @@ registerReadOnlyResolver((connectionString) => {
 });
 
 export function effectiveConnectionString(connection: SavedConnection): string {
-  const base = isReadOnlyConnection(connection)
-    ? readOnlyConnectionString(connection.connectionString)
-    : connection.connectionString;
+  const cached = peekSecret(connection.id);
+  const raw =
+    cached && extractUrlPassword(connection.connectionString) === null
+      ? injectUrlPassword(connection.connectionString, cached)
+      : connection.connectionString;
+  const base = isReadOnlyConnection(connection) ? readOnlyConnectionString(raw) : raw;
   if (!connection.ssh?.host) return base;
   if (!connection.tunnelPort)
     throw new Error("SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden.");
