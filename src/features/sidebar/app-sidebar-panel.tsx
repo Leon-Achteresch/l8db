@@ -216,20 +216,21 @@ export function AppSidebarPanel() {
   const filteredServerGroups = useMemo(() => {
     const query = connectionSearch.trim().toLowerCase();
     if (!query) return serverGroups;
-    if (connectionSearchPatterns && !connectionSearchPatterns.ok) return [];
-
-    const matches = connectionSearchPatterns?.ok
-      ? (value: string) => connectionSearchPatterns.regexes.some((regex) => regex.test(value))
-      : (value: string) => {
-          const patterns = splitSearchPatterns(connectionSearch);
-          const lower = value.toLowerCase();
-          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
-        };
+    const patterns = splitSearchPatterns(connectionSearch).map((pattern) => pattern.toLowerCase());
+    const matches = (value: string) => {
+      const lower = value.toLowerCase();
+      if (patterns.some((pattern) => lower.includes(pattern))) return true;
+      return (
+        connectionSearchPatterns?.ok === true &&
+        connectionSearchPatterns.regexes.some((regex) => regex.test(value))
+      );
+    };
 
     return serverGroups
       .map((group) => {
         const connectionsInGroup = group.connections.filter((connection) => {
           return [
+            group.label,
             connection.name,
             connection.kind,
             connectionUser(connection),
