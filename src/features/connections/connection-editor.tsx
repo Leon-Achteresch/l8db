@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { withTimeout } from "@/lib/async";
-import { initialSslMode } from "@/lib/connection-defaults";
+import { defaultSslModeForProvider, initialSslMode } from "@/lib/connection-defaults";
 import { serverLabel } from "@/lib/connection-groups";
 import {
   connectionError,
@@ -179,8 +179,14 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
   const caps = info.capabilities;
   const initial = seedFields(seed, info, Boolean(template) && !connection);
   const [mode, setMode] = useState<Mode>(() => seedMode(seed, info));
-  const [ssl, setSsl] = useState<SslMode>(
-    initialSslMode(value, useSettingsStore.getState().sslDefaultMode, seed?.sslMode),
+  const [ssl, setSsl] = useState<SslMode>(() =>
+    initialSslMode(
+      value,
+      useSettingsStore.getState().sslDefaultMode,
+      seed?.sslMode,
+      kind,
+      provider,
+    ),
   );
   const [showPassword, setShowPassword] = useState(false);
   const [host, setHost] = useState(initial.host);
@@ -267,7 +273,10 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
     setPort(nextDefaults.port);
     setDatabase(nextDefaults.database);
     setUser(nextDefaults.user);
-    if (!value) setSsl(useSettingsStore.getState().sslDefaultMode);
+    if (!value)
+      setSsl(
+        defaultSslModeForProvider(next.kind, next.id, useSettingsStore.getState().sslDefaultMode),
+      );
   }
 
   function pasteConnectionString() {
@@ -718,10 +727,18 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                         onChange={(event) => {
                           const nextValue = event.target.value;
                           setValue(nextValue);
-                          if (nextValue.trim())
+                          if (nextValue.trim()) {
+                            const nextKind = kindFromUrl(nextValue);
                             setSsl(
-                              initialSslMode(nextValue, useSettingsStore.getState().sslDefaultMode),
+                              initialSslMode(
+                                nextValue,
+                                useSettingsStore.getState().sslDefaultMode,
+                                undefined,
+                                nextKind,
+                                nextKind ? detectProvider(nextValue, nextKind) : undefined,
+                              ),
                             );
+                          }
                           const inputKind = kindFromUrl(nextValue);
                           if (inputKind) setProvider(detectProvider(nextValue, inputKind));
                         }}

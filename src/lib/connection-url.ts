@@ -376,8 +376,15 @@ export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): UR
 
 export function sslModeFromUrl(value: string): SslMode {
   try {
-    const mode = new URL(value.trim()).searchParams.get("sslmode");
+    const params = new URL(value.trim()).searchParams;
+    const mode = params.get("sslmode");
     if (mode && SSL_MODES.includes(mode)) return mode as SslMode;
+    const encrypt = params.get("encrypt")?.toLowerCase();
+    if (encrypt) {
+      if (["false", "no", "0", "disable", "disabled", "optional"].includes(encrypt))
+        return "disable";
+      return "require";
+    }
   } catch {
     return "prefer";
   }
