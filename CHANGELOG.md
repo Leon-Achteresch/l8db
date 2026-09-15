@@ -3,6 +3,35 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.5.2] - 2026-09-14
+
+### Features
+- Angebot statt Autostart, Minimieren und besseres Spotlight
+- Spaltenbreiten an Titel anpassen
+- Collapse-Komponente für Höhen-Animationen
+- open FK references in stackable resizable 3D drawer
+- infer foreign keys for views from base tables
+- navigate to query editor after opening new tab
+- add OpenInQueryEditorButton to view editor toolbar
+- add tooltip to column search toggle in TableSearchModal
+- remove search include columns toggle and related store binding
+- replace auto-open "new" editor with empty-state view
+
+### Fixes
+- CodeRabbit-Major-Findings zu FK-Views, Collapse, Drawer und Tour
+- Collapse SSR-stabil machen und window-Mock reparieren
+- bei Verbindungswechsel zur Startseite navigieren
+- Sortable-Drag nur auf Tab-Label beschränken
+- Pointer-Events auf FK-Drawer-Chrome wiederherstellen
+- hängende FKs entfernen und Layout-Fallback
+- flüssiges Resize per MotionValue während des Ziehens
+- make search bars sticky and relocate sidebar tabs
+
+### Änderungen
+- Legacy-Filter-Migrationsbutton entfernen
+- Collapse für Filter-Panel und Spaltenliste
+- remove FilterExpressionInput and move operator translation setting
+
 ## [0.4.39] - 2026-09-14
 
 ### Features

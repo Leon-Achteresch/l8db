@@ -105,10 +105,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  DisconnectButton,
-  disconnectActiveConnection,
-} from "@/features/connections/disconnect-button";
+import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -634,7 +631,6 @@ export function AppSidebarPanel() {
                 </Select>
               </div>
             )}
-
           </div>
         ) : null}
       </SidebarHeader>
