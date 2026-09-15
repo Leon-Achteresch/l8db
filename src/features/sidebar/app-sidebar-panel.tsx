@@ -32,7 +32,7 @@ import {
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
-import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
+import { lazy, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -204,6 +204,7 @@ export function AppSidebarPanel() {
   );
   const grouped = serverGroups.some((group) => group.connections.length > 1);
   const [connectionSearch, setConnectionSearch] = useState("");
+  const connectionSearchRef = useRef<HTMLInputElement>(null);
   const connectionRegexEnabled = useRegexEnabled("sidebar");
   const connectionSearchPatterns = useMemo(
     () =>
@@ -228,10 +229,12 @@ export function AppSidebarPanel() {
     return serverGroups
       .map((group) => {
         const connectionsInGroup = group.connections.filter((connection) => {
-          const tags = connection.tags?.map((tag) => tag.name).join(" ") ?? "";
-          return matches(
-            `${connection.name} ${connection.kind} ${connectionUser(connection)} ${tags}`,
-          );
+          return [
+            connection.name,
+            connection.kind,
+            connectionUser(connection),
+            ...(connection.tags?.map((tag) => tag.name) ?? []),
+          ].some(matches);
         });
         return connectionsInGroup.length > 0 ? { ...group, connections: connectionsInGroup } : null;
       })
@@ -399,6 +402,7 @@ export function AppSidebarPanel() {
               <div className="relative px-1 pb-1.5">
                 <SearchIcon className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
                 <Input
+                  ref={connectionSearchRef}
                   value={connectionSearch}
                   onChange={(event) => setConnectionSearch(event.target.value)}
                   onKeyDown={(event) => event.stopPropagation()}
@@ -410,7 +414,16 @@ export function AppSidebarPanel() {
                 />
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div
+              role="group"
+              className="min-h-0 flex-1 overflow-y-auto"
+              onKeyDown={(event) => {
+                if (event.metaKey || event.ctrlKey || event.altKey) return;
+                if (event.key.length !== 1 && event.key !== "Backspace") return;
+                event.stopPropagation();
+                connectionSearchRef.current?.focus();
+              }}
+            >
               {connections.length === 0 ? (
                 <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
               ) : filteredServerGroups.length === 0 ? (
