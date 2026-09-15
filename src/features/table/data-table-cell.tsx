@@ -2,6 +2,7 @@ import { type Column, createCell, flexRender } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { memo, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
+import { useSettingsStore } from "@/lib/settings";
 import { cellPreviewLimit, tableCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
 import type { DataTableRowProps } from "./data-table-row";
@@ -97,6 +98,7 @@ export const DataTableCell = memo(function DataTableCell({
   const columnId = column.id;
   const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+  const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const preview = useMemo(
     () => tableCellPreview(value, cellPreviewLimit(previewWidth, fontSize)),
     [value, previewWidth, fontSize],
@@ -182,7 +184,10 @@ export const DataTableCell = memo(function DataTableCell({
       }}
       className={cn(
         "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
-        cellIndex > 0 && VALUE_CLASSES[preview.kind],
+        cellIndex > 0 &&
+          (monochromeCells
+            ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
+            : VALUE_CLASSES[preview.kind]),
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
         cellIndex === 0 && isMarked && "bg-primary/15 text-primary group-hover/row:bg-primary/20",
