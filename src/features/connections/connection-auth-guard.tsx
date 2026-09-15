@@ -1,9 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { isAuthFailure } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { ensurePassword } from "@/lib/password-prompt";
-import { useFunctionsQuery, useTablesQuery } from "@/lib/queries";
 import { isConnectionQuery } from "@/lib/query-client";
 import { activateConnection, activateConnectionWithToast } from "@/lib/ssh";
 
@@ -12,9 +11,18 @@ let recoveringId: string | null = null;
 export function ConnectionAuthGuard() {
   const connection = useActiveConnection();
   const queryClient = useQueryClient();
-  const { error: tablesError } = useTablesQuery();
-  const { error: functionsError } = useFunctionsQuery();
-  const error = tablesError ?? functionsError;
+  const [error, setError] = useState<unknown>(null);
+  const connectionId = connection?.id ?? null;
+
+  useEffect(() => {
+    setError(null);
+    if (!connectionId) return;
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== "updated" || event.action.type !== "error") return;
+      if (!isConnectionQuery(event.query.queryKey, connectionId)) return;
+      if (isAuthFailure(event.action.error)) setError(event.action.error);
+    });
+  }, [queryClient, connectionId]);
 
   useEffect(() => {
     if (!connection || !error || !isAuthFailure(error)) return;

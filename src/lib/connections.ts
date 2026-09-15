@@ -269,41 +269,44 @@ export async function initConnectionSecrets(): Promise<void> {
   const { connections } = useConnectionsStore.getState();
   if (connections.length === 0) return;
   let changed = false;
-  const next = await Promise.all(
-    connections.map(async (connection) => {
-      const withDefaults: SavedConnection = {
-        ssh: null,
-        ...connection,
-        sslMode: connection.sslMode ?? sslModeFromUrl(connection.connectionString),
-      };
-      if (withDefaults.sslMode !== connection.sslMode || withDefaults.ssh !== connection.ssh) {
-        changed = true;
-      }
-      const inline = extractUrlPassword(withDefaults.connectionString);
-      if (inline) {
-        changed = true;
+  const next: SavedConnection[] = [];
+  for (const connection of connections) {
+    next.push(
+      await (async () => {
+        const withDefaults: SavedConnection = {
+          ssh: null,
+          ...connection,
+          sslMode: connection.sslMode ?? sslModeFromUrl(connection.connectionString),
+        };
+        if (withDefaults.sslMode !== connection.sslMode || withDefaults.ssh !== connection.ssh) {
+          changed = true;
+        }
+        const inline = extractUrlPassword(withDefaults.connectionString);
+        if (inline) {
+          changed = true;
+          try {
+            await storeSecret(withDefaults.id, inline);
+          } catch {
+            return withDefaults;
+          }
+          return withDefaults;
+        }
         try {
-          await storeSecret(withDefaults.id, inline);
+          const saved = await loadSecret(withDefaults.id);
+          if (saved) {
+            changed = true;
+            return {
+              ...withDefaults,
+              connectionString: injectUrlPassword(withDefaults.connectionString, saved),
+            };
+          }
         } catch {
           return withDefaults;
         }
         return withDefaults;
-      }
-      try {
-        const saved = await loadSecret(withDefaults.id);
-        if (saved) {
-          changed = true;
-          return {
-            ...withDefaults,
-            connectionString: injectUrlPassword(withDefaults.connectionString, saved),
-          };
-        }
-      } catch {
-        return withDefaults;
-      }
-      return withDefaults;
-    }),
-  );
+      })(),
+    );
+  }
   if (changed) {
     useConnectionsStore.setState({ connections: next });
   }
