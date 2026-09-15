@@ -297,7 +297,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       <div
         ref={scrollRef}
         style={{ contain: "strict" }}
-        className="relative min-h-0 flex-1 overflow-auto"
+        className="relative min-h-0 flex-1 overflow-auto overscroll-none"
       >
         <table
           className="w-full border-separate border-spacing-0 text-sm"

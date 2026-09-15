@@ -1581,7 +1581,7 @@ export function DataTable({
         ref={scrollRef}
         style={{ contain: "strict" }}
         className={cn(
-          "relative min-h-0 flex-1 basis-0 overflow-auto [scrollbar-gutter:stable] transition-opacity",
+          "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
           isFetching && "opacity-85",
           table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
         )}
