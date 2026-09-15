@@ -1,13 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
+import { Columns2, Rows2 } from "lucide";
 import {
   ChevronDownIcon,
-  Columns2Icon,
   FolderOpenIcon,
   PlusIcon,
-  Rows2Icon,
   SquareIcon,
   SquareSplitHorizontalIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -382,11 +382,10 @@ export function TableTabs() {
             aria-label={orientationLabel}
             className={iconButton}
           >
-            {orientation === "horizontal" ? (
-              <Rows2Icon className="size-3.5" />
-            ) : (
-              <Columns2Icon className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={orientation === "horizontal" ? Rows2 : Columns2}
+              className="size-3.5"
+            />
           </button>
         </Tooltip>
       )}

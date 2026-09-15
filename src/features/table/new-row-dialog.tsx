@@ -1,4 +1,5 @@
-import { CopyPlusIcon, Loader2Icon, PlusIcon } from "lucide-react";
+import { CopyPlus, Loader2, Plus } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -105,11 +106,7 @@ export function NewRowDialog({
       <DialogContent className="max-w-lg sm:max-w-lg gap-0 p-0 overflow-hidden">
         <DialogHeader className="border-b px-4 py-3">
           <DialogTitle className="flex items-center gap-2 text-base">
-            {isDuplicate ? (
-              <CopyPlusIcon className="size-4 text-primary" />
-            ) : (
-              <PlusIcon className="size-4 text-primary" />
-            )}
+            <MorphIcon icon={isDuplicate ? CopyPlus : Plus} className="size-4 text-primary" />
             {isDuplicate ? "Zeile duplizieren" : "Neue Zeile"}
             <span className="font-mono text-sm font-normal text-muted-foreground">
               {schema}.{table}
@@ -213,13 +210,10 @@ export function NewRowDialog({
             onClick={() => void handleSubmit()}
             disabled={isPending || columns.length === 0}
           >
-            {isPending ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : isDuplicate ? (
-              <CopyPlusIcon className="size-3.5" />
-            ) : (
-              <PlusIcon className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={isPending ? Loader2 : isDuplicate ? CopyPlus : Plus}
+              className={cn("size-3.5", isPending && "animate-spin")}
+            />
             Einfügen
           </Button>
         </DialogFooter>

@@ -1,16 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  FolderOpen,
-  LockKeyhole,
-  PlugZap,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { Eye, EyeOff, FolderOpen as FolderOpenData } from "lucide";
+import { ArrowRight, FolderOpen, LockKeyhole, PlugZap, RefreshCw, X } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -759,13 +752,10 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
                         }
                         className="absolute right-2 bottom-2 rounded bg-card p-1 text-muted-foreground"
                       >
-                        {quickInfo.file_based ? (
-                          <FolderOpen className="size-4" />
-                        ) : showPassword ? (
-                          <EyeOff className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
+                        <MorphIcon
+                          icon={quickInfo.file_based ? FolderOpenData : showPassword ? EyeOff : Eye}
+                          className="size-4"
+                        />
                       </button>
                     </div>
                   ) : mode === "tns" ? (

@@ -2,7 +2,9 @@ import { useHotkey } from "@tanstack/react-hotkeys";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { Download, Loader } from "lucide";
+import { FilterXIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -62,6 +64,7 @@ import {
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
+import { cn } from "@/lib/utils";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 const ViewDefinitionPanel = lazy(() =>
@@ -526,11 +529,10 @@ export function TableView({
                         aria-label="Export"
                         disabled={exporting}
                       >
-                        {exporting ? (
-                          <LoaderIcon className="size-3.5 animate-spin" />
-                        ) : (
-                          <DownloadIcon className="size-3.5" />
-                        )}
+                        <MorphIcon
+                          icon={exporting ? Loader : Download}
+                          className={cn("size-3.5", exporting && "animate-spin")}
+                        />
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
@@ -683,11 +685,10 @@ export function TableView({
                       aria-label="Export"
                       disabled={exporting}
                     >
-                      {exporting ? (
-                        <LoaderIcon className="size-3.5 animate-spin" />
-                      ) : (
-                        <DownloadIcon className="size-3.5" />
-                      )}
+                      <MorphIcon
+                        icon={exporting ? Loader : Download}
+                        className={cn("size-3.5", exporting && "animate-spin")}
+                      />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>

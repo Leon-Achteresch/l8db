@@ -1,12 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  EraserIcon,
-  HammerIcon,
-  LoaderIcon,
-  RefreshCwIcon,
-  TerminalIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { Hammer, Loader } from "lucide";
+import { EraserIcon, RefreshCwIcon, TerminalIcon, XCircleIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +18,7 @@ import {
   useInvalidObjectsQuery,
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export function InvalidObjectsView() {
   const connection = useActiveConnection();
@@ -124,11 +120,11 @@ export function InvalidObjectsView() {
           disabled={compileAll.isPending || invalid.length === 0}
           title="Alle invaliden Objekte kompilieren"
         >
-          {compileAll.isPending ? (
-            <LoaderIcon data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <HammerIcon data-icon="inline-start" />
-          )}
+          <MorphIcon
+            icon={compileAll.isPending ? Loader : Hammer}
+            data-icon="inline-start"
+            className={cn(compileAll.isPending && "animate-spin")}
+          />
           Compile invalid objects
         </Button>
       </div>
@@ -187,11 +183,11 @@ export function InvalidObjectsView() {
                           : "Einzeln kompilieren"
                       }
                     >
-                      {compilingOid === item.oid ? (
-                        <LoaderIcon data-icon="inline-start" className="animate-spin" />
-                      ) : (
-                        <HammerIcon data-icon="inline-start" />
-                      )}
+                      <MorphIcon
+                        icon={compilingOid === item.oid ? Loader : Hammer}
+                        data-icon="inline-start"
+                        className={cn(compilingOid === item.oid && "animate-spin")}
+                      />
                       Kompilieren
                     </Button>
                   </li>

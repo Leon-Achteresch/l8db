@@ -1,4 +1,6 @@
-import { ArrowDownIcon, ArrowRightIcon, PlayIcon, XIcon } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide";
+import { ArrowRightIcon, PlayIcon, XIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -150,11 +152,7 @@ export function MasterDetailLink({
               sql ? "border-primary text-primary" : "border-border text-muted-foreground",
             )}
           >
-            {vertical ? (
-              <ArrowDownIcon className="size-4" />
-            ) : (
-              <ArrowRightIcon className="size-4" />
-            )}
+            <MorphIcon icon={vertical ? ArrowDown : ArrowRight} className="size-4" />
           </button>
         ) : null}
       </ResizableHandle>

@@ -1,4 +1,5 @@
-import { RefreshCw, ScanSearch } from "lucide-react";
+import { RefreshCw, ScanSearch } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -54,11 +55,10 @@ export function SchemaPicker({
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" disabled={scanning} onClick={onScan}>
-          {scanning ? (
-            <RefreshCw className="size-3.5 animate-spin" />
-          ) : (
-            <ScanSearch className="size-3.5" />
-          )}
+          <MorphIcon
+            icon={scanning ? RefreshCw : ScanSearch}
+            className={scanning ? "size-3.5 animate-spin" : "size-3.5"}
+          />
           {scanned ? "Erneut scannen" : "Schemas scannen"}
         </Button>
         <span className="text-xs text-muted-foreground">

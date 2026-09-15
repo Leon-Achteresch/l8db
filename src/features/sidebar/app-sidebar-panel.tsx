@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { Star, StarOff } from "lucide";
 import {
   ActivityIcon,
   BracesIcon,
@@ -25,13 +26,13 @@ import {
   SquareFunctionIcon,
   SquareTerminalIcon,
   StarIcon,
-  StarOffIcon,
   TableIcon,
   TrashIcon,
   UploadIcon,
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
@@ -1181,7 +1182,7 @@ function SidebarEntityList({
                       <ContextMenuItem
                         onSelect={() => toggleFavoriteObject(item.schema, item.name)}
                       >
-                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
@@ -1244,7 +1245,7 @@ function SidebarEntityList({
                       <ContextMenuItem
                         onSelect={() => toggleFavoriteObject(item.schema, item.name)}
                       >
-                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
                     </ContextMenuContent>

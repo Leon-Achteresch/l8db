@@ -1,11 +1,10 @@
+import { ChevronDown, ChevronUp } from "lucide";
 import {
   BinaryIcon,
   BracesIcon,
   CalendarIcon,
   CheckCheckIcon,
   CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   Columns2Icon,
   CopyIcon,
   HashIcon,
@@ -15,6 +14,7 @@ import {
   TypeIcon,
   XIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Collapse } from "@/components/motion/collapse";
@@ -453,11 +453,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
                       )}
 
                       <div className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0">
-                        {isExpanded ? (
-                          <ChevronUpIcon className="size-4" />
-                        ) : (
-                          <ChevronDownIcon className="size-4" />
-                        )}
+                        <MorphIcon icon={isExpanded ? ChevronUp : ChevronDown} className="size-4" />
                       </div>
                     </div>
                   </div>

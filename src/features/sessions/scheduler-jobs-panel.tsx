@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarClockIcon, PlayIcon, PowerIcon, PowerOffIcon } from "lucide-react";
+import { Power, PowerOff } from "lucide";
+import { CalendarClockIcon, PlayIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -156,11 +158,7 @@ export function SchedulerJobsPanel() {
                   disabled={actingId === job.id}
                   onClick={() => void toggle(job.id, job.name, !job.enabled)}
                 >
-                  {job.enabled ? (
-                    <PowerOffIcon className="size-3.5" />
-                  ) : (
-                    <PowerIcon className="size-3.5" />
-                  )}
+                  <MorphIcon icon={job.enabled ? PowerOff : Power} className="size-3.5" />
                   {job.enabled ? "Deaktivieren" : "Aktivieren"}
                 </Button>
               </div>

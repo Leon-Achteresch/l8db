@@ -1,11 +1,11 @@
 "use client";
 // beui.dev/components/motion/theme-toggle
 
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
 import { type ComponentPropsWithoutRef, useEffect, useState } from "react";
-import { ActionSwapIcon } from "@/components/motion/action-swap";
 import { EASE_OUT_CSS } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
@@ -195,13 +195,7 @@ export function ThemeToggle({
       {...rest}
     >
       {mounted ? (
-        <ActionSwapIcon
-          value={isDark ? "dark" : "light"}
-          animation="blur"
-          className={iconClassName}
-        >
-          {isDark ? <Sun className={iconClassName} /> : <Moon className={iconClassName} />}
-        </ActionSwapIcon>
+        <MorphIcon icon={isDark ? Sun : Moon} className={iconClassName} />
       ) : (
         <span className={iconClassName} aria-hidden="true" />
       )}

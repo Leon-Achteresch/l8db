@@ -1,17 +1,17 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
+import { Pin, PinOff } from "lucide";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   EyeOffIcon,
   FilterIcon,
   GripVerticalIcon,
-  PinIcon,
-  PinOffIcon,
   PlayIcon,
   RotateCcwIcon,
   XIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -241,7 +241,7 @@ export function DataTableHeaderCell({
         )}
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onTogglePin}>
-          {isPinned ? <PinOffIcon /> : <PinIcon />}
+          <MorphIcon icon={isPinned ? PinOff : Pin} />
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}
         </ContextMenuItem>
         <ContextMenuItem disabled={!canHide} onClick={onHideColumn}>

@@ -1,17 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import { Check, Copy } from "lucide";
 import {
-  CheckIcon,
   CodeIcon,
   Columns2Icon,
-  CopyIcon,
   NetworkIcon,
   PlayIcon,
   RotateCcwIcon,
   ShieldCheckIcon,
   TableIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -328,7 +328,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                 className="h-7 gap-1.5 px-3 text-xs"
                 onClick={handleCopy}
               >
-                {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+                <MorphIcon icon={copied ? Check : Copy} className="size-3" />
                 Kopieren
               </Button>
               <OpenInQueryEditorButton sql={ddl} title={`${schema}.${view}`} />

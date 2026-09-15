@@ -1,13 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  EyeIcon,
-  LayersIcon,
-  StarOffIcon,
-  TableIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { Eye, Layers, Table, TriangleAlert } from "lucide";
+import { ChevronDownIcon, ChevronUpIcon, StarOffIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useMemo } from "react";
 import {
   ContextMenu,
@@ -36,9 +30,9 @@ import { useAllSchemaObjectsQuery, useMaterializedViewsQuery } from "@/lib/queri
 import { useTableTabs } from "@/lib/table-tabs";
 
 function iconFor(type: ObjectFavorite["type"]) {
-  if (type === "view") return EyeIcon;
-  if (type === "matview") return LayersIcon;
-  return TableIcon;
+  if (type === "view") return Eye;
+  if (type === "matview") return Layers;
+  return Table;
 }
 
 export function SidebarFavorites() {
@@ -75,7 +69,7 @@ export function SidebarFavorites() {
         <SidebarMenu>
           {scoped.map((favorite, index) => {
             const id = favoriteId(favorite);
-            const Icon = iconFor(favorite.type);
+            const icon = iconFor(favorite.type);
             const missing =
               hasLists && !known.has(`${favorite.type}:${favorite.schema}.${favorite.name}`);
             const open = () => {
@@ -111,11 +105,10 @@ export function SidebarFavorites() {
                           : `${favorite.schema}.${favorite.name}`
                       }
                     >
-                      {missing ? (
-                        <TriangleAlertIcon className="text-destructive" />
-                      ) : (
-                        <Icon className="text-muted-foreground" />
-                      )}
+                      <MorphIcon
+                        icon={missing ? TriangleAlert : icon}
+                        className={missing ? "text-destructive" : "text-muted-foreground"}
+                      />
                       <span className="truncate">{favorite.name}</span>
                       <span className="ml-auto truncate text-xs text-muted-foreground">
                         {favorite.schema}
