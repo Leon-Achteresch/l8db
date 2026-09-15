@@ -13,13 +13,14 @@ export interface ParsedFilter {
 }
 
 type Token = {
-  kind: "word" | "identifier" | "string" | "number" | "symbol";
+  kind: "word" | "identifier" | "string" | "number" | "bare" | "symbol";
   value: string;
   at: number;
   end?: number;
   normalized?: string;
 };
-type Node = ParsedFilterCondition | { combinator: "AND" | "OR"; children: Node[] };
+type Group = { combinator: "AND" | "OR"; children: Node[] };
+type Node = ParsedFilterCondition | Group;
 
 function fail(message: string, at: number): never {
   throw new Error(`${message} (Position ${at + 1}).`);
@@ -68,13 +69,21 @@ function tokenize(source: string): Token[] {
       });
       continue;
     }
-    const number = source.slice(at).match(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?/i);
-    const word = source.slice(at).match(/^[\p{L}_][\p{L}\p{N}_$]*/u);
     const symbol = source.slice(at).match(/^(?:>=|<=|<>|!=|[=><(),])/);
-    const match = number ?? word ?? symbol;
+    const bare = source.slice(at).match(/^[^\s'"`[\](),;=<>!]+/);
+    const match = symbol ?? bare;
     if (!match) fail(`Unerwartetes Zeichen „${source[at]}“`, at);
-    tokens.push({ kind: number ? "number" : word ? "word" : "symbol", value: match[0], at });
-    at += match[0].length;
+    const text = match[0];
+    if (text.startsWith("--") || text.startsWith("/*")) fail("Kommentare sind nicht erlaubt", at);
+    const kind = symbol
+      ? "symbol"
+      : /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
+        ? "number"
+        : /^[\p{L}_][\p{L}\p{N}_$]*$/u.test(text)
+          ? "word"
+          : "bare";
+    tokens.push({ kind, value: text, at });
+    at += text.length;
   }
   return tokens;
 }
@@ -94,6 +103,19 @@ export function normalizeFilterExpressionQuotes(source: string): string {
     return source;
   }
 }
+
+const KEYWORDS = new Set([
+  "AND",
+  "OR",
+  "NOT",
+  "IN",
+  "IS",
+  "NULL",
+  "LIKE",
+  "ILIKE",
+  "BETWEEN",
+  "WHERE",
+]);
 
 export function parseFilterExpression(
   source: string,
@@ -120,15 +142,23 @@ export function parseFilterExpression(
     return true;
   };
   const expected = (value: string) => fail(`${value} erwartet`, current()?.at ?? source.length);
-  const literal = (): { value: string; quoted: boolean } => {
+  const literal = (): { value: string; text: boolean } => {
     const token = current();
+    const isBool = keyword("TRUE") || keyword("FALSE");
     if (
       !token ||
-      !(token.kind === "string" || token.kind === "number" || keyword("TRUE") || keyword("FALSE"))
+      token.kind === "symbol" ||
+      (token.kind === "word" && !isBool && KEYWORDS.has(token.value.toUpperCase()))
     )
-      return expected("Ein Wert in einfachen Anführungszeichen, eine Zahl oder TRUE/FALSE");
+      return expected("Ein Wert (Text, Zahl oder TRUE/FALSE)");
+    if (token.kind === "word" && !isBool && columns.includes(token.value)) {
+      fail(
+        `„${token.value}“ ist ein Spaltenname – Textwerte bitte in Anführungszeichen setzen`,
+        token.at,
+      );
+    }
     index++;
-    let value = token.kind === "word" ? token.value.toLowerCase() : token.value;
+    let value = isBool ? token.value.toLowerCase() : token.value;
     if (token.kind === "string") {
       while (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) {
         value = value.slice(1, -1).replace(/''/g, "'");
@@ -137,67 +167,86 @@ export function parseFilterExpression(
     if (!value.trim()) {
       fail("Leere Werte bitte im SQL-Modus filtern", token.at);
     }
-    return {
-      value,
-      quoted: token.kind === "string",
-    };
+    return { value, text: token.kind !== "number" && !isBool };
   };
-  const condition = (): ParsedFilterCondition => {
+  const supported = (operator: FilterOperatorKey, at: number) => {
+    if (!filterOperatorsForKind(kind).some((entry) => entry.key === operator)) {
+      fail("Dieser Operator wird von der Datenbank im einfachen Filter nicht unterstützt", at);
+    }
+    return operator;
+  };
+  const condition = (): Node => {
     const token = current();
     if (!token || !["word", "identifier"].includes(token.kind)) return expected("Ein Spaltenname");
     index++;
     const matches = columns.filter((column) => column.toLowerCase() === token.value.toLowerCase());
     const column = columns.includes(token.value)
       ? token.value
-      : token.kind === "word" && matches.length === 1
+      : matches.length === 1
         ? matches[0]
         : undefined;
     if (column === undefined) fail(`Unbekannte oder mehrdeutige Spalte „${token.value}“`, token.at);
-    let operator: FilterOperatorKey;
-    let value = "";
-    let dataType: string | undefined;
+    const make = (operator: FilterOperatorKey, parsed?: { value: string; text: boolean }) => ({
+      column,
+      operator: supported(operator, token.at),
+      value: parsed?.value ?? "",
+      ...(parsed?.text ? { dataType: "text" } : {}),
+    });
     if (acceptKeyword("IS")) {
-      operator = acceptKeyword("NOT") ? "isNotNull" : "isNull";
+      const not = acceptKeyword("NOT");
       if (!acceptKeyword("NULL")) expected("NULL");
-    } else if (keyword("IN") || keyword("NOT")) {
-      operator = acceptKeyword("NOT") ? "notIn" : "in";
+      return make(not ? "isNotNull" : "isNull");
+    }
+    if (keyword("IN") || keyword("NOT")) {
+      const not = acceptKeyword("NOT");
       if (!acceptKeyword("IN")) expected("IN");
       if (!acceptSymbol("(")) expected("(");
       const values = [literal()];
       while (acceptSymbol(",")) values.push(literal());
       if (!acceptSymbol(")")) expected(")");
-      if (values.some((entry) => entry.quoted !== values[0].quoted)) {
-        fail("Listen mit gemischten Text- und Zahlenwerten bitte im SQL-Modus filtern", token.at);
-      }
-      value = JSON.stringify(values.map((entry) => entry.value));
-      dataType = values[0].quoted ? "text" : undefined;
-    } else {
-      const operators: Record<string, FilterOperatorKey> = {
-        "=": "eq",
-        "!=": "neq",
-        "<>": "neq",
-        ">": "gt",
-        ">=": "gte",
-        "<": "lt",
-        "<=": "lte",
-      };
-      const comparison = current();
-      const found = comparison?.kind === "symbol" ? operators[comparison.value] : undefined;
-      if (!found)
-        return expected("Ein Vergleichsoperator (=, <>, !=, >, >=, <, <=), IN oder IS NULL");
-      operator = found;
-      index++;
+      return make(not ? "notIn" : "in", {
+        value: JSON.stringify(values.map((entry) => entry.value)),
+        text: values.every((entry) => entry.text),
+      });
+    }
+    if (acceptKeyword("LIKE") || acceptKeyword("ILIKE")) {
       const parsed = literal();
-      value = parsed.value;
-      dataType = parsed.quoted ? "text" : undefined;
+      const starts = parsed.value.startsWith("%");
+      const ends = parsed.value.length > 1 && parsed.value.endsWith("%");
+      const inner = parsed.value.slice(starts ? 1 : 0, ends ? -1 : undefined);
+      if (/[%_]/.test(inner) || !inner) {
+        fail("Platzhalter innerhalb des Musters bitte im SQL-Modus filtern", token.at);
+      }
+      const operator =
+        starts && ends ? "contains" : starts ? "endsWith" : ends ? "startsWith" : "eq";
+      return make(operator, { value: inner, text: true });
     }
-    if (!filterOperatorsForKind(kind).some((entry) => entry.key === operator)) {
-      fail(
-        "Dieser Operator wird von der Datenbank im einfachen Filter nicht unterstützt",
-        token.at,
+    if (acceptKeyword("BETWEEN")) {
+      const low = literal();
+      if (!acceptKeyword("AND")) expected("AND");
+      const high = literal();
+      return { combinator: "AND", children: [make("gte", low), make("lte", high)] };
+    }
+    const operators: Record<string, FilterOperatorKey> = {
+      "=": "eq",
+      "!=": "neq",
+      "<>": "neq",
+      ">": "gt",
+      ">=": "gte",
+      "<": "lt",
+      "<=": "lte",
+    };
+    const comparison = current();
+    const found = comparison?.kind === "symbol" ? operators[comparison.value] : undefined;
+    if (!found)
+      return expected(
+        "Ein Vergleichsoperator (=, <>, !=, >, >=, <, <=), LIKE, BETWEEN, IN oder IS NULL",
       );
+    index++;
+    if ((found === "eq" || found === "neq") && acceptKeyword("NULL")) {
+      return make(found === "eq" ? "isNull" : "isNotNull");
     }
-    return { column, operator, value, ...(dataType ? { dataType } : {}) };
+    return make(found, literal());
   };
   const primary = (depth: number): Node => {
     if (depth > 64) return expected("Weniger verschachtelte Klammern");

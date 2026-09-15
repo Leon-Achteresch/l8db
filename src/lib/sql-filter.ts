@@ -166,6 +166,13 @@ export function quoteLiteral(value: string, kind?: FilterKind, dataType?: string
   return quoteString(value, kind);
 }
 
+export function literalIsText(value: string, kind?: FilterKind, dataType?: string): boolean {
+  if (kind === "cassandra" || kind === "mongodb" || kind === "redis") return false;
+  if (dataType) return /char|text|string|clob|enum/i.test(dataType);
+  const trimmed = value.trim();
+  return !/^-?\d+(\.\d+)?$/.test(trimmed) && trimmed !== "true" && trimmed !== "false";
+}
+
 export function quoteString(value: string, kind?: FilterKind): string {
   if (kind === "mysql" && value.includes("\\")) {
     return `CONCAT(${value
@@ -216,15 +223,25 @@ export function compileConditionExpression(
   value: string,
   kind?: FilterKind,
   dataType?: string,
+  insensitive = false,
 ): string | null {
   if (kind === "mongodb" || kind === "redis") return null;
   if (!filterOperatorsForKind(kind).some((op) => op.key === operator)) return null;
   if (operatorNeedsValue(operator) && value.trim() === "") return null;
+  const insensitiveMatch = (item: string) =>
+    insensitive && literalIsText(item, kind, dataType)
+      ? textMatch(columnExpression, quoteLike(item, kind), kind)
+      : "";
   switch (operator) {
     case "in":
     case "notIn": {
       const values = parseFilterList(value);
       if (values.length === 0) return null;
+      const matches = values.map(insensitiveMatch);
+      if (matches.every(Boolean)) {
+        const joined = matches.length === 1 ? matches[0] : `(${matches.join(" OR ")})`;
+        return operator === "in" ? joined : `NOT (${joined})`;
+      }
       const sqlOperator = operator === "in" ? "IN" : "NOT IN";
       const clauses: string[] = [];
       const chunkSize = kind === "oracle" ? 1000 : values.length;
@@ -239,9 +256,15 @@ export function compileConditionExpression(
         : `(${clauses.join(operator === "in" ? " OR " : " AND ")})`;
     }
     case "eq":
-      return `${columnExpression} = ${quoteLiteral(value, kind, dataType)}`;
-    case "neq":
-      return `${columnExpression} <> ${quoteLiteral(value, kind, dataType)}`;
+      return (
+        insensitiveMatch(value) || `${columnExpression} = ${quoteLiteral(value, kind, dataType)}`
+      );
+    case "neq": {
+      const match = insensitiveMatch(value);
+      return match
+        ? `NOT (${match})`
+        : `${columnExpression} <> ${quoteLiteral(value, kind, dataType)}`;
+    }
     case "gt":
       return `${columnExpression} > ${quoteLiteral(value, kind, dataType)}`;
     case "gte":
@@ -284,6 +307,11 @@ function compileMongoCondition(
   dataType?: string,
 ): string | null {
   const literal = mongoValue(value, dataType);
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if ((operator === "eq" || operator === "neq") && typeof literal === "string" && value.trim()) {
+    const regex = { $regex: `^${escaped}$`, $options: "i" };
+    return JSON.stringify({ [column]: operator === "eq" ? regex : { $not: regex } });
+  }
   const comparison = { eq: "$eq", neq: "$ne", gt: "$gt", gte: "$gte", lt: "$lt", lte: "$lte" }[
     operator
   ];
@@ -298,7 +326,6 @@ function compileMongoCondition(
   if (operator === "isNull") return JSON.stringify({ [column]: { $type: 10 } });
   if (operator === "isNotNull") return JSON.stringify({ [column]: { $exists: true, $ne: null } });
   if (["contains", "startsWith", "endsWith"].includes(operator) && value.trim()) {
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return JSON.stringify({
       [column]: {
         $regex: `${operator === "startsWith" ? "^" : ""}${escaped}${operator === "endsWith" ? "$" : ""}`,
@@ -319,7 +346,14 @@ export function compileSingleCondition(
   if (!column) return null;
   if (operatorNeedsValue(operator) && value === "") return null;
   if (kind === "mongodb") return compileMongoCondition(column, operator, value, dataType);
-  return compileConditionExpression(quoteIdent(column, kind), operator, value, kind, dataType);
+  return compileConditionExpression(
+    quoteIdent(column, kind),
+    operator,
+    value,
+    kind,
+    dataType,
+    true,
+  );
 }
 
 export function compileFilterConditions(
@@ -336,8 +370,8 @@ export function compileFilterConditions(
           condition.operator,
           condition.value,
           kind,
-          condition.dataType ??
-            columnDetails?.find((column) => column.name === condition.column)?.data_type,
+          columnDetails?.find((column) => column.name === condition.column)?.data_type ??
+            condition.dataType,
         ),
       )
       .filter((part): part is string => part !== null),
