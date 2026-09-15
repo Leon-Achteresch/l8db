@@ -5,31 +5,44 @@ fn entry(account: &str) -> Result<keyring::Entry, String> {
         .map_err(|e| format!("Keychain-Zugriff fehlgeschlagen: {e}"))
 }
 
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Keychain-Task fehlgeschlagen: {e}"))?
+}
+
 #[tauri::command]
 pub async fn store_secret(account: String, secret: String) -> Result<(), String> {
-    entry(&account)?
-        .set_password(&secret)
-        .map_err(|e| format!("Secret konnte nicht gespeichert werden: {e}"))
+    blocking(move || {
+        entry(&account)?
+            .set_password(&secret)
+            .map_err(|e| format!("Secret konnte nicht gespeichert werden: {e}"))
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn load_secret(account: String) -> Result<Option<String>, String> {
-    let entry = entry(&account)?;
-    match entry.get_password() {
+    blocking(move || match entry(&account)?.get_password() {
         Ok(secret) => Ok(Some(secret)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("Secret konnte nicht geladen werden: {e}")),
-    }
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn delete_secret(account: String) -> Result<(), String> {
-    let entry = entry(&account)?;
-    match entry.delete_credential() {
+    blocking(move || match entry(&account)?.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("Secret konnte nicht gelöscht werden: {e}")),
-    }
+    })
+    .await
 }
 
 #[cfg(test)]

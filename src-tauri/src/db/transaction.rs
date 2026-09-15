@@ -438,7 +438,9 @@ impl TransactionManager {
                 match msg {
                     SimpleQueryMessage::Row(row) => {
                         if columns.is_empty() {
-                            columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                            columns = super::unique_column_names(
+                                row.columns().iter().map(|c| c.name().to_string()).collect(),
+                            );
                         }
                         let mut obj = serde_json::Map::new();
                         for (i, col) in columns.iter().enumerate() {

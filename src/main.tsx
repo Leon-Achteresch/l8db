@@ -12,12 +12,15 @@ import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
+import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { restoreSshTunnel } from "@/lib/ssh";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
+const disposeNativeGuards = installNativeGuards();
+if (import.meta.hot) import.meta.hot.dispose(disposeNativeGuards);
 const disposeAppearance = initAppearance();
 const executionSettings = initExecutionSettings();
 if (import.meta.hot) import.meta.hot.dispose(executionSettings.dispose);

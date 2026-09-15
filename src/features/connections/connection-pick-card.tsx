@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,13 +28,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection } from "@/lib/connections";
-import { SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
+import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
+
+export const CONNECTION_ROW_GRID =
+  "grid grid-cols-[minmax(0,1.4fr)_minmax(6rem,0.5fr)_minmax(7rem,0.7fr)_minmax(8rem,0.85fr)_6.75rem] items-center gap-2";
 
 interface Props {
   connection: SavedConnection;
   active: boolean;
-  connecting: boolean;
   onOpen: () => void;
   onOpenWindow: () => void;
   onEdit: () => void;
@@ -48,7 +49,6 @@ interface Props {
 export function ConnectionPickCard({
   connection,
   active,
-  connecting,
   onOpen,
   onOpenWindow,
   onEdit,
@@ -62,53 +62,98 @@ export function ConnectionPickCard({
   const favorite = Boolean(connection.favorite);
   const provider = providerFor(connection);
   const endpoint = connectionSummary(connection.connectionString, connection.kind);
-  const host = endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
+  const target = endpoint.database || endpoint.host;
+  const schema = connection.schemas?.length ? connection.schemas.join(", ") : "—";
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <motion.article
           layout
-          initial={reduce ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileHover={reduce ? undefined : { y: -1 }}
-          whileTap={reduce ? undefined : { scale: 0.99 }}
-          transition={{ ...SPRING_PRESS, layout: SPRING_LAYOUT }}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ layout: SPRING_LAYOUT }}
           className={cn(
-            "relative flex flex-col justify-between gap-2.5 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-3.5",
-            active ? "border-foreground/25" : "border-border",
+            "group relative rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-muted/40",
+            active && "border-foreground/20 bg-muted/50",
           )}
         >
           {connection.color && (
             <span
               aria-hidden
-              className="absolute inset-y-0 left-0 w-1"
+              className="absolute inset-y-1.5 left-0 w-0.5 rounded-full"
               style={{ backgroundColor: connection.color }}
             />
           )}
-          <div className="flex items-center justify-between gap-2">
+          <div className={CONNECTION_ROW_GRID}>
             <button
               type="button"
               onClick={onOpen}
-              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+              className="flex min-w-0 items-center gap-2.5 text-left"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-muted/50">
-                <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-4" />
+              <span className="grid size-7 shrink-0 place-items-center rounded-md border bg-background">
+                <ProviderLogo
+                  providerId={provider.id}
+                  kind={connection.kind}
+                  className="size-3.5"
+                />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <ConnectionStatusIndicator connectionId={connection.id} />
-                  <h2 className="min-w-0 truncate text-sm font-semibold tracking-tight">
+                  <h2 className="min-w-0 truncate text-[13px] font-medium tracking-tight">
                     {connection.name}
                   </h2>
                 </span>
-                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-[11px] text-muted-foreground">
                   {provider.name}
+                  {connection.ssh?.host ? " · SSH" : ""}
                   {colorLabel ? ` · ${colorLabel}` : ""}
+                  {connection.readOnly ? " · Nur lesen" : ""}
                 </p>
               </span>
             </button>
-            <div className="flex shrink-0 items-center gap-0">
+            <button
+              type="button"
+              onClick={onOpen}
+              className="min-w-0 truncate text-left font-mono text-[12px] text-muted-foreground"
+              title={endpoint.user || undefined}
+            >
+              {endpoint.user || "—"}
+            </button>
+            <button
+              type="button"
+              onClick={onOpen}
+              className="min-w-0 truncate text-left font-mono text-[12px] text-muted-foreground"
+              title={`${target}${schema !== "—" ? ` · ${schema}` : ""}`}
+            >
+              <span className="block truncate">{target}</span>
+              {schema !== "—" && <span className="block truncate text-[10px]">{schema}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={onOpen}
+              className="flex min-w-0 flex-wrap items-center gap-1 text-left"
+              title={connection.tags?.map((tag) => tag.name).join(", ") || undefined}
+            >
+              {connection.tags?.length ? (
+                connection.tags.map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="truncate">{tag.name}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-[12px] text-muted-foreground">—</span>
+              )}
+            </button>
+            <div className="flex items-center justify-end gap-0.5">
               <button
                 type="button"
                 aria-label={
@@ -167,25 +212,6 @@ export function ConnectionPickCard({
               </DropdownMenu>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onOpen}
-            className="flex w-full items-center justify-between gap-2 text-left"
-          >
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-tight text-muted-foreground">
-              {endpoint.user ? (
-                <span className="text-foreground/80">{endpoint.user} · </span>
-              ) : null}
-              {host}
-              {endpoint.database ? ` / ${endpoint.database}` : null}
-            </span>
-            <AnimatedBadge
-              status={connecting ? "loading" : active ? "success" : "neutral"}
-              size="sm"
-            >
-              {connecting ? "…" : active ? "Aktiv" : "Öffnen"}
-            </AnimatedBadge>
-          </button>
         </motion.article>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">

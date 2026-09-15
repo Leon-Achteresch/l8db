@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { HammerIcon, LoaderIcon } from "lucide-react";
+import { Hammer, Loader } from "lucide";
+import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
@@ -70,7 +71,10 @@ export function CompileInvalidButton({ types }: { types: string[] }) {
         "disabled:pointer-events-none disabled:opacity-50",
       )}
     >
-      {loading ? <LoaderIcon className="size-3 animate-spin" /> : <HammerIcon className="size-3" />}
+      <MorphIcon
+        icon={loading ? Loader : Hammer}
+        className={cn("size-3", loading && "animate-spin")}
+      />
       <span className="tabular-nums">Compile invalid ({items.length})</span>
     </button>
   );

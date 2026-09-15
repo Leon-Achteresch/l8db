@@ -1,14 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  Copy,
-  House,
-  RefreshCw,
-  TriangleAlert,
-  WifiOff,
-} from "lucide-react";
+import { Check, Copy, TriangleAlert, WifiOff } from "lucide";
+import { ArrowLeft, ChevronDown, House, RefreshCw } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -73,8 +66,6 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
     reset();
   }
 
-  const Icon = chunkFailure ? WifiOff : TriangleAlert;
-
   return (
     <div className="connection-empty relative grid min-h-0 w-full flex-1 place-items-center overflow-y-auto p-6">
       <div
@@ -93,7 +84,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
       >
         <div className="flex items-center gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl border bg-destructive/10 text-destructive">
-            <Icon className="size-5" />
+            <MorphIcon icon={chunkFailure ? WifiOff : TriangleAlert} className="size-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -160,11 +151,11 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
               </pre>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={copyDetails}>
-                  {copied ? (
-                    <Check className="size-3.5" data-icon="inline-start" />
-                  ) : (
-                    <Copy className="size-3.5" data-icon="inline-start" />
-                  )}
+                  <MorphIcon
+                    icon={copied ? Check : Copy}
+                    className="size-3.5"
+                    data-icon="inline-start"
+                  />
                   {copied ? "Kopiert" : "Details kopieren"}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={reset}>

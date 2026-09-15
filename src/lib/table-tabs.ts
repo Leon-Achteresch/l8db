@@ -23,6 +23,7 @@ export type QueryTab = {
   fileMtime?: number | null;
   externalChange?: boolean;
   bookmarks?: number[];
+  bookmarkSlots?: BookmarkSlots;
   autoRun?: boolean;
 };
 export type QueryFileInfo = { path: string; mtime: number | null; savedSql?: string };
@@ -148,6 +149,7 @@ interface TabsState {
   reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
   toggleQueryBookmark: (id: string, line: number) => void;
   setQueryBookmarks: (id: string, lines: number[]) => void;
+  setQueryBookmarkSlot: (id: string, slot: number, line: number | null) => void;
   clearQueryBookmarks: (id: string) => void;
 }
 
@@ -159,6 +161,28 @@ export function normalizeBookmarks(lines: number[]): number[] {
 
 export function queryTabBookmarks(tab: QueryTab): number[] {
   return normalizeBookmarks(tab.bookmarks ?? []);
+}
+
+export type BookmarkSlots = Record<string, number>;
+
+export function normalizeBookmarkSlots(slots: BookmarkSlots | undefined): BookmarkSlots {
+  if (!slots) return {};
+  const next: BookmarkSlots = {};
+  for (const [key, line] of Object.entries(slots)) {
+    const slot = Number(key);
+    if (Number.isInteger(slot) && slot >= 1 && slot <= 9 && Number.isInteger(line) && line > 0) {
+      next[String(slot)] = line;
+    }
+  }
+  return next;
+}
+
+export function queryTabBookmarkSlots(tab: QueryTab): BookmarkSlots {
+  return normalizeBookmarkSlots(tab.bookmarkSlots);
+}
+
+function pruneBookmarkSlots(slots: BookmarkSlots, lines: number[]): BookmarkSlots {
+  return Object.fromEntries(Object.entries(slots).filter(([, line]) => lines.includes(line)));
 }
 
 function patchQueryTab(tabs: Tab[], id: string, patch: Partial<QueryTab>): Tab[] {
@@ -572,7 +596,15 @@ export const useTableTabs = create<TabsState>()(
           const next = current.includes(line)
             ? current.filter((entry) => entry !== line)
             : normalizeBookmarks([...current, line]);
-          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+          const patch: Partial<QueryTab> = { bookmarks: next };
+          if (!next.includes(line)) {
+            const slots = queryTabBookmarkSlots(tab);
+            const pruned = pruneBookmarkSlots(slots, next);
+            if (Object.keys(pruned).length !== Object.keys(slots).length) {
+              patch.bookmarkSlots = pruned;
+            }
+          }
+          return storeFor(patchQueryTab(state.tabs, id, patch), state);
         }),
 
       setQueryBookmarks: (id, lines) =>
@@ -581,14 +613,52 @@ export const useTableTabs = create<TabsState>()(
           if (!tab || tab.kind !== "query") return state;
           const next = normalizeBookmarks(lines);
           const current = queryTabBookmarks(tab);
-          if (next.length === current.length && next.every((line, i) => line === current[i])) {
+          const slots = queryTabBookmarkSlots(tab);
+          const pruned = pruneBookmarkSlots(slots, next);
+          const slotsChanged = Object.keys(pruned).length !== Object.keys(slots).length;
+          if (
+            !slotsChanged &&
+            next.length === current.length &&
+            next.every((line, i) => line === current[i])
+          ) {
             return state;
           }
-          return storeFor(patchQueryTab(state.tabs, id, { bookmarks: next }), state);
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              bookmarks: next,
+              ...(slotsChanged ? { bookmarkSlots: pruned } : {}),
+            }),
+            state,
+          );
+        }),
+
+      setQueryBookmarkSlot: (id, slot, line) =>
+        set((state) => {
+          const tab = state.tabs.find((t) => t.kind === "query" && t.id === id);
+          if (!tab || tab.kind !== "query") return state;
+          if (!Number.isInteger(slot) || slot < 1 || slot > 9) return state;
+          const key = String(slot);
+          const slots = queryTabBookmarkSlots(tab);
+          if (line === null) {
+            if (!(key in slots)) return state;
+            const { [key]: _removed, ...rest } = slots;
+            return storeFor(patchQueryTab(state.tabs, id, { bookmarkSlots: rest }), state);
+          }
+          if (!Number.isInteger(line) || line <= 0) return state;
+          if (slots[key] === line) return state;
+          return storeFor(
+            patchQueryTab(state.tabs, id, {
+              bookmarkSlots: { ...slots, [key]: line },
+              bookmarks: normalizeBookmarks([...queryTabBookmarks(tab), line]),
+            }),
+            state,
+          );
         }),
 
       clearQueryBookmarks: (id) =>
-        set((state) => storeFor(patchQueryTab(state.tabs, id, { bookmarks: [] }), state)),
+        set((state) =>
+          storeFor(patchQueryTab(state.tabs, id, { bookmarks: [], bookmarkSlots: {} }), state),
+        ),
     }),
     {
       name: "l8db.table-tabs",

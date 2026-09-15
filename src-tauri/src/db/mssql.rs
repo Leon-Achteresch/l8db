@@ -83,7 +83,12 @@ pub fn lit(value: &str) -> String {
 fn map_err(e: tiberius::error::Error) -> String {
     match e {
         tiberius::error::Error::Server(token) => {
-            format!("SQL Server {}: {}", token.code(), token.message())
+            format!(
+                "SQL Server {}: {} (line {})",
+                token.code(),
+                token.message(),
+                token.line()
+            )
         }
         other => format!("SQL Server: {other}"),
     }
@@ -436,7 +441,11 @@ async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, Stri
             .map_err(map_err)?;
         let columns: Vec<String> = rows
             .first()
-            .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
+            .map(|r| {
+                super::unique_column_names(
+                    r.columns().iter().map(|c| c.name().to_string()).collect(),
+                )
+            })
             .unwrap_or_default();
         let data: Vec<Vec<serde_json::Value>> = rows
             .iter()
@@ -1053,7 +1062,11 @@ impl DatabaseAdapter for MssqlAdapter {
             let rows = plan?;
             let columns: Vec<String> = rows
                 .first()
-                .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
+                .map(|r| {
+                    super::unique_column_names(
+                        r.columns().iter().map(|c| c.name().to_string()).collect(),
+                    )
+                })
                 .unwrap_or_default();
             let data: Vec<Vec<serde_json::Value>> = rows
                 .iter()

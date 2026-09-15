@@ -1,10 +1,12 @@
-import { HammerIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
+import { Hammer, Loader } from "lucide";
+import { TriangleAlertIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SqlEditorPane } from "@/features/functions/function-view";
+import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { PackageMemberOutline } from "@/features/functions/package-member-outline";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import {
@@ -25,6 +27,7 @@ import {
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export interface PackageViewProps {
   schema: string;
@@ -125,11 +128,11 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
             disabled={compileState.status === "loading" || current.isLoading}
             title="Kompiliert das gespeicherte Objekt in der Datenbank neu — ohne den Quelltext zu ändern."
           >
-            {compileState.status === "loading" ? (
-              <LoaderIcon data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <HammerIcon data-icon="inline-start" />
-            )}
+            <MorphIcon
+              icon={compileState.status === "loading" ? Loader : Hammer}
+              data-icon="inline-start"
+              className={cn(compileState.status === "loading" && "animate-spin")}
+            />
             Kompilieren
           </Button>
         ) : null}
@@ -176,6 +179,7 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
               readOnly={!edit.editing}
               onChange={edit.editing ? edit.setSql : undefined}
               revealLine={compileResult?.line ?? revealLine}
+              error={objectError(compileResult?.message, edit.state)}
             />
             {compileResult && compileResult.status !== "VALID" ? (
               <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">

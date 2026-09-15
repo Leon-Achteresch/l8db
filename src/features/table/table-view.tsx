@@ -1,8 +1,10 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { DownloadIcon, FilterXIcon, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { Download, Loader } from "lucide";
+import { FilterXIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { TableColumnsList } from "@/features/table/table-columns-list";
+import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
@@ -61,6 +64,7 @@ import {
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
+import { cn } from "@/lib/utils";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 const ViewDefinitionPanel = lazy(() =>
@@ -96,6 +100,7 @@ export function TableView({
   drawerId,
 }: TableViewProps) {
   const routeNavigate = routeApi.useNavigate();
+  const appNavigate = useNavigate();
   const pane = useWorkspacePane();
   const inDrawer = drawerId !== undefined;
   const { data: views } = useViewsQuery();
@@ -293,12 +298,22 @@ export function TableView({
   }, [refetch]);
 
   const handleNavigateToTable = useMemo(() => {
-    return (targetSchema: string, targetTable: string, filterWhere?: string) => {
-      useFkDrawerStack
-        .getState()
-        .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
+    return (targetSchema: string, targetTable: string, filterWhere?: string, inTab?: boolean) => {
+      if (!inTab) {
+        useFkDrawerStack
+          .getState()
+          .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
+        return;
+      }
+      useFkDrawerStack.getState().clear();
+      openTab({ schema: targetSchema, table: targetTable, entityType: "table" });
+      void appNavigate({
+        to: "/tables/$schema/$table",
+        params: { schema: targetSchema, table: targetTable },
+        search: filterWhere ? { fkFilter: filterWhere } : {},
+      });
     };
-  }, []);
+  }, [openTab, appNavigate]);
 
   useEffect(() => {
     if (inDrawer) return;
@@ -514,11 +529,10 @@ export function TableView({
                         aria-label="Export"
                         disabled={exporting}
                       >
-                        {exporting ? (
-                          <LoaderIcon className="size-3.5 animate-spin" />
-                        ) : (
-                          <DownloadIcon className="size-3.5" />
-                        )}
+                        <MorphIcon
+                          icon={exporting ? Loader : Download}
+                          className={cn("size-3.5", exporting && "animate-spin")}
+                        />
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
@@ -671,11 +685,10 @@ export function TableView({
                       aria-label="Export"
                       disabled={exporting}
                     >
-                      {exporting ? (
-                        <LoaderIcon className="size-3.5 animate-spin" />
-                      ) : (
-                        <DownloadIcon className="size-3.5" />
-                      )}
+                      <MorphIcon
+                        icon={exporting ? Loader : Download}
+                        className={cn("size-3.5", exporting && "animate-spin")}
+                      />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -723,6 +736,10 @@ export function TableView({
 
       <TabsContent value="indexes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TableIndexesList schema={schema} table={table} />
+      </TabsContent>
+
+      <TabsContent value="constraints" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableConstraintsList schema={schema} table={table} />
       </TabsContent>
 
       <TabsContent value="rls" className="flex min-h-0 flex-1 flex-col overflow-hidden">

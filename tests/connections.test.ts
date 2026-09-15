@@ -753,6 +753,29 @@ describe("Passwort-Abfrage", () => {
   });
 });
 
+describe("Passwort-Fallback aus dem Session-Cache", () => {
+  test("injiziert das gecachte Passwort, wenn es im String fehlt", async () => {
+    await storeSecret("cache-pw", "tiger");
+    const stripped = {
+      ...direct,
+      id: "cache-pw",
+      kind: "oracle" as const,
+      connectionString: "oracle://scott@db.example.com:1521/ORCL",
+    };
+    expect(effectiveConnectionString(stripped)).toBe(
+      "oracle://scott:tiger@db.example.com:1521/ORCL",
+    );
+    expect(
+      effectiveConnectionString({
+        ...stripped,
+        connectionString: "oracle://scott:eigen@db.example.com:1521/ORCL",
+      }),
+    ).toBe("oracle://scott:eigen@db.example.com:1521/ORCL");
+    await deleteSecret("cache-pw");
+    expect(effectiveConnectionString(stripped)).toBe(stripped.connectionString);
+  });
+});
+
 describe("mssql windows auth", () => {
   test("trusted connection needs no user", () => {
     const url = parseConnectionUrl("mssql://sqlhost:1433/master?trusted_connection=true", "mssql");

@@ -1,4 +1,6 @@
-import { DatabaseIcon, SearchIcon, TableIcon } from "lucide-react";
+import { Database, Table } from "lucide";
+import { SearchIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,11 +72,10 @@ export function DatasetSourcePicker({
               source.schema === schema && source.name === table && "bg-primary/10",
             )}
           >
-            {source.kind === "View" ? (
-              <DatabaseIcon className="size-4 text-muted-foreground" />
-            ) : (
-              <TableIcon className="size-4 text-muted-foreground" />
-            )}
+            <MorphIcon
+              icon={source.kind === "View" ? Database : Table}
+              className="size-4 text-muted-foreground"
+            />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{source.name}</span>
               <span className="text-xs text-muted-foreground">

@@ -7,6 +7,7 @@
 
 @theme {
   --font-sans: Geist, Avenir, Helvetica, Arial, sans-serif;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -460,11 +461,68 @@
 
 .l8db-bookmark-glyph {
   background-color: color-mix(in oklch, var(--primary) 70%, transparent);
-  border-radius: 999px;
-  width: 8px !important;
-  height: 8px !important;
-  margin-left: 4px;
-  margin-top: 6px;
+  width: 11px !important;
+  height: 15px !important;
+  margin-left: 2px;
+  margin-top: 2px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+  position: relative;
+}
+
+.l8db-bookmark-slot-1::after,
+.l8db-bookmark-slot-2::after,
+.l8db-bookmark-slot-3::after,
+.l8db-bookmark-slot-4::after,
+.l8db-bookmark-slot-5::after,
+.l8db-bookmark-slot-6::after,
+.l8db-bookmark-slot-7::after,
+.l8db-bookmark-slot-8::after,
+.l8db-bookmark-slot-9::after {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--primary-foreground);
+}
+
+.l8db-bookmark-slot-1::after {
+  content: "1";
+}
+
+.l8db-bookmark-slot-2::after {
+  content: "2";
+}
+
+.l8db-bookmark-slot-3::after {
+  content: "3";
+}
+
+.l8db-bookmark-slot-4::after {
+  content: "4";
+}
+
+.l8db-bookmark-slot-5::after {
+  content: "5";
+}
+
+.l8db-bookmark-slot-6::after {
+  content: "6";
+}
+
+.l8db-bookmark-slot-7::after {
+  content: "7";
+}
+
+.l8db-bookmark-slot-8::after {
+  content: "8";
+}
+
+.l8db-bookmark-slot-9::after {
+  content: "9";
 }
 
 .driver-active [data-tour-ui],

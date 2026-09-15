@@ -1,19 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useNavigate } from "@tanstack/react-router";
+import { Check, ChevronDown, ChevronRight, Loader, Plus, Shield, User } from "lucide";
 import {
   CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
   LoaderIcon,
   PencilIcon,
   PlusIcon,
-  ShieldIcon,
   TrashIcon,
   TriangleAlertIcon,
   UndoIcon,
-  UserIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -297,11 +295,10 @@ export function UsersView({ name }: { name: string }) {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          {role.can_login ? (
-            <UserIcon className="size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ShieldIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
+          <MorphIcon
+            icon={role.can_login ? User : Shield}
+            className="size-4 shrink-0 text-muted-foreground"
+          />
           <span className="text-xs font-medium text-muted-foreground truncate">{role.name}</span>
           <Badge variant={role.can_login ? "default" : "secondary"}>
             {role.can_login ? "Login" : "Rolle"}
@@ -349,11 +346,11 @@ export function UsersView({ name }: { name: string }) {
               Abbrechen
             </Button>
             <Button variant="default" size="xs" onClick={handleSave} disabled={saving}>
-              {saving ? (
-                <LoaderIcon data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <CheckIcon data-icon="inline-start" />
-              )}
+              <MorphIcon
+                icon={saving ? Loader : Check}
+                data-icon="inline-start"
+                className={cn(saving && "animate-spin")}
+              />
               Speichern
             </Button>
           </div>
@@ -668,11 +665,10 @@ function SchemaTableGroup({
         onClick={() => setCollapsed(!collapsed)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
       >
-        {collapsed ? (
-          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
+        <MorphIcon
+          icon={collapsed ? ChevronRight : ChevronDown}
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
         <span className="text-xs font-medium font-mono">{schema}</span>
         <span className="text-xs text-muted-foreground">
           {tables.length} {tables.length === 1 ? "Objekt" : "Objekte"}
@@ -1179,11 +1175,10 @@ function CreateRoleDialog({
             Abbrechen
           </Button>
           <Button onClick={handleCreate} disabled={creating || !form.name.trim()}>
-            {creating ? (
-              <LoaderIcon className="size-4 animate-spin" />
-            ) : (
-              <PlusIcon className="size-4" />
-            )}
+            <MorphIcon
+              icon={creating ? Loader : Plus}
+              className={cn("size-4", creating && "animate-spin")}
+            />
             Erstellen
           </Button>
         </DialogFooter>

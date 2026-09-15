@@ -1,4 +1,6 @@
-import { DatabaseIcon, GitCompareIcon, LayersIcon, LoaderIcon, LockIcon } from "lucide-react";
+import { GitCompare, Layers, Loader, Lock } from "lucide";
+import { DatabaseIcon, GitCompareIcon, LayersIcon, LoaderIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useEffect, useState } from "react";
 
 import { ProviderLogo } from "@/components/provider-logo";
@@ -24,6 +26,7 @@ import { listDatabases, listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { cn } from "@/lib/utils";
 
 interface CompareSidePickerProps {
   title: string;
@@ -159,11 +162,10 @@ export function CompareSidePicker({
   return (
     <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3">
       <div className="flex items-center gap-2">
-        {lockConnection ? (
-          <LockIcon className="size-3.5 shrink-0 text-emerald-500" />
-        ) : (
-          <GitCompareIcon className="size-3.5 shrink-0 text-sky-500" />
-        )}
+        <MorphIcon
+          icon={lockConnection ? Lock : GitCompare}
+          className={cn("size-3.5 shrink-0", lockConnection ? "text-emerald-500" : "text-sky-500")}
+        />
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </span>
@@ -236,11 +238,13 @@ export function CompareSidePicker({
 
       <div className="flex flex-col gap-1">
         <Label className="flex items-center gap-1.5 text-xs">
-          {loadingSchemas ? (
-            <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <LayersIcon className="size-3.5 text-muted-foreground" />
-          )}
+          <MorphIcon
+            icon={loadingSchemas ? Loader : Layers}
+            className={cn(
+              "size-3.5",
+              loadingSchemas ? "animate-spin text-muted-foreground" : "text-muted-foreground",
+            )}
+          />
           Schema
         </Label>
         <Select

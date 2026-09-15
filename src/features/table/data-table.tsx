@@ -11,14 +11,13 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, Loader2 } from "lucide";
 import {
   ArrowDownIcon,
-  ArrowUpDownIcon,
   ArrowUpIcon,
   BinaryIcon,
   BracesIcon,
   CalendarIcon,
-  CheckIcon,
   ChevronFirstIcon,
   ChevronLastIcon,
   ChevronLeftIcon,
@@ -35,6 +34,7 @@ import {
   TypeIcon,
   XIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { animate } from "motion/react";
 import {
   useCallback,
@@ -286,7 +286,7 @@ function FkPreviewPopover({
   value: unknown;
   currentSchema: string;
   currentTable: string;
-  onNavigate: (schema: string, table: string, filter?: string) => void;
+  onNavigate: (schema: string, table: string, filter?: string, inTab?: boolean) => void;
   children: React.ReactNode;
 }) {
   const connection = useActiveConnection();
@@ -400,7 +400,7 @@ function FkPreviewPopover({
             className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
             onClick={() => {
               const filterSql = formatFkFilter(targetColumn, value);
-              onNavigate(targetSchema, targetTable, filterSql);
+              onNavigate(targetSchema, targetTable, filterSql, true);
             }}
           >
             In {targetSchema}.{targetTable} anzeigen
@@ -654,13 +654,12 @@ export function DataTable({
                           : "opacity-0 group-hover:opacity-100",
                     )}
                   >
-                    {sorted === "asc" ? (
-                      <ArrowUpIcon className="size-3" />
-                    ) : sorted === "desc" ? (
-                      <ArrowDownIcon className="size-3" />
-                    ) : (
-                      <ArrowUpDownIcon className="size-3 text-muted-foreground/45" />
-                    )}
+                    <MorphIcon
+                      icon={
+                        sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown
+                      }
+                      className={cn("size-3", !sorted && "text-muted-foreground/45")}
+                    />
                   </span>
                 </button>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -749,6 +748,18 @@ export function DataTable({
   const activeMatch = matches[matchIndex] ?? null;
 
   const [savedColumnSizing, setColumnSizing] = useTableViewState(stateKey, "columnSizing", {});
+  const fitColumnsToHeader = useSettingsStore((state) => state.fitColumnsToHeader);
+  const columnSizing = useMemo(() => {
+    if (!fitColumnsToHeader) return savedColumnSizing;
+    const fitted: Record<string, number> = {};
+    for (const column of order) {
+      fitted[column] = fitHeaderColumnWidth(
+        measureHeaderTitleWidth(column),
+        fkByColumn.has(column),
+      );
+    }
+    return { ...fitted, ...savedColumnSizing };
+  }, [fitColumnsToHeader, order, fkByColumn, savedColumnSizing]);
   const table = useReactTable({
     data,
     columns,
@@ -757,7 +768,7 @@ export function DataTable({
       columnOrder,
       columnVisibility,
       columnPinning,
-      columnSizing: savedColumnSizing,
+      columnSizing,
     },
     onColumnSizingChange: setColumnSizing,
     onSortingChange,
@@ -816,7 +827,6 @@ export function DataTable({
     [visibleColumns],
   );
   const visibleColumnIds = visibleDataColumns;
-  const columnSizing = table.getState().columnSizing;
   const columnWidths = useMemo(
     () => visibleColumns.map((column) => column.getSize()),
     [visibleColumns, columnSizing],
@@ -895,6 +905,9 @@ export function DataTable({
     );
     if (ok) setEditingCell(null);
   }, [editingCell, onSaveRow, isSaving, saveCellValue, emptyEditValue]);
+  const handleSaveCellRef = useRef(handleSaveCell);
+  handleSaveCellRef.current = handleSaveCell;
+  const commitEditingCell = useCallback(() => void handleSaveCellRef.current(), []);
 
   const applyColumnFilter = useCallback(() => {
     if (!filterColumn || !onApplyFilter) return;
@@ -1562,11 +1575,10 @@ export function DataTable({
               Verwerfen
             </Button>
             <Button size="sm" disabled={isInserting} onClick={() => void saveDraft()}>
-              {isInserting ? (
-                <Loader2Icon className="size-3.5 animate-spin" />
-              ) : (
-                <CheckIcon className="size-3.5" />
-              )}
+              <MorphIcon
+                icon={isInserting ? Loader2 : Check}
+                className={cn("size-3.5", isInserting && "animate-spin")}
+              />
               Speichern
             </Button>
           </div>
@@ -1581,7 +1593,7 @@ export function DataTable({
         ref={scrollRef}
         style={{ contain: "strict" }}
         className={cn(
-          "relative min-h-0 flex-1 basis-0 overflow-auto [scrollbar-gutter:stable] transition-opacity",
+          "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
           isFetching && "opacity-85",
           table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
         )}
@@ -1680,6 +1692,7 @@ export function DataTable({
                               handleCellEdit={handleCellEdit}
                               handleCellCopy={handleCellCopy}
                               setEditingCell={setEditingCell}
+                              commitEditingCell={commitEditingCell}
                               setInspectCell={setInspectCell}
                               setFkPickerCell={setFkPickerCell}
                               columnSizing={table.getState().columnSizing}

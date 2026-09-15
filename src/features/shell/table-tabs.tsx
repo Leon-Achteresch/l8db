@@ -1,13 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
+import { Columns2, Rows2 } from "lucide";
 import {
   ChevronDownIcon,
-  Columns2Icon,
   FolderOpenIcon,
   PlusIcon,
-  Rows2Icon,
   SquareIcon,
   SquareSplitHorizontalIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -92,15 +92,15 @@ export function TableTabs() {
   const closeTabNow = (tab: Tab) => {
     const key = tabKey(tab);
     const wasActive = isTabActive(tab);
-    const index = tabs.findIndex((t) => tabKey(t) === key);
-    closeTab(key);
-    if (!wasActive) return;
-    const next = tabs[index + 1] ?? tabs[index - 1];
-    if (next) {
-      navigateToTab(navigate, next);
-    } else {
-      void navigate({ to: "/" });
+    if (!wasActive) {
+      closeTab(key);
+      return;
     }
+    const index = tabs.findIndex((t) => tabKey(t) === key);
+    const next = tabs[index + 1] ?? tabs[index - 1];
+    void Promise.resolve(next ? navigateToTab(navigate, next) : navigate({ to: "/" })).finally(() =>
+      closeTab(key),
+    );
   };
 
   const [savingClose, setSavingClose] = useState(false);
@@ -164,9 +164,8 @@ export function TableTabs() {
       if (tab) closeToRightNow(tab);
       return;
     }
-    closeAllTabs();
     collapse();
-    void navigate({ to: "/" });
+    void navigate({ to: "/" }).finally(closeAllTabs);
   };
 
   const handleClose = (tab: Tab) => {
@@ -175,17 +174,19 @@ export function TableTabs() {
   };
 
   const closeOthersNow = (tab: Tab) => {
-    closeOtherTabs(tabKey(tab));
-    navigateToTab(navigate, tab);
+    void Promise.resolve(navigateToTab(navigate, tab)).finally(() => closeOtherTabs(tabKey(tab)));
   };
 
   const closeToRightNow = (tab: Tab) => {
     const index = tabs.findIndex((t) => tabKey(t) === tabKey(tab));
     const remaining = tabs.slice(0, index + 1);
-    closeTabsToRight(tabKey(tab));
     if (activeTab && !remaining.some((t) => tabKey(t) === tabKey(activeTab))) {
-      navigateToTab(navigate, tab);
+      void Promise.resolve(navigateToTab(navigate, tab)).finally(() =>
+        closeTabsToRight(tabKey(tab)),
+      );
+      return;
     }
+    closeTabsToRight(tabKey(tab));
   };
 
   const handleCloseOthers = (tab: Tab) => {
@@ -381,11 +382,10 @@ export function TableTabs() {
             aria-label={orientationLabel}
             className={iconButton}
           >
-            {orientation === "horizontal" ? (
-              <Rows2Icon className="size-3.5" />
-            ) : (
-              <Columns2Icon className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={orientation === "horizontal" ? Rows2 : Columns2}
+              className="size-3.5"
+            />
           </button>
         </Tooltip>
       )}

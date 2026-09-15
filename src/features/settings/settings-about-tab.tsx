@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Bug, Check, Copy, ExternalLink, Info, Terminal } from "lucide-react";
+import { Check, Copy } from "lucide";
+import { Bug, ExternalLink, Info, Terminal } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,11 +56,10 @@ export function SettingsAboutTab() {
           description="Laufzeitumgebung und Debug-Informationen für Support oder Fehlerberichte."
         >
           <Button variant="outline" size="sm" onClick={() => void copyDiagnosticInfo()}>
-            {copied ? (
-              <Check className="size-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={copied ? Check : Copy}
+              className={copied ? "size-3.5 text-emerald-500" : "size-3.5"}
+            />
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
           </Button>
         </SettingsRow>

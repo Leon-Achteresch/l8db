@@ -282,6 +282,59 @@ describe("Lesezeichen je Query-Tab", () => {
   });
 });
 
+describe("Nummerierte Lesezeichen-Slots", () => {
+  test("setQueryBookmarkSlot belegt und löst Slots, Zeile landet in Lesezeichen", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+
+    useTableTabs.getState().setQueryBookmarkSlot(id, 3, 12);
+    let tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toEqual({ 3: 12 });
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([12]);
+
+    useTableTabs.getState().setQueryBookmarkSlot(id, 3, null);
+    tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toEqual({});
+  });
+
+  test("ungültige Slots und Zeilen werden ignoriert", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+
+    useTableTabs.getState().setQueryBookmarkSlot(id, 0, 5);
+    useTableTabs.getState().setQueryBookmarkSlot(id, 10, 5);
+    useTableTabs.getState().setQueryBookmarkSlot(id, 1, 0);
+    useTableTabs.getState().setQueryBookmarkSlot(id, 1, -2);
+    useTableTabs.getState().setQueryBookmarkSlot(id, 2, null);
+    const tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toBeUndefined();
+  });
+
+  test("Slots werden beim Entfernen der Zeile bereinigt", () => {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    const id = useTableTabs.getState().openQueryTab();
+
+    useTableTabs.getState().setQueryBookmarkSlot(id, 1, 4);
+    useTableTabs.getState().setQueryBookmarkSlot(id, 2, 7);
+    useTableTabs.getState().toggleQueryBookmark(id, 4);
+    let tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toEqual({ 2: 7 });
+
+    useTableTabs.getState().setQueryBookmarks(id, [9]);
+    tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toEqual({});
+
+    useTableTabs.getState().setQueryBookmarkSlot(id, 5, 9);
+    useTableTabs.getState().clearQueryBookmarks(id);
+    tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
+    expect(tab?.kind === "query" ? tab.bookmarkSlots : null).toEqual({});
+    expect(tab?.kind === "query" ? tab.bookmarks : null).toEqual([]);
+  });
+});
+
 describe("tool tabs", () => {
   test("openToolTab öffnet einmalig und ist wieder auffindbar", () => {
     const a = addConnection("a");

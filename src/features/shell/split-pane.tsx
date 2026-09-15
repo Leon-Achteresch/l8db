@@ -51,7 +51,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
   const key = tab ? tabKey(tab) : `split-detail:${index}`;
-  const masterKey = useSplitView((state) => state.panes[0] ?? null);
+  const masterKey = useSplitView((state) =>
+    index > 0 ? (state.panes[index - 1] ?? `split-detail:${index - 1}`) : null,
+  );
   const source = usePaneSourceKey(masterKey);
   const target = usePaneSourceKey(key);
   const linkKey = index > 0 ? masterDetailKey(source, target) : null;
@@ -179,7 +181,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
                   </div>
                 }
               >
-                <MasterSelectionContext.Provider value={detailSql ? null : target}>
+                <MasterSelectionContext.Provider value={target}>
                   {detailSql && source ? (
                     <MasterDetailResult
                       key={linkKey}

@@ -11,6 +11,10 @@ export async function storeSecret(account: string, secret: string): Promise<void
   await persistSecret(account, secret);
 }
 
+export function peekSecret(account: string): string | null {
+  return sessionSecrets.get(account) ?? null;
+}
+
 export async function loadSecret(account: string): Promise<string | null> {
   const cached = sessionSecrets.get(account);
   if (cached !== undefined) return cached;

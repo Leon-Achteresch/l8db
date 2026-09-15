@@ -1,13 +1,14 @@
+import { Loader, Play } from "lucide";
 import {
   CheckIcon,
   ClipboardCopyIcon,
   LoaderIcon,
   MinusIcon,
   PencilIcon,
-  PlayIcon,
   PlusIcon,
   SquareArrowOutUpRightIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ import {
 import { fetchTableRows, listConstraints, listTableColumnsDetailed } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 import type { DataCompareSideSelection } from "./data-compare-side-picker";
 
@@ -263,11 +265,10 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       <div className="flex flex-wrap items-center gap-3">
         <Button size="sm" onClick={() => void runCompare()} disabled={!ready || running}>
-          {running ? (
-            <LoaderIcon className="size-3.5 animate-spin" />
-          ) : (
-            <PlayIcon className="size-3.5" />
-          )}
+          <MorphIcon
+            icon={running ? Loader : Play}
+            className={cn("size-3.5", running && "animate-spin")}
+          />
           {running ? "Vergleiche…" : "Vergleichen"}
         </Button>
         <span className="text-xs text-muted-foreground">

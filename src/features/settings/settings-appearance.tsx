@@ -10,7 +10,11 @@ export function SettingsAppearance() {
     uiScale,
     uiDensity,
     sidebarExtraCompact,
+    fitColumnsToHeader,
+    monochromeCells,
     setSidebarExtraCompact,
+    setFitColumnsToHeader,
+    setMonochromeCells,
     setUiScale,
     setUiDensity,
     resetAppearance,
@@ -82,13 +86,39 @@ export function SettingsAppearance() {
         />
       </SettingsRow>
       <SettingsRow
+        title="An Spaltentitel anpassen"
+        description="Tabellenspalten automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist."
+      >
+        <Switch
+          aria-label="An Spaltentitel anpassen"
+          checked={fitColumnsToHeader}
+          onCheckedChange={setFitColumnsToHeader}
+        />
+      </SettingsRow>
+      <SettingsRow
+        title="Einfarbige Tabellenwerte"
+        description="Zellwerte schwarz bzw. im Darkmode weiß anzeigen statt nach Datentyp einzufärben."
+      >
+        <Switch
+          aria-label="Einfarbige Tabellenwerte"
+          checked={monochromeCells}
+          onCheckedChange={setMonochromeCells}
+        />
+      </SettingsRow>
+      <SettingsRow
         title="Darstellung zurücksetzen"
-        description="Oberflächengröße, UI-Dichte und Seitenleistenabstände auf Standard zurücksetzen. Änderungen werden sofort angewendet und gespeichert."
+        description="Oberflächengröße, UI-Dichte, Spaltenbreiten und Seitenleistenabstände auf Standard zurücksetzen. Änderungen werden sofort angewendet und gespeichert."
       >
         <Button
           variant="outline"
           size="sm"
-          disabled={uiScale === 100 && uiDensity === "normal" && !sidebarExtraCompact}
+          disabled={
+            uiScale === 100 &&
+            uiDensity === "normal" &&
+            !sidebarExtraCompact &&
+            fitColumnsToHeader &&
+            !monochromeCells
+          }
           onClick={resetAppearance}
         >
           <RotateCcw className="size-3.5" />

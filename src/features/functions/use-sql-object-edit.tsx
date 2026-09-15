@@ -1,15 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Database, Loader, ShieldCheck } from "lucide";
 import {
   CheckCircleIcon,
-  DatabaseIcon,
-  LoaderIcon,
   PencilIcon,
-  ShieldCheckIcon,
   SquareArrowOutUpRightIcon,
   UndoIcon,
   XCircleIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +19,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export type SqlEditState =
   | { status: "idle" }
@@ -127,11 +127,11 @@ export function SqlEditActions({ edit }: { edit: SqlObjectEdit }) {
         disabled={busy}
         title="Kompiliert testweise und macht die Änderung sofort rückgängig — nichts wird gespeichert."
       >
-        {edit.state.status === "checking" ? (
-          <LoaderIcon data-icon="inline-start" className="animate-spin" />
-        ) : (
-          <ShieldCheckIcon data-icon="inline-start" />
-        )}
+        <MorphIcon
+          icon={edit.state.status === "checking" ? Loader : ShieldCheck}
+          data-icon="inline-start"
+          className={cn(edit.state.status === "checking" && "animate-spin")}
+        />
         Nur prüfen
       </Button>
       <Button
@@ -141,11 +141,11 @@ export function SqlEditActions({ edit }: { edit: SqlObjectEdit }) {
         disabled={busy}
         title="Führt das SQL wirklich aus — das Objekt existiert danach so in der Datenbank."
       >
-        {edit.state.status === "applying" ? (
-          <LoaderIcon data-icon="inline-start" className="animate-spin" />
-        ) : (
-          <DatabaseIcon data-icon="inline-start" />
-        )}
+        <MorphIcon
+          icon={edit.state.status === "applying" ? Loader : Database}
+          data-icon="inline-start"
+          className={cn(edit.state.status === "applying" && "animate-spin")}
+        />
         In Datenbank speichern
       </Button>
     </>

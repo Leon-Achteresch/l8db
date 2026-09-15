@@ -5,12 +5,20 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 import { buildEditorOptions } from "@/lib/editor-options";
 import { commandById, useHotkeysStore } from "@/lib/hotkeys";
-import { addSqlFormatAction, monaco, overflowWidgetsDomNode } from "@/lib/monaco";
+import {
+  addSqlFormatAction,
+  attachPlsqlLint,
+  monaco,
+  overflowWidgetsDomNode,
+  type SqlErrorSource,
+  showSqlError,
+} from "@/lib/monaco";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
 import { toMonacoSnippet } from "@/lib/snippets";
 import { lintUnknownTables } from "@/lib/sql-lint";
+import type { BookmarkSlots } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
 export interface QueryEditorApi {
@@ -50,12 +58,16 @@ interface QueryEditorPaneProps {
   onSave?: () => void;
   onRunSelection?: () => void;
   onRunStatement?: () => void;
+  onCheck?: () => void;
   onSelectionChange?: (selectedText: string) => void;
   onCursorChange?: (offset: number) => void;
   onPositionChange?: (position: EditorPosition) => void;
   highlight?: EditorHighlight | null;
+  error?: SqlErrorSource | null;
   bookmarks?: number[];
   onBookmarksChange?: (lines: number[]) => void;
+  bookmarkSlots?: BookmarkSlots;
+  onBookmarkSlotChange?: (slot: number, line: number | null) => void;
   onSearchTabs?: () => void;
   registry: SchemaRegistry;
   ref?: Ref<QueryEditorApi>;
@@ -97,12 +109,16 @@ export function QueryEditorPane({
   onSave,
   onRunSelection,
   onRunStatement,
+  onCheck,
   onSelectionChange,
   onCursorChange,
   onPositionChange,
   highlight,
+  error,
   bookmarks,
   onBookmarksChange,
+  bookmarkSlots,
+  onBookmarkSlotChange,
   onSearchTabs,
   registry,
   className,
@@ -114,14 +130,18 @@ export function QueryEditorPane({
   const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const bookmarkDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const bookmarksRef = useRef<number[]>(bookmarks ?? []);
+  const slotDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection[]>([]);
+  const slotsRef = useRef<BookmarkSlots>(bookmarkSlots ?? {});
   const suppressPublishRef = useRef(false);
   const onBookmarksChangeRef = useRef(onBookmarksChange);
+  const onBookmarkSlotChangeRef = useRef(onBookmarkSlotChange);
   const onSearchTabsRef = useRef(onSearchTabs);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const onSaveRef = useRef(onSave);
   const onRunSelectionRef = useRef(onRunSelection);
   const onRunStatementRef = useRef(onRunStatement);
+  const onCheckRef = useRef(onCheck);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onCursorChangeRef = useRef(onCursorChange);
   const onPositionChangeRef = useRef(onPositionChange);
@@ -133,10 +153,12 @@ export function QueryEditorPane({
   onSaveRef.current = onSave;
   onRunSelectionRef.current = onRunSelection;
   onRunStatementRef.current = onRunStatement;
+  onCheckRef.current = onCheck;
   onSelectionChangeRef.current = onSelectionChange;
   onCursorChangeRef.current = onCursorChange;
   onPositionChangeRef.current = onPositionChange;
   onBookmarksChangeRef.current = onBookmarksChange;
+  onBookmarkSlotChangeRef.current = onBookmarkSlotChange;
   onSearchTabsRef.current = onSearchTabs;
   registryRef.current = registry;
   const editorFontSize = useSettingsStore((s) => s.editorFontSize);
@@ -232,6 +254,90 @@ export function QueryEditorPane({
     editor.focus();
   };
 
+  const readSlotLine = (slot: number): number | null => {
+    const collection = slotDecorationsRef.current[slot - 1];
+    if (!collection) return slotsRef.current[String(slot)] ?? null;
+    const ranges = collection.getRanges();
+    return ranges.length > 0 ? ranges[0].startLineNumber : null;
+  };
+
+  const applySlots = (slots: BookmarkSlots) => {
+    const model = editorRef.current?.getModel();
+    if (!model) return;
+    const maxLine = model.getLineCount();
+    slotDecorationsRef.current.forEach((collection, index) => {
+      const line = slots[String(index + 1)];
+      collection.set(
+        line !== undefined && line >= 1 && line <= maxLine
+          ? [
+              {
+                range: new monaco.Range(line, 1, line, 1),
+                options: {
+                  isWholeLine: true,
+                  glyphMarginClassName: `l8db-bookmark-glyph l8db-bookmark-slot-${index + 1}`,
+                  glyphMarginHoverMessage: { value: `Lesezeichen ${index + 1}` },
+                  stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+                },
+              },
+            ]
+          : [],
+      );
+    });
+  };
+
+  const publishSlots = () => {
+    if (suppressPublishRef.current) return;
+    const changed: Array<[number, number | null]> = [];
+    for (let slot = 1; slot <= 9; slot += 1) {
+      const line = readSlotLine(slot);
+      if (line !== (slotsRef.current[String(slot)] ?? null)) changed.push([slot, line]);
+    }
+    if (changed.length === 0) return;
+    const next: BookmarkSlots = { ...slotsRef.current };
+    for (const [slot, line] of changed) {
+      if (line === null) delete next[String(slot)];
+      else next[String(slot)] = line;
+    }
+    slotsRef.current = next;
+    for (const [slot, line] of changed) onBookmarkSlotChangeRef.current?.(slot, line);
+  };
+
+  const setSlotAtCursor = (slot: number) => {
+    const editor = editorRef.current;
+    const collection = slotDecorationsRef.current[slot - 1];
+    if (!editor || !collection) return;
+    const line = editor.getPosition()?.lineNumber;
+    if (!line) return;
+    const current = readSlotLine(slot);
+    const target = current === line ? null : line;
+    collection.set(
+      target === null
+        ? []
+        : [
+            {
+              range: new monaco.Range(target, 1, target, 1),
+              options: {
+                isWholeLine: true,
+                glyphMarginClassName: `l8db-bookmark-glyph l8db-bookmark-slot-${slot}`,
+                glyphMarginHoverMessage: { value: `Lesezeichen ${slot}` },
+                stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+              },
+            },
+          ],
+    );
+    publishSlots();
+  };
+
+  const gotoSlotLine = (slot: number) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const line = readSlotLine(slot);
+    if (!line) return;
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.revealLineInCenterIfOutsideViewport(line);
+    editor.focus();
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -291,8 +397,13 @@ export function QueryEditorPane({
     editorRef.current = editor;
     decorationsRef.current = editor.createDecorationsCollection([]);
     bookmarkDecorationsRef.current = editor.createDecorationsCollection([]);
+    slotDecorationsRef.current = Array.from({ length: 9 }, () =>
+      editor.createDecorationsCollection([]),
+    );
     applyBookmarks(bookmarksRef.current);
+    applySlots(slotsRef.current);
     refreshLintMarkers(editor, registryRef.current);
+    const plsqlLint = attachPlsqlLint(editor);
 
     const selectionSub = editor.onDidChangeCursorSelection((event) => {
       const model = editor.getModel();
@@ -311,6 +422,7 @@ export function QueryEditorPane({
     let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
       onChangeRef.current(editor.getValue());
+      publishSlots();
       publishBookmarks();
       if (lintTimer) clearTimeout(lintTimer);
       lintTimer = setTimeout(() => {
@@ -320,11 +432,23 @@ export function QueryEditorPane({
     });
 
     const keydown = (event: KeyboardEvent) => {
+      const slotMatch = /^(?:Digit|Numpad)([1-9])$/.exec(event.code ?? "");
+      if (slotMatch && event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) {
+          const slot = Number(slotMatch[1]);
+          if (event.shiftKey) setSlotAtCursor(slot);
+          else gotoSlotLine(slot);
+        }
+        return;
+      }
       const overrides = useHotkeysStore.getState().overrides;
       const actions: Record<string, () => void> = {
         "query.run": () => onRunRef.current(),
         "query.runSelection": () => onRunSelectionRef.current?.(),
         "query.runStatement": () => onRunStatementRef.current?.(),
+        "query.check": () => onCheckRef.current?.(),
         "query.save": () => onSaveRef.current?.(),
         "query.format": () => {
           void editor.getAction("l8db.format-sql")?.run();
@@ -378,16 +502,23 @@ export function QueryEditorPane({
       container.removeEventListener("keydown", keydown, true);
       changeSub.dispose();
       selectionSub.dispose();
+      plsqlLint.dispose();
       intellisense.dispose();
       formatAction.dispose();
       decorationsRef.current = null;
       bookmarkDecorationsRef.current = null;
+      slotDecorationsRef.current = [];
       const model = editor.getModel();
       editor.dispose();
       model?.dispose();
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) showSqlError(editor, error ?? null);
+  }, [error]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -467,6 +598,29 @@ export function QueryEditorPane({
   }, [bookmarks]);
 
   useEffect(() => {
+    const next = bookmarkSlots ?? {};
+    const current: BookmarkSlots = {};
+    for (let slot = 1; slot <= 9; slot += 1) {
+      const line = readSlotLine(slot);
+      if (line !== null) current[String(slot)] = line;
+    }
+    const keys = new Set([...Object.keys(next), ...Object.keys(current)]);
+    let equal = true;
+    for (const key of keys) {
+      if ((next[key] ?? null) !== (current[key] ?? null)) {
+        equal = false;
+        break;
+      }
+    }
+    if (equal) {
+      slotsRef.current = current;
+      return;
+    }
+    slotsRef.current = { ...next };
+    applySlots(next);
+  }, [bookmarkSlots]);
+
+  useEffect(() => {
     const editor = editorRef.current;
     const decorations = decorationsRef.current;
     const model = editor?.getModel();
@@ -495,6 +649,7 @@ export function QueryEditorPane({
       editor.setValue(value);
       suppressPublishRef.current = false;
       applyBookmarks(bookmarksRef.current);
+      applySlots(slotsRef.current);
     }
   }, [value]);
 

@@ -1,14 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import {
-  CheckCircleIcon,
-  LoaderIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  ShieldCheckIcon,
-  TriangleAlertIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { Loader, Play, ShieldCheck } from "lucide";
+import { CheckCircleIcon, RotateCcwIcon, TriangleAlertIcon, XCircleIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { addSqlFormatAction, monaco } from "@/lib/monaco";
+import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -236,11 +231,11 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
             onClick={handleCompile}
             disabled={!isDirty || validation.status === "loading" || execution.status === "loading"}
           >
-            {validation.status === "loading" ? (
-              <LoaderIcon data-icon="inline-start" className="size-3.5 animate-spin" />
-            ) : (
-              <ShieldCheckIcon data-icon="inline-start" className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={validation.status === "loading" ? Loader : ShieldCheck}
+              data-icon="inline-start"
+              className={cn("size-3.5", validation.status === "loading" && "animate-spin")}
+            />
             Kompilieren
           </Button>
           <Button
@@ -249,17 +244,22 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
             onClick={handleExecute}
             disabled={!isDirty || execution.status === "loading"}
           >
-            {execution.status === "loading" ? (
-              <LoaderIcon data-icon="inline-start" className="size-3.5 animate-spin" />
-            ) : (
-              <PlayIcon data-icon="inline-start" className="size-3.5" />
-            )}
+            <MorphIcon
+              icon={execution.status === "loading" ? Loader : Play}
+              data-icon="inline-start"
+              className={cn("size-3.5", execution.status === "loading" && "animate-spin")}
+            />
             Ausführen
           </Button>
         </div>
       </div>
 
-      <TriggerEditorPane value={currentValue} onChange={handleChange} />
+      <TriggerEditorPane
+        value={currentValue}
+        onChange={handleChange}
+        error={feedbackState.status === "error" ? feedbackState.message : null}
+        errorPrefix={buildDropSql()}
+      />
 
       {feedbackState.status !== "idle" && feedbackState.status !== "loading" && (
         <FeedbackPanel state={feedbackState} />
@@ -304,9 +304,11 @@ function FeedbackPanel({
 interface TriggerEditorPaneProps {
   value: string;
   onChange: (value: string) => void;
+  error: string | null;
+  errorPrefix: string;
 }
 
-function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
+function TriggerEditorPane({ value, onChange, error, errorPrefix }: TriggerEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
@@ -356,9 +358,11 @@ function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
     });
 
     const formatAction = addSqlFormatAction(editor);
+    const plsqlLint = attachPlsqlLint(editor);
 
     return () => {
       changeSub.dispose();
+      plsqlLint.dispose();
       formatAction.dispose();
       editor.dispose();
       editorRef.current = null;
@@ -375,6 +379,17 @@ function TriggerEditorPane({ value, onChange }: TriggerEditorPaneProps) {
   useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    showSqlError(
+      editor,
+      error
+        ? { message: error, text: errorPrefix + editor.getValue(), base: -errorPrefix.length }
+        : null,
+    );
+  }, [error]);
 
   return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
 }

@@ -110,9 +110,11 @@ impl PoolManager {
     }
 }
 
+pub const IDLE_CHECK_AFTER: Duration = Duration::from_secs(30);
+
 pub struct BlockingPool<T> {
     permits: tokio::sync::Semaphore,
-    idle: std::sync::Mutex<Vec<T>>,
+    idle: std::sync::Mutex<Vec<(T, std::time::Instant)>>,
 }
 
 impl<T: Send + 'static> BlockingPool<T> {
@@ -123,12 +125,13 @@ impl<T: Send + 'static> BlockingPool<T> {
         }
     }
 
-    pub async fn run<R, F, O, Fut>(&self, open: O, f: F) -> Result<R, String>
+    pub async fn run<R, F, O, Fut, C>(&self, open: O, check: C, f: F) -> Result<R, String>
     where
         R: Send + 'static,
         F: FnOnce(&T) -> Result<R, String> + Send + 'static,
         O: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<T, String>>,
+        C: FnOnce(&T) -> bool + Send + 'static,
     {
         let _permit = self
             .permits
@@ -140,6 +143,15 @@ impl<T: Send + 'static> BlockingPool<T> {
             .lock()
             .map_err(|_| "Verbindungspool blockiert".to_string())?
             .pop();
+        let idle = match idle {
+            Some((conn, last_used)) if last_used.elapsed() > IDLE_CHECK_AFTER => {
+                tokio::task::spawn_blocking(move || check(&conn).then_some(conn))
+                    .await
+                    .map_err(|e| format!("Datenbank-Task fehlgeschlagen: {e}"))?
+            }
+            Some((conn, _)) => Some(conn),
+            None => None,
+        };
         let conn = match idle {
             Some(conn) => conn,
             None => open().await?,
@@ -152,7 +164,7 @@ impl<T: Send + 'static> BlockingPool<T> {
         .map_err(|e| format!("Datenbank-Task fehlgeschlagen: {e}"))?;
         if result.is_ok() {
             if let Ok(mut idle) = self.idle.lock() {
-                idle.push(conn);
+                idle.push((conn, std::time::Instant::now()));
             }
         }
         result
@@ -183,6 +195,7 @@ mod tests {
             tasks.push(tokio::spawn(async move {
                 pool.run(
                     || async { Ok(opened.fetch_add(1, Ordering::SeqCst)) },
+                    |_| true,
                     move |_conn| {
                         let now = active.fetch_add(1, Ordering::SeqCst) + 1;
                         peak.fetch_max(now, Ordering::SeqCst);
@@ -202,9 +215,31 @@ mod tests {
         let failed = pool
             .run(
                 || async { Ok(99usize) },
+                |_| true,
                 |_| Err::<(), String>("kaputt".into()),
             )
             .await;
         assert_eq!(failed, Err("kaputt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn blocking_pool_replaces_stale_connections_that_fail_check() {
+        let pool = BlockingPool::<usize>::new(1);
+        pool.run(|| async { Ok(1) }, |_| true, |_| Ok::<(), String>(()))
+            .await
+            .unwrap();
+        if let Ok(mut idle) = pool.idle.lock() {
+            idle[0].1 = std::time::Instant::now() - IDLE_CHECK_AFTER * 2;
+        }
+        let seen = pool
+            .run(|| async { Ok(2) }, |_| false, |c| Ok::<usize, String>(*c))
+            .await
+            .unwrap();
+        assert_eq!(seen, 2);
+        let reused = pool
+            .run(|| async { Ok(3) }, |_| false, |c| Ok::<usize, String>(*c))
+            .await
+            .unwrap();
+        assert_eq!(reused, 2);
     }
 }

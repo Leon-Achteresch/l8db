@@ -71,7 +71,7 @@ function DrawerChrome({
         transformOrigin: "right center",
       }}
       className={cn(
-        "pointer-events-auto absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-200 ease-out",
+        "pointer-events-auto absolute inset-y-0 right-0 flex min-h-0 flex-col overflow-hidden border-l bg-background shadow-2xl transition-transform duration-250 ease-smooth-out",
         isBack ? "rounded-l-xl brightness-[0.94]" : "rounded-l-none",
       )}
     >
@@ -227,14 +227,16 @@ export function FkDrawerStack() {
   }, [stack.length]);
 
   const openInTab = useCallback(
-    (schema: string, table: string) => {
+    (schema: string, table: string, filter?: string, filterRaw?: boolean) => {
+      clear();
       openTab({ schema, table, entityType: "table" });
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema, table },
+        search: filter ? { fkFilter: filter, ...(filterRaw ? { fkRaw: true } : {}) } : {},
       });
     },
-    [openTab, navigate],
+    [clear, openTab, navigate],
   );
 
   if (stack.length === 0) return null;
@@ -270,7 +272,9 @@ export function FkDrawerStack() {
                 onFocus={() => popTo(entry.id)}
                 onClose={() => (depth === 0 ? pop() : useFkDrawerStack.getState().popTo(entry.id))}
                 onCloseAll={() => clear()}
-                onOpenTab={() => openInTab(entry.schema, entry.table)}
+                onOpenTab={() =>
+                  openInTab(entry.schema, entry.table, entry.filter, entry.filterRaw)
+                }
                 title={`${entry.schema}.${entry.table}`}
                 subtitle={entry.filter}
               >

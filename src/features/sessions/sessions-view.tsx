@@ -1,11 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  ActivityIcon,
-  CalendarClockIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  LockIcon,
-} from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide";
+import { ActivityIcon, CalendarClockIcon, LockIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -243,11 +239,10 @@ export function SessionsView() {
                           >
                             <td colSpan={9} className="px-3 py-1.5 font-medium">
                               <span className="inline-flex items-center gap-1.5">
-                                {collapsed ? (
-                                  <ChevronRightIcon className="size-3.5" />
-                                ) : (
-                                  <ChevronDownIcon className="size-3.5" />
-                                )}
+                                <MorphIcon
+                                  icon={collapsed ? ChevronRight : ChevronDown}
+                                  className="size-3.5"
+                                />
                                 {group.label}
                                 <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                                   {group.sessions.length}

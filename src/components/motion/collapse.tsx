@@ -15,7 +15,7 @@ function prefersReducedMotion() {
   );
 }
 
-export function Collapse({ open, children, className, durationMs = 240 }: CollapseProps) {
+export function Collapse({ open, children, className, durationMs = 250 }: CollapseProps) {
   const [mounted, setMounted] = useState(open);
   const [shown, setShown] = useState(open);
 
@@ -56,7 +56,7 @@ export function Collapse({ open, children, className, durationMs = 240 }: Collap
       style={{
         display: "grid",
         gridTemplateRows: shown ? "1fr" : "0fr",
-        transition: `grid-template-rows ${durationMs}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+        transition: `grid-template-rows ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)`,
         contain: "layout paint",
       }}
       className={cn("motion-reduce:transition-none", className)}

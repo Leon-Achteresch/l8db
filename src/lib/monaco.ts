@@ -1,3 +1,6 @@
+import "monaco-editor/features/register.all";
+import "monaco-editor/editor/contrib/suggest/browser/suggestController";
+import "monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands";
 import * as monaco from "monaco-editor/editor/editor.api";
 import "monaco-editor/languages/definitions/sql/register";
 import {
@@ -12,6 +15,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
+import { lintPlsql, type SqlMarker, sqlErrorMarkers } from "@/lib/sql-diagnostics";
 import {
   formatSqlWith,
   type SqlDialect,
@@ -71,6 +75,20 @@ const plsqlKeywords = [
   "PERFORM",
   "SLICE",
 ];
+
+monaco.editor.addKeybindingRules([
+  { keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, command: "editor.action.gotoLine" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.LeftArrow, command: "cursorWordLeft" },
+  { keybinding: monaco.KeyMod.WinCtrl | monaco.KeyCode.RightArrow, command: "cursorWordRight" },
+  {
+    keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow,
+    command: "cursorWordLeftSelect",
+  },
+  {
+    keybinding: monaco.KeyMod.WinCtrl | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow,
+    command: "cursorWordRightSelect",
+  },
+]);
 
 monaco.languages.register({ id: "plsql" });
 monaco.languages.setLanguageConfiguration("plsql", sqlConf);
@@ -139,7 +157,7 @@ monaco.editor.defineTheme("l8db-dark", {
   },
 });
 
-function activeConnectionKind(): DatabaseKind | null {
+export function activeConnectionKind(): DatabaseKind | null {
   const { connections, activeId } = useConnectionsStore.getState();
   return connections.find((connection) => connection.id === activeId)?.kind ?? null;
 }
@@ -238,6 +256,85 @@ export function addSqlFormatAction(
     dispose() {
       unsubscribe();
       action.dispose();
+    },
+  };
+}
+
+function setSqlMarkers(model: monaco.editor.ITextModel, owner: string, markers: SqlMarker[]) {
+  const length = model.getValueLength();
+  monaco.editor.setModelMarkers(
+    model,
+    owner,
+    markers
+      .filter((marker) => marker.start >= 0 && marker.start <= length)
+      .map((marker) => {
+        const start = model.getPositionAt(marker.start);
+        const end = model.getPositionAt(Math.max(marker.end, marker.start + 1));
+        return {
+          severity:
+            marker.severity === "error"
+              ? monaco.MarkerSeverity.Error
+              : monaco.MarkerSeverity.Warning,
+          message: marker.message,
+          startLineNumber: start.lineNumber,
+          startColumn: start.column,
+          endLineNumber: end.lineNumber,
+          endColumn: end.column,
+        };
+      }),
+  );
+}
+
+export interface SqlErrorSource {
+  message: string;
+  text?: string;
+  base?: number;
+}
+
+export function showSqlError(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  error: SqlErrorSource | null,
+): void {
+  const model = editor.getModel();
+  if (!model) return;
+  const markers = error
+    ? sqlErrorMarkers(
+        error.message,
+        error.text ?? model.getValue(),
+        error.base ?? 0,
+        activeConnectionKind(),
+      )
+    : [];
+  setSqlMarkers(model, "l8db-sql-error", markers);
+  const first = markers.find((marker) => marker.start >= 0);
+  if (first) editor.revealPositionInCenterIfOutsideViewport(model.getPositionAt(first.start));
+}
+
+export function attachPlsqlLint(editor: monaco.editor.IStandaloneCodeEditor): monaco.IDisposable {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let kind = activeConnectionKind();
+  const run = () => {
+    const model = editor.getModel();
+    if (!model) return;
+    const enabled = kind === "oracle" && ["sql", "plsql"].includes(model.getLanguageId());
+    setSqlMarkers(model, "l8db-plsql-lint", enabled ? lintPlsql(model.getValue()) : []);
+  };
+  run();
+  const changeSub = editor.onDidChangeModelContent(() => {
+    clearTimeout(timer);
+    timer = setTimeout(run, 300);
+  });
+  const unsubscribe = useConnectionsStore.subscribe(() => {
+    const next = activeConnectionKind();
+    if (next === kind) return;
+    kind = next;
+    run();
+  });
+  return {
+    dispose() {
+      clearTimeout(timer);
+      changeSub.dispose();
+      unsubscribe();
     },
   };
 }

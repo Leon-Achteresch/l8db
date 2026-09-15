@@ -46,6 +46,7 @@ export type DataTableRowProps = {
   handleCellEdit: (row: Row<TableRow>, columnId: string) => void;
   handleCellCopy: (value: unknown) => void;
   setEditingCell: Dispatch<SetStateAction<EditingCell | null>>;
+  commitEditingCell: () => void;
   setInspectCell: Dispatch<SetStateAction<InspectCell | null>>;
   setFkPickerCell: Dispatch<SetStateAction<FkPickerCell | null>>;
   columnSizing: ColumnSizingState;
@@ -85,6 +86,7 @@ export const DataTableRow = memo(function DataTableRow({
   handleCellEdit,
   handleCellCopy,
   setEditingCell,
+  commitEditingCell,
   setInspectCell,
   setFkPickerCell,
 }: DataTableRowProps) {
@@ -147,6 +149,7 @@ export const DataTableRow = memo(function DataTableRow({
             handleCellEdit={handleCellEdit}
             handleCellCopy={handleCellCopy}
             setEditingCell={setEditingCell}
+            commitEditingCell={commitEditingCell}
             setInspectCell={setInspectCell}
             setFkPickerCell={setFkPickerCell}
             editingCell={isCellEditing ? editingCell : null}

@@ -4,6 +4,8 @@ import { normalizeFilterExpressionQuotes, parseFilterExpression } from "../src/l
 import { compileFilterConditions } from "../src/lib/sql-filter";
 
 const columns = ["STATUS", "name", "id", 'odd"column', "with]bracket", "with`tick"];
+const eq = (column: string, value: string) =>
+  `CAST("${column}" AS TEXT) LIKE '${value}' ESCAPE '!'`;
 const compile = (source: string) => {
   const parsed = parseFilterExpression(source, columns, "sqlite");
   return compileFilterConditions(parsed.conditions, parsed.combinator, "sqlite");
@@ -13,12 +15,12 @@ test("normalizes typographic opening quotes for Oracle and preserves text punctu
   for (const source of [`"STATUS" = ‚ABG'`, `"STATUS" = ‘ABG’`, `"STATUS" = ‚ABG‘`]) {
     const parsed = parseFilterExpression(source, columns, "oracle");
     expect(compileFilterConditions(parsed.conditions, parsed.combinator, "oracle")).toBe(
-      `"STATUS" = 'ABG'`,
+      `UPPER(TO_CHAR("STATUS")) LIKE UPPER('ABG') ESCAPE '!'`,
     );
     expect(normalizeFilterExpressionQuotes(source)).toBe(`"STATUS" = 'ABG'`);
   }
-  expect(compile("name = ‘O’Brien’")).toBe(`"name" = 'O’Brien'`);
-  expect(compile("name = ‚O'Brien'")).toBe(`"name" = 'O''Brien'`);
+  expect(compile("name = ‘O’Brien’")).toBe(eq("name", "O’Brien"));
+  expect(compile("name = ‚O'Brien'")).toBe(eq("name", "O''Brien"));
   expect(normalizeFilterExpressionQuotes("name IN (‚ABG', ‘ANG’) AND id >= 1")).toBe(
     "name IN ('ABG', 'ANG') AND id >= 1",
   );
@@ -42,11 +44,11 @@ test("filter expressions normalize extra outer quotes and preserve internal apos
     `"STATUS" = '''ANG'''`,
     `"STATUS" = '''''ANG'''''`,
   ]) {
-    expect(compile(expression)).toBe(`"STATUS" = 'ANG'`);
+    expect(compile(expression)).toBe(eq("STATUS", "ANG"));
   }
-  expect(compile(`name = 'O''Brien'`)).toBe(`"name" = 'O''Brien'`);
-  expect(compile(`name = '''O''''Brien'''`)).toBe(`"name" = 'O''Brien'`);
-  expect(compile(`name = '  ANG  '`)).toBe(`"name" = '  ANG  '`);
+  expect(compile(`name = 'O''Brien'`)).toBe(eq("name", "O''Brien"));
+  expect(compile(`name = '''O''''Brien'''`)).toBe(eq("name", "O''Brien"));
+  expect(compile(`name = '  ANG  '`)).toBe(eq("name", "  ANG  "));
 });
 
 test("parses identifiers, comparisons, optional WHERE and uniform parenthesized groups", () => {
@@ -69,7 +71,7 @@ test("parses identifiers, comparisons, optional WHERE and uniform parenthesized 
 
 test("parses lists and NULL checks without splitting quoted punctuation or keywords", () => {
   expect(compile(`name IN ('a,b', 'AND OR', 'O''Brien', '''ANG''')`)).toBe(
-    `"name" IN ('a,b', 'AND OR', 'O''Brien', 'ANG')`,
+    `(${eq("name", "a,b")} OR ${eq("name", "AND OR")} OR ${eq("name", "O''Brien")} OR ${eq("name", "ANG")})`,
   );
   expect(compile(`id NOT IN (1, 2) AND name IS NOT NULL AND "STATUS" IS NULL`)).toBe(
     '"id" NOT IN (1, 2) AND "name" IS NOT NULL AND "STATUS" IS NULL',
@@ -79,7 +81,7 @@ test("parses lists and NULL checks without splitting quoted punctuation or keywo
     compileFilterConditions(parsed.conditions, parsed.combinator, "postgres", [
       { name: "id", data_type: "integer" },
     ]),
-  ).toBe(`"id" = '001'`);
+  ).toBe(`"id" = 001`);
 });
 
 test("rejects incomplete, unsupported or unsafe expressions without dropping clauses", () => {
@@ -94,20 +96,15 @@ test("rejects incomplete, unsupported or unsafe expressions without dropping cla
     "id = 1 UNION SELECT 1",
     "name = 'unclosed",
     "missing = 1",
-    `"status" = 'ANG'`,
     "id IN ()",
     "id IN (1,)",
     "id IN (SELECT id FROM entries)",
-    "id = NULL",
-    "id BETWEEN 1 AND 2",
     "(id = 1",
     "id = 1)",
     "id = 1 AND",
     "id = 1 OR id = 2 AND id = 3",
     "(id = 1 OR id = 2) AND id = 3",
     "name = ''",
-    "id IN (1, '2')",
-    "name LIKE '%ANG%'",
   ]) {
     expect(() => parseFilterExpression(expression, columns), expression).toThrow();
   }
@@ -116,6 +113,39 @@ test("rejects incomplete, unsupported or unsafe expressions without dropping cla
   expect(() =>
     parseFilterExpression(`${"(".repeat(66)}id = 1${")".repeat(66)}`, columns),
   ).toThrow();
+});
+
+test("accepts unquoted values, LIKE, BETWEEN, NULL comparisons and case-insensitive columns", () => {
+  const conditions = (source: string) =>
+    parseFilterExpression(source, columns).conditions.map(({ column, operator, value }) => ({
+      column,
+      operator,
+      value,
+    }));
+  expect(conditions("status = abg")).toEqual([{ column: "STATUS", operator: "eq", value: "abg" }]);
+  expect(conditions(`"status" = 'ANG'`)).toEqual([
+    { column: "STATUS", operator: "eq", value: "ANG" },
+  ]);
+  expect(conditions("name like '%an%'")).toEqual([
+    { column: "name", operator: "contains", value: "an" },
+  ]);
+  expect(conditions("name LIKE 'an%'")[0].operator).toBe("startsWith");
+  expect(conditions("name ILIKE '%an'")[0].operator).toBe("endsWith");
+  expect(conditions("name LIKE 'an'")[0].operator).toBe("eq");
+  expect(conditions("id between 1 and 5")).toEqual([
+    { column: "id", operator: "gte", value: "1" },
+    { column: "id", operator: "lte", value: "5" },
+  ]);
+  expect(conditions("name = NULL AND id != null")).toEqual([
+    { column: "name", operator: "isNull", value: "" },
+    { column: "id", operator: "isNotNull", value: "" },
+  ]);
+  expect(conditions("name in (abc, 2026-01-01, 3)")).toEqual([
+    { column: "name", operator: "in", value: '["abc","2026-01-01","3"]' },
+  ]);
+  for (const source of ["name = id", "name like '%a%b%'", "name like '%'", "id = 1;", "id = ;"]) {
+    expect(() => parseFilterExpression(source, columns), source).toThrow();
+  }
 });
 
 test("honors provider restrictions and ambiguous identifiers", () => {
@@ -140,6 +170,9 @@ test("compiled parsed filters select the expected SQLite rows and safely quote S
     const rows = (expression: string) =>
       db.query(`SELECT id FROM entries WHERE ${compile(expression)} ORDER BY id`).all();
     expect(rows(`"STATUS" = '''ANG'''`)).toEqual([{ id: 1 }]);
+    expect(rows("status = ang")).toEqual([{ id: 1 }]);
+    expect(rows("name like '%brien'")).toEqual([{ id: 1 }]);
+    expect(rows("status <> 'ang'")).toEqual([{ id: 2 }, { id: 3 }]);
     expect(rows(`name IN ('O''Brien', 'a,b') AND id < 3`)).toEqual([{ id: 1 }, { id: 2 }]);
     expect(rows(`name = 'x''); DROP TABLE entries; --'`)).toEqual([{ id: 3 }]);
     expect(db.query("SELECT count(*) AS total FROM entries").get()).toEqual({ total: 3 });

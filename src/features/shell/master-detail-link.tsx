@@ -1,5 +1,7 @@
-import { ArrowDownIcon, ArrowRightIcon, PlayIcon, XIcon } from "lucide-react";
-import { lazy, Suspense, useRef, useState } from "react";
+import { ArrowDown, ArrowRight } from "lucide";
+import { ArrowRightIcon, PlayIcon, XIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
+import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,19 +47,25 @@ const registry = { schemas: [], tables: [], columns: [] };
 
 export function MasterDetailLink({
   master,
+  masterIndex,
   detail,
   detailIndex,
   vertical = false,
 }: {
   master?: Tab;
+  masterIndex: number;
   detail?: Tab;
   detailIndex: number;
   vertical?: boolean;
 }) {
-  const source = usePaneSourceKey(master ? tabKey(master) : null);
+  const masterPaneKey = master ? tabKey(master) : `split-detail:${masterIndex}`;
+  const source = usePaneSourceKey(masterPaneKey);
   const target = usePaneSourceKey(detail ? tabKey(detail) : `split-detail:${detailIndex}`);
   const key = masterDetailKey(source, target);
-  const masterConnectionId = usePaneConnectionId(master ? tabKey(master) : null);
+  const masterConnectionId = usePaneConnectionId(masterPaneKey);
+  const masterIsDetail = useMasterDetail((state) =>
+    Object.keys(state.scripts).some((entry) => JSON.parse(entry)[1] === source),
+  );
   const sameDatabase =
     source &&
     target &&
@@ -71,6 +79,7 @@ export function MasterDetailLink({
   const [draft, setDraft] = useState("");
   const [previewSql, setPreviewSql] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState(0);
+  const [autoRelation, setAutoRelation] = useState(false);
   const editorRef = useRef<QueryEditorApi>(null);
   const targetConnectionId = usePaneConnectionId(
     detail ? tabKey(detail) : `split-detail:${detailIndex}`,
@@ -84,14 +93,14 @@ export function MasterDetailLink({
     setPreviewSql(draft);
     setPreviewId((value) => value + 1);
   };
-  const loadDraft = (value: string) => {
+  const loadDraft = useCallback((value: string) => {
     setDraft(value);
     setPreviewSql(null);
-  };
+  }, []);
   const error = masterDetailScriptError(draft);
   const available =
     key &&
-    (master?.kind === "table" || master?.kind === "query") &&
+    (master?.kind === "table" || master?.kind === "query" || masterIsDetail) &&
     (!detail || detail.kind === "table" || detail.kind === "query");
   const save = () => {
     if (!key || error) return;
@@ -104,6 +113,7 @@ export function MasterDetailLink({
   const edit = () => {
     setSavedKey(key && savedScripts[key] ? key : "");
     const tableTab = detail ?? master;
+    setAutoRelation(!sql && !(key && savedScripts[key]));
     setDraft(
       (sql ? qualifyMasterDetail(sql, sourceColumn) : undefined) ??
         (key && savedScripts[key]
@@ -142,11 +152,7 @@ export function MasterDetailLink({
               sql ? "border-primary text-primary" : "border-border text-muted-foreground",
             )}
           >
-            {vertical ? (
-              <ArrowDownIcon className="size-4" />
-            ) : (
-              <ArrowRightIcon className="size-4" />
-            )}
+            <MorphIcon icon={vertical ? ArrowDown : ArrowRight} className="size-4" />
           </button>
         ) : null}
       </ResizableHandle>
@@ -159,8 +165,9 @@ export function MasterDetailLink({
           <DialogHeader>
             <DialogTitle>Master-Detail-SQL</DialogTitle>
             <DialogDescription>
-              Beziehung auswählen, SQL prüfen, anwenden. Die Details folgen danach deiner
-              Master-Zeile.
+              Das SQL wird aus der Fremdschlüssel-Beziehung vorbelegt. Anwenden reicht; danach folgt
+              das Detail der ausgewählten Master-Zeile. Jedes Detail kann selbst Master für den
+              nächsten Bereich sein.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
@@ -229,12 +236,13 @@ export function MasterDetailLink({
                   table={master.table}
                   selectedColumn={selection?.column}
                   target={detail?.kind === "table" ? detail : undefined}
+                  autoLoad={autoRelation}
                   onLoad={loadDraft}
                 />
               </ConnectionScopeContext.Provider>
             )}
             <div className="flex shrink-0 items-center gap-2">
-              <span className="text-xs font-medium">2 · SQL</span>
+              <span className="text-xs font-medium">SQL</span>
               <span className="text-xs text-muted-foreground">Master-Wert einfügen:</span>
               <select
                 aria-label="Master-Spaltenreferenz einfügen"

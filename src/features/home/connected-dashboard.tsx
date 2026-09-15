@@ -20,6 +20,7 @@ import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DisconnectButton } from "@/features/connections/disconnect-button";
 import { connectionSummary, providerFor, queryErrorMessage } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
@@ -125,6 +126,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </p>
           </div>
           <div className="flex items-center gap-2" data-tour="dashboard-actions">
+            <DisconnectButton />
             <Button
               variant="outline"
               size="sm"

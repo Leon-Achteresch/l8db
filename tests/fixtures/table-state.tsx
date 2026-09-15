@@ -10,6 +10,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
+import { TooltipProvider } from "../../src/components/ui/tooltip";
 import { TableView } from "../../src/features/table/table-view";
 import { useConnectionsStore } from "../../src/lib/connections";
 import { useDbSelectionStore } from "../../src/lib/db-selection";
@@ -90,8 +91,10 @@ const router = createRouter({
 });
 createRoot(document.getElementById("root")!).render(
   <HotkeysProvider>
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <TooltipProvider>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </TooltipProvider>
   </HotkeysProvider>,
 );

@@ -2,6 +2,7 @@ import { type Column, createCell, flexRender } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { memo, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
+import { useSettingsStore } from "@/lib/settings";
 import { cellPreviewLimit, tableCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
 import type { DataTableRowProps } from "./data-table-row";
@@ -40,6 +41,7 @@ type DataTableCellProps = Pick<
   | "handleCellEdit"
   | "handleCellCopy"
   | "setEditingCell"
+  | "commitEditingCell"
   | "setInspectCell"
   | "setFkPickerCell"
 > & {
@@ -71,6 +73,7 @@ export const DataTableCell = memo(function DataTableCell({
   handleCellEdit,
   handleCellCopy,
   setEditingCell,
+  commitEditingCell,
   setInspectCell,
   setFkPickerCell,
   table,
@@ -95,6 +98,7 @@ export const DataTableCell = memo(function DataTableCell({
   const columnId = column.id;
   const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
+  const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const preview = useMemo(
     () => tableCellPreview(value, cellPreviewLimit(previewWidth, fontSize)),
     [value, previewWidth, fontSize],
@@ -104,7 +108,7 @@ export const DataTableCell = memo(function DataTableCell({
     return (
       <td
         style={{ width }}
-        className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-visible bg-primary/[0.04]"
+        className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-hidden bg-primary/[0.04]"
       >
         <div className="flex flex-col">
           <input
@@ -114,11 +118,14 @@ export const DataTableCell = memo(function DataTableCell({
             onChange={(e) =>
               setEditingCell((prev) => (prev ? { ...prev, value: e.target.value } : prev))
             }
+            onBlur={(e) => {
+              if (e.currentTarget.isConnected) commitEditingCell();
+            }}
             disabled={isSaving}
             placeholder="NULL"
             className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
           />
-          <div className="flex items-center gap-3 border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
+          <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
             <span className="flex items-center gap-1">
               <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
                 ↵
@@ -177,7 +184,10 @@ export const DataTableCell = memo(function DataTableCell({
       }}
       className={cn(
         "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
-        cellIndex > 0 && VALUE_CLASSES[preview.kind],
+        cellIndex > 0 &&
+          (monochromeCells
+            ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
+            : VALUE_CLASSES[preview.kind]),
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
         cellIndex === 0 && isMarked && "bg-primary/15 text-primary group-hover/row:bg-primary/20",

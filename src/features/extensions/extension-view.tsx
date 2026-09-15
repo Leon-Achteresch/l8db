@@ -1,14 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
-
+import { CheckCircle, Loader, Play } from "lucide";
 import {
   CheckCircleIcon,
-  LoaderIcon,
   PencilIcon,
-  PlayIcon,
   TriangleAlertIcon,
   UndoIcon,
   XCircleIcon,
 } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -208,11 +207,11 @@ export function ExtensionView({ name }: { name: string }) {
               onClick={handleValidate}
               disabled={validation.status === "loading" || execution.status === "loading"}
             >
-              {validation.status === "loading" ? (
-                <LoaderIcon data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <CheckCircleIcon data-icon="inline-start" />
-              )}
+              <MorphIcon
+                icon={validation.status === "loading" ? Loader : CheckCircle}
+                data-icon="inline-start"
+                className={validation.status === "loading" ? "animate-spin" : undefined}
+              />
               Prüfen
             </Button>
             <Button
@@ -221,11 +220,11 @@ export function ExtensionView({ name }: { name: string }) {
               onClick={handleExecute}
               disabled={execution.status === "loading"}
             >
-              {execution.status === "loading" ? (
-                <LoaderIcon data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <PlayIcon data-icon="inline-start" />
-              )}
+              <MorphIcon
+                icon={execution.status === "loading" ? Loader : Play}
+                data-icon="inline-start"
+                className={execution.status === "loading" ? "animate-spin" : undefined}
+              />
               Ausführen
             </Button>
           </>

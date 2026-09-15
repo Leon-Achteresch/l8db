@@ -1,12 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ChevronsUpDownIcon,
-  FilterIcon,
-  FilterXIcon,
-  Maximize2Icon,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide";
+import { FilterIcon, FilterXIcon, Maximize2Icon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -297,7 +292,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       <div
         ref={scrollRef}
         style={{ contain: "strict" }}
-        className="relative min-h-0 flex-1 overflow-auto"
+        className="relative min-h-0 flex-1 overflow-auto overscroll-none"
       >
         <table
           className="w-full border-separate border-spacing-0 text-sm"
@@ -335,7 +330,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                 const rank = sortRankFor(sorts, col);
                 return (
                   <th
-                    key={col}
+                    key={`col-${item.index}`}
                     aria-sort={
                       direction === "asc"
                         ? "ascending"
@@ -356,9 +351,16 @@ export const QueryResultTable = memo(function QueryResultTable({
                       className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted"
                     >
                       <span className="truncate">{col}</span>
-                      {direction === "asc" && <ArrowUpIcon className="size-3 shrink-0" />}
-                      {direction === "desc" && <ArrowDownIcon className="size-3 shrink-0" />}
-                      {!direction && <ChevronsUpDownIcon className="size-3 shrink-0 opacity-25" />}
+                      <MorphIcon
+                        icon={
+                          direction === "asc"
+                            ? ArrowUp
+                            : direction === "desc"
+                              ? ArrowDown
+                              : ChevronsUpDown
+                        }
+                        className={cn("size-3 shrink-0", !direction && "opacity-25")}
+                      />
                       {rank !== null && sorts.length > 1 && (
                         <span className="font-mono text-[10px] text-muted-foreground">{rank}</span>
                       )}
@@ -389,7 +391,10 @@ export const QueryResultTable = memo(function QueryResultTable({
                     normalizeResultFilterOperator(filter.operator),
                   );
                   return (
-                    <th key={col} className="border-b border-r bg-muted/70 px-1 py-1">
+                    <th
+                      key={`col-${item.index}`}
+                      className="border-b border-r bg-muted/70 px-1 py-1"
+                    >
                       <div className="flex items-center gap-1">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

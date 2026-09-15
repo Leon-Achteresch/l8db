@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { Star, StarOff } from "lucide";
 import {
   ActivityIcon,
   BracesIcon,
@@ -25,14 +26,15 @@ import {
   SquareFunctionIcon,
   SquareTerminalIcon,
   StarIcon,
-  StarOffIcon,
   TableIcon,
   TrashIcon,
+  UnplugIcon,
   UploadIcon,
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
-import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
+import { MorphIcon } from "morphicons/react";
+import { lazy, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -103,6 +105,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
@@ -182,11 +185,13 @@ export function AppSidebarPanel() {
   const activeConnection = useActiveConnection();
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setDatabase = useDbSelectionStore((state) => state.setDatabase);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const activeDatabase = useActiveDatabase();
@@ -196,14 +201,15 @@ export function AppSidebarPanel() {
   const serverGroups = useMemo(
     () =>
       sortServerGroups(
-        groupByServer(sortConnectionsByName(connections)),
+        groupByServer(sortConnectionsByName(connections), hostGroupRules),
         favoriteServerKeys,
         serverOrder,
       ),
-    [connections, favoriteServerKeys, serverOrder],
+    [connections, favoriteServerKeys, serverOrder, hostGroupRules],
   );
-  const grouped = serverGroups.some((group) => group.connections.length > 1);
+  const grouped = serverGroups.some((group) => group.connections.length > 1 || group.ruleId);
   const [connectionSearch, setConnectionSearch] = useState("");
+  const connectionSearchRef = useRef<HTMLInputElement>(null);
   const connectionRegexEnabled = useRegexEnabled("sidebar");
   const connectionSearchPatterns = useMemo(
     () =>
@@ -215,23 +221,26 @@ export function AppSidebarPanel() {
   const filteredServerGroups = useMemo(() => {
     const query = connectionSearch.trim().toLowerCase();
     if (!query) return serverGroups;
-    if (connectionSearchPatterns && !connectionSearchPatterns.ok) return [];
-
-    const matches = connectionSearchPatterns?.ok
-      ? (value: string) => connectionSearchPatterns.regexes.some((regex) => regex.test(value))
-      : (value: string) => {
-          const patterns = splitSearchPatterns(connectionSearch);
-          const lower = value.toLowerCase();
-          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
-        };
+    const patterns = splitSearchPatterns(connectionSearch).map((pattern) => pattern.toLowerCase());
+    const matches = (value: string) => {
+      const lower = value.toLowerCase();
+      if (patterns.some((pattern) => lower.includes(pattern))) return true;
+      return (
+        connectionSearchPatterns?.ok === true &&
+        connectionSearchPatterns.regexes.some((regex) => regex.test(value))
+      );
+    };
 
     return serverGroups
       .map((group) => {
         const connectionsInGroup = group.connections.filter((connection) => {
-          const tags = connection.tags?.map((tag) => tag.name).join(" ") ?? "";
-          return matches(
-            `${connection.name} ${connection.kind} ${connectionUser(connection)} ${tags}`,
-          );
+          return [
+            group.label,
+            connection.name,
+            connection.kind,
+            connectionUser(connection),
+            ...(connection.tags?.map((tag) => tag.name) ?? []),
+          ].some(matches);
         });
         return connectionsInGroup.length > 0 ? { ...group, connections: connectionsInGroup } : null;
       })
@@ -399,6 +408,7 @@ export function AppSidebarPanel() {
               <div className="relative px-1 pb-1.5">
                 <SearchIcon className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
                 <Input
+                  ref={connectionSearchRef}
                   value={connectionSearch}
                   onChange={(event) => setConnectionSearch(event.target.value)}
                   onKeyDown={(event) => event.stopPropagation()}
@@ -410,7 +420,16 @@ export function AppSidebarPanel() {
                 />
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div
+              role="group"
+              className="min-h-0 flex-1 overflow-y-auto"
+              onKeyDown={(event) => {
+                if (event.metaKey || event.ctrlKey || event.altKey) return;
+                if (event.key.length !== 1 && event.key !== "Backspace") return;
+                event.stopPropagation();
+                connectionSearchRef.current?.focus();
+              }}
+            >
               {connections.length === 0 ? (
                 <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
               ) : filteredServerGroups.length === 0 ? (
@@ -482,6 +501,15 @@ export function AppSidebarPanel() {
               )}
             </div>
             <div className="mt-1 shrink-0 border-t border-border/70 pt-1">
+              {activeConnection ? (
+                <DropdownMenuItem
+                  disabled={isSwitching}
+                  onSelect={() => void disconnectActiveConnection(queryClient)}
+                >
+                  <UnplugIcon className="text-muted-foreground" />
+                  Verbindung trennen
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem asChild>
                 <Link to="/connections">
                   <SettingsIcon className="text-muted-foreground" />
@@ -1167,7 +1195,7 @@ function SidebarEntityList({
                       <ContextMenuItem
                         onSelect={() => toggleFavoriteObject(item.schema, item.name)}
                       >
-                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
@@ -1230,7 +1258,7 @@ function SidebarEntityList({
                       <ContextMenuItem
                         onSelect={() => toggleFavoriteObject(item.schema, item.name)}
                       >
-                        {isFavorite(item.schema, item.name) ? <StarOffIcon /> : <StarIcon />}
+                        <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
                     </ContextMenuContent>

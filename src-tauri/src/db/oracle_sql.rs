@@ -140,6 +140,42 @@ pub(super) fn split_statements(sql: &str) -> Vec<String> {
     out
 }
 
+pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, String)> {
+    let words: Vec<&str> = tokens(sql).into_iter().map(|r| &sql[r]).collect();
+    let is = |i: usize, word: &str| words.get(i).is_some_and(|w| w.eq_ignore_ascii_case(word));
+    if !is(0, "CREATE") {
+        return None;
+    }
+    let mut i = 1;
+    while ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"]
+        .iter()
+        .any(|w| is(i, w))
+    {
+        i += 1;
+    }
+    let mut kind = words.get(i)?.to_ascii_uppercase();
+    if !matches!(
+        kind.as_str(),
+        "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE"
+    ) {
+        return None;
+    }
+    i += 1;
+    if matches!(kind.as_str(), "PACKAGE" | "TYPE") && is(i, "BODY") {
+        kind.push_str(" BODY");
+        i += 1;
+    }
+    let ident = |w: &str| match w.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
+        Some(quoted) => quoted.replace("\"\"", "\""),
+        None => w.to_ascii_uppercase(),
+    };
+    let first = ident(words.get(i)?);
+    if words.get(i + 1) == Some(&".") {
+        return Some((Some(first), ident(words.get(i + 2)?), kind));
+    }
+    Some((None, first, kind))
+}
+
 pub(super) fn bind_statement(sql: &str, count: usize) -> Result<(String, Vec<usize>), String> {
     let mut replacements = Vec::new();
     let mut used = Vec::new();
@@ -192,6 +228,19 @@ mod tests {
             bind_statement("SELECT $10 FROM dual", 10).unwrap_err(),
             "Die Anzahl der Oracle-Bind-Werte passt nicht zur Abfrage."
         );
+    }
+
+    #[test]
+    fn detects_created_object() {
+        assert_eq!(
+            created_object("CREATE OR REPLACE EDITIONABLE PACKAGE BODY hr.\"Demo\" AS END;"),
+            Some((Some("HR".into()), "Demo".into(), "PACKAGE BODY".into()))
+        );
+        assert_eq!(
+            created_object("create procedure p is begin null; end;"),
+            Some((None, "P".into(), "PROCEDURE".into()))
+        );
+        assert_eq!(created_object("CREATE TABLE t (id NUMBER)"), None);
     }
 
     const BODY: &str = "CREATE /* header */ OR REPLACE PACKAGE BODY demo AS\nPROCEDURE p IS\nx VARCHAR2(100) := q'[it's text;\n/\n-- not a comment]';\nBEGIN NULL; END p;\nEND demo;";

@@ -1,6 +1,8 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { AlertTriangle, CopyPlus, FileJson, Rat } from "lucide-react";
+import { FileJson as FileJsonData, Rat } from "lucide";
+import { AlertTriangle, CopyPlus, FileJson } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -119,11 +121,11 @@ export function ConnectionImportDialog({ open, onOpenChange }: Props) {
             </Button>
             {fileName && (
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                {source === "toad" ? (
-                  <Rat className="size-3.5 shrink-0" aria-label="Toad for Oracle" />
-                ) : (
-                  <FileJson className="size-3.5 shrink-0" aria-label="l8db" />
-                )}
+                <MorphIcon
+                  icon={source === "toad" ? Rat : FileJsonData}
+                  className="size-3.5 shrink-0"
+                  aria-label={source === "toad" ? "Toad for Oracle" : "l8db"}
+                />
                 <span className="min-w-0 truncate font-mono">{fileName}</span>
               </span>
             )}

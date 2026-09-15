@@ -182,6 +182,7 @@ impl CassandraAdapter {
             .iter()
             .map(|c| c.name().to_string())
             .collect();
+        let columns = super::unique_column_names(columns);
         let mut rows = Vec::new();
         for row in rows_result.rows::<Row>().map_err(map_err)? {
             let row = row.map_err(map_err)?;

@@ -1,9 +1,11 @@
-import { BugIcon, HammerIcon, LoaderIcon, PlayIcon, TriangleAlertIcon } from "lucide-react";
+import { Bug, Hammer, Loader } from "lucide";
+import { PlayIcon, TriangleAlertIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SqlEditorPane } from "@/features/functions/function-view";
+import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { ProcedureRunDialog } from "@/features/functions/procedure-run-dialog";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import {
@@ -24,6 +26,7 @@ import {
 } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { cn } from "@/lib/utils";
 
 export interface ProcedureViewProps {
   schema: string;
@@ -155,21 +158,21 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
             onClick={handleCompile}
             disabled={compileState.status === "loading" || !oid}
           >
-            {compileState.status === "loading" ? (
-              <LoaderIcon data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <HammerIcon data-icon="inline-start" />
-            )}
+            <MorphIcon
+              icon={compileState.status === "loading" ? Loader : Hammer}
+              data-icon="inline-start"
+              className={cn(compileState.status === "loading" && "animate-spin")}
+            />
             Kompilieren
           </Button>
         ) : null}
         {!edit.editing && capabilities.debugger ? (
           <Button variant="outline" size="xs" onClick={handleDebug} disabled={debugLoading || !oid}>
-            {debugLoading ? (
-              <LoaderIcon data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <BugIcon data-icon="inline-start" />
-            )}
+            <MorphIcon
+              icon={debugLoading ? Loader : Bug}
+              data-icon="inline-start"
+              className={cn(debugLoading && "animate-spin")}
+            />
             Debug-Sitzung starten
           </Button>
         ) : null}
@@ -184,6 +187,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={revealLine}
+        error={objectError(compileResult?.message, edit.state)}
       />
 
       <SqlEditFeedback state={edit.state} />

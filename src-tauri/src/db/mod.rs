@@ -1310,8 +1310,8 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         if let Some(hint) = db_err.hint() {
             msg.push_str(&format!("\nHinweis: {hint}"));
         }
-        if let Some(pos) = db_err.position() {
-            msg.push_str(&format!("\nPosition: {pos:?}"));
+        if let Some(tokio_postgres::error::ErrorPosition::Original(pos)) = db_err.position() {
+            msg.push_str(&format!("\nPosition: {pos}"));
         }
         msg
     } else {
@@ -1347,6 +1347,27 @@ pub(crate) fn attach_row_keys(rows: &mut [serde_json::Value], pk: &[String]) {
             }
         }
     }
+}
+
+pub(crate) fn unique_column_names(columns: Vec<String>) -> Vec<String> {
+    let mut seen: std::collections::HashSet<String> = columns.iter().cloned().collect();
+    let mut used = std::collections::HashSet::new();
+    columns
+        .into_iter()
+        .map(|column| {
+            if used.insert(column.clone()) {
+                return column;
+            }
+            let mut suffix = 1;
+            while seen.contains(&format!("{column}{suffix}")) {
+                suffix += 1;
+            }
+            let name = format!("{column}{suffix}");
+            seen.insert(name.clone());
+            used.insert(name.clone());
+            name
+        })
+        .collect()
 }
 
 pub(crate) fn rows_to_objects(
@@ -1640,6 +1661,15 @@ pub fn build_object_ddl(req: &ObjectDdlRequest) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unique_column_names_suffixes_duplicates() {
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            super::unique_column_names(names(&["barcode", "id", "barcode", "barcode1", "barcode"])),
+            names(&["barcode", "id", "barcode2", "barcode1", "barcode3"])
+        );
+    }
+
     use super::{redact_connection_string, split_statements, validate_table_filter};
 
     use super::{build_object_ddl, hex_blob, validate_object_name, ObjectDdlRequest};

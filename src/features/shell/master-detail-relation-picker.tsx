@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import { masterDetailRelationSql, masterDetailRelations } from "@/lib/master-detail-relations";
@@ -9,12 +9,14 @@ export function MasterDetailRelationPicker({
   table,
   selectedColumn,
   target,
+  autoLoad = false,
   onLoad,
 }: {
   schema: string;
   table: string;
   selectedColumn?: string;
   target?: { schema: string; table: string };
+  autoLoad?: boolean;
   onLoad: (sql: string) => void;
 }) {
   const connection = useActiveConnection();
@@ -35,6 +37,13 @@ export function MasterDetailRelationPicker({
     relations.find((entry) => entry.columns.some((column) => column.source === selectedColumn)) ??
     relations[0];
   const relation = relations.find((entry) => entry.id === chosen) ?? preferred;
+  const kind = connection?.kind;
+  const preferredId = preferred?.id;
+  useEffect(() => {
+    if (!autoLoad || !kind) return;
+    const entry = relations.find((item) => item.id === preferredId);
+    if (entry) onLoad(masterDetailRelationSql(entry, kind));
+  }, [autoLoad, kind, preferredId, relations, onLoad]);
   if (query.error)
     return (
       <div role="alert" className="text-xs text-destructive">
@@ -46,13 +55,17 @@ export function MasterDetailRelationPicker({
     );
   return (
     <div className="rounded-lg border bg-muted/20 p-3">
-      <div className="mb-2 text-xs font-medium">1 · Beziehung wählen</div>
+      <div className="mb-2 text-xs font-medium">Beziehung</div>
       <div className="flex items-center gap-2">
         <select
           aria-label="FK-/PK-Beziehung"
           value={relation?.id ?? ""}
           disabled={!relations.length}
-          onChange={(event) => setChosen(event.target.value)}
+          onChange={(event) => {
+            setChosen(event.target.value);
+            const entry = relations.find((item) => item.id === event.target.value);
+            if (entry && connection) onLoad(masterDetailRelationSql(entry, connection.kind));
+          }}
           className="min-w-0 flex-1 rounded-md border bg-background px-2 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
         >
           {!relations.length && (
@@ -85,20 +98,11 @@ export function MasterDetailRelationPicker({
             </optgroup>
           ))}
         </select>
-        <Button
-          variant="outline"
-          disabled={!relation || !connection}
-          onClick={() => {
-            if (relation && connection) onLoad(masterDetailRelationSql(relation, connection.kind));
-          }}
-        >
-          Beziehungs-SQL laden
-        </Button>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {relation
           ? `${table}.${relation.columns.map((column) => column.source).join(", ")} → ${relation.table}.${relation.columns.map((column) => column.target).join(", ")}`
-          : "Alternativ kannst du unten eigenes SQL schreiben."}
+          : "Keine Beziehung gefunden · unten eigenes SQL schreiben."}
       </p>
     </div>
   );

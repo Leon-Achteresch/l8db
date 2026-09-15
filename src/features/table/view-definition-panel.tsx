@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, CopyIcon, PlayIcon, RotateCcwIcon, ShieldCheckIcon } from "lucide-react";
+import { Check, Copy } from "lucide";
+import { PlayIcon, RotateCcwIcon, ShieldCheckIcon } from "lucide-react";
+import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -138,7 +140,7 @@ export function ViewDefinitionPanel({ schema, view }: ViewDefinitionPanelProps) 
           onClick={handleCopy}
           aria-label="SQL kopieren"
         >
-          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+          <MorphIcon icon={copied ? Check : Copy} className="size-3.5" />
         </Button>
 
         {isDirty ? (
