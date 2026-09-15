@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use oracle::sql_type::OracleType;
 pub use oracle::Connection;
 use oracle::{Connector, Row};
 
-use super::pool::{BlockingPool, PoolState};
+use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
@@ -125,6 +126,20 @@ fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> St
         quote(name),
         &rest[end..]
     )
+}
+
+fn connect_sync(user: &str, password: &str, connect_string: &str) -> Result<Connection, String> {
+    let mut connector = Connector::new(user, password, connect_string);
+    if user.eq_ignore_ascii_case("sys") {
+        connector.privilege(oracle::Privilege::Sysdba);
+    }
+    let mut conn = connector
+        .connect()
+        .map_err(|e| format!("Oracle-Verbindung fehlgeschlagen: {e}"))?;
+    conn.set_autocommit(true);
+    conn.execute(NLS_SESSION, &[])
+        .map_err(|e| format!("Oracle-Sitzungsformat fehlgeschlagen: {e}"))?;
+    Ok(conn)
 }
 
 fn map_err(e: oracle::Error) -> String {
@@ -333,26 +348,16 @@ impl OracleAdapter {
             self.password.clone(),
             self.connect_string.clone(),
         );
-        tokio::task::spawn_blocking(move || {
-            let mut connector = Connector::new(&user, &password, &connect_string);
-            if user.eq_ignore_ascii_case("sys") {
-                connector.privilege(oracle::Privilege::Sysdba);
-            }
-            let mut conn = connector
-                .connect()
-                .map_err(|e| format!("Oracle-Verbindung fehlgeschlagen: {e}"))?;
-            conn.set_autocommit(true);
-            conn.execute(NLS_SESSION, &[])
-                .map_err(|e| format!("Oracle-Sitzungsformat fehlgeschlagen: {e}"))?;
-            Ok(conn)
-        })
-        .await
-        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+        tokio::task::spawn_blocking(move || connect_sync(&user, &password, &connect_string))
+            .await
+            .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
-    async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
+    async fn conn(&self) -> Result<Arc<Mutex<(Connection, Instant)>>, String> {
         self.pool_state
-            .shared(&self.key, || self.open_connection())
+            .shared(&self.key, || async {
+                Ok(Mutex::new((self.open_raw().await?, Instant::now())))
+            })
             .await
     }
 
@@ -362,11 +367,21 @@ impl OracleAdapter {
         F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
     {
         let conn = self.conn().await?;
+        let (user, password, connect_string) = (
+            self.user.clone(),
+            self.password.clone(),
+            self.connect_string.clone(),
+        );
         tokio::task::spawn_blocking(move || {
-            let guard = conn
+            let mut guard = conn
                 .lock()
                 .map_err(|_| "Oracle-Verbindung ist blockiert".to_string())?;
-            f(&guard)
+            if guard.1.elapsed() > IDLE_CHECK_AFTER && guard.0.ping().is_err() {
+                guard.0 = connect_sync(&user, &password, &connect_string)?;
+            }
+            let result = f(&guard.0);
+            guard.1 = Instant::now();
+            result
         })
         .await
         .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
@@ -383,7 +398,7 @@ impl OracleAdapter {
                 Ok(BlockingPool::<Connection>::new(capacity))
             })
             .await?;
-        pool.run(|| self.open_raw(), f).await
+        pool.run(|| self.open_raw(), |c| c.ping().is_ok(), f).await
     }
 
     async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
