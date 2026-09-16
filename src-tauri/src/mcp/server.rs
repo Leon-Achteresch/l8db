@@ -177,16 +177,23 @@ impl Server {
         }
         let adapter = adapter(connection, &self.pool)?;
         let columns = run(config, async { adapter.list_columns(None, None, None).await }).await?;
-        let columns: Vec<ColumnInfo> = columns
-            .into_iter()
-            .filter(|column| connection.schemas.is_empty() || connection.schemas.contains(&column.schema))
-            .collect();
         self.columns.insert(connection.id.clone(), (Instant::now(), columns.clone()));
         Ok(columns)
     }
 
+    fn visible_columns(columns: &[ColumnInfo], connection: &McpConnection) -> Vec<ColumnInfo> {
+        columns
+            .iter()
+            .filter(|column| {
+                connection.schemas.is_empty() || connection.schemas.contains(&column.schema)
+            })
+            .cloned()
+            .collect()
+    }
+
     async fn search(&mut self, config: &McpConfig, connection: &McpConnection, term: &str) -> Result<String, String> {
-        let columns = self.columns_for(config, connection).await?;
+        let all = self.columns_for(config, connection).await?;
+        let columns = Self::visible_columns(&all, connection);
         let term = term.trim().to_lowercase();
         let mut tables: Vec<(String, Vec<&ColumnInfo>)> = Vec::new();
         for column in &columns {
@@ -219,7 +226,8 @@ impl Server {
         if table.is_empty() {
             return Err("table fehlt".into());
         }
-        let columns = self.columns_for(config, connection).await?;
+        let all = self.columns_for(config, connection).await?;
+        let columns = Self::visible_columns(&all, connection);
         let wanted = table.to_lowercase();
         let list: Vec<&ColumnInfo> = columns
             .iter()
@@ -249,6 +257,13 @@ impl Server {
                 if connection.read_only { "" } else { " Für Schreibzugriffe execute nutzen." }
             ));
         }
+        if let Some(word) = redact::dangerous_word(sql) {
+            return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+        }
+        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let columns = self.columns_for(config, connection).await?;
+        let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+        redact::check_references(sql, &index)?;
         let limit = args
             .get("limit")
             .and_then(Value::as_u64)
@@ -257,7 +272,6 @@ impl Server {
             .clamp(1, db::commands::MAX_RESULT_ROWS);
         let adapter = adapter(connection, &self.pool)?;
         let result = run(config, async { adapter.execute_query(sql).await }).await?;
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
         Ok(format_result(&result, config, &redactor, limit))
     }
 
@@ -274,6 +288,9 @@ impl Server {
         }
         if redact::statement_count(sql) > 1 {
             return Err("Nur ein Statement pro Aufruf.".into());
+        }
+        if let Some(word) = redact::dangerous_word(sql) {
+            return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
         }
         if !connection.allow_ddl && redact::is_ddl(sql) {
             return Err(format!("DDL ist für '{}' nicht freigegeben.", connection.name));
@@ -489,7 +506,15 @@ fn audit(connection: &McpConnection, tool: &str, sql: &str, result: &Result<Stri
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    if let Ok(mut file) = options.open(&path) {
+        config::restrict(&path);
         let _ = writeln!(file, "{entry}");
     }
 }
