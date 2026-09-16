@@ -636,14 +636,24 @@ export function DataTable({
             const sorted = col.getIsSorted();
             const fk = fkByColumn.get(column);
             return (
-              <div className="flex items-center gap-2 w-full min-w-0 justify-start">
+              <div
+                className="flex items-center gap-2 w-full min-w-0 justify-start"
+                title={
+                  fk
+                    ? fk.from_schema === currentSchema && fk.from_table === currentTable
+                      ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
+                      : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
+                    : undefined
+                }
+              >
                 <button
                   type="button"
                   onClick={col.getToggleSortingHandler()}
                   disabled={headerStateRef.current.isFetching || !col.getCanSort()}
                   className="group flex items-center gap-1 rounded-sm px-1 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink"
                 >
-                  <DataTableHeaderName name={column} />
+                  {fk && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
+                  <DataTableHeaderName name={column} isFk={fk !== undefined} />
                   <span
                     className={cn(
                       "shrink-0 text-muted-foreground transition-colors",
@@ -663,19 +673,6 @@ export function DataTable({
                   </span>
                 </button>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
-                  {fk && (
-                    <div
-                      className="flex items-center gap-0.5 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap text-blue-500 bg-blue-500/10 border-blue-500/20"
-                      title={
-                        fk.from_schema === currentSchema && fk.from_table === currentTable
-                          ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
-                          : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
-                      }
-                    >
-                      <LinkIcon className="size-2.5" />
-                      <span>fk</span>
-                    </div>
-                  )}
                   <div
                     className={cn(
                       "flex items-center gap-1 rounded border px-1 py-[1px] text-[9px] font-mono leading-none tracking-wider uppercase font-semibold select-none whitespace-nowrap",
