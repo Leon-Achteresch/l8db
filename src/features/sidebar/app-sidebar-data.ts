@@ -21,7 +21,9 @@ export type AppSidebarNavItem = {
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    ...(import.meta.env.DEV
+      ? [{ title: "Dashboard", url: "/dashboard", icon: LayoutDashboard } as const]
+      : []),
     { title: "Übersicht", url: "/", icon: Home },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
     { title: "Invalid Objects", url: "/invalid-objects", icon: HammerIcon },
