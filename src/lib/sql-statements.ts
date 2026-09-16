@@ -301,3 +301,15 @@ export function isTransactionalStatement(sql: string, kind?: string): boolean {
   if (!DDL_PATTERN.test(text)) return false;
   return !CREATE_VIEW_PATTERN.test(text) && !IMPLICIT_DDL_COMMIT.has(kind ?? "");
 }
+
+const CREATE_OBJECT_PATTERN =
+  /^CREATE(?:\s+OR\s+REPLACE)?(?:\s+(?:EDITIONABLE|NONEDITIONABLE|FORCE|NO\s+FORCE|PUBLIC|GLOBAL|PRIVATE))*\s+(PACKAGE\s+BODY|TYPE\s+BODY|MATERIALIZED\s+VIEW|PACKAGE|VIEW|FUNCTION|PROCEDURE|TRIGGER|TYPE|SYNONYM)\s+((?:"[^"]+"|[A-Za-z0-9_$#]+)(?:\.(?:"[^"]+"|[A-Za-z0-9_$#]+))*)/i;
+
+export function createObjectMessage(sql: string): string | null {
+  const trimmed = sql.trim();
+  const lead = STATEMENT_LEAD_PATTERN.exec(trimmed);
+  const text = lead ? trimmed.slice(lead[0].length - lead[1].length) : trimmed;
+  const match = CREATE_OBJECT_PATTERN.exec(text);
+  if (!match) return null;
+  return `${match[1].toUpperCase().replace(/\s+/g, " ")} ${match[2]} erstellt`;
+}

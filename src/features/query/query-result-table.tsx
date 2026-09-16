@@ -234,9 +234,11 @@ export const QueryResultTable = memo(function QueryResultTable({
     return (
       <div className="flex h-full items-center justify-center bg-card/30">
         <p className="text-sm text-muted-foreground">
-          {result.rows_affected !== null && result.rows_affected !== undefined
-            ? `${result.rows_affected} Zeile${result.rows_affected === 1 ? "" : "n"} betroffen`
-            : "Kein Ergebnis"}
+          {result.notice
+            ? result.notice
+            : result.rows_affected !== null && result.rows_affected !== undefined
+              ? `${result.rows_affected} Zeile${result.rows_affected === 1 ? "" : "n"} betroffen`
+              : "Kein Ergebnis"}
         </p>
       </div>
     );

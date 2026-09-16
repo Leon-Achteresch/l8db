@@ -502,6 +502,13 @@ pub async fn run_scheduler_job(
     .await
 }
 
+pub const MAX_RESULT_ROWS: usize = 1000;
+
+fn truncate_rows(mut result: QueryResult) -> QueryResult {
+    result.rows.truncate(MAX_RESULT_ROWS);
+    result
+}
+
 #[tauri::command]
 pub async fn execute_query(
     kind: DatabaseKind,
@@ -523,6 +530,7 @@ pub async fn execute_query(
             )?
             .execute_query(&sql)
             .await
+            .map(truncate_rows)
         },
     )
     .await
@@ -550,6 +558,7 @@ pub async fn execute_query_with_params(
             )?
             .execute_query_with_params(&sql, &params)
             .await
+            .map(truncate_rows)
         },
     )
     .await

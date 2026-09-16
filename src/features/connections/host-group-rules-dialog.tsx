@@ -46,7 +46,7 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Host-Gruppen</DialogTitle>
           <DialogDescription>
-            Fasse ähnliche Hosts per Muster zusammen, z. B. <code>cslbl*</code>. Mehrere Muster mit
+            Fasse ähnliche Hosts per Muster zusammen, z. B. <code>db-prod*</code>. Mehrere Muster mit
             Komma trennen. Die erste passende Regel gewinnt; Verbindungen ohne Treffer bleiben nach
             Server gruppiert.
           </DialogDescription>
@@ -72,7 +72,7 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
                 />
                 <Input
                   value={rule.pattern}
-                  placeholder="cslbl*"
+                  placeholder="db-prod*"
                   aria-label="Host-Muster"
                   autoFocus={Boolean(draft) && index === rules.length - 1}
                   onChange={(event) => update(rule.id, { pattern: event.target.value })}

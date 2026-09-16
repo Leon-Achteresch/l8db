@@ -34,7 +34,7 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { lazy, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
@@ -210,6 +210,10 @@ export function AppSidebarPanel() {
   const grouped = serverGroups.some((group) => group.connections.length > 1 || group.ruleId);
   const [connectionSearch, setConnectionSearch] = useState("");
   const connectionSearchRef = useRef<HTMLInputElement>(null);
+  const focusConnectionSearch = useCallback((node: HTMLInputElement | null) => {
+    connectionSearchRef.current = node;
+    if (node) requestAnimationFrame(() => node.focus());
+  }, []);
   const connectionRegexEnabled = useRegexEnabled("sidebar");
   const connectionSearchPatterns = useMemo(
     () =>
@@ -408,10 +412,13 @@ export function AppSidebarPanel() {
               <div className="relative px-1 pb-1.5">
                 <SearchIcon className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
                 <Input
-                  ref={connectionSearchRef}
+                  ref={focusConnectionSearch}
                   value={connectionSearch}
                   onChange={(event) => setConnectionSearch(event.target.value)}
-                  onKeyDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (!["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key))
+                      event.stopPropagation();
+                  }}
                   placeholder="Verbindungen suchen…"
                   aria-label="Verbindungen suchen"
                   autoComplete="off"

@@ -34,9 +34,16 @@ export interface PackageViewProps {
   name: string;
   part?: PackagePart;
   member?: string;
+  highlight?: string;
 }
 
-export function PackageView({ schema, name, part, member }: PackageViewProps) {
+function findSourceLine(source: string, needle: string): number | undefined {
+  const target = needle.toLowerCase();
+  const index = source.split("\n").findIndex((line) => line.toLowerCase().includes(target));
+  return index >= 0 ? index + 1 : undefined;
+}
+
+export function PackageView({ schema, name, part, member, highlight }: PackageViewProps) {
   const connection = useActiveConnection();
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const capabilities = useActiveCapabilities();
@@ -56,9 +63,12 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
   const compileResult = compileState.status === "done" ? compileState.result : null;
   const members = parsePlsqlMembers(edit.editing ? edit.sql : source);
+  const highlightLine = highlight
+    ? findSourceLine(edit.editing ? edit.sql : source, highlight)
+    : undefined;
   const memberLine =
     activeLine ?? (activeMember ? members.find((m) => m.name === activeMember)?.line : undefined);
-  const revealLine = activeMember ? memberLine : members[0]?.line;
+  const revealLine = activeMember ? memberLine : (highlightLine ?? members[0]?.line);
   const outlineKey = packageOutlinePrefKey(connection?.id ?? "", schema, name);
   const outlineWidth = usePackageViewPrefs(
     (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
