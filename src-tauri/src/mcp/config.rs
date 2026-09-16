@@ -178,13 +178,25 @@ pub fn load() -> McpConfig {
         .unwrap_or_default()
 }
 
+pub fn restrict(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
 pub fn save(config: &McpConfig) -> Result<(), String> {
     let path = config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Config-Ordner: {e}"))?;
     }
     let json = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| format!("mcp.json schreiben: {e}"))
+    std::fs::write(&path, json).map_err(|e| format!("mcp.json schreiben: {e}"))?;
+    restrict(&path);
+    Ok(())
 }
 
 #[tauri::command]
@@ -250,6 +262,19 @@ mod tests {
         {
             regex::Regex::new(&rule.pattern).unwrap_or_else(|e| panic!("{}: {e}", rule.name));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restrict_sets_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("l8db-perm-{}.json", std::process::id()));
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        restrict(&path);
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
