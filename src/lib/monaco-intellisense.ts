@@ -291,11 +291,14 @@ for (const language of ["sql", "plsql"]) {
       const symbol = symbolAt(model, position);
       if (!symbol) return null;
       if (symbol.target.kind === "local") {
-        return {
-          uri: model.uri,
-          range: new monaco.Range(symbol.target.line, 1, symbol.target.line, 1),
-          originSelectionRange: symbol.range,
-        };
+        const name = symbol.target.name;
+        return parsePlsqlMembers(model.getValue())
+          .filter((m) => m.name === name)
+          .map((m) => ({
+            uri: model.uri,
+            range: new monaco.Range(m.line, 1, m.line, 1),
+            originSelectionRange: symbol.range,
+          }));
       }
       let target = symbol.target;
       if (target.kind === "table" && !target.column && language === "plsql") {
