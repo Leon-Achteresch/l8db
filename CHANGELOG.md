@@ -3,6 +3,30 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.5.98] - 2026-09-16
+
+### Features
+- opencode als MCP-Client registrierbar
+- About-Seite, Query-Sheets und Tabellenansicht überarbeitet
+- MCP-Server mit Redaktion, Read-only-Modus und CLI-Registrierung
+- Dokumentation eingebettet in der App öffnen
+- row limit, notices, multi-format copy, and related UI improvements
+- Überladungen im Outline anzeigen und per Strg+Klick als Peek öffnen
+- implement ClickHouse browser proxy and database interaction
+
+### Fixes
+- Biome-Formatierung, fehlendes Github-Icon und toten Query-Code
+- deaktivierten Server als nicht verbunden melden
+- SQL-Härtung gegen Redaktions-Umgehung und Schema-Ausbruch
+- Spaltenbreite an Titel berücksichtigt FK-Icon wieder
+- Oracle-Packages als Packages statt Routinen anzeigen
+- localStorage-Quota nicht mehr überschreiten
+- sticky table header auch bei fixierten Spalten
+- Originalfehler im Passwort-Dialog anzeigen
+
+### Performance
+- JSON-Ansicht bei großen Ergebnissen in WebKit nicht mehr blockieren
+
 ## [0.5.79] - 2026-09-15
 
 ### Features
