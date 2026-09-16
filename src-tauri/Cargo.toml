@@ -54,6 +54,8 @@ futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
 odbc-api = { version = "29", optional = true }
 tauri-plugin-clipboard-manager = "2"
+regex = "1"
+toml_edit = "0.20"
 
 [features]
 default = []
