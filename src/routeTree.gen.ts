@@ -14,6 +14,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DevRouteImport } from './routes/dev'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DriversRouteImport } from './routes/drivers'
 import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -70,6 +71,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const DevRoute = DevRouteImport.update({
   id: '/dev',
   path: '/dev',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DriversRoute = DriversRouteImport.update({
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
+  '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
@@ -292,6 +299,7 @@ export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
+  '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
@@ -329,6 +337,7 @@ export interface FileRoutesById {
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
+  '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
@@ -371,6 +380,7 @@ export interface FileRouteTypes {
     | '/connections'
     | '/dashboard'
     | '/dev'
+    | '/docs'
     | '/drivers'
     | '/release-notes'
     | '/settings'
@@ -408,6 +418,7 @@ export interface FileRouteTypes {
     | '/connections'
     | '/dashboard'
     | '/dev'
+    | '/docs'
     | '/drivers'
     | '/release-notes'
     | '/settings'
@@ -444,6 +455,7 @@ export interface FileRouteTypes {
     | '/connections'
     | '/dashboard'
     | '/dev'
+    | '/docs'
     | '/drivers'
     | '/release-notes'
     | '/settings'
@@ -485,6 +497,7 @@ export interface RootRouteChildren {
   ConnectionsRoute: typeof ConnectionsRoute
   DashboardRoute: typeof DashboardRoute
   DevRoute: typeof DevRoute
+  DocsRoute: typeof DocsRoute
   DriversRoute: typeof DriversRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
   SettingsRoute: typeof SettingsRoute
@@ -525,6 +538,13 @@ declare module '@tanstack/react-router' {
       path: '/dev'
       fullPath: '/dev'
       preLoaderRoute: typeof DevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/drivers': {
@@ -867,6 +887,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectionsRoute: ConnectionsRoute,
   DashboardRoute: DashboardRoute,
   DevRoute: DevRoute,
+  DocsRoute: DocsRoute,
   DriversRoute: DriversRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
   SettingsRoute: SettingsRoute,
