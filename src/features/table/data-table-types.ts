@@ -62,4 +62,5 @@ export type DataTableProps = {
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];
   revealColumn?: { name: string; nonce: number } | null;
+  searchRequiresFocus?: boolean;
 };

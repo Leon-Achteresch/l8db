@@ -29,6 +29,8 @@ export function AppHeader() {
     syncWithBackend();
   }, [syncWithBackend]);
 
+  if (pathname === "/about") return null;
+
   return (
     <header
       data-tauri-drag-region="deep"
@@ -138,14 +140,17 @@ export function AppHeader() {
         <Tooltip content="MCP" side="bottom">
           <Link
             to="/mcp"
-            aria-label="MCP"
+            aria-label="MCP (Beta)"
             className={cn(
-              "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
               pathname.startsWith("/mcp") && "bg-primary/12 text-foreground",
             )}
           >
             <Bot className="size-4" strokeWidth={2} />
+            <span className="-top-0.5 -right-1 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
+              Beta
+            </span>
           </Link>
         </Tooltip>
 

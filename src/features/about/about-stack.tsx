@@ -1,44 +1,66 @@
-import { motion } from "motion/react";
-import { Badge } from "@/components/ui/badge";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { motion, useReducedMotion } from "motion/react";
+import { ProviderLogo } from "@/components/provider-logo";
+import type { DatabaseKind } from "@/lib/db";
 
-const STACK = [
-  { name: "Tauri v2", detail: "Nativer Shell" },
-  { name: "Rust", detail: "tokio · bb8" },
-  { name: "React 19", detail: "Frontend" },
-  { name: "TanStack", detail: "Router · Query" },
-  { name: "Monaco", detail: "SQL-Editor" },
-  { name: "Tailwind v4", detail: "shadcn/ui" },
+const PROVIDERS: { kind: DatabaseKind; label: string }[] = [
+  { kind: "postgres", label: "PostgreSQL" },
+  { kind: "mysql", label: "MySQL" },
+  { kind: "sqlite", label: "SQLite" },
+  { kind: "mongodb", label: "MongoDB" },
+  { kind: "redis", label: "Redis" },
+  { kind: "clickhouse", label: "ClickHouse" },
 ];
 
 export function AboutStack() {
+  const reduce = useReducedMotion();
+  const items = [...PROVIDERS, ...PROVIDERS];
+
   return (
-    <section className="overflow-hidden rounded-3xl border bg-card">
-      <div className="px-6 pb-2 pt-6 sm:px-8 sm:pt-8">
-        <p className="eyebrow">Technologie</p>
-        <h2 className="mt-1.5 text-xl font-semibold tracking-tight">
-          Modern gebaut, bewusst schlank
-        </h2>
-        <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
-          Ein schlanker Rust-Kern für Verbindungen und Pools, ein schnelles React-Frontend für alles
-          andere. Keine Electron-Schwere, keine Cloud-Abhängigkeit.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2 px-6 py-6 sm:px-8 sm:pb-8">
-        {STACK.map((item, index) => (
+    <section className="about-stack-section overflow-hidden border-y border-current/10">
+      <div className="mx-auto grid w-full max-w-[1360px] gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:px-10 lg:py-16">
+        <div className="max-w-[32rem]">
+          <h2 className="text-3xl font-semibold tracking-[-0.06em] sm:text-4xl">
+            Dein Stack bleibt deiner.
+          </h2>
+          <p className="mt-3 max-w-[29rem] text-sm leading-6 text-current/52">
+            Ein Arbeitsplatz für die Datenbanken, die du bereits betreibst. Ohne Cloud-Zwang, ohne
+            Übersetzungsverlust.
+          </p>
+        </div>
+        <div className="about-marquee relative overflow-hidden" aria-label="Unterstützte Datenbanken">
           <motion.div
-            key={item.name}
-            layout
-            initial={{ opacity: 0, scale: 0.94 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true, margin: "-30px" }}
-            transition={{ duration: 0.35, delay: index * 0.05, layout: SPRING_LAYOUT }}
+            className="about-marquee-track flex w-max items-center gap-3"
+            animate={reduce ? undefined : { x: ["0%", "-50%"] }}
+            transition={
+              reduce
+                ? undefined
+                : { duration: 24, ease: "linear", repeat: Number.POSITIVE_INFINITY }
+            }
           >
-            <Badge variant="secondary" className="h-auto gap-2 rounded-2xl px-3.5 py-2 text-[13px]">
-              <span className="font-semibold text-foreground">{item.name}</span>
-              <span className="font-normal text-muted-foreground">{item.detail}</span>
-            </Badge>
+            {items.map((provider, index) => (
+              <div
+                key={`${provider.label}-${index}`}
+                aria-hidden={index >= PROVIDERS.length}
+                className="flex h-14 items-center gap-3 rounded-2xl border border-current/10 bg-current/[0.035] px-4 text-sm font-medium text-current/72"
+              >
+                <ProviderLogo kind={provider.kind} className="size-5" />
+                {provider.label}
+              </div>
+            ))}
           </motion.div>
+        </div>
+      </div>
+      <div className="about-metrics mx-auto grid w-full max-w-[1360px] grid-cols-2 border-t border-current/10 sm:grid-cols-4">
+        {[
+          ["11", "Provider-Familien"],
+          ["100 %", "lokal ausführbar"],
+          ["0", "Cloud-Accounts"],
+          ["1", "fokussierter Arbeitsplatz"],
+        ].map(([value, label]) => (
+          <div key={label} className="border-r border-current/10 px-5 py-5 last:border-0 sm:px-8">
+            <p className="text-2xl font-semibold tracking-[-0.06em] text-current/90">{value}</p>
+            <p className="mt-1 text-[11px] text-current/42">{label}</p>
+          </div>
         ))}
       </div>
     </section>

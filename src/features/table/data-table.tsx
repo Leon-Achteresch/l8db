@@ -116,6 +116,7 @@ import {
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { getVirtualRowModel } from "@/lib/virtual-row-model";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 import { DataTableDraftRow } from "./data-table-draft-row";
 import { DataTableRow } from "./data-table-row";
 import type {
@@ -444,7 +445,9 @@ export function DataTable({
   onRefresh,
   columnDetails,
   revealColumn,
+  searchRequiresFocus = false,
 }: DataTableProps) {
+  const pane = useWorkspacePane();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
@@ -551,6 +554,7 @@ export function DataTable({
   const [filterValue, setFilterValue] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"rows" | "columns">("rows");
   const searchRegex = useRegexEnabled("grid");
   const setSearchRegex = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const [matchIndex, setMatchIndex] = useState(0);
@@ -730,10 +734,10 @@ export function DataTable({
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const searchResult = useMemo(
     () =>
-      searchOpen
+      searchOpen && searchMode === "rows"
         ? runGridSearch(data, searchColumns, deferredSearchQuery, { regex: searchRegex })
         : { matches: [], error: null },
-    [searchOpen, data, searchColumns, deferredSearchQuery, searchRegex],
+    [searchOpen, searchMode, data, searchColumns, deferredSearchQuery, searchRegex],
   );
   const matches = searchResult.matches;
   const searchError = searchResult.error;
@@ -743,6 +747,15 @@ export function DataTable({
     return keys;
   }, [matches]);
   const activeMatch = matches[matchIndex] ?? null;
+
+  const columnMatches = useMemo(() => {
+    if (searchMode !== "columns") return [];
+    const needle = deferredSearchQuery.trim().toLowerCase();
+    if (needle === "") return [];
+    return searchColumns.filter((column) => column.toLowerCase().includes(needle));
+  }, [searchMode, deferredSearchQuery, searchColumns]);
+  const navCount = searchMode === "columns" ? columnMatches.length : matches.length;
+  const activeColumnMatch = searchMode === "columns" ? (columnMatches[matchIndex] ?? null) : null;
 
   const [savedColumnSizing, setColumnSizing] = useTableViewState(stateKey, "columnSizing", {});
   const fitColumnsToHeader = useSettingsStore((state) => state.fitColumnsToHeader);
@@ -998,32 +1011,6 @@ export function DataTable({
   layoutRef.current = { visibleColumns, columnWidths, pinnedIndices };
 
   useEffect(() => {
-    const scroller = scrollRef.current;
-    if (!revealColumn || !scroller) return;
-    const { visibleColumns, columnWidths, pinnedIndices } = layoutRef.current;
-    const index = visibleColumns.findIndex((column) => column.id === revealColumn.name);
-    if (index < 0) return;
-    const pinnedWidth = pinnedIndices.reduce((sum, i) => sum + columnWidths[i], 0);
-    const left = columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
-    const viewport = scroller.clientWidth - pinnedWidth;
-    const target = Math.max(0, left - pinnedWidth - (viewport - columnWidths[index]) / 2);
-    const controls = animate(scroller.scrollLeft, target, {
-      duration: 0.45,
-      ease: "easeInOut",
-      onUpdate: (value) => {
-        scroller.scrollLeft = value;
-      },
-      onComplete: () => {
-        const th = scroller.querySelector<HTMLElement>(
-          `th[data-column-id="${CSS.escape(revealColumn.name)}"]`,
-        );
-        if (th) animate(th, { opacity: [1, 0.25, 1, 0.25, 1] }, { duration: 0.8 });
-      },
-    });
-    return () => controls.stop();
-  }, [revealColumn]);
-
-  useEffect(() => {
     if (!editingCell || !tbodyRef.current) return;
     rowVirtualizer.scrollToIndex(editingCell.rowIndex, { align: "auto" });
     requestAnimationFrame(() => {
@@ -1102,10 +1089,44 @@ export function DataTable({
 
   const stepMatch = useCallback(
     (step: number) => {
-      setMatchIndex((current) => stepMatchIndex(current, matches.length, step));
+      setMatchIndex((current) => stepMatchIndex(current, navCount, step));
     },
-    [matches.length],
+    [navCount],
   );
+
+  const scrollToColumnHeader = useCallback((name: string) => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const { visibleColumns, columnWidths, pinnedIndices } = layoutRef.current;
+    const index = visibleColumns.findIndex((column) => column.id === name);
+    if (index < 0) return;
+    const pinnedWidth = pinnedIndices.reduce((sum, i) => sum + columnWidths[i], 0);
+    const left = columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
+    const viewport = scroller.clientWidth - pinnedWidth;
+    const target = Math.max(0, left - pinnedWidth - (viewport - columnWidths[index]) / 2);
+    const controls = animate(scroller.scrollLeft, target, {
+      duration: 0.45,
+      ease: "easeInOut",
+      onUpdate: (value) => {
+        scroller.scrollLeft = value;
+      },
+      onComplete: () => {
+        const th = scroller.querySelector<HTMLElement>(`th[data-column-id="${CSS.escape(name)}"]`);
+        if (th) animate(th, { opacity: [1, 0.25, 1, 0.25, 1] }, { duration: 0.8 });
+      },
+    });
+    return () => controls.stop();
+  }, []);
+
+  useEffect(() => {
+    if (!revealColumn) return;
+    return scrollToColumnHeader(revealColumn.name);
+  }, [revealColumn, scrollToColumnHeader]);
+
+  useEffect(() => {
+    if (!activeColumnMatch) return;
+    return scrollToColumnHeader(activeColumnMatch);
+  }, [activeColumnMatch, scrollToColumnHeader]);
 
   const copyColumnNames = useCallback(() => {
     const names = formatVisibleColumnNames(order, hidden);
@@ -1127,7 +1148,7 @@ export function DataTable({
   // biome-ignore lint/correctness/useExhaustiveDependencies: Treffer neu zählen bei Query- oder Datenwechsel
   useEffect(() => {
     setMatchIndex(0);
-  }, [searchQuery, data]);
+  }, [searchQuery, data, searchMode]);
 
   useEffect(() => {
     if (!activeMatch) return;
@@ -1154,7 +1175,8 @@ export function DataTable({
     (event) => {
       const root = rootRef.current;
       const focusInside = root?.contains(document.activeElement) ?? false;
-      if (!focusInside && activeCell === null) return;
+      const paneOpen = !searchRequiresFocus && (pane === null || pane.focused);
+      if (!focusInside && activeCell === null && !paneOpen) return;
       event.preventDefault();
       setSearchOpen(true);
       requestAnimationFrame(() => searchInputRef.current?.select());
@@ -1466,12 +1488,42 @@ export function DataTable({
       {searchOpen && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
           <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <div className="flex shrink-0 overflow-hidden rounded border border-border text-[11px]">
+            <button
+              type="button"
+              onClick={() => setSearchMode("rows")}
+              className={cn(
+                "px-2 py-0.5 cursor-pointer",
+                searchMode === "rows" ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+              )}
+            >
+              Zeilen
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchMode("columns")}
+              className={cn(
+                "border-l border-border px-2 py-0.5 cursor-pointer",
+                searchMode === "columns"
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-accent/50",
+              )}
+            >
+              Spalten
+            </button>
+          </div>
           <input
             ref={searchInputRef}
             value={searchQuery}
             // biome-ignore lint/a11y/noAutofocus: Suchfeld wird gezielt geöffnet
             autoFocus
-            placeholder={searchRegex ? "Regex in geladenen Zeilen…" : "In geladenen Zeilen suchen…"}
+            placeholder={
+              searchMode === "columns"
+                ? "Spaltennamen suchen…"
+                : searchRegex
+                  ? "Regex in geladenen Zeilen…"
+                  : "In geladenen Zeilen suchen…"
+            }
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -1493,37 +1545,43 @@ export function DataTable({
             )}
             title={searchError ? describeRegexError(searchError) : undefined}
           >
-            {searchError
-              ? describeRegexError(searchError)
-              : describeGridSearch(matches.length, matchIndex)}
+            {searchMode === "columns"
+              ? describeGridSearch(columnMatches.length, matchIndex)
+              : searchError
+                ? describeRegexError(searchError)
+                : describeGridSearch(matches.length, matchIndex)}
           </span>
-          <RegexSearchHelper
-            enabled={searchRegex}
-            onEnabledChange={(enabled) => setSearchRegex("grid", enabled)}
-            query={searchQuery}
-            onQueryChange={setSearchQuery}
-            onInsert={(snippet) => {
-              const input = searchInputRef.current;
-              const start = input?.selectionStart ?? searchQuery.length;
-              const end = input?.selectionEnd ?? searchQuery.length;
-              const next = insertRegexPattern(searchQuery, start, end, snippet);
-              setSearchQuery(next.value);
-              requestAnimationFrame(() => {
-                input?.focus();
-                input?.setSelectionRange(next.cursor, next.cursor);
-              });
-            }}
-            error={searchError}
-            matchCount={matches.length}
-          />
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {data.length} geladene {data.length === 1 ? "Zeile" : "Zeilen"} · {searchColumns.length}{" "}
-            sichtbare Spalten
-          </span>
+          {searchMode === "rows" && (
+            <RegexSearchHelper
+              enabled={searchRegex}
+              onEnabledChange={(enabled) => setSearchRegex("grid", enabled)}
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              onInsert={(snippet) => {
+                const input = searchInputRef.current;
+                const start = input?.selectionStart ?? searchQuery.length;
+                const end = input?.selectionEnd ?? searchQuery.length;
+                const next = insertRegexPattern(searchQuery, start, end, snippet);
+                setSearchQuery(next.value);
+                requestAnimationFrame(() => {
+                  input?.focus();
+                  input?.setSelectionRange(next.cursor, next.cursor);
+                });
+              }}
+              error={searchError}
+              matchCount={matches.length}
+            />
+          )}
+          {searchMode === "rows" && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {data.length} geladene {data.length === 1 ? "Zeile" : "Zeilen"} ·{" "}
+              {searchColumns.length} sichtbare Spalten
+            </span>
+          )}
           <button
             type="button"
             title="Vorheriger Treffer"
-            disabled={matches.length === 0}
+            disabled={navCount === 0}
             onClick={() => stepMatch(-1)}
             className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
           >
@@ -1532,7 +1590,7 @@ export function DataTable({
           <button
             type="button"
             title="Nächster Treffer"
-            disabled={matches.length === 0}
+            disabled={navCount === 0}
             onClick={() => stepMatch(1)}
             className="inline-flex size-6 shrink-0 items-center justify-center rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
           >

@@ -491,6 +491,7 @@ export function TableView({
           onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
           columnDetails={columnDetails}
           onRefresh={handleRefresh}
+          searchRequiresFocus={inDrawer}
         />
       )}
     </div>
