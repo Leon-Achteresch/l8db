@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 
 use super::config::{self, McpConfig, McpConnection};
 use super::redact::{self, Redactor};
-use crate::db::{self, execution::ExecutionOptions, pool::PoolState, ColumnInfo, DatabaseKind, QueryResult};
+use crate::db::{
+    self, execution::ExecutionOptions, pool::PoolState, ColumnInfo, DatabaseKind, QueryResult,
+};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const CACHE_TTL: Duration = Duration::from_secs(60);
@@ -45,7 +47,10 @@ pub fn serve() {
         let Some(response) = runtime.block_on(server.handle_line(&line)) else {
             continue;
         };
-        if writeln!(stdout, "{response}").and_then(|_| stdout.flush()).is_err() {
+        if writeln!(stdout, "{response}")
+            .and_then(|_| stdout.flush())
+            .is_err()
+        {
             break;
         }
     }
@@ -131,7 +136,11 @@ impl Server {
             "tools/call" => Ok(self.call(&params).await),
             "resources/list" => Ok(json!({"resources": []})),
             "prompts/list" => Ok(json!({"prompts": []})),
-            _ => Err(rpc_error(id.clone(), -32601, format!("Method not found: {method}"))),
+            _ => Err(rpc_error(
+                id.clone(),
+                -32601,
+                format!("Method not found: {method}"),
+            )),
         };
         Some(match result {
             Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
@@ -144,7 +153,10 @@ impl Server {
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let config = config::load();
         if !config.enabled {
-            return tool_text("l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(), true);
+            return tool_text(
+                "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(),
+                true,
+            );
         }
         let started = Instant::now();
         let outcome = match name {
@@ -155,8 +167,14 @@ impl Server {
                     Err(e) => Err(e),
                     Ok(connection) => {
                         let result = match name {
-                            "search" => self.search(&config, connection, arg_str(&args, "term")).await,
-                            "describe" => self.describe(&config, connection, arg_str(&args, "table")).await,
+                            "search" => {
+                                self.search(&config, connection, arg_str(&args, "term"))
+                                    .await
+                            }
+                            "describe" => {
+                                self.describe(&config, connection, arg_str(&args, "table"))
+                                    .await
+                            }
                             "query" => self.query(&config, connection, &args).await,
                             _ => self.execute(&config, connection, &args).await,
                         };
@@ -175,15 +193,23 @@ impl Server {
         }
     }
 
-    async fn columns_for(&mut self, config: &McpConfig, connection: &McpConnection) -> Result<Vec<ColumnInfo>, String> {
+    async fn columns_for(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+    ) -> Result<Vec<ColumnInfo>, String> {
         if let Some((at, columns)) = self.columns.get(&connection.id) {
             if at.elapsed() < CACHE_TTL {
                 return Ok(columns.clone());
             }
         }
         let adapter = adapter(connection, &self.pool)?;
-        let columns = run(config, async { adapter.list_columns(None, None, None).await }).await?;
-        self.columns.insert(connection.id.clone(), (Instant::now(), columns.clone()));
+        let columns = run(config, async {
+            adapter.list_columns(None, None, None).await
+        })
+        .await?;
+        self.columns
+            .insert(connection.id.clone(), (Instant::now(), columns.clone()));
         Ok(columns)
     }
 
@@ -197,7 +223,12 @@ impl Server {
             .collect()
     }
 
-    async fn search(&mut self, config: &McpConfig, connection: &McpConnection, term: &str) -> Result<String, String> {
+    async fn search(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        term: &str,
+    ) -> Result<String, String> {
         let all = self.columns_for(config, connection).await?;
         let columns = Self::visible_columns(&all, connection);
         let term = term.trim().to_lowercase();
@@ -211,23 +242,36 @@ impl Server {
         }
         if term.is_empty() {
             let names: Vec<&str> = tables.iter().map(|(name, _)| name.as_str()).collect();
-            return Ok(cap(format!("{} tables\n{}", names.len(), names.join("\n")), config.max_chars));
+            return Ok(cap(
+                format!("{} tables\n{}", names.len(), names.join("\n")),
+                config.max_chars,
+            ));
         }
         let matching: Vec<String> = tables
             .iter()
             .filter(|(name, list)| {
                 name.to_lowercase().contains(&term)
-                    || list.iter().any(|column| column.name.to_lowercase().contains(&term))
+                    || list
+                        .iter()
+                        .any(|column| column.name.to_lowercase().contains(&term))
             })
             .map(|(name, list)| table_line(name, list))
             .collect();
         if matching.is_empty() {
             return Ok(format!("No tables or columns match '{term}'"));
         }
-        Ok(cap(format!("{} matches\n{}", matching.len(), matching.join("\n")), config.max_chars))
+        Ok(cap(
+            format!("{} matches\n{}", matching.len(), matching.join("\n")),
+            config.max_chars,
+        ))
     }
 
-    async fn describe(&mut self, config: &McpConfig, connection: &McpConnection, table: &str) -> Result<String, String> {
+    async fn describe(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        table: &str,
+    ) -> Result<String, String> {
         let table = table.trim();
         if table.is_empty() {
             return Err("table fehlt".into());
@@ -249,7 +293,12 @@ impl Server {
         Ok(cap(table_line(&name, &list), config.max_chars))
     }
 
-    async fn query(&mut self, config: &McpConfig, connection: &McpConnection, args: &Value) -> Result<String, String> {
+    async fn query(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        args: &Value,
+    ) -> Result<String, String> {
         let sql = arg_str(args, "sql").trim();
         if sql.is_empty() {
             return Err("sql fehlt".into());
@@ -260,7 +309,11 @@ impl Server {
         if let Some(word) = redact::write_word(sql) {
             return Err(format!(
                 "query ist read-only, '{word}' ist nicht erlaubt.{}",
-                if connection.read_only { "" } else { " Für Schreibzugriffe execute nutzen." }
+                if connection.read_only {
+                    ""
+                } else {
+                    " Für Schreibzugriffe execute nutzen."
+                }
             ));
         }
         if let Some(word) = redact::dangerous_word(sql) {
@@ -281,11 +334,20 @@ impl Server {
         Ok(format_result(&result, config, &redactor, limit))
     }
 
-    async fn execute(&mut self, config: &McpConfig, connection: &McpConnection, args: &Value) -> Result<String, String> {
+    async fn execute(
+        &mut self,
+        config: &McpConfig,
+        connection: &McpConnection,
+        args: &Value,
+    ) -> Result<String, String> {
         if connection.read_only {
             return Err(format!("Verbindung '{}' ist read-only.", connection.name));
         }
-        if !args.get("confirm").and_then(Value::as_bool).unwrap_or(false) {
+        if !args
+            .get("confirm")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             return Err("execute braucht confirm=true.".into());
         }
         let sql = arg_str(args, "sql").trim();
@@ -299,7 +361,10 @@ impl Server {
             return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
         }
         if !connection.allow_ddl && redact::is_ddl(sql) {
-            return Err(format!("DDL ist für '{}' nicht freigegeben.", connection.name));
+            return Err(format!(
+                "DDL ist für '{}' nicht freigegeben.",
+                connection.name
+            ));
         }
         let adapter = adapter(connection, &self.pool)?;
         let result = run(config, async { adapter.execute_query(sql).await }).await?;
@@ -343,10 +408,9 @@ fn cap(text: String, max_chars: usize) -> String {
 }
 
 pub fn exposed(config: &McpConfig) -> impl Iterator<Item = &McpConnection> {
-    config
-        .connections
-        .iter()
-        .filter(|connection| connection.exposed && !connection.ssh && SQL_KINDS.contains(&connection.kind))
+    config.connections.iter().filter(|connection| {
+        connection.exposed && !connection.ssh && SQL_KINDS.contains(&connection.kind)
+    })
 }
 
 fn list_connections(config: &McpConfig) -> String {
@@ -359,7 +423,11 @@ fn list_connections(config: &McpConfig) -> String {
                     .ok()
                     .and_then(|value| value.as_str().map(str::to_string))
                     .unwrap_or_default(),
-                if connection.read_only { "read-only" } else { "read-write" }
+                if connection.read_only {
+                    "read-only"
+                } else {
+                    "read-write"
+                }
             )
         })
         .collect();
@@ -376,7 +444,9 @@ fn find_connection<'a>(config: &'a McpConfig, target: &str) -> Result<&'a McpCon
     }
     exposed(config)
         .find(|connection| connection.id == target || connection.name.to_lowercase() == wanted)
-        .ok_or_else(|| format!("Verbindung '{target}' ist nicht freigegeben. connections aufrufen."))
+        .ok_or_else(|| {
+            format!("Verbindung '{target}' ist nicht freigegeben. connections aufrufen.")
+        })
 }
 
 fn keychain_password(id: &str) -> Result<Option<String>, String> {
@@ -418,7 +488,10 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
     url.to_string()
 }
 
-fn adapter(connection: &McpConnection, pool: &PoolState) -> Result<Box<dyn db::DatabaseAdapter>, String> {
+fn adapter(
+    connection: &McpConnection,
+    pool: &PoolState,
+) -> Result<Box<dyn db::DatabaseAdapter>, String> {
     let password = keychain_password(&connection.id)?;
     let url = with_password(connection, password.as_deref());
     db::create_adapter_from_string(connection.kind, &url, None, pool.clone())
@@ -455,7 +528,12 @@ fn cell_text(value: &Value, max_chars: usize) -> String {
     }
 }
 
-pub fn format_result(result: &QueryResult, config: &McpConfig, redactor: &Redactor, limit: usize) -> String {
+pub fn format_result(
+    result: &QueryResult,
+    config: &McpConfig,
+    redactor: &Redactor,
+    limit: usize,
+) -> String {
     let mut lines = vec![result.columns.join("\t")];
     let mut redacted = 0usize;
     for row in result.rows.iter().take(limit) {
@@ -481,7 +559,10 @@ pub fn format_result(result: &QueryResult, config: &McpConfig, redactor: &Redact
     let shown = result.rows.len().min(limit);
     let mut footer = format!("({shown} rows");
     if result.rows.len() > limit {
-        footer.push_str(&format!(", {} more not shown; raise limit or add WHERE", result.rows.len() - limit));
+        footer.push_str(&format!(
+            ", {} more not shown; raise limit or add WHERE",
+            result.rows.len() - limit
+        ));
     } else if result.rows.len() >= db::commands::MAX_RESULT_ROWS {
         footer.push_str(", result capped by server; add WHERE");
     }
@@ -498,7 +579,13 @@ fn scrub_error(error: &str) -> String {
     re.replace_all(error, "[connection-url]").into_owned()
 }
 
-fn audit(connection: &McpConnection, tool: &str, sql: &str, result: &Result<String, String>, started: Instant) {
+fn audit(
+    connection: &McpConnection,
+    tool: &str,
+    sql: &str,
+    result: &Result<String, String>,
+    started: Instant,
+) {
     let entry = json!({
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         "connection": connection.name,
@@ -569,7 +656,10 @@ mod tests {
         );
         assert!(url.contains("default_transaction_read_only%3Don"));
         let rw = with_password(&connection(false), None);
-        assert_eq!(rw, "postgres://alice@db.example.com:5432/app?sslmode=require");
+        assert_eq!(
+            rw,
+            "postgres://alice@db.example.com:5432/app?sslmode=require"
+        );
         let mut sqlite = connection(true);
         sqlite.kind = DatabaseKind::Sqlite;
         sqlite.connection_string = "sqlite:/tmp/x.db".into();
@@ -598,7 +688,10 @@ mod tests {
         assert_eq!(lines[0], "id\temail\tnote");
         assert_eq!(lines[1], "1\t[reda…\tcall …");
         assert_eq!(lines[2], "2\tNULL\tshort");
-        assert_eq!(lines[3], "(2 rows, 1 more not shown; raise limit or add WHERE, 2 cells redacted)");
+        assert_eq!(
+            lines[3],
+            "(2 rows, 1 more not shown; raise limit or add WHERE, 2 cells redacted)"
+        );
     }
 
     #[test]
@@ -633,15 +726,23 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = temp_config(true);
         std::env::set_var("L8DB_MCP_CONFIG", &path);
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let mut server = Server { pool: db::pool::create_pool_state(), columns: HashMap::new() };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut server = Server {
+            pool: db::pool::create_pool_state(),
+            columns: HashMap::new(),
+        };
         let init = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
             .unwrap();
         assert_eq!(init["result"]["protocolVersion"], "2024-11-05");
         assert_eq!(init["result"]["serverInfo"]["name"], "l8db");
         assert!(runtime
-            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#))
+            .block_on(
+                server.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+            )
             .is_none());
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
@@ -662,13 +763,22 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = temp_config(false);
         std::env::set_var("L8DB_MCP_CONFIG", &path);
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let mut server = Server { pool: db::pool::create_pool_state(), columns: HashMap::new() };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut server = Server {
+            pool: db::pool::create_pool_state(),
+            columns: HashMap::new(),
+        };
         let init = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
             .unwrap();
         assert_eq!(init["error"]["code"], -32002);
-        assert!(init["error"]["message"].as_str().unwrap().contains("deaktiviert"));
+        assert!(init["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("deaktiviert"));
         assert!(init.get("result").is_none());
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
@@ -678,7 +788,10 @@ mod tests {
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"connections","arguments":{}}}"#))
             .unwrap();
         assert_eq!(reply["result"]["isError"], true);
-        assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("deaktiviert"));
+        assert!(reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("deaktiviert"));
 
         let mut config = McpConfig::default();
         config.enabled = true;
@@ -691,7 +804,10 @@ mod tests {
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"connection":"x","sql":"select 1"}}}"#))
             .unwrap();
         assert_eq!(reply["result"]["isError"], true);
-        assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("nicht freigegeben"));
+        assert!(reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("nicht freigegeben"));
         std::env::remove_var("L8DB_MCP_CONFIG");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
