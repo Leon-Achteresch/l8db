@@ -12,19 +12,29 @@ import { cn } from "@/lib/utils";
 
 export function PackageMemberOutline({
   members,
-  activeName,
+  activeLine,
   width,
   onWidthChange,
   onSelect,
 }: {
   members: PlsqlMember[];
-  activeName?: string;
+  activeLine?: number;
   width: number;
   onWidthChange: (width: number) => void;
   onSelect: (member: PlsqlMember) => void;
 }) {
   const [query, setQuery] = useState("");
   const [draftWidth, setDraftWidth] = useState(width);
+  const overloaded = useMemo(() => {
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const m of members) {
+      const key = `${m.kind}:${m.name}`;
+      if (seen.has(key)) dupes.add(key);
+      seen.add(key);
+    }
+    return dupes;
+  }, [members]);
   const filtered = useMemo(() => {
     const needle = query.trim().toUpperCase();
     if (!needle) return members;
@@ -98,10 +108,10 @@ export function PackageMemberOutline({
             <p className="px-2 py-3 text-xs text-muted-foreground">Keine Treffer.</p>
           ) : (
             filtered.map((member) => {
-              const active = member.name === activeName;
+              const active = member.line === activeLine;
               return (
                 <button
-                  key={`${member.kind}:${member.name}`}
+                  key={`${member.kind}:${member.name}:${member.line}`}
                   type="button"
                   onClick={() => onSelect(member)}
                   className={cn(
@@ -115,6 +125,11 @@ export function PackageMemberOutline({
                     {member.kind === "FUNCTION" ? "fn" : "pr"}
                   </span>
                   <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
+                  {overloaded.has(`${member.kind}:${member.name}`) ? (
+                    <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                      :{member.line}
+                    </span>
+                  ) : null}
                 </button>
               );
             })

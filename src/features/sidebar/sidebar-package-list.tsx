@@ -152,7 +152,7 @@ function PartNode({
               <p className="px-2 py-1 text-xs text-muted-foreground">Nicht verfügbar</p>
             ) : (
               members.map((m) => (
-                <SidebarMenuSubItem key={`${m.kind}:${m.name}`}>
+                <SidebarMenuSubItem key={`${m.kind}:${m.name}:${m.line}`}>
                   <SidebarMenuSubButton asChild size="sm">
                     <button type="button" className="w-full" onClick={() => go(part, m.name)}>
                       <BracesIcon className="text-muted-foreground" />
