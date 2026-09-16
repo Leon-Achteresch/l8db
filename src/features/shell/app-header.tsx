@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { GitBranchIcon, Bot, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { Bot, GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";

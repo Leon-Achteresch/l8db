@@ -27,7 +27,11 @@ export function AboutStack() {
             Übersetzungsverlust.
           </p>
         </div>
-        <div className="about-marquee relative overflow-hidden" aria-label="Unterstützte Datenbanken">
+        <div
+          className="about-marquee relative overflow-hidden"
+          role="group"
+          aria-label="Unterstützte Datenbanken"
+        >
           <motion.div
             className="about-marquee-track flex w-max items-center gap-3"
             animate={reduce ? undefined : { x: ["0%", "-50%"] }}

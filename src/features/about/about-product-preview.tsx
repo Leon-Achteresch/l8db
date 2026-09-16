@@ -1,13 +1,21 @@
+import {
+  Braces,
+  ChevronDown,
+  Database,
+  Eye,
+  ListFilter,
+  Maximize2,
+  Play,
+  Rows3,
+} from "lucide-react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { type PointerEvent as ReactPointerEvent, useState } from "react";
 import { AppLogo } from "@/components/app-logo";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { ActionSwapButton } from "@/components/motion/action-swap";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { SwitchButton } from "@/components/motion/switch-button";
 import { Tooltip } from "@/components/motion/tooltip";
-import { ProviderLogo } from "@/components/provider-logo";
 import { cn } from "@/lib/utils";
-import { Braces, ChevronDown, Database, Eye, ListFilter, Maximize2, Play, Rows3 } from "lucide-react";
 
 const PREVIEW_ROWS = [
   ["01", "Ada Lovelace", "ada@analytical.engine", "active"],
@@ -48,9 +56,7 @@ export function AboutProductPreview() {
         style={reduce ? undefined : { rotateX, rotateY, transformPerspective: 1300 }}
         animate={reduce ? undefined : { y: [0, -8, 0] }}
         transition={
-          reduce
-            ? undefined
-            : { duration: 7, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }
+          reduce ? undefined : { duration: 7, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }
         }
       >
         <div className="about-product-topbar">
@@ -103,7 +109,9 @@ export function AboutProductPreview() {
                     active ? "bg-cyan-300/10 text-cyan-200" : "text-white/38",
                   )}
                 >
-                  <span className={cn("size-1 rounded-full", active ? "bg-cyan-300" : "bg-white/20")} />
+                  <span
+                    className={cn("size-1 rounded-full", active ? "bg-cyan-300" : "bg-white/20")}
+                  />
                   <span>{label as string}</span>
                 </div>
               ))}
@@ -111,7 +119,9 @@ export function AboutProductPreview() {
             <div className="mt-5 border-t border-white/[0.07] pt-4">
               <div className="flex items-center gap-2 px-1 text-[9px] uppercase tracking-[0.15em] text-white/30">
                 <span>Saved queries</span>
-                <span className="ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-[8px] text-white/40">4</span>
+                <span className="ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-[8px] text-white/40">
+                  4
+                </span>
               </div>
               <div className="mt-2 space-y-2 px-1 font-mono text-[10px] text-white/38">
                 <p className="truncate text-cyan-200/75">retention_30d.sql</p>
@@ -174,7 +184,9 @@ export function AboutProductPreview() {
                   <span className="text-white/25">{id}</span>
                   <span className="truncate text-white/78">{name}</span>
                   <span className="truncate text-white/40">{email}</span>
-                  <span className={state === "active" ? "text-emerald-300" : "text-amber-200"}>{state}</span>
+                  <span className={state === "active" ? "text-emerald-300" : "text-amber-200"}>
+                    {state}
+                  </span>
                 </motion.div>
               ))}
             </div>

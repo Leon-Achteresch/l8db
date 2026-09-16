@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Blocks, Command, Download, Github, Menu, Terminal } from "lucide-react";
+import { ArrowUpRight, Blocks, Command, Download, GitBranch, Menu, Terminal } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { AppLogo } from "@/components/app-logo";
-import { CommandPalette, type CommandItem } from "@/components/motion/command-palette";
+import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 
 const RELEASES_URL = "https://github.com/Leon-Achteresch/l8db/releases/latest";
@@ -41,7 +41,7 @@ export function AboutNav() {
       id: "github",
       label: "Quellcode öffnen",
       group: "Links",
-      icon: Github,
+      icon: GitBranch,
       onSelect: () => window.open("https://github.com/Leon-Achteresch/l8db", "_blank"),
     },
   ];
@@ -82,7 +82,9 @@ export function AboutNav() {
           >
             <Command className="size-3" />
             Schnellzugriff
-            <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[9px]">⌘K</kbd>
+            <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[9px]">
+              ⌘K
+            </kbd>
           </button>
           <ThemeToggle
             variant="circle-blur"
