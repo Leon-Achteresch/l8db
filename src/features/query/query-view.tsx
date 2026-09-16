@@ -1065,54 +1065,6 @@ export function QueryView({ tabId }: QueryViewProps) {
     return parts.join(" · ");
   })();
 
-  const resultActions = (
-    <>
-      {caps.server_output && (
-        <Button
-          size="icon-sm"
-          variant={outputOpen ? "secondary" : "ghost"}
-          aria-label="Server-Ausgabe umschalten"
-          aria-pressed={outputOpen}
-          title="Server-Ausgabe öffnen"
-          disabled={!connection}
-          onClick={() => setOutputOpen((open) => !open)}
-        >
-          <TerminalIcon className="size-3.5" />
-        </Button>
-      )}
-      {result && result.columns.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-2 text-xs"
-              disabled={exporting}
-            >
-              <MorphIcon
-                icon={exporting ? Loader : Download}
-                className={cn("size-3", exporting && "animate-spin")}
-              />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-              Als CSV exportieren…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-              Als XLSX exportieren…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void handleExportJson()}>
-              Als JSON exportieren
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </>
-  );
-  const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
-
   return (
     <div className="flex h-full w-full min-h-0">
       <motion.div

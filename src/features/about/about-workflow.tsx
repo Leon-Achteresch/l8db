@@ -1,14 +1,14 @@
+import { Braces, Check, Maximize2, Network, RefreshCw, Rows3, Table2 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
-import { Braces, Check, Maximize2, Network, RefreshCw, Rows3, Table2 } from "lucide-react";
+import { ActionSwapButton } from "@/components/motion/action-swap";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import {
   CenterMorphModal,
   CenterMorphModalClose,
   CenterMorphModalContent,
   CenterMorphModalTrigger,
 } from "@/components/motion/center-morph-modal";
-import { ActionSwapButton } from "@/components/motion/action-swap";
-import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { SlideActionButton } from "@/components/motion/slide-action-button";
 import { SwitchButton } from "@/components/motion/switch-button";
@@ -46,12 +46,31 @@ function WorkflowSurface({ mode, readOnly }: { mode: WorkflowMode; readOnly: boo
           <span>⌘ Enter</span>
         </div>
         <div className="mt-5 space-y-1.5 leading-6">
-          <p><span className="mr-5 text-white/20">01</span><span className="text-cyan-200">with</span> active_users <span className="text-cyan-200">as</span> (</p>
-          <p><span className="mr-5 text-white/20">02</span><span className="ml-8 text-cyan-200">select</span> user_id, max(created_at) last_seen</p>
-          <p><span className="mr-5 text-white/20">03</span><span className="ml-8 text-cyan-200">from</span> events</p>
-          <p><span className="mr-5 text-white/20">04</span><span className="ml-8 text-cyan-200">group by</span> user_id</p>
-          <p><span className="mr-5 text-white/20">05</span>)</p>
-          <p><span className="mr-5 text-white/20">06</span><span className="text-cyan-200">select</span> * <span className="text-cyan-200">from</span> active_users;</p>
+          <p>
+            <span className="mr-5 text-white/20">01</span>
+            <span className="text-cyan-200">with</span> active_users{" "}
+            <span className="text-cyan-200">as</span> (
+          </p>
+          <p>
+            <span className="mr-5 text-white/20">02</span>
+            <span className="ml-8 text-cyan-200">select</span> user_id, max(created_at) last_seen
+          </p>
+          <p>
+            <span className="mr-5 text-white/20">03</span>
+            <span className="ml-8 text-cyan-200">from</span> events
+          </p>
+          <p>
+            <span className="mr-5 text-white/20">04</span>
+            <span className="ml-8 text-cyan-200">group by</span> user_id
+          </p>
+          <p>
+            <span className="mr-5 text-white/20">05</span>)
+          </p>
+          <p>
+            <span className="mr-5 text-white/20">06</span>
+            <span className="text-cyan-200">select</span> *{" "}
+            <span className="text-cyan-200">from</span> active_users;
+          </p>
         </div>
         <div className="mt-8 flex items-center gap-2 rounded-xl border border-emerald-300/10 bg-emerald-300/[0.04] px-3 py-2 text-emerald-200/75">
           <Check className="size-3.5" />
@@ -94,20 +113,26 @@ function WorkflowSurface({ mode, readOnly }: { mode: WorkflowMode; readOnly: boo
         <span>email</span>
         <span>status</span>
       </div>
-      {["Ada Lovelace", "Alan Turing", "Grace Hopper", "Edsger Dijkstra", "Katherine Johnson"].map((name, index) => (
-        <motion.div
-          key={name}
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: index * 0.06, duration: 0.32 }}
-          className="grid grid-cols-[2.4rem_1.2fr_1.6fr_5rem] border-b border-white/[0.05] px-4 py-3 font-mono text-[10px] last:border-0"
-        >
-          <span className="text-white/22">0{index + 1}</span>
-          <span className="truncate text-white/72">{name}</span>
-          <span className="truncate text-white/38">{name.toLowerCase().replaceAll(" ", ".")}@l8db.dev</span>
-          <span className={index === 2 ? "text-amber-200" : "text-emerald-200"}>{index === 2 ? "paused" : "active"}</span>
-        </motion.div>
-      ))}
+      {["Ada Lovelace", "Alan Turing", "Grace Hopper", "Edsger Dijkstra", "Katherine Johnson"].map(
+        (name, index) => (
+          <motion.div
+            key={name}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.06, duration: 0.32 }}
+            className="grid grid-cols-[2.4rem_1.2fr_1.6fr_5rem] border-b border-white/[0.05] px-4 py-3 font-mono text-[10px] last:border-0"
+          >
+            <span className="text-white/22">0{index + 1}</span>
+            <span className="truncate text-white/72">{name}</span>
+            <span className="truncate text-white/38">
+              {name.toLowerCase().replaceAll(" ", ".")}@l8db.dev
+            </span>
+            <span className={index === 2 ? "text-amber-200" : "text-emerald-200"}>
+              {index === 2 ? "paused" : "active"}
+            </span>
+          </motion.div>
+        ),
+      )}
       <div className="flex items-center justify-between px-4 py-3 text-[9px] text-white/30">
         <span>{readOnly ? "Read only" : "Editable"}</span>
         <span>5 rows</span>
@@ -124,7 +149,10 @@ export function AboutWorkflow() {
   const content = WORKFLOW_CONTENT[mode];
 
   return (
-    <section id="workflow" className="about-workflow-section border-y border-current/10 bg-current/[0.025]">
+    <section
+      id="workflow"
+      className="about-workflow-section border-y border-current/10 bg-current/[0.025]"
+    >
       <div className="mx-auto grid w-full max-w-[1360px] gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.34fr_0.66fr] lg:gap-20 lg:px-10 lg:py-32">
         <div className="lg:sticky lg:top-24 lg:self-start">
           <h2 className="max-w-[17rem] text-4xl font-semibold tracking-[-0.07em] sm:text-5xl">
@@ -142,7 +170,11 @@ export function AboutWorkflow() {
             />
           </div>
           <div className="mt-8 flex items-center gap-3 text-xs text-current/45">
-            <SwitchButton checked={readOnly} onCheckedChange={setReadOnly} aria-label="Read only umschalten" />
+            <SwitchButton
+              checked={readOnly}
+              onCheckedChange={setReadOnly}
+              aria-label="Read only umschalten"
+            />
             <span>Read only Vorschau</span>
           </div>
           <div className="mt-9">
@@ -188,18 +220,33 @@ export function AboutWorkflow() {
             </div>
             <CenterMorphModal>
               <CenterMorphModalTrigger>
-                <button type="button" className="about-icon-button" aria-label="Vorschau vergrößern">
+                <button
+                  type="button"
+                  className="about-icon-button"
+                  aria-label="Vorschau vergrößern"
+                >
                   <Maximize2 className="size-4" />
                 </button>
               </CenterMorphModalTrigger>
-              <CenterMorphModalContent ariaLabel="l8db Arbeitsbereich Vorschau" className="max-w-4xl bg-[#11151d] p-5 text-white sm:p-7">
+              <CenterMorphModalContent
+                ariaLabel="l8db Arbeitsbereich Vorschau"
+                className="max-w-4xl bg-[#11151d] p-5 text-white sm:p-7"
+              >
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">l8db preview</p>
-                    <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em]">{content.title}</h3>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
+                      l8db preview
+                    </p>
+                    <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em]">
+                      {content.title}
+                    </h3>
                   </div>
                   <CenterMorphModalClose>
-                    <button type="button" className="about-icon-button text-white/55" aria-label="Vorschau schließen">
+                    <button
+                      type="button"
+                      className="about-icon-button text-white/55"
+                      aria-label="Vorschau schließen"
+                    >
                       <Maximize2 className="size-4 rotate-45" />
                     </button>
                   </CenterMorphModalClose>
@@ -214,11 +261,25 @@ export function AboutWorkflow() {
           <div className={cn("about-workflow-panel", mode === "map" && "about-workflow-panel-map")}>
             <div className="mb-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-[11px] text-white/45">
-                {mode === "browse" ? <Table2 className="size-3.5" /> : mode === "query" ? <Braces className="size-3.5" /> : <Network className="size-3.5" />}
-                <span>{mode === "browse" ? "public.customers" : mode === "query" ? "active_users.sql" : "public schema"}</span>
+                {mode === "browse" ? (
+                  <Table2 className="size-3.5" />
+                ) : mode === "query" ? (
+                  <Braces className="size-3.5" />
+                ) : (
+                  <Network className="size-3.5" />
+                )}
+                <span>
+                  {mode === "browse"
+                    ? "public.customers"
+                    : mode === "query"
+                      ? "active_users.sql"
+                      : "public schema"}
+                </span>
               </div>
               <div className="flex items-center gap-2">
-                <AnimatedBadge status="success" size="sm" showIcon={false}>Live preview</AnimatedBadge>
+                <AnimatedBadge status="success" size="sm" showIcon={false}>
+                  Live preview
+                </AnimatedBadge>
                 <ActionSwapButton
                   items={[
                     { id: "run", label: "Run", icon: <Rows3 className="size-3.5" /> },

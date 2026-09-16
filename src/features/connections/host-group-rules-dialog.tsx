@@ -46,9 +46,9 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Host-Gruppen</DialogTitle>
           <DialogDescription>
-            Fasse ähnliche Hosts per Muster zusammen, z. B. <code>db-prod*</code>. Mehrere Muster mit
-            Komma trennen. Die erste passende Regel gewinnt; Verbindungen ohne Treffer bleiben nach
-            Server gruppiert.
+            Fasse ähnliche Hosts per Muster zusammen, z. B. <code>db-prod*</code>. Mehrere Muster
+            mit Komma trennen. Die erste passende Regel gewinnt; Verbindungen ohne Treffer bleiben
+            nach Server gruppiert.
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
