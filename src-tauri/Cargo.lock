@@ -3610,6 +3610,7 @@ dependencies = [
  "oracle",
  "postgres-native-tls",
  "redis",
+ "regex",
  "reqwest",
  "rusqlite",
  "russh",
@@ -3629,6 +3630,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tokio-util",
+ "toml_edit 0.20.2",
  "url",
 ]
 

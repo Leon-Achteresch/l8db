@@ -16,6 +16,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DriversRouteImport } from './routes/drivers'
+import { Route as McpRouteImport } from './routes/mcp'
 import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
@@ -81,6 +82,11 @@ const DocsRoute = DocsRouteImport.update({
 const DriversRoute = DriversRouteImport.update({
   id: '/drivers',
   path: '/drivers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const McpRoute = McpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
@@ -263,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/dev': typeof DevRoute
   '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
+  '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
@@ -301,6 +308,7 @@ export interface FileRoutesByTo {
   '/dev': typeof DevRoute
   '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
+  '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
@@ -339,6 +347,7 @@ export interface FileRoutesById {
   '/dev': typeof DevRoute
   '/docs': typeof DocsRoute
   '/drivers': typeof DriversRoute
+  '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/_app/_plain': typeof AppPlainRouteWithChildren
@@ -382,6 +391,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/docs'
     | '/drivers'
+    | '/mcp'
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
@@ -420,6 +430,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/docs'
     | '/drivers'
+    | '/mcp'
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
@@ -457,6 +468,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/docs'
     | '/drivers'
+    | '/mcp'
     | '/release-notes'
     | '/settings'
     | '/_app/_plain'
@@ -499,6 +511,7 @@ export interface RootRouteChildren {
   DevRoute: typeof DevRoute
   DocsRoute: typeof DocsRoute
   DriversRoute: typeof DriversRoute
+  McpRoute: typeof McpRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -552,6 +565,13 @@ declare module '@tanstack/react-router' {
       path: '/drivers'
       fullPath: '/drivers'
       preLoaderRoute: typeof DriversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mcp': {
+      id: '/mcp'
+      path: '/mcp'
+      fullPath: '/mcp'
+      preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/release-notes': {
@@ -889,6 +909,7 @@ const rootRouteChildren: RootRouteChildren = {
   DevRoute: DevRoute,
   DocsRoute: DocsRoute,
   DriversRoute: DriversRoute,
+  McpRoute: McpRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
   SettingsRoute: SettingsRoute,
 }
