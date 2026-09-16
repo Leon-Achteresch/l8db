@@ -7,10 +7,6 @@ export interface QueryWorkspaceOptions {
   editorShare: number;
   navigatorVisible: boolean;
   navigatorShare: number;
-  toolsVisible: boolean;
-  navigationTools: boolean;
-  fileTools: boolean;
-  analysisTools: boolean;
   runTarget: QueryRunTarget;
   statusVisible: boolean;
   folding: boolean;
@@ -33,10 +29,6 @@ export const QUERY_WORKSPACE_DEFAULTS: QueryWorkspaceOptions = {
   editorShare: 55,
   navigatorVisible: false,
   navigatorShare: 22,
-  toolsVisible: true,
-  navigationTools: true,
-  fileTools: true,
-  analysisTools: true,
   runTarget: "selection-or-all",
   statusVisible: true,
   folding: true,
@@ -55,9 +47,9 @@ export const QUERY_WORKSPACE_DEFAULTS: QueryWorkspaceOptions = {
 };
 
 export const QUERY_WORKSPACE_PRESETS = {
-  focus: { layout: "vertical", editorShare: 75, toolsVisible: false, navigatorVisible: false },
-  develop: { layout: "vertical", editorShare: 55, toolsVisible: true, navigatorVisible: true },
-  analyze: { layout: "horizontal", editorShare: 40, toolsVisible: true, navigatorVisible: false },
+  focus: { layout: "vertical", editorShare: 75, navigatorVisible: false },
+  develop: { layout: "vertical", editorShare: 55, navigatorVisible: true },
+  analyze: { layout: "horizontal", editorShare: 40, navigatorVisible: false },
 } satisfies Record<string, Partial<QueryWorkspaceOptions>>;
 
 export function sanitizeWorkspace(value: unknown): Partial<QueryWorkspaceOptions> {

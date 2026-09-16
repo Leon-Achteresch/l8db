@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { type ReactNode, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
 import { useQueryWorkspace } from "@/lib/query-workspace";
+import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { QueryResultTable } from "./query-result-table";
 
@@ -21,11 +22,15 @@ export function QueryResultWorkbench({
   isLoading,
   error,
   kind,
+  statusText,
+  actions,
 }: {
   result: QueryResult | null;
   isLoading: boolean;
   error: string | null;
   kind?: DatabaseKind;
+  statusText?: string | null;
+  actions?: ReactNode;
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
@@ -95,6 +100,26 @@ export function QueryResultWorkbench({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
+        <span className="font-medium text-xs">Ergebnisse</span>
+        <span
+          role="status"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+            isLoading
+              ? "border-primary/30 bg-primary/10 text-primary"
+              : error
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
+          {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+        </span>
+        {statusText && (
+          <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
+            {statusText}
+          </span>
+        )}
         <Input
           className="h-7 w-48 text-xs"
           aria-label="Ergebnisse durchsuchen"
@@ -102,9 +127,11 @@ export function QueryResultWorkbench({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <span className="text-[10px] tabular-nums text-muted-foreground">
-          {filtered?.rows.length} / {result.rows.length} Zeilen
-        </span>
+        {workspace.resultView === "json" && (
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {filtered?.rows.length} / {result.rows.length} Zeilen
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
@@ -143,6 +170,7 @@ export function QueryResultWorkbench({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {actions}
         </div>
       </div>
       {workspace.resultView === "json" ? (
