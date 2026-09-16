@@ -1320,7 +1320,7 @@ export function DataTable({
   const resizingColumn = table.getState().columnSizingInfo.isResizingColumn;
   const tableHeader = useMemo(
     () => (
-      <thead className="sticky top-0 z-10 select-none">
+      <thead className="select-none">
         {headerGroups.map((headerGroup) => (
           <tr key={headerGroup.id}>
             {columnWindow.items.map((item) => {
@@ -1330,6 +1330,7 @@ export function DataTable({
                     key={`gap-${item.index}`}
                     aria-hidden
                     colSpan={item.span}
+                    className="sticky top-0 z-20 border-b border-border bg-muted"
                     style={{ width: item.width, padding: 0 }}
                   />
                 );
@@ -1340,7 +1341,7 @@ export function DataTable({
                     <ContextMenuTrigger asChild>
                       <th
                         title="Rechtsklick: Spalten"
-                        className="w-12 sticky left-0 z-30 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
+                        className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
                         style={{ width: header.getSize() }}
                       >
                         {header.isPlaceholder
