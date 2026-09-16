@@ -136,8 +136,44 @@ const POSTGRES_TYPES: DataTypeGroup[] = [
   },
 ];
 
-function getDataTypeGroups(_kind: DatabaseKind): DataTypeGroup[] {
-  return POSTGRES_TYPES;
+const CLICKHOUSE_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: [
+      "UInt8",
+      "UInt32",
+      "UInt64",
+      "Int8",
+      "Int32",
+      "Int64",
+      "Float32",
+      "Float64",
+      "Decimal(18, 4)",
+    ],
+  },
+  { label: "Text", types: ["String", "FixedString(16)", "LowCardinality(String)", "UUID"] },
+  { label: "Datum / Zeit", types: ["Date", "Date32", "DateTime", "DateTime64(3)"] },
+  { label: "Boolean", types: ["Bool"] },
+  { label: "JSON", types: ["JSON"] },
+  {
+    label: "Sonstige",
+    types: [
+      "Array(String)",
+      "Array(UInt64)",
+      "Map(String, String)",
+      "Nullable(String)",
+      "IPv4",
+      "IPv6",
+    ],
+  },
+];
+
+function defaultDataType(kind: DatabaseKind | undefined): string {
+  return kind === "clickhouse" ? "String" : "text";
+}
+
+function getDataTypeGroups(kind: DatabaseKind): DataTypeGroup[] {
+  return kind === "clickhouse" ? CLICKHOUSE_TYPES : POSTGRES_TYPES;
 }
 
 interface DataTypeComboboxProps {
@@ -238,11 +274,11 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     drop_default: false,
   });
   const [addingColumn, setAddingColumn] = useState(false);
-  const [addForm, setAddForm] = useState<AddColumnRequest>({
+  const [addForm, setAddForm] = useState<AddColumnRequest>(() => ({
     name: "",
-    data_type: "text",
+    data_type: defaultDataType(connection?.kind),
     is_nullable: true,
-  });
+  }));
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -334,7 +370,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
       );
       toast.success(`Spalte "${addForm.name}" hinzugefügt.`);
       setAddingColumn(false);
-      setAddForm({ name: "", data_type: "text", is_nullable: true });
+      setAddForm({ name: "", data_type: defaultDataType(connection?.kind), is_nullable: true });
       await invalidate();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
@@ -408,7 +444,11 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
             size="xs"
             onClick={() => {
               setAddingColumn(true);
-              setAddForm({ name: "", data_type: "text", is_nullable: true });
+              setAddForm({
+                name: "",
+                data_type: defaultDataType(connection?.kind),
+                is_nullable: true,
+              });
             }}
             disabled={addingColumn}
           >

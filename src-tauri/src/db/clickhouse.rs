@@ -102,6 +102,52 @@ impl ClickhouseAdapter {
         })
     }
 
+    fn create_table_sql(&self, req: &CreateTableRequest) -> String {
+        let columns: Vec<String> = req
+            .columns
+            .iter()
+            .map(|c| {
+                let data_type = if c.is_nullable
+                    && !c.is_primary_key
+                    && !c.data_type.starts_with("Nullable(")
+                {
+                    format!("Nullable({})", c.data_type)
+                } else {
+                    c.data_type.clone()
+                };
+                let default = c
+                    .default_value
+                    .as_deref()
+                    .filter(|d| !d.is_empty())
+                    .map(|d| format!(" DEFAULT {d}"))
+                    .unwrap_or_default();
+                format!("{} {data_type}{default}", quote(&c.name))
+            })
+            .collect();
+        let pk: Vec<String> = req
+            .columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| quote(&c.name))
+            .collect();
+        let order = if pk.is_empty() {
+            "tuple()".to_string()
+        } else {
+            format!("({})", pk.join(", "))
+        };
+        format!(
+            "CREATE TABLE {}{}.{} ({}) ENGINE = MergeTree ORDER BY {order}",
+            if req.if_not_exists {
+                "IF NOT EXISTS "
+            } else {
+                ""
+            },
+            quote(&req.schema),
+            quote(&req.name),
+            columns.join(", ")
+        )
+    }
+
     async fn raw(&self, sql: &str) -> Result<(String, Option<serde_json::Value>), String> {
         timed(async {
             let response = http()
@@ -220,7 +266,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
 
     async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let db = schema.unwrap_or(&self.database);
-        let sql = format!("SELECT database, name FROM system.tables WHERE database = {} AND NOT is_temporary AND engine NOT IN ('View', 'MaterializedView', 'LiveView') ORDER BY name", lit(db));
+        let sql = format!("SELECT database, name FROM system.tables WHERE database = {} AND NOT is_temporary AND name NOT LIKE '.inner%' AND engine NOT IN ('View', 'MaterializedView', 'LiveView') ORDER BY name", lit(db));
         Ok(self
             .rows(&sql)
             .await?
@@ -395,7 +441,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
         Ok(rows
             .iter()
             .map(|r| FunctionInfo {
-                schema: String::new(),
+                schema: self.database.clone(),
                 name: text(&r[0]),
                 identity_args: String::new(),
                 return_type: String::new(),
@@ -530,50 +576,12 @@ impl DatabaseAdapter for ClickhouseAdapter {
     }
 
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        let columns: Vec<String> = req
-            .columns
-            .iter()
-            .map(|c| {
-                let data_type = if c.is_nullable
-                    && !c.is_primary_key
-                    && !c.data_type.starts_with("Nullable(")
-                {
-                    format!("Nullable({})", c.data_type)
-                } else {
-                    c.data_type.clone()
-                };
-                let default = c
-                    .default_value
-                    .as_deref()
-                    .filter(|d| !d.is_empty())
-                    .map(|d| format!(" DEFAULT {d}"))
-                    .unwrap_or_default();
-                format!("{} {data_type}{default}", quote(&c.name))
-            })
-            .collect();
-        let pk: Vec<String> = req
-            .columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| quote(&c.name))
-            .collect();
-        let order = if pk.is_empty() {
-            "tuple()".to_string()
-        } else {
-            format!("({})", pk.join(", "))
-        };
-        let sql = format!(
-            "CREATE TABLE {}{}.{} ({}) ENGINE = MergeTree ORDER BY {order}",
-            if req.if_not_exists {
-                "IF NOT EXISTS "
-            } else {
-                ""
-            },
-            quote(&req.schema),
-            quote(&req.name),
-            columns.join(", ")
-        );
+        let sql = self.create_table_sql(req);
         self.exec(&sql).await
+    }
+
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        Ok(self.create_table_sql(req))
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
@@ -602,7 +610,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
 
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         let rows = self
-            .rows("SELECT database, count(), sum(total_bytes) FROM system.tables WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') GROUP BY database ORDER BY database")
+            .rows("SELECT database, count(), sum(total_bytes) FROM system.tables WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') AND name NOT LIKE '.inner%' GROUP BY database ORDER BY database")
             .await?;
         let schemas: Vec<SchemaSize> = rows
             .iter()
