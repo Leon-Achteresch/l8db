@@ -26,6 +26,7 @@ const CLIENTS: &[ClientSpec] = &[
     ClientSpec { id: "gemini", name: "Gemini CLI", marker: ".gemini", config: ".gemini/settings.json", app_support: false, format: Format::Json("mcpServers") },
     ClientSpec { id: "cursor", name: "Cursor", marker: ".cursor", config: ".cursor/mcp.json", app_support: false, format: Format::Json("mcpServers") },
     ClientSpec { id: "windsurf", name: "Windsurf", marker: ".codeium/windsurf", config: ".codeium/windsurf/mcp_config.json", app_support: false, format: Format::Json("mcpServers") },
+    ClientSpec { id: "opencode", name: "opencode", marker: ".config/opencode", config: ".config/opencode/opencode.json", app_support: false, format: Format::Json("mcp") },
     ClientSpec { id: "vscode", name: "VS Code", marker: "Code/User", config: "Code/User/mcp.json", app_support: true, format: Format::Json("servers") },
 ];
 
@@ -154,7 +155,11 @@ pub fn register(paths: &Paths, id: &str, on: bool, exe: &Path) -> Result<(), Str
             }
             let servers = servers.as_object_mut().unwrap();
             if on {
-                let mut entry = json!({"command": command, "args": ["--mcp"]});
+                let mut entry = if spec.id == "opencode" {
+                    json!({"type": "local", "command": [command, "--mcp"], "enabled": true})
+                } else {
+                    json!({"command": command, "args": ["--mcp"]})
+                };
                 if spec.id == "vscode" {
                     entry["type"] = json!("stdio");
                 }
@@ -262,6 +267,13 @@ mod tests {
         register(&paths, "vscode", true, Path::new("/x")).unwrap();
         let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.app_support.join("Code/User/mcp.json")).unwrap()).unwrap();
         assert_eq!(root["servers"]["l8db"]["type"], "stdio");
+        register(&paths, "opencode", true, Path::new("/opt/l8db")).unwrap();
+        let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.home.join(".config/opencode/opencode.json")).unwrap()).unwrap();
+        assert_eq!(root["mcp"]["l8db"]["type"], "local");
+        assert_eq!(root["mcp"]["l8db"]["command"][0], "/opt/l8db");
+        assert_eq!(root["mcp"]["l8db"]["command"][1], "--mcp");
+        assert_eq!(root["mcp"]["l8db"]["enabled"], true);
+        assert!(list(&paths).iter().find(|c| c.id == "opencode").unwrap().registered);
         register(&paths, "cursor", true, Path::new("/x")).unwrap();
         assert!(paths.home.join(".cursor/mcp.json").exists());
     }
