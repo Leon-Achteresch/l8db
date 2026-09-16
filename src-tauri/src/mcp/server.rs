@@ -114,6 +114,11 @@ impl Server {
         let params = request.get("params").cloned().unwrap_or(Value::Null);
         let id = id?;
         let result = match method {
+            "initialize" if !config::load().enabled => Err(rpc_error(
+                id.clone(),
+                -32002,
+                "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren und neu verbinden.",
+            )),
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
@@ -121,6 +126,7 @@ impl Server {
                 "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted."
             })),
             "ping" => Ok(json!({})),
+            "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
             "tools/list" => Ok(json!({"tools": tool_definitions()})),
             "tools/call" => Ok(self.call(&params).await),
             "resources/list" => Ok(json!({"resources": []})),
@@ -523,6 +529,22 @@ fn audit(connection: &McpConnection, tool: &str, sql: &str, result: &Result<Stri
 mod tests {
     use super::*;
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn temp_config(enabled: bool) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "l8db-mcp-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mcp.json");
+        let mut config = McpConfig::default();
+        config.enabled = enabled;
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        path
+    }
+
     fn connection(read_only: bool) -> McpConnection {
         McpConnection {
             id: "c1".into(),
@@ -608,6 +630,9 @@ mod tests {
 
     #[test]
     fn rpc_protocol_shapes() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = temp_config(true);
+        std::env::set_var("L8DB_MCP_CONFIG", &path);
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let mut server = Server { pool: db::pool::create_pool_state(), columns: HashMap::new() };
         let init = runtime
@@ -628,28 +653,46 @@ mod tests {
         assert_eq!(unknown["error"]["code"], -32601);
         let broken = runtime.block_on(server.handle_line("{nope")).unwrap();
         assert_eq!(broken["error"]["code"], -32700);
+        std::env::remove_var("L8DB_MCP_CONFIG");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
-    fn disabled_server_rejects_calls() {
-        let dir = std::env::temp_dir().join(format!("l8db-mcp-test-{}", std::process::id()));
-        std::env::set_var("L8DB_MCP_CONFIG", dir.join("mcp.json"));
+    fn disabled_server_fails_handshake_and_calls() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let path = temp_config(false);
+        std::env::set_var("L8DB_MCP_CONFIG", &path);
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let mut server = Server { pool: db::pool::create_pool_state(), columns: HashMap::new() };
+        let init = runtime
+            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
+            .unwrap();
+        assert_eq!(init["error"]["code"], -32002);
+        assert!(init["error"]["message"].as_str().unwrap().contains("deaktiviert"));
+        assert!(init.get("result").is_none());
+        let tools = runtime
+            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
+            .unwrap();
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 0);
         let reply = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"connections","arguments":{}}}"#))
             .unwrap();
         assert_eq!(reply["result"]["isError"], true);
         assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("deaktiviert"));
+
         let mut config = McpConfig::default();
         config.enabled = true;
         config::save(&config).unwrap();
+        let init = runtime
+            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":10,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
+            .unwrap();
+        assert_eq!(init["result"]["serverInfo"]["name"], "l8db");
         let reply = runtime
-            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"query","arguments":{"connection":"x","sql":"select 1"}}}"#))
+            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"connection":"x","sql":"select 1"}}}"#))
             .unwrap();
         assert_eq!(reply["result"]["isError"], true);
         assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("nicht freigegeben"));
-        let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var("L8DB_MCP_CONFIG");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }
