@@ -1,20 +1,11 @@
-import {
-  BookmarkIcon,
-  DownloadIcon,
-  HistoryIcon,
-  PlayIcon,
-  SearchIcon,
-  Trash2Icon,
-  UploadIcon,
-  XIcon,
-} from "lucide-react";
+import { DownloadIcon, PlayIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
 import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -24,7 +15,6 @@ import { useSavedQueriesStore } from "@/lib/saved-queries";
 interface QueryHistoryPanelProps {
   connectionId: string | null;
   onLoad: (sql: string, mode?: "new" | "replace") => void;
-  onClose: () => void;
 }
 
 function formatTime(timestamp: number): string {
@@ -45,8 +35,8 @@ function firstLine(sql: string): string {
   return line.length > 80 ? `${line.slice(0, 80)}…` : line;
 }
 
-export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistoryPanelProps) {
-  const [tab, setTab] = useState("history");
+export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelProps) {
+  const [tab, setTab] = useState<"history" | "saved">("history");
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -98,30 +88,18 @@ export function QueryHistoryPanel({ connectionId, onLoad, onClose }: QueryHistor
     <motion.div
       layout
       transition={{ layout: SPRING_LAYOUT }}
-      className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/20"
+      className="flex h-full w-full min-w-0 flex-col bg-muted/20"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        <Tabs value={tab} onValueChange={setTab} className="min-w-0 flex-1">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="history" className="gap-1.5 text-xs">
-              <HistoryIcon className="size-3.5" />
-              Verlauf
-            </TabsTrigger>
-            <TabsTrigger value="saved" className="gap-1.5 text-xs">
-              <BookmarkIcon className="size-3.5" />
-              Gespeichert
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0"
-          onClick={onClose}
-          title="Schließen"
-        >
-          <XIcon className="size-4" />
-        </Button>
+      <div className="shrink-0 border-b px-4 py-3">
+        <SegmentedControl
+          value={tab}
+          onChange={setTab}
+          label="Query-Bibliothek"
+          options={[
+            { value: "history", label: "Verlauf" },
+            { value: "saved", label: "Gespeichert" },
+          ]}
+        />
       </div>
 
       <div className="shrink-0 border-b p-2">

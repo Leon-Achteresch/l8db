@@ -6,8 +6,6 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   Columns2,
   Download,
-  File as FileData,
-  Gauge,
   Loader,
   Maximize2,
   Minimize2,
@@ -19,30 +17,37 @@ import {
 import {
   AlertTriangleIcon,
   BookmarkIcon,
-  BookmarkPlusIcon,
+  ChevronDownIcon,
   FileIcon,
   GaugeIcon,
   HistoryIcon,
-  ListOrderedIcon,
+  MoreHorizontalIcon,
   PanelLeftIcon,
-  ScanTextIcon,
-  SearchIcon,
-  SlidersHorizontalIcon,
   TerminalIcon,
-  TimerIcon,
-  Trash2Icon,
-  WandSparklesIcon,
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { toast } from "sonner";
+import { Collapse } from "@/components/motion/collapse";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -50,11 +55,11 @@ import { CsvExportDialog } from "@/features/export/csv-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { BindParamsDialog } from "@/features/query/bind-params-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
-import { QueryEditorOutline } from "@/features/query/query-editor-outline";
+import { QueryAnalysisSheet } from "@/features/query/query-analysis-sheet";
 import { type QueryEditorApi, QueryEditorPane } from "@/features/query/query-editor-pane";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
 import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
-import { QueryHistoryPanel } from "@/features/query/query-history-panel";
+import { QueryHistorySheet } from "@/features/query/query-history-sheet";
 import { QueryPerfPanel } from "@/features/query/query-perf-panel";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
@@ -62,7 +67,6 @@ import { SaveQueryDialog } from "@/features/query/save-query-dialog";
 import { ScriptResultList, type ScriptRunEntry } from "@/features/query/script-result-list";
 import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
 import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
-import { SnippetMenu } from "@/features/query/snippet-menu";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import {
   type BindParamRef,
@@ -130,13 +134,6 @@ import { cancelTask, useTasksStore } from "@/lib/tasks";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { ServerOutputPanel } from "./server-output-panel";
-
-const QUERY_LANGUAGES = {
-  sql: "SQL",
-  cql: "CQL",
-  json: "MongoDB-Befehle als JSON",
-  redis: "Redis-Befehle, einer pro Zeile · eigene Verbindung je Ausführung",
-} as const;
 
 function withCreateNotice(res: QueryResult | null, sql: string): QueryResult | null {
   if (!res || res.columns.length > 0) return res;
@@ -267,7 +264,6 @@ export function QueryView({ tabId }: QueryViewProps) {
   } | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
-  const [perfOpen, setPerfOpen] = useState(false);
 
   const [selectedSql, setSelectedSql] = useState("");
   const [cursorOffset, setCursorOffset] = useState(0);
@@ -306,11 +302,14 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
   const [outputBusy, setOutputBusy] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisSection, setAnalysisSection] = useState<"plan" | "perf">("plan");
+  const openAnalysis = (section: "plan" | "perf") => {
+    setAnalysisSection(section);
+    setAnalysisOpen(true);
+  };
   const outputEnabled = useServerOutputStore((state) =>
     connection ? state.enabled[connection.id] === true : false,
-  );
-  const outputCount = useServerOutputStore((state) =>
-    connection ? (state.entries[connection.id]?.length ?? 0) : 0,
   );
   const [scriptMode, setScriptMode] = useState<ScriptRunMode>("autocommit");
   const [scriptEntries, setScriptEntries] = useState<ScriptRunEntry[] | null>(null);
@@ -1066,6 +1065,54 @@ export function QueryView({ tabId }: QueryViewProps) {
     return parts.join(" · ");
   })();
 
+  const resultActions = (
+    <>
+      {caps.server_output && (
+        <Button
+          size="icon-sm"
+          variant={outputOpen ? "secondary" : "ghost"}
+          aria-label="Server-Ausgabe umschalten"
+          aria-pressed={outputOpen}
+          title="Server-Ausgabe öffnen"
+          disabled={!connection}
+          onClick={() => setOutputOpen((open) => !open)}
+        >
+          <TerminalIcon className="size-3.5" />
+        </Button>
+      )}
+      {result && result.columns.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-xs"
+              disabled={exporting}
+            >
+              <MorphIcon
+                icon={exporting ? Loader : Download}
+                className={cn("size-3", exporting && "animate-spin")}
+              />
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+              Als CSV exportieren…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+              Als XLSX exportieren…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void handleExportJson()}>
+              Als JSON exportieren
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+  const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
+
   return (
     <div className="flex h-full w-full min-h-0">
       <motion.div
@@ -1077,30 +1124,66 @@ export function QueryView({ tabId }: QueryViewProps) {
           className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-card px-3 py-2"
           data-tour="query-toolbar"
         >
-          <Button
-            size="sm"
-            variant="default"
-            className="h-7 gap-1.5 px-3 text-xs"
-            data-tour="query-run"
-            onClick={handleRun}
-            disabled={isRunning || !connection || !sql.trim()}
-            title={`${runLabel} (${shortcutLabel("query.run")})`}
-          >
-            <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
-            {runLabel}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 px-3 text-xs"
-            data-tour="query-run-statement"
-            onClick={handleRunStatement}
-            disabled={isRunning || !connection || !sql.trim()}
-            title={`Statement unter dem Cursor ausführen (${shortcutLabel("query.runStatement")})`}
-          >
-            <ScanTextIcon className="size-3" />
-            Statement
-          </Button>
+          <div className="flex shrink-0 items-stretch">
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-3 text-xs"
+              data-tour="query-run"
+              onClick={handleRun}
+              disabled={isRunning || !connection || !sql.trim()}
+              title={`${runLabel} (${shortcutLabel("query.run")})`}
+            >
+              <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
+              {runLabel}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 w-8 rounded-l-none px-0"
+                  aria-label="Weitere Ausführungsarten"
+                  title="Weitere Ausführungsarten"
+                  disabled={isRunning || !connection || !sql.trim()}
+                >
+                  <ChevronDownIcon className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                  Ausführung
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  data-tour="query-run-statement"
+                  onClick={handleRunStatement}
+                  disabled={isRunning || !connection || !sql.trim()}
+                >
+                  Statement unter Cursor
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {shortcutLabel("query.runStatement")}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleRunSelection}
+                  disabled={isRunning || !connection || !hasSelection}
+                >
+                  Auswahl ausführen
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {shortcutLabel("query.runSelection")}
+                  </span>
+                </DropdownMenuItem>
+                {caps.query_language === "sql" && (
+                  <DropdownMenuItem
+                    onClick={handleOpenScriptDialog}
+                    disabled={isRunning || !connection || scriptSplit.statements.length === 0}
+                  >
+                    Skript mit Einzelergebnissen
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <Button
             size="sm"
             variant="outline"
@@ -1116,19 +1199,6 @@ export function QueryView({ tabId }: QueryViewProps) {
             />
             {isChecking ? "Prüfe…" : "Prüfen"}
           </Button>
-          {caps.query_language === "sql" && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1.5 px-3 text-xs"
-              onClick={handleOpenScriptDialog}
-              disabled={isRunning || !connection || scriptSplit.statements.length === 0}
-              title="Alle Statements nacheinander ausführen und Einzelergebnisse anzeigen"
-            >
-              <ListOrderedIcon className="size-3" />
-              Skript
-            </Button>
-          )}
           {isRunning && (
             <Button
               size="sm"
@@ -1145,19 +1215,6 @@ export function QueryView({ tabId }: QueryViewProps) {
               {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
             </Button>
           )}
-          {caps.query_language === "sql" && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-3 text-xs"
-              onClick={() => editorApiRef.current?.format()}
-              disabled={!sql.trim()}
-              title={`SQL formatieren (${shortcutLabel("query.format")})`}
-            >
-              <WandSparklesIcon className="size-3" />
-              Formatieren
-            </Button>
-          )}
           <div className="ml-auto flex items-center gap-1">
             {caps.query_language === "sql" && (
               <Button
@@ -1171,16 +1228,19 @@ export function QueryView({ tabId }: QueryViewProps) {
                 <PanelLeftIcon className="size-3.5" />
               </Button>
             )}
-            <Button
-              size="sm"
-              variant={workspace.toolsVisible ? "secondary" : "ghost"}
-              className="h-7 gap-1.5 text-xs"
-              aria-pressed={workspace.toolsVisible}
-              onClick={() => workspace.update({ toolsVisible: !workspace.toolsVisible })}
-            >
-              <SlidersHorizontalIcon className="size-3.5" />
-              Werkzeuge
-            </Button>
+            {caps.explain && (
+              <Button
+                size="sm"
+                variant={analysisOpen ? "secondary" : "ghost"}
+                className="h-7 gap-1.5 text-xs"
+                aria-pressed={analysisOpen}
+                onClick={() => openAnalysis("plan")}
+                title="Explain und Performance-Test"
+              >
+                <GaugeIcon className="size-3.5" />
+                Analyse
+              </Button>
+            )}
             <Button
               size="icon-sm"
               variant="ghost"
@@ -1212,128 +1272,112 @@ export function QueryView({ tabId }: QueryViewProps) {
               <MorphIcon icon={editorFocus ? Minimize2 : Maximize2} className="size-3.5" />
             </Button>
             <QueryEditorSettingsPopover />
-          </div>
-          {!connection && (
-            <span className="ml-2 text-xs text-muted-foreground">Keine Verbindung aktiv</span>
-          )}
-          {connection && caps.query_language !== "sql" && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              {QUERY_LANGUAGES[caps.query_language]}
-            </span>
-          )}
-        </div>
-        {workspace.toolsVisible && (
-          <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b bg-muted/20 px-3 py-1.5">
-            {workspace.navigationTools && (
-              <>
-                <QueryEditorOutline
-                  sql={sql}
-                  dialect={connection?.kind}
-                  onJump={(line, column) => editorApiRef.current?.revealMatch(line, column, 0)}
-                />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
-                  size="sm"
+                  size="icon-sm"
                   variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => setTabSearchOpen(true)}
-                  title="In allen offenen Query-Tabs suchen (Cmd/Ctrl+Shift+F)"
+                  aria-label="Weitere Werkzeuge"
+                  title="Verlauf, Server-Ausgabe, Datei und Bearbeiten"
                 >
-                  <SearchIcon className="size-3" />
-                  Suchen
+                  <MoreHorizontalIcon className="size-3.5" />
                 </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-64 whitespace-nowrap">
+                <DropdownMenuItem data-tour="query-history" onClick={() => setHistoryOpen(true)}>
+                  <HistoryIcon className="size-3.5" />
+                  Verlauf & Gespeichertes
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {shortcutLabel("query.history")}
+                  </span>
+                </DropdownMenuItem>
                 {caps.server_output && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1.5 px-3 text-xs"
-                    onClick={() => setOutputOpen((open) => !open)}
-                    disabled={!connection}
-                    title="Server-Ausgabe (Notices, DBMS_OUTPUT) anzeigen"
-                  >
-                    <TerminalIcon className="size-3" />
-                    Ausgabe
-                    {outputCount > 0 && (
-                      <span className="tabular-nums text-muted-foreground">{outputCount}</span>
-                    )}
-                  </Button>
+                  <DropdownMenuItem onClick={() => setOutputOpen(true)} disabled={!connection}>
+                    <TerminalIcon className="size-3.5" />
+                    Server-Ausgabe öffnen
+                  </DropdownMenuItem>
                 )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1.5 px-3 text-xs"
-                      title="Lesezeichen setzen und anspringen"
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <BookmarkIcon className="size-3.5" />
+                    Bibliothek
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem
+                      onClick={() => setSaveDialogOpen(true)}
+                      disabled={!sql.trim()}
                     >
-                      <BookmarkPlusIcon className="size-3" />
-                      Lesezeichen
-                      {normalizedBookmarks.length > 0 && (
-                        <span className="tabular-nums text-muted-foreground">
-                          {normalizedBookmarks.length}
+                      Query speichern…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSnippetDialogOpen(true)}>
+                      Snippets verwalten…
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Editor-Werkzeuge</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => setTabSearchOpen(true)}>
+                      In Query-Tabs suchen
+                      <span className="ml-auto text-[10px] text-muted-foreground">Mod+Shift+F</span>
+                    </DropdownMenuItem>
+                    {caps.query_language === "sql" && (
+                      <DropdownMenuItem
+                        onClick={() => editorApiRef.current?.format()}
+                        disabled={!sql.trim()}
+                      >
+                        SQL formatieren
+                        <span className="ml-auto text-[10px] text-muted-foreground">
+                          {shortcutLabel("query.format")}
                         </span>
-                      )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
+                      </DropdownMenuItem>
+                    )}
+                    {[
+                      ["actions.find", "Suchen"],
+                      ["editor.action.startFindReplaceAction", "Suchen und ersetzen"],
+                      ["editor.action.quickCommand", "Editor-Befehlspalette"],
+                      ["editor.action.gotoLine", "Gehe zu Zeile"],
+                      ["editor.action.commentLine", "Zeilenkommentar umschalten"],
+                      ["editor.action.blockComment", "Blockkommentar umschalten"],
+                      ["editor.action.foldAll", "Alles einklappen"],
+                      ["editor.action.unfoldAll", "Alles aufklappen"],
+                      ["editor.action.selectHighlights", "Alle Vorkommen auswählen"],
+                    ].map(([id, label]) => (
+                      <DropdownMenuItem key={id} onClick={() => editorApiRef.current?.action(id)}>
+                        {label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Lesezeichen</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
                     <DropdownMenuItem onClick={() => editorApiRef.current?.toggleBookmark()}>
-                      {`Lesezeichen setzen/entfernen (${shortcutLabel("query.bookmark")})`}
+                      {`Setzen/entfernen (${shortcutLabel("query.bookmark")})`}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => editorApiRef.current?.gotoBookmark("next")}
                       disabled={normalizedBookmarks.length === 0}
                     >
-                      {`Nächstes Lesezeichen (${shortcutLabel("query.nextBookmark")})`}
+                      {`Nächstes (${shortcutLabel("query.nextBookmark")})`}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => editorApiRef.current?.gotoBookmark("previous")}
                       disabled={normalizedBookmarks.length === 0}
                     >
-                      {`Vorheriges Lesezeichen (${shortcutLabel("query.prevBookmark")})`}
+                      {`Vorheriges (${shortcutLabel("query.prevBookmark")})`}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => clearQueryBookmarks(tabId)}
                       disabled={normalizedBookmarks.length === 0}
                     >
-                      Alle Lesezeichen entfernen
+                      Alle entfernen
                     </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
-            {workspace.fileTools && (
-              <>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => setSaveDialogOpen(true)}
-                  disabled={!sql.trim()}
-                >
-                  <BookmarkIcon className="size-3" />
-                  Speichern
-                </Button>
-                <SnippetMenu
-                  onInsert={(snippet) => editorApiRef.current?.insertSnippet(snippet.body)}
-                  onManage={() => setSnippetDialogOpen(true)}
-                />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 gap-1.5 px-3 text-xs"
-                      disabled={fileBusy}
-                      title={filePath ?? "SQL-Datei öffnen oder speichern"}
-                    >
-                      <MorphIcon
-                        icon={fileBusy ? Loader : FileData}
-                        className={cn("size-3", fileBusy && "animate-spin")}
-                      />
-                      Datei
-                      {fileDirty && <span className="text-amber-500">●</span>}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Datei</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
                     <DropdownMenuItem onClick={() => void handleFileOpen()}>
                       SQL-Datei öffnen…
                     </DropdownMenuItem>
@@ -1348,101 +1392,22 @@ export function QueryView({ tabId }: QueryViewProps) {
                         Speichern unter…
                       </DropdownMenuItem>
                     )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => {
-                    setResultState(null);
-                    setError(null);
-                    updateQuerySql(tabId, "");
-                  }}
-                  disabled={isRunning}
-                >
-                  <Trash2Icon className="size-3" />
-                  Leeren
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  data-tour="query-history"
-                  onClick={() => setHistoryOpen((open) => !open)}
-                  title="Verlauf und gespeicherte Queries"
-                >
-                  <HistoryIcon className="size-3" />
-                  Verlauf
-                </Button>
-              </>
-            )}
-            {workspace.analysisTools && caps.explain && (
-              <>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => void handleExplain(false)}
-                  disabled={isRunning || planLoading || !sql.trim()}
-                  title="Ausführungsplan anzeigen (führt nichts aus)"
-                >
-                  <GaugeIcon className="size-3" />
-                  Explain
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => void handleExplain(true)}
-                  disabled={isRunning || planLoading || !sql.trim()}
-                  title="Achtung: führt die Query wirklich aus und misst sie"
-                >
-                  <MorphIcon
-                    icon={planLoading ? Loader : Gauge}
-                    className={cn("size-3", planLoading && "animate-spin")}
-                  />
-                  Explain Analyze
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1.5 px-3 text-xs"
-                  onClick={() => setPerfOpen((open) => !open)}
-                  disabled={isRunning || !sql.trim()}
-                  title="Laufzeit der aktuellen Abfrage mehrfach messen und Läufe vergleichen"
-                >
-                  <TimerIcon className="size-3" />
-                  Performance-Test
-                </Button>
-              </>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" className="h-7 text-xs">
-                  Bearbeiten
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {[
-                  ["actions.find", "Suchen"],
-                  ["editor.action.startFindReplaceAction", "Suchen und ersetzen"],
-                  ["editor.action.quickCommand", "Editor-Befehlspalette"],
-                  ["editor.action.gotoLine", "Gehe zu Zeile"],
-                  ["editor.action.commentLine", "Zeilenkommentar umschalten"],
-                  ["editor.action.blockComment", "Blockkommentar umschalten"],
-                  ["editor.action.foldAll", "Alles einklappen"],
-                  ["editor.action.unfoldAll", "Alles aufklappen"],
-                  ["editor.action.selectHighlights", "Alle Vorkommen auswählen"],
-                ].map(([id, label]) => (
-                  <DropdownMenuItem key={id} onClick={() => editorApiRef.current?.action(id)}>
-                    {label}
-                  </DropdownMenuItem>
-                ))}
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setResultState(null);
+                        setError(null);
+                        updateQuerySql(tabId, "");
+                      }}
+                      disabled={isRunning}
+                    >
+                      Editor leeren
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        )}
+        </div>
 
         {externalChange && (
           <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs">
@@ -1528,13 +1493,36 @@ export function QueryView({ tabId }: QueryViewProps) {
                 minSize="20%"
                 className="flex min-h-0 flex-col"
               >
-                <div className="flex h-8 shrink-0 items-center gap-2 border-b bg-muted/10 px-4 text-[11px] text-muted-foreground">
-                  <FileIcon className="size-3" />
-                  <span className="truncate">
-                    {filePath?.split(/[\\/]/).pop() ?? "Abfrage.sql"}
-                  </span>
-                  {fileDirty && <span className="size-1.5 rounded-full bg-amber-500" />}
-                  <span className="ml-auto">{scriptSplit.statements.length} Statements</span>
+                <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileIcon className="size-3 shrink-0" />
+                    <span className="truncate font-medium text-foreground/80">
+                      {filePath?.split(/[\\/]/).pop() ?? "Abfrage.sql"}
+                    </span>
+                    {fileDirty && (
+                      <Badge
+                        variant="outline"
+                        className="h-5 border-amber-500/40 px-1.5 text-[10px] text-amber-600 dark:text-amber-400"
+                      >
+                        geändert
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="ml-auto flex min-w-0 items-center gap-2">
+                    <span className="hidden tabular-nums sm:inline">
+                      {scriptSplit.statements.length} Statement
+                      {scriptSplit.statements.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="hidden h-3 w-px bg-border sm:block" />
+                    <Badge variant="outline" className="h-5 max-w-44 truncate px-1.5 text-[10px]">
+                      {dialectLabel}
+                    </Badge>
+                    <span className="hidden h-3 w-px bg-border md:block" />
+                    <span className="max-w-44 truncate text-foreground/70">
+                      {connection?.name ?? "Keine Verbindung"}
+                      {database ? ` · ${database}` : ""}
+                    </span>
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <QueryEditorPane
@@ -1588,105 +1576,93 @@ export function QueryView({ tabId }: QueryViewProps) {
                   defaultSize={`${100 - workspace.editorShare}%`}
                   className="flex min-h-0 flex-col overflow-hidden"
                 >
-                  <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
+                  <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
                     <span className="font-medium">Ergebnisse</span>
-                    <span role="status" className="text-muted-foreground">
+                    <span
+                      role="status"
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+                        isRunning
+                          ? "border-primary/30 bg-primary/10 text-primary"
+                          : error
+                            ? "border-destructive/30 bg-destructive/10 text-destructive"
+                            : result
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                              : "border-border bg-background/60 text-muted-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full bg-current",
+                          isRunning && "animate-pulse",
+                        )}
+                      />
                       {isRunning
-                        ? "Wird ausgeführt…"
+                        ? "Wird ausgeführt"
                         : error
                           ? "Fehlgeschlagen"
                           : result
                             ? "Abgeschlossen"
                             : "Bereit"}
-                    </span>{" "}
+                    </span>
                     {statusText && (
-                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                      <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
                         {statusText}
                       </span>
                     )}
-                    {result && result.columns.length > 0 && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 gap-1.5 px-3 text-xs"
-                            disabled={exporting}
-                          >
-                            <MorphIcon
-                              icon={exporting ? Loader : Download}
-                              className={cn("size-3", exporting && "animate-spin")}
-                            />
-                            Export
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-                            Als CSV exportieren…
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-                            Als XLSX exportieren…
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => void handleExportJson()}>
-                            Als JSON exportieren
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                    {error && !statusText && (
-                      <span className="ml-auto text-xs text-destructive">Fehler</span>
-                    )}
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                      {caps.server_output && (
+                        <Button
+                          size="icon-sm"
+                          variant={outputOpen ? "secondary" : "ghost"}
+                          aria-label="Server-Ausgabe umschalten"
+                          aria-pressed={outputOpen}
+                          title="Server-Ausgabe öffnen"
+                          disabled={!connection}
+                          onClick={() => setOutputOpen((open) => !open)}
+                        >
+                          <TerminalIcon className="size-3.5" />
+                        </Button>
+                      )}
+                      {result && result.columns.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 gap-1.5 px-2 text-xs"
+                              disabled={exporting}
+                            >
+                              <MorphIcon
+                                icon={exporting ? Loader : Download}
+                                className={cn("size-3", exporting && "animate-spin")}
+                              />
+                              <span className="hidden sm:inline">Export</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+                              Als CSV exportieren…
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+                              Als XLSX exportieren…
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleExportJson()}>
+                              Als JSON exportieren
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   </div>
 
-                  {statementError && (
-                    <p className="shrink-0 border-b px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
-                      {statementError}
-                    </p>
-                  )}
-                  {perfOpen && caps.explain && (
-                    <QueryPerfPanel
-                      sql={selectedSql.trim() ? selectedSql : sql}
-                      onClose={() => setPerfOpen(false)}
-                    />
-                  )}
-
-                  {planError && (
-                    <p className="shrink-0 border-b px-3 py-1.5 text-xs text-destructive">
-                      {planError}
-                    </p>
-                  )}
-                  {plan && (
-                    <ExplainPlanView
-                      plan={plan.node}
-                      analyzed={plan.analyzed}
-                      sql={plan.sql}
-                      connectionName={connection?.name ?? ""}
-                      databaseKind={connection?.kind ?? ""}
-                      database={database}
-                      onClose={() => setPlan(null)}
-                    />
-                  )}
-
-                  {connection && caps.server_output && outputOpen && (
-                    <ServerOutputPanel
-                      connectionId={connection.id}
-                      connectionName={connection.name}
-                      enabled={outputEnabled}
-                      busy={outputBusy}
-                      onToggle={(next) => void handleToggleServerOutput(next)}
-                      onClose={() => setOutputOpen(false)}
-                    />
-                  )}
-
-                  {scriptEntries && scriptEntries.length > 0 && (
-                    <ScriptResultList
-                      entries={scriptEntries}
-                      activeIndex={scriptActiveIndex}
-                      onSelect={handleSelectScriptEntry}
-                      onClose={() => setScriptEntries(null)}
-                      note={scriptNote}
-                    />
-                  )}
+                  <Collapse open={Boolean(statementError)} className="shrink-0">
+                    {statementError && (
+                      <p className="border-b px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                        {statementError}
+                      </p>
+                    )}
+                  </Collapse>
 
                   <div className="min-h-0 flex-1 border-t">
                     <QueryResultWorkbench
@@ -1751,6 +1727,14 @@ export function QueryView({ tabId }: QueryViewProps) {
           currentTabId={tabId}
         />
 
+        <XlsxExportDialog
+          open={xlsxExportOpen}
+          onOpenChange={setXlsxExportOpen}
+          columns={result?.columns ?? []}
+          rows={exportRows}
+          defaultFileName="query-result.xlsx"
+        />
+
         <CsvExportDialog
           open={csvExportOpen}
           onOpenChange={setCsvExportOpen}
@@ -1759,16 +1743,93 @@ export function QueryView({ tabId }: QueryViewProps) {
           defaultFileName="query-result.csv"
         />
 
-        <XlsxExportDialog
-          open={xlsxExportOpen}
-          onOpenChange={setXlsxExportOpen}
-          columns={result?.columns ?? []}
-          rows={exportRows}
-          defaultFileName="query-result.xlsx"
+        <QueryAnalysisSheet
+          open={analysisOpen}
+          onOpenChange={(open) => {
+            setAnalysisOpen(open);
+            if (!open) setAnalysisSection("plan");
+          }}
+          section={analysisSection}
+          onSectionChange={setAnalysisSection}
+          explainEnabled={Boolean(connection) && !isRunning && sql.trim().length > 0}
+          onExplain={(analyze) => {
+            setAnalysisSection("plan");
+            void handleExplain(analyze);
+          }}
+          planLoading={planLoading}
+          planError={planError}
+          onPlanErrorDismiss={() => setPlanError(null)}
+          plan={
+            plan ? (
+              <ExplainPlanView
+                plan={plan.node}
+                analyzed={plan.analyzed}
+                sql={plan.sql}
+                connectionName={connection?.name ?? ""}
+                databaseKind={connection?.kind ?? ""}
+                database={database}
+                onClose={() => setPlan(null)}
+              />
+            ) : null
+          }
+          perf={
+            <QueryPerfPanel
+              sql={selectedSql.trim() ? selectedSql : sql}
+              onClose={() => setAnalysisSection("plan")}
+            />
+          }
         />
-      </motion.div>
-      {historyOpen && (
-        <QueryHistoryPanel
+
+        {connection && caps.server_output && (
+          <Drawer open={outputOpen} onOpenChange={setOutputOpen}>
+            <DrawerContent className="gap-0 p-0">
+              <DrawerHeader className="sr-only">
+                <DrawerTitle>Server-Ausgabe</DrawerTitle>
+                <DrawerDescription>
+                  Hinweise und Meldungen der aktiven Verbindung.
+                </DrawerDescription>
+              </DrawerHeader>
+              <ServerOutputPanel
+                connectionId={connection.id}
+                connectionName={connection.name}
+                enabled={outputEnabled}
+                busy={outputBusy}
+                onToggle={(next) => void handleToggleServerOutput(next)}
+                onClose={() => setOutputOpen(false)}
+              />
+            </DrawerContent>
+          </Drawer>
+        )}
+
+        <Drawer
+          open={Boolean(scriptEntries?.length)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setScriptEntries(null);
+              setScriptActiveIndex(null);
+            }
+          }}
+        >
+          <DrawerContent className="gap-0 p-0">
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Skriptergebnisse</DrawerTitle>
+              <DrawerDescription>Einzelergebnisse der Skriptausführung.</DrawerDescription>
+            </DrawerHeader>
+            {scriptEntries && scriptEntries.length > 0 && (
+              <ScriptResultList
+                entries={scriptEntries}
+                activeIndex={scriptActiveIndex}
+                onSelect={handleSelectScriptEntry}
+                onClose={() => setScriptEntries(null)}
+                note={scriptNote}
+              />
+            )}
+          </DrawerContent>
+        </Drawer>
+
+        <QueryHistorySheet
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
           connectionId={connection?.id ?? null}
           onLoad={(loaded, mode) => {
             if (mode === "replace") updateQuerySql(tabId, loaded);
@@ -1777,9 +1838,8 @@ export function QueryView({ tabId }: QueryViewProps) {
               void navigate({ to: "/query/$id", params: { id } });
             }
           }}
-          onClose={() => setHistoryOpen(false)}
         />
-      )}
+      </motion.div>
     </div>
   );
 }

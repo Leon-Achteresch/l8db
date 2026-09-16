@@ -56,11 +56,7 @@ export function TableDetailTabBar({ tabs }: { tabs: typeof TABLE_DETAIL_TABS }) 
               {visible.map((tab) => {
                 const Icon = icons[tab.id];
                 return (
-                  <TabsTrigger
-                    key={tab.id}
-                    value={tab.id}
-                    className="group-data-horizontal/tabs:after:bottom-0"
-                  >
+                  <TabsTrigger key={tab.id} value={tab.id}>
                     <Icon className="size-3.5" />
                     {tab.label}
                   </TabsTrigger>
