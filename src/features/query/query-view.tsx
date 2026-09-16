@@ -114,6 +114,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { locateText } from "@/lib/sql-diagnostics";
 import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
 import {
+  createObjectMessage,
   isTransactionalStatement,
   splitSqlStatements,
   statementAtOffset,
@@ -137,6 +138,13 @@ const QUERY_LANGUAGES = {
   redis: "Redis-Befehle, einer pro Zeile · eigene Verbindung je Ausführung",
 } as const;
 
+function withCreateNotice(res: QueryResult | null, sql: string): QueryResult | null {
+  if (!res || res.columns.length > 0) return res;
+  const notice = createObjectMessage(sql);
+  return notice ? { ...res, notice } : res;
+}
+
+const MAX_RESULT_ROWS = 1000;
 const EMPTY_BOOKMARKS: number[] = [];
 const EMPTY_BOOKMARK_SLOTS: BookmarkSlots = {};
 
@@ -232,7 +240,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const editorApiRef = useRef<QueryEditorApi | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const [result, setResult] = useState<QueryResult | null>(null);
+  const [result, setResultState] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -504,6 +512,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           error: outcome.error ? outcome.error.slice(0, 500) : null,
         });
       };
+      const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
       const rowCountOf = (res: QueryResult): number | null =>
         res.columns.length > 0
           ? res.rows.length
@@ -924,7 +933,11 @@ export function QueryView({ tabId }: QueryViewProps) {
           onProgress: setScriptEntries,
         });
         setScriptEntries(outcome.entries);
-        setResult(outcome.error ? null : outcome.lastResult);
+        setResultState(
+          outcome.error
+            ? null
+            : withCreateNotice(outcome.lastResult, outcome.entries.at(-1)?.sql ?? sql),
+        );
         setError(outcome.error);
         const failed = outcome.entries.find((entry) => entry.status === "error");
         setErrorSource(
@@ -950,7 +963,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     (entry: ScriptRunEntry) => {
       setScriptActiveIndex(entry.index);
       if (!runningRef.current) {
-        setResult(entry.result ?? null);
+        setResultState(withCreateNotice(entry.result ?? null, entry.sql));
         setError(entry.error);
         setErrorSource({ text: sql.slice(entry.start, entry.end), base: entry.start });
       }
@@ -1036,8 +1049,11 @@ export function QueryView({ tabId }: QueryViewProps) {
   const statusText = (() => {
     if (!result) return null;
     const parts: string[] = [];
+    if (result.notice) parts.push(result.notice);
     if (result.columns.length > 0) {
       parts.push(`${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`);
+      // ponytail: Backend kappt bei 1000; exakte Flag-Übertragung erst, wenn QueryResult ein truncated-Feld bekommt
+      if (result.rows.length === MAX_RESULT_ROWS) parts.push("auf 1000 begrenzt");
     }
     if (
       result.rows_affected !== null &&
@@ -1339,7 +1355,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                   variant="ghost"
                   className="h-7 gap-1.5 px-3 text-xs"
                   onClick={() => {
-                    setResult(null);
+                    setResultState(null);
                     setError(null);
                     updateQuerySql(tabId, "");
                   }}

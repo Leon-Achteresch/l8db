@@ -268,3 +268,30 @@ export function buildInsertStatements(input: InsertExportInput): string {
   });
   return statements.length === 0 ? "" : `${statements.join(eol)}${eol}`;
 }
+
+export const COPY_FORMATS = [
+  { value: "json", label: "JSON" },
+  { value: "csv", label: "CSV" },
+  { value: "tsv", label: "TSV" },
+  { value: "markdown", label: "Markdown" },
+] as const;
+
+export type CopyFormat = (typeof COPY_FORMATS)[number]["value"];
+
+export function serializeRows(
+  columns: string[],
+  rows: Record<string, unknown>[],
+  format: CopyFormat,
+): string {
+  if (format === "json") return JSON.stringify(rows, null, 2);
+  if (format === "csv") return serializeCsv(columns, rows, DEFAULT_CSV_OPTIONS);
+  if (format === "tsv")
+    return serializeCsv(columns, rows, { ...DEFAULT_CSV_OPTIONS, delimiter: "\t" });
+  const cell = (value: unknown) =>
+    (csvValueText(value) ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return [
+    `| ${columns.map(cell).join(" | ")} |`,
+    `| ${columns.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${columns.map((c) => cell(row[c])).join(" | ")} |`),
+  ].join("\n");
+}

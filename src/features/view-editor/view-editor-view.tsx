@@ -23,13 +23,16 @@ import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
+import { TableFilterPanel } from "@/features/table/table-filter-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { listAllColumns, listTables, updateViewDefinition } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import {
+  useDetailedColumnsQuery,
   useForeignKeysQuery,
   useSchemasQuery,
   useTableRowCountQuery,
@@ -39,7 +42,9 @@ import {
 import { buildViewDdl } from "@/lib/query-builder";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableTabs } from "@/lib/table-tabs";
+import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 
 interface ViewEditorViewProps {
   schema: string;
@@ -72,6 +77,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     filterRaw,
   );
   const { data: totalCount } = useTableRowCountQuery(schema, view, filter, filterRaw);
+
+  const { data: columnDetails } = useDetailedColumnsQuery(schema, view);
+  const stateKey = tableViewStateKey(connection?.id, database, schema, view);
 
   const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(schema, view);
 
@@ -265,6 +273,40 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
           />
         ) : (
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+            <TableViewsPanel
+              schema={schema}
+              table={view}
+              activeFilter={filter}
+              filterRaw={filterRaw}
+              onSelectView={(nextFilter, raw, saved) => {
+                handleFilterChange(nextFilter, raw);
+                if (saved?.state?.sorting) setSorting(saved.state.sorting);
+                if (stateKey && saved?.state)
+                  useTableViewStateStore.getState().patch(stateKey, {
+                    ...saved.state,
+                    filter: nextFilter,
+                    filterRaw: raw ?? false,
+                    page: 0,
+                  });
+                if (connection && saved?.layout)
+                  useTableColumnPrefs
+                    .getState()
+                    .setPref(
+                      tableColumnPrefKey(connection.id, schema, view, database),
+                      saved.layout,
+                    );
+              }}
+            />
+            <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
+              <TableFilterPanel
+                key={stateKey}
+                stateKey={stateKey}
+                columns={data?.columns ?? []}
+                columnDetails={columnDetails}
+                activeFilter={filter}
+                onApply={handleFilterChange}
+              />
+            </div>
             <DataTable
               className="h-full min-h-0 flex-1"
               columns={data?.columns ?? []}

@@ -1,9 +1,16 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { copyText } from "@/lib/clipboard";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
+import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { QueryCellInspector } from "./query-cell-inspector";
@@ -58,6 +65,14 @@ export function QueryResultWorkbench({
         : [],
     [filtered, workspace.resultView],
   );
+  const handleCopy = async (format: CopyFormat) => {
+    try {
+      await copyText(serializeRows(result?.columns ?? [], filtered?.rows ?? [], format));
+      toast.success("Suchergebnisse kopiert");
+    } catch {
+      toast.error("Ergebnisse konnten nicht kopiert werden");
+    }
+  };
   if (isLoading || error)
     return <QueryResultTable result={result} isLoading={isLoading} error={error} kind={kind} />;
   if (!result)
@@ -109,22 +124,25 @@ export function QueryResultWorkbench({
           >
             JSON
           </Button>
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            variant="ghost"
-            title="Suchergebnisse als JSON kopieren; lokale Spaltenfilter und Sortierung gelten nur in der Tabelle"
-            onClick={async () => {
-              try {
-                await copyText(JSON.stringify(filtered?.rows ?? [], null, 2));
-                toast.success("Suchergebnisse kopiert");
-              } catch {
-                toast.error("Ergebnisse konnten nicht kopiert werden");
-              }
-            }}
-          >
-            JSON kopieren
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                variant="ghost"
+                title="Suchergebnisse kopieren; lokale Spaltenfilter und Sortierung gelten nur in der Tabelle"
+              >
+                Kopieren
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {COPY_FORMATS.map((format) => (
+                <DropdownMenuItem key={format.value} onSelect={() => void handleCopy(format.value)}>
+                  Als {format.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {workspace.resultView === "json" ? (
