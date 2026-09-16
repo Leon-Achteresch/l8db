@@ -58,7 +58,9 @@ impl Redactor {
     fn redact_nested(&self, value: &Value) -> Value {
         match value {
             Value::String(text) => Value::String(self.redact_text(text)),
-            Value::Array(list) => Value::Array(list.iter().map(|v| self.redact_nested(v)).collect()),
+            Value::Array(list) => {
+                Value::Array(list.iter().map(|v| self.redact_nested(v)).collect())
+            }
             Value::Object(map) => Value::Object(
                 map.iter()
                     .map(|(key, v)| {
@@ -160,7 +162,10 @@ pub fn tokenize(sql: &str) -> Vec<Token> {
                 }
                 tokens.push(Token::Word(ident.to_lowercase()));
             }
-            '$' if chars.peek().is_some_and(|n| *n == '$' || n.is_alphabetic() || *n == '_') => {
+            '$' if chars
+                .peek()
+                .is_some_and(|n| *n == '$' || n.is_alphabetic() || *n == '_') =>
+            {
                 flush(&mut current, &mut tokens);
                 let mut tag = String::from("$");
                 while let Some(&n) = chars.peek() {
@@ -267,28 +272,127 @@ pub fn sql_words(sql: &str) -> Vec<String> {
 }
 
 const WRITE_WORDS: &[&str] = &[
-    "insert", "update", "delete", "merge", "upsert", "replace", "drop", "alter", "create",
-    "truncate", "grant", "revoke", "call", "exec", "execute", "copy", "vacuum", "analyze",
-    "lock", "set", "reset", "refresh", "do", "into", "load", "import", "attach", "detach",
-    "rename", "comment", "cluster", "reindex", "begin", "commit", "rollback", "savepoint",
-    "prepare", "deallocate", "listen", "notify", "unlisten", "declare", "fetch", "move",
-    "close", "discard", "security", "reassign", "kill", "shutdown", "use", "optimize",
-    "system", "purge", "flush", "install", "pragma", "bulk", "backup", "restore", "dbcc",
-    "returning", "output", "nextval", "setval", "lastval",
+    "insert",
+    "update",
+    "delete",
+    "merge",
+    "upsert",
+    "replace",
+    "drop",
+    "alter",
+    "create",
+    "truncate",
+    "grant",
+    "revoke",
+    "call",
+    "exec",
+    "execute",
+    "copy",
+    "vacuum",
+    "analyze",
+    "lock",
+    "set",
+    "reset",
+    "refresh",
+    "do",
+    "into",
+    "load",
+    "import",
+    "attach",
+    "detach",
+    "rename",
+    "comment",
+    "cluster",
+    "reindex",
+    "begin",
+    "commit",
+    "rollback",
+    "savepoint",
+    "prepare",
+    "deallocate",
+    "listen",
+    "notify",
+    "unlisten",
+    "declare",
+    "fetch",
+    "move",
+    "close",
+    "discard",
+    "security",
+    "reassign",
+    "kill",
+    "shutdown",
+    "use",
+    "optimize",
+    "system",
+    "purge",
+    "flush",
+    "install",
+    "pragma",
+    "bulk",
+    "backup",
+    "restore",
+    "dbcc",
+    "returning",
+    "output",
+    "nextval",
+    "setval",
+    "lastval",
 ];
 
 const DANGEROUS_ALWAYS: &[&str] = &[
-    "waitfor", "reconfigure", "cmdshell", "httpuritype", "ctxsys", "fts3_tokenizer",
-    "pg_terminate_backend", "pg_cancel_backend", "pg_reload_conf", "pg_rotate_logfile",
+    "waitfor",
+    "reconfigure",
+    "cmdshell",
+    "httpuritype",
+    "ctxsys",
+    "fts3_tokenizer",
+    "pg_terminate_backend",
+    "pg_cancel_backend",
+    "pg_reload_conf",
+    "pg_rotate_logfile",
 ];
 
 const DANGEROUS_FUNCTIONS: &[&str] = &[
-    "pg_read_file", "pg_read_binary_file", "pg_stat_file", "pg_sleep", "pg_sleep_for",
-    "pg_sleep_until", "lo_import", "lo_export", "lo_get", "lo_put", "dblink", "dblink_exec",
-    "dblink_connect", "load_file", "benchmark", "sleep", "readfile", "writefile",
-    "load_extension", "openrowset", "opendatasource", "openquery", "url", "file", "s3", "hdfs",
-    "mysql", "postgresql", "odbc", "jdbc", "remote", "remotesecure", "input", "program",
-    "query_to_xml", "database_to_xml", "schema_to_xml", "table_to_xml", "xmltype",
+    "pg_read_file",
+    "pg_read_binary_file",
+    "pg_stat_file",
+    "pg_sleep",
+    "pg_sleep_for",
+    "pg_sleep_until",
+    "lo_import",
+    "lo_export",
+    "lo_get",
+    "lo_put",
+    "dblink",
+    "dblink_exec",
+    "dblink_connect",
+    "load_file",
+    "benchmark",
+    "sleep",
+    "readfile",
+    "writefile",
+    "load_extension",
+    "openrowset",
+    "opendatasource",
+    "openquery",
+    "url",
+    "file",
+    "s3",
+    "hdfs",
+    "mysql",
+    "postgresql",
+    "odbc",
+    "jdbc",
+    "remote",
+    "remotesecure",
+    "input",
+    "program",
+    "query_to_xml",
+    "database_to_xml",
+    "schema_to_xml",
+    "table_to_xml",
+    "xmltype",
 ];
 
 const DANGEROUS_PREFIXES: &[&str] = &["xp_", "sp_", "dbms_", "utl_", "pg_ls_"];
@@ -299,20 +403,94 @@ const DDL_WORDS: &[&str] = &[
 ];
 
 const ALIAS_STOP: &[&str] = &[
-    "on", "where", "join", "left", "right", "inner", "outer", "cross", "natural", "full",
-    "using", "group", "order", "limit", "having", "union", "except", "intersect", "minus",
-    "set", "values", "returning", "window", "fetch", "offset", "for", "lateral", "tablesample",
-    "as", "and", "or", "not", "select", "from", "with", "straight_join", "only", "in", "is",
-    "like", "between", "exists", "case", "when", "then", "else", "end", "null", "distinct",
-    "top", "into", "start", "connect", "qualify", "sample", "final", "prewhere", "array",
-    "unnest", "settings", "format",
+    "on",
+    "where",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "cross",
+    "natural",
+    "full",
+    "using",
+    "group",
+    "order",
+    "limit",
+    "having",
+    "union",
+    "except",
+    "intersect",
+    "minus",
+    "set",
+    "values",
+    "returning",
+    "window",
+    "fetch",
+    "offset",
+    "for",
+    "lateral",
+    "tablesample",
+    "as",
+    "and",
+    "or",
+    "not",
+    "select",
+    "from",
+    "with",
+    "straight_join",
+    "only",
+    "in",
+    "is",
+    "like",
+    "between",
+    "exists",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "null",
+    "distinct",
+    "top",
+    "into",
+    "start",
+    "connect",
+    "qualify",
+    "sample",
+    "final",
+    "prewhere",
+    "array",
+    "unnest",
+    "settings",
+    "format",
 ];
 
 const FROM_START: &[&str] = &["from", "join", "update", "into", "table", "only", "lateral"];
 const FROM_END: &[&str] = &[
-    "where", "group", "order", "limit", "having", "union", "except", "intersect", "minus",
-    "on", "select", "set", "values", "returning", "window", "fetch", "offset", "for", "with",
-    "qualify", "prewhere", "settings", "format",
+    "where",
+    "group",
+    "order",
+    "limit",
+    "having",
+    "union",
+    "except",
+    "intersect",
+    "minus",
+    "on",
+    "select",
+    "set",
+    "values",
+    "returning",
+    "window",
+    "fetch",
+    "offset",
+    "for",
+    "with",
+    "qualify",
+    "prewhere",
+    "settings",
+    "format",
 ];
 
 pub fn write_word(sql: &str) -> Option<String> {
@@ -326,7 +504,9 @@ pub fn dangerous_word(sql: &str) -> Option<String> {
     for (i, token) in tokens.iter().enumerate() {
         if let Token::Word(word) = token {
             let always = DANGEROUS_ALWAYS.contains(&word.as_str())
-                || DANGEROUS_PREFIXES.iter().any(|prefix| word.starts_with(prefix));
+                || DANGEROUS_PREFIXES
+                    .iter()
+                    .any(|prefix| word.starts_with(prefix));
             let as_function = tokens.get(i + 1) == Some(&Token::Open)
                 && DANGEROUS_FUNCTIONS.contains(&word.as_str());
             if always || as_function {
@@ -394,9 +574,11 @@ impl SchemaIndex {
         if self.allowed_schemas.is_empty() {
             return false;
         }
-        self.tables
-            .get(table)
-            .is_some_and(|schemas| schemas.iter().all(|schema| !self.allowed_schemas.contains(schema)))
+        self.tables.get(table).is_some_and(|schemas| {
+            schemas
+                .iter()
+                .all(|schema| !self.allowed_schemas.contains(schema))
+        })
     }
 }
 
@@ -413,10 +595,14 @@ pub fn check_references(sql: &str, index: &SchemaIndex) -> Result<(), String> {
                 && !index.allowed_schemas.contains(word)
                 && index.tables.values().any(|schemas| schemas.contains(word))
             {
-                return Err(format!("Schema '{word}' ist für diese Verbindung nicht freigegeben."));
+                return Err(format!(
+                    "Schema '{word}' ist für diese Verbindung nicht freigegeben."
+                ));
             }
             if index.table_hidden(word) {
-                return Err(format!("Tabelle '{word}' liegt in einem nicht freigegebenen Schema."));
+                return Err(format!(
+                    "Tabelle '{word}' liegt in einem nicht freigegebenen Schema."
+                ));
             }
         }
     }
@@ -557,13 +743,25 @@ mod tests {
     #[test]
     fn sensitive_columns_are_masked_case_insensitively() {
         let r = redactor();
-        for name in ["password", "PassWord", "user_pwd", "api_key", "Email", "iban", "kunden_geheim", "vorname"] {
+        for name in [
+            "password",
+            "PassWord",
+            "user_pwd",
+            "api_key",
+            "Email",
+            "iban",
+            "kunden_geheim",
+            "vorname",
+        ] {
             assert!(r.column_is_sensitive(name), "{name}");
         }
         for name in ["id", "name", "created_at", "amount", "title"] {
             assert!(!r.column_is_sensitive(name), "{name}");
         }
-        assert_eq!(r.redact_cell("password", &Value::from("x")), Value::from("[redacted]"));
+        assert_eq!(
+            r.redact_cell("password", &Value::from("x")),
+            Value::from("[redacted]")
+        );
         assert_eq!(r.redact_cell("password", &Value::Null), Value::Null);
     }
 
@@ -588,13 +786,22 @@ mod tests {
             assert!(!out.contains(leak), "{out}");
         }
         assert!(out.starts_with("Mail an [redacted]"), "{out}");
-        assert_eq!(r.redact_text("Bestellung 42 von heute"), "Bestellung 42 von heute");
-        assert_eq!(r.redact_cell("amount", &Value::from(1234)), Value::from(1234));
+        assert_eq!(
+            r.redact_text("Bestellung 42 von heute"),
+            "Bestellung 42 von heute"
+        );
+        assert_eq!(
+            r.redact_cell("amount", &Value::from(1234)),
+            Value::from(1234)
+        );
         let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
         assert_eq!(r.redact_text(jwt), "[redacted]");
         let bcrypt = "$2b$12$KIXxLQ3Q8pq8eXqXk3q2Ue0mZg1XfE3Z0FQeHnQxVv0aGm1x5uZ6y";
         assert_eq!(r.redact_text(bcrypt), "[redacted]");
-        assert_eq!(r.redact_text("550e8400-e29b-41d4-a716-446655440000"), "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(
+            r.redact_text("550e8400-e29b-41d4-a716-446655440000"),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
     }
 
     #[test]
@@ -609,35 +816,89 @@ mod tests {
 
     #[test]
     fn tokenizer_handles_quotes_comments_and_executable_comments() {
-        assert_eq!(sql_words("SELECT \"Delete\" FROM t -- drop\n/* alter */"), vec!["select", "delete", "from", "t"]);
-        assert_eq!(sql_words("select 'it''s; delete' from t"), vec!["select", "from", "t"]);
-        assert_eq!(sql_words("select $$ delete $$ from t"), vec!["select", "from", "t"]);
+        assert_eq!(
+            sql_words("SELECT \"Delete\" FROM t -- drop\n/* alter */"),
+            vec!["select", "delete", "from", "t"]
+        );
+        assert_eq!(
+            sql_words("select 'it''s; delete' from t"),
+            vec!["select", "from", "t"]
+        );
+        assert_eq!(
+            sql_words("select $$ delete $$ from t"),
+            vec!["select", "from", "t"]
+        );
         assert_eq!(sql_words("select $tag$ x $tag$"), vec!["select"]);
-        assert_eq!(sql_words("select 1 /*! delete from t */"), vec!["select", "1", "delete", "from", "t"]);
-        assert_eq!(sql_words("select 1 /* outer /* inner */ delete */"), vec!["select", "1"]);
-        assert_eq!(sql_words("select 1 # delete\nfrom t"), vec!["select", "1", "from", "t"]);
-        assert_eq!(sql_words("select [Password] from t"), vec!["select", "password", "from", "t"]);
-        assert_eq!(sql_words("select `email` from t"), vec!["select", "email", "from", "t"]);
+        assert_eq!(
+            sql_words("select 1 /*! delete from t */"),
+            vec!["select", "1", "delete", "from", "t"]
+        );
+        assert_eq!(
+            sql_words("select 1 /* outer /* inner */ delete */"),
+            vec!["select", "1"]
+        );
+        assert_eq!(
+            sql_words("select 1 # delete\nfrom t"),
+            vec!["select", "1", "from", "t"]
+        );
+        assert_eq!(
+            sql_words("select [Password] from t"),
+            vec!["select", "password", "from", "t"]
+        );
+        assert_eq!(
+            sql_words("select `email` from t"),
+            vec!["select", "email", "from", "t"]
+        );
     }
 
     #[test]
     fn classifies_sql() {
-        assert_eq!(write_word("SELECT * FROM users WHERE name = 'DROP TABLE'"), None);
+        assert_eq!(
+            write_word("SELECT * FROM users WHERE name = 'DROP TABLE'"),
+            None
+        );
         assert_eq!(write_word("select 1 -- delete\n/* update */"), None);
         assert_eq!(write_word("WITH x AS (SELECT 1) SELECT * FROM x"), None);
         assert_eq!(write_word("explain select 1"), None);
-        assert_eq!(write_word("SELECT \"delete\" FROM t"), Some("delete".into()));
+        assert_eq!(
+            write_word("SELECT \"delete\" FROM t"),
+            Some("delete".into())
+        );
         assert_eq!(write_word("DELETE FROM users"), Some("delete".into()));
-        assert_eq!(write_word("WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x"), Some("delete".into()));
+        assert_eq!(
+            write_word("WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x"),
+            Some("delete".into())
+        );
         assert_eq!(write_word("select * into t2 from t"), Some("into".into()));
         assert_eq!(write_word("exec sp_who"), Some("exec".into()));
-        assert_eq!(write_word("select 1 /*! delete from t */"), Some("delete".into()));
-        assert_eq!(dangerous_word("select sp_helptext"), Some("sp_helptext".into()));
-        assert_eq!(dangerous_word("select pg_read_file('/etc/passwd')"), Some("pg_read_file".into()));
-        assert_eq!(dangerous_word("select load_file('/etc/passwd')"), Some("load_file".into()));
-        assert_eq!(dangerous_word("select pg_sleep(5)"), Some("pg_sleep".into()));
-        assert_eq!(dangerous_word("select url('http://169.254.169.254/')"), Some("url".into()));
-        assert_eq!(dangerous_word("select 1 where 1=1 waitfor delay '0:0:5'"), Some("waitfor".into()));
+        assert_eq!(
+            write_word("select 1 /*! delete from t */"),
+            Some("delete".into())
+        );
+        assert_eq!(
+            dangerous_word("select sp_helptext"),
+            Some("sp_helptext".into())
+        );
+        assert_eq!(
+            dangerous_word("select pg_read_file('/etc/passwd')"),
+            Some("pg_read_file".into())
+        );
+        assert_eq!(
+            dangerous_word("select load_file('/etc/passwd')"),
+            Some("load_file".into())
+        );
+        assert_eq!(
+            dangerous_word("select pg_sleep(5)"),
+            Some("pg_sleep".into())
+        );
+        assert_eq!(
+            dangerous_word("select url('http://169.254.169.254/')"),
+            Some("url".into())
+        );
+        assert_eq!(
+            dangerous_word("select 1 where 1=1 waitfor delay '0:0:5'"),
+            Some("waitfor".into())
+        );
         assert_eq!(dangerous_word("select url, file, sleep_ms from logs"), None);
         assert_eq!(dangerous_word("select * from users"), None);
         assert!(is_ddl("create table x(a int)"));
