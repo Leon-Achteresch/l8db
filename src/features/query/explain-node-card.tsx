@@ -39,10 +39,12 @@ export function ExplainNodeCard({ node, depth }: ExplainNodeCardProps) {
             {node["Index Name"] && (
               <span className="font-mono text-muted-foreground">auf {node["Index Name"]}</span>
             )}
-            <span className="text-muted-foreground">
-              Kosten {Math.round(node["Startup Cost"])}…{Math.round(node["Total Cost"])} ·{" "}
-              {node["Plan Rows"]} Zeilen
-            </span>
+            {Number.isFinite(node["Total Cost"]) && (
+              <span className="text-muted-foreground">
+                Kosten {Math.round(node["Startup Cost"] ?? 0)}…{Math.round(node["Total Cost"])}
+                {node["Plan Rows"] != null && ` · ${node["Plan Rows"]} Zeilen`}
+              </span>
+            )}
             {costShare != null && (
               <span className="tabular-nums text-muted-foreground">
                 · real {formatMs(costShare)}

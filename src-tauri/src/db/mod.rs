@@ -2101,3 +2101,6 @@ pub fn validate_table_filter(filter: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod master_detail_tests;
+
+#[cfg(test)]
+mod clickhouse_browser_tests;

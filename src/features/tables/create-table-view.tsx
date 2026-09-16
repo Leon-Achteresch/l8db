@@ -34,6 +34,25 @@ import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { effectiveConnectionString } from "@/lib/ssh";
 
+const CLICKHOUSE_TYPES = [
+  "UInt8",
+  "UInt32",
+  "UInt64",
+  "Int32",
+  "Int64",
+  "Float64",
+  "Decimal(18, 4)",
+  "String",
+  "LowCardinality(String)",
+  "UUID",
+  "Date",
+  "DateTime",
+  "DateTime64(3)",
+  "Bool",
+  "Array(String)",
+  "Map(String, String)",
+];
+
 const COMMON_TYPES = [
   "bigint",
   "bigserial",
@@ -85,20 +104,22 @@ export function CreateTableView() {
   const navigate = useNavigate();
 
   const [tableName, setTableName] = useState("");
-  const [schema, setSchema] = useState(activeSchema ?? "public");
+  const [schema, setSchema] = useState(
+    activeSchema ?? (connection?.kind === "clickhouse" ? "default" : "public"),
+  );
   const [ifNotExists, setIfNotExists] = useState(false);
-  const [columns, setColumns] = useState<(ColumnDefinition & { id: number })[]>([
+  const [columns, setColumns] = useState<(ColumnDefinition & { id: number })[]>(() => [
     {
       ...emptyColumn(),
       name: "id",
-      data_type: "bigserial",
+      data_type: connection?.kind === "clickhouse" ? "UInt64" : "bigserial",
       is_nullable: false,
       is_primary_key: true,
     },
     {
       ...emptyColumn(),
       name: "created_at",
-      data_type: "timestamptz",
+      data_type: connection?.kind === "clickhouse" ? "DateTime" : "timestamptz",
       is_nullable: false,
       default_value: "now()",
     },
@@ -126,6 +147,7 @@ export function CreateTableView() {
 
   const connectionString = connection ? effectiveConnectionString(connection) : null;
   const kind = connection?.kind;
+  const typeOptions = kind === "clickhouse" ? CLICKHOUSE_TYPES : COMMON_TYPES;
 
   useEffect(() => {
     if (!kind || !connectionString || incomplete) {
@@ -462,7 +484,7 @@ export function CreateTableView() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {COMMON_TYPES.map((t) => (
+                      {typeOptions.map((t) => (
                         <SelectItem key={t} value={t} className="font-mono text-xs">
                           {t}
                         </SelectItem>
