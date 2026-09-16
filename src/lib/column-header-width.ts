@@ -1,9 +1,9 @@
 export const COLUMN_SIZE_MIN = 80;
 export const COLUMN_SIZE_MAX = 850;
 export const HEADER_FIT_CHROME = 120;
-export const HEADER_FIT_FK = 40;
+export const HEADER_FIT_FK = 16;
 
-export function fitHeaderColumnWidth(titleWidth: number, hasFk: boolean): number {
+export function fitHeaderColumnWidth(titleWidth: number, hasFk = false): number {
   return Math.min(
     COLUMN_SIZE_MAX,
     Math.max(
