@@ -5,6 +5,8 @@ import {
   Database,
   Eye,
   Keyboard,
+  Package,
+  Plug,
   Puzzle,
   Search,
   Sparkles,
@@ -151,11 +153,26 @@ export function AppHeaderSearch() {
       id: entry.key,
       label: entry.name,
       group: OBJECT_TYPE_PLURAL[entry.type],
-      icon: entry.type === "table" ? Table : entry.type === "view" ? Eye : Braces,
+      icon:
+        entry.type === "table"
+          ? Table
+          : entry.type === "view"
+            ? Eye
+            : entry.type === "package"
+              ? Package
+              : Braces,
       hint: objectEntryHint(entry),
       keywords: objectEntryKeywords(entry),
       onSelect: () => {
         setOpen(false);
+        if (entry.type === "package") {
+          void navigate({
+            to: "/packages/$schema/$name",
+            params: { schema: entry.schema, name: entry.name },
+            search: {},
+          });
+          return;
+        }
         if (entry.type === "procedure") {
           void navigate({
             to: "/procedures/$schema/$name",
@@ -185,6 +202,17 @@ export function AppHeaderSearch() {
         });
       },
     }));
+    const connectionManagerItem: CommandItem = {
+      id: "connections:manage",
+      label: "Verbindungen verwalten",
+      group: "Verbindungen",
+      icon: Plug,
+      keywords: ["connection", "manager", "verbindung", "hinzufügen", "neu", "bearbeiten"],
+      onSelect: () => {
+        setOpen(false);
+        void navigate({ to: "/connections" });
+      },
+    };
     const deepSearchItem: CommandItem[] =
       canSearchColumns || canSearchSource
         ? [
@@ -250,6 +278,7 @@ export function AppHeaderSearch() {
     }));
     return [
       ...connectionItems,
+      connectionManagerItem,
       ...deepSearchItem,
       ...objectItems,
       ...extensionItems,

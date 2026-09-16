@@ -81,3 +81,21 @@ describe("Anzeige", () => {
     expect(OBJECT_TYPE_PLURAL.view).toBe("Views");
   });
 });
+
+describe("Oracle packages", () => {
+  test("klassifiziert return_type PACKAGE als package", () => {
+    const entries = buildObjectEntries({
+      functions: [
+        {
+          schema: "HR",
+          name: "PKG_UTIL",
+          identity_args: "",
+          return_type: "PACKAGE",
+          oid: "42",
+        } as never,
+      ],
+    });
+    expect(entries[0]?.type).toBe("package");
+    expect(entries[0]?.key).toBe("package:HR.PKG_UTIL");
+  });
+});
