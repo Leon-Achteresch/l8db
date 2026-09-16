@@ -20,14 +20,70 @@ struct ClientSpec {
 }
 
 const CLIENTS: &[ClientSpec] = &[
-    ClientSpec { id: "claude-code", name: "Claude Code", marker: ".claude", config: ".claude.json", app_support: false, format: Format::Json("mcpServers") },
-    ClientSpec { id: "claude-desktop", name: "Claude Desktop", marker: "Claude", config: "Claude/claude_desktop_config.json", app_support: true, format: Format::Json("mcpServers") },
-    ClientSpec { id: "codex", name: "Codex CLI", marker: ".codex", config: ".codex/config.toml", app_support: false, format: Format::Toml },
-    ClientSpec { id: "gemini", name: "Gemini CLI", marker: ".gemini", config: ".gemini/settings.json", app_support: false, format: Format::Json("mcpServers") },
-    ClientSpec { id: "cursor", name: "Cursor", marker: ".cursor", config: ".cursor/mcp.json", app_support: false, format: Format::Json("mcpServers") },
-    ClientSpec { id: "windsurf", name: "Windsurf", marker: ".codeium/windsurf", config: ".codeium/windsurf/mcp_config.json", app_support: false, format: Format::Json("mcpServers") },
-    ClientSpec { id: "opencode", name: "opencode", marker: ".config/opencode", config: ".config/opencode/opencode.json", app_support: false, format: Format::Json("mcp") },
-    ClientSpec { id: "vscode", name: "VS Code", marker: "Code/User", config: "Code/User/mcp.json", app_support: true, format: Format::Json("servers") },
+    ClientSpec {
+        id: "claude-code",
+        name: "Claude Code",
+        marker: ".claude",
+        config: ".claude.json",
+        app_support: false,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
+        id: "claude-desktop",
+        name: "Claude Desktop",
+        marker: "Claude",
+        config: "Claude/claude_desktop_config.json",
+        app_support: true,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
+        id: "codex",
+        name: "Codex CLI",
+        marker: ".codex",
+        config: ".codex/config.toml",
+        app_support: false,
+        format: Format::Toml,
+    },
+    ClientSpec {
+        id: "gemini",
+        name: "Gemini CLI",
+        marker: ".gemini",
+        config: ".gemini/settings.json",
+        app_support: false,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
+        id: "cursor",
+        name: "Cursor",
+        marker: ".cursor",
+        config: ".cursor/mcp.json",
+        app_support: false,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
+        id: "windsurf",
+        name: "Windsurf",
+        marker: ".codeium/windsurf",
+        config: ".codeium/windsurf/mcp_config.json",
+        app_support: false,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
+        id: "opencode",
+        name: "opencode",
+        marker: ".config/opencode",
+        config: ".config/opencode/opencode.json",
+        app_support: false,
+        format: Format::Json("mcp"),
+    },
+    ClientSpec {
+        id: "vscode",
+        name: "VS Code",
+        marker: "Code/User",
+        config: "Code/User/mcp.json",
+        app_support: true,
+        format: Format::Json("servers"),
+    },
 ];
 
 #[derive(Serialize)]
@@ -187,7 +243,10 @@ pub fn register(paths: &Paths, id: &str, on: bool, exe: &Path) -> Result<(), Str
                     doc["mcp_servers"] = toml_edit::Item::Table(parent);
                 }
                 doc["mcp_servers"][SERVER_KEY] = toml_edit::Item::Table(table);
-            } else if let Some(servers) = doc.get_mut("mcp_servers").and_then(|item| item.as_table_mut()) {
+            } else if let Some(servers) = doc
+                .get_mut("mcp_servers")
+                .and_then(|item| item.as_table_mut())
+            {
                 servers.remove(SERVER_KEY);
             }
             write_with_backup(&path, doc.to_string().as_bytes())
@@ -221,7 +280,11 @@ mod tests {
     use super::*;
 
     fn temp_paths() -> Paths {
-        let root = std::env::temp_dir().join(format!("l8db-clients-{}-{}", std::process::id(), rand_suffix()));
+        let root = std::env::temp_dir().join(format!(
+            "l8db-clients-{}-{}",
+            std::process::id(),
+            rand_suffix()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         Paths {
             home: root.join("home"),
@@ -250,30 +313,63 @@ mod tests {
         assert!(claude.installed && !claude.registered);
         assert!(!before.iter().find(|c| c.id == "cursor").unwrap().installed);
 
-        register(&paths, "claude-code", true, Path::new("/Applications/l8db.app/Contents/MacOS/l8db")).unwrap();
-        let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.home.join(".claude.json")).unwrap()).unwrap();
+        register(
+            &paths,
+            "claude-code",
+            true,
+            Path::new("/Applications/l8db.app/Contents/MacOS/l8db"),
+        )
+        .unwrap();
+        let root: Value = serde_json::from_str(
+            &std::fs::read_to_string(paths.home.join(".claude.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(root["numStartups"], 3);
         assert_eq!(root["mcpServers"]["other"]["command"], "x");
-        assert_eq!(root["mcpServers"]["l8db"]["command"], "/Applications/l8db.app/Contents/MacOS/l8db");
+        assert_eq!(
+            root["mcpServers"]["l8db"]["command"],
+            "/Applications/l8db.app/Contents/MacOS/l8db"
+        );
         assert_eq!(root["mcpServers"]["l8db"]["args"][0], "--mcp");
         assert!(paths.home.join(".claude.json.bak").exists());
-        assert!(list(&paths).iter().find(|c| c.id == "claude-code").unwrap().registered);
+        assert!(
+            list(&paths)
+                .iter()
+                .find(|c| c.id == "claude-code")
+                .unwrap()
+                .registered
+        );
 
         register(&paths, "claude-code", false, Path::new("/x")).unwrap();
-        let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.home.join(".claude.json")).unwrap()).unwrap();
+        let root: Value = serde_json::from_str(
+            &std::fs::read_to_string(paths.home.join(".claude.json")).unwrap(),
+        )
+        .unwrap();
         assert!(root["mcpServers"].get("l8db").is_none());
         assert_eq!(root["mcpServers"]["other"]["command"], "x");
 
         register(&paths, "vscode", true, Path::new("/x")).unwrap();
-        let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.app_support.join("Code/User/mcp.json")).unwrap()).unwrap();
+        let root: Value = serde_json::from_str(
+            &std::fs::read_to_string(paths.app_support.join("Code/User/mcp.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(root["servers"]["l8db"]["type"], "stdio");
         register(&paths, "opencode", true, Path::new("/opt/l8db")).unwrap();
-        let root: Value = serde_json::from_str(&std::fs::read_to_string(paths.home.join(".config/opencode/opencode.json")).unwrap()).unwrap();
+        let root: Value = serde_json::from_str(
+            &std::fs::read_to_string(paths.home.join(".config/opencode/opencode.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(root["mcp"]["l8db"]["type"], "local");
         assert_eq!(root["mcp"]["l8db"]["command"][0], "/opt/l8db");
         assert_eq!(root["mcp"]["l8db"]["command"][1], "--mcp");
         assert_eq!(root["mcp"]["l8db"]["enabled"], true);
-        assert!(list(&paths).iter().find(|c| c.id == "opencode").unwrap().registered);
+        assert!(
+            list(&paths)
+                .iter()
+                .find(|c| c.id == "opencode")
+                .unwrap()
+                .registered
+        );
         register(&paths, "cursor", true, Path::new("/x")).unwrap();
         assert!(paths.home.join(".cursor/mcp.json").exists());
     }
@@ -295,7 +391,13 @@ mod tests {
         assert!(text.contains("[mcp_servers.l8db]"));
         assert!(text.contains("command = \"/opt/l8db\""));
         assert!(text.contains("args = [\"--mcp\"]"));
-        assert!(list(&paths).iter().find(|c| c.id == "codex").unwrap().registered);
+        assert!(
+            list(&paths)
+                .iter()
+                .find(|c| c.id == "codex")
+                .unwrap()
+                .registered
+        );
         register(&paths, "codex", false, Path::new("/opt/l8db")).unwrap();
         let text = std::fs::read_to_string(paths.home.join(".codex/config.toml")).unwrap();
         assert!(!text.contains("l8db"));
@@ -304,7 +406,10 @@ mod tests {
         std::fs::remove_file(paths.home.join(".codex/config.toml")).unwrap();
         register(&paths, "codex", true, Path::new("/opt/l8db")).unwrap();
         let text = std::fs::read_to_string(paths.home.join(".codex/config.toml")).unwrap();
-        assert!(text.trim_start().starts_with("[mcp_servers.l8db]"), "{text}");
+        assert!(
+            text.trim_start().starts_with("[mcp_servers.l8db]"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -317,6 +422,9 @@ mod tests {
         std::fs::create_dir_all(paths.home.join(".gemini")).unwrap();
         std::fs::write(paths.home.join(".gemini/settings.json"), "{broken").unwrap();
         assert!(register(&paths, "gemini", true, Path::new("/x")).is_err());
-        assert_eq!(std::fs::read_to_string(paths.home.join(".gemini/settings.json")).unwrap(), "{broken");
+        assert_eq!(
+            std::fs::read_to_string(paths.home.join(".gemini/settings.json")).unwrap(),
+            "{broken"
+        );
     }
 }
