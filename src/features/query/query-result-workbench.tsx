@@ -46,6 +46,18 @@ export function QueryResultWorkbench({
           },
     [result, term],
   );
+  const jsonRows = useMemo(
+    () =>
+      workspace.resultView === "json"
+        ? (filtered?.rows ?? []).map((row) =>
+            JSON.stringify(row, null, 2)
+              .split("\n")
+              .map((line) => `  ${line}`)
+              .join("\n"),
+          )
+        : [],
+    [filtered, workspace.resultView],
+  );
   if (isLoading || error)
     return <QueryResultTable result={result} isLoading={isLoading} error={error} kind={kind} />;
   if (!result)
@@ -118,9 +130,19 @@ export function QueryResultWorkbench({
       {workspace.resultView === "json" ? (
         <pre
           className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
-          style={{ fontSize: `${workspace.resultFontSize / 16}rem` }}
+          style={{ fontSize: `${workspace.resultFontSize / 16}rem`, contain: "strict" }}
         >
-          {JSON.stringify(filtered?.rows ?? [], null, 2)}
+          {"[\n"}
+          {jsonRows.map((text, index) => (
+            <div
+              key={index}
+              style={{ contentVisibility: "auto", containIntrinsicSize: "auto 200px" }}
+            >
+              {text}
+              {index < jsonRows.length - 1 ? ",\n" : "\n"}
+            </div>
+          ))}
+          {"]"}
         </pre>
       ) : (
         <div className="min-h-0 flex-1">
