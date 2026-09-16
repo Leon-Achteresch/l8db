@@ -34,3 +34,22 @@ test("parsePlsqlMembers keeps spec declarations and does not treat is_valid as a
     { kind: "PROCEDURE", name: "ADD_ITEM", line: 3 },
   ]);
 });
+
+test("parsePlsqlMembers keeps overloads and detects multi-line bodies", () => {
+  const src = [
+    "PACKAGE BODY shop_pkg AS",
+    "  FUNCTION price(p_id NUMBER) RETURN NUMBER;",
+    "  FUNCTION price(p_id NUMBER, p_qty NUMBER) RETURN NUMBER;",
+    "  FUNCTION price(",
+    "    p_id NUMBER",
+    "  ) RETURN NUMBER IS",
+    "  BEGIN RETURN 0; END;",
+    "  FUNCTION price(p_id NUMBER, p_qty NUMBER) RETURN NUMBER AS",
+    "  BEGIN RETURN 0; END;",
+    "END shop_pkg;",
+  ].join("\n");
+  expect(parsePlsqlMembers(src)).toEqual([
+    { kind: "FUNCTION", name: "PRICE", line: 4 },
+    { kind: "FUNCTION", name: "PRICE", line: 8 },
+  ]);
+});

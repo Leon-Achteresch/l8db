@@ -42,6 +42,7 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const capabilities = useActiveCapabilities();
   const [activePart, setActivePart] = useState<PackagePart>(part ?? "body");
   const [activeMember, setActiveMember] = useState(member?.toUpperCase());
+  const [activeLine, setActiveLine] = useState<number>();
   const spec = useFunctionDefinitionQuery(packageOid(schema, name, "spec"));
   const body = useFunctionDefinitionQuery(packageOid(schema, name, "body"));
   const current = activePart === "spec" ? spec : body;
@@ -55,9 +56,9 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
   const compileResult = compileState.status === "done" ? compileState.result : null;
   const members = parsePlsqlMembers(edit.editing ? edit.sql : source);
-  const revealLine = activeMember
-    ? members.find((m) => m.name === activeMember)?.line
-    : members[0]?.line;
+  const memberLine =
+    activeLine ?? (activeMember ? members.find((m) => m.name === activeMember)?.line : undefined);
+  const revealLine = activeMember ? memberLine : members[0]?.line;
   const outlineKey = packageOutlinePrefKey(connection?.id ?? "", schema, name);
   const outlineWidth = usePackageViewPrefs(
     (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
@@ -71,6 +72,7 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
   useEffect(() => {
     if (part) setActivePart(part);
     setActiveMember(member?.toUpperCase());
+    setActiveLine(undefined);
   }, [part, member]);
 
   useEffect(() => {
@@ -98,6 +100,7 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
             if (edit.editing) edit.cancel();
             setActivePart(next);
             setActiveMember(undefined);
+            setActiveLine(undefined);
           }}
         >
           <TabsList variant="default" className="h-7">
@@ -167,10 +170,13 @@ export function PackageView({ schema, name, part, member }: PackageViewProps) {
           {members.length > 0 ? (
             <PackageMemberOutline
               members={members}
-              activeName={activeMember}
+              activeLine={memberLine}
               width={outlineWidth}
               onWidthChange={(next) => setOutlineWidth(outlineKey, next)}
-              onSelect={(m) => setActiveMember(m.name)}
+              onSelect={(m) => {
+                setActiveMember(m.name);
+                setActiveLine(m.line);
+              }}
             />
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col">
