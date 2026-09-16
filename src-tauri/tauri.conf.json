@@ -37,7 +37,7 @@
         "font-src": "'self' data:",
         "connect-src": "'self' ipc: http: https:",
         "worker-src": "'self' blob:",
-        "frame-src": "'self'",
+        "frame-src": "'self' https://l8db.leon-achteresch.de",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'"
@@ -52,7 +52,7 @@
         "font-src": "'self' data:",
         "connect-src": "'self' ipc: http: https: ws: wss:",
         "worker-src": "'self' blob:",
-        "frame-src": "'self'",
+        "frame-src": "'self' https://l8db.leon-achteresch.de http://localhost:3000",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'"

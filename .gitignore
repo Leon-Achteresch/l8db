@@ -45,7 +45,7 @@ coverage/
 # Agent chat scratch
 chat/
 
-docs/
+/docs/
 
 # Nested website repo (separates Projekt)
 l8db-website/

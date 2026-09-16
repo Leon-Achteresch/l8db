@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
-import { Bug, ExternalLink, Info, Terminal } from "lucide-react";
+import { BookOpen, Bug, ExternalLink, Info, Terminal } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -44,6 +44,18 @@ export function SettingsAboutTab() {
           <Link to="/about">
             <Info className="size-3.5" />
             <span>Über anzeigen</span>
+          </Link>
+        </Button>
+      </SettingsRow>
+
+      <SettingsRow
+        title="Dokumentation"
+        description="Anleitungen zu Verbindungen, Query-Editor und Installation im Browser öffnen."
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/docs">
+            <BookOpen className="size-3.5" />
+            <span>Docs öffnen</span>
           </Link>
         </Button>
       </SettingsRow>
