@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
 export interface QueryHistoryEntry {
   id: string;
@@ -27,6 +27,7 @@ interface QueryHistoryState {
 
 export const DEFAULT_HISTORY_LIMIT = 500;
 export const MAX_HISTORY_SQL_LENGTH = 200000;
+export const MAX_HISTORY_TOTAL_SQL_LENGTH = 2_000_000;
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -35,9 +36,14 @@ function createId(): string {
   return Math.random().toString(36).slice(2);
 }
 
-export function retainHistory(entries: QueryHistoryEntry[], limit: number): QueryHistoryEntry[] {
+export function retainHistory(
+  entries: QueryHistoryEntry[],
+  limit: number,
+  budget = MAX_HISTORY_TOTAL_SQL_LENGTH,
+): QueryHistoryEntry[] {
   const counts = new Map<string, number>();
   const seen = new Set<string>();
+  let used = 0;
   return [...entries]
     .sort((a, b) => b.ranAt - a.ranAt)
     .filter((entry) => {
@@ -45,9 +51,33 @@ export function retainHistory(entries: QueryHistoryEntry[], limit: number): Quer
       seen.add(entry.id);
       const count = counts.get(entry.connectionId) ?? 0;
       counts.set(entry.connectionId, count + 1);
-      return count < limit;
+      used += entry.sql.length;
+      return count < limit && used <= budget;
     });
 }
+
+const quotaSafeStorage: StateStorage = {
+  getItem: (name) => localStorage.getItem(name),
+  removeItem: (name) => localStorage.removeItem(name),
+  setItem: (name, value) => {
+    let payload = value;
+    for (;;) {
+      try {
+        localStorage.setItem(name, payload);
+        return;
+      } catch (error) {
+        const parsed = JSON.parse(payload) as { state?: { entries?: QueryHistoryEntry[] } };
+        const entries = parsed.state?.entries ?? [];
+        if (entries.length === 0) throw error;
+        parsed.state = {
+          ...parsed.state,
+          entries: entries.slice(0, Math.floor(entries.length / 2)),
+        };
+        payload = JSON.stringify(parsed);
+      }
+    }
+  },
+};
 
 export const useQueryHistoryStore = create<QueryHistoryState>()(
   persist(
@@ -95,6 +125,7 @@ export const useQueryHistoryStore = create<QueryHistoryState>()(
     }),
     {
       name: "l8db.query-history",
+      storage: createJSONStorage(() => quotaSafeStorage),
       merge: (saved, current) => {
         const state = saved as Partial<QueryHistoryState> | undefined;
         const retentionLimit = Math.min(
