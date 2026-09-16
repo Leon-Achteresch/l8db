@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Download, Github, LockKeyhole } from "lucide-react";
-import { motion, type MotionValue, useReducedMotion, useTransform } from "motion/react";
+import { ArrowUpRight, Download, GitBranch, LockKeyhole } from "lucide-react";
+import { type MotionValue, motion, useReducedMotion, useTransform } from "motion/react";
 import { AboutProductPreview } from "@/features/about/about-product-preview";
 
 const RELEASES_URL = "https://github.com/Leon-Achteresch/l8db/releases/latest";
@@ -72,7 +72,10 @@ export function AboutHero({ scrollYProgress }: AboutHeroProps) {
             Kostenlos herunterladen
             <ArrowUpRight className="size-4" />
           </motion.a>
-          <motion.div whileHover={reduce ? undefined : { x: 3 }} whileTap={reduce ? undefined : { scale: 0.98 }}>
+          <motion.div
+            whileHover={reduce ? undefined : { x: 3 }}
+            whileTap={reduce ? undefined : { scale: 0.98 }}
+          >
             <Link
               to="/connections"
               className="about-secondary-button inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium"
@@ -98,7 +101,7 @@ export function AboutHero({ scrollYProgress }: AboutHeroProps) {
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 transition-colors hover:text-current"
           >
-            <Github className="size-3.5" />
+            <GitBranch className="size-3.5" />
             Open source
           </a>
         </motion.div>

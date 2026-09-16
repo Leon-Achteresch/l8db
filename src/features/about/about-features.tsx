@@ -1,5 +1,13 @@
+import {
+  ArrowDownRight,
+  Command,
+  GitBranch,
+  KeyRound,
+  Network,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowDownRight, Command, GitBranch, KeyRound, Network, ShieldCheck, Sparkles } from "lucide-react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { NotificationStack } from "@/components/motion/notification-stack";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -17,7 +25,10 @@ export function AboutFeatures() {
   const reduce = useReducedMotion();
 
   return (
-    <section id="features" className="about-section mx-auto w-full max-w-[1360px] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+    <section
+      id="features"
+      className="about-section mx-auto w-full max-w-[1360px] px-5 py-24 sm:px-8 lg:px-10 lg:py-32"
+    >
       <div className="max-w-[43rem]">
         <p className="about-kicker">Everything in view</p>
         <h2 className="mt-4 text-4xl font-semibold tracking-[-0.07em] sm:text-6xl">
@@ -43,7 +54,9 @@ export function AboutFeatures() {
               <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-cyan-200/55">
                 Query workspace
               </span>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-white">SQL ohne Reibung.</h3>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-white">
+                SQL ohne Reibung.
+              </h3>
             </div>
             <Tooltip content="Formatieren mit ⌘⇧F" side="top">
               <button type="button" aria-label="SQL formatieren" className="about-icon-button">
@@ -76,7 +89,11 @@ export function AboutFeatures() {
             </div>
             <div className="flex items-center justify-between border-t border-white/[0.07] px-4 py-2 text-[9px] text-white/32">
               <span>⌘ Enter to run</span>
-              <AnimatedBadge status="success" size="sm" className="border-white/10 bg-white/[0.06] text-emerald-200">
+              <AnimatedBadge
+                status="success"
+                size="sm"
+                className="border-white/10 bg-white/[0.06] text-emerald-200"
+              >
                 12 ms
               </AnimatedBadge>
             </div>
@@ -96,8 +113,12 @@ export function AboutFeatures() {
           <div className="relative z-10">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">Schema map</span>
-                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">Beziehungen, nicht Vermutungen.</h3>
+                <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">
+                  Schema map
+                </span>
+                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
+                  Beziehungen, nicht Vermutungen.
+                </h3>
               </div>
               <Network className="size-5 text-current/45" />
             </div>
@@ -114,7 +135,9 @@ export function AboutFeatures() {
             <motion.div
               className="about-schema-line about-schema-line-two"
               animate={reduce ? undefined : { opacity: [0.15, 0.65, 0.15] }}
-              transition={reduce ? undefined : { duration: 3.4, repeat: Number.POSITIVE_INFINITY, delay: 0.5 }}
+              transition={
+                reduce ? undefined : { duration: 3.4, repeat: Number.POSITIVE_INFINITY, delay: 0.5 }
+              }
             />
             {[
               ["customers", "about-schema-node-one"],
@@ -127,7 +150,12 @@ export function AboutFeatures() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
-                transition={{ delay: 0.2 + index * 0.12, type: "spring", stiffness: 250, damping: 20 }}
+                transition={{
+                  delay: 0.2 + index * 0.12,
+                  type: "spring",
+                  stiffness: 250,
+                  damping: 20,
+                }}
               >
                 <GitBranch className="size-3" />
                 {label}
@@ -150,8 +178,12 @@ export function AboutFeatures() {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">Stay in flow</span>
-              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em]">Relevantes bleibt oben.</h3>
+              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">
+                Stay in flow
+              </span>
+              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em]">
+                Relevantes bleibt oben.
+              </h3>
             </div>
             <ArrowDownRight className="size-5 text-current/35" />
           </div>
@@ -169,13 +201,21 @@ export function AboutFeatures() {
                 id: "query",
                 title: "Query abgeschlossen",
                 description: "public.customers · 4 Zeilen · 12 ms",
-                trailing: <AnimatedBadge status="success" size="sm" showIcon={false}>Ready</AnimatedBadge>,
+                trailing: (
+                  <AnimatedBadge status="success" size="sm" showIcon={false}>
+                    Ready
+                  </AnimatedBadge>
+                ),
               },
               {
                 id: "tunnel",
                 title: "SSH-Tunnel aktiv",
                 description: "analytics-prod über Port 5433",
-                trailing: <AnimatedBadge status="info" size="sm" showIcon={false}>Secure</AnimatedBadge>,
+                trailing: (
+                  <AnimatedBadge status="info" size="sm" showIcon={false}>
+                    Secure
+                  </AnimatedBadge>
+                ),
               },
               {
                 id: "schema",
@@ -195,7 +235,9 @@ export function AboutFeatures() {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">Local first</span>
+              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">
+                Local first
+              </span>
               <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em]">Sicher by design.</h3>
             </div>
             <ShieldCheck className="size-5 text-emerald-500" />
@@ -206,12 +248,17 @@ export function AboutFeatures() {
               ["SSH-Tunnel pro Verbindung", "active"],
               ["Secrets im OS-Keychain", "locked"],
             ].map(([label, state]) => (
-              <div key={label} className="flex items-center justify-between rounded-xl border border-current/10 bg-current/[0.035] px-3 py-2.5 text-xs">
+              <div
+                key={label}
+                className="flex items-center justify-between rounded-xl border border-current/10 bg-current/[0.035] px-3 py-2.5 text-xs"
+              >
                 <span className="flex items-center gap-2 text-current/62">
                   <KeyRound className="size-3.5 text-current/35" />
                   {label}
                 </span>
-                <AnimatedBadge status="success" size="sm" showIcon={false}>{state}</AnimatedBadge>
+                <AnimatedBadge status="success" size="sm" showIcon={false}>
+                  {state}
+                </AnimatedBadge>
               </div>
             ))}
           </div>
@@ -226,14 +273,21 @@ export function AboutFeatures() {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">Keyboard native</span>
-              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em]">Dein Rhythmus bleibt intakt.</h3>
+              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-current/40">
+                Keyboard native
+              </span>
+              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em]">
+                Dein Rhythmus bleibt intakt.
+              </h3>
             </div>
             <Command className="size-5 text-current/35" />
           </div>
           <div className="mt-8 grid grid-cols-2 gap-2">
             {["⌘ K", "⌘ Enter", "⌘ ⇧ F", "⌘ P"].map((shortcut) => (
-              <div key={shortcut} className="rounded-xl border border-current/10 bg-current/[0.035] px-3 py-3 font-mono text-xs text-current/60">
+              <div
+                key={shortcut}
+                className="rounded-xl border border-current/10 bg-current/[0.035] px-3 py-3 font-mono text-xs text-current/60"
+              >
                 {shortcut}
               </div>
             ))}
