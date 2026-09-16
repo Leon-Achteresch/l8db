@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { GitBranchIcon, Bot, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -132,6 +132,20 @@ export function AppHeader() {
             )}
           >
             <PlugZap className="size-4" strokeWidth={2} />
+          </Link>
+        </Tooltip>
+
+        <Tooltip content="MCP" side="bottom">
+          <Link
+            to="/mcp"
+            aria-label="MCP"
+            className={cn(
+              "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+              "hover:bg-muted hover:text-foreground",
+              pathname.startsWith("/mcp") && "bg-primary/12 text-foreground",
+            )}
+          >
+            <Bot className="size-4" strokeWidth={2} />
           </Link>
         </Tooltip>
 

@@ -1,9 +1,14 @@
 mod community_extensions;
 mod db;
 mod extension_process;
+mod mcp;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().any(|arg| arg == "--mcp") {
+        mcp::serve();
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -19,6 +24,15 @@ pub fn run() {
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,
+            mcp::config::mcp_config,
+            mcp::config::mcp_save_config,
+            mcp::config::mcp_default_redaction,
+            mcp::config::mcp_audit_tail,
+            mcp::config::mcp_redact_preview,
+            mcp::config::mcp_clear_audit,
+            mcp::clients::mcp_clients,
+            mcp::clients::mcp_register,
+            mcp::clients::mcp_server_command,
             db::commands::list_providers,
             db::commands::driver_status,
             db::commands::install_driver,

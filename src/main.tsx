@@ -12,6 +12,7 @@ import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
+import { initMcpSync } from "@/lib/mcp";
 import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
@@ -49,6 +50,7 @@ function render() {
 
 Promise.all([executionSettings.ready, loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
+  .then(() => initMcpSync())
   .catch(() => undefined)
   .finally(() => {
     render();
