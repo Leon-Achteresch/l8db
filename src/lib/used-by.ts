@@ -5,6 +5,7 @@ export type DependencyRoute =
   | { kind: "view"; schema: string; name: string }
   | { kind: "function"; schema: string; name: string; oid: string }
   | { kind: "procedure"; schema: string; name: string; oid: string }
+  | { kind: "package"; schema: string; name: string; part: "spec" | "body" }
   | null;
 
 export function normalizeObjectType(objectType: string): string {
@@ -16,6 +17,14 @@ export function dependencyRoute(dep: DependencyInfo): DependencyRoute {
   if (type === "table") return { kind: "table", schema: dep.owner, name: dep.name };
   if (type === "view" || type === "materialized_view") {
     return { kind: "view", schema: dep.owner, name: dep.name };
+  }
+  if (type === "package" || type === "package_body") {
+    return {
+      kind: "package",
+      schema: dep.owner,
+      name: dep.name,
+      part: type === "package_body" ? "body" : "spec",
+    };
   }
   if (type === "procedure") {
     return { kind: "procedure", schema: dep.owner, name: dep.name, oid: dep.oid };

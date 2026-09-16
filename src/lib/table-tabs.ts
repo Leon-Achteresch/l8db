@@ -641,8 +641,17 @@ export const useTableTabs = create<TabsState>()(
           const slots = queryTabBookmarkSlots(tab);
           if (line === null) {
             if (!(key in slots)) return state;
-            const { [key]: _removed, ...rest } = slots;
-            return storeFor(patchQueryTab(state.tabs, id, { bookmarkSlots: rest }), state);
+            const { [key]: removedLine, ...rest } = slots;
+            if (Object.values(rest).includes(removedLine)) {
+              return storeFor(patchQueryTab(state.tabs, id, { bookmarkSlots: rest }), state);
+            }
+            return storeFor(
+              patchQueryTab(state.tabs, id, {
+                bookmarkSlots: rest,
+                bookmarks: queryTabBookmarks(tab).filter((entry) => entry !== removedLine),
+              }),
+              state,
+            );
           }
           if (!Number.isInteger(line) || line <= 0) return state;
           if (slots[key] === line) return state;

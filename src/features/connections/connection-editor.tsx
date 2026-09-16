@@ -270,6 +270,7 @@ export function ConnectionEditor({ connection, template, onSaved, onCancel }: Pr
       setSsl(
         defaultSslModeForProvider(next.kind, next.id, useSettingsStore.getState().sslDefaultMode),
       );
+    if (step === 1 && next.driver_status.available) setStep(2);
   }
 
   function pasteConnectionString() {

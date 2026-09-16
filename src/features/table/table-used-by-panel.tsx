@@ -59,6 +59,14 @@ export function TableUsedByPanel({ schema, name }: TableUsedByPanelProps) {
       });
       return;
     }
+    if (route.kind === "package") {
+      void navigate({
+        to: "/packages/$schema/$name",
+        params: { schema: route.schema, name: route.name },
+        search: { part: route.part, highlight: name },
+      });
+      return;
+    }
     if (route.kind === "view") {
       void navigate({
         to: "/view-editor/$schema/$view",

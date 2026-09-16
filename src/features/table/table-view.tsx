@@ -369,47 +369,40 @@ export function TableView({
 
   const dataContent = (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {!isView && (
-        <>
-          <TableViewsPanel
-            schema={schema}
-            table={table}
-            activeFilter={filter}
-            filterRaw={filterRaw}
-            onSelectView={(nextFilter, raw, saved) => {
-              handleFilterChange(nextFilter, raw);
-              if (stateKey && saved?.state)
-                useTableViewStateStore.getState().patch(stateKey, {
-                  ...saved.state,
-                  filter: nextFilter,
-                  filterRaw: raw ?? false,
-                  page: 0,
-                });
-              if (connection && saved?.layout)
-                useTableColumnPrefs
-                  .getState()
-                  .setPref(
-                    tableColumnPrefKey(connection.id, schema, table, database),
-                    saved.layout,
-                  );
-            }}
-          />
-          <div
-            className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
-            data-tour="table-filter"
-          >
-            <TableFilterPanel
-              key={stateKey}
-              stateKey={stateKey}
-              columns={data?.columns ?? []}
-              columnDetails={columnDetails}
-              activeFilter={filter}
-              onApply={handleFilterChange}
-              onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
-            />
-          </div>
-        </>
-      )}
+      <TableViewsPanel
+        schema={schema}
+        table={table}
+        activeFilter={filter}
+        filterRaw={filterRaw}
+        onSelectView={(nextFilter, raw, saved) => {
+          handleFilterChange(nextFilter, raw);
+          if (stateKey && saved?.state)
+            useTableViewStateStore.getState().patch(stateKey, {
+              ...saved.state,
+              filter: nextFilter,
+              filterRaw: raw ?? false,
+              page: 0,
+            });
+          if (connection && saved?.layout)
+            useTableColumnPrefs
+              .getState()
+              .setPref(tableColumnPrefKey(connection.id, schema, table, database), saved.layout);
+        }}
+      />
+      <div
+        className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
+        data-tour="table-filter"
+      >
+        <TableFilterPanel
+          key={stateKey}
+          stateKey={stateKey}
+          columns={data?.columns ?? []}
+          columnDetails={columnDetails}
+          activeFilter={filter}
+          onApply={handleFilterChange}
+          onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
+        />
+      </div>
       {isLoading ? (
         <TableDataSkeleton />
       ) : isError ? (
