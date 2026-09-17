@@ -108,12 +108,13 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
           onFocus();
         }}
         className={cn(
-          "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
+          "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
+          "after:pointer-events-none after:absolute after:inset-0 after:z-30",
           isDropTarget
-            ? "ring-2 ring-inset ring-primary bg-primary/5"
+            ? "bg-primary/5 after:ring-2 after:ring-inset after:ring-primary"
             : focused
-              ? "ring-2 ring-inset ring-primary"
-              : "ring-1 ring-inset ring-border/80",
+              ? "after:ring-2 after:ring-inset after:ring-primary"
+              : "after:ring-1 after:ring-inset after:ring-border/80",
         )}
       >
         <div
