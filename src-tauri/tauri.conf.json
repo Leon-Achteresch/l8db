@@ -87,7 +87,7 @@
       "icons/icon.ico"
     ],
     "homepage": "https://github.com/Leon-Achteresch/l8db",
-    "license": "GPL-3.0-only",
+    "license": "Elastic-2.0",
     "macOS": {
       "minimumSystemVersion": "12.0",
       "hardenedRuntime": true

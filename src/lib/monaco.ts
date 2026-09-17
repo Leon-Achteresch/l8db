@@ -135,6 +135,7 @@ monaco.editor.defineTheme("l8db-light", {
     "editorStickyScroll.border": "#e2e5ea",
     "editorStickyScroll.shadow": "#00000014",
     "editorStickyScrollHover.background": "#eceef1",
+    "editorLink.activeForeground": "#2563eb",
   },
 });
 
@@ -154,6 +155,7 @@ monaco.editor.defineTheme("l8db-dark", {
     "editorStickyScroll.border": "#2e3345",
     "editorStickyScroll.shadow": "#00000066",
     "editorStickyScrollHover.background": "#262a3a",
+    "editorLink.activeForeground": "#60a5fa",
   },
 });
 

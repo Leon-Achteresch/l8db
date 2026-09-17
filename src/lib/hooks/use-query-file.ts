@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   defaultSqlFileName,
   fileMtimeChanged,
+  sqlDropPaths,
   sqlFileSizeError,
   sqlFileTitle,
 } from "@/lib/sql-file";
@@ -31,9 +32,7 @@ function findQueryTab(id: string): QueryTab | null {
   return tab && tab.kind === "query" ? tab : null;
 }
 
-export async function openSqlFileAsTab(): Promise<string | null> {
-  const path = await open({ multiple: false, directory: false, filters: SQL_FILTERS });
-  if (!path) return null;
+export async function openSqlPathAsTab(path: string): Promise<string | null> {
   try {
     const meta = await readFileMeta(path);
     const sizeError = sqlFileSizeError(meta.size);
@@ -49,6 +48,25 @@ export async function openSqlFileAsTab(): Promise<string | null> {
     toast.error(`Datei konnte nicht geöffnet werden: ${errorMessage(error)}`);
     return null;
   }
+}
+
+export async function openSqlFileAsTab(): Promise<string | null> {
+  const path = await open({ multiple: false, directory: false, filters: SQL_FILTERS });
+  if (!path) return null;
+  return openSqlPathAsTab(path);
+}
+
+export async function openDroppedSqlPaths(paths: string[]): Promise<string | null> {
+  const sqlPaths = sqlDropPaths(paths);
+  if (sqlPaths.length === 0) {
+    if (paths.length > 0) toast.error("Nur .sql-Dateien können per Drag-and-Drop geöffnet werden.");
+    return null;
+  }
+  let last: string | null = null;
+  for (const path of sqlPaths) {
+    last = (await openSqlPathAsTab(path)) ?? last;
+  }
+  return last;
 }
 
 export async function detectExternalChange(tabId: string): Promise<boolean> {

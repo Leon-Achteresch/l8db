@@ -46,6 +46,8 @@ import {
 } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
 
+const tabHistory: string[] = [];
+
 const iconButton =
   "flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-[background-color,color,transform] duration-200 hover:bg-muted hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 
@@ -97,11 +99,24 @@ export function TableTabs() {
       return;
     }
     const index = tabs.findIndex((t) => tabKey(t) === key);
-    const next = tabs[index + 1] ?? tabs[index - 1];
+    const recent = tabHistory.find(
+      (entry) => entry !== key && tabs.some((t) => tabKey(t) === entry),
+    );
+    const next =
+      tabs.find((t) => tabKey(t) === recent) ?? tabs[index + 1] ?? tabs[index - 1];
     void Promise.resolve(next ? navigateToTab(navigate, next) : navigate({ to: "/" })).finally(() =>
       closeTab(key),
     );
   };
+
+  useEffect(() => {
+    if (!activeTab) return;
+    const key = tabKey(activeTab);
+    const at = tabHistory.indexOf(key);
+    if (at !== -1) tabHistory.splice(at, 1);
+    tabHistory.unshift(key);
+    tabHistory.length = Math.min(tabHistory.length, 50);
+  }, [activeTab]);
 
   const [savingClose, setSavingClose] = useState(false);
   const [pendingKeys, setPendingKeys] = useState<string[]>([]);

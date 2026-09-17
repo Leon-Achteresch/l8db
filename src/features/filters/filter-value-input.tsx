@@ -4,6 +4,13 @@ import { Input } from "@/components/ui/input";
 import { operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
+function splitPasted(text: string): string[] {
+  return text
+    .split(/[\r\n\t,;]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
 type FilterValueInputProps = Omit<ComponentProps<typeof Input>, "value" | "onChange"> & {
   operator: string;
   value: string;
@@ -25,6 +32,12 @@ export function FilterValueInput({
         {...props}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
+        onPaste={(event) => {
+          const parts = splitPasted(event.clipboardData.getData("text"));
+          if (parts.length < 2) return;
+          event.preventDefault();
+          onValueChange(parts.join(", "));
+        }}
         className={className}
       />
     );
@@ -73,6 +86,13 @@ export function FilterValueInput({
           aria-label={props["aria-label"] ?? "Listenwert"}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onPaste={(event) => {
+            const parts = splitPasted(event.clipboardData.getData("text"));
+            if (parts.length < 2) return;
+            event.preventDefault();
+            onValueChange(JSON.stringify([...new Set([...values, ...parts])]));
+            setDraft("");
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();

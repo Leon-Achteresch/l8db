@@ -27,3 +27,11 @@ export function defaultSqlFileName(title: string): string {
   const base = title.trim() || "query";
   return /\.sql$/i.test(base) ? base : `${base}.sql`;
 }
+
+export function isSqlDropName(name: string): boolean {
+  return /\.sql$/i.test(name);
+}
+
+export function sqlDropPaths(paths: string[]): string[] {
+  return paths.filter((path) => isSqlDropName(sqlFileTitle(path)));
+}

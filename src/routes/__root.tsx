@@ -10,6 +10,7 @@ import { PasswordPromptDialog } from "@/features/connections/password-prompt-dia
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
 import { AppHeader } from "@/features/shell/app-header";
 import { AppHotkeys } from "@/features/shell/app-hotkeys";
+import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { RouteErrorView } from "@/features/shell/route-error-view";
 import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
@@ -22,6 +23,7 @@ function RootComponent() {
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
         <DbThemeRoot className="h-dvh">
           <AppHotkeys />
+          <SqlFileDrop />
           <AppHeader />
           <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
             <Outlet />
