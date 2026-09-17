@@ -76,6 +76,7 @@ import {
   fitHeaderColumnWidth,
   measureHeaderTitleWidth,
 } from "@/lib/column-header-width";
+import { rankCommands } from "@/lib/command-score";
 import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -750,9 +751,11 @@ export function DataTable({
 
   const columnMatches = useMemo(() => {
     if (searchMode !== "columns") return [];
-    const needle = deferredSearchQuery.trim().toLowerCase();
-    if (needle === "") return [];
-    return searchColumns.filter((column) => column.toLowerCase().includes(needle));
+    if (deferredSearchQuery.trim() === "") return [];
+    return rankCommands(
+      searchColumns.map((label) => ({ label })),
+      deferredSearchQuery,
+    ).map((item) => item.label);
   }, [searchMode, deferredSearchQuery, searchColumns]);
   const navCount = searchMode === "columns" ? columnMatches.length : matches.length;
   const activeColumnMatch = searchMode === "columns" ? (columnMatches[matchIndex] ?? null) : null;
@@ -1111,8 +1114,16 @@ export function DataTable({
         scroller.scrollLeft = value;
       },
       onComplete: () => {
-        const th = scroller.querySelector<HTMLElement>(`th[data-column-id="${CSS.escape(name)}"]`);
-        if (th) animate(th, { opacity: [1, 0.25, 1, 0.25, 1] }, { duration: 0.8 });
+        const id = CSS.escape(name);
+        const flash = "inset 0 0 0 999px color-mix(in srgb, var(--primary) 30%, transparent)";
+        for (const cell of scroller.querySelectorAll(
+          `th[data-column-id="${id}"], td[data-col="${id}"]`,
+        )) {
+          cell.animate([{ boxShadow: flash }, { boxShadow: "inset 0 0 0 999px transparent" }], {
+            duration: 1200,
+            easing: "ease-out",
+          });
+        }
       },
     });
     return () => controls.stop();

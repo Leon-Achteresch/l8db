@@ -18,3 +18,13 @@ test("exakte Präfixtreffer vor Teiltreffern", () => {
     "SOMEPREFIXEDTHING",
   ]);
 });
+
+test("mehrere Suchwörter müssen alle treffen, Reihenfolge egal", () => {
+  const items = [
+    { label: "ORDERS", keywords: ["public"] },
+    { label: "ORDERS", keywords: ["archive"] },
+    { label: "KUNDE", keywords: ["public"] },
+  ];
+  expect(rankCommands(items, "public ord").map((i) => i.keywords[0])).toEqual(["public"]);
+  expect(rankCommands(items, "ord xyz")).toEqual([]);
+});
