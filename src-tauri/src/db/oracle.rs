@@ -223,17 +223,48 @@ fn create_temp(
     check_compile(c, &temp.sql)
 }
 
+const PARSE_ONLY: &str = "DECLARE c INTEGER := DBMS_SQL.OPEN_CURSOR; BEGIN BEGIN DBMS_SQL.PARSE(c, :1, DBMS_SQL.NATIVE); EXCEPTION WHEN OTHERS THEN :2 := SQLERRM; :3 := DBMS_SQL.LAST_ERROR_POSITION; END; DBMS_SQL.CLOSE_CURSOR(c); END;";
+
+fn parse_only(c: &Connection, statement: &str) -> Result<(), String> {
+    let word = sql::first_word(statement);
+    match word.as_str() {
+        "SELECT" | "WITH" | "(" | "INSERT" | "UPDATE" | "DELETE" | "MERGE" | "BEGIN"
+        | "DECLARE" | "CALL" => {}
+        "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "SET" => return Ok(()),
+        _ => {
+            return Err(format!(
+                "Oracle kann {word}-Anweisungen nicht prüfen, ohne sie auszuführen. Prüfbar sind Abfragen, DML, PL/SQL-Blöcke sowie CREATE VIEW/FUNCTION/PROCEDURE/PACKAGE."
+            ))
+        }
+    }
+    let text = (0..=64)
+        .find_map(|count| sql::bind_statement(statement, count).ok())
+        .map_or_else(|| statement.to_string(), |(bound, _)| bound);
+    let mut stmt = c.statement(PARSE_ONLY).build().map_err(map_err)?;
+    stmt.execute(&[&text, &OracleType::Varchar2(4000), &OracleType::Int64])
+        .map_err(map_err)?;
+    let message: Option<String> = stmt.bind_value(2).map_err(map_err)?;
+    let Some(message) = message else {
+        return Ok(());
+    };
+    let offset: Option<i64> = stmt.bind_value(3).map_err(map_err)?;
+    let offset = offset.unwrap_or(0).max(0) as usize;
+    if offset == 0 || offset > text.len() || !text.is_char_boundary(offset) {
+        return Err(format!("Oracle: {message}"));
+    }
+    Err(format!(
+        "Oracle: {message}\nPosition: {}",
+        text[..offset].chars().count() + 1
+    ))
+}
+
 fn validate_statement(
     c: &Connection,
     statement: &str,
     drops: &mut Vec<String>,
 ) -> Result<(), String> {
     let Some(temp) = sql::temp_object(statement) else {
-        return c
-            .statement(statement)
-            .build()
-            .map(|_| ())
-            .map_err(|e| map_sql_err(e, statement));
+        return parse_only(c, statement);
     };
     if temp.kind == "PACKAGE BODY" {
         let has_spec = drops.contains(&format!("DROP PACKAGE {}", temp.target()));
@@ -2121,54 +2152,197 @@ mod tests {
             "validate".into(),
         )
         .unwrap();
-        let _ = a.execute_query("DROP TABLE L8DB_VALIDATE_PROBE").await;
-        a.validate_sql("CREATE TABLE L8DB_VALIDATE_PROBE (ID NUMBER PRIMARY KEY)")
+        let count = |sql: &'static str| {
+            let a = &a;
+            async move {
+                let r = a.execute_query(sql).await.unwrap();
+                r.rows[0]["C"].to_string().trim_matches('"').to_string()
+            }
+        };
+        for drop in [
+            "DROP TABLE L8DB_VP_T",
+            "DROP VIEW L8DB_VP_DEP",
+            "DROP PACKAGE L8DB_VP_REAL",
+            "DROP FUNCTION L8DB_VP_F",
+            "DROP TABLE L8DB_VP_F_L8DB_TEMP",
+        ] {
+            let _ = a.execute_query(drop).await;
+        }
+        a.execute_query("CREATE TABLE L8DB_VP_T (ID NUMBER PRIMARY KEY)")
             .await
-            .expect("ddl parses");
-        assert!(
-            a.execute_query("SELECT COUNT(*) AS C FROM L8DB_VALIDATE_PROBE")
-                .await
-                .is_err(),
-            "validate must not execute"
-        );
-        a.validate_sql("SELECT 1 AS ONE FROM DUAL; SELECT 2 AS TWO FROM DUAL")
+            .unwrap();
+
+        let ddl = a
+            .validate_sql("CREATE TABLE L8DB_VALIDATE_PROBE (ID NUMBER)")
+            .await
+            .unwrap_err();
+        assert!(ddl.contains("nicht prüfen"), "{ddl}");
+        assert!(a
+            .execute_query("SELECT COUNT(*) AS C FROM L8DB_VALIDATE_PROBE")
+            .await
+            .is_err());
+        assert!(a.validate_sql("DROP TABLE L8DB_VP_T").await.is_err());
+        assert_eq!(count("SELECT COUNT(*) AS C FROM L8DB_VP_T").await, "0");
+
+        a.validate_sql("SELECT 1 AS ONE FROM DUAL; SELECT 2 AS TWO FROM DUAL;\nCOMMIT;")
             .await
             .expect("script parses");
+        a.validate_sql("-- c\nSELECT * FROM L8DB_VP_T WHERE ID = $1 AND ID <> :x")
+            .await
+            .expect("binds parse");
         a.validate_sql("BEGIN NULL; END;")
             .await
             .expect("plsql parses");
-        assert!(a.validate_sql("SELECT FROM WHERE").await.is_err());
+        a.validate_sql("BEGIN INSERT INTO L8DB_VP_T VALUES (1); COMMIT; END;")
+            .await
+            .expect("block parses");
+        a.validate_sql("INSERT INTO L8DB_VP_T VALUES (2)")
+            .await
+            .expect("dml parses");
+        a.validate_sql("DELETE FROM L8DB_VP_T")
+            .await
+            .expect("delete parses");
+        assert_eq!(count("SELECT COUNT(*) AS C FROM L8DB_VP_T").await, "0");
+        let big = format!("SELECT '{}' AS X FROM DUAL", "x".repeat(3000)).repeat(1)
+            + &" UNION ALL SELECT 'y' FROM DUAL".repeat(2000);
+        assert!(big.len() > 32767);
+        a.validate_sql(&big).await.expect("large sql parses");
+        let syntax = a.validate_sql("SELECT FROM WHERE").await.unwrap_err();
+        assert!(syntax.contains("ORA-00936"), "{syntax}");
+        let missing = a
+            .validate_sql("SELECT 1 FROM DUAL;\nSELECT * FROM l8db_no_such_table")
+            .await
+            .unwrap_err();
+        assert!(
+            missing.contains("ORA-00942") && missing.contains("Position"),
+            "{missing}"
+        );
+        assert!(a.validate_sql("BEGIN missing_thing; END;").await.is_err());
         assert!(a
-            .validate_sql("CREATE TABL L8DB_VALIDATE_PROBE (ID NUMBER)")
+            .validate_sql("UPDATE L8DB_VP_T SET nope = 1")
             .await
             .is_err());
-        let _ = a.execute_query("DROP TABLE L8DB_VALIDATE_PROBE").await;
 
         a.validate_sql(
             "CREATE OR REPLACE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END L8DB_VP_F;",
         )
         .await
         .expect("valid function");
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE 'L8DB\\_VP\\_F%' ESCAPE '\\'").await,
+            "0",
+            "check must not create the real object"
+        );
         let broken = a
-            .validate_sql("CREATE OR REPLACE PROCEDURE L8DB_VP_P IS BEGIN missing_thing; END;")
+            .validate_sql("CREATE OR REPLACE PROCEDURE L8DB_VP_P IS\nBEGIN\n  missing_thing;\nEND;")
             .await
             .unwrap_err();
         assert!(
-            broken.contains("L8DB_VP_P") && !broken.contains("L8DB_TEMP"),
+            broken.contains("L8DB_VP_P")
+                && !broken.contains("L8DB_TEMP")
+                && broken.contains("Zeile 3"),
             "{broken}"
         );
         assert!(a
-            .validate_sql("CREATE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table")
+            .validate_sql("CREATE PROCEDURE L8DB_VP_P IS BEGIN NULL END;")
             .await
             .is_err());
+        assert!(a
+            .validate_sql(
+                "CREATE OR REPLACE FORCE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table"
+            )
+            .await
+            .is_err());
+        a.validate_sql("CREATE OR REPLACE FORCE VIEW L8DB_VP_V (A) AS SELECT ID FROM L8DB_VP_T")
+            .await
+            .expect("valid view");
         a.validate_sql("CREATE PACKAGE L8DB_VP_K AS PROCEDURE p; END L8DB_VP_K;\n/\nCREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END L8DB_VP_K;\n/")
             .await
             .expect("valid package");
-        let left = a
-            .execute_query("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE 'L8DB\\_VP\\_%' ESCAPE '\\'")
+        let nospec = a
+            .validate_sql("CREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END;")
+            .await
+            .unwrap_err();
+        assert!(nospec.contains("Spezifikation"), "{nospec}");
+
+        a.execute_query(
+            "CREATE OR REPLACE PACKAGE L8DB_VP_REAL AS FUNCTION f RETURN NUMBER; END L8DB_VP_REAL;",
+        )
+        .await
+        .unwrap();
+        a.execute_query("CREATE OR REPLACE PACKAGE BODY L8DB_VP_REAL AS FUNCTION f RETURN NUMBER IS BEGIN RETURN 1; END f; END L8DB_VP_REAL;")
             .await
             .unwrap();
-        assert_eq!(left.rows[0]["C"].to_string().trim_matches('"'), "0");
+        a.execute_query("CREATE VIEW L8DB_VP_DEP AS SELECT L8DB_VP_REAL.f AS V FROM DUAL")
+            .await
+            .unwrap();
+        a.validate_sql("CREATE OR REPLACE PACKAGE BODY L8DB_VP_REAL AS FUNCTION f RETURN NUMBER IS BEGIN RETURN 2; END f; END L8DB_VP_REAL;")
+            .await
+            .expect("body against existing spec");
+        let bad_body = a
+            .validate_sql("CREATE OR REPLACE PACKAGE BODY L8DB_VP_REAL AS FUNCTION g RETURN NUMBER IS BEGIN RETURN 2; END g; END L8DB_VP_REAL;")
+            .await
+            .unwrap_err();
+        assert!(bad_body.contains("PLS-00323"), "{bad_body}");
+        assert!(a
+            .validate_sql("CREATE OR REPLACE PACKAGE L8DB_VP_REAL AS FUNCTION f RETURN NUMBER END;")
+            .await
+            .is_err());
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_objects WHERE object_name IN ('L8DB_VP_REAL', 'L8DB_VP_DEP') AND status <> 'VALID'").await,
+            "0",
+            "real objects must stay valid"
+        );
+        assert_eq!(count("SELECT V AS C FROM L8DB_VP_DEP").await, "1");
+
+        let user = a
+            .execute_query("SELECT USER AS C FROM DUAL")
+            .await
+            .unwrap()
+            .rows[0]["C"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        a.validate_sql(&format!("CREATE OR REPLACE EDITIONABLE FUNCTION \"{user}\".\"L8DB_VP_Q\" RETURN NUMBER IS BEGIN RETURN 1; END \"L8DB_VP_Q\";"))
+            .await
+            .expect("qualified function");
+        let qualified = a
+            .validate_sql(&format!(
+                "CREATE OR REPLACE PROCEDURE {user}.l8db_vp_q IS BEGIN nope; END l8db_vp_q;"
+            ))
+            .await
+            .unwrap_err();
+        assert!(
+            qualified.contains("PLS-00201") && !qualified.contains("L8DB_TEMP"),
+            "{qualified}"
+        );
+
+        a.execute_query("CREATE TABLE L8DB_VP_F_L8DB_TEMP (ID NUMBER)")
+            .await
+            .unwrap();
+        let taken = a
+            .validate_sql("CREATE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END;")
+            .await
+            .unwrap_err();
+        assert!(taken.contains("existiert bereits"), "{taken}");
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM L8DB_VP_F_L8DB_TEMP").await,
+            "0"
+        );
+
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE '%L8DB\\_TEMP' ESCAPE '\\' AND object_name <> 'L8DB_VP_F_L8DB_TEMP'").await,
+            "0",
+            "no temp objects left"
+        );
+        for drop in [
+            "DROP TABLE L8DB_VP_T",
+            "DROP VIEW L8DB_VP_DEP",
+            "DROP PACKAGE L8DB_VP_REAL",
+            "DROP TABLE L8DB_VP_F_L8DB_TEMP",
+        ] {
+            a.execute_query(drop).await.unwrap();
+        }
     }
 
     #[tokio::test]
