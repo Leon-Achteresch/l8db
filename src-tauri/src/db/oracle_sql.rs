@@ -176,6 +176,88 @@ pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, Strin
     Some((None, first, kind))
 }
 
+pub(super) const TEMP_SUFFIX: &str = "_L8DB_TEMP";
+
+pub(super) struct TempObject {
+    pub sql: String,
+    pub owner: Option<String>,
+    pub name: String,
+    pub temp_name: String,
+    pub kind: String,
+}
+
+impl TempObject {
+    pub fn target(&self) -> String {
+        let quote = |ident: &str| format!("\"{}\"", ident.replace('"', "\"\""));
+        match &self.owner {
+            Some(owner) => format!("{}.{}", quote(owner), quote(&self.temp_name)),
+            None => quote(&self.temp_name),
+        }
+    }
+}
+
+pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
+    let toks = tokens(sql);
+    let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
+    let is = |i: usize, w: &str| word(i).is_some_and(|t| t.eq_ignore_ascii_case(w));
+    if !is(0, "CREATE") {
+        return None;
+    }
+    let mut replacements: Vec<(Range<usize>, String)> = Vec::new();
+    let mut i = 1;
+    let mut replace = false;
+    while let Some(w) = word(i).map(str::to_ascii_uppercase) {
+        match w.as_str() {
+            "REPLACE" => replace = true,
+            "NO" | "FORCE" => replacements.push((toks[i].clone(), String::new())),
+            "OR" | "EDITIONABLE" | "NONEDITIONABLE" | "EDITIONING" => {}
+            _ => break,
+        }
+        i += 1;
+    }
+    if !replace {
+        let at = toks[0].end;
+        replacements.insert(0, (at..at, " OR REPLACE".to_string()));
+    }
+    let mut kind = word(i)?.to_ascii_uppercase();
+    if !matches!(kind.as_str(), "VIEW" | "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+        return None;
+    }
+    i += 1;
+    if kind == "PACKAGE" && is(i, "BODY") {
+        kind.push_str(" BODY");
+        i += 1;
+    }
+    let ident = |w: &str| match w.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
+        Some(quoted) => quoted.replace("\"\"", "\""),
+        None => w.to_ascii_uppercase(),
+    };
+    let mut owner = None;
+    if word(i + 1) == Some(".") {
+        owner = Some(ident(word(i)?));
+        i += 2;
+    }
+    let name = ident(word(i)?);
+    let temp_name = format!("{name}{TEMP_SUFFIX}");
+    let quoted = format!("\"{}\"", temp_name.replace('"', "\"\""));
+    replacements.push((toks[i].clone(), quoted.clone()));
+    let last = toks.iter().rposition(|r| &sql[r.clone()] != ";")?;
+    if last > i + 1 && is(last - 1, "END") && ident(word(last)?) == name {
+        replacements.push((toks[last].clone(), quoted));
+    }
+    let mut statement = sql.to_string();
+    for (range, replacement) in replacements.into_iter().rev() {
+        statement.replace_range(range, &replacement);
+    }
+    Some(TempObject {
+        sql: statement,
+        owner,
+        name,
+        temp_name,
+        kind,
+    })
+}
+
 pub(super) fn bind_statement(sql: &str, count: usize) -> Result<(String, Vec<usize>), String> {
     let mut replacements = Vec::new();
     let mut used = Vec::new();
@@ -241,6 +323,34 @@ mod tests {
             Some((None, "P".into(), "PROCEDURE".into()))
         );
         assert_eq!(created_object("CREATE TABLE t (id NUMBER)"), None);
+    }
+
+    #[test]
+    fn renames_created_object_to_temp() {
+        let t = temp_object(
+            "CREATE PACKAGE BODY hr.demo AS\nPROCEDURE demo IS BEGIN NULL; END demo;\nEND demo;",
+        )
+        .unwrap();
+        assert_eq!(t.sql, "CREATE OR REPLACE PACKAGE BODY hr.\"DEMO_L8DB_TEMP\" AS\nPROCEDURE demo IS BEGIN NULL; END demo;\nEND \"DEMO_L8DB_TEMP\";");
+        assert_eq!(
+            (t.owner.as_deref(), t.name.as_str(), t.kind.as_str()),
+            (Some("HR"), "DEMO", "PACKAGE BODY")
+        );
+        let v =
+            temp_object("create or replace force view \"v\" as select 'end v' from dual").unwrap();
+        assert_eq!(
+            v.sql,
+            "create or replace  view \"v_L8DB_TEMP\" as select 'end v' from dual"
+        );
+        assert_eq!(v.temp_name, "v_L8DB_TEMP");
+        let f = temp_object("CREATE FUNCTION f RETURN NUMBER IS BEGIN RETURN 1; END;").unwrap();
+        assert_eq!(
+            f.sql,
+            "CREATE OR REPLACE FUNCTION \"F_L8DB_TEMP\" RETURN NUMBER IS BEGIN RETURN 1; END;"
+        );
+        assert!(temp_object("CREATE TABLE t (id NUMBER)").is_none());
+        assert!(temp_object("CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;").is_none());
+        assert!(temp_object("SELECT 1 FROM dual").is_none());
     }
 
     const BODY: &str = "CREATE /* header */ OR REPLACE PACKAGE BODY demo AS\nPROCEDURE p IS\nx VARCHAR2(100) := q'[it's text;\n/\n-- not a comment]';\nBEGIN NULL; END p;\nEND demo;";

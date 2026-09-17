@@ -190,6 +190,87 @@ fn check_compile(c: &Connection, sql: &str) -> Result<(), String> {
     ))
 }
 
+fn create_temp(
+    c: &Connection,
+    temp: &sql::TempObject,
+    drops: &mut Vec<String>,
+) -> Result<(), String> {
+    let target = temp.target();
+    let drop = format!("DROP {} {target}", temp.kind.trim_end_matches(" BODY"));
+    if !drops.contains(&drop) {
+        let owner = temp.owner.as_ref().map_or_else(
+            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+            |o| lit(o),
+        );
+        let existing = fetch(
+            c,
+            &format!(
+                "SELECT object_type FROM all_objects WHERE owner = {owner} AND object_name = {}",
+                lit(&temp.temp_name)
+            ),
+        )?;
+        if !existing.is_empty() {
+            return Err(format!(
+                "Prüfen nicht möglich: {target} existiert bereits. Bitte das Objekt prüfen und löschen."
+            ));
+        }
+    }
+    c.execute(&temp.sql, &[])
+        .map_err(|e| map_sql_err(e, &temp.sql))?;
+    if !drops.contains(&drop) {
+        drops.push(drop);
+    }
+    check_compile(c, &temp.sql)
+}
+
+fn validate_statement(
+    c: &Connection,
+    statement: &str,
+    drops: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(temp) = sql::temp_object(statement) else {
+        return c
+            .statement(statement)
+            .build()
+            .map(|_| ())
+            .map_err(|e| map_sql_err(e, statement));
+    };
+    if temp.kind == "PACKAGE BODY" {
+        let has_spec = drops.contains(&format!("DROP PACKAGE {}", temp.target()));
+        if !has_spec {
+            let owner = temp.owner.as_ref().map_or_else(
+                || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+                |o| lit(o),
+            );
+            let source: String = fetch(
+                c,
+                &format!(
+                    "SELECT text FROM all_source WHERE owner = {owner} AND name = {} AND type = 'PACKAGE' ORDER BY line",
+                    lit(&temp.name)
+                ),
+            )?
+            .iter()
+            .map(|r| s(r, 0))
+            .collect();
+            if source.is_empty() {
+                return Err(format!(
+                    "Prüfen nicht möglich: Spezifikation des Packages {} nicht gefunden.",
+                    temp.name
+                ));
+            }
+            let script = match &temp.owner {
+                Some(o) => create_script(o, &temp.name, "PACKAGE", &source),
+                None => format!("CREATE OR REPLACE {source}"),
+            };
+            let spec = sql::temp_object(&prepare(&script)).ok_or_else(|| {
+                "Prüfen nicht möglich: Package-Spezifikation nicht lesbar".to_string()
+            })?;
+            create_temp(c, &spec, drops)?;
+        }
+    }
+    create_temp(c, &temp, drops)
+}
+
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
 const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
 
@@ -798,16 +879,35 @@ impl DatabaseAdapter for OracleAdapter {
                 statements.push(statement);
             }
         }
-        for statement in statements {
-            self.run_meta(move |c| {
-                c.statement(&statement)
-                    .build()
-                    .map(|_| ())
-                    .map_err(|e| map_sql_err(e, &statement))
+        self.run_meta(move |c| {
+            let mut drops = Vec::new();
+            let result = statements
+                .iter()
+                .try_for_each(|statement| validate_statement(c, statement, &mut drops));
+            let leftovers: Vec<String> = drops
+                .iter()
+                .rev()
+                .filter_map(|drop| match c.execute(drop, &[]) {
+                    Err(e) if e.db_error().map(|db| db.code()) != Some(4043) => {
+                        Some(format!("{drop}: {e}"))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let result = result.map_err(|e| e.replace(sql::TEMP_SUFFIX, ""));
+            if leftovers.is_empty() {
+                return result;
+            }
+            let cleanup = format!(
+                "Temporäres Prüfobjekt konnte nicht gelöscht werden, bitte manuell entfernen:\n{}",
+                leftovers.join("\n")
+            );
+            Err(match result {
+                Ok(()) => cleanup,
+                Err(e) => format!("{e}\n\n{cleanup}"),
             })
-            .await?;
-        }
-        Ok(())
+        })
+        .await
     }
 
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
@@ -2043,6 +2143,32 @@ mod tests {
             .await
             .is_err());
         let _ = a.execute_query("DROP TABLE L8DB_VALIDATE_PROBE").await;
+
+        a.validate_sql(
+            "CREATE OR REPLACE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END L8DB_VP_F;",
+        )
+        .await
+        .expect("valid function");
+        let broken = a
+            .validate_sql("CREATE OR REPLACE PROCEDURE L8DB_VP_P IS BEGIN missing_thing; END;")
+            .await
+            .unwrap_err();
+        assert!(
+            broken.contains("L8DB_VP_P") && !broken.contains("L8DB_TEMP"),
+            "{broken}"
+        );
+        assert!(a
+            .validate_sql("CREATE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table")
+            .await
+            .is_err());
+        a.validate_sql("CREATE PACKAGE L8DB_VP_K AS PROCEDURE p; END L8DB_VP_K;\n/\nCREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END L8DB_VP_K;\n/")
+            .await
+            .expect("valid package");
+        let left = a
+            .execute_query("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE 'L8DB\\_VP\\_%' ESCAPE '\\'")
+            .await
+            .unwrap();
+        assert_eq!(left.rows[0]["C"].to_string().trim_matches('"'), "0");
     }
 
     #[tokio::test]
