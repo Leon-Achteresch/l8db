@@ -165,25 +165,48 @@ pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, Strin
         kind.push_str(" BODY");
         i += 1;
     }
-    let ident = |w: &str| match w.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
-        Some(quoted) => quoted.replace("\"\"", "\""),
-        None => w.to_ascii_uppercase(),
-    };
-    let first = ident(words.get(i)?);
+    let first = ident_name(words.get(i)?);
     if words.get(i + 1) == Some(&".") {
-        return Some((Some(first), ident(words.get(i + 2)?), kind));
+        return Some((Some(first), ident_name(words.get(i + 2)?), kind));
     }
     Some((None, first, kind))
 }
 
 pub(super) const TEMP_SUFFIX: &str = "_L8DB_TEMP";
 
+#[derive(Clone)]
 pub(super) struct TempObject {
     pub sql: String,
     pub owner: Option<String>,
     pub name: String,
     pub temp_name: String,
     pub kind: String,
+}
+
+fn ident_name(word: &str) -> String {
+    match word.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
+        Some(quoted) => quoted.replace("\"\"", "\""),
+        None => word.to_ascii_uppercase(),
+    }
+}
+
+pub(super) fn rewrite_idents(sql: &str, map: &[(String, String)]) -> String {
+    if map.is_empty() {
+        return sql.to_string();
+    }
+    let mut out = sql.to_string();
+    for range in tokens(sql).into_iter().rev() {
+        let token = &sql[range.clone()];
+        let ident = ident_name(token);
+        let Some((_, to)) = map
+            .iter()
+            .find(|(from, _)| ident.eq_ignore_ascii_case(from) || ident == *from)
+        else {
+            continue;
+        };
+        out.replace_range(range, &format!("\"{}\"", to.replace('"', "\"\"")));
+    }
+    out
 }
 
 impl TempObject {
@@ -228,10 +251,7 @@ pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
         kind.push_str(" BODY");
         i += 1;
     }
-    let ident = |w: &str| match w.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
-        Some(quoted) => quoted.replace("\"\"", "\""),
-        None => w.to_ascii_uppercase(),
-    };
+    let ident = ident_name;
     let mut owner = None;
     if word(i + 1) == Some(".") {
         owner = Some(ident(word(i)?));
@@ -351,6 +371,16 @@ mod tests {
         assert!(temp_object("CREATE TABLE t (id NUMBER)").is_none());
         assert!(temp_object("CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;").is_none());
         assert!(temp_object("SELECT 1 FROM dual").is_none());
+    }
+
+    #[test]
+    fn rewrites_idents_outside_strings() {
+        let sql = "CREATE PACKAGE BODY demo AS\nBEGIN n := demo.foo('demo'); END demo;";
+        let out = rewrite_idents(sql, &[("DEMO".into(), "DEMO_L8DB_TEMP".into())]);
+        assert_eq!(
+            out,
+            "CREATE PACKAGE BODY \"DEMO_L8DB_TEMP\" AS\nBEGIN n := \"DEMO_L8DB_TEMP\".foo('demo'); END \"DEMO_L8DB_TEMP\";"
+        );
     }
 
     const BODY: &str = "CREATE /* header */ OR REPLACE PACKAGE BODY demo AS\nPROCEDURE p IS\nx VARCHAR2(100) := q'[it's text;\n/\n-- not a comment]';\nBEGIN NULL; END p;\nEND demo;";

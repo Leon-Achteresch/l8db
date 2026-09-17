@@ -102,6 +102,53 @@ export function sqlErrorMarkers(
   }));
 }
 
+function escapeIdent(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function headerSpan(text: string): { start: number; end: number } {
+  const match =
+    /\b(?:CREATE\b[\s\S]*?\b)?(?:FUNCTION|PROCEDURE|PACKAGE(?:\s+BODY)?)\s+"?[\w$#]+"?/i.exec(text);
+  if (match) return markAt(text, match.index + match[0].search(/[\w$#"]+$/));
+  return markAt(text, skipTrivia(text));
+}
+
+function locateDeclaration(text: string, name: string): { start: number; end: number } | null {
+  const ident = escapeIdent(name.replaceAll('"', ""));
+  const declared = new RegExp(
+    String.raw`(FUNCTION|PROCEDURE|PACKAGE(?:\s+BODY)?)\s+("?${ident}"?)`,
+    "i",
+  ).exec(text);
+  if (declared) {
+    const token = declared[2];
+    const start = declared.index + declared[0].length - token.length;
+    return { start, end: start + token.length };
+  }
+  const word = new RegExp(String.raw`"${ident}"|\b${ident}\b`, "i").exec(text);
+  return word ? { start: word.index, end: word.index + word[0].length } : null;
+}
+
+const CALLER_LINE = /^Aufrufer\s+(\S+)\s+\(([^)]+)\):\s*(.*)$/;
+
+export function impactCallMarkers(message: string, text: string): SqlMarker[] {
+  const markers: SqlMarker[] = [];
+  for (const raw of message.split("\n")) {
+    const line = CALLER_LINE.exec(raw.trim());
+    if (!line) continue;
+    const detail = line[3];
+    const quoted = [...detail.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+    const span =
+      quoted.map((name) => locateDeclaration(text, name)).find((found) => found !== null) ??
+      headerSpan(text);
+    markers.push({
+      ...span,
+      message: `${line[1]} (${line[2]}): ${detail}`,
+      severity: "error",
+    });
+  }
+  return markers;
+}
+
 export function locateText(haystack: string, needle: string, near: number): number | null {
   let best: number | null = null;
   for (let i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
