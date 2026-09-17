@@ -172,6 +172,13 @@ pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, Strin
     Some((None, first, kind))
 }
 
+pub(super) fn first_word(sql: &str) -> String {
+    tokens(sql)
+        .first()
+        .map(|r| sql[r.clone()].to_ascii_uppercase())
+        .unwrap_or_default()
+}
+
 pub(super) const TEMP_SUFFIX: &str = "_L8DB_TEMP";
 
 #[derive(Clone)]
