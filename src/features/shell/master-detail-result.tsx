@@ -67,6 +67,7 @@ export function MasterDetailResult({
         </Button>
       </div>
       <DataTable
+        layoutKey={`master-detail:${source}:${column ?? ""}:${sql}`}
         columns={query.data?.columns ?? []}
         data={query.data?.rows ?? []}
         emptyMessage="Keine passenden Details für diese Master-Zeile."
@@ -74,6 +75,7 @@ export function MasterDetailResult({
         sortableColumns={[]}
         onSortingChange={() => {}}
         isFetching={query.isFetching}
+        autoSelectFirstCell={!preview}
       />
     </div>
   );
