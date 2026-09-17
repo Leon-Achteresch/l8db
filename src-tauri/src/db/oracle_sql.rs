@@ -197,21 +197,20 @@ fn ident_name(word: &str) -> String {
     }
 }
 
-pub(super) fn rewrite_idents(sql: &str, map: &[(String, String)]) -> String {
-    if map.is_empty() {
-        return sql.to_string();
-    }
+pub(super) fn rewrite_qualifiers(sql: &str, map: &[(String, String)]) -> String {
+    let toks = tokens(sql);
     let mut out = sql.to_string();
-    for range in tokens(sql).into_iter().rev() {
-        let token = &sql[range.clone()];
-        let ident = ident_name(token);
-        let Some((_, to)) = map
-            .iter()
-            .find(|(from, _)| ident.eq_ignore_ascii_case(from) || ident == *from)
-        else {
+    for index in (0..toks.len()).rev() {
+        if toks.get(index + 1).map(|r| &sql[r.clone()]) != Some(".") {
             continue;
-        };
-        out.replace_range(range, &format!("\"{}\"", to.replace('"', "\"\"")));
+        }
+        let ident = ident_name(&sql[toks[index].clone()]);
+        if let Some((_, to)) = map.iter().find(|(from, _)| ident == *from) {
+            out.replace_range(
+                toks[index].clone(),
+                &format!("\"{}\"", to.replace('"', "\"\"")),
+            );
+        }
     }
     out
 }
@@ -381,12 +380,12 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_idents_outside_strings() {
-        let sql = "CREATE PACKAGE BODY demo AS\nBEGIN n := demo.foo('demo'); END demo;";
-        let out = rewrite_idents(sql, &[("DEMO".into(), "DEMO_L8DB_TEMP".into())]);
+    fn rewrites_only_qualifiers() {
+        let sql = "CREATE PACKAGE BODY \"DEMO_L8DB_TEMP\" AS\nx demo.t_rec; demo NUMBER;\nBEGIN n := hr.Demo.foo('demo.x') + \"demo\".y; END;";
+        let out = rewrite_qualifiers(sql, &[("DEMO".into(), "DEMO_L8DB_TEMP".into())]);
         assert_eq!(
             out,
-            "CREATE PACKAGE BODY \"DEMO_L8DB_TEMP\" AS\nBEGIN n := \"DEMO_L8DB_TEMP\".foo('demo'); END \"DEMO_L8DB_TEMP\";"
+            "CREATE PACKAGE BODY \"DEMO_L8DB_TEMP\" AS\nx \"DEMO_L8DB_TEMP\".t_rec; demo NUMBER;\nBEGIN n := hr.\"DEMO_L8DB_TEMP\".foo('demo.x') + \"demo\".y; END;"
         );
     }
 
