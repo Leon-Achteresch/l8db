@@ -190,39 +190,6 @@ fn check_compile(c: &Connection, sql: &str) -> Result<(), String> {
     ))
 }
 
-fn create_temp(
-    c: &Connection,
-    temp: &sql::TempObject,
-    drops: &mut Vec<String>,
-) -> Result<(), String> {
-    let target = temp.target();
-    let drop = format!("DROP {} {target}", temp.kind.trim_end_matches(" BODY"));
-    if !drops.contains(&drop) {
-        let owner = temp.owner.as_ref().map_or_else(
-            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
-            |o| lit(o),
-        );
-        let existing = fetch(
-            c,
-            &format!(
-                "SELECT object_type FROM all_objects WHERE owner = {owner} AND object_name = {}",
-                lit(&temp.temp_name)
-            ),
-        )?;
-        if !existing.is_empty() {
-            return Err(format!(
-                "Prüfen nicht möglich: {target} existiert bereits. Bitte das Objekt prüfen und löschen."
-            ));
-        }
-    }
-    c.execute(&temp.sql, &[])
-        .map_err(|e| map_sql_err(e, &temp.sql))?;
-    if !drops.contains(&drop) {
-        drops.push(drop);
-    }
-    check_compile(c, &temp.sql)
-}
-
 const PARSE_ONLY: &str = "DECLARE c INTEGER := DBMS_SQL.OPEN_CURSOR; BEGIN BEGIN DBMS_SQL.PARSE(c, :1, DBMS_SQL.NATIVE); EXCEPTION WHEN OTHERS THEN :2 := SQLERRM; :3 := DBMS_SQL.LAST_ERROR_POSITION; END; DBMS_SQL.CLOSE_CURSOR(c); END;";
 
 fn parse_only(c: &Connection, statement: &str) -> Result<(), String> {
@@ -258,231 +225,200 @@ fn parse_only(c: &Connection, statement: &str) -> Result<(), String> {
     ))
 }
 
-fn validate_statement(
+fn plan_statement(
     c: &Connection,
     statement: &str,
-    drops: &mut Vec<String>,
-    temps: &mut Vec<sql::TempObject>,
+    plan: &mut Vec<sql::TempObject>,
 ) -> Result<(), String> {
     let Some(temp) = sql::temp_object(statement) else {
         return parse_only(c, statement);
     };
-    if temp.kind == "PACKAGE BODY" {
-        let has_spec = drops.contains(&format!("DROP PACKAGE {}", temp.target()));
-        if !has_spec {
-            let owner = temp.owner.as_ref().map_or_else(
-                || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
-                |o| lit(o),
-            );
-            let source: String = fetch(
-                c,
-                &format!(
-                    "SELECT text FROM all_source WHERE owner = {owner} AND name = {} AND type = 'PACKAGE' ORDER BY line",
-                    lit(&temp.name)
-                ),
-            )?
-            .iter()
-            .map(|r| s(r, 0))
-            .collect();
-            if source.is_empty() {
-                return Err(format!(
-                    "Prüfen nicht möglich: Spezifikation des Packages {} nicht gefunden.",
-                    temp.name
-                ));
-            }
-            let script = match &temp.owner {
-                Some(o) => create_script(o, &temp.name, "PACKAGE", &source),
-                None => format!("CREATE OR REPLACE {source}"),
-            };
-            let spec = sql::temp_object(&prepare(&script)).ok_or_else(|| {
-                "Prüfen nicht möglich: Package-Spezifikation nicht lesbar".to_string()
-            })?;
-            create_temp(c, &spec, drops)?;
-            temps.push(spec);
+    let has_spec = plan
+        .iter()
+        .any(|p| p.kind == "PACKAGE" && p.target() == temp.target());
+    if temp.kind == "PACKAGE BODY" && !has_spec {
+        let owner = temp.owner.as_ref().map_or_else(
+            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+            |o| lit(o),
+        );
+        let source: String = fetch(
+            c,
+            &format!(
+                "SELECT text FROM all_source WHERE owner = {owner} AND name = {} AND type = 'PACKAGE' ORDER BY line",
+                lit(&temp.name)
+            ),
+        )?
+        .iter()
+        .map(|r| s(r, 0))
+        .collect();
+        if source.is_empty() {
+            return Err(format!(
+                "Prüfen nicht möglich: Spezifikation des Packages {} nicht gefunden.",
+                temp.name
+            ));
         }
+        let script = match &temp.owner {
+            Some(o) => create_script(o, &temp.name, "PACKAGE", &source),
+            None => format!("CREATE OR REPLACE {source}"),
+        };
+        let mut spec = sql::temp_object(&prepare(&script)).ok_or_else(|| {
+            "Prüfen nicht möglich: Package-Spezifikation nicht lesbar".to_string()
+        })?;
+        spec.kind = "PACKAGE (gespeicherte Spezifikation)".to_string();
+        plan.push(spec);
     }
-    create_temp(c, &temp, drops)?;
-    temps.push(temp);
+    plan.push(temp);
     Ok(())
 }
 
-fn current_schema(c: &Connection) -> Result<String, String> {
-    fetch(
-        c,
-        "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
-    )?
-    .first()
-    .map(|r| s(r, 0))
-    .filter(|v| !v.is_empty())
-    .ok_or_else(|| "Aktuelles Schema nicht lesbar".to_string())
-}
+const TEMP_BLOCK_HEAD: &str = "DECLARE
+  o CLOB;
+  PROCEDURE note(i PLS_INTEGER, l NUMBER, p NUMBER, t VARCHAR2) IS
+  BEGIN
+    o := o || i || CHR(31) || l || CHR(31) || p || CHR(31) || t || CHR(30);
+  END;
+  PROCEDURE rm(stmt VARCHAR2, quiet BOOLEAN) IS
+  BEGIN
+    EXECUTE IMMEDIATE stmt;
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLCODE <> -4043 AND NOT quiet THEN note(-1, 0, 0, stmt || ': ' || SQLERRM); END IF;
+  END;
+  PROCEDURE mk(i PLS_INTEGER, stmt CLOB, own VARCHAR2, nam VARCHAR2, typ VARCHAR2) IS
+  BEGIN
+    BEGIN
+      EXECUTE IMMEDIATE stmt;
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLCODE <> -24344 THEN note(i, 0, 0, SQLERRM); END IF;
+    END;
+    FOR e IN (SELECT line, position, text FROM all_errors
+              WHERE owner = NVL(own, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'))
+                AND name = nam AND type = typ AND attribute = 'ERROR' ORDER BY sequence) LOOP
+      note(i, e.line, e.position, e.text);
+    END LOOP;
+  END;
+";
 
-fn object_source(c: &Connection, owner: &str, name: &str, kind: &str) -> Result<String, String> {
-    let text: String = fetch(
-        c,
-        &format!(
-            "SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line",
-            lit(owner),
-            lit(name),
-            lit(kind)
-        ),
-    )?
-    .iter()
-    .map(|r| s(r, 0))
-    .collect();
-    Ok(text)
-}
-
-fn compile_error_texts(
-    c: &Connection,
-    owner: &str,
-    name: &str,
-    kind: &str,
-) -> Result<Vec<String>, String> {
-    Ok(fetch(
-        c,
-        &format!(
-            "SELECT text FROM all_errors WHERE owner = {} AND name = {} AND type = {} AND attribute = 'ERROR' ORDER BY sequence",
-            lit(owner),
-            lit(name),
-            lit(kind)
-        ),
-    )?
-    .iter()
-    .map(|r| s(r, 0).trim().to_string())
-    .filter(|t| !t.is_empty())
-    .collect())
-}
-
-fn caller_label(owner: &str, name: &str, kind: &str) -> String {
-    format!("Aufrufer {owner}.{name} ({kind})")
-}
-
-fn temp_owner_of(temp: &sql::TempObject, schema: &str) -> String {
-    temp.owner.clone().unwrap_or_else(|| schema.to_string())
-}
-
-fn has_temp(temps: &[sql::TempObject], schema: &str, owner: &str, name: &str, kind: &str) -> bool {
-    temps.iter().any(|temp| {
-        temp.kind.eq_ignore_ascii_case(kind)
-            && temp.name.eq_ignore_ascii_case(name)
-            && temp_owner_of(temp, schema).eq_ignore_ascii_case(owner)
-    })
-}
-
-fn compile_temp_caller(
-    c: &Connection,
-    owner: &str,
-    name: &str,
-    kind: &str,
-    callee_map: &[(String, String)],
-    drops: &mut Vec<String>,
-    temps: &mut Vec<sql::TempObject>,
-    schema: &str,
-) -> Result<Vec<String>, String> {
-    if has_temp(temps, schema, owner, name, kind) {
-        return Ok(Vec::new());
-    }
-    if kind == "PACKAGE BODY" {
-        let spec =
-            compile_temp_caller(c, owner, name, "PACKAGE", callee_map, drops, temps, schema)?;
-        if !spec.is_empty() {
-            return Ok(spec);
-        }
-    }
-    let source = object_source(c, owner, name, kind)?;
-    if source.is_empty() {
-        return Ok(Vec::new());
-    }
-    let script = create_script(owner, name, kind, &source);
-    let Some(mut temp) = sql::temp_object(&prepare(&script)) else {
-        return Ok(Vec::new());
-    };
-    temp.sql = sql::rewrite_idents(&temp.sql, callee_map);
-    let label = caller_label(owner, name, kind);
-    match create_temp(c, &temp, drops) {
-        Ok(()) => {
-            temps.push(temp);
-            Ok(Vec::new())
-        }
-        Err(e) => {
-            let texts = compile_error_texts(c, owner, &temp.temp_name, kind).unwrap_or_default();
-            temps.push(temp);
-            if texts.is_empty() {
-                return Ok(vec![format!("{label}: {e}")]);
-            }
-            Ok(texts
-                .into_iter()
-                .map(|text| format!("{label}: {text}"))
-                .collect())
-        }
-    }
-}
-
-fn check_callers(
-    c: &Connection,
-    temps: &[sql::TempObject],
-    drops: &mut Vec<String>,
-) -> Result<(), String> {
-    let schema = current_schema(c)?;
-    let callee_map: Vec<(String, String)> = temps
-        .iter()
-        .filter(|temp| temp.kind != "PACKAGE BODY" && temp.kind != "VIEW")
-        .map(|temp| (temp.name.clone(), temp.temp_name.clone()))
-        .collect();
-    if callee_map.is_empty() {
+fn run_temps(c: &Connection, plan: &[sql::TempObject]) -> Result<(), String> {
+    if plan.is_empty() {
         return Ok(());
     }
-    let mut created = temps.to_vec();
-    let mut messages = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for temp in temps {
-        if !matches!(temp.kind.as_str(), "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+    let map: Vec<(String, String)> = plan
+        .iter()
+        .filter(|t| t.kind.starts_with("PACKAGE"))
+        .map(|t| (t.name.clone(), t.temp_name.clone()))
+        .collect();
+    let statements: Vec<String> = plan
+        .iter()
+        .map(|t| sql::rewrite_qualifiers(&t.sql, &map))
+        .collect();
+    let mut drops: Vec<String> = Vec::new();
+    let mut owners: Vec<String> = vec!["SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string()];
+    for temp in plan {
+        let kind = if temp.kind.starts_with("PACKAGE") {
+            "PACKAGE"
+        } else {
+            temp.kind.as_str()
+        };
+        let drop = lit(&format!("DROP {kind} {}", temp.target()));
+        if !drops.contains(&drop) {
+            drops.push(drop);
+        }
+        if let Some(owner) = temp.owner.as_ref().map(|o| lit(o)) {
+            if !owners.contains(&owner) {
+                owners.push(owner);
+            }
+        }
+    }
+    let cleanup: String = drops
+        .iter()
+        .rev()
+        .map(|drop| format!("    rm({drop}, FALSE);\n"))
+        .collect();
+    let creates: String = plan
+        .iter()
+        .enumerate()
+        .map(|(i, temp)| {
+            let kind = if temp.kind.starts_with("PACKAGE (") {
+                "PACKAGE"
+            } else {
+                temp.kind.as_str()
+            };
+            format!(
+                "    mk({i}, :s{i}, {}, {}, {});\n",
+                temp.owner.as_ref().map_or("NULL".to_string(), |o| lit(o)),
+                lit(&temp.temp_name),
+                lit(kind)
+            )
+        })
+        .collect();
+    let block = format!(
+        "{TEMP_BLOCK_HEAD}  PROCEDURE cleanup IS
+  BEGIN
+{cleanup}  END;
+BEGIN
+  FOR x IN (SELECT owner, object_name, object_type FROM all_objects
+            WHERE owner IN ({}) AND object_name LIKE '%\\_L8DB\\_TEMP' ESCAPE '\\'
+              AND object_type IN ('VIEW', 'FUNCTION', 'PROCEDURE', 'PACKAGE')
+              AND last_ddl_time < SYSDATE - 10 / 1440) LOOP
+    rm('DROP ' || x.object_type || ' \"' || x.owner || '\".\"' || x.object_name || '\"', TRUE);
+  END LOOP;
+  cleanup;
+  o := NULL;
+  BEGIN
+{creates}  EXCEPTION WHEN OTHERS THEN
+    cleanup;
+    RAISE;
+  END;
+  cleanup;
+  :result := o;
+END;",
+        owners.join(", ")
+    );
+    let mut stmt = c.statement(&block).build().map_err(map_err)?;
+    for (i, statement) in statements.iter().enumerate() {
+        stmt.bind(format!("s{i}").as_str(), statement)
+            .map_err(map_err)?;
+    }
+    stmt.bind("result", &OracleType::CLOB).map_err(map_err)?;
+    stmt.execute(&[]).map_err(map_err)?;
+    let output: Option<String> = stmt.bind_value("result").map_err(map_err)?;
+    let mut messages: Vec<String> = Vec::new();
+    let mut last = None;
+    for record in output.unwrap_or_default().split('\u{1e}') {
+        let fields: Vec<&str> = record.splitn(4, '\u{1f}').collect();
+        let [index, line, position, text] = fields[..] else {
             continue;
+        };
+        let text = text.trim();
+        let Some(temp) = index.parse::<usize>().ok().and_then(|i| plan.get(i)) else {
+            messages.push(format!(
+                "Temporäres Prüfobjekt konnte nicht gelöscht werden, bitte manuell entfernen: {text}"
+            ));
+            continue;
+        };
+        if last != Some(index) {
+            last = Some(index);
+            messages.push(format!(
+                "Oracle: {} {} enthält Fehler",
+                temp.kind, temp.name
+            ));
         }
-        let owner = temp_owner_of(temp, &schema);
-        let deps = fetch(
-            c,
-            &format!(
-                "SELECT d.owner, d.name, d.type FROM all_dependencies d \
-                 WHERE d.referenced_owner = {} AND d.referenced_name = {} \
-                   AND d.type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY') \
-                   AND NOT (d.owner = d.referenced_owner AND d.name = d.referenced_name AND d.type = d.referenced_type) \
-                   AND ROWNUM <= 30 \
-                 ORDER BY CASE d.type WHEN 'PACKAGE' THEN 0 WHEN 'FUNCTION' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, d.owner, d.name",
-                lit(&owner),
-                lit(&temp.name)
-            ),
-        )
-        .unwrap_or_default();
-        for row in deps {
-            let (dep_owner, dep_name, dep_kind) = (s(&row, 0), s(&row, 1), s(&row, 2));
-            if dep_name.ends_with(sql::TEMP_SUFFIX) {
-                continue;
-            }
-            if !seen.insert((dep_owner.clone(), dep_name.clone(), dep_kind.clone())) {
-                continue;
-            }
-            match compile_temp_caller(
-                c,
-                &dep_owner,
-                &dep_name,
-                &dep_kind,
-                &callee_map,
-                drops,
-                &mut created,
-                &schema,
-            ) {
-                Ok(msgs) => messages.extend(msgs),
-                Err(_) => continue,
-            }
-        }
+        let text = text.replace(sql::TEMP_SUFFIX, "");
+        messages.push(if line == "0" {
+            text
+        } else {
+            format!("Zeile {line}, Spalte {position}: {text}")
+        });
     }
     if messages.is_empty() {
         Ok(())
     } else {
         Err(messages.join("\n"))
     }
+}
+
+fn caller_label(owner: &str, name: &str, kind: &str) -> String {
+    format!("Aufrufer {owner}.{name} ({kind})")
 }
 
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
@@ -889,12 +825,11 @@ impl OracleAdapter {
     async fn caller_impact(&self, owner: &str, name: &str) -> Result<Vec<String>, String> {
         let deps = self
             .rows(format!(
-                "SELECT d.owner, d.name, d.type FROM all_dependencies d \
+                "SELECT * FROM (SELECT d.owner, d.name, d.type FROM all_dependencies d \
                  WHERE d.referenced_owner = {} AND d.referenced_name = {} \
                    AND d.type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY') \
                    AND NOT (d.owner = d.referenced_owner AND d.name = d.referenced_name AND d.type = d.referenced_type) \
-                   AND ROWNUM <= 30 \
-                 ORDER BY d.owner, d.type, d.name",
+                 ORDER BY d.owner, d.type, d.name) WHERE ROWNUM <= 30",
                 lit(owner),
                 lit(name)
             ))
@@ -1207,34 +1142,11 @@ impl DatabaseAdapter for OracleAdapter {
             }
         }
         self.run_meta(move |c| {
-            let mut drops = Vec::new();
-            let mut temps = Vec::new();
-            let result = statements
+            let mut plan = Vec::new();
+            statements
                 .iter()
-                .try_for_each(|statement| validate_statement(c, statement, &mut drops, &mut temps))
-                .and_then(|()| check_callers(c, &temps, &mut drops));
-            let leftovers: Vec<String> = drops
-                .iter()
-                .rev()
-                .filter_map(|drop| match c.execute(drop, &[]) {
-                    Err(e) if e.db_error().map(|db| db.code()) != Some(4043) => {
-                        Some(format!("{drop}: {e}"))
-                    }
-                    _ => None,
-                })
-                .collect();
-            let result = result.map_err(|e| e.replace(sql::TEMP_SUFFIX, ""));
-            if leftovers.is_empty() {
-                return result;
-            }
-            let cleanup = format!(
-                "Temporäres Prüfobjekt konnte nicht gelöscht werden, bitte manuell entfernen:\n{}",
-                leftovers.join("\n")
-            );
-            Err(match result {
-                Ok(()) => cleanup,
-                Err(e) => format!("{e}\n\n{cleanup}"),
-            })
+                .try_for_each(|statement| plan_statement(c, statement, &mut plan))?;
+            run_temps(c, &plan)
         })
         .await
     }
@@ -1654,7 +1566,7 @@ impl DatabaseAdapter for OracleAdapter {
                 "TYPE BODY" => "type_body",
                 _ => "routine",
             };
-            match self.compile_object(&item.oid, object_arg).await {
+            match self.compile_one(&item.oid, object_arg).await {
                 Ok(res) => out.push(InvalidCompileOutcome {
                     schema: item.schema,
                     name: item.name,
@@ -2512,32 +2424,35 @@ mod tests {
         a.validate_sql("CREATE PACKAGE L8DB_VP_K AS PROCEDURE p; END L8DB_VP_K;\n/\nCREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END L8DB_VP_K;\n/")
             .await
             .expect("valid package");
-        let _ = a.execute_query("DROP PROCEDURE L8DB_VP_C").await;
-        let _ = a.execute_query("DROP FUNCTION L8DB_VP_F").await;
-        a.execute_query(
-            "CREATE OR REPLACE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END;",
-        )
-        .await
-        .expect("seed function");
-        a.execute_query(
-            "CREATE OR REPLACE PROCEDURE L8DB_VP_C IS n NUMBER; BEGIN n := L8DB_VP_F; END;",
-        )
-        .await
-        .expect("seed caller");
-        let impact = a
-            .validate_sql(
-                "CREATE OR REPLACE FUNCTION L8DB_VP_F (p NUMBER) RETURN NUMBER IS BEGIN RETURN p; END;",
-            )
+        a.validate_sql("CREATE PACKAGE L8DB_VP_N AS TYPE t_rec IS RECORD (id NUMBER); PROCEDURE put(r t_rec); PROCEDURE run; END L8DB_VP_N;\n/\nCREATE PACKAGE BODY L8DB_VP_N AS PROCEDURE put(r t_rec) IS BEGIN NULL; END put; PROCEDURE run IS v L8DB_VP_N.t_rec; BEGIN L8DB_VP_N.put(v); END run; END L8DB_VP_N;\n/")
             .await
-            .unwrap_err();
+            .expect("self-qualified package types stay compatible");
+        let procs = 1500;
+        let spec: String = (0..procs)
+            .map(|i| format!("PROCEDURE p{i}(a NUMBER);\n"))
+            .collect();
+        let body: String = (0..procs)
+            .map(|i| format!("PROCEDURE p{i}(a NUMBER) IS BEGIN NULL; END p{i};\n"))
+            .collect();
+        let big_pkg = format!("CREATE OR REPLACE PACKAGE L8DB_VP_BIG AS\n{spec}END L8DB_VP_BIG;\n/\nCREATE OR REPLACE PACKAGE BODY L8DB_VP_BIG AS\n{body}broken_call;\nEND L8DB_VP_BIG;\n/");
+        assert!(big_pkg.len() > 100_000);
+        let started = std::time::Instant::now();
+        let big_err = a.validate_sql(&big_pkg).await.unwrap_err();
+        eprintln!("big package check: {:?}", started.elapsed());
         assert!(
-            impact.contains("Aufrufer")
-                && impact.contains("L8DB_VP_C")
-                && !impact.contains("L8DB_TEMP"),
-            "{impact}"
+            big_err.contains(&format!("Zeile {}", procs + 2)),
+            "{big_err}"
         );
-        let _ = a.execute_query("DROP PROCEDURE L8DB_VP_C").await;
-        let _ = a.execute_query("DROP FUNCTION L8DB_VP_F").await;
+        a.validate_sql(&big_pkg.replace("broken_call;\n", ""))
+            .await
+            .expect("large package");
+
+        a.execute_query("CREATE OR REPLACE PACKAGE L8DB_VP_K_L8DB_TEMP AS PROCEDURE stale; END;")
+            .await
+            .expect("simulate leftover from a killed check");
+        a.validate_sql("CREATE PACKAGE L8DB_VP_K AS PROCEDURE p; END L8DB_VP_K;")
+            .await
+            .expect("leftover is replaced, not reported");
         let nospec = a
             .validate_sql("CREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END;")
             .await
@@ -2603,7 +2518,7 @@ mod tests {
             .validate_sql("CREATE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END;")
             .await
             .unwrap_err();
-        assert!(taken.contains("existiert bereits"), "{taken}");
+        assert!(taken.contains("ORA-00955"), "{taken}");
         assert_eq!(
             count("SELECT COUNT(*) AS C FROM L8DB_VP_F_L8DB_TEMP").await,
             "0"
