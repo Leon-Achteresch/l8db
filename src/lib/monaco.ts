@@ -34,7 +34,7 @@ globalScope.MonacoEnvironment = {
   },
 };
 
-void new EditorWorker();
+window.dispatchEvent(new Event("l8db:monaco-ready"));
 
 const plsqlKeywords = [
   "BODY",
