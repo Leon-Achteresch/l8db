@@ -23,12 +23,12 @@ export function commandScore(
 ) {
   const needle = query.trim().toLowerCase();
   if (!needle) return 1;
-  const label = textScore(needle, item.label);
-  const rest = Math.max(
-    0,
-    ...[item.group ?? "", ...(item.keywords ?? [])].map((h) => textScore(needle, h)),
-  );
-  return Math.max(label, rest / 2);
+  const rest = [item.group ?? "", ...(item.keywords ?? [])];
+  const score = (part: string) =>
+    Math.max(textScore(part, item.label), ...rest.map((h) => textScore(part, h) / 2));
+  const tokens = needle.split(/\s+/).map(score);
+  const perToken = tokens.includes(0) ? 0 : tokens.reduce((a, b) => a + b, 0) / tokens.length;
+  return Math.max(score(needle), perToken);
 }
 
 export function rankCommands<T extends { label: string; group?: string; keywords?: string[] }>(
