@@ -555,7 +555,7 @@ export function DataTable({
   const [filterValue, setFilterValue] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<"rows" | "columns">("rows");
+  const [searchMode, setSearchMode] = useState<"rows" | "columns">("columns");
   const searchRegex = useRegexEnabled("grid");
   const setSearchRegex = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const [matchIndex, setMatchIndex] = useState(0);
