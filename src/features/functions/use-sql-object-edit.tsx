@@ -40,7 +40,12 @@ export interface SqlObjectEdit {
   apply: () => Promise<void>;
 }
 
-export function useSqlObjectEdit(label: string, source: string, objectKey: string): SqlObjectEdit {
+export function useSqlObjectEdit(
+  label: string,
+  source: string,
+  objectKey: string,
+  onApplied?: () => Promise<void>,
+): SqlObjectEdit {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
@@ -90,6 +95,7 @@ export function useSqlObjectEdit(label: string, source: string, objectKey: strin
       toast.success(`${label} in der Datenbank gespeichert`, {
         description: "Das Objekt existiert jetzt in dieser Form in der Datenbank.",
       });
+      await onApplied?.();
       await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
       await queryClient.invalidateQueries({ queryKey: ["functions"] });
       await queryClient.invalidateQueries({ queryKey: ["procedures"] });
@@ -97,7 +103,7 @@ export function useSqlObjectEdit(label: string, source: string, objectKey: strin
     } catch (e) {
       setState({ status: "error", scope: "apply", message: String(e) });
     }
-  }, [connection, database, label, queryClient, sql, clearSavedDraft]);
+  }, [connection, database, label, queryClient, sql, clearSavedDraft, onApplied]);
 
   return { editing, sql, setSql, state, start, cancel, check, apply };
 }

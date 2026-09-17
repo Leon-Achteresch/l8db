@@ -56,8 +56,12 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const source = current.data ?? "";
   const label = `${schema}.${name} (${activePart === "spec" ? "Spec" : "Body"})`;
   const oid = packageOid(schema, name, activePart);
-  const edit = useSqlObjectEdit(label, source, `package:${schema}:${label}`);
   const { compile, state: compileState, reset: resetCompile } = useCompileObject();
+  const edit = useSqlObjectEdit(label, source, `package:${schema}:${label}`, () =>
+    compile(oid, activePart === "spec" ? "package_spec" : "package_body", label).then(
+      () => undefined,
+    ),
+  );
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);

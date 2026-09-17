@@ -227,6 +227,7 @@ fn validate_statement(
     c: &Connection,
     statement: &str,
     drops: &mut Vec<String>,
+    temps: &mut Vec<sql::TempObject>,
 ) -> Result<(), String> {
     let Some(temp) = sql::temp_object(statement) else {
         return c
@@ -266,9 +267,191 @@ fn validate_statement(
                 "Prüfen nicht möglich: Package-Spezifikation nicht lesbar".to_string()
             })?;
             create_temp(c, &spec, drops)?;
+            temps.push(spec);
         }
     }
-    create_temp(c, &temp, drops)
+    create_temp(c, &temp, drops)?;
+    temps.push(temp);
+    Ok(())
+}
+
+fn current_schema(c: &Connection) -> Result<String, String> {
+    fetch(
+        c,
+        "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual",
+    )?
+    .first()
+    .map(|r| s(r, 0))
+    .filter(|v| !v.is_empty())
+    .ok_or_else(|| "Aktuelles Schema nicht lesbar".to_string())
+}
+
+fn object_source(c: &Connection, owner: &str, name: &str, kind: &str) -> Result<String, String> {
+    let text: String = fetch(
+        c,
+        &format!(
+            "SELECT text FROM all_source WHERE owner = {} AND name = {} AND type = {} ORDER BY line",
+            lit(owner),
+            lit(name),
+            lit(kind)
+        ),
+    )?
+    .iter()
+    .map(|r| s(r, 0))
+    .collect();
+    Ok(text)
+}
+
+fn compile_error_texts(
+    c: &Connection,
+    owner: &str,
+    name: &str,
+    kind: &str,
+) -> Result<Vec<String>, String> {
+    Ok(fetch(
+        c,
+        &format!(
+            "SELECT text FROM all_errors WHERE owner = {} AND name = {} AND type = {} AND attribute = 'ERROR' ORDER BY sequence",
+            lit(owner),
+            lit(name),
+            lit(kind)
+        ),
+    )?
+    .iter()
+    .map(|r| s(r, 0).trim().to_string())
+    .filter(|t| !t.is_empty())
+    .collect())
+}
+
+fn caller_label(owner: &str, name: &str, kind: &str) -> String {
+    format!("Aufrufer {owner}.{name} ({kind})")
+}
+
+fn temp_owner_of(temp: &sql::TempObject, schema: &str) -> String {
+    temp.owner.clone().unwrap_or_else(|| schema.to_string())
+}
+
+fn has_temp(temps: &[sql::TempObject], schema: &str, owner: &str, name: &str, kind: &str) -> bool {
+    temps.iter().any(|temp| {
+        temp.kind.eq_ignore_ascii_case(kind)
+            && temp.name.eq_ignore_ascii_case(name)
+            && temp_owner_of(temp, schema).eq_ignore_ascii_case(owner)
+    })
+}
+
+fn compile_temp_caller(
+    c: &Connection,
+    owner: &str,
+    name: &str,
+    kind: &str,
+    callee_map: &[(String, String)],
+    drops: &mut Vec<String>,
+    temps: &mut Vec<sql::TempObject>,
+    schema: &str,
+) -> Result<Vec<String>, String> {
+    if has_temp(temps, schema, owner, name, kind) {
+        return Ok(Vec::new());
+    }
+    if kind == "PACKAGE BODY" {
+        let spec =
+            compile_temp_caller(c, owner, name, "PACKAGE", callee_map, drops, temps, schema)?;
+        if !spec.is_empty() {
+            return Ok(spec);
+        }
+    }
+    let source = object_source(c, owner, name, kind)?;
+    if source.is_empty() {
+        return Ok(Vec::new());
+    }
+    let script = create_script(owner, name, kind, &source);
+    let Some(mut temp) = sql::temp_object(&prepare(&script)) else {
+        return Ok(Vec::new());
+    };
+    temp.sql = sql::rewrite_idents(&temp.sql, callee_map);
+    let label = caller_label(owner, name, kind);
+    match create_temp(c, &temp, drops) {
+        Ok(()) => {
+            temps.push(temp);
+            Ok(Vec::new())
+        }
+        Err(e) => {
+            let texts = compile_error_texts(c, owner, &temp.temp_name, kind).unwrap_or_default();
+            temps.push(temp);
+            if texts.is_empty() {
+                return Ok(vec![format!("{label}: {e}")]);
+            }
+            Ok(texts
+                .into_iter()
+                .map(|text| format!("{label}: {text}"))
+                .collect())
+        }
+    }
+}
+
+fn check_callers(
+    c: &Connection,
+    temps: &[sql::TempObject],
+    drops: &mut Vec<String>,
+) -> Result<(), String> {
+    let schema = current_schema(c)?;
+    let callee_map: Vec<(String, String)> = temps
+        .iter()
+        .filter(|temp| temp.kind != "PACKAGE BODY" && temp.kind != "VIEW")
+        .map(|temp| (temp.name.clone(), temp.temp_name.clone()))
+        .collect();
+    if callee_map.is_empty() {
+        return Ok(());
+    }
+    let mut created = temps.to_vec();
+    let mut messages = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for temp in temps {
+        if !matches!(temp.kind.as_str(), "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+            continue;
+        }
+        let owner = temp_owner_of(temp, &schema);
+        let deps = fetch(
+            c,
+            &format!(
+                "SELECT d.owner, d.name, d.type FROM all_dependencies d \
+                 WHERE d.referenced_owner = {} AND d.referenced_name = {} \
+                   AND d.type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY') \
+                   AND NOT (d.owner = d.referenced_owner AND d.name = d.referenced_name AND d.type = d.referenced_type) \
+                   AND ROWNUM <= 30 \
+                 ORDER BY CASE d.type WHEN 'PACKAGE' THEN 0 WHEN 'FUNCTION' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, d.owner, d.name",
+                lit(&owner),
+                lit(&temp.name)
+            ),
+        )
+        .unwrap_or_default();
+        for row in deps {
+            let (dep_owner, dep_name, dep_kind) = (s(&row, 0), s(&row, 1), s(&row, 2));
+            if dep_name.ends_with(sql::TEMP_SUFFIX) {
+                continue;
+            }
+            if !seen.insert((dep_owner.clone(), dep_name.clone(), dep_kind.clone())) {
+                continue;
+            }
+            match compile_temp_caller(
+                c,
+                &dep_owner,
+                &dep_name,
+                &dep_kind,
+                &callee_map,
+                drops,
+                &mut created,
+                &schema,
+            ) {
+                Ok(msgs) => messages.extend(msgs),
+                Err(_) => continue,
+            }
+        }
+    }
+    if messages.is_empty() {
+        Ok(())
+    } else {
+        Err(messages.join("\n"))
+    }
 }
 
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
@@ -604,6 +787,119 @@ impl OracleAdapter {
             None => format!("{column} = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"),
         }
     }
+
+    async fn compile_one(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        let parts: Vec<&str> = oid.split('\u{1f}').collect();
+        if parts.len() != 3 {
+            return Err("Ungültige Objektreferenz".to_string());
+        }
+        let (owner, name) = (parts[0], parts[1]);
+        let error_type = match parts[2].trim().to_uppercase() {
+            t if !t.is_empty() => t,
+            _ => match object_type {
+                "package_spec" => "PACKAGE".to_string(),
+                "package_body" => "PACKAGE BODY".to_string(),
+                other => other.to_uppercase(),
+            },
+        };
+        let (compile_kind, compile_part) = match error_type.as_str() {
+            "PACKAGE" => ("PACKAGE", " SPECIFICATION"),
+            "PACKAGE BODY" => ("PACKAGE", " BODY"),
+            "TYPE BODY" => ("TYPE", " BODY"),
+            "FUNCTION" | "PROCEDURE" | "TRIGGER" | "TYPE" | "VIEW" | "MATERIALIZED VIEW" => {
+                (error_type.as_str(), "")
+            }
+            other => return Err(format!("Objekttyp {other} kann nicht kompiliert werden")),
+        };
+        let compile_error = self
+            .exec(format!(
+                "ALTER {} {}.{} COMPILE{}",
+                compile_kind,
+                quote(owner),
+                quote(name),
+                compile_part
+            ))
+            .await
+            .err();
+        let errors = self
+            .rows(format!(
+                "SELECT line, position, text FROM all_errors WHERE owner = {} AND name = {} AND type = {} ORDER BY sequence",
+                lit(owner),
+                lit(name),
+                lit(&error_type)
+            ))
+            .await?;
+        if errors.is_empty() {
+            if let Some(message) = compile_error {
+                return Err(message);
+            }
+            return Ok(CompileResult {
+                status: "VALID".to_string(),
+                message: None,
+                line: None,
+                position: None,
+            });
+        }
+        let line = s(&errors[0], 0).parse::<i32>().ok();
+        let position = s(&errors[0], 1).parse::<i32>().ok();
+        let message = errors
+            .iter()
+            .map(|r| format!("Zeile {}, Spalte {}: {}", s(r, 0), s(r, 1), s(r, 2)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(CompileResult {
+            status: "INVALID".to_string(),
+            message: Some(message),
+            line,
+            position,
+        })
+    }
+
+    async fn caller_impact(&self, owner: &str, name: &str) -> Result<Vec<String>, String> {
+        let deps = self
+            .rows(format!(
+                "SELECT d.owner, d.name, d.type FROM all_dependencies d \
+                 WHERE d.referenced_owner = {} AND d.referenced_name = {} \
+                   AND d.type IN ('FUNCTION','PROCEDURE','PACKAGE','PACKAGE BODY') \
+                   AND NOT (d.owner = d.referenced_owner AND d.name = d.referenced_name AND d.type = d.referenced_type) \
+                   AND ROWNUM <= 30 \
+                 ORDER BY d.owner, d.type, d.name",
+                lit(owner),
+                lit(name)
+            ))
+            .await
+            .unwrap_or_default();
+        let mut messages = Vec::new();
+        for row in deps {
+            let (dep_owner, dep_name, dep_kind) = (s(&row, 0), s(&row, 1), s(&row, 2));
+            let object_arg = match dep_kind.to_uppercase().as_str() {
+                "PACKAGE" => "package_spec",
+                "PACKAGE BODY" => "package_body",
+                "FUNCTION" => "function",
+                "PROCEDURE" => "procedure",
+                _ => continue,
+            };
+            let oid = format!("{dep_owner}\u{1f}{dep_name}\u{1f}{dep_kind}");
+            let _ = self.compile_one(&oid, object_arg).await;
+            let texts = self
+                .rows(format!(
+                    "SELECT text FROM all_errors WHERE owner = {} AND name = {} AND type = {} AND attribute = 'ERROR' ORDER BY sequence",
+                    lit(&dep_owner),
+                    lit(&dep_name),
+                    lit(&dep_kind)
+                ))
+                .await
+                .unwrap_or_default();
+            let label = caller_label(&dep_owner, &dep_name, &dep_kind);
+            messages.extend(
+                texts
+                    .iter()
+                    .map(|r| format!("{label}: {}", s(r, 0).trim()))
+                    .filter(|line| !line.ends_with(": ")),
+            );
+        }
+        Ok(messages)
+    }
 }
 
 fn percent(value: &str) -> String {
@@ -881,9 +1177,11 @@ impl DatabaseAdapter for OracleAdapter {
         }
         self.run_meta(move |c| {
             let mut drops = Vec::new();
+            let mut temps = Vec::new();
             let result = statements
                 .iter()
-                .try_for_each(|statement| validate_statement(c, statement, &mut drops));
+                .try_for_each(|statement| validate_statement(c, statement, &mut drops, &mut temps))
+                .and_then(|()| check_callers(c, &temps, &mut drops));
             let leftovers: Vec<String> = drops
                 .iter()
                 .rev()
@@ -1222,69 +1520,24 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn compile_object(&self, oid: &str, object_type: &str) -> Result<CompileResult, String> {
+        let result = self.compile_one(oid, object_type).await?;
+        if result.status != "VALID" {
+            return Ok(result);
+        }
         let parts: Vec<&str> = oid.split('\u{1f}').collect();
-        if parts.len() != 3 {
-            return Err("Ungültige Objektreferenz".to_string());
+        let error_type = parts.get(2).map(|t| t.to_uppercase()).unwrap_or_default();
+        if !matches!(error_type.as_str(), "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+            return Ok(result);
         }
-        let (owner, name) = (parts[0], parts[1]);
-        let error_type = match parts[2].trim().to_uppercase() {
-            t if !t.is_empty() => t,
-            _ => match object_type {
-                "package_spec" => "PACKAGE".to_string(),
-                "package_body" => "PACKAGE BODY".to_string(),
-                other => other.to_uppercase(),
-            },
-        };
-        let (compile_kind, compile_part) = match error_type.as_str() {
-            "PACKAGE" => ("PACKAGE", " SPECIFICATION"),
-            "PACKAGE BODY" => ("PACKAGE", " BODY"),
-            "TYPE BODY" => ("TYPE", " BODY"),
-            "FUNCTION" | "PROCEDURE" | "TRIGGER" | "TYPE" | "VIEW" | "MATERIALIZED VIEW" => {
-                (error_type.as_str(), "")
-            }
-            other => return Err(format!("Objekttyp {other} kann nicht kompiliert werden")),
-        };
-        let compile_error = self
-            .exec(format!(
-                "ALTER {} {}.{} COMPILE{}",
-                compile_kind,
-                quote(owner),
-                quote(name),
-                compile_part
-            ))
-            .await
-            .err();
-        let errors = self
-            .rows(format!(
-                "SELECT line, position, text FROM all_errors WHERE owner = {} AND name = {} AND type = {} ORDER BY sequence",
-                lit(owner),
-                lit(name),
-                lit(&error_type)
-            ))
-            .await?;
-        if errors.is_empty() {
-            if let Some(message) = compile_error {
-                return Err(message);
-            }
-            return Ok(CompileResult {
-                status: "VALID".to_string(),
-                message: None,
-                line: None,
-                position: None,
-            });
+        let messages = self.caller_impact(parts[0], parts[1]).await?;
+        if messages.is_empty() {
+            return Ok(result);
         }
-        let line = s(&errors[0], 0).parse::<i32>().ok();
-        let position = s(&errors[0], 1).parse::<i32>().ok();
-        let message = errors
-            .iter()
-            .map(|r| format!("Zeile {}, Spalte {}: {}", s(r, 0), s(r, 1), s(r, 2)))
-            .collect::<Vec<_>>()
-            .join("\n");
         Ok(CompileResult {
-            status: "INVALID".to_string(),
-            message: Some(message),
-            line,
-            position,
+            status: "VALID".to_string(),
+            message: Some(messages.join("\n")),
+            line: None,
+            position: None,
         })
     }
 
@@ -2164,6 +2417,32 @@ mod tests {
         a.validate_sql("CREATE PACKAGE L8DB_VP_K AS PROCEDURE p; END L8DB_VP_K;\n/\nCREATE PACKAGE BODY L8DB_VP_K AS PROCEDURE p IS BEGIN NULL; END p; END L8DB_VP_K;\n/")
             .await
             .expect("valid package");
+        let _ = a.execute_query("DROP PROCEDURE L8DB_VP_C").await;
+        let _ = a.execute_query("DROP FUNCTION L8DB_VP_F").await;
+        a.execute_query(
+            "CREATE OR REPLACE FUNCTION L8DB_VP_F RETURN NUMBER IS BEGIN RETURN 1; END;",
+        )
+        .await
+        .expect("seed function");
+        a.execute_query(
+            "CREATE OR REPLACE PROCEDURE L8DB_VP_C IS n NUMBER; BEGIN n := L8DB_VP_F; END;",
+        )
+        .await
+        .expect("seed caller");
+        let impact = a
+            .validate_sql(
+                "CREATE OR REPLACE FUNCTION L8DB_VP_F (p NUMBER) RETURN NUMBER IS BEGIN RETURN p; END;",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            impact.contains("Aufrufer")
+                && impact.contains("L8DB_VP_C")
+                && !impact.contains("L8DB_TEMP"),
+            "{impact}"
+        );
+        let _ = a.execute_query("DROP PROCEDURE L8DB_VP_C").await;
+        let _ = a.execute_query("DROP FUNCTION L8DB_VP_F").await;
         let left = a
             .execute_query("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE 'L8DB\\_VP\\_%' ESCAPE '\\'")
             .await

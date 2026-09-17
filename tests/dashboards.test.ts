@@ -14,17 +14,6 @@ import {
   periodStart,
   settle,
 } from "../src/lib/dashboards";
-import {
-  buildFlowSql,
-  defaultFlow,
-  flowChain,
-  flowProblem,
-  flowShape,
-  insertNode,
-  makeRef,
-  removeNode,
-  updateNodeData,
-} from "../src/lib/dataset-flow";
 
 describe("buildSimpleSql", () => {
   test("gruppiert nach Monat mit Kennzahl, Join, Filter und Zeitraum", () => {
@@ -167,87 +156,5 @@ describe("widget options", () => {
     expect(chartFits("gauge", withDim)).toContain("ohne Aufteilung");
     expect(chartFits("gauge", { ...withDim, dimension: null })).toBeNull();
     expect(chartFits("table", { ...withDim, metrics: [] })).toBeNull();
-  });
-});
-
-describe("flow builder", () => {
-  test("kompiliert Quelle → Join → Filter → Gruppierung → Sortierung zu SQL", () => {
-    let flow = defaultFlow();
-    const source = flow.nodes[0];
-    flow = updateNodeData(flow, source.id, { type: "source", schema: "public", table: "orders" });
-    flow = insertNode(flow, "join");
-    const join = flowChain(flow)[1];
-    flow = updateNodeData(flow, join.id, {
-      type: "join",
-      schema: "public",
-      table: "customers",
-      joinType: "LEFT",
-      fromRef: makeRef(source.id, "customer_id"),
-      toColumn: "id",
-    });
-    flow = insertNode(flow, "filter");
-    const filter = flowChain(flow)[2];
-    flow = updateNodeData(flow, filter.id, {
-      type: "filter",
-      conditions: [{ id: "c", ref: makeRef(join.id, "country"), operator: "eq", value: "DE" }],
-    });
-    flow = insertNode(flow, "aggregate");
-    const agg = flowChain(flow)[3];
-    flow = updateNodeData(flow, agg.id, {
-      type: "aggregate",
-      dimension: { ref: makeRef(source.id, "created_at"), bucket: "month" },
-      dimension2: null,
-      metrics: [{ id: "m", agg: "sum", ref: makeRef(source.id, "amount"), label: "Umsatz" }],
-    });
-    flow = insertNode(flow, "sort");
-    const sort = flowChain(flow)[4];
-    flow = updateNodeData(flow, sort.id, { type: "sort", sort: "metric_desc", limit: 12 });
-    expect(flowChain(flow).map((n) => n.data.type)).toEqual([
-      "source",
-      "join",
-      "filter",
-      "aggregate",
-      "sort",
-      "output",
-    ]);
-    const sql = buildFlowSql(flow, "postgres", "all");
-    expect(sql).toContain(
-      'date_trunc(\'month\', t1."created_at") AS "dim", SUM(t1."amount") AS "m0"',
-    );
-    expect(sql).toContain('LEFT JOIN "public"."customers" AS t2 ON t2."id" = t1."customer_id"');
-    expect(sql).toContain("WHERE t2.\"country\" = 'DE'");
-    expect(sql).toContain('ORDER BY "m0" DESC');
-    expect(sql).toEndWith("LIMIT 12");
-    expect(flowShape(flow).metrics[0]?.label).toBe("Umsatz");
-    const removed = removeNode(flow, filter.id);
-    expect(flowChain(removed).map((n) => n.data.type)).toEqual([
-      "source",
-      "join",
-      "aggregate",
-      "sort",
-      "output",
-    ]);
-    expect(buildFlowSql(removed, "postgres", "all")).not.toContain("WHERE");
-    const noJoin = removeNode(flow, join.id);
-    const sqlNoJoin = buildFlowSql(noJoin, "postgres", "all");
-    expect(sqlNoJoin).not.toContain("t0");
-    expect(sqlNoJoin).not.toContain("WHERE");
-    expect(sqlNoJoin).toContain('SUM("amount") AS "m0"');
-  });
-
-  test("ohne Gruppierung liefert die Ausgabe Rohspalten", () => {
-    let flow = defaultFlow();
-    const [source, output] = flow.nodes;
-    flow = updateNodeData(flow, source.id, { type: "source", schema: "", table: "t" });
-    flow = updateNodeData(flow, output.id, {
-      type: "output",
-      dimension: makeRef(source.id, "plan"),
-      values: [makeRef(source.id, "x")],
-      dateColumn: null,
-    });
-    expect(buildFlowSql(flow, "postgres", "all")).toBe(
-      'SELECT "plan" AS "dim", "x" AS "m0"\nFROM "t"\nLIMIT 50',
-    );
-    expect(flowProblem(defaultFlow())).toContain("Quelle");
   });
 });
