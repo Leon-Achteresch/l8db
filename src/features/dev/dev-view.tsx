@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { TabPreview } from "./tab-preview";
 
@@ -30,6 +31,10 @@ export function DevView() {
   const [narrow, setNarrow] = useState(false);
   const [many, setMany] = useState(false);
   const [revision, setRevision] = useState(0);
+  const waveRefs = {
+    down: useRef<SVGSVGElement>(null),
+    up: useRef<SVGSVGElement>(null),
+  };
 
   return (
     <main className="min-w-0 flex-1 overflow-auto bg-background px-6 py-8 md:px-10">
@@ -76,6 +81,37 @@ export function DevView() {
             </button>
           </div>
         </div>
+        <section aria-labelledby="heading-page-wave" className="space-y-3">
+          <div className="flex items-baseline gap-3">
+            <span className="font-mono text-xs text-muted-foreground">00</span>
+            <h2 id="heading-page-wave" className="text-sm font-semibold">
+              Seitenwechsel-Whoosh
+            </h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Welle am Tabellenrand beim Blättern: unten für die nächste Seite, oben für die
+            vorherige.
+          </p>
+          <div className="flex flex-wrap gap-6">
+            {(["down", "up"] as const).map((direction) => (
+              <div key={direction} className="space-y-2">
+                <div className="flex h-24 w-[320px] items-center justify-center rounded-md border bg-muted/30">
+                  <PageWave direction={direction} ref={waveRefs[direction]} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const element = waveRefs[direction].current;
+                    if (element) animatePageWave(element);
+                  }}
+                  className="h-8 rounded-md border px-3 text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {direction === "down" ? "Nächste Seite" : "Vorherige Seite"} abspielen
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
         {variants.map(({ variant, title, description, height }, index) => (
           <section key={variant} aria-labelledby={`heading-${variant}`} className="space-y-3">
             <div className="flex items-baseline gap-3">

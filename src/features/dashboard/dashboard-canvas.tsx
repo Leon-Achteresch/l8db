@@ -1,11 +1,9 @@
-import { LayoutDashboardIcon } from "lucide-react";
+import { LayoutDashboardIcon, PlusIcon } from "lucide-react";
 import { memo } from "react";
-import GridLayout, { type Layout, type LayoutItem, useContainerWidth } from "react-grid-layout";
+import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import { Button } from "@/components/ui/button";
 import {
-  CHARTS,
-  type ChartKind,
-  createId,
   type Dashboard,
   GRID_COLS,
   GRID_GAP,
@@ -16,18 +14,16 @@ import {
 } from "@/lib/dashboards";
 import { WidgetCard } from "./widget-card";
 
-export const DRAG_MIME = "application/x-l8db-chart";
-let dragging: ChartKind | null = null;
 const EMPTY_WIDGETS: Widget[] = [];
 
 export const DashboardCanvas = memo(function DashboardCanvas({
   dashboardId,
-  selectedDatasetId,
   onEdit,
+  onAdd,
 }: {
   dashboardId: string;
-  selectedDatasetId: string | null;
   onEdit?: (id: string) => void;
+  onAdd?: () => void;
 }) {
   const widgets = useDashboardsStore(
     (s) => s.dashboards.find((d) => d.id === dashboardId)?.widgets ?? EMPTY_WIDGETS,
@@ -59,7 +55,7 @@ export const DashboardCanvas = memo(function DashboardCanvas({
     }));
 
   return (
-    <div ref={containerRef} className="min-h-full p-4">
+    <div ref={containerRef} className="relative min-h-full p-4">
       {mounted && (
         <GridLayout
           width={width}
@@ -72,42 +68,8 @@ export const DashboardCanvas = memo(function DashboardCanvas({
           }}
           dragConfig={{ enabled: !dashboard.locked, handle: ".widget-drag-handle", bounded: false }}
           resizeConfig={{ enabled: !dashboard.locked, handles: ["se"] }}
-          dropConfig={{
-            enabled: !dashboard.locked,
-            defaultItem: { w: 4, h: 6 },
-            onDragOver: () =>
-              dragging ? { w: CHARTS[dragging].w, h: CHARTS[dragging].h } : { w: 4, h: 6 },
-          }}
           onDragStop={applyLayout}
           onResizeStop={applyLayout}
-          onDrop={(next: Layout, item: LayoutItem | undefined, e: Event) => {
-            const kind = ((e as DragEvent).dataTransfer?.getData(DRAG_MIME) || dragging) as
-              | ChartKind
-              | "";
-            dragging = null;
-            if (!kind || !item) return;
-            const size = CHARTS[kind];
-            const widget: Widget = {
-              id: createId(),
-              chart: kind,
-              datasetId: selectedDatasetId,
-              title: "",
-              period: "all",
-              x: item.x,
-              y: item.y,
-              w: size.w,
-              h: size.h,
-            };
-            onChange((d) => ({
-              widgets: [
-                ...d.widgets.map((w) => {
-                  const l = next.find((x) => x.i === w.id);
-                  return l ? { ...w, x: l.x, y: l.y, w: l.w, h: l.h } : w;
-                }),
-                widget,
-              ],
-            }));
-          }}
           className="min-h-[60vh] [&_.react-grid-item]:will-change-transform [&_.react-grid-item]:[contain:layout_paint]"
         >
           {widgets.map((w) => (
@@ -122,24 +84,22 @@ export const DashboardCanvas = memo(function DashboardCanvas({
         </GridLayout>
       )}
       {dashboard.widgets.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <div className="max-w-sm rounded-2xl border border-dashed p-8 text-center">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center p-4">
+          <div className="pointer-events-auto max-w-md rounded-2xl border border-dashed bg-card/60 p-8 text-center">
             <LayoutDashboardIcon className="mx-auto mb-3 size-8 text-muted-foreground/60" />
-            <p className="text-sm font-medium">Noch keine Charts</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Erstelle im Bereich Charts deine Visualisierungen. Hier kannst du sie anschließend
-              anordnen.
+            <p className="text-sm font-semibold">Noch ist hier leer</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Ein Chart beantwortet eine Frage an deine Daten, zum Beispiel „Wie viele
+              Bestellungen gab es pro Monat?“
             </p>
+            {onAdd && (
+              <Button size="sm" className="mt-4" onClick={onAdd}>
+                <PlusIcon /> Ersten Chart erstellen
+              </Button>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 });
-
-export function setPendingDrag(e: React.DragEvent, kind: ChartKind) {
-  dragging = kind;
-  e.dataTransfer.setData(DRAG_MIME, kind);
-  e.dataTransfer.setData("text/plain", kind);
-  e.dataTransfer.effectAllowed = "copy";
-}

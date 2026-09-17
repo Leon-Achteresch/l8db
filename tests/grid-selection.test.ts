@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  cellsToTsv,
   classifyNumericCell,
   describeSelectionStats,
   isCellInSelection,
   selectionCellCount,
   selectionRange,
+  mergeSelectionCells,
   selectionToTsv,
   serializeSelectionCell,
   summarizeSelection,
@@ -159,5 +161,46 @@ describe("describeSelectionStats", () => {
     expect(describeSelectionStats(summarizeSelection(oddRows, range))).toContain(
       "1 nicht berechenbar",
     );
+  });
+});
+
+describe("mergeSelectionCells", () => {
+  test("vereint Rechteck und Einzelzellen ohne Duplikate", () => {
+    const range = selectionRange(
+      { anchor: { rowIndex: 0, columnId: "name" }, focus: { rowIndex: 1, columnId: "name" } },
+      columns,
+    );
+    const cells = mergeSelectionCells(range, [
+      { rowIndex: 0, columnId: "name" },
+      { rowIndex: 2, columnId: "amount" },
+    ]);
+    expect(cells).toHaveLength(3);
+    expect(cells).toContainEqual({ rowIndex: 2, columnId: "amount" });
+  });
+});
+
+describe("cellsToTsv", () => {
+  test("kopiert Einzelspalte zeilenweise", () => {
+    const tsv = cellsToTsv(
+      rows,
+      [
+        { rowIndex: 2, columnId: "name" },
+        { rowIndex: 0, columnId: "name" },
+      ],
+      columns,
+    );
+    expect(tsv).toBe("Ada\nGrace");
+  });
+
+  test("lässt nicht ausgewählte Zellen im Raster leer", () => {
+    const tsv = cellsToTsv(
+      rows,
+      [
+        { rowIndex: 0, columnId: "name" },
+        { rowIndex: 1, columnId: "amount" },
+      ],
+      columns,
+    );
+    expect(tsv).toBe("Ada\t\n\t");
   });
 });

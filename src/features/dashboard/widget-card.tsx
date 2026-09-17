@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { createId, useDashboardsStore } from "@/lib/dashboards";
+import { useDashboardsStore } from "@/lib/dashboards";
 import { WidgetCardInner } from "./widget-card-inner";
 
 export const WidgetCard = memo(function WidgetCard({
@@ -42,14 +42,15 @@ export const WidgetCard = memo(function WidgetCard({
         }))
       }
       onRemove={() =>
-        update(dashboardId, (d) => ({ widgets: d.widgets.filter((w) => w.id !== widgetId) }))
-      }
-      onDuplicate={() =>
         update(dashboardId, (d) => ({
-          widgets: [...d.widgets, { ...widget, id: createId(), y: widget.y + widget.h }],
+          widgets: d.widgets.filter((w) => w.id !== widgetId),
+          datasets: d.datasets.filter(
+            (dataset) =>
+              dataset.id !== widget.datasetId ||
+              d.widgets.some((w) => w.id !== widgetId && w.datasetId === dataset.id),
+          ),
         }))
       }
-      dashboardId={dashboardId}
     />
   );
 });

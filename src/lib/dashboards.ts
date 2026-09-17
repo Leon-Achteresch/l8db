@@ -1,14 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
-import { buildFlowSql, type FlowGraph, flowShape } from "@/lib/dataset-flow";
 import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
 import { compileConditionExpression } from "@/lib/sql-filter";
 
 export type Agg = "count" | "count_distinct" | "sum" | "avg" | "min" | "max" | "none";
 export type TimeBucket = "none" | "day" | "week" | "month" | "quarter" | "year";
-export type DatasetMode = "simple" | "flow" | "expert";
+export type DatasetMode = "simple" | "expert";
 export type SortMode = "dimension" | "metric_desc" | "metric_asc";
 export type Period = "all" | "7d" | "30d" | "90d" | "quarter" | "year";
 export type ChartKind =
@@ -152,7 +151,6 @@ export interface Dataset {
   name: string;
   mode: DatasetMode;
   simple: SimpleDataset;
-  flow?: FlowGraph;
   sql: string;
   mapping: ExpertMapping;
 }
@@ -619,7 +617,6 @@ export function buildExpertSql(ds: Dataset, kind: DatabaseKind | null, period: P
 }
 
 export function datasetSql(ds: Dataset, kind: DatabaseKind | null, period: Period): string {
-  if (ds.mode === "flow") return ds.flow ? buildFlowSql(ds.flow, kind, period) : "";
   return ds.mode === "simple"
     ? buildSimpleSql(ds.simple, kind, period)
     : buildExpertSql(ds, kind, period);
@@ -633,10 +630,6 @@ export interface DatasetShape {
 }
 
 export function datasetShape(ds: Dataset): DatasetShape {
-  if (ds.mode === "flow")
-    return ds.flow
-      ? flowShape(ds.flow)
-      : { dimension: null, dimension2: null, metrics: [], hasDate: false };
   if (ds.mode === "expert")
     return {
       dimension: ds.mapping.dimension,
@@ -691,6 +684,37 @@ export function chartFits(kind: ChartKind, shape: DatasetShape): string | null {
   if (shape.metrics.length < need.metrics[0])
     return `Braucht mindestens ${need.metrics[0]} Kennzahl${need.metrics[0] > 1 ? "en" : ""}`;
   return null;
+}
+
+export const ROW_COUNT_FIELD = "__l8db_row_count__";
+
+export function colorSeries(
+  kind: ChartKind,
+  shape: DatasetShape,
+  rows: Record<string, unknown>[],
+): { shape: DatasetShape; rows: Record<string, unknown>[] } {
+  if (!shape.dimension2 || !["column", "line", "area", "radar"].includes(kind))
+    return { shape, rows };
+  const groups = [...new Set(rows.map((r) => toLabel(r[shape.dimension2 as string])))];
+  const metrics = groups.flatMap((group, index) =>
+    shape.metrics.map((metric, m) => ({
+      key: `series_${index}_${m}`,
+      label: shape.metrics.length > 1 ? `${group} · ${metric.label}` : group,
+    })),
+  );
+  const result = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const dim = shape.dimension ? row[shape.dimension] : "Gesamt";
+    const key = JSON.stringify(dim);
+    const target = result.get(key) ?? { [shape.dimension ?? "dim"]: dim };
+    const group = groups.indexOf(toLabel(row[shape.dimension2]));
+    shape.metrics.forEach((m, i) => {
+      const k = `series_${group}_${i}`;
+      target[k] = toNumber(target[k]) + toNumber(row[m.key]);
+    });
+    result.set(key, target);
+  }
+  return { shape: { ...shape, dimension2: null, metrics }, rows: [...result.values()] };
 }
 
 export function overlaps(a: Widget, b: Widget): boolean {
@@ -838,6 +862,22 @@ export const useDashboardsStore = create<DashboardsState>()(
         return id;
       },
     }),
-    { name: "l8db-dashboards", storage: createBufferedJsonStorage(() => window.localStorage) },
+    {
+      name: "l8db-dashboards",
+      version: 2,
+      migrate: (state) => {
+        const persisted = state as { dashboards?: Dashboard[] };
+        for (const dashboard of persisted.dashboards ?? [])
+          for (const dataset of dashboard.datasets ?? []) {
+            const legacy = dataset as Dataset & { flow?: unknown };
+            if (legacy.flow !== undefined || (dataset.mode as string) === "flow") {
+              delete legacy.flow;
+              if ((dataset.mode as string) !== "expert") dataset.mode = "simple";
+            }
+          }
+        return state;
+      },
+      storage: createBufferedJsonStorage(() => window.localStorage),
+    },
   ),
 );

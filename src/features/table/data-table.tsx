@@ -84,12 +84,13 @@ import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
 import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
 import {
+  cellKey,
+  cellsToTsv,
   describeSelectionStats,
   type GridCellRef,
-  selectionCellCount,
+  mergeSelectionCells,
   selectionRange,
-  selectionToTsv,
-  summarizeSelection,
+  summarizeCells,
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
@@ -380,8 +381,8 @@ function FkPreviewPopover({
       .finally(() => setIsLoadingPreview(false));
   };
 
-  const handleCtrlClick = (e: React.MouseEvent) => {
-    if (!(e.ctrlKey || e.metaKey) || value === null || value === undefined) return;
+  const handleAltClick = (e: React.MouseEvent) => {
+    if (!e.altKey || value === null || value === undefined) return;
     if (!primary || !isSingle) return;
     e.preventDefault();
     e.stopPropagation();
@@ -396,7 +397,7 @@ function FkPreviewPopover({
     <HoverCard openDelay={400} closeDelay={100} onOpenChange={handleOpenChange}>
       <HoverCardTrigger asChild>
         <div
-          onClick={handleCtrlClick}
+          onClick={handleAltClick}
           className="flex h-5 w-fit items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
         >
           <LinkIcon className="size-3 shrink-0 text-blue-500/60 group-hover/fk:text-blue-500 transition-colors" />
@@ -605,6 +606,7 @@ export function DataTable({
     );
   }, [selectionKey, activeCell, data]);
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
+  const [extraCells, setExtraCells] = useState<GridCellRef[]>([]);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -975,25 +977,52 @@ export function DataTable({
     () => selectionRange(selection, visibleColumnIds),
     [selection, visibleColumnIds],
   );
-  const selectedCount = selectionCellCount(selectedRange);
+  const selectedCells = useMemo(
+    () => mergeSelectionCells(selectedRange, extraCells),
+    [selectedRange, extraCells],
+  );
+  const selectedCount = selectedCells.length;
+  const selectedKeys = useMemo(
+    () => new Set(selectedCells.map((cell) => cellKey(cell.rowIndex, cell.columnId))),
+    [selectedCells],
+  );
   const selectionStats = useMemo(
-    () => (selectedCount > 1 ? summarizeSelection(data, selectedRange) : null),
-    [selectedCount, data, selectedRange],
+    () => (selectedCount > 1 ? summarizeCells(data, selectedCells) : null),
+    [selectedCount, data, selectedCells],
   );
 
-  const focusCell = useCallback((cell: GridCellRef | null, extend = false) => {
-    setActiveCell(cell);
-    if (!extend) setSelectionAnchor(cell);
-  }, []);
+  const focusCell = useCallback(
+    (cell: GridCellRef | null, extend = false, additive = false) => {
+      if (additive && cell && cell.columnId !== INDEX_COLUMN) {
+        const key = cellKey(cell.rowIndex, cell.columnId);
+        const committed = mergeSelectionCells(selectedRange, extraCells);
+        const wasSelected = committed.some(
+          (entry) => cellKey(entry.rowIndex, entry.columnId) === key,
+        );
+        const next = wasSelected
+          ? committed.filter((entry) => cellKey(entry.rowIndex, entry.columnId) !== key)
+          : [...committed, cell];
+        setExtraCells(next);
+        const nextActive = wasSelected ? (next[0] ?? null) : cell;
+        setActiveCell(nextActive);
+        setSelectionAnchor(nextActive);
+        return;
+      }
+      setExtraCells([]);
+      setActiveCell(cell);
+      if (!extend) setSelectionAnchor(cell);
+    },
+    [selectedRange, extraCells],
+  );
 
   const copySelection = useCallback(() => {
-    if (!selectedRange || selectedCount <= 1) return false;
-    const tsv = selectionToTsv(data, selectedRange);
+    if (selectedCount <= 1) return false;
+    const tsv = cellsToTsv(data, selectedCells, visibleColumnIds);
     if (tsv === "") return false;
     void copyText(tsv);
     toast.success(`${selectedCount} Zellen als TSV kopiert.`);
     return true;
-  }, [selectedRange, selectedCount, data]);
+  }, [selectedCells, selectedCount, data, visibleColumnIds]);
 
   const saveCellValue = useCallback(
     async (
@@ -1430,6 +1459,7 @@ export function DataTable({
 
       if (e.key === "Escape") {
         if (selectedCount > 1) {
+          setExtraCells([]);
           setSelectionAnchor(activeCell);
           return;
         }
@@ -1906,7 +1936,7 @@ export function DataTable({
                                 activeMatch={
                                   activeMatch?.rowIndex === rowIndex ? activeMatch : null
                                 }
-                                selectedRange={selectedRange}
+                                selectedKeys={selectedKeys}
                                 selectedCount={selectedCount}
                                 matchKeys={matchKeys}
                                 isSaving={isSaving}

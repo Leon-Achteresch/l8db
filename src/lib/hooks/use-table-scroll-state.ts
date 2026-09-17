@@ -15,6 +15,7 @@ export function useTableScrollState(
       left: saved?.left ?? 0,
     };
     let restoring = true;
+    let frame = 0;
     const restore = () => {
       element.scrollTop = position.top;
       element.scrollLeft = position.left;
@@ -26,14 +27,27 @@ export function useTableScrollState(
       });
     };
     restore();
-    const frame = requestAnimationFrame(() => {
+    // ponytail: retry a few frames because columns/rows virtualize in late and clamp scrollLeft to 0
+    let attempts = 20;
+    const tick = () => {
       restore();
-      restoring = false;
-    });
+      attempts -= 1;
+      const done =
+        attempts <= 0 ||
+        (Math.abs(element.scrollLeft - position.left) < 1 &&
+          Math.abs(element.scrollTop - position.top) < 1);
+      if (done) {
+        restoring = false;
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
     element.addEventListener("scroll", save, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
       element.removeEventListener("scroll", save);
+      restoring = false;
       save();
     };
   }, [ref, key, identity]);

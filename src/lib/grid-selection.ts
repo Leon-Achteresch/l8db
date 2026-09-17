@@ -63,6 +63,60 @@ export function selectionCellCount(range: GridSelectionRange | null): number {
   return (range.rowEnd - range.rowStart + 1) * range.columnIds.length;
 }
 
+export function cellKey(rowIndex: number, columnId: string): string {
+  return `${rowIndex}:${columnId}`;
+}
+
+export function rangeCells(range: GridSelectionRange | null): GridCellRef[] {
+  if (!range) return [];
+  const cells: GridCellRef[] = [];
+  for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex += 1) {
+    for (const columnId of range.columnIds) cells.push({ rowIndex, columnId });
+  }
+  return cells;
+}
+
+export function mergeSelectionCells(
+  range: GridSelectionRange | null,
+  extra: GridCellRef[],
+): GridCellRef[] {
+  const seen = new Set<string>();
+  const cells: GridCellRef[] = [];
+  for (const cell of [...extra, ...rangeCells(range)]) {
+    const key = cellKey(cell.rowIndex, cell.columnId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cells.push(cell);
+  }
+  return cells;
+}
+
+export function cellsToTsv(
+  rows: Record<string, unknown>[],
+  cells: GridCellRef[],
+  columnIds: string[],
+): string {
+  if (cells.length === 0) return "";
+  const usedColumns = columnIds.filter((columnId) =>
+    cells.some((cell) => cell.columnId === columnId),
+  );
+  const rowIndices = [...new Set(cells.map((cell) => cell.rowIndex))].sort((a, b) => a - b);
+  const selected = new Set(cells.map((cell) => cellKey(cell.rowIndex, cell.columnId)));
+  const lines: string[] = [];
+  for (const rowIndex of rowIndices) {
+    const row = rows[rowIndex];
+    if (!row) continue;
+    lines.push(
+      usedColumns
+        .map((columnId) =>
+          selected.has(cellKey(rowIndex, columnId)) ? serializeSelectionCell(row[columnId]) : "",
+        )
+        .join("\t"),
+    );
+  }
+  return lines.join("\n");
+}
+
 export function isCellInSelection(
   range: GridSelectionRange | null,
   rowIndex: number,
@@ -124,10 +178,18 @@ export function summarizeSelection(
   range: GridSelectionRange | null,
 ): SelectionStats | null {
   if (!range) return null;
+  return summarizeCells(rows, rangeCells(range));
+}
+
+export function summarizeCells(
+  rows: Record<string, unknown>[],
+  cells: GridCellRef[],
+): SelectionStats | null {
+  if (cells.length === 0) return null;
   const stats: SelectionStats = {
     cellCount: 0,
-    rowCount: range.rowEnd - range.rowStart + 1,
-    columnCount: range.columnIds.length,
+    rowCount: new Set(cells.map((cell) => cell.rowIndex)).size,
+    columnCount: new Set(cells.map((cell) => cell.columnId)).size,
     nullCount: 0,
     numericCount: 0,
     textCount: 0,
@@ -140,24 +202,22 @@ export function summarizeSelection(
   let sum = 0;
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
-  for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex += 1) {
+  for (const { rowIndex, columnId } of cells) {
     const row = rows[rowIndex];
     if (!row) continue;
-    for (const columnId of range.columnIds) {
-      stats.cellCount += 1;
-      const cell = classifyNumericCell(row[columnId]);
-      if (cell.kind === "null") {
-        stats.nullCount += 1;
-      } else if (cell.kind === "text") {
-        stats.textCount += 1;
-      } else if (cell.kind === "unsupported") {
-        stats.unsupportedCount += 1;
-      } else {
-        stats.numericCount += 1;
-        sum += cell.value;
-        if (cell.value < min) min = cell.value;
-        if (cell.value > max) max = cell.value;
-      }
+    stats.cellCount += 1;
+    const cell = classifyNumericCell(row[columnId]);
+    if (cell.kind === "null") {
+      stats.nullCount += 1;
+    } else if (cell.kind === "text") {
+      stats.textCount += 1;
+    } else if (cell.kind === "unsupported") {
+      stats.unsupportedCount += 1;
+    } else {
+      stats.numericCount += 1;
+      sum += cell.value;
+      if (cell.value < min) min = cell.value;
+      if (cell.value > max) max = cell.value;
     }
   }
   if (stats.numericCount > 0) {

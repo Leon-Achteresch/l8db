@@ -1,11 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { EyeIcon, FolderOpenIcon, LibraryIcon, PencilIcon, RefreshCwIcon } from "lucide-react";
+import {
+  EyeIcon,
+  FolderOpenIcon,
+  LibraryIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
 import {
   Select,
   SelectContent,
@@ -13,13 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { WorkflowNavigation } from "@/components/workflow-navigation";
 import { confirmExpertSql, fileLabel, fileStamp, readDashboardFile } from "@/lib/dashboard-file";
-import { type Dashboard, useDashboardsStore } from "@/lib/dashboards";
+import {
+  CHARTS,
+  createId,
+  type Dashboard,
+  emptyDataset,
+  settle,
+  useDashboardsStore,
+} from "@/lib/dashboards";
+import { ChartDialog, type ChartDraft } from "./chart-dialog";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
-import { ChartWorkspace } from "./chart-workspace";
 import { DashboardCanvas } from "./dashboard-canvas";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
+
 export function DashboardEditor({
   dashboard,
   siblings,
@@ -34,8 +47,9 @@ export function DashboardEditor({
   const store = useDashboardsStore();
   const queryClient = useQueryClient();
   const [drawer, setDrawer] = useState<"dashboards" | "charts" | null>(null);
-  const [tab, setTab] = useState(dashboard.locked ? "dashboard" : "charts");
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string>();
+  const [draft, setDraft] = useState<ChartDraft | null>(null);
+  const [draftIsNew, setDraftIsNew] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const editing = !dashboard.locked;
   const update = (patch: Partial<Dashboard> | ((d: Dashboard) => Partial<Dashboard>)) =>
     store.update(dashboard.id, patch);
@@ -84,6 +98,99 @@ export function DashboardEditor({
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [path, reloadFile]);
+
+  const startNewChart = () => {
+    const index = dashboard.widgets.length;
+    const dataset = emptyDataset(`Chart ${index + 1}`);
+    const previous = dashboard.datasets.find((d) => d.mode === "simple" && d.simple.table);
+    if (previous) {
+      dataset.simple = {
+        ...dataset.simple,
+        schema: previous.simple.schema,
+        table: previous.simple.table,
+      };
+    }
+    const widget = settle(
+      {
+        id: createId(),
+        chart: "column",
+        datasetId: dataset.id,
+        title: "",
+        period: "all",
+        x: 0,
+        y: 0,
+        w: CHARTS.column.w,
+        h: CHARTS.column.h,
+      },
+      dashboard.widgets,
+    );
+    setDraft({ widget, dataset });
+    setDraftIsNew(true);
+    setDialogOpen(true);
+  };
+
+  const startEdit = (widgetId: string) => {
+    const widget = dashboard.widgets.find((w) => w.id === widgetId);
+    if (!widget) return;
+    const dataset =
+      dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
+    setDraft({ widget, dataset });
+    setDraftIsNew(false);
+    setDialogOpen(true);
+  };
+
+  const saveDraft = (next: ChartDraft) => {
+    if (draftIsNew) {
+      update((d) => ({ widgets: [...d.widgets, next.widget], datasets: [...d.datasets, next.dataset] }));
+      return;
+    }
+    update((d) => {
+      const shared = d.widgets.some(
+        (w) => w.id !== next.widget.id && w.datasetId === next.widget.datasetId,
+      );
+      const exists = d.datasets.some((x) => x.id === next.dataset.id);
+      const dataset =
+        shared || !exists ? { ...next.dataset, id: createId() } : next.dataset;
+      return {
+        datasets:
+          shared || !exists
+            ? [...d.datasets, dataset]
+            : d.datasets.map((x) => (x.id === dataset.id ? dataset : x)),
+        widgets: d.widgets.map((w) =>
+          w.id === next.widget.id ? { ...next.widget, datasetId: dataset.id } : w,
+        ),
+      };
+    });
+  };
+
+  const deleteDraft = () => {
+    if (!draft) return;
+    update((d) => ({
+      widgets: d.widgets.filter((w) => w.id !== draft.widget.id),
+      datasets: d.datasets.filter(
+        (dataset) =>
+          dataset.id !== draft.widget.datasetId ||
+          d.widgets.some((w) => w.id !== draft.widget.id && w.datasetId === dataset.id),
+      ),
+    }));
+  };
+
+  const duplicateDraft = () => {
+    if (!draft) return;
+    update((d) => {
+      const copy = settle(
+        {
+          ...structuredClone(draft.widget),
+          id: createId(),
+          title: `${draft.widget.title || draft.dataset.name || "Chart"} (Kopie)`,
+        },
+        d.widgets,
+      );
+      const dataset = { ...structuredClone(draft.dataset), id: createId() };
+      copy.datasetId = dataset.id;
+      return { widgets: [...d.widgets, copy], datasets: [...d.datasets, dataset] };
+    });
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -146,21 +253,23 @@ export function DashboardEditor({
             variant={editing ? "default" : "outline"}
             size="xs"
             aria-label={editing ? "Zur Ansicht wechseln" : "Dashboard bearbeiten"}
-            onClick={() => {
-              setTab("dashboard");
-              update({ locked: editing });
-            }}
+            onClick={() => update({ locked: editing })}
           >
             {editing ? (
               <>
-                <EyeIcon /> Read-only
+                <EyeIcon /> Fertig
               </>
             ) : (
               <>
-                <PencilIcon /> Layout bearbeiten
+                <PencilIcon /> Bearbeiten
               </>
             )}
           </Button>
+          {editing && (
+            <Button size="sm" onClick={startNewChart}>
+              <PlusIcon /> Chart
+            </Button>
+          )}
         </div>
       </header>
       <DashboardLibraryDrawer
@@ -175,71 +284,29 @@ export function DashboardEditor({
         open={drawer === "charts"}
         onOpenChange={(open) => setDrawer(open ? "charts" : null)}
         dashboard={dashboard}
-        selectedWidgetId={selectedWidgetId}
         onLoaded={(id) => {
-          setSelectedWidgetId(id);
-          setTab("charts");
+          update({ locked: false });
+          startEdit(id);
         }}
       />
-      <WorkflowNavigation
-        value={editing ? tab : "dashboard"}
-        onChange={(value) => {
-          setTab(value);
-          if (value === "charts") update({ locked: false });
-        }}
-        items={[
-          {
-            value: "charts",
-            label: "Charts",
-            description: "Hinzufügen, Daten zuordnen & filtern",
-            count: dashboard.widgets.length,
-          },
-          { value: "dashboard", label: "Dashboard", description: "Charts anordnen & ansehen" },
-        ]}
+      <ChartDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        draft={draft}
+        isNew={draftIsNew}
+        onSave={saveDraft}
+        onDelete={draftIsNew ? undefined : deleteDraft}
+        onDuplicate={draftIsNew ? undefined : duplicateDraft}
       />
-      {editing && tab === "charts" ? (
-        <ChartWorkspace
-          dashboard={dashboard}
-          selectedWidgetId={selectedWidgetId}
-          onWidgetChange={setSelectedWidgetId}
-          onLayout={() => setTab("dashboard")}
+      <div className="workspace-canvas relative min-h-0 flex-1 overflow-y-auto">
+        <DashboardCanvas
+          dashboardId={dashboard.id}
+          onEdit={(id) => {
+            if (editing) startEdit(id);
+          }}
+          onAdd={editing ? startNewChart : undefined}
         />
-      ) : (
-        <>
-          <div className="flex items-center justify-between gap-4 border-b px-5 py-3">
-            <div>
-              <h2 className="text-sm font-semibold">
-                {editing ? "Dein Dashboard zusammenstellen" : "Dashboard · Read-only"}
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {editing
-                  ? "Charts am Griff verschieben und an der unteren rechten Ecke vergrößern."
-                  : "Ansicht ohne Bearbeitung. Deine gespeicherten Charts bleiben unverändert."}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                update({ locked: false });
-                setTab("charts");
-              }}
-            >
-              Chart hinzufügen oder bearbeiten
-            </Button>
-          </div>
-          <div className="workspace-canvas relative min-h-0 flex-1 overflow-y-auto">
-            <DashboardCanvas
-              dashboardId={dashboard.id}
-              selectedDatasetId={null}
-              onEdit={(id) => {
-                setSelectedWidgetId(id);
-                setTab("charts");
-              }}
-            />
-          </div>
-        </>
-      )}
+      </div>
     </div>
   );
 }

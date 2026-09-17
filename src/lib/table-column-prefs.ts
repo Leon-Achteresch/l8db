@@ -225,13 +225,15 @@ export function useTableColumnLayout(
   table: string | undefined,
   columns: string[],
   database?: string | null,
+  layoutKey?: string | null,
 ) {
-  const key =
-    connectionId && schema && table
+  const key = layoutKey
+    ? layoutKey
+    : connectionId && schema && table
       ? tableColumnPrefKey(connectionId, schema, table, database)
       : null;
   const legacyKey =
-    connectionId && schema && table && database !== undefined
+    !layoutKey && connectionId && schema && table && database !== undefined
       ? tableColumnPrefKey(connectionId, schema, table)
       : null;
   const legacyPref = useTableColumnPrefs((state) =>

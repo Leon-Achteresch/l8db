@@ -1,4 +1,4 @@
-import { CalendarIcon, GripVerticalIcon, SettingsIcon } from "lucide-react";
+import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { IconButton } from "@/components/icon-button";
 import {
@@ -9,12 +9,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { colorSeries } from "@/lib/chart-worksheet";
 import { queryErrorMessage } from "@/lib/connection-url";
 import {
   applyOptions,
   CHARTS,
   chartFits,
+  colorSeries,
   type Dataset,
   datasetShape,
   PERIOD_LABEL,
@@ -25,7 +25,6 @@ import {
 import { cn } from "@/lib/utils";
 import { CHART_RENDERERS, deltaFor, headlineFor, LegendCards, legendFor } from "./charts";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
-import { WidgetSettings } from "./widget-settings";
 
 const EMPTY_ROWS: Record<string, unknown>[] = [];
 export function WidgetCardInner({
@@ -35,8 +34,6 @@ export function WidgetCardInner({
   locked,
   onChange,
   onRemove,
-  onDuplicate,
-  dashboardId,
   onEdit,
 }: {
   widget: Widget;
@@ -45,11 +42,8 @@ export function WidgetCardInner({
   locked: boolean;
   onChange: (patch: Partial<Widget>) => void;
   onRemove: () => void;
-  onDuplicate: () => void;
-  dashboardId: string;
   onEdit?: () => void;
 }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [viewPeriod, setViewPeriod] = useState(widget.period);
   useEffect(() => setViewPeriod(widget.period), [widget.period]);
   const rawShape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
@@ -139,27 +133,27 @@ export function WidgetCardInner({
               </SelectContent>
             </Select>
           )}
+          {!locked && onEdit && (
+            <IconButton
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Chart bearbeiten"
+              onClick={onEdit}
+            >
+              <SettingsIcon />
+            </IconButton>
+          )}
           {!locked && (
-            <>
-              <IconButton
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Widget-Einstellungen"
-                onClick={() => (onEdit ? onEdit() : setSettingsOpen(true))}
-              >
-                <SettingsIcon />
-              </IconButton>
-              <WidgetSettings
-                open={settingsOpen}
-                onOpenChange={setSettingsOpen}
-                widget={widget}
-                dashboardId={dashboardId}
-                rows={rawRows}
-                onChange={onChange}
-                onRemove={onRemove}
-                onDuplicate={onDuplicate}
-              />
-            </>
+            <IconButton
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Chart löschen"
+              onClick={() => {
+                if (window.confirm(`Chart „${title}“ löschen?`)) onRemove();
+              }}
+            >
+              <Trash2Icon />
+            </IconButton>
           )}
         </div>
       </div>

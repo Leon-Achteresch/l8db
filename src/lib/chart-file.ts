@@ -76,8 +76,13 @@ export function parseChartFile(text: string): ChartFile {
   )
     throw new Error("Die Datenquelle des Charts ist unvollständig.");
   const def = CHARTS[value.widget.chart];
+  const dataset =
+    value.dataset.mode === "flow"
+      ? { ...value.dataset, mode: "simple" as const }
+      : value.dataset;
   return {
     ...value,
+    dataset,
     widget: {
       ...value.widget,
       title: typeof value.widget.title === "string" ? value.widget.title : value.name,
