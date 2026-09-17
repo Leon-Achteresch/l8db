@@ -1120,7 +1120,8 @@ export function DataTable({
           `th[data-column-id="${id}"], td[data-col="${id}"]`,
         )) {
           cell.animate([{ boxShadow: flash }, { boxShadow: "inset 0 0 0 999px transparent" }], {
-            duration: 1200,
+            duration: 400,
+            iterations: 3,
             easing: "ease-out",
           });
         }
