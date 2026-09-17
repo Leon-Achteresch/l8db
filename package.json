@@ -1,7 +1,7 @@
 {
   "name": "l8db",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Fast, native desktop client for PostgreSQL and other databases.",
   "author": "Leon Achteresch",
