@@ -74,6 +74,8 @@ keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
+webview2-com = "0.38"
+windows-core = "0.61"
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
