@@ -190,6 +190,18 @@ pub(super) struct TempObject {
     pub kind: String,
 }
 
+fn temp_stem(name: &str) -> &str {
+    let limit = 30 - TEMP_SUFFIX.len();
+    let mut end = 0;
+    for (i, c) in name.char_indices() {
+        if i + c.len_utf8() > limit {
+            break;
+        }
+        end = i + c.len_utf8();
+    }
+    &name[..end]
+}
+
 fn ident_name(word: &str) -> String {
     match word.strip_prefix('"').and_then(|w| w.strip_suffix('"')) {
         Some(quoted) => quoted.replace("\"\"", "\""),
@@ -264,7 +276,7 @@ pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
         i += 2;
     }
     let name = ident(word(i)?);
-    let temp_name = format!("{name}{TEMP_SUFFIX}");
+    let temp_name = format!("{}{TEMP_SUFFIX}", temp_stem(&name));
     let quoted = format!("\"{}\"", temp_name.replace('"', "\"\""));
     replacements.push((toks[i].clone(), quoted.clone()));
     let last = toks.iter().rposition(|r| &sql[r.clone()] != ";")?;
@@ -374,6 +386,10 @@ mod tests {
             f.sql,
             "CREATE OR REPLACE FUNCTION \"F_L8DB_TEMP\" RETURN NUMBER IS BEGIN RETURN 1; END;"
         );
+        let long = temp_object("CREATE PACKAGE pkg_customer_management_service AS END;").unwrap();
+        assert_eq!(long.temp_name, "PKG_CUSTOMER_MANAGEM_L8DB_TEMP");
+        assert_eq!(long.temp_name.len(), 30);
+        assert!(long.sql.contains("PACKAGE \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\" AS END \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\";") || long.sql.contains("PACKAGE \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\" AS END;"));
         assert!(temp_object("CREATE TABLE t (id NUMBER)").is_none());
         assert!(temp_object("CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;").is_none());
         assert!(temp_object("SELECT 1 FROM dual").is_none());
