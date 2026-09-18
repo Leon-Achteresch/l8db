@@ -4,6 +4,7 @@ import {
   impactCallMarkers,
   lintPlsql,
   locateText,
+  plsqlBlockPairs,
   sqlErrorMarkers,
 } from "../src/lib/sql-diagnostics";
 
@@ -136,5 +137,14 @@ SELECT 'open FROM dual;`;
     ["warning", "WHEN OTHERS THEN NULL verschluckt alle Fehler", "NULL"],
     ["error", "Semikolon nach END fehlt", "END"],
     ["error", "Zeichenkette wird nicht geschlossen", "'open FROM dual;"],
+  ]);
+});
+
+test("plsqlBlockPairs: END springt zum passenden BEGIN/IF", () => {
+  const src = "BEGIN\n  IF x THEN\n    NULL;\n  END IF;\nEND;";
+  const pairs = plsqlBlockPairs(src).map((p) => [at(src, p.close), at(src, p.open)]);
+  expect(pairs).toEqual([
+    ["END IF", "IF"],
+    ["END", "BEGIN"],
   ]);
 });
