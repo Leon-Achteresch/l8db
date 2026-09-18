@@ -16,9 +16,10 @@ import {
 import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
 import { providerFor } from "@/lib/connection-url";
-import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useActiveConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
+import { ensurePassword } from "@/lib/password-prompt";
 import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -41,17 +42,29 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
   useEffect(() => {
     if (target) {
       setTargetConnectionId(connection?.id ?? "");
-      setTargetSchema(target.schema);
+      setTargetSchema("");
     }
   }, [target, connection?.id]);
 
-  const { data: schemas } = useQuery({
-    queryKey: ["schemas-all", connection?.id, database],
-    queryFn: () =>
-      listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection && target),
-  });
   const targetConnection = connections.find((entry) => entry.id === targetConnectionId) ?? null;
+  const { data: schemas } = useQuery({
+    queryKey: ["schemas-target", targetConnectionId, database],
+    queryFn: async () => {
+      if (targetConnection!.schemas?.length) return targetConnection!.schemas;
+      if (targetConnection!.id !== connection?.id && !(await ensurePassword(targetConnection!.id)))
+        return [];
+      const current = useConnectionsStore
+        .getState()
+        .connections.find((entry) => entry.id === targetConnectionId)!;
+      return listSchemas(
+        current.kind,
+        effectiveConnectionString(current),
+        current.id === connection?.id ? (database ?? undefined) : undefined,
+      );
+    },
+    select: (list) => visibleSchemas(targetConnection, list),
+    enabled: Boolean(targetConnection && target),
+  });
   const schema = targetSchema.trim();
   const enabled = Boolean(connection && target && schema);
 
@@ -108,7 +121,10 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
           <Label>Zielverbindung</Label>
           <ConnectionPicker
             value={targetConnectionId}
-            onSelect={setTargetConnectionId}
+            onSelect={(id) => {
+              setTargetConnectionId(id);
+              setTargetSchema("");
+            }}
             kind={connection?.kind}
             label="Zielverbindung"
             contentClassName="flex max-h-80 w-(--radix-dropdown-menu-trigger-width) min-w-56 flex-col overflow-hidden"
