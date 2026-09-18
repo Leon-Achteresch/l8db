@@ -275,10 +275,9 @@ export async function initConnectionSecrets(): Promise<void> {
   const { connections } = useConnectionsStore.getState();
   if (connections.length === 0) return;
   let changed = false;
-  const next: SavedConnection[] = [];
-  for (const connection of connections) {
-    next.push(
-      await (async () => {
+  const next = await Promise.all(
+    connections.map((connection) =>
+      (async () => {
         const withDefaults: SavedConnection = {
           ssh: null,
           ...connection,
@@ -311,8 +310,8 @@ export async function initConnectionSecrets(): Promise<void> {
         }
         return withDefaults;
       })(),
-    );
-  }
+    ),
+  );
   if (changed) {
     useConnectionsStore.setState({ connections: next });
   }
