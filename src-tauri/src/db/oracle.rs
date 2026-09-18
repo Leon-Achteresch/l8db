@@ -833,9 +833,6 @@ impl OracleAdapter {
         if source_schema.is_empty() || target_schema.is_empty() {
             return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
         }
-        if source_schema == target_schema {
-            return Err("Quell- und Zielschema sind identisch.".to_string());
-        }
         let requalify = |sql: String| super::requalify_schema(&sql, source_schema, target_schema);
         match object_type {
             "table" => {

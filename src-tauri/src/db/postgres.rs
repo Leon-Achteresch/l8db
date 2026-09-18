@@ -217,23 +217,12 @@ impl PostgresAdapter {
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
+        let conn = self.get_meta().await?;
         self.timed(async {
-            let (client, connection) = self
-                .config
-                .connect(super::connection::tls_connector(self.ssl)?)
-                .await
-                .map_err(map_pg_err)?;
-            let task = tokio::spawn(async move {
-                let _ = connection.await;
-            });
-            let result = client
-                .simple_query("SELECT 1")
+            conn.simple_query("SELECT 1")
                 .await
                 .map(|_| ())
-                .map_err(map_pg_err);
-            drop(client);
-            task.abort();
-            result
+                .map_err(map_pg_err)
         })
         .await
     }
@@ -3941,9 +3930,6 @@ impl PostgresAdapter {
     ) -> Result<String, String> {
         if source_schema.is_empty() || target_schema.is_empty() {
             return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
-        }
-        if source_schema == target_schema {
-            return Err("Quell- und Zielschema sind identisch.".to_string());
         }
         match object_type {
             "table" => {
