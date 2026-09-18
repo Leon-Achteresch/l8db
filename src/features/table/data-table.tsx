@@ -30,6 +30,7 @@ import {
   KeyIcon,
   LinkIcon,
   Loader2Icon,
+  PinIcon,
   SearchIcon,
   Trash2Icon,
   TypeIcon,
@@ -82,6 +83,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
+import { fkPreviewKey, useFkPreviewPrefs } from "@/lib/fk-preview-prefs";
 import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
 import {
   cellKey,
@@ -354,6 +356,23 @@ function FkPreviewPopover({
   );
   const primary = links[0];
   const isSingle = links.length === 1;
+  const [expanded, setExpanded] = useState(false);
+  const pinKey =
+    connection && primary ? fkPreviewKey(connection.id, primary.schema, primary.table) : "";
+  const pinned = useFkPreviewPrefs((state) => state.pinned[pinKey]);
+  const togglePinned = useFkPreviewPrefs((state) => state.togglePinned);
+  const orderedColumns = useMemo(() => {
+    if (!pinned?.length) return previewColumns;
+    const pinnedSet = new Set(pinned);
+    return [
+      ...pinned.filter((c) => previewColumns.includes(c)),
+      ...previewColumns.filter((c) => !pinnedSet.has(c)),
+    ];
+  }, [previewColumns, pinned]);
+  const collapsedCount = pinned?.length
+    ? orderedColumns.filter((c) => pinned.includes(c)).length || 8
+    : 8;
+  const visibleColumns = expanded ? orderedColumns : orderedColumns.slice(0, collapsedCount);
 
   const handleOpenChange = (open: boolean) => {
     if (!open || hasLoaded || !connection || !primary || !isSingle) return;
@@ -431,20 +450,37 @@ function FkPreviewPopover({
                 </div>
               ) : previewData ? (
                 <div className="space-y-1">
-                  {previewColumns.slice(0, 8).map((col) => (
-                    <div key={col} className="flex items-baseline gap-2 text-xs">
-                      <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
-                        {col}
-                      </span>
-                      <span className="min-w-0 truncate">
-                        {tableCellPreview(previewData[col]).text}
-                      </span>
-                    </div>
-                  ))}
-                  {previewColumns.length > 8 && (
-                    <div className="text-[10px] text-muted-foreground pt-1">
-                      +{previewColumns.length - 8} weitere Spalten
-                    </div>
+                  {visibleColumns.map((col) => {
+                    const isPinned = pinned?.includes(col) ?? false;
+                    return (
+                      <div key={col} className="group/row flex items-baseline gap-2 text-xs">
+                        <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
+                          {col}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {tableCellPreview(previewData[col]).text}
+                        </span>
+                        <button
+                          type="button"
+                          title={isPinned ? "Lösen" : "Anpinnen"}
+                          className={`shrink-0 self-center cursor-pointer transition-opacity ${isPinned ? "text-blue-500 opacity-70 hover:opacity-100" : "text-muted-foreground opacity-0 group-hover/row:opacity-60 hover:opacity-100!"}`}
+                          onClick={() => togglePinned(pinKey, col)}
+                        >
+                          <PinIcon className={`size-3 ${isPinned ? "fill-current" : ""}`} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {orderedColumns.length > collapsedCount && (
+                    <button
+                      type="button"
+                      className="text-[10px] text-muted-foreground hover:text-foreground pt-1 cursor-pointer"
+                      onClick={() => setExpanded((v) => !v)}
+                    >
+                      {expanded
+                        ? "Weniger anzeigen"
+                        : `+${orderedColumns.length - collapsedCount} weitere Spalten`}
+                    </button>
                   )}
                 </div>
               ) : (
@@ -880,12 +916,12 @@ export function DataTable({
     const fitted: Record<string, number> = {};
     for (const column of order) {
       fitted[column] = fitHeaderColumnWidth(
-        measureHeaderTitleWidth(column),
+        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
         fkByColumn.has(column),
       );
     }
     return { ...fitted, ...savedColumnSizing };
-  }, [fitColumnsToHeader, order, fkByColumn, savedColumnSizing]);
+  }, [fitColumnsToHeader, order, fkByColumn, typeInfoByColumn, savedColumnSizing]);
   const table = useReactTable({
     data,
     columns,
@@ -1292,10 +1328,13 @@ export function DataTable({
     const next = { ...savedColumnSizing };
     for (const column of order) {
       if (hiddenSet.has(column)) continue;
-      next[column] = fitHeaderColumnWidth(measureHeaderTitleWidth(column), fkByColumn.has(column));
+      next[column] = fitHeaderColumnWidth(
+        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
+        fkByColumn.has(column),
+      );
     }
     setColumnSizing(next);
-  }, [fkByColumn, hidden, order, savedColumnSizing, setColumnSizing]);
+  }, [fkByColumn, typeInfoByColumn, hidden, order, savedColumnSizing, setColumnSizing]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Treffer neu zählen bei Query- oder Datenwechsel
   useEffect(() => {

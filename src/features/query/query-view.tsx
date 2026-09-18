@@ -104,7 +104,6 @@ import {
   useResolvedHotkey,
 } from "@/lib/hotkeys";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
-import { parsePlsqlMembers } from "@/lib/plsql";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
@@ -319,9 +318,6 @@ export function QueryView({ tabId }: QueryViewProps) {
   const revealRequest = useQueryRevealStore((state) => state.request);
   const clearReveal = useQueryRevealStore((state) => state.clearReveal);
 
-  const hasPackageMembers = useMemo(() => parsePlsqlMembers(sql).length > 0, [sql]);
-  const navigatorOpenedForTab = useRef<string | null>(null);
-
   useEffect(() => {
     setSelectedSql("");
     setCursorOffset(0);
@@ -331,14 +327,6 @@ export function QueryView({ tabId }: QueryViewProps) {
     setScriptEntries(null);
     setScriptActiveIndex(null);
   }, [tabId]);
-
-  useEffect(() => {
-    if (navigatorOpenedForTab.current === tabId) return;
-    navigatorOpenedForTab.current = tabId;
-    if (hasPackageMembers && !workspace.navigatorVisible) {
-      workspace.update({ navigatorVisible: true });
-    }
-  }, [tabId, hasPackageMembers, workspace]);
 
   useEffect(() => {
     if (!revealRequest || revealRequest.tabId !== tabId) return;
@@ -1493,37 +1481,6 @@ export function QueryView({ tabId }: QueryViewProps) {
                 minSize="20%"
                 className="flex min-h-0 flex-col"
               >
-                <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileIcon className="size-3 shrink-0" />
-                    <span className="truncate font-medium text-foreground/80">
-                      {filePath?.split(/[\\/]/).pop() ?? "Abfrage.sql"}
-                    </span>
-                    {fileDirty && (
-                      <Badge
-                        variant="outline"
-                        className="h-5 border-amber-500/40 px-1.5 text-[10px] text-amber-600 dark:text-amber-400"
-                      >
-                        geändert
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="ml-auto flex min-w-0 items-center gap-2">
-                    <span className="hidden tabular-nums sm:inline">
-                      {scriptSplit.statements.length} Statement
-                      {scriptSplit.statements.length === 1 ? "" : "s"}
-                    </span>
-                    <span className="hidden h-3 w-px bg-border sm:block" />
-                    <Badge variant="outline" className="h-5 max-w-44 truncate px-1.5 text-[10px]">
-                      {dialectLabel}
-                    </Badge>
-                    <span className="hidden h-3 w-px bg-border md:block" />
-                    <span className="max-w-44 truncate text-foreground/70">
-                      {connection?.name ?? "Keine Verbindung"}
-                      {database ? ` · ${database}` : ""}
-                    </span>
-                  </div>
-                </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <QueryEditorPane
                     language={
