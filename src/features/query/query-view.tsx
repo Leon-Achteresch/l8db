@@ -18,7 +18,6 @@ import {
   AlertTriangleIcon,
   BookmarkIcon,
   ChevronDownIcon,
-  FileIcon,
   GaugeIcon,
   HistoryIcon,
   MoreHorizontalIcon,
@@ -31,7 +30,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { toast } from "sonner";
 import { Collapse } from "@/components/motion/collapse";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
