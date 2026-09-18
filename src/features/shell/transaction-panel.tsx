@@ -1,5 +1,6 @@
 import { CheckIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
+import { useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -14,6 +15,12 @@ export function TransactionPanel() {
   const perTable = useSettingsStore((state) => state.transactionsPerTable);
   const transactions = useTransactionStore((s) => s.transactions);
   const setPanelOpen = useTransactionStore((s) => s.setPanelOpen);
+  const prevCount = useRef(transactions.length);
+
+  useEffect(() => {
+    if (prevCount.current > 0 && transactions.length === 0) setPanelOpen(false);
+    prevCount.current = transactions.length;
+  }, [transactions.length, setPanelOpen]);
 
   return (
     <div data-tour="tx-panel" className="flex h-full min-h-0">
