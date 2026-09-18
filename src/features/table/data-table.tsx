@@ -1359,6 +1359,7 @@ export function DataTable({
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (target && target !== document.body && !root?.contains(target)) return;
+      if (window.getSelection()?.toString()) return;
       if (editingCell) return;
       event.preventDefault();
       copyActiveCell();
