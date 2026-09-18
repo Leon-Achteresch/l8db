@@ -95,6 +95,23 @@ fn view_select_body(ddl: &str) -> &str {
     ddl
 }
 
+fn push_script(
+    out: &mut Vec<(String, String)>,
+    owner: &str,
+    name: String,
+    kind: &str,
+    source: &str,
+) {
+    let script = create_script(owner, &name, kind, source);
+    match out.iter_mut().find(|(n, _)| *n == name) {
+        Some((_, existing)) => {
+            existing.push_str("\n/\n\n");
+            existing.push_str(&script);
+        }
+        None => out.push((name, script)),
+    }
+}
+
 fn create_script(owner: &str, name: &str, object_type: &str, source: &str) -> String {
     let mut rest = source.trim_start();
     for word in object_type.split_whitespace() {
@@ -743,6 +760,145 @@ impl OracleAdapter {
         Ok(create_script(owner, name, object_type, &source))
     }
 
+    async fn schema_copy_definitions(
+        &self,
+        schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<(String, String)>, String> {
+        let owner = lit(schema);
+        match object_type {
+            "table" => {
+                let sql = format!(
+                    "SELECT c.table_name, LISTAGG(c.column_name || ' ' || c.data_type || CASE WHEN c.nullable = 'N' THEN ' NOT NULL' ELSE '' END, CHR(10) ON OVERFLOW TRUNCATE) WITHIN GROUP (ORDER BY c.column_id) \
+                     FROM all_tab_columns c JOIN all_tables t ON t.owner = c.owner AND t.table_name = c.table_name \
+                     WHERE c.owner = {owner} GROUP BY c.table_name ORDER BY c.table_name"
+                );
+                Ok(self
+                    .rows(sql)
+                    .await?
+                    .iter()
+                    .map(|r| (s(r, 0), s(r, 1)))
+                    .collect())
+            }
+            "view" => {
+                let sql = format!(
+                    "SELECT view_name, text FROM all_views WHERE owner = {owner} ORDER BY view_name"
+                );
+                Ok(self
+                    .rows(sql)
+                    .await?
+                    .iter()
+                    .map(|r| (s(r, 0), s(r, 1)))
+                    .collect())
+            }
+            "routine" | "package" => {
+                let types = if object_type == "package" {
+                    "('PACKAGE', 'PACKAGE BODY')"
+                } else {
+                    "('FUNCTION', 'PROCEDURE')"
+                };
+                let sql = format!(
+                    "SELECT name, type, text FROM all_source WHERE owner = {owner} AND type IN {types} ORDER BY name, type, line"
+                );
+                let mut out: Vec<(String, String)> = Vec::new();
+                let mut current: Option<(String, String, String)> = None;
+                for r in self.rows(sql).await?.iter() {
+                    let (name, kind, text) = (s(r, 0), s(r, 1), s(r, 2));
+                    match current.as_mut() {
+                        Some((n, k, buf)) if *n == name && *k == kind => buf.push_str(&text),
+                        _ => {
+                            if let Some((n, k, buf)) = current.take() {
+                                push_script(&mut out, schema, n, &k, &buf);
+                            }
+                            current = Some((name, kind, text));
+                        }
+                    }
+                }
+                if let Some((n, k, buf)) = current.take() {
+                    push_script(&mut out, schema, n, &k, &buf);
+                }
+                Ok(out)
+            }
+            other => Err(format!("Unbekannter Objekttyp: {other}")),
+        }
+    }
+
+    async fn schema_copy_statements(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<Vec<String>, String> {
+        if source_schema.is_empty() || target_schema.is_empty() {
+            return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
+        }
+        if source_schema == target_schema {
+            return Err("Quell- und Zielschema sind identisch.".to_string());
+        }
+        let requalify = |sql: String| super::requalify_schema(&sql, source_schema, target_schema);
+        match object_type {
+            "table" => {
+                let columns = self
+                    .list_table_columns_detailed(source_schema, name)
+                    .await?;
+                if columns.is_empty() {
+                    return Err(format!(
+                        "Tabelle {source_schema}.{name} hat keine Spalten oder existiert nicht."
+                    ));
+                }
+                let req = CreateTableRequest {
+                    schema: target_schema.to_string(),
+                    name: name.to_string(),
+                    if_not_exists: false,
+                    columns: columns
+                        .iter()
+                        .map(|c| super::ColumnDefinition {
+                            name: c.name.clone(),
+                            data_type: c.data_type.clone(),
+                            is_nullable: c.is_nullable,
+                            default_value: c.column_default.clone().map(&requalify),
+                            is_primary_key: c.is_primary_key,
+                            is_unique: false,
+                        })
+                        .collect(),
+                };
+                Ok(vec![create_table_sql(&req, quote, true)])
+            }
+            "view" => Ok(vec![requalify(
+                self.get_view_definition(source_schema, name).await?,
+            )]),
+            "routine" => {
+                let kind = self
+                    .rows(format!(
+                        "SELECT object_type FROM all_objects WHERE owner = {} AND object_name = {} AND object_type IN ('FUNCTION', 'PROCEDURE')",
+                        lit(source_schema),
+                        lit(name)
+                    ))
+                    .await?
+                    .first()
+                    .map(|r| s(r, 0))
+                    .ok_or_else(|| format!("Routine {source_schema}.{name} nicht gefunden."))?;
+                Ok(vec![requalify(
+                    self.source_script(source_schema, name, &kind).await?,
+                )])
+            }
+            "package" => {
+                let mut out = vec![requalify(
+                    self.source_script(source_schema, name, "PACKAGE").await?,
+                )];
+                if let Ok(body) = self
+                    .source_script(source_schema, name, "PACKAGE BODY")
+                    .await
+                {
+                    out.push(requalify(body));
+                }
+                Ok(out)
+            }
+            other => Err(format!("Unbekannter Objekttyp: {other}")),
+        }
+    }
+
     async fn exec(&self, sql: String) -> Result<u64, String> {
         self.run(move |c| {
             let count = c
@@ -1332,6 +1488,82 @@ impl DatabaseAdapter for OracleAdapter {
                 language: "PL/SQL".to_string(),
             })
             .collect())
+    }
+
+    async fn list_schema_copy_objects(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+    ) -> Result<Vec<super::SchemaObjectEntry>, String> {
+        let source = self
+            .schema_copy_definitions(source_schema, object_type)
+            .await?;
+        let target = self
+            .schema_copy_definitions(target_schema, object_type)
+            .await?;
+        Ok(source
+            .into_iter()
+            .map(|(name, definition)| {
+                let rewritten = super::requalify_schema(&definition, source_schema, target_schema);
+                let (status, target_definition) =
+                    match target.iter().find(|(other, _)| other == &name) {
+                        None => ("missing", String::new()),
+                        Some((_, def)) => {
+                            let same = rewritten.split_whitespace().eq(def.split_whitespace());
+                            (if same { "identical" } else { "different" }, def.clone())
+                        }
+                    };
+                super::SchemaObjectEntry {
+                    name,
+                    object_type: object_type.to_string(),
+                    status: status.to_string(),
+                    source_definition: rewritten,
+                    target_definition,
+                }
+            })
+            .collect())
+    }
+
+    async fn preview_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        Ok(self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?
+            .join("\n/\n\n"))
+    }
+
+    async fn execute_schema_object_copy(
+        &self,
+        source_schema: &str,
+        target_schema: &str,
+        object_type: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let statements = self
+            .schema_copy_statements(source_schema, target_schema, object_type, name)
+            .await?;
+        let exists = self
+            .rows(format!(
+                "SELECT 1 FROM all_objects WHERE owner = {} AND object_name = {} AND ROWNUM = 1",
+                lit(target_schema),
+                lit(name)
+            ))
+            .await?;
+        if !exists.is_empty() {
+            return Err(format!(
+                "Namenskonflikt: {name} existiert bereits im Zielschema {target_schema}."
+            ));
+        }
+        for statement in &statements {
+            self.exec(statement.clone()).await?;
+        }
+        Ok(statements.join("\n/\n\n"))
     }
 
     async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
@@ -2174,6 +2406,26 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn push_script_merges_package_spec_and_body() {
+        let mut out = Vec::new();
+        super::push_script(&mut out, "HR", "PKG".into(), "PACKAGE", "PACKAGE pkg IS END;");
+        super::push_script(
+            &mut out,
+            "HR",
+            "PKG".into(),
+            "PACKAGE BODY",
+            "PACKAGE BODY pkg IS END;",
+        );
+        assert_eq!(out.len(), 1);
+        let script = &out[0].1;
+        assert!(script.starts_with("CREATE OR REPLACE PACKAGE \"HR\".\"PKG\""));
+        assert!(script.contains("\n/\n\nCREATE OR REPLACE PACKAGE BODY \"HR\".\"PKG\""));
+        let moved = crate::db::requalify_schema(script, "HR", "DEV");
+        assert!(moved.contains("\"DEV\".\"PKG\""));
+        assert!(!moved.contains("\"HR\""));
+    }
+
     use super::*;
 
     #[test]
