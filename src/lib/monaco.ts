@@ -18,6 +18,7 @@ import { useSettingsStore } from "@/lib/settings";
 import {
   impactCallMarkers,
   lintPlsql,
+  plsqlBlockPairs,
   type SqlMarker,
   sqlErrorMarkers,
 } from "@/lib/sql-diagnostics";
@@ -229,6 +230,25 @@ for (const lang of ["sql", "plsql"]) {
         return [];
       }
       return [{ range, text: result.sql }];
+    },
+  });
+}
+
+for (const lang of ["sql", "plsql"]) {
+  monaco.languages.registerDefinitionProvider(lang, {
+    provideDefinition(model, position) {
+      const offset = model.getOffsetAt(position);
+      const pair = plsqlBlockPairs(model.getValue()).find(
+        (p) => p.close.start <= offset && offset <= p.close.end,
+      );
+      if (!pair) return null;
+      const toRange = (span: { start: number; end: number }) =>
+        monaco.Range.fromPositions(model.getPositionAt(span.start), model.getPositionAt(span.end));
+      return {
+        uri: model.uri,
+        range: toRange(pair.open),
+        originSelectionRange: toRange(pair.close),
+      };
     },
   });
 }

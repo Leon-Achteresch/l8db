@@ -178,6 +178,11 @@ interface Block {
   token: Token;
 }
 
+export interface BlockPair {
+  open: { start: number; end: number };
+  close: { start: number; end: number };
+}
+
 const CLOSE_QUOTE: Record<string, string> = { "[": "]", "(": ")", "{": "}", "<": ">" };
 
 function tokenize(src: string, findings: SqlMarker[]): Token[] {
@@ -263,7 +268,16 @@ const OPENER_HINT: Record<BlockKind, string> = {
 };
 
 export function lintPlsql(src: string): SqlMarker[] {
+  return analyzePlsql(src).findings;
+}
+
+export function plsqlBlockPairs(src: string): BlockPair[] {
+  return analyzePlsql(src).pairs;
+}
+
+function analyzePlsql(src: string): { findings: SqlMarker[]; pairs: BlockPair[] } {
   const findings: SqlMarker[] = [];
+  const pairs: BlockPair[] = [];
   const tokens = tokenize(src, findings);
   const blocks: Block[] = [];
   const parens: Token[] = [];
@@ -399,7 +413,11 @@ export function lintPlsql(src: string): SqlMarker[] {
           if (index < 0) add(token, `END ${next} ohne passendes ${next}`);
           else {
             unclosed(index + 1);
-            blocks.pop();
+            const block = blocks.pop() as Block;
+            pairs.push({
+              open: block.token,
+              close: { start: token.start, end: tokens[i + 1].end },
+            });
           }
           expectSemicolon(token, i + 2, `END ${next}`);
           i++;
@@ -411,8 +429,9 @@ export function lintPlsql(src: string): SqlMarker[] {
           break;
         }
         unclosed(index + 1);
-        const block = blocks.pop();
-        if (block?.kind === "CASE") break;
+        const block = blocks.pop() as Block;
+        pairs.push({ open: block.token, close: token });
+        if (block.kind === "CASE") break;
         if (next === "BEFORE" || next === "AFTER" || next === "INSTEAD") break;
         expectSemicolon(token, i + 1, "END");
         break;
@@ -446,5 +465,5 @@ export function lintPlsql(src: string): SqlMarker[] {
   }
   unclosed(0);
   flushParens();
-  return findings.sort((a, b) => a.start - b.start);
+  return { findings: findings.sort((a, b) => a.start - b.start), pairs };
 }
