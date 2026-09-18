@@ -6,6 +6,7 @@ mod connection;
 mod duckdb;
 pub mod execution;
 pub mod export;
+mod mongo_shell;
 mod mongodb;
 mod mssql;
 mod mysql;
