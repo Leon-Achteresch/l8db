@@ -167,6 +167,7 @@ import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useSettingsStore } from "@/lib/settings";
+import { useSidebarSearch } from "@/lib/sidebar-search";
 import {
   activateConnectionWithToast,
   effectiveConnectionString,
@@ -872,7 +873,7 @@ function SidebarEntityList({
   type,
   matchRoute,
 }: SidebarEntityListProps) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useSidebarSearch(type === "table" ? "tables" : "views");
   const [confirmAction, setConfirmAction] = useState<{
     kind: "drop" | "truncate";
     schema: string;
@@ -1333,7 +1334,7 @@ interface SidebarFunctionListProps {
 }
 
 function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFunctionListProps) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useSidebarSearch("functions");
   const deferredSearch = useDeferredValue(search);
   const regexEnabled = useRegexEnabled("sidebar");
   const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
