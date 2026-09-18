@@ -12,11 +12,7 @@ export function tableCellPreview(
   if (value === null || value === undefined) return { text: "NULL", kind: "null" };
   if (typeof value === "boolean") return { text: String(value), kind: value ? "true" : "false" };
   if (typeof value === "number") return { text: String(value), kind: "number" };
-  if (typeof value === "object")
-    return {
-      text: Array.isArray(value) ? `[] Array(${value.length})` : "{} Object",
-      kind: "object",
-    };
+  if (typeof value === "object") return { text: objectPreview(value, limit), kind: "object" };
   const raw = String(value);
   const text = truncateCellPreview(raw, limit);
   if (raw.length <= TABLE_CELL_PREVIEW_LIMIT) {
@@ -45,4 +41,37 @@ export function truncateCellPreview(text: string, limit: number): string {
   const last = text.charCodeAt(limit - 1);
   const end = last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit;
   return `${text.slice(0, end)}…`;
+}
+
+function objectPreview(value: object, limit: number): string {
+  let out = "";
+  const write = (v: unknown): boolean => {
+    if (out.length > limit) return false;
+    if (v === null || typeof v !== "object") {
+      out += typeof v === "string" ? JSON.stringify(v) : String(v ?? null);
+      return out.length <= limit;
+    }
+    const isArray = Array.isArray(v);
+    out += isArray ? "[" : "{";
+    let first = true;
+    if (isArray) {
+      for (let i = 0; i < v.length; i++) {
+        if (!first) out += ", ";
+        first = false;
+        if (!write(v[i])) return false;
+      }
+    } else {
+      for (const key in v) {
+        if (!Object.hasOwn(v, key)) continue;
+        if (!first) out += ", ";
+        first = false;
+        out += `${key}: `;
+        if (!write((v as Record<string, unknown>)[key])) return false;
+      }
+    }
+    out += isArray ? "]" : "}";
+    return out.length <= limit;
+  };
+  write(value);
+  return truncateCellPreview(out, limit);
 }
