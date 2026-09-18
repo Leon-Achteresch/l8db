@@ -43,8 +43,8 @@ export function ChartDataStep({
         <div>
           <h2 className="text-sm font-semibold">Deine eigene SQL-Abfrage</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Schreibe eine SELECT-Abfrage. Die Spalten des Ergebnisses ordnest du im nächsten
-            Schritt dem Chart zu.
+            Schreibe eine SELECT-Abfrage. Die Spalten des Ergebnisses ordnest du im nächsten Schritt
+            dem Chart zu.
           </p>
         </div>
         <SqlEditor
@@ -76,9 +76,7 @@ export function ChartDataStep({
       <DatasetSourcePicker
         schema={s.schema}
         table={s.table}
-        onChange={(schema, table) =>
-          onChange({ simple: { ...emptySimple(), schema, table } })
-        }
+        onChange={(schema, table) => onChange({ simple: { ...emptySimple(), schema, table } })}
       />
       {hasFks && s.table && relations.length > 0 && (
         <div className="space-y-2 rounded-xl border bg-card/60 p-4">

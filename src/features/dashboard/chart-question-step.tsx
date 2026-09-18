@@ -25,7 +25,7 @@ import {
 } from "@/lib/dashboards";
 import { useDetailedColumnsQuery } from "@/lib/queries";
 import { filterOperatorLabel, parseFilterList } from "@/lib/sql-filter";
-import { type ChartFilterField, ChartFilterEditor } from "./chart-filter-editor";
+import { ChartFilterEditor, type ChartFilterField } from "./chart-filter-editor";
 import { ColumnSelect } from "./dataset-column-select";
 
 interface ColumnOpt {
@@ -74,8 +74,7 @@ export function ChartQuestionStep({
     ],
     [base.data, joined.data, s.join],
   );
-  const typeOf = (ref: string | null | undefined) =>
-    columns.find((c) => c.ref === ref)?.type ?? "";
+  const typeOf = (ref: string | null | undefined) => columns.find((c) => c.ref === ref)?.type ?? "";
   const fieldOf = (ref: string): ChartFilterField => ({
     ref,
     label: columns.find((c) => c.ref === ref)?.label ?? ref,
@@ -85,8 +84,7 @@ export function ChartQuestionStep({
   if (dataset.mode === "expert") {
     const m = dataset.mapping;
     const opts = resultColumns.map((c) => ({ ref: c, label: c, type: "" }));
-    const setMapping = (patch: Partial<typeof m>) =>
-      onChange({ mapping: { ...m, ...patch } });
+    const setMapping = (patch: Partial<typeof m>) => onChange({ mapping: { ...m, ...patch } });
     return (
       <div className="space-y-6">
         <div>
@@ -154,8 +152,7 @@ export function ChartQuestionStep({
     );
   }
 
-  const patchSimple = (patch: Partial<SimpleDataset>) =>
-    onChange({ simple: { ...s, ...patch } });
+  const patchSimple = (patch: Partial<SimpleDataset>) => onChange({ simple: { ...s, ...patch } });
 
   return (
     <div className="space-y-6">
@@ -210,9 +207,7 @@ export function ChartQuestionStep({
                   value={metric.column}
                   onChange={(column) =>
                     patchSimple({
-                      metrics: s.metrics.map((x) =>
-                        x.id === metric.id ? { ...x, column } : x,
-                      ),
+                      metrics: s.metrics.map((x) => (x.id === metric.id ? { ...x, column } : x)),
                     })
                   }
                   columns={columns}
@@ -269,8 +264,8 @@ export function ChartQuestionStep({
         <div>
           <h2 className="text-sm font-semibold">2 · Wie willst du aufteilen?</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Jeder Wert dieser Spalte wird ein Balken, Punkt oder Stück im Chart — zum Beispiel
-            jedes Land oder jeder Monat.
+            Jeder Wert dieser Spalte wird ein Balken, Punkt oder Stück im Chart — zum Beispiel jedes
+            Land oder jeder Monat.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -419,10 +414,7 @@ export function ChartQuestionStep({
           <h2 className="text-sm font-semibold">4 · Reihenfolge und Höchstzahl</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select
-            value={s.sort}
-            onValueChange={(sort) => patchSimple({ sort: sort as SortMode })}
-          >
+          <Select value={s.sort} onValueChange={(sort) => patchSimple({ sort: sort as SortMode })}>
             <SelectTrigger size="sm" className="h-8 text-xs" aria-label="Sortierung">
               <SelectValue />
             </SelectTrigger>

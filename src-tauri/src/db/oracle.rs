@@ -419,9 +419,9 @@ END;",
                 temp.kind, temp.name
             ));
         }
-        let text = plan.iter().fold(text.to_string(), |t, p| {
-            t.replace(&p.temp_name, &p.name)
-        });
+        let text = plan
+            .iter()
+            .fold(text.to_string(), |t, p| t.replace(&p.temp_name, &p.name));
         messages.push(if line == "0" {
             text
         } else {
@@ -2432,7 +2432,7 @@ mod tests {
             .is_err());
         let bad_view = a
             .validate_sql(
-                "CREATE OR REPLACE FORCE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table"
+                "CREATE OR REPLACE FORCE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table",
             )
             .await
             .unwrap_err();

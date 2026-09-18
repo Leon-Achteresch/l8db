@@ -89,8 +89,8 @@ export const DashboardCanvas = memo(function DashboardCanvas({
             <LayoutDashboardIcon className="mx-auto mb-3 size-8 text-muted-foreground/60" />
             <p className="text-sm font-semibold">Noch ist hier leer</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Ein Chart beantwortet eine Frage an deine Daten, zum Beispiel „Wie viele
-              Bestellungen gab es pro Monat?“
+              Ein Chart beantwortet eine Frage an deine Daten, zum Beispiel „Wie viele Bestellungen
+              gab es pro Monat?“
             </p>
             {onAdd && (
               <Button size="sm" className="mt-4" onClick={onAdd}>
