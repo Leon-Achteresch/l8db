@@ -141,7 +141,10 @@ export function DashboardEditor({
 
   const saveDraft = (next: ChartDraft) => {
     if (draftIsNew) {
-      update((d) => ({ widgets: [...d.widgets, next.widget], datasets: [...d.datasets, next.dataset] }));
+      update((d) => ({
+        widgets: [...d.widgets, next.widget],
+        datasets: [...d.datasets, next.dataset],
+      }));
       return;
     }
     update((d) => {
@@ -149,8 +152,7 @@ export function DashboardEditor({
         (w) => w.id !== next.widget.id && w.datasetId === next.widget.datasetId,
       );
       const exists = d.datasets.some((x) => x.id === next.dataset.id);
-      const dataset =
-        shared || !exists ? { ...next.dataset, id: createId() } : next.dataset;
+      const dataset = shared || !exists ? { ...next.dataset, id: createId() } : next.dataset;
       return {
         datasets:
           shared || !exists

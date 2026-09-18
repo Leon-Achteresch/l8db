@@ -217,9 +217,8 @@ export function buildViewDdl(
     ? `${quoteIdentifier(schema, style)}.${quoteIdentifier(view, style)}`
     : quoteIdentifier(view, style);
   const trimmed = body.trim().replace(/;+\s*$/, "");
-  const isReplaceable = /^CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\b|(?:NO\s+)?(?:FORCE\s+)?MATERIALIZED\b)/i.test(
-    trimmed,
-  );
+  const isReplaceable =
+    /^CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\b|(?:NO\s+)?(?:FORCE\s+)?MATERIALIZED\b)/i.test(trimmed);
   if (isReplaceable && kind !== "mssql" && kind !== "sqlite") return `${trimmed};`;
   const select = viewSelectBody(trimmed);
   if (kind === "mssql") return `CREATE OR ALTER VIEW ${target} AS\n${select};`;

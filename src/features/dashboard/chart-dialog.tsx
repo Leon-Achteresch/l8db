@@ -5,12 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { makeChartFile } from "@/lib/chart-file";
 import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
-import {
-  type Dataset,
-  type DatasetShape,
-  datasetShape,
-  type Widget,
-} from "@/lib/dashboards";
+import { type Dataset, type DatasetShape, datasetShape, type Widget } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
 import { ChartDataStep } from "./chart-data-step";
 import { ChartPreviewTable } from "./chart-preview-table";

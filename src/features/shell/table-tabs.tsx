@@ -102,8 +102,7 @@ export function TableTabs() {
     const recent = tabHistory.find(
       (entry) => entry !== key && tabs.some((t) => tabKey(t) === entry),
     );
-    const next =
-      tabs.find((t) => tabKey(t) === recent) ?? tabs[index + 1] ?? tabs[index - 1];
+    const next = tabs.find((t) => tabKey(t) === recent) ?? tabs[index + 1] ?? tabs[index - 1];
     void Promise.resolve(next ? navigateToTab(navigate, next) : navigate({ to: "/" })).finally(() =>
       closeTab(key),
     );
