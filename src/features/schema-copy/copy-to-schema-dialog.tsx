@@ -1,17 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDownIcon } from "lucide-react";
+import { ChevronsUpDownIcon, LayersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
 import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
 import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -25,6 +32,7 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
   const database = useActiveDatabase();
   const connections = useConnectionsStore((state) => state.connections);
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
+  const setSchema = useDbSelectionStore((state) => state.setSchema);
   const navigate = useNavigate();
   const [targetConnectionId, setTargetConnectionId] = useState("");
   const [targetSchema, setTargetSchema] = useState("");
@@ -70,6 +78,7 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
       if (targetConnectionId !== connection?.id) {
         if (!(await activateConnectionWithToast(targetConnectionId))) return;
       }
+      setSchema(targetConnectionId, schema);
       const id = openQueryTabWithSql(ddlQuery.data, `${schema}.${target.name}`);
       onClose();
       void navigate({ to: "/query/$id", params: { id } });
@@ -124,18 +133,25 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="copy-target-schema">Zielschema</Label>
-          <Input
-            id="copy-target-schema"
-            list="copy-target-schemas"
-            value={targetSchema}
-            onChange={(event) => setTargetSchema(event.target.value)}
-          />
-          <datalist id="copy-target-schemas">
-            {(schemas ?? []).map((entry) => (
-              <option key={entry} value={entry} />
-            ))}
-          </datalist>
+          <Label>Zielschema</Label>
+          <Select value={targetSchema} onValueChange={setTargetSchema}>
+            <SelectTrigger className="w-full min-w-0" aria-label="Zielschema" title={targetSchema}>
+              {schemas?.includes(targetSchema) ? null : (
+                <LayersIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <SelectValue placeholder="Wählen…" />
+            </SelectTrigger>
+            <SelectContent searchable>
+              {(schemas ?? []).map((entry) => (
+                <SelectItem key={entry} value={entry}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <SchemaLogo name={entry} />
+                    <span className="truncate">{entry}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </DdlPreviewDialog>
