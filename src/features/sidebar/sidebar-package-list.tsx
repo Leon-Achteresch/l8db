@@ -49,6 +49,7 @@ import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInvalidSet, isPackageInvalid, isPackagePartInvalid } from "@/lib/invalid-objects";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
+import { useSidebarSearch } from "@/lib/sidebar-search";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -60,7 +61,7 @@ interface SidebarPackageListProps {
 }
 
 export function SidebarPackageList({ items, isLoading, isError, error }: SidebarPackageListProps) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useSidebarSearch("packages");
   const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
