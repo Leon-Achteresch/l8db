@@ -4,7 +4,6 @@ import { Star, StarOff } from "lucide";
 import {
   ActivityIcon,
   BracesIcon,
-  CheckIcon,
   ChevronsUpDownIcon,
   Columns2Icon,
   ColumnsIcon,
@@ -26,7 +25,6 @@ import {
   SettingsIcon,
   SquareFunctionIcon,
   SquareTerminalIcon,
-  StarIcon,
   TableIcon,
   TrashIcon,
   UnplugIcon,
@@ -35,9 +33,8 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { lazy, Suspense, useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { DatabaseLogo, SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
 import { SidebarSearchInput } from "@/components/sidebar-search-input";
@@ -66,14 +63,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -106,6 +96,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -119,14 +110,9 @@ import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list"
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
-import {
-  connectionUser,
-  groupByServer,
-  siblingConnections,
-  sortServerGroups,
-} from "@/lib/connection-groups";
+import { connectionUser, siblingConnections } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
-import { sortConnectionsByName, useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import {
   createMaterializedView,
@@ -186,9 +172,6 @@ const TableSearchModal = lazy(() =>
 export function AppSidebarPanel() {
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
-  const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
-  const serverOrder = useConnectionsStore((state) => state.serverOrder);
-  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
@@ -201,58 +184,6 @@ export function AppSidebarPanel() {
   const activeSchema = useActiveSchema();
   const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
-  const serverGroups = useMemo(
-    () =>
-      sortServerGroups(
-        groupByServer(sortConnectionsByName(connections), hostGroupRules),
-        favoriteServerKeys,
-        serverOrder,
-      ),
-    [connections, favoriteServerKeys, serverOrder, hostGroupRules],
-  );
-  const grouped = serverGroups.some((group) => group.connections.length > 1 || group.ruleId);
-  const [connectionSearch, setConnectionSearch] = useState("");
-  const connectionSearchRef = useRef<HTMLInputElement>(null);
-  const focusConnectionSearch = useCallback((node: HTMLInputElement | null) => {
-    connectionSearchRef.current = node;
-    if (node) requestAnimationFrame(() => node.focus());
-  }, []);
-  const connectionRegexEnabled = useRegexEnabled("sidebar");
-  const connectionSearchPatterns = useMemo(
-    () =>
-      connectionRegexEnabled && connectionSearch.trim() !== ""
-        ? compileSearchPatterns(connectionSearch, { global: false })
-        : null,
-    [connectionRegexEnabled, connectionSearch],
-  );
-  const filteredServerGroups = useMemo(() => {
-    const query = connectionSearch.trim().toLowerCase();
-    if (!query) return serverGroups;
-    const patterns = splitSearchPatterns(connectionSearch).map((pattern) => pattern.toLowerCase());
-    const matches = (value: string) => {
-      const lower = value.toLowerCase();
-      if (patterns.some((pattern) => lower.includes(pattern))) return true;
-      return (
-        connectionSearchPatterns?.ok === true &&
-        connectionSearchPatterns.regexes.some((regex) => regex.test(value))
-      );
-    };
-
-    return serverGroups
-      .map((group) => {
-        const connectionsInGroup = group.connections.filter((connection) => {
-          return [
-            group.label,
-            connection.name,
-            connection.kind,
-            connectionUser(connection),
-            ...(connection.tags?.map((tag) => tag.name) ?? []),
-          ].some(matches);
-        });
-        return connectionsInGroup.length > 0 ? { ...group, connections: connectionsInGroup } : null;
-      })
-      .filter((group): group is (typeof serverGroups)[number] => group !== null);
-  }, [connectionRegexEnabled, connectionSearch, connectionSearchPatterns, serverGroups]);
   const siblings = useMemo(
     () => siblingConnections(connections, activeConnection),
     [connections, activeConnection],
@@ -359,12 +290,18 @@ export function AppSidebarPanel() {
       className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
-        <DropdownMenu
-          onOpenChange={(open) => {
-            if (!open) setConnectionSearch("");
+        <ConnectionPicker
+          value={activeConnection?.id ?? null}
+          busyId={isSwitching ? switchTargetId : null}
+          disabled={isSwitching}
+          onSelect={(id) => {
+            if (useConnectionSwitch.getState().isSwitching) return;
+            if (id === activeConnection?.id) return;
+            void activateConnectionWithToast(id).then((ok) => {
+              if (ok) void navigate({ to: "/" });
+            });
           }}
-        >
-          <DropdownMenuTrigger asChild>
+          trigger={
             <button
               type="button"
               data-tour="sidebar-connection"
@@ -405,112 +342,9 @@ export function AppSidebarPanel() {
               </span>
               <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="flex max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-56 flex-col overflow-hidden"
-          >
-            <DropdownMenuLabel>Verbindung wechseln</DropdownMenuLabel>
-            {connections.length > 0 && (
-              <div className="relative px-1 pb-1.5">
-                <SearchIcon className="pointer-events-none absolute top-2.5 left-3 size-3.5 text-muted-foreground" />
-                <Input
-                  ref={focusConnectionSearch}
-                  value={connectionSearch}
-                  onChange={(event) => setConnectionSearch(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (!["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key))
-                      event.stopPropagation();
-                  }}
-                  placeholder="Verbindungen suchen…"
-                  aria-label="Verbindungen suchen"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="h-8 pl-8 text-xs"
-                />
-              </div>
-            )}
-            <div
-              role="group"
-              className="min-h-0 flex-1 overflow-y-auto"
-              onKeyDown={(event) => {
-                if (event.metaKey || event.ctrlKey || event.altKey) return;
-                if (event.key.length !== 1 && event.key !== "Backspace") return;
-                event.stopPropagation();
-                connectionSearchRef.current?.focus();
-              }}
-            >
-              {connections.length === 0 ? (
-                <DropdownMenuItem disabled>Keine Verbindungen gespeichert</DropdownMenuItem>
-              ) : filteredServerGroups.length === 0 ? (
-                <DropdownMenuItem disabled>Keine Treffer</DropdownMenuItem>
-              ) : (
-                filteredServerGroups.map((group) => (
-                  <DropdownMenuGroup key={group.key}>
-                    {grouped && (
-                      <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
-                        <ProviderLogo
-                          providerId={providerFor(group.connections[0]).id}
-                          kind={group.kind}
-                          className="size-3"
-                        />
-                        <span className="truncate">{group.label}</span>
-                        <span className="ml-auto shrink-0 tabular-nums">
-                          {group.connections.length}
-                        </span>
-                        {favoriteServerKeys.includes(group.key) && (
-                          <StarIcon className="size-3 fill-current text-amber-500" />
-                        )}
-                      </DropdownMenuLabel>
-                    )}
-                    {group.connections.map((connection) => (
-                      <DropdownMenuItem
-                        key={connection.id}
-                        disabled={isSwitching}
-                        onSelect={() => {
-                          if (useConnectionSwitch.getState().isSwitching) return;
-                          if (connection.id === activeConnection?.id) return;
-                          void activateConnectionWithToast(connection.id).then((ok) => {
-                            if (ok) void navigate({ to: "/" });
-                          });
-                        }}
-                      >
-                        <ConnectionStatusIndicator connectionId={connection.id} />
-                        {!grouped ? (
-                          <ProviderLogo
-                            providerId={providerFor(connection).id}
-                            kind={connection.kind}
-                          />
-                        ) : null}
-                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                          <span className="truncate">{connection.name}</span>
-                          {grouped && connectionUser(connection) && (
-                            <span className="truncate font-mono text-[10px] text-muted-foreground">
-                              {connectionUser(connection)}
-                            </span>
-                          )}
-                          {connection.tags?.map((tag, index) => (
-                            <span
-                              key={index}
-                              className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                              style={{ backgroundColor: tag.color }}
-                            >
-                              {tag.name}
-                            </span>
-                          ))}
-                        </span>
-                        {isSwitching && switchTargetId === connection.id ? (
-                          <Spinner className="size-4" />
-                        ) : connection.id === activeConnection?.id ? (
-                          <CheckIcon className="size-4" />
-                        ) : null}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                ))
-              )}
-            </div>
-            <div className="mt-1 shrink-0 border-t border-border/70 pt-1">
+          }
+          footer={
+            <>
               {activeConnection ? (
                 <DropdownMenuItem
                   disabled={isSwitching}
@@ -526,9 +360,9 @@ export function AppSidebarPanel() {
                   Verbindungen verwalten
                 </Link>
               </DropdownMenuItem>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </>
+          }
+        />
         {activeConnection ? (
           <div className="grid min-w-0 gap-2" data-tour="sidebar-scope">
             {caps.databases && (
