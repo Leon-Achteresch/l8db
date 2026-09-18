@@ -5,24 +5,10 @@ import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { useSettingsStore } from "@/lib/settings";
 import { cellPreviewLimit, tableCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
+import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
+import { VALUE_CLASSES } from "./data-table-cell/value-classes";
 import type { DataTableRowProps } from "./data-table-row";
 import type { TableRow } from "./data-table-types";
-
-const VALUE_CLASSES = {
-  null: "text-red-600 dark:text-red-400",
-  true: "text-emerald-600 dark:text-emerald-400",
-  false: "text-rose-600 dark:text-rose-400",
-  number: "text-emerald-600 dark:text-emerald-400 tabular-nums",
-  object: "text-purple-600 dark:text-purple-400",
-  date: "text-rose-600 dark:text-rose-400",
-  uuid: "text-amber-600 dark:text-amber-400",
-  text: "text-foreground/90",
-};
-
-const focusEditInput = (el: HTMLInputElement | null) => {
-  el?.focus();
-  el?.select();
-};
 
 type DataTableCellProps = Pick<
   DataTableRowProps,
@@ -106,41 +92,13 @@ export const DataTableCell = memo(function DataTableCell({
   const isCellEditing = !!editingCell;
   if (isCellEditing && editingCell) {
     return (
-      <td
-        style={{ width }}
-        className="px-0 py-0 align-top border-b border-r border-primary/40 relative overflow-hidden bg-primary/[0.04]"
-      >
-        <div className="flex flex-col">
-          <input
-            type="text"
-            ref={focusEditInput}
-            value={editingCell.value}
-            onChange={(e) =>
-              setEditingCell((prev) => (prev ? { ...prev, value: e.target.value } : prev))
-            }
-            onBlur={(e) => {
-              if (e.currentTarget.isConnected) commitEditingCell();
-            }}
-            disabled={isSaving}
-            placeholder="NULL"
-            className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
-          />
-          <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                ↵
-              </kbd>
-              <span>Speichern</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
-                esc
-              </kbd>
-              <span>Abbrechen</span>
-            </span>
-          </div>
-        </div>
-      </td>
+      <DataTableEditingCell
+        editingCell={editingCell}
+        isSaving={isSaving}
+        setEditingCell={setEditingCell}
+        commitEditingCell={commitEditingCell}
+        width={width}
+      />
     );
   }
 

@@ -1,18 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide";
-import { FilterIcon, FilterXIcon, Maximize2Icon } from "lucide-react";
-import { MorphIcon } from "morphicons/react";
 import { memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { FilterValueInput } from "@/features/filters/filter-value-input";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
-import { dbErrorCode } from "@/lib/db-error-codes";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
@@ -20,26 +8,21 @@ import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
   activeFilterCount,
   applyResultView,
-  describeResultCount,
-  isFilterActive,
-  normalizeResultFilterOperator,
   type ResultFilterOperator,
   type ResultFilters,
   type ResultSort,
-  resultFilterOperatorLabel,
-  sortDirectionFor,
-  sortRankFor,
-  toggleResultSort,
 } from "@/lib/result-grid";
 import { useSettingsStore } from "@/lib/settings";
-import { changeFilterOperator, OPERATORS, operatorNeedsValue } from "@/lib/sql-filter";
-import { cn } from "@/lib/utils";
 
 import { QueryResultRow } from "./query-result-row";
+import { ResultEmpty } from "./query-result-table/result-empty";
+import { ResultError } from "./query-result-table/result-error";
+import { ResultFilterCell } from "./query-result-table/result-filter-cell";
+import { ResultLoading } from "./query-result-table/result-loading";
+import { ResultSortHeader } from "./query-result-table/result-sort-header";
+import { ResultToolbar } from "./query-result-table/result-toolbar";
 
 const PINNED_COLUMNS = [0];
-
-const FILTER_OPERATORS = OPERATORS.map((operator) => operator.key);
 
 interface QueryResultTableProps {
   result: QueryResult | null;
@@ -168,129 +151,24 @@ export const QueryResultTable = memo(function QueryResultTable({
     setAutoColumnWidths(nextWidths);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center bg-card/40">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <svg
-            className="size-4 animate-spin"
-            fill="none"
-            viewBox="0 0 24 24"
-            role="img"
-            aria-label="Wird ausgeführt"
-          >
-            <title>Wird ausgeführt</title>
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          Ausführen…
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <ResultLoading />;
 
-  if (error) {
-    const errorCode = dbErrorCode(kind, error);
-    return (
-      <div className="flex h-full flex-col items-start gap-2 overflow-auto p-5">
-        <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive">
-          Fehler
-        </span>
-        <pre className="whitespace-pre-wrap font-mono text-sm text-destructive">{error}</pre>
-        {errorCode && (
-          <p className="text-xs text-muted-foreground">
-            Fehlercode <span className="font-mono font-semibold">{errorCode.code}</span> ·{" "}
-            {errorCode.description}
-          </p>
-        )}
-      </div>
-    );
-  }
+  if (error) return <ResultError error={error} kind={kind} />;
 
-  if (!result) {
-    return (
-      <div className="flex h-full items-center justify-center bg-card/30">
-        <p className="text-sm text-muted-foreground">
-          Drücke{" "}
-          <kbd className="rounded-full border bg-muted px-2 py-0.5 font-mono text-xs">⌘ Enter</kbd>{" "}
-          um die Abfrage auszuführen.
-        </p>
-      </div>
-    );
-  }
-
-  if (result.columns.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center bg-card/30">
-        <p className="text-sm text-muted-foreground">
-          {result.notice
-            ? result.notice
-            : result.rows_affected !== null && result.rows_affected !== undefined
-              ? `${result.rows_affected} Zeile${result.rows_affected === 1 ? "" : "n"} betroffen`
-              : "Kein Ergebnis"}
-        </p>
-      </div>
-    );
-  }
+  if (!result || result.columns.length === 0) return <ResultEmpty result={result} />;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
-        <span className="text-xs font-medium tabular-nums text-foreground">
-          {describeResultCount(visibleRows.length, rows.length)}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          Sortierung und Filter gelten nur für die geladenen Zeilen (lokal, keine neue Abfrage).
-        </span>
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={autoSizeColumns}
-            title="Alle Spaltenbreiten an die Header-Texte anpassen"
-          >
-            <Maximize2Icon className="size-3" />
-            Headerbreite
-          </Button>
-          <Button
-            size="sm"
-            variant={filterRowOpen ? "secondary" : "ghost"}
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() => setFilterRowOpen((open) => !open)}
-          >
-            <FilterIcon className="size-3" />
-            Filter
-            {filterCount > 0 && (
-              <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] text-primary">
-                {filterCount}
-              </span>
-            )}
-          </Button>
-          {viewActive && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={resetView}
-            >
-              <FilterXIcon className="size-3" />
-              Zurücksetzen
-            </Button>
-          )}
-        </div>
-      </div>
+      <ResultToolbar
+        visibleCount={visibleRows.length}
+        totalCount={rows.length}
+        filterCount={filterCount}
+        filterRowOpen={filterRowOpen}
+        viewActive={viewActive}
+        onAutoSize={autoSizeColumns}
+        onToggleFilterRow={() => setFilterRowOpen((open) => !open)}
+        onReset={resetView}
+      />
       <div
         ref={scrollRef}
         style={{ contain: "strict" }}
@@ -327,47 +205,13 @@ export const QueryResultTable = memo(function QueryResultTable({
                       style={{ width: item.width, padding: 0 }}
                     />
                   );
-                const col = columns[item.index - 1];
-                const direction = sortDirectionFor(sorts, col);
-                const rank = sortRankFor(sorts, col);
                 return (
-                  <th
+                  <ResultSortHeader
                     key={`col-${item.index}`}
-                    aria-sort={
-                      direction === "asc"
-                        ? "ascending"
-                        : direction === "desc"
-                          ? "descending"
-                          : "none"
-                    }
-                    className="border-b border-r bg-muted/90 p-0 text-left"
-                  >
-                    <button
-                      type="button"
-                      title={`Lokal sortieren nach ${col} (Umschalt-Klick für mehrere Spalten)`}
-                      onClick={(event) =>
-                        setSorts((prev) =>
-                          toggleResultSort(prev, col, event.shiftKey || event.altKey),
-                        )
-                      }
-                      className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted"
-                    >
-                      <span className="truncate">{col}</span>
-                      <MorphIcon
-                        icon={
-                          direction === "asc"
-                            ? ArrowUp
-                            : direction === "desc"
-                              ? ArrowDown
-                              : ChevronsUpDown
-                        }
-                        className={cn("size-3 shrink-0", !direction && "opacity-25")}
-                      />
-                      {rank !== null && sorts.length > 1 && (
-                        <span className="font-mono text-[10px] text-muted-foreground">{rank}</span>
-                      )}
-                    </button>
-                  </th>
+                    col={columns[item.index - 1]}
+                    sorts={sorts}
+                    setSorts={setSorts}
+                  />
                 );
               })}
             </tr>
@@ -384,69 +228,14 @@ export const QueryResultTable = memo(function QueryResultTable({
                         style={{ width: item.width, padding: 0 }}
                       />
                     );
-                  const col = columns[item.index - 1];
-                  const filter = filters[col] ?? {
-                    operator: "contains" as ResultFilterOperator,
-                    value: "",
-                  };
-                  const needsValue = operatorNeedsValue(
-                    normalizeResultFilterOperator(filter.operator),
-                  );
                   return (
-                    <th
+                    <ResultFilterCell
                       key={`col-${item.index}`}
-                      className="border-b border-r bg-muted/70 px-1 py-1"
-                    >
-                      <div className="flex items-center gap-1">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className={cn(
-                                "h-6 shrink-0 px-1.5 text-[10px] font-normal",
-                                isFilterActive(filter) && "text-primary",
-                              )}
-                            >
-                              {resultFilterOperatorLabel(filter.operator, translatedOperators)}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            {FILTER_OPERATORS.map((operator) => (
-                              <DropdownMenuCheckboxItem
-                                key={operator}
-                                checked={
-                                  normalizeResultFilterOperator(filter.operator) === operator
-                                }
-                                onCheckedChange={() =>
-                                  setFilter(col, {
-                                    operator,
-                                    value: changeFilterOperator(
-                                      filter.value,
-                                      normalizeResultFilterOperator(filter.operator),
-                                      operator,
-                                    ),
-                                  })
-                                }
-                              >
-                                {resultFilterOperatorLabel(operator, translatedOperators)}
-                              </DropdownMenuCheckboxItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {needsValue && (
-                          <FilterValueInput
-                            key={filter.operator}
-                            operator={normalizeResultFilterOperator(filter.operator)}
-                            value={filter.value}
-                            onValueChange={(value) => setFilter(col, { value })}
-                            placeholder="Filter"
-                            aria-label={`Filter für ${col}`}
-                            className="h-6 min-w-0 flex-1 px-1.5 font-mono text-xs"
-                          />
-                        )}
-                      </div>
-                    </th>
+                      col={columns[item.index - 1]}
+                      filters={filters}
+                      translatedOperators={translatedOperators}
+                      setFilter={setFilter}
+                    />
                   );
                 })}
               </tr>

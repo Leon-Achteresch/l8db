@@ -1,31 +1,9 @@
-import { useDragOperation, useDroppable } from "@dnd-kit/react";
-
 import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { MasterDetailLink } from "@/features/shell/master-detail-link";
 import { SplitPane } from "@/features/shell/split-pane";
-import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
+import { NewPaneDropZone } from "@/features/shell/split-workspace/new-pane-drop-zone";
+import { useSplitView } from "@/lib/split-view";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
-import { cn } from "@/lib/utils";
-
-export function NewPaneDropZone() {
-  const { source } = useDragOperation();
-  const full = useSplitView((state) => state.panes.length >= MAX_SPLIT_PANES);
-  const { ref, isDropTarget } = useDroppable({ id: "pane:new", type: "pane", accept: ["tab"] });
-  if (source?.type !== "tab" || full) return null;
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "absolute inset-y-2 right-2 z-20 flex w-24 items-center justify-center rounded-lg border-2 border-dashed text-center text-xs transition-colors",
-        isDropTarget
-          ? "border-primary bg-primary/15 text-foreground"
-          : "border-border bg-background/80 text-muted-foreground",
-      )}
-    >
-      Neuer Bereich
-    </div>
-  );
-}
 
 export function SplitWorkspace() {
   const orientation = useSplitView((state) => state.orientation);
@@ -107,3 +85,4 @@ export function SplitWorkspace() {
     </>
   );
 }
+export { NewPaneDropZone };

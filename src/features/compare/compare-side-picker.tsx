@@ -1,7 +1,6 @@
 import { GitCompare, Layers, Loader, Lock } from "lucide";
 import { DatabaseIcon, GitCompareIcon, LayersIcon, LoaderIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { useEffect, useState } from "react";
 
 import { ProviderLogo } from "@/components/provider-logo";
 import { Label } from "@/components/ui/label";
@@ -13,19 +12,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CompareObjectIcon } from "@/features/compare/compare-object-icon";
-import { compareLoadErrorMessage, listCompareObjects } from "@/lib/compare-definition";
+import { useCompareSidePicker } from "@/features/compare/compare-side-picker/use-compare-side-picker";
 import {
   COMPARE_OBJECT_LABELS,
   type CompareObjectType,
   type CompareSideSelection,
-  supportedCompareObjectTypes,
 } from "@/lib/compare-types";
 import { providerFor } from "@/lib/connection-url";
-import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
-import { listDatabases, listSchemas } from "@/lib/db";
-import { databaseFromConnectionString } from "@/lib/db-selection";
-import { capabilitiesFor } from "@/lib/providers";
-import { effectiveConnectionString } from "@/lib/ssh";
+import type { SavedConnection } from "@/lib/connections";
 import { cn } from "@/lib/utils";
 
 interface CompareSidePickerProps {
@@ -43,121 +37,21 @@ export function CompareSidePicker({
   lockConnection,
   hideObjectType,
 }: CompareSidePickerProps) {
-  const connections = useConnectionsStore((state) => state.connections);
-  const [databases, setDatabases] = useState<string[]>([]);
-  const [schemas, setSchemas] = useState<string[]>([]);
-  const [objects, setObjects] = useState<{ name: string; oid: string | null }[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadingSchemas, setLoadingSchemas] = useState(false);
-  const [loadingObjects, setLoadingObjects] = useState(false);
-
-  const usable = connections;
-  const connection: SavedConnection | null =
-    lockConnection ?? usable.find((item) => item.id === value.connectionId) ?? null;
-  const capabilities = capabilitiesFor(connection?.kind);
-  const availableTypes = supportedCompareObjectTypes(connection);
-  const usesOid = value.objectType === "routine" || value.objectType === "procedure";
-  const emit = (next: CompareSideSelection) => {
-    onChange(lockConnection ? { ...next, connectionId: lockConnection.id } : next);
-  };
-
-  useEffect(() => {
-    if (!connection || !capabilities.databases) {
-      setDatabases([]);
-      return;
-    }
-    let active = true;
-    listDatabases(connection.kind, effectiveConnectionString(connection))
-      .then((list) => {
-        if (!active) return;
-        setDatabases(list);
-        setLoadError(null);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setDatabases([]);
-        setLoadError(`Datenbanken: ${compareLoadErrorMessage(error)}`);
-      });
-    return () => {
-      active = false;
-    };
-  }, [capabilities.databases, connection]);
-
-  useEffect(() => {
-    setSchemas([]);
-    setObjects([]);
-    if (!connection) {
-      setLoadingSchemas(false);
-      return;
-    }
-    let active = true;
-    setLoadingSchemas(true);
-    listSchemas(connection.kind, effectiveConnectionString(connection), value.database ?? undefined)
-      .then((list) => {
-        if (!active) return;
-        setSchemas(visibleSchemas(connection, list));
-        setLoadError(null);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setSchemas([]);
-        setLoadError(`Schemas: ${compareLoadErrorMessage(error)}`);
-      })
-      .finally(() => {
-        if (active) setLoadingSchemas(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [connection, value.database]);
-
-  useEffect(() => {
-    setObjects([]);
-    if (!connection || !value.schema) {
-      setLoadingObjects(false);
-      return;
-    }
-    let active = true;
-    setLoadingObjects(true);
-    listCompareObjects(connection, {
-      ...value,
-      objectName: null,
-      objectOid: null,
-    })
-      .then((list) => {
-        if (!active) return;
-        setObjects(list);
-        setLoadError(null);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setObjects([]);
-        setLoadError(`Objekte: ${compareLoadErrorMessage(error)}`);
-      })
-      .finally(() => {
-        if (active) setLoadingObjects(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [connection, value.database, value.objectType, value.schema]);
-
-  const handleConnection = (connectionId: string) => {
-    const picked = usable.find((item) => item.id === connectionId) ?? null;
-    const database = picked
-      ? databaseFromConnectionString(effectiveConnectionString(picked))
-      : null;
-    const types = supportedCompareObjectTypes(picked);
-    const objectType = types.includes(value.objectType) ? value.objectType : (types[0] ?? "table");
-    emit({
-      connectionId,
-      database,
-      schema: null,
-      objectType,
-      objectName: null,
-      objectOid: null,
-    });
-  };
+  const {
+    databases,
+    schemas,
+    objects,
+    loadError,
+    loadingSchemas,
+    loadingObjects,
+    usable,
+    connection,
+    capabilities,
+    availableTypes,
+    usesOid,
+    emit,
+    handleConnection,
+  } = useCompareSidePicker(value, onChange, lockConnection);
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3">
