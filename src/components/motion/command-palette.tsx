@@ -3,9 +3,9 @@
 // beui.dev/components/blocks/command-palette
 
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { type LucideIcon, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { rankCommands } from "@/lib/command-score";
 import { EASE_OUT } from "@/lib/ease";
@@ -14,37 +14,11 @@ import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { PresenceGate } from "@/lib/presence-gate";
 import { cn } from "@/lib/utils";
+import { CommandPaletteOption } from "./command-palette/command-palette-option";
+import { PANEL_SPRING } from "./command-palette/constants";
+import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
-export type CommandItem = {
-  id: string;
-  label: string;
-  group?: string;
-  hint?: string;
-  keywords?: string[];
-  icon?: LucideIcon;
-  badge?: ReactNode;
-  onSelect: () => void;
-};
-
-export interface CommandPaletteProps {
-  items: CommandItem[];
-  /** Opens with Cmd/Ctrl + this key. Default: "k" */
-  shortcut?: string;
-  placeholder?: string;
-  emptyMessage?: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  maxVisible?: number;
-}
-
-// Opened via a keyboard shortcut many times a day — entrance must read as
-// instant. Tight spring, even faster exit.
-const PANEL_SPRING = {
-  type: "spring",
-  stiffness: 560,
-  damping: 40,
-  mass: 0.5,
-} as const;
+export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 export function CommandPalette({
   items,
@@ -287,57 +261,21 @@ export function CommandPalette({
                           // `rows` holds these very objects, in render order.
                           const idx = rows.indexOf(it);
                           const isActive = idx === active;
-                          const Icon = it.icon;
                           return (
-                            <button
+                            <CommandPaletteOption
                               key={it.id}
-                              type="button"
-                              id={`${uid}-opt-${idx}`}
-                              role="option"
-                              aria-selected={isActive}
-                              data-index={idx}
-                              onMouseEnter={() => moveTo(it.id)}
-                              onClick={() => {
+                              item={it}
+                              index={idx}
+                              isActive={isActive}
+                              uid={uid}
+                              reduce={reduce}
+                              hasIcons={hasIcons}
+                              onHover={() => moveTo(it.id)}
+                              onSelect={() => {
                                 it.onSelect();
                                 setOpen(false);
                               }}
-                              className={cn(
-                                "relative isolate flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
-                                isActive ? "text-foreground" : "text-muted-foreground",
-                              )}
-                            >
-                              {isActive ? (
-                                <motion.span
-                                  layoutId={`${uid}-active`}
-                                  className="absolute inset-0 z-0 rounded-md bg-primary/[0.05]"
-                                  transition={
-                                    reduce
-                                      ? { duration: 0 }
-                                      : // Tracks rapid arrow-key navigation — keep it tighter
-                                        // than SPRING_LAYOUT so it never lags the active row.
-                                        {
-                                          type: "spring",
-                                          stiffness: 480,
-                                          damping: 38,
-                                        }
-                                  }
-                                />
-                              ) : null}
-                              {Icon ? (
-                                <Icon className="relative z-10 h-4 w-4" />
-                              ) : hasIcons ? (
-                                <span className="relative z-10 h-4 w-4" />
-                              ) : null}
-                              <span className="relative z-10 flex-1 truncate">{it.label}</span>
-                              {it.badge ? (
-                                <span className="relative z-10 shrink-0">{it.badge}</span>
-                              ) : null}
-                              {it.hint ? (
-                                <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                  {it.hint}
-                                </kbd>
-                              ) : null}
-                            </button>
+                            />
                           );
                         })}
                       </div>

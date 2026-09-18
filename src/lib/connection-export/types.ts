@@ -1,0 +1,55 @@
+import type { ConnectionTag } from "@/lib/connections";
+import type { DatabaseKind, SslMode } from "@/lib/db";
+
+export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
+
+export const CONNECTION_EXPORT_VERSION = 1;
+
+export const KINDS: DatabaseKind[] = [
+  "postgres",
+  "mysql",
+  "sqlite",
+  "mssql",
+  "clickhouse",
+  "mongodb",
+  "redis",
+  "oracle",
+  "cassandra",
+  "duckdb",
+  "odbc",
+];
+
+export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];
+
+export const SECRET_PARAM =
+  /^(password|passwd|pwd|pass|token|secret|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
+
+export interface ExportedSsh {
+  host: string;
+  port: number;
+  user: string;
+  auth: "password" | "key";
+  keyFile: string;
+  remoteHost: string;
+  remotePort: number;
+}
+
+export interface ExportedConnection {
+  id: string;
+  name: string;
+  kind: DatabaseKind;
+  connectionString: string;
+  sslMode: SslMode;
+  ssh: ExportedSsh | null;
+  tags: ConnectionTag[];
+  favorite: boolean;
+  color: string | null;
+  schemas: string[] | null;
+}
+
+export interface ConnectionExportFile {
+  format: typeof CONNECTION_EXPORT_FORMAT;
+  version: number;
+  exportedAt: string;
+  connections: ExportedConnection[];
+}

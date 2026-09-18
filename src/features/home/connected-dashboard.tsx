@@ -10,7 +10,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  SquareTerminal,
   Table2,
   Workflow,
 } from "lucide-react";
@@ -23,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DisconnectButton } from "@/features/connections/disconnect-button";
 import { connectionSummary, providerFor, queryErrorMessage } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
-import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
   useDatabaseOverviewQuery,
   useExtensionsQuery,
@@ -36,17 +35,12 @@ import {
 } from "@/lib/queries";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useTableTabs } from "@/lib/table-tabs";
+import { RecentQueries } from "./connected-dashboard/recent-queries";
+import { StorageOverview } from "./connected-dashboard/storage-overview";
 import { DashboardMetric } from "./dashboard-metric";
 
 const TABLE_LIST_LIMIT = 50;
 const MIN_OVERVIEW_SIZE_BYTES = 1024;
-
-function formatBytes(bytes: number) {
-  if (!bytes) return "0 B";
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 4);
-  return `${(bytes / 1024 ** index).toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${["B", "KB", "MB", "GB", "TB"][index]}`;
-}
-
 export function ConnectedDashboard({ connection }: { connection: SavedConnection }) {
   const database = useActiveDatabase();
   const schema = useActiveSchema();
@@ -259,105 +253,16 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                 </div>
               )}
             </section>
-            <section>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Letzte Abfragen</h2>
-                <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
-                  <Link to="/query">
-                    SQL-Arbeitsplatz
-                    <ArrowRight className="size-3" />
-                  </Link>
-                </Button>
-              </div>
-              {recent.length ? (
-                <div className="divide-y rounded-xl border bg-card">
-                  {recent.map((entry) => (
-                    <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
-                      <SquareTerminal
-                        className={`size-4 shrink-0 ${entry.error ? "text-destructive" : "text-primary"}`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-mono text-xs">{entry.sql}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground">
-                          {new Date(entry.ranAt).toLocaleString("de-DE", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}{" "}
-                          · {entry.error ? "Fehlgeschlagen" : `${entry.rowCount ?? 0} Zeilen`}
-                        </p>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {entry.durationMs == null ? "—" : `${entry.durationMs} ms`}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-xl border border-dashed px-5 py-6 text-xs text-muted-foreground">
-                  Deine ausgeführten Abfragen erscheinen hier mit Laufzeit und Ergebnis.
-                </p>
-              )}
-            </section>
+            <RecentQueries recent={recent} />
           </div>
           <aside className="space-y-6">
             {showStorageOverview && (
-              <section className="rounded-2xl border bg-card p-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">Speicher & Schemas</h2>
-                  <Database className="size-4 text-muted-foreground" />
-                </div>
-                {overview.isPending || (overview.isError && !queryErrorMessage(overview.error)) ? (
-                  <Skeleton className="my-5 h-12 w-28" />
-                ) : overview.isError ? (
-                  <p role="alert" className="mt-4 text-xs leading-relaxed text-destructive">
-                    {queryErrorMessage(overview.error)}
-                  </p>
-                ) : (
-                  overview.data && (
-                    <>
-                      <p className="mt-4 text-3xl font-medium tracking-tight">
-                        {overview.data.size_pretty}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Gesamtgröße von {overview.data.database}
-                      </p>
-                      <div className="mt-5 space-y-3">
-                        {overview.data.schemas.map((entry) => (
-                          <button
-                            key={entry.schema}
-                            type="button"
-                            onClick={() =>
-                              useDbSelectionStore.getState().setSchema(connection.id, entry.schema)
-                            }
-                            className="block w-full rounded-lg p-1 text-left hover:bg-muted"
-                          >
-                            <span className="mb-1.5 flex items-center justify-between text-xs">
-                              <span
-                                className={
-                                  schema === entry.schema ? "font-mono text-primary" : "font-mono"
-                                }
-                              >
-                                {entry.schema}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {entry.table_count} Tabellen · {formatBytes(entry.size_bytes)}
-                              </span>
-                            </span>
-                            <span className="block h-1 overflow-hidden rounded-full bg-muted">
-                              <span
-                                className="block h-full rounded-full bg-primary/60"
-                                style={{
-                                  width: `${Math.max(1, (entry.size_bytes / largestSchema) * 100)}%`,
-                                }}
-                              />
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )
-                )}
-              </section>
+              <StorageOverview
+                overview={overview}
+                schema={schema}
+                connectionId={connection.id}
+                largestSchema={largestSchema}
+              />
             )}
             <section className="rounded-2xl bg-primary/[0.055] p-5">
               <Workflow className="mb-3 size-5 text-primary" />
