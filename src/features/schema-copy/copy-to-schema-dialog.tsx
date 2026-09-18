@@ -1,17 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ProviderLogo } from "@/components/provider-logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ConnectionPicker } from "@/features/connections/connection-picker";
 import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
+import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { listSchemas, previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -46,7 +43,7 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
       listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: Boolean(connection && target),
   });
-  const candidates = connections.filter((entry) => entry.kind === connection?.kind);
+  const targetConnection = connections.find((entry) => entry.id === targetConnectionId) ?? null;
   const schema = targetSchema.trim();
   const enabled = Boolean(connection && target && schema);
 
@@ -100,18 +97,31 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Zielverbindung</Label>
-          <Select value={targetConnectionId} onValueChange={setTargetConnectionId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Verbindung wählen…" />
-            </SelectTrigger>
-            <SelectContent>
-              {candidates.map((entry) => (
-                <SelectItem key={entry.id} value={entry.id}>
-                  {entry.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ConnectionPicker
+            value={targetConnectionId}
+            onSelect={setTargetConnectionId}
+            kind={connection?.kind}
+            label="Zielverbindung"
+            contentClassName="flex max-h-80 w-(--radix-dropdown-menu-trigger-width) min-w-56 flex-col overflow-hidden"
+            trigger={
+              <button
+                type="button"
+                className="flex h-9 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-accent"
+              >
+                {targetConnection ? (
+                  <ProviderLogo
+                    providerId={providerFor(targetConnection).id}
+                    kind={targetConnection.kind}
+                    className="size-4"
+                  />
+                ) : null}
+                <span className="flex-1 truncate">
+                  {targetConnection?.name ?? "Verbindung wählen…"}
+                </span>
+                <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            }
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="copy-target-schema">Zielschema</Label>
