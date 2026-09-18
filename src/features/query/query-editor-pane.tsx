@@ -69,9 +69,29 @@ interface QueryEditorPaneProps {
   bookmarkSlots?: BookmarkSlots;
   onBookmarkSlotChange?: (slot: number, line: number | null) => void;
   onSearchTabs?: () => void;
+  stateKey?: string;
   registry: SchemaRegistry;
   ref?: Ref<QueryEditorApi>;
   className?: string;
+}
+
+const VIEW_STATE_KEY = "l8db.editor-view-state";
+
+function readViewStates(): Record<string, monaco.editor.ICodeEditorViewState> {
+  try {
+    return JSON.parse(localStorage.getItem(VIEW_STATE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeViewState(key: string, state: monaco.editor.ICodeEditorViewState | null) {
+  const all = readViewStates();
+  if (state) all[key] = state;
+  else delete all[key];
+  try {
+    localStorage.setItem(VIEW_STATE_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 function themeFor(resolved: string | undefined): string {
@@ -120,6 +140,7 @@ export function QueryEditorPane({
   bookmarkSlots,
   onBookmarkSlotChange,
   onSearchTabs,
+  stateKey,
   registry,
   className,
   ref,
@@ -652,6 +673,28 @@ export function QueryEditorPane({
       applySlots(slotsRef.current);
     }
   }, [value]);
+
+  useEffect(() => {
+    if (stateKey === undefined) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const saved = readViewStates()[stateKey];
+    if (saved) editor.restoreViewState(saved);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let latest: monaco.editor.ICodeEditorViewState | null = null;
+    const sub = editor.onDidScrollChange(() => {
+      latest = editor.saveViewState();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => writeViewState(stateKey, latest), 300);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      sub.dispose();
+      const current = editorRef.current;
+      const state = current ? current.saveViewState() : latest;
+      if (state) writeViewState(stateKey, state);
+    };
+  }, [stateKey]);
 
   useEffect(() => {
     const editor = editorRef.current;

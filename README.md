@@ -3,7 +3,7 @@
 A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://tauri.app), React 19, and Rust.
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+![License](https://img.shields.io/badge/license-Elastic--2.0-blue)
 [![CI](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml/badge.svg)](https://github.com/Leon-Achteresch/l8db/actions/workflows/ci.yml)
 
 ---
@@ -153,4 +153,9 @@ src-tauri/src/
 
 ## License
 
-GNU General Public License v3.0 only
+Elastic License 2.0 (source-available, nicht OSI-Open-Source).
+
+Erlaubt: nutzen, kopieren, ändern und weitergeben — auch kommerziell und innerhalb von Unternehmen.
+Nicht erlaubt: l8db Dritten als gehosteten oder gemanagten Service anbieten, die Lizenzschlüssel-Funktionalität umgehen oder Lizenz- und Copyright-Hinweise entfernen.
+
+Volltext in [LICENSE](LICENSE).

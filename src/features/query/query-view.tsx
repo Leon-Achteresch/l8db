@@ -1065,6 +1065,54 @@ export function QueryView({ tabId }: QueryViewProps) {
     return parts.join(" · ");
   })();
 
+  const resultActions = (
+    <>
+      {caps.server_output && (
+        <Button
+          size="icon-sm"
+          variant={outputOpen ? "secondary" : "ghost"}
+          aria-label="Server-Ausgabe umschalten"
+          aria-pressed={outputOpen}
+          title="Server-Ausgabe öffnen"
+          disabled={!connection}
+          onClick={() => setOutputOpen((open) => !open)}
+        >
+          <TerminalIcon className="size-3.5" />
+        </Button>
+      )}
+      {result && result.columns.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-xs"
+              disabled={exporting}
+            >
+              <MorphIcon
+                icon={exporting ? Loader : Download}
+                className={cn("size-3", exporting && "animate-spin")}
+              />
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
+              Als CSV exportieren…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
+              Als XLSX exportieren…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void handleExportJson()}>
+              Als JSON exportieren
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+  const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
+
   return (
     <div className="flex h-full w-full min-h-0">
       <motion.div
@@ -1102,7 +1150,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                   <ChevronDownIcon className="size-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-52">
+              <DropdownMenuContent align="start" className="min-w-52 whitespace-nowrap">
                 <DropdownMenuLabel className="text-[10px] text-muted-foreground">
                   Ausführung
                 </DropdownMenuLabel>
@@ -1507,6 +1555,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                     bookmarkSlots={bookmarkSlots}
                     onBookmarkSlotChange={(slot, line) => setQueryBookmarkSlot(tabId, slot, line)}
                     onSearchTabs={() => setTabSearchOpen(true)}
+                    stateKey={tabId}
                     registry={registry}
                   />
                 </div>
@@ -1528,85 +1577,44 @@ export function QueryView({ tabId }: QueryViewProps) {
                   defaultSize={`${100 - workspace.editorShare}%`}
                   className="flex min-h-0 flex-col overflow-hidden"
                 >
-                  <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
-                    <span className="font-medium">Ergebnisse</span>
-                    <span
-                      role="status"
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
-                        isRunning
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : error
-                            ? "border-destructive/30 bg-destructive/10 text-destructive"
-                            : result
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                              : "border-border bg-background/60 text-muted-foreground",
-                      )}
-                    >
+                  {showResultHeader && (
+                    <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
+                      <span className="font-medium">Ergebnisse</span>
                       <span
+                        role="status"
                         className={cn(
-                          "size-1.5 rounded-full bg-current",
-                          isRunning && "animate-pulse",
+                          "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+                          isRunning
+                            ? "border-primary/30 bg-primary/10 text-primary"
+                            : error
+                              ? "border-destructive/30 bg-destructive/10 text-destructive"
+                              : "border-border bg-background/60 text-muted-foreground",
                         )}
-                      />
-                      {isRunning
-                        ? "Wird ausgeführt"
-                        : error
-                          ? "Fehlgeschlagen"
-                          : result
-                            ? "Abgeschlossen"
-                            : "Bereit"}
-                    </span>
-                    {statusText && (
-                      <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
-                        {statusText}
+                      >
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full bg-current",
+                            isRunning && "animate-pulse",
+                          )}
+                        />
+                        {isRunning
+                          ? "Wird ausgeführt"
+                          : error
+                            ? "Fehlgeschlagen"
+                            : result
+                              ? "Abgeschlossen"
+                              : "Bereit"}
                       </span>
-                    )}
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
-                      {caps.server_output && (
-                        <Button
-                          size="icon-sm"
-                          variant={outputOpen ? "secondary" : "ghost"}
-                          aria-label="Server-Ausgabe umschalten"
-                          aria-pressed={outputOpen}
-                          title="Server-Ausgabe öffnen"
-                          disabled={!connection}
-                          onClick={() => setOutputOpen((open) => !open)}
-                        >
-                          <TerminalIcon className="size-3.5" />
-                        </Button>
+                      {statusText && (
+                        <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
+                          {statusText}
+                        </span>
                       )}
-                      {result && result.columns.length > 0 && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 gap-1.5 px-2 text-xs"
-                              disabled={exporting}
-                            >
-                              <MorphIcon
-                                icon={exporting ? Loader : Download}
-                                className={cn("size-3", exporting && "animate-spin")}
-                              />
-                              <span className="hidden sm:inline">Export</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-                              Als CSV exportieren…
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-                              Als XLSX exportieren…
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => void handleExportJson()}>
-                              Als JSON exportieren
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      <div className="ml-auto flex shrink-0 items-center gap-1">
+                        {resultActions}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <Collapse open={Boolean(statementError)} className="shrink-0">
                     {statementError && (
@@ -1616,12 +1624,14 @@ export function QueryView({ tabId }: QueryViewProps) {
                     )}
                   </Collapse>
 
-                  <div className="min-h-0 flex-1 border-t">
+                  <div className="min-h-0 flex-1">
                     <QueryResultWorkbench
                       result={result}
                       isLoading={isRunning}
                       error={error}
                       kind={connection?.kind}
+                      statusText={statusText}
+                      actions={resultActions}
                     />
                   </div>
                 </ResizablePanel>

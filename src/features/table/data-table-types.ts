@@ -27,6 +27,7 @@ export type FkPickerCell = {
 
 export type DataTableProps = {
   stateKey?: string;
+  layoutKey?: string;
   scrollIdentity?: string;
   columns: string[];
   data: TableRow[];
@@ -63,4 +64,5 @@ export type DataTableProps = {
   columnDetails?: DetailedColumnInfo[];
   revealColumn?: { name: string; nonce: number } | null;
   searchRequiresFocus?: boolean;
+  autoSelectFirstCell?: boolean;
 };

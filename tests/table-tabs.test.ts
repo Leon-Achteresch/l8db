@@ -126,9 +126,8 @@ describe("tabs per connection", () => {
 });
 
 const { hasUnexecutedQueryChanges, isQueryTabDirty } = await import("../src/lib/table-tabs");
-const { defaultSqlFileName, fileMtimeChanged, sqlFileSizeError, sqlFileTitle } = await import(
-  "../src/lib/sql-file"
-);
+const { defaultSqlFileName, fileMtimeChanged, sqlDropPaths, sqlFileSizeError, sqlFileTitle } =
+  await import("../src/lib/sql-file");
 
 describe("dateigebundene Query-Tabs", () => {
   test("openFileQueryTab erzeugt Tab mit Dateiname und unverändertem Text", () => {
@@ -221,6 +220,10 @@ describe("dateigebundene Query-Tabs", () => {
     expect(fileMtimeChanged(1, 1)).toBe(false);
     expect(fileMtimeChanged(null, 2)).toBe(false);
     expect(fileMtimeChanged(1, null)).toBe(false);
+    expect(sqlDropPaths(["/tmp/a.sql", "/tmp/notes.txt", "/tmp/b.SQL"])).toEqual([
+      "/tmp/a.sql",
+      "/tmp/b.SQL",
+    ]);
   });
 });
 

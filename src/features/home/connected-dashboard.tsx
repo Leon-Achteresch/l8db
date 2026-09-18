@@ -24,7 +24,6 @@ import { DisconnectButton } from "@/features/connections/disconnect-button";
 import { connectionSummary, providerFor, queryErrorMessage } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import {
   useDatabaseOverviewQuery,
   useExtensionsQuery,
@@ -99,10 +98,8 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   return (
     <main className="workspace-canvas flex-1 overflow-auto" data-tour="dashboard">
       <motion.div
-        layout
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ layout: SPRING_LAYOUT }}
         className="mx-auto max-w-[1400px] px-6 py-8 lg:px-9"
       >
         <header className="mb-7 flex flex-wrap items-start justify-between gap-4">

@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
-import type { WorksheetField } from "@/lib/chart-worksheet";
 import { queryErrorMessage } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -25,14 +24,20 @@ import {
 import { filterOperatorsForKind, operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
 import { useSqlQuery } from "./use-dataset-query";
 
-export function WorksheetFilterEditor({
+export interface ChartFilterField {
+  ref: string;
+  label: string;
+  dataType: string;
+}
+
+export function ChartFilterEditor({
   field,
   simple,
   filter,
   onApply,
   onCancel,
 }: {
-  field: WorksheetField;
+  field: ChartFilterField;
   simple: SimpleDataset;
   filter?: DatasetFilter;
   onApply: (filters: DatasetFilter[]) => void;

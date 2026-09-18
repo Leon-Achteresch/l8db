@@ -47,14 +47,13 @@ impl PoolManager {
         ssl: SslMode,
         pool_use: PoolUse,
     ) -> Result<PgPool, String> {
+        let timeout = super::execution::connection_duration();
         let entry = {
+            let secs = timeout.as_secs();
             let mut pools = self.pools.lock().await;
+            pools.retain(|(key, _, entry_secs), _| key != connection_key || *entry_secs == secs);
             pools
-                .entry((
-                    connection_key.to_string(),
-                    pool_use,
-                    super::execution::connection_duration().as_secs(),
-                ))
+                .entry((connection_key.to_string(), pool_use, secs))
                 .or_default()
                 .clone()
         };
@@ -62,10 +61,10 @@ impl PoolManager {
             .get_or_try_init(|| async {
                 let manager = PostgresConnectionManager::new(config, tls_connector(ssl)?);
                 Pool::builder()
-                    .max_size(if pool_use == PoolUse::Query { 8 } else { 4 })
+                    .max_size(if pool_use == PoolUse::Query { 8 } else { 2 })
                     .min_idle(Some(0))
-                    .connection_timeout(super::execution::connection_duration())
-                    .idle_timeout(Some(Duration::from_secs(600)))
+                    .connection_timeout(timeout)
+                    .idle_timeout(Some(Duration::from_secs(60)))
                     .build(manager)
                     .await
                     .map_err(|e| format!("Connection Pool konnte nicht erstellt werden: {e}"))
@@ -241,5 +240,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(reused, 2);
+    }
+
+    #[tokio::test]
+    async fn get_pool_evicts_entries_with_stale_connection_timeout() {
+        let manager = PoolManager::new();
+        let config: tokio_postgres::Config = "host=127.0.0.1 port=1 user=x dbname=x"
+            .parse()
+            .expect("config");
+        manager
+            .get_pool("key", config.clone(), SslMode::Disable, PoolUse::Query)
+            .await
+            .expect("pool");
+        {
+            let mut pools = manager.pools.lock().await;
+            let entry = pools
+                .keys()
+                .next()
+                .cloned()
+                .map(|(key, use_, secs)| (key, use_, secs + 1))
+                .expect("entry");
+            pools.clear();
+            pools.insert(entry, PoolEntry::default());
+            pools.insert(
+                ("other".to_string(), PoolUse::Query, 1),
+                PoolEntry::default(),
+            );
+        }
+        manager
+            .get_pool("key", config, SslMode::Disable, PoolUse::Query)
+            .await
+            .expect("pool");
+        let pools = manager.pools.lock().await;
+        assert_eq!(pools.keys().filter(|(key, _, _)| key == "key").count(), 1);
+        assert_eq!(pools.len(), 2);
     }
 }

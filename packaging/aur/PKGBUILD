@@ -20,7 +20,7 @@ pkgrel=1
 pkgdesc="Fast, native desktop client for PostgreSQL and other databases"
 arch=('x86_64')
 url="https://github.com/Leon-Achteresch/l8db"
-license=('GPL3')
+license=('custom:Elastic-2.0')
 depends=('webkit2gtk-4.1' 'gtk3' 'openssl' 'libsecret' 'hicolor-icon-theme')
 optdepends=('gnome-keyring: Secret-Service-Backend fuer gespeicherte Datenbank-Credentials'
             'kwallet: alternatives Secret-Service-Backend'

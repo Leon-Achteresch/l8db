@@ -2,11 +2,11 @@ import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
-import { FkDrawerStack } from "@/features/table/fk-drawer-stack";
+import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
@@ -14,7 +14,19 @@ import { tabKey, useTableTabs } from "@/lib/table-tabs";
 import { toolIdForPath } from "@/lib/tool-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
+const FkDrawerStack = lazy(() =>
+  import("@/features/table/fk-drawer-stack").then((module) => ({ default: module.FkDrawerStack })),
+);
 const SqlIntellisenseSync = lazy(() => import("@/features/shell/sql-intellisense-sync"));
+
+function subscribeMonacoReady(notify: () => void) {
+  window.addEventListener("l8db:monaco-ready", notify);
+  return () => window.removeEventListener("l8db:monaco-ready", notify);
+}
+
+function isMonacoReady() {
+  return "MonacoEnvironment" in self;
+}
 
 const sensors = [
   PointerSensor.configure({
@@ -35,6 +47,10 @@ export function WorkspaceLayout() {
   const activeTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
+  const hasFkDrawer = useFkDrawerStack((state) => state.stack.length > 0);
+  const fkDrawerUsed = useRef(false);
+  if (hasFkDrawer) fkDrawerUsed.current = true;
+  const monacoReady = useSyncExternalStore(subscribeMonacoReady, isMonacoReady);
   const reveal = useSplitView((state) => state.reveal);
   const routeKey = activeTab ? tabKey(activeTab) : "";
   const selectionKey = usePaneSourceKey(routeKey || null);
@@ -76,9 +92,11 @@ export function WorkspaceLayout() {
         }
       }}
     >
-      <Suspense fallback={null}>
-        <SqlIntellisenseSync />
-      </Suspense>
+      {monacoReady && (
+        <Suspense fallback={null}>
+          <SqlIntellisenseSync />
+        </Suspense>
+      )}
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5">
           <SidebarTrigger className="size-7 rounded-full" />
@@ -95,7 +113,11 @@ export function WorkspaceLayout() {
               {activeTab && <NewPaneDropZone />}
             </>
           )}
-          <FkDrawerStack />
+          {fkDrawerUsed.current && (
+            <Suspense fallback={null}>
+              <FkDrawerStack />
+            </Suspense>
+          )}
         </div>
       </div>
     </DragDropProvider>

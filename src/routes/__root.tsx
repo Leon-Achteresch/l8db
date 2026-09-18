@@ -12,6 +12,7 @@ import { AppHeader } from "@/features/shell/app-header";
 import { AppHotkeys } from "@/features/shell/app-hotkeys";
 import { RouteErrorView } from "@/features/shell/route-error-view";
 import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
+import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
 import { AppTour } from "@/features/tour/app-tour";
 import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
@@ -22,6 +23,7 @@ function RootComponent() {
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
         <DbThemeRoot className="h-dvh">
           <AppHotkeys />
+          <SqlFileDrop />
           <AppHeader />
           <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
             <Outlet />

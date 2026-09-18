@@ -46,13 +46,46 @@ let ctx: IntellisenseContext = {
 
 const attached = new WeakSet<monaco.editor.ITextModel>();
 
+const IS_MAC = navigator.platform.toLowerCase().includes("mac");
+
+let gotoModel: monaco.editor.ITextModel | null = null;
+
+function gotoUri(target: SymbolTarget): monaco.Uri {
+  const uri = monaco.Uri.from({ scheme: "l8db", path: "/goto", query: JSON.stringify(target) });
+  if (!monaco.editor.getModel(uri)) {
+    if (gotoModel && !gotoModel.isDisposed()) gotoModel.dispose();
+    gotoModel = monaco.editor.createModel("", undefined, uri);
+  }
+  return uri;
+}
+
 export function attachSqlIntellisense(
   editor: monaco.editor.IStandaloneCodeEditor,
 ): monaco.IDisposable {
   const model = editor.getModel();
   if (model) attached.add(model);
+  const mouse = editor.onMouseUp((e) => {
+    if (!(e.event.ctrlKey || e.event.metaKey)) return;
+    const ctrlOnMac = IS_MAC && e.event.ctrlKey && !e.event.metaKey;
+    if (e.event.rightButton && !ctrlOnMac) return;
+    const target = e.target.position;
+    if (!model || !target) return;
+    const symbol = symbolAt(model, target);
+    if (symbol?.target.kind !== "table") return;
+    const range = symbol.range;
+    setTimeout(() => editor.setSelection(range), 0);
+    if (ctrlOnMac) openSymbolTarget(symbol.target);
+  });
+  const menu = editor.onContextMenu((e) => {
+    if (!IS_MAC || !e.event.ctrlKey) return;
+    const target = e.target.position;
+    if (!model || !target) return;
+    if (symbolAt(model, target)?.target.kind === "table") e.event.preventDefault();
+  });
   return {
     dispose() {
+      mouse.dispose();
+      menu.dispose();
       if (model) attached.delete(model);
     },
   };
@@ -306,11 +339,7 @@ for (const language of ["sql", "plsql"]) {
         if (sql) target = { ...target, sql };
       }
       return {
-        uri: monaco.Uri.from({
-          scheme: "l8db",
-          path: "/goto",
-          query: JSON.stringify(target),
-        }),
+        uri: gotoUri(target),
         range: new monaco.Range(1, 1, 1, 1),
         originSelectionRange: symbol.range,
       };

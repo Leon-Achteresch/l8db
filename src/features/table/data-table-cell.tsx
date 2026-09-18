@@ -144,17 +144,37 @@ export const DataTableCell = memo(function DataTableCell({
     );
   }
 
+  const isSticky = cellIndex === 0 || pinnedOffset !== null;
+  const stickyTint = isActiveMatch
+    ? "rgb(251 191 36 / 0.3)"
+    : isMatch
+      ? "rgb(251 191 36 / 0.15)"
+      : isSelected
+        ? "color-mix(in oklab, var(--primary) 10%, transparent)"
+        : isActive
+          ? "color-mix(in oklab, var(--primary) 3%, transparent)"
+          : cellIndex === 0
+            ? isMarked
+              ? "color-mix(in oklab, var(--primary) 15%, transparent)"
+              : "color-mix(in oklab, var(--muted) 40%, transparent)"
+            : "transparent";
+
   return (
     <td
+      onMouseDown={(event) => {
+        if (event.shiftKey || event.ctrlKey || event.metaKey) event.preventDefault();
+      }}
       onClick={(event) => {
         if (cellIndex === 0) {
           toggleRowMarker(row.original);
           return;
         }
         const extend = event.shiftKey;
+        const additive = !extend && (event.ctrlKey || event.metaKey);
         if (
           isActive &&
           !extend &&
+          !additive &&
           editable &&
           cellIndex > 0 &&
           (window.getSelection()?.isCollapsed ?? true)
@@ -163,7 +183,8 @@ export const DataTableCell = memo(function DataTableCell({
           return;
         }
         setEditingCell(null);
-        focusCell({ rowIndex, columnId }, extend);
+        if (extend || additive) window.getSelection()?.removeAllRanges();
+        focusCell({ rowIndex, columnId }, extend, additive);
       }}
       onDoubleClick={
         editable && cellIndex > 0
@@ -181,6 +202,7 @@ export const DataTableCell = memo(function DataTableCell({
         lineHeight: "1.25rem",
         whiteSpace: "nowrap",
         textOverflow: "ellipsis",
+        ...(isSticky ? { "--cell-tint": stickyTint } : null),
       }}
       className={cn(
         "px-3 py-[var(--ui-cell-padding)] align-middle border-b border-r border-border/30 select-text relative cursor-default text-left overflow-hidden font-mono text-xs",
@@ -189,17 +211,30 @@ export const DataTableCell = memo(function DataTableCell({
             ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
             : VALUE_CLASSES[preview.kind]),
         cellIndex === 0 &&
-          "w-12 border-r border-border sticky left-0 z-10 bg-muted/40 group-hover/row:bg-muted/65 text-center text-muted-foreground/50 select-none font-mono text-xs",
-        cellIndex === 0 && isMarked && "bg-primary/15 text-primary group-hover/row:bg-primary/20",
+          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none font-mono text-xs",
+        cellIndex === 0 && isMarked && "text-primary",
         pinnedOffset !== null &&
-          "sticky z-10 bg-inherit border-r border-border shadow-[1px_0_0_0_var(--border)]",
-        isSelected && "bg-primary/10",
-        isMatch && "bg-amber-400/15",
+          "sticky z-10 border-r border-border shadow-[1px_0_0_0_var(--border)]",
+        isSticky &&
+          cn(
+            "after:pointer-events-none after:absolute after:inset-0 after:-z-10 after:bg-[var(--cell-tint)]",
+            isMarked
+              ? "bg-[color-mix(in_oklab,var(--primary)_10%,var(--background))]"
+              : "bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_15%,var(--background))]",
+          ),
+        !isSticky && isSelected && "bg-primary/10",
+        !isSticky && isMatch && "bg-amber-400/15",
         isActiveMatch &&
-          "bg-amber-400/30 outline outline-2 -outline-offset-2 outline-amber-500 z-20",
+          cn(
+            "outline outline-2 -outline-offset-2 outline-amber-500 z-20",
+            !isSticky && "bg-amber-400/30",
+          ),
         isActive &&
-          "bg-primary/[0.03] outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-        !isActive && cellIndex > 0 && "hover:bg-muted/10",
+          cn(
+            "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
+            !isSticky && "bg-primary/[0.03]",
+          ),
+        !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
       )}
     >
       {cellIndex === 0 ? (

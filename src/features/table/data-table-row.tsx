@@ -10,7 +10,7 @@ import type {
 import { type Dispatch, memo, type SetStateAction } from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { gridMatchKey } from "@/lib/grid-search";
-import { type GridCellRef, isCellInSelection, type selectionRange } from "@/lib/grid-selection";
+import { cellKey, type GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
@@ -34,7 +34,7 @@ export type DataTableRowProps = {
   editingCell: EditingCell | null;
   activeCell: GridCellRef | null;
   activeMatch: GridCellRef | null;
-  selectedRange: ReturnType<typeof selectionRange>;
+  selectedKeys: Set<string>;
   selectedCount: number;
   matchKeys: Set<string>;
   isSaving: boolean;
@@ -42,7 +42,7 @@ export type DataTableRowProps = {
   outgoingFkByColumn: Map<string, ForeignKeyInfo>;
   canEditCell: DataTableProps["canEditCell"];
   onSaveRow: DataTableProps["onSaveRow"];
-  focusCell: (cell: GridCellRef | null, extend?: boolean) => void;
+  focusCell: (cell: GridCellRef | null, extend?: boolean, additive?: boolean) => void;
   handleCellEdit: (row: Row<TableRow>, columnId: string) => void;
   handleCellCopy: (value: unknown) => void;
   setEditingCell: Dispatch<SetStateAction<EditingCell | null>>;
@@ -74,7 +74,7 @@ export const DataTableRow = memo(function DataTableRow({
   editingCell,
   activeCell,
   activeMatch,
-  selectedRange,
+  selectedKeys,
   selectedCount,
   matchKeys,
   isSaving,
@@ -127,8 +127,7 @@ export const DataTableRow = memo(function DataTableRow({
           !isRowEditing && activeCell?.rowIndex === rowIndex && activeCell.columnId === columnId;
         const pinnedOffset =
           cellIndex > 0 && column.getIsPinned() === "left" ? column.getStart("left") : null;
-        const isSelected =
-          selectedCount > 1 && isCellInSelection(selectedRange, rowIndex, columnId);
+        const isSelected = selectedCount > 1 && selectedKeys.has(cellKey(rowIndex, columnId));
         const isMatch = matchKeys.has(gridMatchKey(rowIndex, columnId));
         const isActiveMatch =
           activeMatch?.rowIndex === rowIndex && activeMatch.columnId === columnId;

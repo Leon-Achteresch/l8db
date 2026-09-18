@@ -288,16 +288,25 @@ export function summarizeStatement(text: string): StatementSummary {
   return { kind, preview };
 }
 
-const DML_PATTERN = /^(INSERT|UPDATE|DELETE)\b/i;
+const DML_PATTERN = /^(INSERT|UPDATE|DELETE|MERGE|CALL|EXEC|EXECUTE)\b/i;
+const PLSQL_BLOCK_PATTERN = /^(BEGIN|DECLARE)\b/i;
 const DDL_PATTERN = /^(CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)\b/i;
 const CREATE_VIEW_PATTERN = /^CREATE(\s+OR\s+REPLACE)?(\s+(TEMP|TEMPORARY|RECURSIVE))*\s+VIEW\b/i;
 const IMPLICIT_DDL_COMMIT = new Set(["oracle", "mysql", "clickhouse", "cassandra"]);
 
 export function isTransactionalStatement(sql: string, kind?: string): boolean {
+  const { statements } = splitSqlStatements(sql, kind);
+  if (statements.length > 1)
+    return statements.some((statement) => isTransactionalUnit(statement.text, kind));
+  return isTransactionalUnit(sql, kind);
+}
+
+function isTransactionalUnit(sql: string, kind?: string): boolean {
   const trimmed = sql.trim();
   const lead = STATEMENT_LEAD_PATTERN.exec(trimmed);
   const text = lead ? trimmed.slice(lead[0].length - lead[1].length) : trimmed;
   if (DML_PATTERN.test(text)) return true;
+  if (kind === "oracle" && PLSQL_BLOCK_PATTERN.test(text)) return true;
   if (!DDL_PATTERN.test(text)) return false;
   return !CREATE_VIEW_PATTERN.test(text) && !IMPLICIT_DDL_COMMIT.has(kind ?? "");
 }

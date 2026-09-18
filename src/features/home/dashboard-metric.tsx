@@ -1,7 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { motion } from "motion/react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SPRING_LAYOUT } from "@/lib/ease";
 
 interface Props {
   label: string;
@@ -13,7 +11,7 @@ interface Props {
 
 export function DashboardMetric({ label, value, loading, error, icon: Icon }: Props) {
   return (
-    <motion.div layout transition={{ layout: SPRING_LAYOUT }} className="min-w-0 px-5 py-5">
+    <div className="min-w-0 px-5 py-5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Icon className="size-3.5 text-primary" />
         {label}
@@ -28,6 +26,6 @@ export function DashboardMetric({ label, value, loading, error, icon: Icon }: Pr
           {error ? "—" : (value ?? 0).toLocaleString("de-DE")}
         </p>
       )}
-    </motion.div>
+    </div>
   );
 }
