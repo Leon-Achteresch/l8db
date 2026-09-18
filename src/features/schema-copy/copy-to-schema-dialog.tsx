@@ -31,6 +31,7 @@ const QUERY_KEYS: Record<SchemaCopyObjectType, string[]> = {
   table: ["tables", "columns", "all-objects"],
   view: ["views", "all-objects"],
   routine: ["functions", "procedures", "all-objects"],
+  package: ["functions", "function-definition", "invalid-objects", "all-objects"],
 };
 
 export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps) {

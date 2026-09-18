@@ -34,6 +34,7 @@ const OBJECT_TYPES: { value: SchemaCopyObjectType; label: string }[] = [
   { value: "table", label: "Tabellen" },
   { value: "view", label: "Views" },
   { value: "routine", label: "Funktionen & Prozeduren" },
+  { value: "package", label: "Packages" },
 ];
 
 const MAX_DATA_ROWS = 100_000;

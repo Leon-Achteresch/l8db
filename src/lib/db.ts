@@ -2108,7 +2108,7 @@ export async function objectAuditInfo(
   });
 }
 
-export type SchemaCopyObjectType = "table" | "view" | "routine";
+export type SchemaCopyObjectType = "table" | "view" | "routine" | "package";
 
 export type SchemaCopyStatus = "missing" | "different" | "identical";
 

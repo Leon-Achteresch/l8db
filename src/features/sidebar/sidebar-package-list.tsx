@@ -41,10 +41,11 @@ import {
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery } from "@/lib/db";
+import { executeQuery, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { buildInvalidSet, isPackageInvalid, isPackagePartInvalid } from "@/lib/invalid-objects";
 import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
@@ -137,6 +138,11 @@ function PackageNode({ schema, name }: { schema: string; name: string }) {
   const { compile } = useCompileObject();
   const [dropKind, setDropKind] = useState<DropKind | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<{
+    schema: string;
+    name: string;
+    objectType: SchemaCopyObjectType;
+  } | null>(null);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const invalid = isPackageInvalid(invalidSet, schema, name);
@@ -197,6 +203,14 @@ function PackageNode({ schema, name }: { schema: string; name: string }) {
               <CopyIcon />
               Namen kopieren
             </ContextMenuItem>
+            {capabilities.schema_object_copy ? (
+              <ContextMenuItem
+                onSelect={() => setCopyTarget({ schema, name, objectType: "package" })}
+              >
+                <CopyIcon />
+                In anderem Schema erstellen
+              </ContextMenuItem>
+            ) : null}
             {capabilities.compile_objects ? (
               <>
                 <ContextMenuSeparator />
@@ -229,6 +243,7 @@ function PackageNode({ schema, name }: { schema: string; name: string }) {
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
+        <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
         <AlertDialog open={dropKind !== null} onOpenChange={(open) => !open && setDropKind(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
