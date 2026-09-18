@@ -3,6 +3,49 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.34] - 2026-09-18
+
+### Features
+- Kontextmenü für Packages in der Sidebar mit Kompilieren, Aufruf-Vorlage, Namen kopieren und DROP PACKAGE/BODY
+- Kompilieren meldet gebrochene Aufrufer und markiert sie im Editor
+- Prüfen von Views, Funktionen, Prozeduren und Packages über temporäres _L8DB_TEMP-Objekt
+- Spaltentreffer blinkt dreimal
+- Grid-Suche startet im Spaltenmodus
+- ganze Spalte beim Treffer hervorheben, Mehrwort-Ranking in Palette und Spaltensuche
+- opencode als MCP-Client registrierbar
+- About-Seite, Query-Sheets und Tabellenansicht überarbeitet
+- MCP-Server mit Redaktion, Read-only-Modus und CLI-Registrierung
+- Dokumentation eingebettet in der App öffnen
+- row limit, notices, multi-format copy, and related UI improvements
+- Überladungen im Outline anzeigen und per Strg+Klick als Peek öffnen
+- implement ClickHouse browser proxy and database interaction
+
+### Fixes
+- Strg+C lässt markierten Text nativ kopieren statt den aktiven Zellwert
+- Strg+C kopiert keinen Zellwert, wenn der Fokus außerhalb des Grids liegt (z. B. Master-Detail-SQL-Dialog)
+- Prüfen meldet keine Phantom-Reste bei fehlgeschlagenen Views, lässt Tabellen-Qualifier bei gleichnamigem Package stehen und kürzt Temp-Namen auf 30 Bytes
+- Prüfen läuft als ein serverseitiger Block, räumt Temp-Objekte garantiert ab und prüft keine Aufrufer-Kopien mehr
+- Prüfen parst Abfragen, DML und PL/SQL-Blöcke wirklich und lehnt nicht prüfbares DDL ab
+- Bereichsrahmen wird nicht mehr von der Zeilennummern-Spalte überdeckt
+- Master-Detail-Kette über mehrere Bereiche automatisch durchreichen
+- PL/SQL-Blöcke und gemischte Skripte als Transaktion erkennen
+- Biome-Formatierung, fehlendes Github-Icon und toten Query-Code
+- deaktivierten Server als nicht verbunden melden
+- SQL-Härtung gegen Redaktions-Umgehung und Schema-Ausbruch
+- Spaltenbreite an Titel berücksichtigt FK-Icon wieder
+- Oracle-Packages als Packages statt Routinen anzeigen
+- localStorage-Quota nicht mehr überschreiten
+- sticky table header auch bei fixierten Spalten
+- Originalfehler im Passwort-Dialog anzeigen
+
+### Performance
+- WebView2 gibt unter Windows Speicher frei, wenn das Fenster den Fokus verliert
+- Monaco, FK-Drawer und Layout-Animation erst bei Bedarf laden
+- JSON-Ansicht bei großen Ergebnissen in WebKit nicht mehr blockieren
+
+### Änderungen
+- Dashboard-Charts, MCP-Ansicht und About-Seite in kleinere Komponenten aufgeteilt
+
 ## [0.5.98] - 2026-09-16
 
 ### Features
