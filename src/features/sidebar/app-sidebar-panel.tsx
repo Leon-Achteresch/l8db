@@ -8,6 +8,7 @@ import {
   ChevronsUpDownIcon,
   Columns2Icon,
   ColumnsIcon,
+  CopyIcon,
   DatabaseIcon,
   EyeIcon,
   FileCodeIcon,
@@ -108,6 +109,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
@@ -117,7 +119,6 @@ import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list"
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
-
 import {
   connectionUser,
   groupByServer,
@@ -126,6 +127,7 @@ import {
 } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import { sortConnectionsByName, useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import type { SchemaCopyObjectType } from "@/lib/db";
 import {
   createMaterializedView,
   createSchema,
@@ -880,6 +882,11 @@ function SidebarEntityList({
     name: string;
   } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<{
+    schema: string;
+    name: string;
+    objectType: SchemaCopyObjectType;
+  } | null>(null);
   const navigate = useNavigate();
   const openViewEditorTab = useTableTabs((state) => state.openViewEditorTab);
   const openAlterTableTab = useTableTabs((state) => state.openAlterTableTab);
@@ -1103,6 +1110,7 @@ function SidebarEntityList({
           </TooltipContent>
         </Tooltip>
       </div>
+      <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
       <AlertDialog
         open={confirmAction !== null}
         onOpenChange={(open) => {
@@ -1211,6 +1219,20 @@ function SidebarEntityList({
                         <SquareTerminalIcon />
                         Im Editor öffnen
                       </ContextMenuItem>
+                      {caps.schema_object_copy && (
+                        <ContextMenuItem
+                          onSelect={() =>
+                            setCopyTarget({
+                              schema: item.schema,
+                              name: item.name,
+                              objectType: "table",
+                            })
+                          }
+                        >
+                          <CopyIcon />
+                          In anderem Schema erstellen
+                        </ContextMenuItem>
+                      )}
                       {caps.alter_columns && (
                         <ContextMenuItem onSelect={() => handleAlterTable(item.schema, item.name)}>
                           <WrenchIcon />
@@ -1269,6 +1291,20 @@ function SidebarEntityList({
                         <MorphIcon icon={isFavorite(item.schema, item.name) ? StarOff : Star} />
                         {isFavorite(item.schema, item.name) ? "Favorit lösen" : "Anheften"}
                       </ContextMenuItem>
+                      {caps.schema_object_copy && (
+                        <ContextMenuItem
+                          onSelect={() =>
+                            setCopyTarget({
+                              schema: item.schema,
+                              name: item.name,
+                              objectType: "view",
+                            })
+                          }
+                        >
+                          <CopyIcon />
+                          In anderem Schema erstellen
+                        </ContextMenuItem>
+                      )}
                     </ContextMenuContent>
                   </ContextMenu>
                 )}
@@ -1362,6 +1398,11 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const caps = useActiveCapabilities();
   const { compile } = useCompileObject();
+  const [copyTarget, setCopyTarget] = useState<{
+    schema: string;
+    name: string;
+    objectType: SchemaCopyObjectType;
+  } | null>(null);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
@@ -1485,6 +1526,23 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
                     ) : (
                       <ContextMenuItem disabled>Kompilieren nicht unterstützt</ContextMenuItem>
                     )}
+                    {caps.schema_object_copy && item.return_type !== "PACKAGE" && (
+                      <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          onSelect={() =>
+                            setCopyTarget({
+                              schema: item.schema,
+                              name: item.name,
+                              objectType: "routine",
+                            })
+                          }
+                        >
+                          <CopyIcon />
+                          In anderem Schema erstellen
+                        </ContextMenuItem>
+                      </>
+                    )}
                   </ContextMenuContent>
                 </ContextMenu>
               </SidebarMenuItem>
@@ -1492,6 +1550,7 @@ function SidebarFunctionList({ items, isLoading, isError, error }: SidebarFuncti
           }}
         </SidebarWindow>
       )}
+      <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
     </div>
   );
 }
