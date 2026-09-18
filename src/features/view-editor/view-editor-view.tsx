@@ -76,7 +76,13 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     page,
     filterRaw,
   );
-  const { data: totalCount } = useTableRowCountQuery(schema, view, filter, filterRaw);
+  const { data: totalCount } = useTableRowCountQuery(
+    schema,
+    view,
+    filter,
+    filterRaw,
+    data !== undefined || isError,
+  );
 
   const { data: columnDetails } = useDetailedColumnsQuery(schema, view);
   const stateKey = tableViewStateKey(connection?.id, database, schema, view);

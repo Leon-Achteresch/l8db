@@ -612,6 +612,7 @@ export function useTableRowCountQuery(
   table: string,
   filter?: string,
   allowRaw = true,
+  enabled = true,
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -628,7 +629,7 @@ export function useTableRowCountQuery(
         allowRaw,
         getTableTransaction(connection!.id, database, schema, table)?.txId,
       ),
-    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
+    enabled: enabled && Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }

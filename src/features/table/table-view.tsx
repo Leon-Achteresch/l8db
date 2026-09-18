@@ -175,7 +175,13 @@ export function TableView({
         : (data?.rows ?? []),
     [data?.rows, caps.query_language],
   );
-  const { data: totalCount } = useTableRowCountQuery(schema, table, filter, filterRaw);
+  const { data: totalCount } = useTableRowCountQuery(
+    schema,
+    table,
+    filter,
+    filterRaw,
+    !isView || data !== undefined || isError,
+  );
   useEffect(() => {
     if (totalCount === undefined || isFetching) return;
     const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
