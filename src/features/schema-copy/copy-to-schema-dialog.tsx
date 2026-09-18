@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronsUpDownIcon, LayersIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { SchemaLogo } from "@/components/named-logo";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -32,7 +33,6 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const connections = useConnectionsStore((state) => state.connections);
-  const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const navigate = useNavigate();
   const [targetConnectionId, setTargetConnectionId] = useState("");
@@ -65,6 +65,10 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
     select: (list) => visibleSchemas(targetConnection, list),
     enabled: Boolean(targetConnection && target),
   });
+
+  useEffect(() => {
+    if (schemas?.length && !schemas.includes(targetSchema)) setTargetSchema(schemas[0]);
+  }, [schemas, targetSchema]);
   const schema = targetSchema.trim();
   const enabled = Boolean(connection && target && schema);
 
@@ -88,13 +92,18 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
     if (!target || !targetConnectionId || !ddlQuery.data) return;
     setIsPending(true);
     try {
+      const ddl = ddlQuery.data;
       if (targetConnectionId !== connection?.id) {
         if (!(await activateConnectionWithToast(targetConnectionId))) return;
       }
+      if (useConnectionsStore.getState().activeId !== targetConnectionId) {
+        toast.error("Zielverbindung ist nicht aktiv. Bitte erneut versuchen.");
+        return;
+      }
       setSchema(targetConnectionId, schema);
-      const id = openQueryTabWithSql(ddlQuery.data, `${schema}.${target.name}`);
+      const id = useTableTabs.getState().openQueryTabWithSql(ddl, `${schema}.${target.name}`);
       onClose();
-      void navigate({ to: "/query/$id", params: { id } });
+      await navigate({ to: "/query/$id", params: { id } });
     } finally {
       setIsPending(false);
     }
