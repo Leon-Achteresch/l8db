@@ -1,12 +1,21 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 async function runWindowAction(action: "minimize" | "toggleMaximize" | "close") {
   const win = getCurrentWindow();
-  if (action === "minimize") await win.minimize();
-  else if (action === "toggleMaximize") await win.toggleMaximize();
-  else await win.close();
+  try {
+    if (action === "minimize") await win.minimize();
+    else if (action === "toggleMaximize") await win.toggleMaximize();
+    else await win.close();
+  } catch (error) {
+    if (action === "close") {
+      await win.destroy().catch(() => toast.error(`Fenster schließen: ${String(error)}`));
+      return;
+    }
+    toast.error(`Fensteraktion fehlgeschlagen: ${String(error)}`);
+  }
 }
 
 export function WindowControls() {
@@ -16,7 +25,7 @@ export function WindowControls() {
     <fieldset
       aria-label="Fenstersteuerung"
       className="absolute right-0 top-0 z-30 flex h-full items-stretch"
-      onMouseDown={(event) => event.stopPropagation()}
+      data-tauri-drag-region="false"
     >
       <button
         type="button"

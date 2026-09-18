@@ -3,6 +3,31 @@ mod db;
 mod extension_process;
 mod mcp;
 
+#[cfg(target_os = "windows")]
+fn set_memory_target(window: &tauri::Window, low: bool) {
+    use tauri::Manager;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    use windows_core::Interface;
+    let Some(webview) = window.get_webview_window(window.label()) else {
+        return;
+    };
+    let level = if low {
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+    } else {
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+    };
+    let _ = webview.with_webview(move |platform| unsafe {
+        if let Ok(core) = platform.controller().CoreWebView2() {
+            if let Ok(core) = core.cast::<ICoreWebView2_19>() {
+                let _ = core.SetMemoryUsageTargetLevel(level);
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if std::env::args().any(|arg| arg == "--mcp") {
@@ -16,6 +41,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .on_window_event(|_window, _event| {
+            #[cfg(target_os = "windows")]
+            if let tauri::WindowEvent::Focused(focused) = _event {
+                set_memory_target(_window, !focused);
+            }
+        })
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())

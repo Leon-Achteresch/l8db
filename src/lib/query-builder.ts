@@ -199,6 +199,13 @@ export function parseColumnOptionValue(value: string): { source: QuerySource; co
   return { source, column: value.slice(separator + 1) };
 }
 
+const VIEW_HEADER =
+  /^\s*CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\s+)?(?:NO\s+)?(?:FORCE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?[\s\S]*?\sAS\s+/i;
+
+export function viewSelectBody(definition: string): string {
+  return definition.replace(VIEW_HEADER, "").trim();
+}
+
 export function buildViewDdl(
   kind: DatabaseKind | null | undefined,
   schema: string,
@@ -209,7 +216,11 @@ export function buildViewDdl(
   const target = schema
     ? `${quoteIdentifier(schema, style)}.${quoteIdentifier(view, style)}`
     : quoteIdentifier(view, style);
-  const select = body.trim().replace(/;+\s*$/, "");
+  const trimmed = body.trim().replace(/;+\s*$/, "");
+  const isReplaceable =
+    /^CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\b|(?:NO\s+)?(?:FORCE\s+)?MATERIALIZED\b)/i.test(trimmed);
+  if (isReplaceable && kind !== "mssql" && kind !== "sqlite") return `${trimmed};`;
+  const select = viewSelectBody(trimmed);
   if (kind === "mssql") return `CREATE OR ALTER VIEW ${target} AS\n${select};`;
   if (kind === "sqlite")
     return `DROP VIEW IF EXISTS ${target};\nCREATE VIEW ${target} AS\n${select};`;

@@ -75,6 +75,12 @@ export function mcpSupported(connection: Pick<SavedConnection, "kind" | "ssh">):
   return null;
 }
 
+export function mcpConnectionUnsupported(connection: McpConnection): string | null {
+  if (connection.ssh) return "SSH-Tunnel nicht unterstützt";
+  if (!MCP_SQL_KINDS.includes(connection.kind)) return "Nur SQL-Datenbanken";
+  return null;
+}
+
 export function mergeMcpConnections(
   saved: SavedConnection[],
   existing: McpConnection[],

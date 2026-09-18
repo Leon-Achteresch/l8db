@@ -41,7 +41,11 @@ export function useCompileObject() {
           database ?? undefined,
         );
         setState({ status: "done", result });
-        if (result.status === "VALID") {
+        if (result.message?.includes("Aufrufer")) {
+          toast.warning(`${label} bricht Aufrufer`, {
+            description: result.message.split("\n")[0],
+          });
+        } else if (result.status === "VALID") {
           toast.success(`${label} kompiliert`, { description: "Status: VALID" });
         } else {
           toast.error(`${label} ist INVALID`, {
@@ -51,6 +55,8 @@ export function useCompileObject() {
         await queryClient.invalidateQueries({ queryKey: ["function-definition"] });
         await queryClient.invalidateQueries({ queryKey: ["functions"] });
         await queryClient.invalidateQueries({ queryKey: ["procedures"] });
+        await queryClient.invalidateQueries({ queryKey: ["invalid-objects"] });
+        await queryClient.invalidateQueries({ queryKey: ["compile-errors"] });
         return result;
       } catch (e) {
         const message = String(e);

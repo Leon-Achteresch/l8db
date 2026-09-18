@@ -46,7 +46,15 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const isInvalid = isProcedureInvalid(invalidSet, schema, name);
-  const edit = useSqlObjectEdit(`${schema}.${name}`, data ?? "", `procedure:${schema}:${oid}`);
+  const edit = useSqlObjectEdit(
+    `${schema}.${name}`,
+    data ?? "",
+    `procedure:${schema}:${oid}`,
+    () =>
+      oid
+        ? compile(oid, "procedure", `${schema}.${name}`).then(() => undefined)
+        : Promise.resolve(),
+  );
 
   const [runOpen, setRunOpen] = useState(false);
   const [debugInfo, setDebugInfo] = useState<DebugSessionInfo | null>(null);

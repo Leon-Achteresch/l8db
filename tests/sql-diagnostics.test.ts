@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { lintPlsql, locateText, sqlErrorMarkers } from "../src/lib/sql-diagnostics";
+import {
+  impactCallMarkers,
+  lintPlsql,
+  locateText,
+  sqlErrorMarkers,
+} from "../src/lib/sql-diagnostics";
 
 const at = (text: string, marker: { start: number; end: number }) =>
   text.slice(marker.start, marker.end);
@@ -49,6 +54,17 @@ test("Postgres position and MySQL line fall back correctly", () => {
     "SELEC 2",
   );
   expect(sqlErrorMarkers("connection refused", sql)).toEqual([]);
+});
+
+test("caller impact markers land on the changed subprogram", () => {
+  const sql = "CREATE OR REPLACE FUNCTION add_one RETURN NUMBER IS BEGIN RETURN 1; END;";
+  const [marker] = impactCallMarkers(
+    "Aufrufer HR.CALL_IT (PROCEDURE): PLS-00306: wrong number or types of arguments in call to 'ADD_ONE'",
+    sql,
+  );
+  expect(at(sql, marker)).toBe("add_one");
+  expect(marker.message).toContain("HR.CALL_IT");
+  expect(marker.severity).toBe("error");
 });
 
 test("locateText picks the occurrence nearest to the cursor", () => {

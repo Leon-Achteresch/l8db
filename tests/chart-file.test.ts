@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { insertChartFile, makeChartFile, parseChartFile } from "../src/lib/chart-file";
-import { newWorksheet, placeField } from "../src/lib/chart-worksheet";
-import type { Dashboard } from "../src/lib/dashboards";
+import { type Dashboard, emptyDataset, type Widget } from "../src/lib/dashboards";
 
 const dashboard: Dashboard = {
   id: "d",
@@ -15,12 +14,24 @@ const dashboard: Dashboard = {
   createdAt: 0,
 };
 
+function newSource() {
+  const dataset = emptyDataset("Demo");
+  const widget: Widget = {
+    id: "w",
+    chart: "column",
+    datasetId: dataset.id,
+    title: "Demo",
+    period: "all",
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 6,
+  };
+  return { dataset, widget };
+}
+
 test("chart files preserve source and presentation without dashboard connection metadata", () => {
-  const source = placeField(
-    newWorksheet(dashboard, "column"),
-    { ref: "amount", label: "amount", dataType: "numeric" },
-    "rows",
-  );
+  const source = newSource();
   source.dataset.simple.table = "orders";
   source.dataset.simple.filters = [{ id: "f", column: "amount", operator: "gte", value: "100" }];
   source.widget.options = { horizontal: true };
@@ -41,7 +52,7 @@ test("chart files preserve source and presentation without dashboard connection 
 test("unsupported or incomplete chart files are rejected before inserting", () => {
   expect(() => parseChartFile("null")).toThrow();
   expect(() => parseChartFile('{"format":"l8db-chart","version":99}')).toThrow();
-  const source = newWorksheet(dashboard, "column");
+  const source = newSource();
   const file = makeChartFile(source.widget, source.dataset);
   expect(() => parseChartFile(JSON.stringify({ ...file, widget: { chart: "unknown" } }))).toThrow();
   expect(() =>

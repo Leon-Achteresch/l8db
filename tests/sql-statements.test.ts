@@ -255,3 +255,19 @@ test("DDL ohne Transaktion bei implizitem Commit", () => {
   expect(isTransactionalStatement("CREATE TABLE t (a int)", "mssql")).toBe(true);
   expect(isTransactionalStatement("CREATE TABLE t (a int)", "sqlite")).toBe(true);
 });
+
+test("oracle pl/sql blocks and mixed scripts count as transactional", () => {
+  expect(isTransactionalStatement("BEGIN pkg.do_it; END;", "oracle")).toBe(true);
+  expect(isTransactionalStatement("DECLARE n number; BEGIN n := 1; END;", "oracle")).toBe(true);
+  expect(isTransactionalStatement("MERGE INTO t USING s ON (1=1)", "oracle")).toBe(true);
+  expect(
+    isTransactionalStatement(
+      "CREATE OR REPLACE PACKAGE p AS\n  PROCEDURE q;\nEND p;\n/\nUPDATE t SET a = 1;\nINSERT INTO t VALUES (1);",
+      "oracle",
+    ),
+  ).toBe(true);
+  expect(
+    isTransactionalStatement("CREATE TABLE a (x int);\nCREATE TABLE b (x int);", "oracle"),
+  ).toBe(false);
+  expect(isTransactionalStatement("BEGIN", "postgres")).toBe(false);
+});

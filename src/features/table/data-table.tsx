@@ -2,6 +2,7 @@ import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useHotkey } from "@tanstack/react-hotkeys";
+import { useDebouncedCallback } from "@tanstack/react-pacer";
 import {
   type ColumnDef,
   type ColumnPinningState,
@@ -76,18 +77,20 @@ import {
   fitHeaderColumnWidth,
   measureHeaderTitleWidth,
 } from "@/lib/column-header-width";
+import { rankCommands } from "@/lib/command-score";
 import { useActiveConnection } from "@/lib/connections";
 import { type DetailedColumnInfo, type ForeignKeyInfo, fetchTableRows } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
 import { describeGridSearch, gridMatchKey, runGridSearch, stepMatchIndex } from "@/lib/grid-search";
 import {
+  cellKey,
+  cellsToTsv,
   describeSelectionStats,
   type GridCellRef,
-  selectionCellCount,
+  mergeSelectionCells,
   selectionRange,
-  selectionToTsv,
-  summarizeSelection,
+  summarizeCells,
 } from "@/lib/grid-selection";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
@@ -126,6 +129,7 @@ import type {
   InspectCell,
   TableRow,
 } from "./data-table-types";
+import { animatePageWave, PageWave } from "./page-wave";
 
 const headerSensors = [
   PointerSensor.configure({
@@ -275,15 +279,62 @@ function formatFkFilter(column: string, value: unknown): string {
   return `"${column}" = '${escaped}'`;
 }
 
+type FkLink = {
+  schema: string;
+  table: string;
+  column: string;
+  isOutgoing: boolean;
+};
+
+function fkLinksFor(
+  fks: ForeignKeyInfo[],
+  currentSchema: string,
+  currentTable: string,
+  currentColumn: string,
+): FkLink[] {
+  const links: FkLink[] = [];
+  const seen = new Set<string>();
+  const add = (link: FkLink) => {
+    const key = `${link.isOutgoing}|${link.schema}.${link.table}.${link.column}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    links.push(link);
+  };
+  for (const fk of fks) {
+    if (
+      fk.from_schema === currentSchema &&
+      fk.from_table === currentTable &&
+      fk.from_column === currentColumn
+    ) {
+      add({ schema: fk.to_schema, table: fk.to_table, column: fk.to_column, isOutgoing: true });
+    }
+    if (
+      fk.to_schema === currentSchema &&
+      fk.to_table === currentTable &&
+      fk.to_column === currentColumn
+    ) {
+      add({
+        schema: fk.from_schema,
+        table: fk.from_table,
+        column: fk.from_column,
+        isOutgoing: false,
+      });
+    }
+  }
+  return links.sort((a, b) => Number(b.isOutgoing) - Number(a.isOutgoing));
+}
+
 function FkPreviewPopover({
-  fk,
+  fks,
+  column,
   value,
   currentSchema,
   currentTable,
   onNavigate,
   children,
 }: {
-  fk: ForeignKeyInfo;
+  fks: ForeignKeyInfo[];
+  column: string;
   value: unknown;
   currentSchema: string;
   currentTable: string;
@@ -297,21 +348,24 @@ function FkPreviewPopover({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  const isOutgoing = fk.from_schema === currentSchema && fk.from_table === currentTable;
-  const targetSchema = isOutgoing ? fk.to_schema : fk.from_schema;
-  const targetTable = isOutgoing ? fk.to_table : fk.from_table;
-  const targetColumn = isOutgoing ? fk.to_column : fk.from_column;
+  const links = useMemo(
+    () => fkLinksFor(fks, currentSchema, currentTable, column),
+    [fks, currentSchema, currentTable, column],
+  );
+  const primary = links[0];
+  const isSingle = links.length === 1;
 
   const handleOpenChange = (open: boolean) => {
-    if (!open || hasLoaded || !connection || value === null || value === undefined) return;
+    if (!open || hasLoaded || !connection || !primary || !isSingle) return;
+    if (value === null || value === undefined) return;
     setIsLoadingPreview(true);
     setHasLoaded(true);
-    const filterSql = formatFkFilter(targetColumn, value);
+    const filterSql = formatFkFilter(primary.column, value);
     fetchTableRows(
       connection.kind,
       effectiveConnectionString(connection),
-      targetSchema,
-      targetTable,
+      primary.schema,
+      primary.table,
       filterSql,
       5,
       0,
@@ -327,15 +381,15 @@ function FkPreviewPopover({
       .finally(() => setIsLoadingPreview(false));
   };
 
-  const handleCtrlClick = (e: React.MouseEvent) => {
-    if (!(e.ctrlKey || e.metaKey) || value === null || value === undefined) return;
+  const handleAltClick = (e: React.MouseEvent) => {
+    if (!e.altKey || value === null || value === undefined) return;
+    if (!primary || !isSingle) return;
     e.preventDefault();
     e.stopPropagation();
-    const filterSql = formatFkFilter(targetColumn, value);
-    onNavigate(targetSchema, targetTable, filterSql);
+    onNavigate(primary.schema, primary.table, formatFkFilter(primary.column, value));
   };
 
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || !primary) {
     return <>{children}</>;
   }
 
@@ -343,7 +397,7 @@ function FkPreviewPopover({
     <HoverCard openDelay={400} closeDelay={100} onOpenChange={handleOpenChange}>
       <HoverCardTrigger asChild>
         <div
-          onClick={handleCtrlClick}
+          onClick={handleAltClick}
           className="flex h-5 w-fit items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
         >
           <LinkIcon className="size-3 shrink-0 text-blue-500/60 group-hover/fk:text-blue-500 transition-colors" />
@@ -356,57 +410,95 @@ function FkPreviewPopover({
         className="w-auto min-w-72 max-w-[32rem] p-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
-            <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
-              {targetSchema}.{targetTable}
-            </span>
-          </div>
-          <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
-            {isOutgoing ? "FK" : "Referenced by"}
-          </span>
-        </div>
-        <div className="px-3 py-2 max-h-52 overflow-auto">
-          {isLoadingPreview ? (
-            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2Icon className="size-3 animate-spin" />
-              Lade...
+        {isSingle ? (
+          <>
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
+                <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
+                  {primary.schema}.{primary.table}
+                </span>
+              </div>
+              <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+                {primary.isOutgoing ? "FK" : "Referenced by"}
+              </span>
             </div>
-          ) : previewData ? (
-            <div className="space-y-1">
-              {previewColumns.slice(0, 8).map((col) => (
-                <div key={col} className="flex items-baseline gap-2 text-xs">
-                  <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
-                    {col}
-                  </span>
-                  <span className="min-w-0 truncate">
-                    {tableCellPreview(previewData[col]).text}
-                  </span>
+            <div className="px-3 py-2 max-h-52 overflow-auto">
+              {isLoadingPreview ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                  <Loader2Icon className="size-3 animate-spin" />
+                  Lade...
                 </div>
-              ))}
-              {previewColumns.length > 8 && (
-                <div className="text-[10px] text-muted-foreground pt-1">
-                  +{previewColumns.length - 8} weitere Spalten
+              ) : previewData ? (
+                <div className="space-y-1">
+                  {previewColumns.slice(0, 8).map((col) => (
+                    <div key={col} className="flex items-baseline gap-2 text-xs">
+                      <span className="shrink-0 font-mono font-semibold text-muted-foreground w-24 truncate text-right">
+                        {col}
+                      </span>
+                      <span className="min-w-0 truncate">
+                        {tableCellPreview(previewData[col]).text}
+                      </span>
+                    </div>
+                  ))}
+                  {previewColumns.length > 8 && (
+                    <div className="text-[10px] text-muted-foreground pt-1">
+                      +{previewColumns.length - 8} weitere Spalten
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Kein Eintrag gefunden.</span>
               )}
             </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">Kein Eintrag gefunden.</span>
-          )}
-        </div>
-        <div className="border-t px-3 py-1.5 bg-muted/20">
-          <button
-            type="button"
-            className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
-            onClick={() => {
-              const filterSql = formatFkFilter(targetColumn, value);
-              onNavigate(targetSchema, targetTable, filterSql, true);
-            }}
-          >
-            In {targetSchema}.{targetTable} anzeigen
-          </button>
-        </div>
+            <div className="border-t px-3 py-1.5 bg-muted/20">
+              <button
+                type="button"
+                className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
+                onClick={() =>
+                  onNavigate(
+                    primary.schema,
+                    primary.table,
+                    formatFkFilter(primary.column, value),
+                    true,
+                  )
+                }
+              >
+                In {primary.schema}.{primary.table} anzeigen
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
+                <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
+                  {links.length} Verknüpfungen
+                </span>
+              </div>
+            </div>
+            <div className="max-h-52 overflow-auto py-1">
+              {links.map((link) => (
+                <button
+                  key={`${link.isOutgoing}|${link.schema}.${link.table}.${link.column}`}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left hover:bg-muted/60 cursor-pointer transition-colors"
+                  onClick={() =>
+                    onNavigate(link.schema, link.table, formatFkFilter(link.column, value), true)
+                  }
+                >
+                  <span className="min-w-0 truncate font-mono text-[11px]">
+                    {link.schema}.{link.table}.{link.column}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {link.isOutgoing ? "FK" : "Referenced by"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </HoverCardContent>
     </HoverCard>
   );
@@ -414,6 +506,7 @@ function FkPreviewPopover({
 
 export function DataTable({
   stateKey,
+  layoutKey,
   scrollIdentity = "",
   columns: columnNames,
   data,
@@ -446,6 +539,7 @@ export function DataTable({
   columnDetails,
   revealColumn,
   searchRequiresFocus = false,
+  autoSelectFirstCell = false,
 }: DataTableProps) {
   const pane = useWorkspacePane();
   const connection = useActiveConnection();
@@ -468,7 +562,14 @@ export function DataTable({
     applyProfile,
     renameProfile,
     deleteProfile,
-  } = useTableColumnLayout(connection?.id, currentSchema, currentTable, columnNames, database);
+  } = useTableColumnLayout(
+    connection?.id,
+    currentSchema,
+    currentTable,
+    columnNames,
+    database,
+    layoutKey,
+  );
   const markerKeys = useMemo(
     () =>
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
@@ -485,6 +586,11 @@ export function DataTable({
     return saved ? { rowIndex: saved.rowIndex, columnId: saved.column } : null;
   });
   useEffect(() => {
+    if (!autoSelectFirstCell || activeCell || data.length === 0) return;
+    const column = columnNames.find((name) => name !== "__ctid__");
+    if (column) setActiveCell({ rowIndex: 0, columnId: column });
+  }, [autoSelectFirstCell, activeCell, data, columnNames]);
+  useEffect(() => {
     if (!selectionKey) return;
     const row = activeCell ? data[activeCell.rowIndex] : undefined;
     useMasterDetail.getState().selectCell(
@@ -500,6 +606,7 @@ export function DataTable({
     );
   }, [selectionKey, activeCell, data]);
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
+  const [extraCells, setExtraCells] = useState<GridCellRef[]>([]);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -554,7 +661,7 @@ export function DataTable({
   const [filterValue, setFilterValue] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<"rows" | "columns">("rows");
+  const [searchMode, setSearchMode] = useState<"rows" | "columns">("columns");
   const searchRegex = useRegexEnabled("grid");
   const setSearchRegex = useRegexSearchPrefs((state) => state.setRegexEnabled);
   const [matchIndex, setMatchIndex] = useState(0);
@@ -564,14 +671,19 @@ export function DataTable({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const fkByColumn = useMemo(() => {
-    if (!foreignKeys || !currentSchema || !currentTable) return new Map<string, ForeignKeyInfo>();
-    const map = new Map<string, ForeignKeyInfo>();
+    const map = new Map<string, ForeignKeyInfo[]>();
+    if (!foreignKeys || !currentSchema || !currentTable) return map;
+    const push = (column: string, fk: ForeignKeyInfo) => {
+      const list = map.get(column);
+      if (list) list.push(fk);
+      else map.set(column, [fk]);
+    };
     for (const fk of foreignKeys) {
       if (fk.from_schema === currentSchema && fk.from_table === currentTable) {
-        map.set(fk.from_column, fk);
+        push(fk.from_column, fk);
       }
       if (fk.to_schema === currentSchema && fk.to_table === currentTable) {
-        map.set(fk.to_column, fk);
+        push(fk.to_column, fk);
       }
     }
     return map;
@@ -638,26 +750,27 @@ export function DataTable({
             const typeInfo =
               headerStateRef.current.typeInfoByColumn.get(column) ?? getColumnTypeInfo(column, []);
             const sorted = col.getIsSorted();
-            const fk = fkByColumn.get(column);
+            const columnFks = fkByColumn.get(column);
+            const fkTitle =
+              columnFks?.length && currentSchema && currentTable
+                ? fkLinksFor(columnFks, currentSchema, currentTable, column)
+                    .map((link) =>
+                      link.isOutgoing
+                        ? `FK -> ${link.schema}.${link.table}.${link.column}`
+                        : `<- ${link.schema}.${link.table}.${link.column}`,
+                    )
+                    .join("\n")
+                : undefined;
             return (
-              <div
-                className="flex items-center gap-2 w-full min-w-0 justify-start"
-                title={
-                  fk
-                    ? fk.from_schema === currentSchema && fk.from_table === currentTable
-                      ? `FK -> ${fk.to_schema}.${fk.to_table}.${fk.to_column}`
-                      : `<- ${fk.from_schema}.${fk.from_table}.${fk.from_column}`
-                    : undefined
-                }
-              >
+              <div className="flex items-center gap-2 w-full min-w-0 justify-start" title={fkTitle}>
                 <button
                   type="button"
                   onClick={col.getToggleSortingHandler()}
                   disabled={headerStateRef.current.isFetching || !col.getCanSort()}
                   className="group flex items-center gap-1 rounded-sm px-1 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink"
                 >
-                  {fk && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
-                  <DataTableHeaderName name={column} isFk={fk !== undefined} />
+                  {!!columnFks?.length && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
+                  <DataTableHeaderName name={column} isFk={!!columnFks?.length} />
                   <span
                     className={cn(
                       "shrink-0 text-muted-foreground transition-colors",
@@ -692,11 +805,12 @@ export function DataTable({
           },
           cell: (info) => {
             const value = info.getValue();
-            const fk = fkByColumn.get(column);
-            if (fk && onNavigateToTable && currentSchema && currentTable) {
+            const fks = fkByColumn.get(column);
+            if (fks?.length && onNavigateToTable && currentSchema && currentTable) {
               return (
                 <FkPreviewPopover
-                  fk={fk}
+                  fks={fks}
+                  column={column}
                   value={value}
                   currentSchema={currentSchema}
                   currentTable={currentTable}
@@ -750,9 +864,11 @@ export function DataTable({
 
   const columnMatches = useMemo(() => {
     if (searchMode !== "columns") return [];
-    const needle = deferredSearchQuery.trim().toLowerCase();
-    if (needle === "") return [];
-    return searchColumns.filter((column) => column.toLowerCase().includes(needle));
+    if (deferredSearchQuery.trim() === "") return [];
+    return rankCommands(
+      searchColumns.map((label) => ({ label })),
+      deferredSearchQuery,
+    ).map((item) => item.label);
   }, [searchMode, deferredSearchQuery, searchColumns]);
   const navCount = searchMode === "columns" ? columnMatches.length : matches.length;
   const activeColumnMatch = searchMode === "columns" ? (columnMatches[matchIndex] ?? null) : null;
@@ -861,25 +977,52 @@ export function DataTable({
     () => selectionRange(selection, visibleColumnIds),
     [selection, visibleColumnIds],
   );
-  const selectedCount = selectionCellCount(selectedRange);
+  const selectedCells = useMemo(
+    () => mergeSelectionCells(selectedRange, extraCells),
+    [selectedRange, extraCells],
+  );
+  const selectedCount = selectedCells.length;
+  const selectedKeys = useMemo(
+    () => new Set(selectedCells.map((cell) => cellKey(cell.rowIndex, cell.columnId))),
+    [selectedCells],
+  );
   const selectionStats = useMemo(
-    () => (selectedCount > 1 ? summarizeSelection(data, selectedRange) : null),
-    [selectedCount, data, selectedRange],
+    () => (selectedCount > 1 ? summarizeCells(data, selectedCells) : null),
+    [selectedCount, data, selectedCells],
   );
 
-  const focusCell = useCallback((cell: GridCellRef | null, extend = false) => {
-    setActiveCell(cell);
-    if (!extend) setSelectionAnchor(cell);
-  }, []);
+  const focusCell = useCallback(
+    (cell: GridCellRef | null, extend = false, additive = false) => {
+      if (additive && cell && cell.columnId !== INDEX_COLUMN) {
+        const key = cellKey(cell.rowIndex, cell.columnId);
+        const committed = mergeSelectionCells(selectedRange, extraCells);
+        const wasSelected = committed.some(
+          (entry) => cellKey(entry.rowIndex, entry.columnId) === key,
+        );
+        const next = wasSelected
+          ? committed.filter((entry) => cellKey(entry.rowIndex, entry.columnId) !== key)
+          : [...committed, cell];
+        setExtraCells(next);
+        const nextActive = wasSelected ? (next[0] ?? null) : cell;
+        setActiveCell(nextActive);
+        setSelectionAnchor(nextActive);
+        return;
+      }
+      setExtraCells([]);
+      setActiveCell(cell);
+      if (!extend) setSelectionAnchor(cell);
+    },
+    [selectedRange, extraCells],
+  );
 
   const copySelection = useCallback(() => {
-    if (!selectedRange || selectedCount <= 1) return false;
-    const tsv = selectionToTsv(data, selectedRange);
+    if (selectedCount <= 1) return false;
+    const tsv = cellsToTsv(data, selectedCells, visibleColumnIds);
     if (tsv === "") return false;
     void copyText(tsv);
     toast.success(`${selectedCount} Zellen als TSV kopiert.`);
     return true;
-  }, [selectedRange, selectedCount, data]);
+  }, [selectedCells, selectedCount, data, visibleColumnIds]);
 
   const saveCellValue = useCallback(
     async (
@@ -1111,8 +1254,17 @@ export function DataTable({
         scroller.scrollLeft = value;
       },
       onComplete: () => {
-        const th = scroller.querySelector<HTMLElement>(`th[data-column-id="${CSS.escape(name)}"]`);
-        if (th) animate(th, { opacity: [1, 0.25, 1, 0.25, 1] }, { duration: 0.8 });
+        const id = CSS.escape(name);
+        const flash = "inset 0 0 0 999px color-mix(in srgb, var(--primary) 30%, transparent)";
+        for (const cell of scroller.querySelectorAll(
+          `th[data-column-id="${id}"], td[data-col="${id}"]`,
+        )) {
+          cell.animate([{ boxShadow: flash }, { boxShadow: "inset 0 0 0 999px transparent" }], {
+            duration: 400,
+            iterations: 3,
+            easing: "ease-out",
+          });
+        }
       },
     });
     return () => controls.stop();
@@ -1206,6 +1358,8 @@ export function DataTable({
       if (!focusInside && activeCell === null) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (target && target !== document.body && !root?.contains(target)) return;
+      if (window.getSelection()?.toString()) return;
       if (editingCell) return;
       event.preventDefault();
       copyActiveCell();
@@ -1240,6 +1394,48 @@ export function DataTable({
     { ignoreInputs: false },
   );
 
+  const armedRef = useRef(false);
+  const armPageFlip = useDebouncedCallback(
+    () => {
+      armedRef.current = true;
+    },
+    { wait: 400 },
+  );
+
+  const waveRefs = { down: useRef<SVGSVGElement>(null), up: useRef<SVGSVGElement>(null) };
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    const direction = Math.sign(page - prevPageRef.current);
+    prevPageRef.current = page;
+    const element = direction > 0 ? waveRefs.down.current : waveRefs.up.current;
+    if (!direction || !element) return;
+    animatePageWave(element);
+  }, [page, waveRefs.down, waveRefs.up]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !onPageChange) return;
+    const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
+    const handleWheel = (event: WheelEvent) => {
+      const atTop = element.scrollTop <= 0;
+      const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+      const down = event.deltaY > 0;
+      if (!((down && atBottom) || (!down && atTop))) {
+        armedRef.current = false;
+        return;
+      }
+      if (!armedRef.current) {
+        armPageFlip();
+        return;
+      }
+      armedRef.current = false;
+      if (down && totalPages != null && page < totalPages - 1) onPageChange(page + 1);
+      else if (!down && page > 0) onPageChange(page - 1);
+    };
+    element.addEventListener("wheel", handleWheel, { passive: true });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, [onPageChange, page, pageSize, totalCount, armPageFlip]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -1265,6 +1461,7 @@ export function DataTable({
 
       if (e.key === "Escape") {
         if (selectedCount > 1) {
+          setExtraCells([]);
           setSelectionAnchor(activeCell);
           return;
         }
@@ -1645,171 +1842,187 @@ export function DataTable({
           )}
         </div>
       )}
-      <div
-        ref={scrollRef}
-        style={{ contain: "strict" }}
-        className={cn(
-          "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
-          isFetching && "opacity-85",
-          table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
-        )}
-      >
-        <div className="pb-3">
-          <DragDropProvider
-            sensors={headerSensors}
-            onDragEnd={(event) => {
-              const { operation, canceled } = event;
-              if (canceled || !isSortable(operation.source)) return;
-              const source = operation.source;
-              if (source.initialIndex === source.index) return;
-              setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
-            }}
-          >
-            <table
-              className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-              style={{ width: tableWidth }}
+      <div className="relative flex min-h-0 flex-1 basis-0 flex-col">
+        <div
+          ref={scrollRef}
+          style={{ contain: "strict" }}
+          className={cn(
+            "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
+            isFetching && "opacity-85",
+            table.getState().columnSizingInfo.isResizingColumn && "cursor-col-resize select-none",
+          )}
+        >
+          <div className="pb-3">
+            <DragDropProvider
+              sensors={headerSensors}
+              onDragEnd={(event) => {
+                const { operation, canceled } = event;
+                if (canceled || !isSortable(operation.source)) return;
+                const source = operation.source;
+                if (source.initialIndex === source.index) return;
+                setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
+              }}
             >
-              <colgroup>
-                {visibleColumns.map((column, index) => (
-                  <col key={column.id} style={{ width: columnWidths[index] }} />
-                ))}
-              </colgroup>
-              {tableHeader}
-              {draft && (
-                <tbody ref={draftRef}>
-                  <DataTableDraftRow
-                    columns={visibleColumns}
-                    fields={draft}
-                    disabled={isInserting}
-                    onChange={setDraft}
-                  />
-                </tbody>
-              )}
-              <ContextMenu>
-                <ContextMenuTrigger asChild>
-                  <tbody
-                    ref={tbodyRef}
-                    onContextMenuCapture={(event) => {
-                      const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>(
-                        "tr[data-ctid]",
-                      );
-                      const ctid = tr?.dataset.ctid;
-                      const row = ctid ? rows[Number(tr?.dataset.rowIndex)] : undefined;
-                      if (!ctid || !row || !hasRowActions) {
-                        event.stopPropagation();
-                        return;
-                      }
-                      setMenuRow({ ctid, rowIndex: row.index, original: row.original });
-                    }}
-                  >
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={colSpan}
-                          className="px-3 py-16 text-center text-muted-foreground bg-background"
-                        >
-                          {emptyMessage}
-                        </td>
-                      </tr>
-                    ) : (
-                      <>
-                        {paddingTop > 0 && (
-                          <tr aria-hidden style={{ height: paddingTop }}>
-                            <td colSpan={colSpan} className="p-0" />
-                          </tr>
-                        )}
-                        {virtualRows.map((virtualRow) => {
-                          const row = rows[virtualRow.index];
-                          const rowIndex = row.index;
-                          const rowCtid = row.original.__ctid__ as string | undefined;
-                          return (
-                            <DataTableRow
-                              key={rowCtid ?? row.id}
-                              row={row}
-                              table={table}
-                              visibleColumns={visibleColumns}
-                              customCellColumns={customCellColumns}
-                              isMarked={markedRows.has(row.original)}
-                              toggleRowMarker={toggleRowMarker}
-                              columnWindow={columnWindow.items}
-                              measureElement={rowVirtualizer.measureElement}
-                              editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
-                              activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
-                              activeMatch={activeMatch?.rowIndex === rowIndex ? activeMatch : null}
-                              selectedRange={selectedRange}
-                              selectedCount={selectedCount}
-                              matchKeys={matchKeys}
-                              isSaving={isSaving}
-                              canPickFk={canPickFk}
-                              outgoingFkByColumn={outgoingFkByColumn}
-                              onSaveRow={onSaveRow}
-                              canEditCell={canEditCell}
-                              focusCell={focusCell}
-                              handleCellEdit={handleCellEdit}
-                              handleCellCopy={handleCellCopy}
-                              setEditingCell={setEditingCell}
-                              commitEditingCell={commitEditingCell}
-                              setInspectCell={setInspectCell}
-                              setFkPickerCell={setFkPickerCell}
-                              columnSizing={table.getState().columnSizing}
-                              columnOrder={columnOrder}
-                              columnVisibility={columnVisibility}
-                              columnPinning={columnPinning}
-                              columns={columns}
-                              pageOffset={page * pageSize}
-                              fontSize={(12 * uiScale) / 100}
-                              columnScale={columnScale}
-                            />
-                          );
-                        })}
-                        {paddingBottom > 0 && (
-                          <tr aria-hidden style={{ height: paddingBottom }}>
-                            <td colSpan={colSpan} className="p-0" />
-                          </tr>
-                        )}
-                      </>
-                    )}
+              <table
+                className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
+                style={{ width: tableWidth }}
+              >
+                <colgroup>
+                  {visibleColumns.map((column, index) => (
+                    <col key={column.id} style={{ width: columnWidths[index] }} />
+                  ))}
+                </colgroup>
+                {tableHeader}
+                {draft && (
+                  <tbody ref={draftRef}>
+                    <DataTableDraftRow
+                      columns={visibleColumns}
+                      fields={draft}
+                      disabled={isInserting}
+                      onChange={setDraft}
+                    />
                   </tbody>
-                </ContextMenuTrigger>
-                {menuRow && (
-                  <ContextMenuContent>
-                    <ContextMenuLabel className="font-mono text-[11px]">
-                      Zeile {menuRow.rowIndex + 1 + page * pageSize}
-                    </ContextMenuLabel>
-                    <ContextMenuSeparator />
-                    {onInsertRow && (
-                      <ContextMenuItem
-                        disabled={hasDraft || isSaving}
-                        onClick={() => {
-                          setEditingCell(null);
-                          setActiveCell(null);
-                          setSelectionAnchor(null);
-                          setInsertError(null);
-                          setDraft(
-                            buildDuplicatePrefill(columnNames, menuRow.original, columnDetails),
-                          );
-                          scrollRef.current?.scrollTo({ top: 0, left: 0 });
-                        }}
-                      >
-                        <CopyPlusIcon />
-                        Zeile duplizieren
-                      </ContextMenuItem>
-                    )}
-                    {onDeleteRow && (
-                      <ContextMenuItem
-                        variant="destructive"
-                        onClick={() => onDeleteRow(menuRow.ctid, menuRow.original)}
-                      >
-                        <Trash2Icon />
-                        Zeile löschen
-                      </ContextMenuItem>
-                    )}
-                  </ContextMenuContent>
                 )}
-              </ContextMenu>
-            </table>
-          </DragDropProvider>
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <tbody
+                      ref={tbodyRef}
+                      onContextMenuCapture={(event) => {
+                        const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>(
+                          "tr[data-ctid]",
+                        );
+                        const ctid = tr?.dataset.ctid;
+                        const row = ctid ? rows[Number(tr?.dataset.rowIndex)] : undefined;
+                        if (!ctid || !row || !hasRowActions) {
+                          event.stopPropagation();
+                          return;
+                        }
+                        setMenuRow({ ctid, rowIndex: row.index, original: row.original });
+                      }}
+                    >
+                      {rows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={colSpan}
+                            className="px-3 py-16 text-center text-muted-foreground bg-background"
+                          >
+                            {emptyMessage}
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {paddingTop > 0 && (
+                            <tr aria-hidden style={{ height: paddingTop }}>
+                              <td colSpan={colSpan} className="p-0" />
+                            </tr>
+                          )}
+                          {virtualRows.map((virtualRow) => {
+                            const row = rows[virtualRow.index];
+                            const rowIndex = row.index;
+                            const rowCtid = row.original.__ctid__ as string | undefined;
+                            return (
+                              <DataTableRow
+                                key={rowCtid ?? row.id}
+                                row={row}
+                                table={table}
+                                visibleColumns={visibleColumns}
+                                customCellColumns={customCellColumns}
+                                isMarked={markedRows.has(row.original)}
+                                toggleRowMarker={toggleRowMarker}
+                                columnWindow={columnWindow.items}
+                                measureElement={rowVirtualizer.measureElement}
+                                editingCell={
+                                  editingCell?.rowIndex === rowIndex ? editingCell : null
+                                }
+                                activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
+                                activeMatch={
+                                  activeMatch?.rowIndex === rowIndex ? activeMatch : null
+                                }
+                                selectedKeys={selectedKeys}
+                                selectedCount={selectedCount}
+                                matchKeys={matchKeys}
+                                isSaving={isSaving}
+                                canPickFk={canPickFk}
+                                outgoingFkByColumn={outgoingFkByColumn}
+                                onSaveRow={onSaveRow}
+                                canEditCell={canEditCell}
+                                focusCell={focusCell}
+                                handleCellEdit={handleCellEdit}
+                                handleCellCopy={handleCellCopy}
+                                setEditingCell={setEditingCell}
+                                commitEditingCell={commitEditingCell}
+                                setInspectCell={setInspectCell}
+                                setFkPickerCell={setFkPickerCell}
+                                columnSizing={table.getState().columnSizing}
+                                columnOrder={columnOrder}
+                                columnVisibility={columnVisibility}
+                                columnPinning={columnPinning}
+                                columns={columns}
+                                pageOffset={page * pageSize}
+                                fontSize={(12 * uiScale) / 100}
+                                columnScale={columnScale}
+                              />
+                            );
+                          })}
+                          {paddingBottom > 0 && (
+                            <tr aria-hidden style={{ height: paddingBottom }}>
+                              <td colSpan={colSpan} className="p-0" />
+                            </tr>
+                          )}
+                        </>
+                      )}
+                    </tbody>
+                  </ContextMenuTrigger>
+                  {menuRow && (
+                    <ContextMenuContent>
+                      <ContextMenuLabel className="font-mono text-[11px]">
+                        Zeile {menuRow.rowIndex + 1 + page * pageSize}
+                      </ContextMenuLabel>
+                      <ContextMenuSeparator />
+                      {onInsertRow && (
+                        <ContextMenuItem
+                          disabled={hasDraft || isSaving}
+                          onClick={() => {
+                            setEditingCell(null);
+                            setActiveCell(null);
+                            setSelectionAnchor(null);
+                            setInsertError(null);
+                            setDraft(
+                              buildDuplicatePrefill(columnNames, menuRow.original, columnDetails),
+                            );
+                            scrollRef.current?.scrollTo({ top: 0, left: 0 });
+                          }}
+                        >
+                          <CopyPlusIcon />
+                          Zeile duplizieren
+                        </ContextMenuItem>
+                      )}
+                      {onDeleteRow && (
+                        <ContextMenuItem
+                          variant="destructive"
+                          onClick={() => onDeleteRow(menuRow.ctid, menuRow.original)}
+                        >
+                          <Trash2Icon />
+                          Zeile löschen
+                        </ContextMenuItem>
+                      )}
+                    </ContextMenuContent>
+                  )}
+                </ContextMenu>
+              </table>
+            </DragDropProvider>
+          </div>
         </div>
+        <PageWave
+          direction="up"
+          ref={waveRefs.up}
+          className="pointer-events-none absolute inset-x-0 top-9 z-50 opacity-0"
+        />
+        <PageWave
+          direction="down"
+          ref={waveRefs.down}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-50 opacity-0"
+        />
       </div>
       {rows.length > 0 &&
         (() => {

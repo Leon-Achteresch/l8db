@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Extension API for l8db.",
   "author": "Leon Achteresch",
-  "license": "GPL-3.0-only",
+  "license": "Elastic-2.0",
   "homepage": "https://github.com/Leon-Achteresch/l8db",
   "repository": {
     "type": "git",

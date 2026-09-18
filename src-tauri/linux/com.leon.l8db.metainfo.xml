@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>com.leon.l8db</id>
   <metadata_license>MIT</metadata_license>
-  <project_license>GPL-3.0-only</project_license>
+  <project_license>Elastic-2.0</project_license>
   <name>l8db</name>
   <summary>Native database client for PostgreSQL and other databases</summary>
   <developer id="com.leon">

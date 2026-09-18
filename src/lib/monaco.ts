@@ -15,7 +15,12 @@ import { useConnectionsStore } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
-import { lintPlsql, type SqlMarker, sqlErrorMarkers } from "@/lib/sql-diagnostics";
+import {
+  impactCallMarkers,
+  lintPlsql,
+  type SqlMarker,
+  sqlErrorMarkers,
+} from "@/lib/sql-diagnostics";
 import {
   formatSqlWith,
   type SqlDialect,
@@ -34,7 +39,7 @@ globalScope.MonacoEnvironment = {
   },
 };
 
-void new EditorWorker();
+window.dispatchEvent(new Event("l8db:monaco-ready"));
 
 const plsqlKeywords = [
   "BODY",
@@ -135,6 +140,7 @@ monaco.editor.defineTheme("l8db-light", {
     "editorStickyScroll.border": "#e2e5ea",
     "editorStickyScroll.shadow": "#00000014",
     "editorStickyScrollHover.background": "#eceef1",
+    "editorLink.activeForeground": "#2563eb",
   },
 });
 
@@ -154,6 +160,7 @@ monaco.editor.defineTheme("l8db-dark", {
     "editorStickyScroll.border": "#2e3345",
     "editorStickyScroll.shadow": "#00000066",
     "editorStickyScrollHover.background": "#262a3a",
+    "editorLink.activeForeground": "#60a5fa",
   },
 });
 
@@ -297,13 +304,16 @@ export function showSqlError(
 ): void {
   const model = editor.getModel();
   if (!model) return;
+  const source = error?.text ?? model.getValue();
   const markers = error
-    ? sqlErrorMarkers(
-        error.message,
-        error.text ?? model.getValue(),
-        error.base ?? 0,
-        activeConnectionKind(),
-      )
+    ? [
+        ...sqlErrorMarkers(error.message, source, error.base ?? 0, activeConnectionKind()),
+        ...impactCallMarkers(error.message, source).map((marker) => ({
+          ...marker,
+          start: marker.start + (error.base ?? 0),
+          end: marker.end + (error.base ?? 0),
+        })),
+      ]
     : [];
   setSqlMarkers(model, "l8db-sql-error", markers);
   const first = markers.find((marker) => marker.start >= 0);

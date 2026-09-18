@@ -18,21 +18,16 @@ export function ChartLibraryDrawer({
   open,
   onOpenChange,
   dashboard,
-  selectedWidgetId,
   onLoaded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dashboard: Dashboard;
-  selectedWidgetId?: string;
   onLoaded: (id: string) => void;
 }) {
   const library = useDashboardWorkspaceStore();
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
-  const widget = dashboard.widgets.find((w) => w.id === selectedWidgetId) ?? dashboard.widgets[0];
-  const dataset = dashboard.datasets.find((d) => d.id === widget?.datasetId);
-  const current = widget && dataset ? makeChartFile(widget, dataset) : null;
   const task = async (work: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -70,58 +65,30 @@ export function ChartLibraryDrawer({
     >
       <div className="space-y-5 p-4">
         <section className="space-y-3 rounded-lg border p-3">
-          <h3 className="text-sm font-semibold">
-            {current ? current.name : "Noch kein Chart ausgewählt"}
-          </h3>
+          <h3 className="text-sm font-semibold">Chart aus Datei laden</h3>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Ein gespeicherter Chart enthält seine Darstellung, Felder und Filter. Beim Laden
             entsteht eine eigene Kopie im aktuellen Dashboard.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={!current || busy}
-              onClick={() => {
-                if (current) {
-                  library.saveChart(current);
-                  toast.success("Chart in deiner Sammlung gespeichert");
-                }
-              }}
-            >
-              Chart speichern
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!current || busy}
-              onClick={() =>
-                void task(async () => {
-                  if (current && (await pickAndWriteChart(current)))
-                    toast.success("Chart-Datei gespeichert");
-                })
-              }
-            >
-              Als Datei speichern
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                void task(async () => {
-                  const chart = await pickAndReadChart();
-                  if (chart) load(chart, true);
-                })
-              }
-            >
-              Aus Datei laden
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              void task(async () => {
+                const chart = await pickAndReadChart();
+                if (chart) load(chart, true);
+              })
+            }
+          >
+            Aus Datei laden
+          </Button>
         </section>
         <div>
           <h3 className="text-sm font-semibold">Deine Chart-Sammlung</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Die verwendete Tabelle oder View muss in der aktuellen Verbindung vorhanden sein.
+            Speichere einen Chart über „In Sammlung speichern“ im Chart-Dialog. Die verwendete
+            Tabelle oder View muss in der aktuellen Verbindung vorhanden sein.
           </p>
         </div>
         <Input
@@ -186,7 +153,7 @@ export function ChartLibraryDrawer({
             chart.name.toLowerCase().includes(search.toLowerCase()),
           ) && (
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Noch keine passenden Charts. Speichere den geöffneten Chart oder lade eine
+              Noch keine passenden Charts. Speichere einen Chart im Chart-Dialog oder lade eine
               Chart-Datei.
             </p>
           )}
