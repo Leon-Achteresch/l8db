@@ -281,7 +281,7 @@ const TEMP_BLOCK_HEAD: &str = "DECLARE
   BEGIN
     EXECUTE IMMEDIATE stmt;
   EXCEPTION WHEN OTHERS THEN
-    IF SQLCODE <> -4043 AND NOT quiet THEN note(-1, 0, 0, stmt || ': ' || SQLERRM); END IF;
+    IF SQLCODE NOT IN (-4043, -942) AND NOT quiet THEN note(-1, 0, 0, stmt || ': ' || SQLERRM); END IF;
   END;
   PROCEDURE mk(i PLS_INTEGER, stmt CLOB, own VARCHAR2, nam VARCHAR2, typ VARCHAR2) IS
   BEGIN
@@ -302,11 +302,27 @@ fn run_temps(c: &Connection, plan: &[sql::TempObject]) -> Result<(), String> {
     if plan.is_empty() {
         return Ok(());
     }
-    let map: Vec<(String, String)> = plan
-        .iter()
-        .filter(|t| t.kind.starts_with("PACKAGE"))
-        .map(|t| (t.name.clone(), t.temp_name.clone()))
-        .collect();
+    let mut map: Vec<(String, String)> = Vec::new();
+    for temp in plan.iter().filter(|t| t.kind.starts_with("PACKAGE")) {
+        if map.iter().any(|(from, _)| *from == temp.name) {
+            continue;
+        }
+        let owner = temp.owner.as_ref().map_or_else(
+            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+            |o| lit(o),
+        );
+        let name = lit(&temp.name);
+        let shadowed = !fetch(
+            c,
+            &format!(
+                "SELECT 1 FROM all_objects WHERE owner IN ({owner}, 'PUBLIC') AND object_name = {name} AND object_type IN ('TABLE', 'VIEW', 'SYNONYM', 'MATERIALIZED VIEW') UNION ALL SELECT 1 FROM all_users WHERE username = {name}"
+            ),
+        )?
+        .is_empty();
+        if !shadowed {
+            map.push((temp.name.clone(), temp.temp_name.clone()));
+        }
+    }
     let statements: Vec<String> = plan
         .iter()
         .map(|t| sql::rewrite_qualifiers(&t.sql, &map))
@@ -403,7 +419,9 @@ END;",
                 temp.kind, temp.name
             ));
         }
-        let text = text.replace(sql::TEMP_SUFFIX, "");
+        let text = plan.iter().fold(text.to_string(), |t, p| {
+            t.replace(&p.temp_name, &p.name)
+        });
         messages.push(if line == "0" {
             text
         } else {
@@ -2412,12 +2430,16 @@ mod tests {
             .validate_sql("CREATE PROCEDURE L8DB_VP_P IS BEGIN NULL END;")
             .await
             .is_err());
-        assert!(a
+        let bad_view = a
             .validate_sql(
                 "CREATE OR REPLACE FORCE VIEW L8DB_VP_V AS SELECT x FROM l8db_no_such_table"
             )
             .await
-            .is_err());
+            .unwrap_err();
+        assert!(
+            bad_view.contains("ORA-00942") && !bad_view.contains("manuell"),
+            "{bad_view}"
+        );
         a.validate_sql("CREATE OR REPLACE FORCE VIEW L8DB_VP_V (A) AS SELECT ID FROM L8DB_VP_T")
             .await
             .expect("valid view");
@@ -2427,6 +2449,9 @@ mod tests {
         a.validate_sql("CREATE PACKAGE L8DB_VP_N AS TYPE t_rec IS RECORD (id NUMBER); PROCEDURE put(r t_rec); PROCEDURE run; END L8DB_VP_N;\n/\nCREATE PACKAGE BODY L8DB_VP_N AS PROCEDURE put(r t_rec) IS BEGIN NULL; END put; PROCEDURE run IS v L8DB_VP_N.t_rec; BEGIN L8DB_VP_N.put(v); END run; END L8DB_VP_N;\n/")
             .await
             .expect("self-qualified package types stay compatible");
+        a.validate_sql("CREATE OR REPLACE PACKAGE L8DB_VP_T AS PROCEDURE run; END;\n/\nCREATE OR REPLACE PACKAGE BODY L8DB_VP_T AS PROCEDURE run IS n NUMBER; BEGIN SELECT L8DB_VP_T.id INTO n FROM L8DB_VP_T WHERE ROWNUM = 1; END; END;\n/")
+            .await
+            .expect("package named like a table keeps table qualifiers");
         let procs = 1500;
         let spec: String = (0..procs)
             .map(|i| format!("PROCEDURE p{i}(a NUMBER);\n"))
