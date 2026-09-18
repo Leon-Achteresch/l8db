@@ -14,12 +14,12 @@ import { DdlPreviewDialog } from "@/features/ddl/ddl-preview-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import {
   executeSchemaObjectCopy,
+  listSchemas,
   previewSchemaObjectCopy,
   type SchemaCopyObjectType,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { ensurePassword } from "@/lib/password-prompt";
-import { useSchemasQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface CopyToSchemaDialogProps {
@@ -38,7 +38,12 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
-  const { data: schemas } = useSchemasQuery();
+  const { data: schemas } = useQuery({
+    queryKey: ["schemas-all", connection?.id, database],
+    queryFn: () =>
+      listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
+    enabled: Boolean(connection && target),
+  });
   const [targetSchema, setTargetSchema] = useState("");
   const [isPending, setIsPending] = useState(false);
 
@@ -114,11 +119,17 @@ export function CopyToSchemaDialog({ target, onClose }: CopyToSchemaDialogProps)
             <SelectValue placeholder="Schema wählen…" />
           </SelectTrigger>
           <SelectContent>
-            {candidates.map((schema) => (
-              <SelectItem key={schema} value={schema}>
-                {schema}
-              </SelectItem>
-            ))}
+            {candidates.length === 0 ? (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                Kein anderes Schema verfügbar.
+              </p>
+            ) : (
+              candidates.map((schema) => (
+                <SelectItem key={schema} value={schema}>
+                  {schema}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
