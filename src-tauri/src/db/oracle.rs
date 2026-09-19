@@ -2406,7 +2406,13 @@ mod tests {
     #[test]
     fn push_script_merges_package_spec_and_body() {
         let mut out = Vec::new();
-        super::push_script(&mut out, "HR", "PKG".into(), "PACKAGE", "PACKAGE pkg IS END;");
+        super::push_script(
+            &mut out,
+            "HR",
+            "PKG".into(),
+            "PACKAGE",
+            "PACKAGE pkg IS END;",
+        );
         super::push_script(
             &mut out,
             "HR",
