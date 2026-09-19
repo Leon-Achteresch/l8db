@@ -1,15 +1,21 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { UserRoundCog, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CornerDownLeft, UserRoundCog, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { connectionError } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { testConnectionString } from "@/lib/db";
+import { listProxyUsers, type ProxyUserInfo, testConnectionString } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { useCapabilities } from "@/lib/providers";
-import { useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -23,20 +29,42 @@ const HINTS: Partial<Record<string, string>> = {
     "Proxy-Anmeldung als benutzer[ziel]. Erfordert ALTER USER ziel GRANT CONNECT THROUGH benutzer; VPD-Policies greifen.",
 };
 
+const GROUP_LABELS: Record<string, Record<ProxyUserInfo["category"], string>> = {
+  postgres: { login: "Logins", user: "Benutzer", role: "Rollen" },
+  mssql: { login: "Logins", user: "Datenbank-Benutzer", role: "Rollen" },
+  oracle: { login: "Logins", user: "Freigegebene Benutzer", role: "Rollen" },
+};
+
+const CATEGORIES: ProxyUserInfo["category"][] = ["login", "user", "role"];
+
 export function ProxyUserSwitch() {
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
   const caps = useCapabilities(connection?.kind);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
+  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
-  const roles = useRolesQuery(open && caps.proxy_user);
+  const enabled = open && Boolean(connection) && caps.proxy_user;
+  const candidates = useQuery({
+    queryKey: ["proxy-users", connection?.id, database],
+    queryFn: () =>
+      listProxyUsers(
+        connection!.kind,
+        effectiveConnectionString({ ...connection!, proxyUser: null }),
+        database ?? undefined,
+      ),
+    enabled,
+  });
 
   if (!connection || !caps.proxy_user) return null;
   const active = connection.proxyUser?.trim() || null;
+  const typed = search.trim();
+  const users = candidates.data ?? [];
+  const labels = GROUP_LABELS[connection.kind] ?? GROUP_LABELS.postgres;
 
   async function apply(proxyUser: string | null) {
-    if (!connection) return;
+    if (!connection || busy) return;
     if (getTransactionForConnection(connection.id)) {
       toast.error("Schließe zuerst die offene Transaktion ab.");
       return;
@@ -65,7 +93,7 @@ export function ProxyUserSwitch() {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setValue(active ?? "");
+        setSearch("");
       }}
     >
       <PopoverTrigger asChild>
@@ -86,46 +114,80 @@ export function ProxyUserSwitch() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 gap-3">
-        <div className="space-y-1">
+      <PopoverContent align="start" className="w-80 gap-0 p-0">
+        <div className="space-y-1 border-b p-3">
           <p className="font-medium">Als Benutzer ansehen</p>
           <p className="text-xs text-muted-foreground">{HINTS[connection.kind]}</p>
         </div>
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (value.trim()) void apply(value.trim());
-          }}
-        >
-          <Input
+        <Command>
+          <CommandInput
             autoFocus
-            list="proxy-user-roles"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="Benutzer / Rolle"
-            aria-label="Proxy-Benutzer"
-            className="h-8"
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Benutzer oder Rolle suchen…"
+            aria-label="Proxy-Benutzer suchen"
+            disabled={busy}
           />
-          <datalist id="proxy-user-roles">
-            {roles.data?.map((role) => (
-              <option
-                key={role.name}
-                value={role.name}
-                label={role.superuser || role.bypass_rls ? "umgeht RLS" : undefined}
-              />
-            ))}
-          </datalist>
-          <Button type="submit" size="sm" disabled={busy || !value.trim()}>
-            Übernehmen
-          </Button>
-        </form>
-        {active && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void apply(null)}>
-            <X className="size-3.5" />
-            Als {active} beenden
-          </Button>
-        )}
+          <CommandList className="max-h-72">
+            {active && (
+              <CommandGroup>
+                <CommandItem
+                  value="__reset"
+                  keywords={["beenden"]}
+                  onSelect={() => void apply(null)}
+                >
+                  <X />
+                  Als {active} beenden
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {candidates.isLoading && (
+              <p className="py-4 text-center text-xs text-muted-foreground">Lade Benutzer…</p>
+            )}
+            {candidates.isError && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                Liste nicht verfügbar: {connectionError(candidates.error)}
+              </p>
+            )}
+            <CommandEmpty>Keine Treffer.</CommandEmpty>
+            {CATEGORIES.map((category) => {
+              const entries = users.filter((user) => user.category === category);
+              if (!entries.length) return null;
+              return (
+                <CommandGroup key={category} heading={labels[category]}>
+                  {entries.map((user) => (
+                    <CommandItem
+                      key={user.name}
+                      value={user.name}
+                      data-checked={user.name === active}
+                      disabled={busy}
+                      onSelect={() => void apply(user.name)}
+                    >
+                      <span className="truncate">{user.name}</span>
+                      {user.bypasses_rls && (
+                        <span className="ml-auto shrink-0 rounded bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-400">
+                          umgeht RLS
+                        </span>
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              );
+            })}
+            {typed && !users.some((user) => user.name === typed) && (
+              <CommandGroup heading="Eigene Eingabe">
+                <CommandItem
+                  forceMount
+                  value={`__custom ${typed}`}
+                  disabled={busy}
+                  onSelect={() => void apply(typed)}
+                >
+                  <CornerDownLeft />„{typed}“ übernehmen
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );

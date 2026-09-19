@@ -297,6 +297,13 @@ pub struct ExtensionInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ProxyUserInfo {
+    pub name: String,
+    pub category: &'static str,
+    pub bypasses_rls: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct RoleInfo {
     pub name: String,
     pub oid: String,
@@ -554,6 +561,9 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn list_roles(&self) -> Result<Vec<RoleInfo>, String> {
         Err(unsupported("Rollen"))
+    }
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        Err(unsupported("Proxy-User"))
     }
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         let _ = options;

@@ -6,6 +6,7 @@ import type {
   ERSchema,
   ForeignKeyInfo,
   PrivilegeChange,
+  ProxyUserInfo,
   RoleInfo,
   RolePrivileges,
   TriggerInfo,
@@ -17,6 +18,14 @@ export async function listRoles(
   database?: string,
 ): Promise<RoleInfo[]> {
   return invoke("list_roles", { kind, connectionString, database });
+}
+
+export async function listProxyUsers(
+  kind: DatabaseKind,
+  connectionString: string,
+  database?: string,
+): Promise<ProxyUserInfo[]> {
+  return invoke("list_proxy_users", { kind, connectionString, database });
 }
 
 export async function createRole(
