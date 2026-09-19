@@ -186,6 +186,14 @@ export function DashboardEditor({
             {fileLabel(path)}
           </span>
         )}
+        {dashboard.mcpId && (
+          <span
+            title="Über den l8db-MCP von einem KI-Assistenten angelegt. Änderungen werden in beide Richtungen synchronisiert."
+            className="rounded-full border border-primary/40 px-2 py-0.5 text-[10px] font-medium text-primary"
+          >
+            MCP
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           {editing && (
             <Button size="sm" onClick={startNewChart}>

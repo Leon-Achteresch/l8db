@@ -16,9 +16,9 @@ use super::{
     AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo, CompileResult,
     ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
     DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
-    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode,
-    TableData, TableInfo, TablePrivileges, TriggerInfo,
+    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, ProxyUserInfo,
+    QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo,
+    SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -217,7 +217,7 @@ impl PostgresAdapter {
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let conn = self.get_meta().await?;
+        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         self.timed(async {
             conn.simple_query("SELECT 1")
                 .await
@@ -1429,6 +1429,33 @@ impl DatabaseAdapter for PostgresAdapter {
                     })
                     .collect()
             })
+        })
+        .await
+    }
+
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT rolname, rolcanlogin, rolsuper OR rolbypassrls FROM pg_roles \
+                     WHERE rolname <> session_user AND rolname NOT LIKE 'pg\\_%' \
+                       AND pg_has_role(session_user, oid, \
+                           CASE WHEN current_setting('server_version_num')::int >= 160000 \
+                                THEN 'SET' ELSE 'MEMBER' END) \
+                     ORDER BY rolname",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|row| ProxyUserInfo {
+                    name: row.get(0),
+                    category: if row.get(1) { "user" } else { "role" },
+                    bypasses_rls: row.get(2),
+                })
+                .collect())
         })
         .await
     }
@@ -4668,6 +4695,69 @@ mod tests {
             .expect("count");
         assert_eq!(rows.rows.len(), 1);
         lab_execute(&writer, "DROP TABLE IF EXISTS l8db_read_only_probe").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn proxy_user_sees_rows_through_rls() {
+        let admin = lab_adapter();
+        for sql in [
+            "DROP TABLE IF EXISTS l8db_rls_probe",
+            "DROP ROLE IF EXISTS l8db_rls_viewer",
+            "CREATE ROLE l8db_rls_viewer NOLOGIN",
+            "CREATE TABLE l8db_rls_probe (owner text, v int)",
+            "INSERT INTO l8db_rls_probe VALUES ('l8db_rls_viewer', 1), ('someone_else', 2), ('someone_else', 3)",
+            "ALTER TABLE l8db_rls_probe ENABLE ROW LEVEL SECURITY",
+            "CREATE POLICY own_rows ON l8db_rls_probe USING (owner = current_user)",
+            "GRANT SELECT ON l8db_rls_probe TO l8db_rls_viewer",
+        ] {
+            lab_execute(&admin, sql).await;
+        }
+        let base = lab_connection_string();
+        let separator = if base.contains('?') { "&" } else { "?" };
+        let proxied = PostgresAdapter::from_connection_string(
+            &format!("{base}{separator}proxy_user=l8db_rls_viewer"),
+            None,
+            create_pool_state(),
+        )
+        .expect("adapter");
+        proxied.test_connection().await.expect("proxy connection");
+        assert_eq!(
+            admin
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            proxied
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        let _ = proxied.execute_query("RESET ROLE").await;
+        assert_eq!(
+            proxied
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(proxied
+            .execute_query("INSERT INTO l8db_rls_probe VALUES ('l8db_rls_viewer', 4)")
+            .await
+            .is_err());
+        let denied = PostgresAdapter::from_connection_string(
+            &format!("{base}{separator}proxy_user=l8db_missing_role"),
+            None,
+            create_pool_state(),
+        )
+        .expect("adapter");
+        let error = denied.test_connection().await.unwrap_err();
+        assert!(error.contains("l8db_missing_role"), "{error}");
+        lab_execute(&admin, "DROP TABLE IF EXISTS l8db_rls_probe").await;
+        lab_execute(&admin, "DROP ROLE IF EXISTS l8db_rls_viewer").await;
     }
 
     #[tokio::test]

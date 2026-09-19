@@ -1,6 +1,4 @@
-import { ArrowDown, ArrowRight } from "lucide";
 import { ArrowRightIcon, PlayIcon } from "lucide-react";
-import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,11 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ResizableHandle } from "@/components/ui/resizable";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { MasterDetailPreview } from "@/features/shell/master-detail-link/master-detail-preview";
 import { SavedScriptsPicker } from "@/features/shell/master-detail-link/saved-scripts-picker";
 import { MasterDetailRelationPicker } from "@/features/shell/master-detail-relation-picker";
+import { PaneNumber } from "@/features/shell/split-pane/pane-number";
 import { ConnectionScopeContext, useConnectionsStore } from "@/lib/connections";
 import {
   masterColumnReference,
@@ -26,6 +24,7 @@ import {
   usePaneSourceKey,
 } from "@/lib/master-detail";
 import { masterDetailRelationSql } from "@/lib/master-detail-relations";
+import type { LinkAnchor } from "@/lib/split-links";
 import { usePaneConnectionId } from "@/lib/split-view";
 import { tabLabel } from "@/lib/tab-navigation";
 import { type Tab, tabKey } from "@/lib/table-tabs";
@@ -43,22 +42,21 @@ export function MasterDetailLink({
   masterIndex,
   detail,
   detailIndex,
-  vertical = false,
+  anchor,
+  onHover,
 }: {
   master?: Tab;
   masterIndex: number;
   detail?: Tab;
   detailIndex: number;
-  vertical?: boolean;
+  anchor: LinkAnchor;
+  onHover: (hovered: boolean) => void;
 }) {
   const masterPaneKey = master ? tabKey(master) : `split-detail:${masterIndex}`;
   const source = usePaneSourceKey(masterPaneKey);
   const target = usePaneSourceKey(detail ? tabKey(detail) : `split-detail:${detailIndex}`);
   const key = masterDetailKey(source, target);
   const masterConnectionId = usePaneConnectionId(masterPaneKey);
-  const masterIsDetail = useMasterDetail((state) =>
-    Object.keys(state.scripts).some((entry) => JSON.parse(entry)[1] === source),
-  );
   const sameDatabase =
     source &&
     target &&
@@ -91,15 +89,13 @@ export function MasterDetailLink({
     setPreviewSql(null);
   }, []);
   const error = masterDetailScriptError(draft);
-  const available =
-    key &&
-    (master?.kind === "table" || master?.kind === "query" || masterIsDetail) &&
-    (!detail || detail.kind === "table" || detail.kind === "query");
+  const masterLabel = master ? tabLabel(master) : "Master";
+  const detailLabel = detail ? tabLabel(detail) : "Detail";
   const save = () => {
     if (!key || error) return;
     useMasterDetail.getState().saveScript(key, draft, {
-      master: master ? tabLabel(master) : "Master",
-      detail: detail ? tabLabel(detail) : "Detail",
+      master: masterLabel,
+      detail: detailLabel,
     });
     setOpen(false);
   };
@@ -130,25 +126,33 @@ export function MasterDetailLink({
   };
   return (
     <>
-      <ResizableHandle withHandle={!available}>
-        {available ? (
-          <button
-            type="button"
-            aria-label="Master-Detail-SQL bearbeiten"
-            title={`${master ? tabLabel(master) : "Master"} → ${detail ? tabLabel(detail) : "Detail"}: SQL bearbeiten`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            onClick={edit}
-            className={cn(
-              "relative z-20 grid size-8 shrink-0 place-items-center rounded-full border bg-background shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
-              sql ? "border-primary text-primary" : "border-border text-muted-foreground",
-            )}
-          >
-            <MorphIcon icon={vertical ? ArrowDown : ArrowRight} className="size-4" />
-          </button>
-        ) : null}
-      </ResizableHandle>
+      {key && (
+        <button
+          type="button"
+          aria-label={`Master-Detail-SQL bearbeiten (${masterIndex + 1} → ${detailIndex + 1})`}
+          title={`${masterIndex + 1} ${masterLabel} → ${detailIndex + 1} ${detailLabel}: ${sql ? "SQL bearbeiten" : "Verknüpfung einrichten"}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onMouseEnter={() => onHover(true)}
+          onMouseLeave={() => onHover(false)}
+          onFocus={(event) => onHover(event.currentTarget.matches(":focus-visible"))}
+          onBlur={() => onHover(false)}
+          onClick={edit}
+          style={{ left: anchor.x, top: anchor.y }}
+          className={cn(
+            "pointer-events-auto absolute grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border bg-background shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+            sql
+              ? "border-primary text-primary"
+              : "border-dashed border-muted-foreground/60 text-muted-foreground",
+          )}
+        >
+          <ArrowRightIcon
+            className="size-3.5 transition-transform duration-200"
+            style={{ transform: `rotate(${anchor.angle}deg)` }}
+          />
+        </button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           className="flex h-[min(88dvh,60rem)] w-[min(92vw,76rem)] max-w-[92vw] flex-col gap-4 overflow-hidden sm:max-w-[76rem]"
@@ -159,17 +163,22 @@ export function MasterDetailLink({
             <DialogTitle>Master-Detail-SQL</DialogTitle>
             <DialogDescription>
               Das SQL wird aus der Fremdschlüssel-Beziehung vorbelegt. Anwenden reicht; danach folgt
-              das Detail der ausgewählten Master-Zeile. Jedes Detail kann selbst Master für den
-              nächsten Bereich sein.
+              das Detail der ausgewählten Master-Zeile. Den Master wählst du im Kopf des
+              Detail-Bereichs: Ein Master kann mehrere Details haben, und jedes Detail kann selbst
+              wieder Master sein.
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
             <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-              <span className="rounded-md border bg-muted/30 px-2 py-1.5">
+              <span className="flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5">
+                <PaneNumber index={masterIndex} />
                 Master · {master ? tabLabel(master) : "Abfrage"}
               </span>
               <ArrowRightIcon className="size-3" />
-              <span>Detail · {detail ? tabLabel(detail) : "SQL-Ergebnis"}</span>
+              <span className="flex items-center gap-1.5">
+                <PaneNumber index={detailIndex} />
+                Detail · {detail ? tabLabel(detail) : "SQL-Ergebnis"}
+              </span>
               <span className="ml-auto">
                 {selection
                   ? `Ausgewählt: Zeile ${selection.rowIndex + 1}`

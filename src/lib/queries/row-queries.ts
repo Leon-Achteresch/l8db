@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useActiveConnection } from "@/lib/connections";
 import { countTableRows, fetchTableRows } from "@/lib/db";
@@ -24,6 +24,7 @@ export function useTableRowsQuery(
   const database = useActiveDatabase();
   const rowLimit = useSettingsStore((s) => s.rowLimit);
   const sort = sortingToRowSort(sorting);
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: [
       "rows",
@@ -56,7 +57,11 @@ export function useTableRowsQuery(
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
-      if (!previousData || !previousQuery) {
+      if (
+        !previousData ||
+        !previousQuery ||
+        (queryClient.getQueryCache().get(previousQuery.queryHash) as unknown) !== previousQuery
+      ) {
         return undefined;
       }
       const previousKey = previousQuery.queryKey;

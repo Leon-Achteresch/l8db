@@ -44,7 +44,7 @@ export function DataTypeCombobox({ value, onChange, kind, className }: DataTypeC
       </PopoverTrigger>
       <PopoverContent className="w-56 p-0" align="start">
         <Command>
-          <CommandInput placeholder="Typ suchen…" className="h-8 text-xs" />
+          <CommandInput autoFocus placeholder="Typ suchen…" className="h-8 text-xs" />
           <CommandList className="max-h-60">
             <CommandEmpty>Kein Typ gefunden.</CommandEmpty>
             {groups.map((group) => (

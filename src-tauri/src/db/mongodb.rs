@@ -40,7 +40,7 @@ fn to_json(bson: Bson) -> serde_json::Value {
     }
 }
 
-fn parse_document(input: &str, what: &str) -> Result<Document, String> {
+pub(crate) fn parse_document(input: &str, what: &str) -> Result<Document, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Ok(Document::new());

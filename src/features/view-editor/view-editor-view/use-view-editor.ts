@@ -32,7 +32,9 @@ export function useViewEditor(schema: string, view: string) {
   const { data: foreignKeys } = useForeignKeysQuery(schema, view);
   const rowLimit = useSettingsStore((s) => s.rowLimit);
 
-  const [activeTab, setActiveTab] = useState<"data" | "columns" | "definition" | "used-by">("data");
+  const [activeTab, setActiveTab] = useState<
+    "data" | "columns" | "definition" | "used-by" | "grants"
+  >("data");
   const [filter, setFilter] = useState("");
   const [filterRaw, setFilterRaw] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -201,7 +203,11 @@ export function useViewEditor(schema: string, view: string) {
   }, [connection, schema, view, currentValue, database, queryClient, clearSavedDraft]);
 
   return {
-    activeTab,
+    activeTab:
+      (activeTab === "grants" && !capabilities.object_grants) ||
+      (activeTab === "used-by" && !capabilities.used_by)
+        ? "data"
+        : activeTab,
     busy,
     capabilities,
     columnDetails,

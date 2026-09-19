@@ -80,6 +80,12 @@ export interface ERSchema {
   foreign_keys: ForeignKeyInfo[];
 }
 
+export interface ProxyUserInfo {
+  name: string;
+  category: "user" | "role" | "login";
+  bypasses_rls: boolean;
+}
+
 export interface RoleInfo {
   name: string;
   oid: string;

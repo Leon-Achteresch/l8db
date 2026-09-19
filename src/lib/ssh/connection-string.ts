@@ -1,5 +1,6 @@
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { type DatabaseKind, registerReadOnlyResolver } from "@/lib/db";
+import { capabilitiesFor } from "@/lib/providers";
 import { extractUrlPassword, injectUrlPassword, peekSecret } from "@/lib/secrets";
 
 export function sshSecretAccount(connectionId: string): string {
@@ -52,6 +53,22 @@ export function readOnlyConnectionString(value: string): string {
   return url.toString();
 }
 
+export function proxyUserConnectionString(
+  value: string,
+  connection: Pick<SavedConnection, "kind" | "proxyUser">,
+): string {
+  const user = connection.proxyUser?.trim();
+  if (!user && !value.includes("proxy_user=")) return value;
+  if (!capabilitiesFor(connection.kind).proxy_user) return value;
+  const query = value.indexOf("?");
+  const params = (query < 0 ? "" : value.slice(query + 1))
+    .split("&")
+    .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "proxy_user");
+  if (user) params.push(`proxy_user=${encodeURIComponent(user)}`);
+  const base = query < 0 ? value : value.slice(0, query);
+  return params.length ? `${base}?${params.join("&")}` : base;
+}
+
 registerReadOnlyResolver((connectionString) => {
   const { connections, activeId } = useConnectionsStore.getState();
   if (typeof connectionString === "string") {
@@ -73,7 +90,10 @@ export function effectiveConnectionString(connection: SavedConnection): string {
     cached && extractUrlPassword(connection.connectionString) === null
       ? injectUrlPassword(connection.connectionString, cached)
       : connection.connectionString;
-  const base = isReadOnlyConnection(connection) ? readOnlyConnectionString(raw) : raw;
+  const base = proxyUserConnectionString(
+    isReadOnlyConnection(connection) ? readOnlyConnectionString(raw) : raw,
+    connection,
+  );
   if (!connection.ssh?.host) return base;
   if (!connection.tunnelPort)
     throw new Error("SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden.");
