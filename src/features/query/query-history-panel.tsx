@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { firstLine } from "@/features/query/query-history-panel/format";
+import { HistoryEntryItem } from "@/features/query/query-history-panel/history-entry-item";
 import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
 import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -15,24 +17,6 @@ import { useSavedQueriesStore } from "@/lib/saved-queries";
 interface QueryHistoryPanelProps {
   connectionId: string | null;
   onLoad: (sql: string, mode?: "new" | "replace") => void;
-}
-
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function firstLine(sql: string): string {
-  const line =
-    sql
-      .split("\n")
-      .map((part) => part.trim())
-      .filter(Boolean)[0] ?? "";
-  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
 }
 
 export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelProps) {
@@ -151,74 +135,12 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
                 </div>
               )}
               {history.map((entry) => (
-                <motion.div
+                <HistoryEntryItem
                   key={entry.id}
-                  layout
-                  transition={{ layout: SPRING_LAYOUT }}
-                  className="group px-3 py-2 hover:bg-muted/40"
-                >
-                  <button
-                    type="button"
-                    className="block w-full text-left"
-                    onClick={() => onLoad(entry.sql, "new")}
-                    title="In neuem SQL-Tab öffnen"
-                  >
-                    <p className="truncate font-mono text-xs">{firstLine(entry.sql)}</p>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>{formatTime(entry.ranAt)}</span>
-                      {entry.database && <span>· {entry.database}</span>}
-                      {entry.truncated && (
-                        <span className="text-amber-600">
-                          · SQL gekürzt ({entry.sql.length}/{entry.originalSqlLength} Zeichen)
-                        </span>
-                      )}
-                      {entry.durationMs != null && <span>· {entry.durationMs} ms</span>}
-                      {entry.rowCount != null && <span>· {entry.rowCount} Zeilen</span>}
-                      {entry.error && <span className="text-destructive">· Fehler</span>}
-                    </p>
-                  </button>
-                  <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 gap-1 px-1.5 text-[11px]"
-                      onClick={() => onLoad(entry.sql, "new")}
-                    >
-                      <PlayIcon className="size-3" />
-                      Neuer Tab
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-1.5 text-[11px]"
-                      onClick={() => onLoad(entry.sql, "replace")}
-                    >
-                      Editor ersetzen
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-1.5 text-[11px]"
-                      onClick={() => {
-                        useSavedQueriesStore
-                          .getState()
-                          .saveQuery(firstLine(entry.sql) || "Query", entry.sql);
-                        toast.success("Query dauerhaft gespeichert");
-                      }}
-                    >
-                      Dauerhaft speichern
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                      onClick={() => undoableRemove(entry.id)}
-                    >
-                      <Trash2Icon className="size-3" />
-                      Löschen
-                    </Button>
-                  </div>
-                </motion.div>
+                  entry={entry}
+                  onLoad={onLoad}
+                  undoableRemove={undoableRemove}
+                />
               ))}
             </div>
           )

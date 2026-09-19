@@ -1,25 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Database, Loader, ShieldCheck } from "lucide";
-import {
-  CheckCircleIcon,
-  PencilIcon,
-  SquareArrowOutUpRightIcon,
-  UndoIcon,
-  XCircleIcon,
-} from "lucide-react";
-import { MorphIcon } from "morphicons/react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { useTableTabs } from "@/lib/table-tabs";
-import { cn } from "@/lib/utils";
 
 export type SqlEditState =
   | { status: "idle" }
@@ -108,117 +94,7 @@ export function useSqlObjectEdit(
   return { editing, sql, setSql, state, start, cancel, check, apply };
 }
 
-export function SqlEditActions({ edit }: { edit: SqlObjectEdit }) {
-  const busy = edit.state.status === "checking" || edit.state.status === "applying";
-
-  if (!edit.editing) {
-    return (
-      <Button variant="outline" size="xs" onClick={edit.start}>
-        <PencilIcon data-icon="inline-start" />
-        Bearbeiten
-      </Button>
-    );
-  }
-
-  return (
-    <>
-      <Button variant="ghost" size="xs" onClick={edit.cancel} disabled={busy}>
-        <UndoIcon data-icon="inline-start" />
-        Entwurf verwerfen
-      </Button>
-      <Button
-        variant="outline"
-        size="xs"
-        onClick={() => void edit.check()}
-        disabled={busy}
-        title="Kompiliert testweise und macht die Änderung sofort rückgängig — nichts wird gespeichert."
-      >
-        <MorphIcon
-          icon={edit.state.status === "checking" ? Loader : ShieldCheck}
-          data-icon="inline-start"
-          className={cn(edit.state.status === "checking" && "animate-spin")}
-        />
-        Nur prüfen
-      </Button>
-      <Button
-        variant="default"
-        size="xs"
-        onClick={() => void edit.apply()}
-        disabled={busy}
-        title="Führt das SQL wirklich aus — das Objekt existiert danach so in der Datenbank."
-      >
-        <MorphIcon
-          icon={edit.state.status === "applying" ? Loader : Database}
-          data-icon="inline-start"
-          className={cn(edit.state.status === "applying" && "animate-spin")}
-        />
-        In Datenbank speichern
-      </Button>
-    </>
-  );
-}
-
-export function SqlEditHint() {
-  return (
-    <div className="border-b bg-amber-500/5 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-      Entwurf lokal gespeichert. Änderungen sind noch nicht in der Datenbank. <b>Nur prüfen</b>{" "}
-      kompiliert testweise und rollt zurück, <b>In Datenbank speichern</b> führt das SQL aus und
-      ersetzt das Objekt dauerhaft.
-    </div>
-  );
-}
-
-export function SqlEditFeedback({ state }: { state: SqlEditState }) {
-  if (state.status === "idle" || state.status === "checking" || state.status === "applying") {
-    return null;
-  }
-
-  if (state.status === "error") {
-    return (
-      <div className="flex items-start gap-2 border-t bg-destructive/5 px-4 py-2.5">
-        <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-        <div className="flex flex-1 flex-col gap-1">
-          <span className="text-xs font-semibold text-destructive">
-            {state.scope === "check"
-              ? "Prüfung fehlgeschlagen — nichts wurde gespeichert"
-              : "Speichern fehlgeschlagen — Objekt in der Datenbank unverändert"}
-          </span>
-          <pre className="whitespace-pre-wrap break-all text-xs font-mono text-destructive select-text">
-            {state.message}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-start gap-2 border-t bg-emerald-500/5 px-4 py-2.5">
-      <CheckCircleIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-      <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-        {state.status === "checked"
-          ? "Fehlerfrei kompilierbar — noch nicht gespeichert, die Änderung wurde zurückgerollt."
-          : `In der Datenbank gespeichert (${state.time} ms) — das Objekt existiert jetzt so.`}
-      </span>
-    </div>
-  );
-}
-
-export function OpenInQueryEditorButton({ sql, title }: { sql: string; title: string }) {
-  const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
-  const navigate = useNavigate();
-  return (
-    <Button
-      variant="ghost"
-      size="xs"
-      disabled={!sql}
-      onClick={() => {
-        const id = openQueryTabWithSql(sql, title);
-        void navigate({ to: "/query/$id", params: { id } });
-      }}
-      title="Öffnet den Quelltext als neuen SQL-Tab im Query-Editor."
-    >
-      <SquareArrowOutUpRightIcon data-icon="inline-start" />
-      Im Query-Editor
-    </Button>
-  );
-}
+export { OpenInQueryEditorButton } from "./sql-object-edit/open-in-query-editor-button";
+export { SqlEditActions } from "./sql-object-edit/sql-edit-actions";
+export { SqlEditFeedback } from "./sql-object-edit/sql-edit-feedback";
+export { SqlEditHint } from "./sql-object-edit/sql-edit-hint";

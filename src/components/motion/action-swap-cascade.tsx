@@ -1,33 +1,18 @@
 "use client";
 // beui.dev/components/motion/action-swap
 
-import {
-  ActionSwapButton,
-  type ActionSwapButtonProps,
-  ActionSwapIcon,
-  type ActionSwapIconProps,
-  ActionSwapText,
-  type ActionSwapTextProps,
-} from "./action-swap";
+import { ActionSwapButton, type ActionSwapButtonProps } from "./action-swap";
 
 export type {
   ActionSwapButtonSize,
   ActionSwapButtonVariant,
   ActionSwapItem,
 } from "./action-swap";
+export { ActionSwapCascadeIcon, type ActionSwapCascadeIconProps } from "./action-swap-cascade/icon";
+export { ActionSwapCascadeText, type ActionSwapCascadeTextProps } from "./action-swap-cascade/text";
 
 export type ActionSwapCascadeButtonProps = Omit<ActionSwapButtonProps, "animation">;
-export type ActionSwapCascadeTextProps = Omit<ActionSwapTextProps, "animation">;
-export type ActionSwapCascadeIconProps = Omit<ActionSwapIconProps, "animation">;
 
 export function ActionSwapCascadeButton(props: ActionSwapCascadeButtonProps) {
   return <ActionSwapButton {...props} animation="cascade" />;
-}
-
-export function ActionSwapCascadeText(props: ActionSwapCascadeTextProps) {
-  return <ActionSwapText {...props} animation="cascade" />;
-}
-
-export function ActionSwapCascadeIcon(props: ActionSwapCascadeIconProps) {
-  return <ActionSwapIcon {...props} animation="cascade" />;
 }

@@ -7,7 +7,6 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
-  type ReactNode,
   useCallback,
   useRef,
   useState,
@@ -19,92 +18,18 @@ import { useHoverGesture } from "@/lib/hooks/use-hover-gesture";
 import { useTapGesture } from "@/lib/hooks/use-tap-gesture";
 import { cn } from "@/lib/utils";
 
-export type NotificationStackItem = {
-  id: string;
-  title: ReactNode;
-  description?: ReactNode;
-  trailing?: ReactNode;
-};
+import { NotificationCardContent } from "./notification-stack/notification-card-content";
+import type { NotificationStackProps } from "./notification-stack/types";
+import { useControllableExpanded } from "./notification-stack/use-controllable-expanded";
 
-export type NotificationStackClassNames = {
-  stack?: string;
-  card?: string;
-  content?: string;
-  title?: string;
-  description?: string;
-  trailing?: string;
-  footer?: string;
-  count?: string;
-};
-
-export interface NotificationStackProps {
-  items: NotificationStackItem[];
-  expanded?: boolean;
-  defaultExpanded?: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
-  onViewAll?: () => void;
-  maxVisible?: number;
-  collapsedLabel?: string;
-  expandedLabel?: string;
-  emptyLabel?: string;
-  className?: string;
-  classNames?: NotificationStackClassNames;
-}
+export type {
+  NotificationStackClassNames,
+  NotificationStackItem,
+  NotificationStackProps,
+} from "./notification-stack/types";
 
 const STACK_PEEK = 8;
 const STACK_INSET = 12;
-
-function useControllableExpanded({
-  expanded,
-  defaultExpanded,
-  onExpandedChange,
-}: {
-  expanded?: boolean;
-  defaultExpanded: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
-}) {
-  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
-  const isControlled = expanded !== undefined;
-  const value = expanded ?? internalExpanded;
-
-  const setValue = useCallback(
-    (next: boolean) => {
-      if (!isControlled) setInternalExpanded(next);
-      onExpandedChange?.(next);
-    },
-    [isControlled, onExpandedChange],
-  );
-
-  return [value, setValue] as const;
-}
-
-function NotificationCardContent({
-  item,
-  classNames,
-}: {
-  item: NotificationStackItem;
-  classNames?: NotificationStackClassNames;
-}) {
-  return (
-    <span className={cn("flex min-w-0 flex-col gap-1.5 py-4", classNames?.content)}>
-      <span className="flex min-w-0 items-start justify-between gap-3">
-        <span className={cn("min-w-0 text-sm font-medium leading-snug", classNames?.title)}>
-          {item.title}
-        </span>
-        {item.trailing ? (
-          <span className={cn("shrink-0 text-xs", classNames?.trailing)}>{item.trailing}</span>
-        ) : null}
-      </span>
-      {item.description ? (
-        <span
-          className={cn("text-xs leading-relaxed text-muted-foreground", classNames?.description)}
-        >
-          {item.description}
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 export function NotificationStack({
   items,
