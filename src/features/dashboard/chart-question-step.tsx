@@ -1,5 +1,5 @@
 import { PlusIcon, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,21 +18,15 @@ import {
   type Dataset,
   isDateType,
   isNumericType,
-  joinRef,
   type SimpleDataset,
   type SortMode,
+  syncJoins,
   type TimeBucket,
 } from "@/lib/dashboards";
-import { useDetailedColumnsQuery } from "@/lib/queries";
 import { filterOperatorLabel, parseFilterList } from "@/lib/sql-filter";
 import { ChartFilterEditor, type ChartFilterField } from "./chart-filter-editor";
 import { ColumnSelect } from "./dataset-column-select";
-
-interface ColumnOpt {
-  ref: string;
-  label: string;
-  type: string;
-}
+import { useDatasetColumns } from "./use-dataset-query";
 
 const AGG_SIMPLE: Record<Agg, string> = {
   count: "Anzahl Zeilen",
@@ -54,26 +48,12 @@ export function ChartQuestionStep({
   resultColumns: string[];
 }) {
   const s = dataset.simple;
-  const base = useDetailedColumnsQuery(s.schema, s.table);
-  const joined = useDetailedColumnsQuery(s.join?.schema ?? "", s.join?.table ?? "");
+  const { columns, joins } = useDatasetColumns(s);
   const [filterDraft, setFilterDraft] = useState<{
     field: ChartFilterField;
     filterId?: string;
   } | null>(null);
 
-  const columns = useMemo<ColumnOpt[]>(
-    () => [
-      ...(base.data ?? []).map((c) => ({ ref: c.name, label: c.name, type: c.data_type })),
-      ...(s.join
-        ? (joined.data ?? []).map((c) => ({
-            ref: joinRef(c.name),
-            label: `${s.join?.table}.${c.name}`,
-            type: c.data_type,
-          }))
-        : []),
-    ],
-    [base.data, joined.data, s.join],
-  );
   const typeOf = (ref: string | null | undefined) => columns.find((c) => c.ref === ref)?.type ?? "";
   const fieldOf = (ref: string): ChartFilterField => ({
     ref,
@@ -152,7 +132,8 @@ export function ChartQuestionStep({
     );
   }
 
-  const patchSimple = (patch: Partial<SimpleDataset>) => onChange({ simple: { ...s, ...patch } });
+  const patchSimple = (patch: Partial<SimpleDataset>) =>
+    onChange({ simple: syncJoins({ ...s, ...patch }, joins) });
 
   return (
     <div className="space-y-6">
@@ -375,7 +356,7 @@ export function ChartQuestionStep({
           <ChartFilterEditor
             key={filterDraft.filterId ?? filterDraft.field.ref}
             field={filterDraft.field}
-            simple={s}
+            simple={syncJoins(s, joins, [filterDraft.field.ref])}
             filter={s.filters.find((f) => f.id === filterDraft.filterId)}
             onCancel={() => setFilterDraft(null)}
             onApply={(filters) => {

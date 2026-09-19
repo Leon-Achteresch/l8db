@@ -1,7 +1,15 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
-import { type Dataset, datasetSql, type Period } from "@/lib/dashboards";
+import {
+  type Dataset,
+  datasetSql,
+  JOIN_PREFIX,
+  joinOptions,
+  joinRef,
+  type Period,
+  type SimpleDataset,
+} from "@/lib/dashboards";
 import { executeQuery, listTableColumnsDetailed } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useErSchemaQuery, useForeignKeysQuery } from "@/lib/queries";
@@ -64,47 +72,53 @@ export function useTablesColumns(tables: { schema: string; table: string }[]) {
   });
 }
 
-export interface Relation {
-  key: string;
+export interface DatasetColumn {
+  ref: string;
   label: string;
-  reverse: boolean;
-  join: { schema: string; table: string; fromColumn: string; toColumn: string };
+  type: string;
 }
 
-export function useRelations(schema: string, table: string): Relation[] {
-  const forward = useForeignKeysQuery(schema, table);
-  const er = useErSchemaQuery(schema);
-  return useMemo(() => {
-    const out: Relation[] = [];
-    for (const fk of forward.data ?? []) {
-      if (fk.from_table !== table || fk.from_schema !== schema) continue;
-      out.push({
-        key: `f:${fk.constraint_name}:${fk.from_column}`,
-        label: `${fk.to_table} über ${fk.from_column}`,
-        reverse: false,
-        join: {
-          schema: fk.to_schema,
-          table: fk.to_table,
-          fromColumn: fk.from_column,
-          toColumn: fk.to_column,
-        },
-      });
-    }
-    for (const fk of er.data?.foreign_keys ?? []) {
-      if (fk.to_table !== table || fk.to_schema !== schema) continue;
-      if (fk.from_table === table && fk.from_schema === schema) continue;
-      out.push({
-        key: `r:${fk.constraint_name}:${fk.from_table}:${fk.from_column}`,
-        label: `${fk.from_table} (verweist über ${fk.from_column})`,
-        reverse: true,
-        join: {
-          schema: fk.from_schema,
-          table: fk.from_table,
-          fromColumn: fk.to_column,
-          toColumn: fk.from_column,
-        },
-      });
-    }
-    return out;
-  }, [forward.data, er.data, schema, table]);
+export function useDatasetColumns(simple: SimpleDataset) {
+  const forward = useForeignKeysQuery(simple.schema, simple.table);
+  const er = useErSchemaQuery(simple.schema);
+  const options = useMemo(() => {
+    const fks = [...(forward.data ?? []), ...(er.data?.foreign_keys ?? [])];
+    const found = simple.table ? joinOptions(simple.schema, simple.table, fks) : [];
+    const extra = (simple.joins ?? [])
+      .filter((j) => j.id && !found.some((o) => o.join.id === j.id))
+      .map((j) => ({ join: { ...j, id: j.id ?? "" }, label: j.table }));
+    return [...found, ...extra];
+  }, [forward.data, er.data, simple.schema, simple.table, simple.joins]);
+  const legacy = simple.join;
+  const sources = useMemo(
+    () => [
+      { schema: simple.schema, table: simple.table },
+      ...(legacy ? [{ schema: legacy.schema, table: legacy.table }] : []),
+      ...options.map((o) => ({ schema: o.join.schema, table: o.join.table })),
+    ],
+    [simple.schema, simple.table, legacy, options],
+  );
+  const results = useTablesColumns(sources);
+  const loading = results.some((r) => r.isLoading);
+  const [base, ...rest] = results.map((r) => r.data);
+  const legacyCols = legacy ? rest.shift() : undefined;
+  const columns: DatasetColumn[] = [
+    ...(base ?? []).map((c) => ({ ref: c.name, label: c.name, type: c.data_type })),
+    ...(legacy && legacyCols
+      ? legacyCols.map((c) => ({
+          ref: `${JOIN_PREFIX}${c.name}`,
+          label: `${legacy.table}.${c.name}`,
+          type: c.data_type,
+        }))
+      : []),
+    ...options.flatMap((o, i) =>
+      (rest[i] ?? []).map((c) => ({
+        ref: joinRef(o.join.id, c.name),
+        label: `${o.label}.${c.name}`,
+        type: c.data_type,
+      })),
+    ),
+  ];
+  const joins = useMemo(() => options.map((o) => o.join), [options]);
+  return { columns, joins, loading };
 }

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -18,13 +17,16 @@ import {
   emptySimple,
   isDateType,
   isNumericType,
-  joinRef,
+  refLabel,
+  type SimpleDataset,
+  syncJoins,
   type Widget,
 } from "@/lib/dashboards";
-import { useDetailedColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
+import { useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { CHART_ICONS } from "./chart-palette";
 import { ColumnSelect } from "./dataset-column-select";
+import { useDatasetColumns } from "./use-dataset-query";
 
 const QUICK_KINDS: ChartKind[] = ["kpi", "column", "line", "donut", "bars", "table"];
 
@@ -46,25 +48,13 @@ export function ChartQuickForm({
   const s = dataset.simple;
   const tables = useTablesQuery();
   const views = useViewsQuery();
-  const base = useDetailedColumnsQuery(s.schema, s.table);
-  const joined = useDetailedColumnsQuery(s.join?.schema ?? "", s.join?.table ?? "");
+  const { columns, joins } = useDatasetColumns(s);
   const sources = [
     ...(tables.data ?? []).map((t) => ({ ...t, kind: "Tabelle" })),
     ...(views.data ?? []).map((v) => ({ ...v, kind: "View" })),
   ];
-  const columns = useMemo(
-    () => [
-      ...(base.data ?? []).map((c) => ({ ref: c.name, label: c.name, type: c.data_type })),
-      ...(s.join
-        ? (joined.data ?? []).map((c) => ({
-            ref: joinRef(c.name),
-            label: `${s.join?.table}.${c.name}`,
-            type: c.data_type,
-          }))
-        : []),
-    ],
-    [base.data, joined.data, s.join],
-  );
+  const patchSimple = (patch: Partial<SimpleDataset>) =>
+    onDataset({ simple: syncJoins({ ...s, ...patch }, joins) });
   const typeOf = (ref: string | null | undefined) => columns.find((c) => c.ref === ref)?.type ?? "";
   const metric = s.metrics[0];
   const metricValue = metric.agg === "count" ? "count" : `${metric.agg}:${metric.column ?? ""}`;
@@ -79,7 +69,7 @@ export function ChartQuickForm({
   if (!metricOptions.some((o) => o.value === metricValue))
     metricOptions.push({
       value: metricValue,
-      label: `${AGG_LABEL[metric.agg]}${metric.column ? ` von ${metric.column}` : ""}`,
+      label: `${AGG_LABEL[metric.agg]}${metric.column ? ` von ${refLabel(metric.column, s)}` : ""}`,
     });
   const kinds = QUICK_KINDS.includes(widget.chart) ? QUICK_KINDS : [...QUICK_KINDS, widget.chart];
   const sourceKey = s.table ? JSON.stringify([s.schema, s.table]) : "";
@@ -127,14 +117,11 @@ export function ChartQuickForm({
             value={metricValue}
             onValueChange={(v) => {
               const [agg, column] = v === "count" ? ["count", null] : v.split(/:(.*)/s);
-              onDataset({
-                simple: {
-                  ...s,
-                  metrics: [
-                    { ...metric, agg: agg as Agg, column: column || null, label: "" },
-                    ...s.metrics.slice(1),
-                  ],
-                },
+              patchSimple({
+                metrics: [
+                  { ...metric, agg: agg as Agg, column: column || null, label: "" },
+                  ...s.metrics.slice(1),
+                ],
               });
             }}
           >
@@ -162,13 +149,10 @@ export function ChartQuickForm({
             value={s.dimension?.column ?? null}
             onChange={(column) => {
               const isDate = Boolean(column) && isDateType(typeOf(column));
-              onDataset({
-                simple: {
-                  ...s,
-                  dimension: column ? { column, bucket: isDate ? "month" : "none" } : null,
-                  dateColumn: isDate && !s.dateColumn ? column : s.dateColumn,
-                  sort: isDate ? "dimension" : column ? "metric_desc" : s.sort,
-                },
+              patchSimple({
+                dimension: column ? { column, bucket: isDate ? "month" : "none" } : null,
+                dateColumn: isDate && !s.dateColumn ? column : s.dateColumn,
+                sort: isDate ? "dimension" : column ? "metric_desc" : s.sort,
               });
             }}
             columns={columns}

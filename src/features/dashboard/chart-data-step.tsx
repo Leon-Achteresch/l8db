@@ -1,20 +1,10 @@
 import { LinkIcon, PencilLineIcon, TableIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useActiveConnection } from "@/lib/connections";
 import { type Dataset, emptySimple } from "@/lib/dashboards";
 import { supports } from "@/lib/providers";
 import { DatasetSourcePicker } from "./dataset-source-picker";
 import { SqlEditor } from "./sql-editor";
-import { useRelations } from "./use-dataset-query";
-
-const NONE = "__none__";
 
 export function ChartDataStep({
   dataset,
@@ -25,17 +15,8 @@ export function ChartDataStep({
 }) {
   const connection = useActiveConnection();
   const s = dataset.simple;
-  const relations = useRelations(s.schema, s.table);
   const hasFks = supports(connection, "foreign_keys");
   const expert = dataset.mode === "expert";
-  const joinValue =
-    relations.find(
-      (r) =>
-        s.join &&
-        r.join.table === s.join.table &&
-        r.join.fromColumn === s.join.fromColumn &&
-        r.join.toColumn === s.join.toColumn,
-    )?.key ?? NONE;
 
   if (expert)
     return (
@@ -78,36 +59,13 @@ export function ChartDataStep({
         table={s.table}
         onChange={(schema, table) => onChange({ simple: { ...emptySimple(), schema, table } })}
       />
-      {hasFks && s.table && relations.length > 0 && (
-        <div className="space-y-2 rounded-xl border bg-card/60 p-4">
-          <div className="flex items-center gap-2">
-            <LinkIcon className="size-4 text-muted-foreground" />
-            <h3 className="text-xs font-semibold">Verknüpfte Tabelle dazuholen?</h3>
-          </div>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Manche Infos stecken in einer anderen Tabelle, zum Beispiel der Kundenname zur
-            Bestellung. Deine Datenbank kennt diese Verbindungen bereits.
+      {hasFks && s.table && (
+        <div className="flex gap-2 rounded-xl border bg-card/60 p-4 text-[11px] leading-relaxed text-muted-foreground">
+          <LinkIcon className="size-4 shrink-0" />
+          <p>
+            Spalten aus verknüpften Tabellen, zum Beispiel der Kundenname zur Bestellung, findest du
+            direkt in den Spaltenlisten. Die Verknüpfung wird automatisch hinzugefügt.
           </p>
-          <Select
-            value={joinValue}
-            onValueChange={(v) =>
-              onChange({
-                simple: { ...s, join: relations.find((r) => r.key === v)?.join ?? null },
-              })
-            }
-          >
-            <SelectTrigger size="sm" className="h-8 w-full text-xs">
-              <SelectValue placeholder="Verknüpfte Tabelle" />
-            </SelectTrigger>
-            <SelectContent searchable>
-              <SelectItem value={NONE}>Nein, nur {s.table}</SelectItem>
-              {relations.map((r) => (
-                <SelectItem key={r.key} value={r.key}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       )}
       <div className="border-t pt-4">
