@@ -77,6 +77,24 @@ export async function searchSource(
   return invoke("search_source", { kind, connectionString, database, schema, term, limit });
 }
 
+export interface ObjectGrantInfo {
+  grantee: string;
+  privilege: string;
+  grantor: string;
+  grantable: boolean;
+  column_name: string | null;
+}
+
+export async function listObjectGrants(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  name: string,
+  database?: string,
+): Promise<ObjectGrantInfo[]> {
+  return invoke("list_object_grants", { kind, connectionString, database, schema, name });
+}
+
 export interface DependencyInfo {
   owner: string;
   name: string;

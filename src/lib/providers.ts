@@ -50,6 +50,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   debugger: false,
   bind_parameters: true,
   used_by: true,
+  object_grants: false,
   synonyms: false,
   scheduler_jobs: true,
   object_admin: true,

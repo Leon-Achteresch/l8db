@@ -9,6 +9,7 @@ export type TableDetailTab =
   | "constraints"
   | "rls"
   | "partitions"
+  | "grants"
   | "used-by"
   | "performance"
   | "audit";
@@ -27,6 +28,7 @@ export const TABLE_DETAIL_TABS: {
   { id: "constraints", label: "Constraints", entity: "table", capability: "constraints" },
   { id: "rls", label: "RLS", entity: "table", capability: "rls" },
   { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
+  { id: "grants", label: "Grants", capability: "object_grants" },
   { id: "used-by", label: "Used By", capability: "used_by" },
   { id: "performance", label: "Performance", capability: "explain" },
   { id: "audit", label: "Audit", capability: "object_admin" },

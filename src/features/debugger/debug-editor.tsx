@@ -8,14 +8,24 @@ interface DebugEditorProps {
   line?: number;
   breakpoints: number[];
   enabled: boolean;
+  onChange?: (value: string) => void;
   onToggle: (line: number) => void;
 }
 
-export function DebugEditor({ source, line, breakpoints, enabled, onToggle }: DebugEditorProps) {
+export function DebugEditor({
+  source,
+  line,
+  breakpoints,
+  enabled,
+  onToggle,
+  onChange,
+}: DebugEditorProps) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const toggle = useRef(onToggle);
   const active = useRef(enabled);
+  const change = useRef(onChange);
+  change.current = onChange;
   const { resolvedTheme } = useTheme();
   toggle.current = onToggle;
   active.current = enabled;
@@ -31,6 +41,12 @@ export function DebugEditor({ source, line, breakpoints, enabled, onToggle }: De
       glyphMargin: true,
       minimap: { enabled: false },
       fontSize: 13,
+      lineHeight: 24,
+      padding: { top: 20, bottom: 20 },
+      renderLineHighlight: "gutter",
+      overviewRulerLanes: 0,
+      hideCursorInOverviewRuler: true,
+      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
       scrollBeyondLastLine: false,
     });
     editor.current = instance;
@@ -42,12 +58,22 @@ export function DebugEditor({ source, line, breakpoints, enabled, onToggle }: De
       )
         toggle.current(event.target.position.lineNumber);
     });
+    const content = instance.onDidChangeModelContent(() => change.current?.(instance.getValue()));
     return () => {
+      content.dispose();
       click.dispose();
       instance.dispose();
       editor.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    editor.current?.updateOptions({
+      readOnly: !onChange,
+      glyphMargin: !onChange,
+      ariaLabel: onChange ? "Aufrufskript" : "Debugger-Quelltext",
+    });
+  }, [onChange]);
 
   useEffect(() => {
     const instance = editor.current;

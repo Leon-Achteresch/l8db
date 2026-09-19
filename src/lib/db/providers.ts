@@ -55,6 +55,7 @@ export interface Capabilities {
   debugger: boolean;
   bind_parameters: boolean;
   used_by: boolean;
+  object_grants: boolean;
   synonyms: boolean;
   scheduler_jobs: boolean;
   object_admin: boolean;

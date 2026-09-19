@@ -16,7 +16,20 @@ test.skipIf(!process.env.L8DB_DEBUG_BROWSER)(
       await page.goto("http://localhost:1420/functions/public/debug_sample?oid=%2210000%22");
       await page.getByRole("button", { name: "Debuggen", exact: true }).click();
       const dialog = page.getByRole("dialog");
-      await dialog.getByRole("button", { name: "Starten", exact: true }).click();
+      await dialog.locator(".monaco-editor .view-lines").click();
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.insertText("SELECT public.debug_sample(42);");
+      await page.keyboard.press("F5");
+      await page.waitForFunction(() => {
+        const target = window as unknown as {
+          debugCalls: { command: string; args?: { request?: { sql?: string } } }[];
+        };
+        return target.debugCalls.some(
+          (call) =>
+            call.command === "debug_launch" &&
+            call.args?.request?.sql === "SELECT public.debug_sample(42);",
+        );
+      });
       await page.waitForFunction(
         () =>
           document.querySelector('[role="dialog"] [role="status"]')?.textContent === "Angehalten",
