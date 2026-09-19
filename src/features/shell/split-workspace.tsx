@@ -1,6 +1,6 @@
-import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { MasterDetailLink } from "@/features/shell/master-detail-link";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SplitPane } from "@/features/shell/split-pane";
+import { MasterDetailLinks } from "@/features/shell/split-workspace/master-detail-links";
 import { NewPaneDropZone } from "@/features/shell/split-workspace/new-pane-drop-zone";
 import { useSplitView } from "@/lib/split-view";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -12,17 +12,6 @@ export function SplitWorkspace() {
   const focusPane = useSplitView((state) => state.focusPane);
   const closePane = useSplitView((state) => state.closePane);
   const tabs = useTableTabs((state) => state.tabs);
-
-  const link = (index: number, vertical = false) => (
-    <MasterDetailLink
-      key={`${panes[index - 1]}|${panes[index]}`}
-      master={tabs.find((item) => tabKey(item) === panes[index - 1])}
-      masterIndex={index - 1}
-      detail={tabs.find((item) => tabKey(item) === panes[index])}
-      detailIndex={index}
-      vertical={vertical}
-    />
-  );
 
   const pane = (index: number) => {
     const key = panes[index];
@@ -43,17 +32,17 @@ export function SplitWorkspace() {
     panes.length === 2 ? (
       <ResizablePanelGroup orientation={orientation} className="h-full min-h-0 flex-1">
         {pane(0)}
-        {link(1, orientation === "vertical")}
+        <ResizableHandle withHandle />
         {pane(1)}
       </ResizablePanelGroup>
     ) : panes.length === 3 ? (
       <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0 flex-1">
         {pane(0)}
-        {link(1)}
+        <ResizableHandle withHandle />
         <ResizablePanel id="split-stack" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="vertical" className="h-full">
             {pane(1)}
-            {link(2, true)}
+            <ResizableHandle withHandle />
             {pane(2)}
           </ResizablePanelGroup>
         </ResizablePanel>
@@ -63,15 +52,15 @@ export function SplitWorkspace() {
         <ResizablePanel id="split-top" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="horizontal" className="h-full">
             {pane(0)}
-            {link(1)}
+            <ResizableHandle withHandle />
             {pane(1)}
           </ResizablePanelGroup>
         </ResizablePanel>
-        {link(2, true)}
+        <ResizableHandle withHandle />
         <ResizablePanel id="split-bottom" minSize="18%" className="min-h-0 min-w-0">
           <ResizablePanelGroup orientation="horizontal" className="h-full">
             {pane(2)}
-            {link(3)}
+            <ResizableHandle withHandle />
             {pane(3)}
           </ResizablePanelGroup>
         </ResizablePanel>
@@ -81,6 +70,7 @@ export function SplitWorkspace() {
   return (
     <>
       {layout}
+      <MasterDetailLinks />
       <NewPaneDropZone />
     </>
   );
