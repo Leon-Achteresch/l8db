@@ -238,6 +238,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Oracle => Capabilities {
                 bind_parameters: true,
+                schema_object_copy: true,
                 databases: false,
                 ssl: false,
                 procedures: true,

@@ -1,1117 +1,145 @@
-import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
-import {
-  Columns2,
-  Download,
-  Loader,
-  Maximize2,
-  Minimize2,
-  PanelBottom,
-  Play,
-  ShieldCheck,
-  TextSelect,
-} from "lucide";
-import {
-  AlertTriangleIcon,
-  BookmarkIcon,
-  ChevronDownIcon,
-  FileIcon,
-  GaugeIcon,
-  HistoryIcon,
-  MoreHorizontalIcon,
-  PanelLeftIcon,
-  TerminalIcon,
-} from "lucide-react";
-import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
-import { toast } from "sonner";
-import { Collapse } from "@/components/motion/collapse";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { CsvExportDialog } from "@/features/export/csv-export-dialog";
-import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
-import { BindParamsDialog } from "@/features/query/bind-params-dialog";
-import { ExplainPlanView } from "@/features/query/explain-plan-view";
-import { QueryAnalysisSheet } from "@/features/query/query-analysis-sheet";
-import { type QueryEditorApi, QueryEditorPane } from "@/features/query/query-editor-pane";
-import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
-import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
-import { QueryHistorySheet } from "@/features/query/query-history-sheet";
-import { QueryPerfPanel } from "@/features/query/query-perf-panel";
-import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
+
+import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
-import { SaveQueryDialog } from "@/features/query/save-query-dialog";
-import { ScriptResultList, type ScriptRunEntry } from "@/features/query/script-result-list";
-import { ScriptRunDialog, type ScriptRunMode } from "@/features/query/script-run-dialog";
-import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
-import { TabSearchDialog } from "@/features/query/tab-search-dialog";
-import {
-  type BindParamRef,
-  type BindParamValue,
-  buildParameterizedQuery,
-  detectBindParams,
-  inlineBindValues,
-  type ParameterizedQuery,
-} from "@/lib/bind-params";
 import { useActiveConnection } from "@/lib/connections";
-import {
-  confirmSqlExecution,
-  type ExplainNode,
-  executeInTransaction,
-  executeInTransactionWithParams,
-  executeQuery,
-  executeQueryWithParams,
-  explainQuery,
-  listAllColumns,
-  listMaterializedViews,
-  listTables,
-  listViews,
-  type QueryResult,
-  validateSql,
-} from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
-import { openSqlFileAsTab, useQueryFile } from "@/lib/hooks/use-query-file";
-import {
-  commandById,
-  formatHotkeyDisplay,
-  onHotkeyAction,
-  resolveHotkey,
-  useHotkeysStore,
-  useResolvedHotkey,
-} from "@/lib/hotkeys";
-import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
-import { parsePlsqlMembers } from "@/lib/plsql";
 import { useCapabilities } from "@/lib/providers";
-import { useSchemasQuery } from "@/lib/queries";
-import { useQueryHistoryStore } from "@/lib/query-history";
-import { useQueryRevealStore } from "@/lib/query-reveal";
-import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
-import { useSavedQueriesStore } from "@/lib/saved-queries";
-import { runSqlScript } from "@/lib/script-runner";
-import { collectServerOutput, toggleServerOutput, useServerOutputStore } from "@/lib/server-output";
-import { useSettingsStore } from "@/lib/settings";
-import { locateText } from "@/lib/sql-diagnostics";
-import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
-import {
-  createObjectMessage,
-  isTransactionalStatement,
-  splitSqlStatements,
-  statementAtOffset,
-} from "@/lib/sql-statements";
-import { effectiveConnectionString } from "@/lib/ssh";
-import {
-  type BookmarkSlots,
-  isQueryTabDirty,
-  normalizeBookmarks,
-  useTableTabs,
-} from "@/lib/table-tabs";
-import { cancelTask, useTasksStore } from "@/lib/tasks";
-import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
-import { cn } from "@/lib/utils";
-import { ServerOutputPanel } from "./server-output-panel";
 
-function withCreateNotice(res: QueryResult | null, sql: string): QueryResult | null {
-  if (!res || res.columns.length > 0) return res;
-  const notice = createObjectMessage(sql);
-  return notice ? { ...res, notice } : res;
-}
-
-const MAX_RESULT_ROWS = 1000;
-const EMPTY_BOOKMARKS: number[] = [];
-const EMPTY_BOOKMARK_SLOTS: BookmarkSlots = {};
-
-const SCRIPT_MODE_NOTE: Record<ScriptRunMode, string> = {
-  "existing-transaction": "läuft in offener Transaktion, kein Autocommit",
-  "new-transaction": "verwaltete Transaktion, Commit über Transaktionspanel",
-  autocommit: "Autocommit je Statement",
-};
+import { ExternalChangeBanner } from "./query-view/external-change-banner";
+import { QueryEditorContent } from "./query-view/query-editor-content";
+import { QueryResultsContent } from "./query-view/query-results-content";
+import { QueryToolsMenu } from "./query-view/query-tools-menu";
+import { QueryViewDialogs } from "./query-view/query-view-dialogs";
+import { QueryViewDrawers } from "./query-view/query-view-drawers";
+import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
+import { ResultActions } from "./query-view/result-actions";
+import { buildStatusText, runLabelFor } from "./query-view/result-text";
+import { RunControls } from "./query-view/run-controls";
+import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
+import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
+import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
+import { useExplainPlan } from "./query-view/use-explain-plan";
+import { useQueryExecutionState } from "./query-view/use-query-execution-state";
+import { useQueryFileActions } from "./query-view/use-query-file-actions";
+import { useQueryRegistry } from "./query-view/use-query-registry";
+import { useQueryTabBookmarks, useQueryTabSql } from "./query-view/use-query-tab-state";
+import { useQueryViewHotkeys } from "./query-view/use-query-view-hotkeys";
+import { useResetOnTabChange } from "./query-view/use-reset-on-tab-change";
+import { useResultExport } from "./query-view/use-result-export";
+import { useRevealRequest } from "./query-view/use-reveal-request";
+import { useRunActions } from "./query-view/use-run-actions";
+import { useRunSql } from "./query-view/use-run-sql";
+import { useScriptRun } from "./query-view/use-script-run";
+import { useServerOutput } from "./query-view/use-server-output";
+import { useWorkspaceLayoutSync } from "./query-view/use-workspace-layout-sync";
 
 interface QueryViewProps {
   tabId: string;
 }
 
 export function QueryView({ tabId }: QueryViewProps) {
-  const queryClient = useQueryClient();
   const workspace = useQueryWorkspace();
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
-  useEffect(() => {
-    if (editorFocus) return;
-    const group = workspaceGroup.current;
-    const layout = group?.getLayout();
-    if (
-      group &&
-      layout?.editor !== undefined &&
-      layout.results !== undefined &&
-      Math.abs(layout.editor - workspace.editorShare) > 0.1
-    ) {
-      group.setLayout({ editor: workspace.editorShare, results: 100 - workspace.editorShare });
-    }
-  }, [workspace.editorShare, workspace.layout, editorFocus, workspaceGroup]);
+  useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const navigate = useNavigate();
+  const { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange } =
+    useQueryTabSql(tabId);
+  const file = useQueryFileActions(tabId, filePath);
 
-  const sql = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? tab.sql : "";
-  });
-  const updateQuerySql = useTableTabs((state) => state.updateQuerySql);
-  const markQueryTabExecuted = useTableTabs((state) => state.markQueryTabExecuted);
-  const filePath = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? (tab.filePath ?? null) : null;
-  });
-  const fileDirty = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? isQueryTabDirty(tab) : false;
-  });
-  const externalChange = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? Boolean(tab.externalChange) : false;
-  });
-  const { saveToFile, reloadFromFile, keepLocal, checkExternal } = useQueryFile(tabId);
-  const [fileBusy, setFileBusy] = useState(false);
-
-  useEffect(() => {
-    if (!filePath) return;
-    void checkExternal();
-    const onFocus = () => void checkExternal();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [filePath, checkExternal]);
-
-  const handleFileSave = useCallback(
-    async (saveAs: boolean) => {
-      if (fileBusy) return;
-      setFileBusy(true);
-      try {
-        await saveToFile(saveAs);
-      } finally {
-        setFileBusy(false);
-      }
-    },
-    [fileBusy, saveToFile],
-  );
-
-  const handleFileOpen = useCallback(async () => {
-    if (fileBusy) return;
-    setFileBusy(true);
-    try {
-      const id = await openSqlFileAsTab();
-      if (id) void navigate({ to: "/query/$id", params: { id } });
-    } finally {
-      setFileBusy(false);
-    }
-  }, [fileBusy, navigate]);
-
-  const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
-  const recordHistory = useQueryHistoryStore((state) => state.record);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
   const editorApiRef = useRef<QueryEditorApi | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const [result, setResultState] = useState<QueryResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const activeJob = useTasksStore((state) => state.tasks.find((task) => task.id === activeJobId));
-  const stopActiveJob = useCallback(() => {
-    if (activeJobId) void cancelTask(activeJobId).catch((failure) => toast.error(String(failure)));
-  }, [activeJobId]);
-  useEffect(() => onHotkeyAction("query.cancel", stopActiveJob), [stopActiveJob]);
-  const cancelHotkey = useResolvedHotkey("query.cancel");
-  useHotkey(cancelHotkey, stopActiveJob, {
-    enabled: Boolean(activeJob?.cancellable),
-    ignoreInputs: false,
-  });
-  const runningRef = useRef(false);
-  const [exporting, setExporting] = useState(false);
-  const [csvExportOpen, setCsvExportOpen] = useState(false);
-  const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
-  const [plan, setPlan] = useState<{
-    node: ExplainNode;
-    analyzed: boolean;
-    sql: string;
-  } | null>(null);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-
-  const [selectedSql, setSelectedSql] = useState("");
-  const [cursorOffset, setCursorOffset] = useState(0);
-  const editorSqlRef = useRef(sql);
-  editorSqlRef.current = sql;
-  const cursorOffsetRef = useRef(cursorOffset);
-  cursorOffsetRef.current = cursorOffset;
-  const editorError = useMemo(
-    () => (error && errorSource ? { message: error, ...errorSource } : null),
-    [error, errorSource],
-  );
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1, offset: 0 });
-  const [statementRange, setStatementRange] = useState<{ start: number; end: number } | null>(null);
-  const [statementError, setStatementError] = useState<string | null>(null);
-
-  const bookmarks = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? (tab.bookmarks ?? EMPTY_BOOKMARKS) : EMPTY_BOOKMARKS;
-  });
-  const setQueryBookmarks = useTableTabs((state) => state.setQueryBookmarks);
-  const setQueryBookmarkSlot = useTableTabs((state) => state.setQueryBookmarkSlot);
-  const clearQueryBookmarks = useTableTabs((state) => state.clearQueryBookmarks);
-  const normalizedBookmarks = useMemo(() => normalizeBookmarks(bookmarks), [bookmarks]);
-  const bookmarkSlots = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query"
-      ? (tab.bookmarkSlots ?? EMPTY_BOOKMARK_SLOTS)
-      : EMPTY_BOOKMARK_SLOTS;
-  });
-
-  const [bindDialogOpen, setBindDialogOpen] = useState(false);
-  const [bindRefs, setBindRefs] = useState<BindParamRef[]>([]);
-  const [bindPendingSql, setBindPendingSql] = useState<string | null>(null);
-  const [bindValues, setBindValues] = useState<Record<string, BindParamValue>>({});
+  const exec = useQueryExecutionState();
+  const exportState = useResultExport(exec.result);
+  const cursor = useEditorCursorState(sql);
+  const bookmarks = useQueryTabBookmarks(tabId);
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
-  const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
-  const [outputOpen, setOutputOpen] = useState(false);
-  const [outputBusy, setOutputBusy] = useState(false);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [analysisSection, setAnalysisSection] = useState<"plan" | "perf">("plan");
-  const openAnalysis = (section: "plan" | "perf") => {
-    setAnalysisSection(section);
-    setAnalysisOpen(true);
-  };
-  const outputEnabled = useServerOutputStore((state) =>
-    connection ? state.enabled[connection.id] === true : false,
-  );
-  const [scriptMode, setScriptMode] = useState<ScriptRunMode>("autocommit");
-  const [scriptEntries, setScriptEntries] = useState<ScriptRunEntry[] | null>(null);
-  const [scriptActiveIndex, setScriptActiveIndex] = useState<number | null>(null);
-  const [scriptNote, setScriptNote] = useState("");
-
-  const revealRequest = useQueryRevealStore((state) => state.request);
-  const clearReveal = useQueryRevealStore((state) => state.clearReveal);
-
-  const hasPackageMembers = useMemo(() => parsePlsqlMembers(sql).length > 0, [sql]);
-  const navigatorOpenedForTab = useRef<string | null>(null);
-
-  useEffect(() => {
-    setSelectedSql("");
-    setCursorOffset(0);
-    setCursorPosition({ line: 1, column: 1, offset: 0 });
-    setStatementRange(null);
-    setStatementError(null);
-    setScriptEntries(null);
-    setScriptActiveIndex(null);
-  }, [tabId]);
-
-  useEffect(() => {
-    if (navigatorOpenedForTab.current === tabId) return;
-    navigatorOpenedForTab.current = tabId;
-    if (hasPackageMembers && !workspace.navigatorVisible) {
-      workspace.update({ navigatorVisible: true });
-    }
-  }, [tabId, hasPackageMembers, workspace]);
-
-  useEffect(() => {
-    if (!revealRequest || revealRequest.tabId !== tabId) return;
-    const timer = setTimeout(() => {
-      editorApiRef.current?.revealMatch(
-        revealRequest.line,
-        revealRequest.column,
-        revealRequest.length,
-      );
-      clearReveal(tabId);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [revealRequest, tabId, clearReveal]);
-
-  const { data: schemas } = useSchemasQuery();
-
-  const {
-    data: tables,
-    isFetching: tablesLoading,
-    isError: tablesError,
-    refetch: refreshTables,
-  } = useQuery({
-    queryKey: ["all-tables", connection?.id, database],
-    queryFn: () =>
-      listTables(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection),
-  });
-
-  const {
-    data: columns,
-    isFetching: columnsLoading,
-    isError: columnsError,
-    refetch: refreshColumns,
-  } = useQuery({
-    queryKey: ["all-columns", connection?.id, database],
-    queryFn: () =>
-      listAllColumns(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection),
-    staleTime: 60_000,
-  });
+  const analysis = useAnalysisSheet();
+  useResetOnTabChange(tabId, cursor, exec);
+  useRevealRequest(tabId, editorApiRef);
 
   const caps = useCapabilities(connection?.kind);
+  const schema = useQueryRegistry(connection, database, caps);
+  const output = useServerOutput(connection, database, caps);
 
-  const { data: views } = useQuery({
-    queryKey: ["all-views", connection?.id, database],
-    queryFn: () =>
-      listViews(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection) && caps.views,
-  });
-
-  const { data: matviews } = useQuery({
-    queryKey: ["all-matviews", connection?.id, database],
-    queryFn: () =>
-      listMaterializedViews(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        database ?? undefined,
-      ),
-    enabled: Boolean(connection) && caps.materialized_views,
-  });
-
-  const registry = useMemo(
-    () => ({
-      schemas: schemas ?? [],
-      tables: [
-        ...(tables ?? []),
-        ...(views ?? []),
-        ...(matviews ?? []).map(({ schema, name }) => ({ schema, name })),
-      ],
-      columns: columns ?? [],
-    }),
-    [schemas, tables, views, matviews, columns],
-  );
-
-  const dialectLabel = useMemo(
-    () =>
-      caps.query_language === "json"
-        ? "MongoDB JSON"
-        : caps.query_language === "redis"
-          ? "Redis"
-          : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
-    [connection?.kind, caps.query_language],
-  );
-
-  const collectOutput = useCallback(async () => {
-    if (!connection || !caps.server_output) return;
-    try {
-      await collectServerOutput(
-        connection.kind,
-        effectiveConnectionString(connection),
-        connection.id,
-        database ?? undefined,
-      );
-    } catch {
-      return;
-    }
-  }, [connection, database, caps.server_output]);
-
-  const handleToggleServerOutput = useCallback(
-    async (enabled: boolean) => {
-      if (!connection) return;
-      setOutputBusy(true);
-      try {
-        await toggleServerOutput(
-          connection.kind,
-          effectiveConnectionString(connection),
-          connection.id,
-          enabled,
-          database ?? undefined,
-        );
-      } catch (err) {
-        toast.error(String(err));
-      } finally {
-        setOutputBusy(false);
-      }
-    },
-    [connection, database],
-  );
-
-  const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery, skipBind = false) => {
-      const sql = text;
-      if (!connection || !sql.trim() || runningRef.current) return;
-      if (
-        !bound &&
-        !skipBind &&
-        caps.query_language !== "redis" &&
-        caps.query_language !== "json"
-      ) {
-        const refs = detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
-        if (refs.length > 0) {
-          setBindValues((previous) => {
-            const next: Record<string, BindParamValue> = {};
-            for (const ref of refs) {
-              next[ref.name] = previous[ref.name] ?? { type: "text", value: "" };
-            }
-            return next;
-          });
-          setBindRefs(refs);
-          setBindPendingSql(sql);
-          setBindDialogOpen(true);
-          return;
-        }
-      }
-      setEditorFocus(false);
-      const currentTab = useTableTabs
-        .getState()
-        .tabs.find((tab) => tab.kind === "query" && tab.id === tabId);
-      if (currentTab?.kind === "query" && currentTab.sql === sql) {
-        markQueryTabExecuted(tabId, sql);
-      }
-      runningRef.current = true;
-      setIsRunning(true);
-      const executionOptions = { onJob: setActiveJobId, confirmed: true };
-      setScriptEntries(null);
-      setScriptActiveIndex(null);
-      setError(null);
-      const startedAt = performance.now();
-      const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
-        recordHistory({
-          connectionId: connection.id,
-          database: database ?? null,
-          sql,
-          durationMs: Math.round(performance.now() - startedAt),
-          rowCount: outcome.rowCount,
-          error: outcome.error ? outcome.error.slice(0, 500) : null,
-        });
-      };
-      const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
-      const rowCountOf = (res: QueryResult): number | null =>
-        res.columns.length > 0
-          ? res.rows.length
-          : res.rows_affected != null
-            ? Number(res.rows_affected)
-            : null;
-      try {
-        await confirmSqlExecution(
-          connection.kind,
-          effectiveConnectionString(connection),
-          sql,
-          database ?? undefined,
-        );
-        const store = useTransactionStore.getState();
-        const existingTx = getQueryTransaction(connection.id, database);
-        const isDml = isTransactionalStatement(sql, connection.kind);
-
-        if (existingTx) {
-          const res = bound
-            ? await runManagedOperation(existingTx.txId, () =>
-                executeInTransactionWithParams(
-                  existingTx.txId,
-                  bound.sql,
-                  bound.values,
-                  executionOptions,
-                ),
-              )
-            : await runManagedOperation(existingTx.txId, () =>
-                executeInTransaction(existingTx.txId, sql, executionOptions),
-              );
-          if (isDml) {
-            store.addChange(existingTx.txId, {
-              id: crypto.randomUUID(),
-              type: "query",
-              timestamp: Date.now(),
-              sql,
-              rowsAffected: res.rows_affected,
-            });
-            store.setPanelOpen(true);
-          }
-          setResult(res);
-          finishHistory({ rowCount: rowCountOf(res), error: null });
-        } else if (isDml && caps.transactions && useSettingsStore.getState().transactionsEnabled) {
-          const { txId } = await ensureManagedTransaction(connection, database ?? null, {
-            type: "query",
-          });
-          const res = bound
-            ? await runManagedOperation(txId, () =>
-                executeInTransactionWithParams(txId, bound.sql, bound.values, executionOptions),
-              )
-            : await runManagedOperation(txId, () =>
-                executeInTransaction(txId, sql, executionOptions),
-              );
-          store.addChange(txId, {
-            id: crypto.randomUUID(),
-            type: "query",
-            timestamp: Date.now(),
-            sql,
-            rowsAffected: res.rows_affected,
-          });
-          store.setPanelOpen(true);
-          setResult(res);
-          finishHistory({ rowCount: rowCountOf(res), error: null });
-        } else {
-          const res = bound
-            ? await executeQueryWithParams(
-                connection.kind,
-                effectiveConnectionString(connection),
-                bound.sql,
-                bound.values,
-                database ?? undefined,
-                executionOptions,
-              )
-            : await executeQuery(
-                connection.kind,
-                effectiveConnectionString(connection),
-                sql,
-                database ?? undefined,
-                executionOptions,
-              );
-          setResult(res);
-          finishHistory({ rowCount: rowCountOf(res), error: null });
-        }
-      } catch (err) {
-        const message = String(err);
-        setError(message);
-        const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
-        setErrorSource(base === null ? null : { text: sql, base });
-        setResult(null);
-        finishHistory({ rowCount: null, error: message });
-      } finally {
-        if (caps.query_language === "redis") {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["rows", connection.id] }),
-            queryClient.invalidateQueries({ queryKey: ["count", connection.id] }),
-          ]);
-        }
-        await collectOutput();
-        runningRef.current = false;
-        setIsRunning(false);
-      }
-    },
-    [
-      connection,
-      database,
-      markQueryTabExecuted,
-      recordHistory,
-      caps.transactions,
-      caps.query_language,
-      queryClient,
-      collectOutput,
-      tabId,
-    ],
-  );
-
-  const autoRun = useTableTabs((state) => {
-    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
-    return tab?.kind === "query" ? Boolean(tab.autoRun) : false;
-  });
-  useEffect(() => {
-    if (!autoRun || !connection) return;
-    useTableTabs.setState((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.kind === "query" && t.id === tabId ? { ...t, autoRun: undefined } : t,
-      ),
-    }));
-    void runSql(sql);
-  }, [autoRun, connection, runSql, sql, tabId]);
-
-  const handleBindConfirm = useCallback(() => {
-    const pending = bindPendingSql;
-    if (!pending) return;
-    setBindDialogOpen(false);
-    setBindPendingSql(null);
-    if (caps.bind_parameters) {
-      void runSql(pending, buildParameterizedQuery(pending, bindValues, connection?.kind));
-    } else {
-      markQueryTabExecuted(tabId, pending);
-      void runSql(inlineBindValues(pending, bindValues), undefined, true);
-    }
-  }, [
-    bindPendingSql,
-    bindValues,
-    markQueryTabExecuted,
-    runSql,
-    caps.bind_parameters,
+  const { runSql, bind } = useRunSql({
     tabId,
-    connection?.kind,
-  ]);
+    sql,
+    connection,
+    database,
+    caps,
+    exec,
+    cursor,
+    markQueryTabExecuted,
+    setEditorFocus,
+    collectOutput: output.collectOutput,
+  });
 
-  const handleRun = useCallback(() => {
-    setEditorFocus(false);
-    setStatementRange(null);
-    setStatementError(null);
-    const target = resolveQueryRunTarget(
-      sql,
-      selectedSql,
-      cursorOffset,
-      workspace.runTarget,
-      connection?.kind,
-    );
-    if (!target.trim()) {
-      setStatementError("Kein ausführbares Statement an der Cursorposition.");
-      return;
-    }
-    void runSql(target);
-  }, [runSql, sql, selectedSql, cursorOffset, workspace.runTarget, connection?.kind]);
+  const actions = useRunActions({
+    sql,
+    connection,
+    database,
+    workspace,
+    exec,
+    cursor,
+    runSql,
+    setEditorFocus,
+  });
 
-  const handleRunSelection = useCallback(() => {
-    if (!selectedSql.trim()) return;
-    setStatementRange(null);
-    setStatementError(null);
-    void runSql(selectedSql);
-  }, [runSql, selectedSql]);
+  const hasSelection = cursor.selectedSql.trim().length > 0;
 
-  const handleRunStatement = useCallback(() => {
-    if (selectedSql.trim()) {
-      handleRunSelection();
-      return;
-    }
-    const statement = statementAtOffset(sql, cursorOffset, connection?.kind);
-    if (!statement) {
-      setStatementRange(null);
-      setStatementError(
-        "Statement unter dem Cursor konnte nicht eindeutig bestimmt werden. Bitte den gewünschten Bereich markieren.",
-      );
-      return;
-    }
-    setStatementError(null);
-    setStatementRange({ start: statement.start, end: statement.end });
-    void runSql(statement.text);
-  }, [cursorOffset, handleRunSelection, runSql, selectedSql, sql, connection?.kind]);
+  const shortcutLabel = useQueryViewHotkeys({
+    actions,
+    connected: connection !== null,
+    editorApiRef,
+    handleFileSave: file.handleFileSave,
+    toggleHistory: () => setHistoryOpen((open) => !open),
+    openCsvExport: exportState.openCsvExport,
+  });
 
-  const handleCheck = useCallback(async () => {
-    const target = resolveQueryRunTarget(
-      sql,
-      selectedSql,
-      cursorOffset,
-      workspace.runTarget,
-      connection?.kind,
-    );
-    if (!connection || !target.trim() || isChecking) return;
-    setIsChecking(true);
-    setStatementError(null);
-    try {
-      await validateSql(
-        connection.kind,
-        effectiveConnectionString(connection),
-        target,
-        database ?? undefined,
-      );
-      setError(null);
-      setErrorSource(null);
-      toast.success("Fehlerfrei kompilierbar — nichts wurde ausgeführt.");
-    } catch (err) {
-      const message = String(err);
-      setError(message);
-      const base = locateText(editorSqlRef.current, target, cursorOffsetRef.current);
-      setErrorSource(base === null ? null : { text: target, base });
-    } finally {
-      setIsChecking(false);
-    }
-  }, [connection, sql, selectedSql, cursorOffset, workspace.runTarget, database, isChecking]);
+  const script = useScriptRun({
+    sql,
+    connection,
+    database,
+    caps,
+    exec,
+    editorApiRef,
+    setEditorFocus,
+    collectOutput: output.collectOutput,
+  });
 
-  const hasSelection = selectedSql.trim().length > 0;
+  const explain = useExplainPlan({
+    sql,
+    selectedSql: cursor.selectedSql,
+    cursorOffset: cursor.cursorOffset,
+    connection,
+    database,
+    workspace,
+  });
 
-  const hotkeyOverrides = useHotkeysStore((state) => state.overrides);
-  const shortcutLabel = (id: string) => formatHotkeyDisplay(resolveHotkey(id, hotkeyOverrides));
-
-  useHotkeys(
-    (["query.run", "query.runSelection", "query.runStatement", "query.check"] as const).flatMap(
-      (id) => {
-        const command = commandById(id);
-        if (!command) return [];
-        const skipMonaco = (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          return Boolean(target?.closest?.(".monaco-editor"));
-        };
-        const runAction =
-          id === "query.run"
-            ? handleRun
-            : id === "query.runSelection"
-              ? handleRunSelection
-              : id === "query.runStatement"
-                ? handleRunStatement
-                : handleCheck;
-        const primary = (hotkeyOverrides[id] ?? command.defaultHotkey) as never;
-        const rows = [
-          {
-            hotkey: primary,
-            callback: (event: KeyboardEvent) => {
-              if (skipMonaco(event)) return;
-              if (id === "query.check") void runAction();
-              else (runAction as () => void)();
-            },
-            options: { enabled: connection !== null, ignoreInputs: false },
-          },
-        ];
-        if (!hotkeyOverrides[id]) {
-          for (const alias of command.aliases ?? []) {
-            rows.push({
-              hotkey: alias as never,
-              callback: () => {
-                if (id === "query.check") void runAction();
-                else (runAction as () => void)();
-              },
-              options: { enabled: connection !== null, ignoreInputs: false },
-            });
-          }
-        }
-        return rows;
-      },
-    ),
-    { preventDefault: true, stopPropagation: true },
-  );
-
-  useHotkeys(
-    [
-      {
-        hotkey: (hotkeyOverrides["query.save"] ??
-          commandById("query.save")?.defaultHotkey ??
-          "Mod+S") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          void handleFileSave(false);
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.saveAs"] ??
-          commandById("query.saveAs")?.defaultHotkey ??
-          "Mod+Shift+S") as never,
-        callback: () => void handleFileSave(true),
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.format"] ??
-          commandById("query.format")?.defaultHotkey ??
-          "Shift+Alt+F") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          editorApiRef.current?.format();
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.comment"] ??
-          commandById("query.comment")?.defaultHotkey ??
-          "Mod+/") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          editorApiRef.current?.toggleComment();
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.bookmark"] ??
-          commandById("query.bookmark")?.defaultHotkey ??
-          "Mod+Alt+B") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          editorApiRef.current?.toggleBookmark();
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.nextBookmark"] ??
-          commandById("query.nextBookmark")?.defaultHotkey ??
-          "F2") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          editorApiRef.current?.gotoBookmark("next");
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.prevBookmark"] ??
-          commandById("query.prevBookmark")?.defaultHotkey ??
-          "Shift+F2") as never,
-        callback: (event: KeyboardEvent) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest?.(".monaco-editor")) return;
-          editorApiRef.current?.gotoBookmark("previous");
-        },
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["query.history"] ??
-          commandById("query.history")?.defaultHotkey ??
-          "Mod+H") as never,
-        callback: () => setHistoryOpen((open) => !open),
-        options: { ignoreInputs: false },
-      },
-      {
-        hotkey: (hotkeyOverrides["grid.export"] ??
-          commandById("grid.export")?.defaultHotkey ??
-          "Mod+E") as never,
-        callback: () => setCsvExportOpen(true),
-        options: { enabled: connection !== null, ignoreInputs: false },
-      },
-    ],
-    { preventDefault: true, stopPropagation: true },
-  );
-
-  useEffect(() => onHotkeyAction("query.run", handleRun), [handleRun]);
-  useEffect(() => onHotkeyAction("query.runSelection", handleRunSelection), [handleRunSelection]);
-  useEffect(() => onHotkeyAction("query.runStatement", handleRunStatement), [handleRunStatement]);
-  useEffect(() => onHotkeyAction("query.check", () => void handleCheck()), [handleCheck]);
-  useEffect(() => onHotkeyAction("query.save", () => void handleFileSave(false)), [handleFileSave]);
-  useEffect(
-    () => onHotkeyAction("query.saveAs", () => void handleFileSave(true)),
-    [handleFileSave],
-  );
-  useEffect(() => onHotkeyAction("grid.export", () => setCsvExportOpen(true)), []);
-
-  const scriptSplit = useMemo(
-    () => splitSqlStatements(sql, connection?.kind),
-    [sql, connection?.kind],
-  );
-
-  const handleOpenScriptDialog = useCallback(() => {
-    if (!connection) return;
-    const existingTx = getQueryTransaction(connection.id, database);
-    const hasDml = scriptSplit.statements.some((statement) =>
-      isTransactionalStatement(statement.text, connection.kind),
-    );
-    if (existingTx) setScriptMode("existing-transaction");
-    else if (hasDml && caps.transactions && useSettingsStore.getState().transactionsEnabled)
-      setScriptMode("new-transaction");
-    else setScriptMode("autocommit");
-    setScriptDialogOpen(true);
-  }, [connection, database, caps.transactions, scriptSplit]);
-
-  const runScript = useCallback(
-    async (mode: ScriptRunMode, stopOnError = true) => {
-      if (!connection || runningRef.current) return;
-      runningRef.current = true;
-      setIsRunning(true);
-      setScriptNote(SCRIPT_MODE_NOTE[mode]);
-      setScriptActiveIndex(null);
-      setStatementError(null);
-      setStatementRange(null);
-      setError(null);
-      setEditorFocus(false);
-      try {
-        const outcome = await runSqlScript({
-          connection,
-          database,
-          sql,
-          mode,
-          stopOnError,
-          onJob: setActiveJobId,
-          onProgress: setScriptEntries,
-        });
-        setScriptEntries(outcome.entries);
-        setResultState(
-          outcome.error
-            ? null
-            : withCreateNotice(outcome.lastResult, outcome.entries.at(-1)?.sql ?? sql),
-        );
-        setError(outcome.error);
-        const failed = outcome.entries.find((entry) => entry.status === "error");
-        setErrorSource(
-          failed ? { text: sql.slice(failed.start, failed.end), base: failed.start } : null,
-        );
-        if (failed) {
-          setStatementRange({ start: failed.start, end: failed.end });
-          setScriptActiveIndex(failed.index);
-        } else setScriptActiveIndex(outcome.entries.length - 1);
-      } catch (failure) {
-        setError(String(failure));
-        setErrorSource(null);
-      } finally {
-        await collectOutput();
-        runningRef.current = false;
-        setIsRunning(false);
-      }
-    },
-    [connection, database, sql, collectOutput],
-  );
-
-  const handleSelectScriptEntry = useCallback(
-    (entry: ScriptRunEntry) => {
-      setScriptActiveIndex(entry.index);
-      if (!runningRef.current) {
-        setResultState(withCreateNotice(entry.result ?? null, entry.sql));
-        setError(entry.error);
-        setErrorSource({ text: sql.slice(entry.start, entry.end), base: entry.start });
-      }
-      setStatementRange({ start: entry.start, end: entry.end });
-      const before = sql.slice(0, entry.start).split("\n");
-      editorApiRef.current?.revealMatch(before.length, before[before.length - 1].length + 1, 0);
-    },
-    [sql],
-  );
-
-  const handleExplain = useCallback(
-    async (analyze: boolean) => {
-      const target = resolveQueryRunTarget(
-        sql,
-        selectedSql,
-        cursorOffset,
-        workspace.runTarget,
-        connection?.kind,
-      );
-      if (!connection || !target.trim() || planLoading) return;
-      setPlanLoading(true);
-      setPlanError(null);
-      try {
-        const plans = await explainQuery(
-          connection.kind,
-          effectiveConnectionString(connection),
-          target,
-          analyze,
-          database ?? undefined,
-        );
-        const node = plans[0]?.Plan;
-        if (!node) {
-          setPlanError("Kein Ausführungsplan erhalten.");
-          setPlan(null);
-        } else {
-          setPlan({ node, analyzed: analyze, sql: target });
-        }
-      } catch (err) {
-        setPlanError(String(err));
-        setPlan(null);
-      } finally {
-        setPlanLoading(false);
-      }
-    },
-    [connection, sql, selectedSql, cursorOffset, workspace.runTarget, database, planLoading],
-  );
-
-  const exportRows = useMemo(() => {
-    if (!result) return [] as Record<string, unknown>[];
-    return result.rows.map((row) => {
-      const obj: Record<string, unknown> = {};
-      for (const c of result.columns) obj[c] = row[c] ?? null;
-      return obj;
-    });
-  }, [result]);
-
-  const handleExportJson = async () => {
-    if (!result || result.columns.length === 0) return;
-    setExporting(true);
-    try {
-      const filePath = await save({
-        defaultPath: "query-result.json",
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (!filePath) return;
-      await writeTextFile(filePath, JSON.stringify(exportRows, null, 2));
-    } catch (error) {
-      toast.error(`Export fehlgeschlagen: ${String(error)}`);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const runLabel =
-    workspace.runTarget === "all"
-      ? "Alles ausführen"
-      : hasSelection
-        ? "Auswahl ausführen"
-        : workspace.runTarget === "selection-or-statement"
-          ? "Statement ausführen"
-          : "Ausführen";
-
-  const statusText = (() => {
-    if (!result) return null;
-    const parts: string[] = [];
-    if (result.notice) parts.push(result.notice);
-    if (result.columns.length > 0) {
-      parts.push(`${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`);
-      // ponytail: Backend kappt bei 1000; exakte Flag-Übertragung erst, wenn QueryResult ein truncated-Feld bekommt
-      if (result.rows.length === MAX_RESULT_ROWS) parts.push("auf 1000 begrenzt");
-    }
-    if (
-      result.rows_affected !== null &&
-      result.rows_affected !== undefined &&
-      result.columns.length === 0
-    ) {
-      parts.push(`${result.rows_affected} betroffen`);
-    }
-    parts.push(`${result.execution_time_ms} ms`);
-    return parts.join(" · ");
-  })();
+  const runLabel = runLabelFor(workspace.runTarget, hasSelection);
+  const statusText = buildStatusText(exec.result);
+  const isSql = caps.query_language === "sql";
 
   const resultActions = (
-    <>
-      {caps.server_output && (
-        <Button
-          size="icon-sm"
-          variant={outputOpen ? "secondary" : "ghost"}
-          aria-label="Server-Ausgabe umschalten"
-          aria-pressed={outputOpen}
-          title="Server-Ausgabe öffnen"
-          disabled={!connection}
-          onClick={() => setOutputOpen((open) => !open)}
-        >
-          <TerminalIcon className="size-3.5" />
-        </Button>
-      )}
-      {result && result.columns.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-2 text-xs"
-              disabled={exporting}
-            >
-              <MorphIcon
-                icon={exporting ? Loader : Download}
-                className={cn("size-3", exporting && "animate-spin")}
-              />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-              Als CSV exportieren…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-              Als XLSX exportieren…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void handleExportJson()}>
-              Als JSON exportieren
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </>
+    <ResultActions
+      result={exec.result}
+      serverOutput={caps.server_output}
+      outputOpen={output.outputOpen}
+      connected={Boolean(connection)}
+      onToggleOutput={() => output.setOutputOpen((open) => !open)}
+      exportState={exportState}
+    />
   );
-  const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
 
   return (
     <div className="flex h-full w-full min-h-0">
@@ -1124,682 +152,145 @@ export function QueryView({ tabId }: QueryViewProps) {
           className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b bg-card px-3 py-2"
           data-tour="query-toolbar"
         >
-          <div className="flex shrink-0 items-stretch">
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-3 text-xs"
-              data-tour="query-run"
-              onClick={handleRun}
-              disabled={isRunning || !connection || !sql.trim()}
-              title={`${runLabel} (${shortcutLabel("query.run")})`}
-            >
-              <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
-              {runLabel}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 w-8 rounded-l-none px-0"
-                  aria-label="Weitere Ausführungsarten"
-                  title="Weitere Ausführungsarten"
-                  disabled={isRunning || !connection || !sql.trim()}
-                >
-                  <ChevronDownIcon className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-52 whitespace-nowrap">
-                <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                  Ausführung
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  data-tour="query-run-statement"
-                  onClick={handleRunStatement}
-                  disabled={isRunning || !connection || !sql.trim()}
-                >
-                  Statement unter Cursor
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    {shortcutLabel("query.runStatement")}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={handleRunSelection}
-                  disabled={isRunning || !connection || !hasSelection}
-                >
-                  Auswahl ausführen
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    {shortcutLabel("query.runSelection")}
-                  </span>
-                </DropdownMenuItem>
-                {caps.query_language === "sql" && (
-                  <DropdownMenuItem
-                    onClick={handleOpenScriptDialog}
-                    disabled={isRunning || !connection || scriptSplit.statements.length === 0}
-                  >
-                    Skript mit Einzelergebnissen
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 px-3 text-xs"
-            data-tour="query-check"
-            onClick={() => void handleCheck()}
-            disabled={isRunning || isChecking || !connection || !sql.trim()}
-            title={`Nur prüfen — kompiliert ohne etwas auszuführen (${shortcutLabel("query.check")})`}
-          >
-            <MorphIcon
-              icon={isChecking ? Loader : ShieldCheck}
-              className={cn("size-3", isChecking && "animate-spin")}
-            />
-            {isChecking ? "Prüfe…" : "Prüfen"}
-          </Button>
-          {isRunning && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
-              onClick={stopActiveJob}
-              title={
-                activeJob?.cancellable
-                  ? shortcutLabel("query.cancel")
-                  : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch. Das konfigurierte Timeout bleibt wirksam."
-              }
-            >
-              {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
-            </Button>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            {caps.query_language === "sql" && (
-              <Button
-                size="icon-sm"
-                variant={workspace.navigatorVisible ? "secondary" : "ghost"}
-                aria-label="Schema-Navigator umschalten"
-                title="Schema und Statement-Navigator"
-                aria-pressed={workspace.navigatorVisible}
-                onClick={() => workspace.update({ navigatorVisible: !workspace.navigatorVisible })}
-              >
-                <PanelLeftIcon className="size-3.5" />
-              </Button>
-            )}
-            {caps.explain && (
-              <Button
-                size="sm"
-                variant={analysisOpen ? "secondary" : "ghost"}
-                className="h-7 gap-1.5 text-xs"
-                aria-pressed={analysisOpen}
-                onClick={() => openAnalysis("plan")}
-                title="Explain und Performance-Test"
-              >
-                <GaugeIcon className="size-3.5" />
-                Analyse
-              </Button>
-            )}
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              title={
-                workspace.layout === "vertical"
-                  ? "Ergebnisse rechts anzeigen"
-                  : "Ergebnisse unten anzeigen"
-              }
-              aria-label="Aufteilung wechseln"
-              onClick={() =>
-                workspace.update({
-                  layout: workspace.layout === "vertical" ? "horizontal" : "vertical",
-                })
-              }
-            >
-              <MorphIcon
-                icon={workspace.layout === "vertical" ? Columns2 : PanelBottom}
-                className="size-3.5"
+          <RunControls
+            actions={actions}
+            exec={exec}
+            runLabel={runLabel}
+            hasSelection={hasSelection}
+            connected={Boolean(connection)}
+            hasSql={Boolean(sql.trim())}
+            showScript={isSql}
+            statementCount={script.scriptSplit.statements.length}
+            onOpenScript={script.handleOpenScriptDialog}
+            shortcutLabel={shortcutLabel}
+          />
+          <ToolbarViewControls
+            workspace={workspace}
+            isSql={isSql}
+            explain={caps.explain}
+            analysisOpen={analysis.open}
+            onOpenAnalysis={() => analysis.openAnalysis("plan")}
+            editorFocus={editorFocus}
+            onEditorFocusChange={setEditorFocus}
+            toolsMenu={
+              <QueryToolsMenu
+                editorApiRef={editorApiRef}
+                shortcutLabel={shortcutLabel}
+                hasSql={Boolean(sql.trim())}
+                connected={Boolean(connection)}
+                isSql={isSql}
+                serverOutput={caps.server_output}
+                bookmarkCount={bookmarks.normalizedBookmarks.length}
+                filePath={filePath}
+                isRunning={exec.isRunning}
+                onOpenHistory={() => setHistoryOpen(true)}
+                onOpenOutput={() => output.setOutputOpen(true)}
+                onOpenSave={() => setSaveDialogOpen(true)}
+                onOpenSnippets={() => setSnippetDialogOpen(true)}
+                onOpenTabSearch={() => setTabSearchOpen(true)}
+                onClearBookmarks={() => bookmarks.clearQueryBookmarks(tabId)}
+                onFileOpen={() => void file.handleFileOpen()}
+                onFileSave={(saveAs) => void file.handleFileSave(saveAs)}
+                onClearEditor={() => {
+                  exec.setResultState(null);
+                  exec.setError(null);
+                  updateQuerySql(tabId, "");
+                }}
               />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant={editorFocus ? "secondary" : "ghost"}
-              title="Editor-Fokus umschalten"
-              aria-label="Editor-Fokus umschalten"
-              aria-pressed={editorFocus}
-              onClick={() => setEditorFocus(!editorFocus)}
-            >
-              <MorphIcon icon={editorFocus ? Minimize2 : Maximize2} className="size-3.5" />
-            </Button>
-            <QueryEditorSettingsPopover />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Weitere Werkzeuge"
-                  title="Verlauf, Server-Ausgabe, Datei und Bearbeiten"
-                >
-                  <MoreHorizontalIcon className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-64 whitespace-nowrap">
-                <DropdownMenuItem data-tour="query-history" onClick={() => setHistoryOpen(true)}>
-                  <HistoryIcon className="size-3.5" />
-                  Verlauf & Gespeichertes
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    {shortcutLabel("query.history")}
-                  </span>
-                </DropdownMenuItem>
-                {caps.server_output && (
-                  <DropdownMenuItem onClick={() => setOutputOpen(true)} disabled={!connection}>
-                    <TerminalIcon className="size-3.5" />
-                    Server-Ausgabe öffnen
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <BookmarkIcon className="size-3.5" />
-                    Bibliothek
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem
-                      onClick={() => setSaveDialogOpen(true)}
-                      disabled={!sql.trim()}
-                    >
-                      Query speichern…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSnippetDialogOpen(true)}>
-                      Snippets verwalten…
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Editor-Werkzeuge</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => setTabSearchOpen(true)}>
-                      In Query-Tabs suchen
-                      <span className="ml-auto text-[10px] text-muted-foreground">Mod+Shift+F</span>
-                    </DropdownMenuItem>
-                    {caps.query_language === "sql" && (
-                      <DropdownMenuItem
-                        onClick={() => editorApiRef.current?.format()}
-                        disabled={!sql.trim()}
-                      >
-                        SQL formatieren
-                        <span className="ml-auto text-[10px] text-muted-foreground">
-                          {shortcutLabel("query.format")}
-                        </span>
-                      </DropdownMenuItem>
-                    )}
-                    {[
-                      ["actions.find", "Suchen"],
-                      ["editor.action.startFindReplaceAction", "Suchen und ersetzen"],
-                      ["editor.action.quickCommand", "Editor-Befehlspalette"],
-                      ["editor.action.gotoLine", "Gehe zu Zeile"],
-                      ["editor.action.commentLine", "Zeilenkommentar umschalten"],
-                      ["editor.action.blockComment", "Blockkommentar umschalten"],
-                      ["editor.action.foldAll", "Alles einklappen"],
-                      ["editor.action.unfoldAll", "Alles aufklappen"],
-                      ["editor.action.selectHighlights", "Alle Vorkommen auswählen"],
-                    ].map(([id, label]) => (
-                      <DropdownMenuItem key={id} onClick={() => editorApiRef.current?.action(id)}>
-                        {label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Lesezeichen</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => editorApiRef.current?.toggleBookmark()}>
-                      {`Setzen/entfernen (${shortcutLabel("query.bookmark")})`}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => editorApiRef.current?.gotoBookmark("next")}
-                      disabled={normalizedBookmarks.length === 0}
-                    >
-                      {`Nächstes (${shortcutLabel("query.nextBookmark")})`}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => editorApiRef.current?.gotoBookmark("previous")}
-                      disabled={normalizedBookmarks.length === 0}
-                    >
-                      {`Vorheriges (${shortcutLabel("query.prevBookmark")})`}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => clearQueryBookmarks(tabId)}
-                      disabled={normalizedBookmarks.length === 0}
-                    >
-                      Alle entfernen
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Datei</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuItem onClick={() => void handleFileOpen()}>
-                      SQL-Datei öffnen…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => void handleFileSave(false)}
-                      disabled={!sql.trim() && !filePath}
-                    >
-                      {filePath ? "Speichern" : "Speichern unter…"}
-                    </DropdownMenuItem>
-                    {filePath && (
-                      <DropdownMenuItem onClick={() => void handleFileSave(true)}>
-                        Speichern unter…
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setResultState(null);
-                        setError(null);
-                        updateQuerySql(tabId, "");
-                      }}
-                      disabled={isRunning}
-                    >
-                      Editor leeren
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+            }
+          />
         </div>
 
         {externalChange && (
-          <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs">
-            <AlertTriangleIcon className="size-3.5 text-amber-500" />
-            <span className="min-w-0 flex-1 truncate">
-              Datei wurde außerhalb von l8db geändert
-              {fileDirty ? " – lokale Änderungen vorhanden" : ""}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 px-2 text-xs"
-              disabled={fileBusy}
-              onClick={() => void reloadFromFile()}
-            >
-              {fileDirty ? "Neu laden (lokale Änderungen verwerfen)" : "Neu laden"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-xs"
-              disabled={fileBusy}
-              onClick={() => void keepLocal()}
-            >
-              Lokale Fassung behalten
-            </Button>
-          </div>
+          <ExternalChangeBanner
+            fileDirty={fileDirty}
+            fileBusy={file.fileBusy}
+            onReload={() => void file.reloadFromFile()}
+            onKeepLocal={() => void file.keepLocal()}
+          />
         )}
 
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="min-h-0 flex-1"
-          onLayoutChanged={(layout) => {
-            if (layout.navigator && Math.abs(layout.navigator - workspace.navigatorShare) > 0.1)
-              workspace.update({ navigatorShare: layout.navigator });
-          }}
-        >
-          {workspace.navigatorVisible && caps.query_language === "sql" && connection && (
-            <>
-              <ResizablePanel
-                id="navigator"
-                defaultSize={`${workspace.navigatorShare}%`}
-                minSize="180px"
-                maxSize="40%"
-              >
-                <QuerySchemaBrowser
-                  tables={registry.tables}
-                  columns={registry.columns}
-                  kind={connection.kind}
-                  sql={sql}
-                  loading={tablesLoading || columnsLoading}
-                  error={tablesError || columnsError}
-                  onRefresh={() => {
-                    void refreshTables();
-                    void refreshColumns();
-                  }}
-                  onInsert={(text) => editorApiRef.current?.insertText(text)}
-                  onJump={(line, column) => editorApiRef.current?.revealMatch(line, column)}
-                  onClose={() => workspace.update({ navigatorVisible: false })}
-                />
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-            </>
-          )}
-          <ResizablePanel id="query-workspace" minSize="50%" className="min-w-0">
-            <ResizablePanelGroup
-              groupRef={workspaceGroup}
-              orientation={workspace.layout}
-              className="min-h-0 flex-1"
-              onLayoutChanged={(layout) => {
-                if (
-                  !editorFocus &&
-                  layout.editor &&
-                  layout.results &&
-                  Math.abs(layout.editor - workspace.editorShare) > 0.1
-                )
-                  workspace.update({ editorShare: layout.editor });
-              }}
-            >
-              <ResizablePanel
-                id="editor"
-                defaultSize={`${workspace.editorShare}%`}
-                minSize="20%"
-                className="flex min-h-0 flex-col"
-              >
-                <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2 border-b bg-muted/10 px-3 py-1 text-[11px] text-muted-foreground">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileIcon className="size-3 shrink-0" />
-                    <span className="truncate font-medium text-foreground/80">
-                      {filePath?.split(/[\\/]/).pop() ?? "Abfrage.sql"}
-                    </span>
-                    {fileDirty && (
-                      <Badge
-                        variant="outline"
-                        className="h-5 border-amber-500/40 px-1.5 text-[10px] text-amber-600 dark:text-amber-400"
-                      >
-                        geändert
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="ml-auto flex min-w-0 items-center gap-2">
-                    <span className="hidden tabular-nums sm:inline">
-                      {scriptSplit.statements.length} Statement
-                      {scriptSplit.statements.length === 1 ? "" : "s"}
-                    </span>
-                    <span className="hidden h-3 w-px bg-border sm:block" />
-                    <Badge variant="outline" className="h-5 max-w-44 truncate px-1.5 text-[10px]">
-                      {dialectLabel}
-                    </Badge>
-                    <span className="hidden h-3 w-px bg-border md:block" />
-                    <span className="max-w-44 truncate text-foreground/70">
-                      {connection?.name ?? "Keine Verbindung"}
-                      {database ? ` · ${database}` : ""}
-                    </span>
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <QueryEditorPane
-                    language={
-                      caps.query_language === "redis"
-                        ? "redis"
-                        : caps.query_language === "json"
-                          ? "json"
-                          : "sql"
-                    }
-                    ref={editorApiRef}
-                    value={sql}
-                    onChange={(v) => {
-                      setStatementRange(null);
-                      setStatementError(null);
-                      updateQuerySql(tabId, v);
-                    }}
-                    onRun={handleRun}
-                    onSave={() => void handleFileSave(false)}
-                    onRunSelection={handleRunSelection}
-                    onRunStatement={handleRunStatement}
-                    onCheck={() => void handleCheck()}
-                    onSelectionChange={setSelectedSql}
-                    onCursorChange={setCursorOffset}
-                    onPositionChange={setCursorPosition}
-                    highlight={statementRange}
-                    error={editorError}
-                    bookmarks={normalizedBookmarks}
-                    onBookmarksChange={(lines) => setQueryBookmarks(tabId, lines)}
-                    bookmarkSlots={bookmarkSlots}
-                    onBookmarkSlotChange={(slot, line) => setQueryBookmarkSlot(tabId, slot, line)}
-                    onSearchTabs={() => setTabSearchOpen(true)}
-                    stateKey={tabId}
-                    registry={registry}
-                  />
-                </div>
-
-                {workspace.statusVisible && (
-                  <QueryEditorStatusbar
-                    position={cursorPosition}
-                    selectionLength={selectedSql.length}
-                    statementCount={scriptSplit.statements.length}
-                    dialectLabel={dialectLabel}
-                  />
-                )}
-              </ResizablePanel>
-              {!editorFocus && <ResizableHandle withHandle />}
-              {!editorFocus && (
-                <ResizablePanel
-                  id="results"
-                  minSize="20%"
-                  defaultSize={`${100 - workspace.editorShare}%`}
-                  className="flex min-h-0 flex-col overflow-hidden"
-                >
-                  {showResultHeader && (
-                    <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
-                      <span className="font-medium">Ergebnisse</span>
-                      <span
-                        role="status"
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
-                          isRunning
-                            ? "border-primary/30 bg-primary/10 text-primary"
-                            : error
-                              ? "border-destructive/30 bg-destructive/10 text-destructive"
-                              : "border-border bg-background/60 text-muted-foreground",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "size-1.5 rounded-full bg-current",
-                            isRunning && "animate-pulse",
-                          )}
-                        />
-                        {isRunning
-                          ? "Wird ausgeführt"
-                          : error
-                            ? "Fehlgeschlagen"
-                            : result
-                              ? "Abgeschlossen"
-                              : "Bereit"}
-                      </span>
-                      {statusText && (
-                        <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
-                          {statusText}
-                        </span>
-                      )}
-                      <div className="ml-auto flex shrink-0 items-center gap-1">
-                        {resultActions}
-                      </div>
-                    </div>
-                  )}
-
-                  <Collapse open={Boolean(statementError)} className="shrink-0">
-                    {statementError && (
-                      <p className="border-b px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
-                        {statementError}
-                      </p>
-                    )}
-                  </Collapse>
-
-                  <div className="min-h-0 flex-1">
-                    <QueryResultWorkbench
-                      result={result}
-                      isLoading={isRunning}
-                      error={error}
-                      kind={connection?.kind}
-                      statusText={statusText}
-                      actions={resultActions}
-                    />
-                  </div>
-                </ResizablePanel>
-              )}
-            </ResizablePanelGroup>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-
-        <SaveQueryDialog
-          open={saveDialogOpen}
-          onOpenChange={setSaveDialogOpen}
-          onSave={(name) => saveQuery(name, sql)}
-        />
-
-        <SnippetManagerDialog
-          open={snippetDialogOpen}
-          onOpenChange={setSnippetDialogOpen}
-          initialBody={selectedSql}
-          onInsert={(snippet) => {
-            setSnippetDialogOpen(false);
-            editorApiRef.current?.insertSnippet(snippet.body);
-          }}
-        />
-
-        <BindParamsDialog
-          open={bindDialogOpen}
-          onOpenChange={(open) => {
-            setBindDialogOpen(open);
-            if (!open) setBindPendingSql(null);
-          }}
-          refs={bindRefs}
-          values={bindValues}
-          onValuesChange={setBindValues}
-          onConfirm={handleBindConfirm}
-          inline={!caps.bind_parameters}
-        />
-
-        <ScriptRunDialog
-          open={scriptDialogOpen}
-          onOpenChange={setScriptDialogOpen}
-          statementCount={scriptSplit.statements.length}
-          mode={scriptMode}
-          unterminated={scriptSplit.unterminated}
-          transactions={caps.transactions}
-          onConfirm={(mode, stopOnError) => {
-            setScriptDialogOpen(false);
-            void runScript(mode, stopOnError);
-          }}
-        />
-
-        <TabSearchDialog
-          open={tabSearchOpen}
-          onOpenChange={setTabSearchOpen}
-          initialQuery={selectedSql}
-          currentTabId={tabId}
-        />
-
-        <XlsxExportDialog
-          open={xlsxExportOpen}
-          onOpenChange={setXlsxExportOpen}
-          columns={result?.columns ?? []}
-          rows={exportRows}
-          defaultFileName="query-result.xlsx"
-        />
-
-        <CsvExportDialog
-          open={csvExportOpen}
-          onOpenChange={setCsvExportOpen}
-          columns={result?.columns ?? []}
-          rows={exportRows}
-          defaultFileName="query-result.csv"
-        />
-
-        <QueryAnalysisSheet
-          open={analysisOpen}
-          onOpenChange={(open) => {
-            setAnalysisOpen(open);
-            if (!open) setAnalysisSection("plan");
-          }}
-          section={analysisSection}
-          onSectionChange={setAnalysisSection}
-          explainEnabled={Boolean(connection) && !isRunning && sql.trim().length > 0}
-          onExplain={(analyze) => {
-            setAnalysisSection("plan");
-            void handleExplain(analyze);
-          }}
-          planLoading={planLoading}
-          planError={planError}
-          onPlanErrorDismiss={() => setPlanError(null)}
-          plan={
-            plan ? (
-              <ExplainPlanView
-                plan={plan.node}
-                analyzed={plan.analyzed}
-                sql={plan.sql}
-                connectionName={connection?.name ?? ""}
-                databaseKind={connection?.kind ?? ""}
-                database={database}
-                onClose={() => setPlan(null)}
+        <QueryWorkspacePanels
+          workspace={workspace}
+          workspaceGroup={workspaceGroup}
+          editorFocus={editorFocus}
+          navigator={
+            workspace.navigatorVisible &&
+            isSql &&
+            connection && (
+              <QuerySchemaBrowser
+                tables={schema.registry.tables}
+                columns={schema.registry.columns}
+                kind={connection.kind}
+                sql={sql}
+                loading={schema.loading}
+                error={schema.error}
+                onRefresh={schema.refresh}
+                onInsert={(text) => editorApiRef.current?.insertText(text)}
+                onJump={(line, column) => editorApiRef.current?.revealMatch(line, column)}
+                onClose={() => workspace.update({ navigatorVisible: false })}
               />
-            ) : null
+            )
           }
-          perf={
-            <QueryPerfPanel
-              sql={selectedSql.trim() ? selectedSql : sql}
-              onClose={() => setAnalysisSection("plan")}
+          editor={
+            <QueryEditorContent
+              tabId={tabId}
+              sql={sql}
+              caps={caps}
+              editorApiRef={editorApiRef}
+              actions={actions}
+              exec={exec}
+              cursor={cursor}
+              bookmarks={bookmarks}
+              registry={schema.registry}
+              statusVisible={workspace.statusVisible}
+              statementCount={script.scriptSplit.statements.length}
+              dialectLabel={schema.dialectLabel}
+              onSqlChange={updateQuerySql}
+              onSave={() => void file.handleFileSave(false)}
+              onSearchTabs={() => setTabSearchOpen(true)}
+            />
+          }
+          results={
+            <QueryResultsContent
+              exec={exec}
+              kind={connection?.kind}
+              statusText={statusText}
+              actions={resultActions}
             />
           }
         />
 
-        {connection && caps.server_output && (
-          <Drawer open={outputOpen} onOpenChange={setOutputOpen}>
-            <DrawerContent className="gap-0 p-0">
-              <DrawerHeader className="sr-only">
-                <DrawerTitle>Server-Ausgabe</DrawerTitle>
-                <DrawerDescription>
-                  Hinweise und Meldungen der aktiven Verbindung.
-                </DrawerDescription>
-              </DrawerHeader>
-              <ServerOutputPanel
-                connectionId={connection.id}
-                connectionName={connection.name}
-                enabled={outputEnabled}
-                busy={outputBusy}
-                onToggle={(next) => void handleToggleServerOutput(next)}
-                onClose={() => setOutputOpen(false)}
-              />
-            </DrawerContent>
-          </Drawer>
-        )}
+        <QueryViewDialogs
+          tabId={tabId}
+          sql={sql}
+          selectedSql={cursor.selectedSql}
+          connection={connection}
+          database={database}
+          caps={caps}
+          isRunning={exec.isRunning}
+          result={exec.result}
+          editorApiRef={editorApiRef}
+          saveDialog={{ open: saveDialogOpen, onOpenChange: setSaveDialogOpen }}
+          snippetDialog={{ open: snippetDialogOpen, onOpenChange: setSnippetDialogOpen }}
+          tabSearch={{ open: tabSearchOpen, onOpenChange: setTabSearchOpen }}
+          bind={bind}
+          script={script}
+          exportState={exportState}
+          analysis={analysis}
+          explain={explain}
+        />
 
-        <Drawer
-          open={Boolean(scriptEntries?.length)}
-          onOpenChange={(open) => {
-            if (!open) {
-              setScriptEntries(null);
-              setScriptActiveIndex(null);
-            }
-          }}
-        >
-          <DrawerContent className="gap-0 p-0">
-            <DrawerHeader className="sr-only">
-              <DrawerTitle>Skriptergebnisse</DrawerTitle>
-              <DrawerDescription>Einzelergebnisse der Skriptausführung.</DrawerDescription>
-            </DrawerHeader>
-            {scriptEntries && scriptEntries.length > 0 && (
-              <ScriptResultList
-                entries={scriptEntries}
-                activeIndex={scriptActiveIndex}
-                onSelect={handleSelectScriptEntry}
-                onClose={() => setScriptEntries(null)}
-                note={scriptNote}
-              />
-            )}
-          </DrawerContent>
-        </Drawer>
-
-        <QueryHistorySheet
-          open={historyOpen}
-          onOpenChange={setHistoryOpen}
-          connectionId={connection?.id ?? null}
-          onLoad={(loaded, mode) => {
-            if (mode === "replace") updateQuerySql(tabId, loaded);
-            else {
-              const id = useTableTabs.getState().openQueryTabWithSql(loaded);
-              void navigate({ to: "/query/$id", params: { id } });
-            }
-          }}
+        <QueryViewDrawers
+          connection={connection}
+          caps={caps}
+          output={output}
+          exec={exec}
+          onSelectScriptEntry={script.handleSelectScriptEntry}
+          historyOpen={historyOpen}
+          onHistoryOpenChange={setHistoryOpen}
+          tabId={tabId}
+          onReplaceSql={updateQuerySql}
         />
       </motion.div>
     </div>

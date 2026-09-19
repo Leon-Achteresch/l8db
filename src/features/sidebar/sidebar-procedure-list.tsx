@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
-import { HammerIcon, SquareFunctionIcon } from "lucide-react";
-import { useMemo } from "react";
+import { CopyIcon, HammerIcon, SquareFunctionIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -10,9 +10,11 @@ import {
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
+import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -35,6 +37,11 @@ export function SidebarProcedureList({
   const openProcedureTab = useTableTabs((state) => state.openProcedureTab);
   const capabilities = useActiveCapabilities();
   const { compile } = useCompileObject();
+  const [copyTarget, setCopyTarget] = useState<{
+    schema: string;
+    name: string;
+    objectType: SchemaCopyObjectType;
+  } | null>(null);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
 
@@ -63,41 +70,58 @@ export function SidebarProcedureList({
   };
 
   return (
-    <SidebarWindow count={items.length}>
-      {(index) => {
-        const item = items[index];
-        return (
-          <SidebarMenuItem key={item.oid}>
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <SidebarMenuButton onClick={() => open(item)}>
-                  <SquareFunctionIcon className="text-muted-foreground" />
-                  <span className="truncate">
-                    {item.name}
-                    {item.identity_args ? `(${item.identity_args})` : "()"}
-                  </span>
-                  {isProcedureInvalid(invalidSet, item.schema, item.name) ? (
-                    <InvalidMarker />
+    <>
+      <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
+      <SidebarWindow count={items.length}>
+        {(index) => {
+          const item = items[index];
+          return (
+            <SidebarMenuItem key={item.oid}>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <SidebarMenuButton onClick={() => open(item)}>
+                    <SquareFunctionIcon className="text-muted-foreground" />
+                    <span className="truncate">
+                      {item.name}
+                      {item.identity_args ? `(${item.identity_args})` : "()"}
+                    </span>
+                    {isProcedureInvalid(invalidSet, item.schema, item.name) ? (
+                      <InvalidMarker />
+                    ) : null}
+                  </SidebarMenuButton>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onSelect={() => open(item)}>Öffnen</ContextMenuItem>
+                  {capabilities.compile_objects ? (
+                    <ContextMenuItem
+                      onSelect={() => {
+                        void compile(item.oid, "procedure", `${item.schema}.${item.name}`);
+                      }}
+                    >
+                      <HammerIcon />
+                      Kompilieren
+                    </ContextMenuItem>
                   ) : null}
-                </SidebarMenuButton>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onSelect={() => open(item)}>Öffnen</ContextMenuItem>
-                {capabilities.compile_objects ? (
-                  <ContextMenuItem
-                    onSelect={() => {
-                      void compile(item.oid, "procedure", `${item.schema}.${item.name}`);
-                    }}
-                  >
-                    <HammerIcon />
-                    Kompilieren
-                  </ContextMenuItem>
-                ) : null}
-              </ContextMenuContent>
-            </ContextMenu>
-          </SidebarMenuItem>
-        );
-      }}
-    </SidebarWindow>
+                  {capabilities.schema_object_copy ? (
+                    <ContextMenuItem
+                      onSelect={() =>
+                        setCopyTarget({
+                          schema: item.schema,
+                          name: item.name,
+                          objectType: "routine",
+                        })
+                      }
+                    >
+                      <CopyIcon />
+                      In anderem Schema erstellen
+                    </ContextMenuItem>
+                  ) : null}
+                </ContextMenuContent>
+              </ContextMenu>
+            </SidebarMenuItem>
+          );
+        }}
+      </SidebarWindow>
+    </>
   );
 }

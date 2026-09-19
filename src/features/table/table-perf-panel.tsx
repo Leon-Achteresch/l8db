@@ -120,7 +120,7 @@ export function TablePerfPanel({ schema, table, filter, isView }: TablePerfPanel
           </div>
         </div>
         <pre className="overflow-x-auto rounded-md bg-muted/50 px-3 py-2 font-mono text-[11px] md:col-span-2">
-          {`EXPLAIN (ANALYZE, BUFFERS) ${sql}`}
+          {connection?.kind === "clickhouse" ? sql : `EXPLAIN (ANALYZE, BUFFERS) ${sql}`}
         </pre>
         <div className="flex flex-wrap items-center gap-2 md:col-span-2">
           <Button

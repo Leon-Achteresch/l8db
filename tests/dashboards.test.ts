@@ -10,10 +10,115 @@ import {
   datasetShape,
   emptyDataset,
   emptySimple,
+  joinId,
+  joinOptions,
+  joinRef,
   overlaps,
   periodStart,
+  refLabel,
   settle,
+  syncJoins,
 } from "../src/lib/dashboards";
+
+const ordersJoin = {
+  schema: "public",
+  table: "orders",
+  fromColumn: "order_id",
+  toColumn: "id",
+};
+const orders = { ...ordersJoin, id: joinId(null, ordersJoin), parent: null };
+const customersJoin = {
+  schema: "public",
+  table: "customers",
+  fromColumn: "customer_id",
+  toColumn: "id",
+};
+const customers = {
+  ...customersJoin,
+  id: joinId(orders.id, customersJoin),
+  parent: orders.id,
+};
+
+describe("Verknüpfungen", () => {
+  test("zwei Schritte über orders zu customers", () => {
+    const ds = syncJoins(
+      {
+        ...emptySimple(),
+        schema: "public",
+        table: "order_items",
+        dimension: { column: joinRef(customers.id, "country"), bucket: "none" },
+        metrics: [{ id: "a", agg: "sum", column: "qty", label: "" }],
+      },
+      [customers, orders],
+    );
+    expect(ds.joins?.map((j) => j.table)).toEqual(["orders", "customers"]);
+    const sql = buildSimpleSql(ds, "postgres");
+    expect(sql).toContain('FROM "public"."order_items" AS t1');
+    expect(sql).toContain('LEFT JOIN "public"."orders" AS t2 ON t2."id" = t1."order_id"');
+    expect(sql).toContain('LEFT JOIN "public"."customers" AS t3 ON t3."id" = t2."customer_id"');
+    expect(sql).toContain('t3."country" AS "dim"');
+    expect(sql).toContain('SUM(t1."qty") AS "m0"');
+    expect(refLabel(joinRef(customers.id, "country"), ds)).toBe("customers.country");
+  });
+
+  test("unbenutzte Verknüpfungen fallen weg, benutzte bleiben", () => {
+    const base = {
+      ...emptySimple(),
+      table: "order_items",
+      joins: [orders, customers],
+      filters: [{ id: "f", column: joinRef(orders.id, "channel"), operator: "eq", value: "web" }],
+    };
+    expect(syncJoins(base, []).joins?.map((j) => j.table)).toEqual(["orders"]);
+    expect(syncJoins({ ...base, filters: [] }, []).joins).toEqual([]);
+    expect(
+      syncJoins({ ...base, filters: [] }, [], [joinRef(customers.id, "name")]).joins?.length,
+    ).toBe(2);
+  });
+
+  test("joinOptions: direkt, rückwärts, zweiter Schritt, keine zusammengesetzten Schlüssel", () => {
+    const fk = (name: string, from: string, fromColumn: string, to: string, toColumn = "id") => ({
+      constraint_name: name,
+      from_schema: "public",
+      from_table: from,
+      from_column: fromColumn,
+      to_schema: "public",
+      to_table: to,
+      to_column: toColumn,
+    });
+    const fks = [
+      fk("items_order", "order_items", "order_id", "orders"),
+      fk("orders_customer", "orders", "customer_id", "customers"),
+      fk("orders_seller", "orders", "seller_id", "customers"),
+      fk("returns_order", "returns", "order_id", "orders"),
+      fk("combo", "orders", "a", "pairs", "x"),
+      fk("combo", "orders", "b", "pairs", "y"),
+    ];
+    const fromItems = joinOptions("public", "order_items", [...fks, fks[0]]).map((o) => o.label);
+    expect(fromItems).toEqual([
+      "orders",
+      "orders → customers (über customer_id)",
+      "orders → customers (über seller_id)",
+    ]);
+    const fromOrders = joinOptions("public", "orders", fks);
+    expect(fromOrders.map((o) => o.label)).toEqual([
+      "customers (über customer_id)",
+      "customers (über seller_id)",
+      "order_items",
+      "returns",
+    ]);
+    expect(fromOrders[2].join).toMatchObject({
+      table: "order_items",
+      fromColumn: "id",
+      toColumn: "order_id",
+    });
+  });
+
+  test("ohne Verknüpfung keine Tabellen-Aliase", () => {
+    const sql = buildSimpleSql({ ...emptySimple(), table: "orders", joins: [] }, "postgres");
+    expect(sql).toContain('FROM "orders"\n');
+    expect(sql).not.toContain("t1");
+  });
+});
 
 describe("buildSimpleSql", () => {
   test("gruppiert nach Monat mit Kennzahl, Join, Filter und Zeitraum", () => {
