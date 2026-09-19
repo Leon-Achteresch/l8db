@@ -1,9 +1,12 @@
 import { Database, Filter, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { McpConnectionCard } from "@/features/mcp/mcp-connection-card";
 import { McpEmptyState } from "@/features/mcp/mcp-empty-state";
+import { groupByServer } from "@/lib/connection-groups";
+import { useConnectionsStore } from "@/lib/connections";
 import type { McpConnection } from "@/lib/mcp";
 
 interface McpConnectionsSectionProps {
@@ -19,6 +22,7 @@ export function McpConnectionsSection({
 }: McpConnectionsSectionProps) {
   const [search, setSearch] = useState("");
   const [onlyExposed, setOnlyExposed] = useState(false);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
 
   const filtered = useMemo(() => {
     return connections.filter((conn) => {
@@ -32,6 +36,15 @@ export function McpConnectionsSection({
       );
     });
   }, [connections, search, onlyExposed]);
+
+  const groups = useMemo(
+    () =>
+      groupByServer(
+        [...filtered].sort((a, b) => a.name.localeCompare(b.name)),
+        hostGroupRules,
+      ).sort((a, b) => a.label.localeCompare(b.label)),
+    [filtered, hostGroupRules],
+  );
 
   return (
     <section className="space-y-4">
@@ -100,13 +113,29 @@ export function McpConnectionsSection({
           }
         />
       ) : (
-        <div className="grid gap-3.5 xl:grid-cols-2">
-          {filtered.map((connection) => (
-            <McpConnectionCard
-              key={connection.id}
-              connection={connection}
-              onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
-            />
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <div key={group.key} className="space-y-2.5">
+              <div className="flex items-center gap-2 px-1">
+                <ProviderLogo kind={group.kind} className="size-4" />
+                <span className="truncate text-sm font-semibold text-foreground">
+                  {group.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {group.connections.filter((entry) => entry.exposed).length}/
+                  {group.connections.length} freigegeben
+                </span>
+              </div>
+              <div className="grid gap-3.5 xl:grid-cols-2">
+                {group.connections.map((connection) => (
+                  <McpConnectionCard
+                    key={connection.id}
+                    connection={connection}
+                    onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

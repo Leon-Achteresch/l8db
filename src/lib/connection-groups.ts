@@ -2,11 +2,13 @@ import { connectionSummary } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 
-export interface ServerGroup {
+type Groupable = Pick<SavedConnection, "connectionString" | "kind">;
+
+export interface ServerGroup<T extends Groupable = SavedConnection> {
   key: string;
   label: string;
   kind: DatabaseKind;
-  connections: SavedConnection[];
+  connections: T[];
   ruleId?: string;
 }
 
@@ -112,11 +114,11 @@ export function serverKey(connection: Pick<SavedConnection, "connectionString" |
   return `${connection.kind}|${serverLabel(connection).toLowerCase()}`;
 }
 
-export function groupByServer(
-  connections: SavedConnection[],
+export function groupByServer<T extends Groupable = SavedConnection>(
+  connections: T[],
   rules: HostGroupRule[] = [],
-): ServerGroup[] {
-  const groups = new Map<string, ServerGroup>();
+): ServerGroup<T>[] {
+  const groups = new Map<string, ServerGroup<T>>();
   for (const connection of connections) {
     const rule = matchingHostRule(connection, rules);
     const key = rule ? `rule|${rule.id}` : serverKey(connection);
