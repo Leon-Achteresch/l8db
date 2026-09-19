@@ -116,8 +116,8 @@ export function DataTableBody({
   columnDetails,
 }: Props) {
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
+    <ContextMenu onOpenChange={(open) => !open && setMenuRow(null)}>
+      <ContextMenuTrigger asChild highlight={false}>
         <tbody
           ref={tbodyRef}
           onContextMenuCapture={(event) => {
@@ -159,6 +159,7 @@ export function DataTableBody({
                     visibleColumns={visibleColumns}
                     customCellColumns={customCellColumns}
                     isMarked={markedRows.has(row.original)}
+                    isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}
                     measureElement={rowVirtualizer.measureElement}
