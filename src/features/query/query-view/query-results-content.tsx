@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 
 import { Collapse } from "@/components/motion/collapse";
+import { ResultError } from "@/features/query/query-result-table/result-error";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { DatabaseKind } from "@/lib/db";
+import type { SqlMarker } from "@/lib/sql-diagnostics";
 
 import { ResultHeader } from "./result-header";
 import type { QueryExecutionState } from "./use-query-execution-state";
@@ -12,9 +14,16 @@ interface QueryResultsContentProps {
   kind: DatabaseKind | undefined;
   statusText: string | null;
   actions: ReactNode;
+  onRevealError: (marker: SqlMarker) => void;
 }
 
-export function QueryResultsContent({ exec, kind, statusText, actions }: QueryResultsContentProps) {
+export function QueryResultsContent({
+  exec,
+  kind,
+  statusText,
+  actions,
+  onRevealError,
+}: QueryResultsContentProps) {
   const { result, isRunning, error, statementError } = exec;
   const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
   return (
@@ -38,14 +47,23 @@ export function QueryResultsContent({ exec, kind, statusText, actions }: QueryRe
       </Collapse>
 
       <div className="min-h-0 flex-1">
-        <QueryResultWorkbench
-          result={result}
-          isLoading={isRunning}
-          error={error}
-          kind={kind}
-          statusText={statusText}
-          actions={actions}
-        />
+        {error && !isRunning ? (
+          <ResultError
+            error={error}
+            kind={kind}
+            source={exec.editorError}
+            onReveal={onRevealError}
+          />
+        ) : (
+          <QueryResultWorkbench
+            result={result}
+            isLoading={isRunning}
+            error={error}
+            kind={kind}
+            statusText={statusText}
+            actions={actions}
+          />
+        )}
       </div>
     </>
   );

@@ -6,10 +6,10 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
 import {
@@ -40,14 +40,21 @@ function sideReady(side: CompareSideSelection): boolean {
   return Boolean(side.objectName);
 }
 
-type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definitions" }>;
+type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definitions" }> & {
+  draft: string | null;
+  draftBase: string | null;
+  onDraftChange: (value: string, baseline: string) => void;
+  onApplied: () => void;
+  onlyDifferences: boolean;
+  onOnlyDifferencesChange: (value: boolean) => void;
+};
 
 export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const { left, right } = props;
   const connections = useConnectionsStore((state) => state.connections);
   const [leftState, setLeftState] = useState<SideState>(IDLE_SIDE);
   const [rightState, setRightState] = useState<SideState>(IDLE_SIDE);
-  const [onlyDifferences, setOnlyDifferences] = useState(false);
+  const { onlyDifferences, onOnlyDifferencesChange: setOnlyDifferences } = props;
   const [stats, setStats] = useState<DiffStats>({ changes: 0, added: 0, removed: 0 });
   const changeCount = stats.changes;
   const [reloadToken, setReloadToken] = useState(0);
@@ -110,7 +117,9 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-3 py-2">
         <GitCompareIcon className="size-4 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">
-          {changeCount === 0 ? "Keine Unterschiede" : `${changeCount} geänderte Stellen`}
+          {changeCount === 0
+            ? "Keine Unterschiede"
+            : `${changeCount} geänderte ${changeCount === 1 ? "Stelle" : "Stellen"}`}
         </span>
         <Button
           size="sm"
@@ -152,8 +161,23 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
           Neu laden
         </Button>
         <CompareSetupModal {...props} />
+        <CompareApplyDialog
+          connection={connections.find((item) => item.id === right.connectionId) ?? null}
+          side={right}
+          baseline={props.draftBase ?? rightState.definition}
+          draft={props.draft}
+          disabled={!sideReady(right) || rightState.loading || Boolean(rightState.error)}
+          onApplied={() => {
+            props.onApplied();
+            setReloadToken((token) => token + 1);
+          }}
+        />
       </div>
 
+      <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
+        Mit den Pfeilen zwischen den Definitionen einzelne Änderungen ins Ziel übernehmen. Rechts
+        kannst du den Entwurf frei bearbeiten und mit Strg/Cmd+Z rückgängig machen.
+      </p>
       <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
         <CompareSideSummary
           side={left}
@@ -178,7 +202,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
           <DefinitionDiffEditor
             ref={diffRef}
             original={leftState.definition}
-            modified={rightState.definition}
+            modified={props.draft ?? rightState.definition}
+            onModifiedChange={(value) => props.onDraftChange(value, rightState.definition)}
             onlyDifferences={onlyDifferences}
             onStats={setStats}
           />

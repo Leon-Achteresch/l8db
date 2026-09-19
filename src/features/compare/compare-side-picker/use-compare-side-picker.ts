@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { compareLoadErrorMessage, listCompareObjects } from "@/lib/compare-definition";
 import { type CompareSideSelection, supportedCompareObjectTypes } from "@/lib/compare-types";
@@ -12,6 +12,7 @@ export function useCompareSidePicker(
   value: CompareSideSelection,
   onChange: (value: CompareSideSelection) => void,
   lockConnection: SavedConnection | null | undefined,
+  preferredObjectName?: string | null,
 ) {
   const connections = useConnectionsStore((state) => state.connections);
   const [databases, setDatabases] = useState<string[]>([]);
@@ -27,9 +28,22 @@ export function useCompareSidePicker(
   const capabilities = capabilitiesFor(connection?.kind);
   const availableTypes = supportedCompareObjectTypes(connection);
   const usesOid = value.objectType === "routine" || value.objectType === "procedure";
-  const emit = (next: CompareSideSelection) => {
-    onChange(lockConnection ? { ...next, connectionId: lockConnection.id } : next);
-  };
+  const emit = useCallback(
+    (next: CompareSideSelection) => {
+      onChange(lockConnection ? { ...next, connectionId: lockConnection.id } : next);
+    },
+    [onChange, lockConnection],
+  );
+  const loadedSchemas = useRef("");
+  const loadedObjects = useRef("");
+  const loadedDatabases = useRef<string | null>(null);
+  const schemaKey = JSON.stringify([connection?.id, value.database]);
+  const objectKey = JSON.stringify([
+    connection?.id,
+    value.database,
+    value.schema,
+    value.objectType,
+  ]);
 
   useEffect(() => {
     if (!connection || !capabilities.databases) {
@@ -40,6 +54,7 @@ export function useCompareSidePicker(
     listDatabases(connection.kind, effectiveConnectionString(connection))
       .then((list) => {
         if (!active) return;
+        loadedDatabases.current = connection.id;
         setDatabases(list);
         setLoadError(null);
       })
@@ -65,6 +80,7 @@ export function useCompareSidePicker(
     listSchemas(connection.kind, effectiveConnectionString(connection), value.database ?? undefined)
       .then((list) => {
         if (!active) return;
+        loadedSchemas.current = schemaKey;
         setSchemas(visibleSchemas(connection, list));
         setLoadError(null);
       })
@@ -79,7 +95,7 @@ export function useCompareSidePicker(
     return () => {
       active = false;
     };
-  }, [connection, value.database]);
+  }, [connection, value.database, schemaKey]);
 
   useEffect(() => {
     setObjects([]);
@@ -90,12 +106,16 @@ export function useCompareSidePicker(
     let active = true;
     setLoadingObjects(true);
     listCompareObjects(connection, {
-      ...value,
+      connectionId: connection.id,
+      database: value.database,
+      schema: value.schema,
+      objectType: value.objectType,
       objectName: null,
       objectOid: null,
     })
       .then((list) => {
         if (!active) return;
+        loadedObjects.current = objectKey;
         setObjects(list);
         setLoadError(null);
       })
@@ -110,7 +130,36 @@ export function useCompareSidePicker(
     return () => {
       active = false;
     };
-  }, [connection, value.database, value.objectType, value.schema]);
+  }, [connection, value.database, value.objectType, value.schema, objectKey]);
+
+  useEffect(() => {
+    if (
+      loadedSchemas.current === schemaKey &&
+      !loadingSchemas &&
+      !value.schema &&
+      schemas.length === 1
+    ) {
+      emit({ ...value, schema: schemas[0], objectName: null, objectOid: null });
+    }
+  }, [schemas, loadingSchemas, value, emit, schemaKey]);
+
+  useEffect(() => {
+    if (
+      loadedObjects.current !== objectKey ||
+      loadingObjects ||
+      value.objectName ||
+      !preferredObjectName
+    )
+      return;
+    const matches = objects.filter((item) => item.name === preferredObjectName);
+    if (matches.length === 1)
+      emit({ ...value, objectName: matches[0].name, objectOid: matches[0].oid });
+  }, [objects, loadingObjects, preferredObjectName, value, emit, objectKey]);
+
+  useEffect(() => {
+    if (loadedDatabases.current === connection?.id && !value.database && databases.length === 1)
+      emit({ ...value, database: databases[0], schema: null, objectName: null, objectOid: null });
+  }, [databases, value, emit, connection?.id]);
 
   const handleConnection = (connectionId: string) => {
     const picked = usable.find((item) => item.id === connectionId) ?? null;

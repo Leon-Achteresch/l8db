@@ -2,6 +2,7 @@ import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 
 import { monaco } from "@/lib/monaco";
+import "./definition-diff-editor.css";
 
 function themeFor(resolved: string | undefined): string {
   return resolved === "dark" ? "l8db-dark" : "l8db-light";
@@ -36,6 +37,7 @@ interface DefinitionDiffEditorProps {
   modified: string;
   onlyDifferences: boolean;
   onStats?: (stats: DiffStats) => void;
+  onModifiedChange?: (value: string) => void;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -44,6 +46,7 @@ export function DefinitionDiffEditor({
   modified,
   onlyDifferences,
   onStats,
+  onModifiedChange,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,6 +55,9 @@ export function DefinitionDiffEditor({
   const statsRef = useRef<((stats: DiffStats) => void) | undefined>(onStats);
   const { resolvedTheme } = useTheme();
 
+  const modifiedCallback = useRef(onModifiedChange);
+  modifiedCallback.current = onModifiedChange;
+  const syncing = useRef(false);
   statsRef.current = onStats;
 
   useEffect(() => {
@@ -60,7 +66,8 @@ export function DefinitionDiffEditor({
 
     const editor = monaco.editor.createDiffEditor(container, {
       theme: themeFor(resolvedTheme),
-      readOnly: true,
+      readOnly: false,
+      renderMarginRevertIcon: true,
       originalEditable: false,
       automaticLayout: true,
       renderSideBySide: true,
@@ -89,7 +96,12 @@ export function DefinitionDiffEditor({
       statsRef.current?.(diffStats(editor.getLineChanges() ?? []));
     });
 
+    const modifiedSubscription = modifiedModel.onDidChangeContent(() => {
+      if (!syncing.current) modifiedCallback.current?.(modifiedModel.getValue());
+    });
+
     return () => {
+      modifiedSubscription.dispose();
       subscription.dispose();
       editor.dispose();
       originalModel.dispose();
@@ -101,8 +113,10 @@ export function DefinitionDiffEditor({
   useEffect(() => {
     const models = diffRef.current?.getModel();
     if (!models) return;
+    syncing.current = true;
     if (models.original.getValue() !== original) models.original.setValue(original);
     if (models.modified.getValue() !== modified) models.modified.setValue(modified);
+    syncing.current = false;
   }, [original, modified]);
 
   useEffect(() => {
@@ -136,5 +150,5 @@ export function DefinitionDiffEditor({
     },
   }));
 
-  return <div ref={containerRef} className="h-full w-full min-h-0" />;
+  return <div ref={containerRef} className="definition-diff-editor h-full w-full min-h-0" />;
 }
