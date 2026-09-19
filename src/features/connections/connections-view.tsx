@@ -154,8 +154,9 @@ export function ConnectionsView() {
         setRulesDialog={setRulesDialog}
         moveServerGroup={moveServerGroup}
         setDeleteGroup={setDeleteGroup}
-        renderCard={renderCard}
-      />
+      >
+        {group.connections.map(renderCard)}
+      </ConnectionServerGroupSection>
     );
   }
 

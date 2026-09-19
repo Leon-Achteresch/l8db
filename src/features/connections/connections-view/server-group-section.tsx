@@ -19,35 +19,26 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { type HostGroupRule, type ServerGroup, suggestHostPattern } from "@/lib/connection-groups";
+import {
+  type Groupable,
+  type HostGroupRule,
+  type ServerGroup,
+  suggestHostPattern,
+} from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { capabilitiesFor } from "@/lib/providers";
 
-export function ConnectionServerGroupSection({
+export function ServerGroupSection<T extends Groupable>({
   group,
-  favoriteServerKeys,
-  allGroups,
-  openEditor,
-  setBulkGroup,
-  setSchemasToUser,
-  toggleServerFavorite,
-  setRulesDialog,
-  moveServerGroup,
-  setDeleteGroup,
-  renderCard,
+  favorite,
+  actions,
+  children,
 }: {
-  group: ServerGroup;
-  favoriteServerKeys: string[];
-  allGroups: ServerGroup[];
-  openEditor: (id: string | null, from?: SavedConnection | null) => void;
-  setBulkGroup: (group: ServerGroup) => void;
-  setSchemasToUser: (group: ServerGroup) => void;
-  toggleServerFavorite: (value: string) => void;
-  setRulesDialog: (value: { draft: Omit<HostGroupRule, "id"> | null }) => void;
-  moveServerGroup: (key: string, delta: number) => void;
-  setDeleteGroup: (group: ServerGroup) => void;
-  renderCard: (connection: SavedConnection) => ReactNode;
+  group: ServerGroup<T>;
+  favorite?: boolean;
+  actions?: ReactNode;
+  children: ReactNode;
 }) {
   const provider = providerFor(group.connections[0]);
   return (
@@ -62,9 +53,7 @@ export function ConnectionServerGroupSection({
               <h2 className="truncate font-mono text-sm font-semibold tracking-tight">
                 {group.label}
               </h2>
-              {favoriteServerKeys.includes(group.key) && (
-                <Star className="size-3 shrink-0 fill-current text-amber-500" />
-              )}
+              {favorite && <Star className="size-3 shrink-0 fill-current text-amber-500" />}
             </div>
             <p className="text-[11px] text-muted-foreground">
               {group.connections.length}{" "}
@@ -73,7 +62,45 @@ export function ConnectionServerGroupSection({
             </p>
           </div>
         </div>
+        {actions}
+      </header>
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {children}
+      </div>
+    </section>
+  );
+}
 
+export function ConnectionServerGroupSection({
+  group,
+  favoriteServerKeys,
+  allGroups,
+  openEditor,
+  setBulkGroup,
+  setSchemasToUser,
+  toggleServerFavorite,
+  setRulesDialog,
+  moveServerGroup,
+  setDeleteGroup,
+  children,
+}: {
+  group: ServerGroup;
+  favoriteServerKeys: string[];
+  allGroups: ServerGroup[];
+  openEditor: (id: string | null, from?: SavedConnection | null) => void;
+  setBulkGroup: (group: ServerGroup) => void;
+  setSchemasToUser: (group: ServerGroup) => void;
+  toggleServerFavorite: (value: string) => void;
+  setRulesDialog: (value: { draft: Omit<HostGroupRule, "id"> | null }) => void;
+  moveServerGroup: (key: string, delta: number) => void;
+  setDeleteGroup: (group: ServerGroup) => void;
+  children: ReactNode;
+}) {
+  return (
+    <ServerGroupSection
+      group={group}
+      favorite={favoriteServerKeys.includes(group.key)}
+      actions={
         <div className="flex items-center gap-1.5">
           <Button
             variant="outline"
@@ -149,10 +176,9 @@ export function ConnectionServerGroupSection({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </header>
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {group.connections.map(renderCard)}
-      </div>
-    </section>
+      }
+    >
+      {children}
+    </ServerGroupSection>
   );
 }
