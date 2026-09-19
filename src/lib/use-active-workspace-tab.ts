@@ -72,7 +72,13 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab): boolean {
     );
   }
   if (tab.kind === "tool") {
-    return Boolean(matchRoute({ to: TOOL_TABS[tab.tool].path }));
+    if (tab.tool === "compare" && !tab.id) return false;
+    return Boolean(
+      matchRoute({
+        to: TOOL_TABS[tab.tool].path,
+        ...(tab.id ? { search: { compareId: tab.id } } : {}),
+      }),
+    );
   }
   if (tab.kind === "extension-panel") {
     return Boolean(

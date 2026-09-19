@@ -257,6 +257,12 @@ export function QueryView({ tabId }: QueryViewProps) {
               kind={connection?.kind}
               statusText={statusText}
               actions={resultActions}
+              onRevealError={(marker) => {
+                const prefix = sql.slice(0, marker.start);
+                const line = prefix.split("\n").length;
+                const column = prefix.length - prefix.lastIndexOf("\n");
+                editorApiRef.current?.revealMatch(line, column, marker.end - marker.start);
+              }}
             />
           }
         />
