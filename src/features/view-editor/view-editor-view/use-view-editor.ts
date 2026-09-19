@@ -203,7 +203,11 @@ export function useViewEditor(schema: string, view: string) {
   }, [connection, schema, view, currentValue, database, queryClient, clearSavedDraft]);
 
   return {
-    activeTab,
+    activeTab:
+      (activeTab === "grants" && !capabilities.object_grants) ||
+      (activeTab === "used-by" && !capabilities.used_by)
+        ? "data"
+        : activeTab,
     busy,
     capabilities,
     columnDetails,

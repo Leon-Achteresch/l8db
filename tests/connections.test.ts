@@ -617,6 +617,13 @@ describe("Proxy-User", () => {
     expect(effectiveConnectionString({ ...direct, proxyUser: "  " })).toBe(direct.connectionString);
   });
 
+  test("the selected proxy user replaces one already in the URL", () => {
+    const stale = { ...direct, connectionString: `${direct.connectionString}&proxy_user=old` };
+    const url = new URL(effectiveConnectionString({ ...stale, proxyUser: "alice" }));
+    expect(url.searchParams.getAll("proxy_user")).toEqual(["alice"]);
+    expect(new URL(effectiveConnectionString(stale)).searchParams.has("proxy_user")).toBe(false);
+  });
+
   test("tunneled connections keep the proxy user", () => {
     const url = new URL(
       effectiveConnectionString({ ...tunneled, tunnelPort: 40000, proxyUser: "alice" }),

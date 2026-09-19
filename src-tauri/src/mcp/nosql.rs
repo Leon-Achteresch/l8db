@@ -20,7 +20,15 @@ const MONGO_DDL: &[&str] = &[
     "renameCollection",
     "collMod",
 ];
-const MONGO_DANGEROUS: &[&str] = &["$where", "$function", "$accumulator", "$out", "$merge"];
+const MONGO_DANGEROUS: &[&str] = &[
+    "$where",
+    "$function",
+    "$accumulator",
+    "$out",
+    "$merge",
+    "$objectToArray",
+];
+const MONGO_FIELD_OPERATORS: &[&str] = &["$getField", "$setField", "$unsetField"];
 
 const REDIS_READ: &[&str] = &[
     "GET",
@@ -175,15 +183,43 @@ pub fn mongo_check(
             ));
         }
     }
-    walk(&Bson::Document(command.clone()), redactor)
+    walk(&Bson::Document(command.clone()), redactor, index)
 }
 
-fn walk(value: &Bson, redactor: &Redactor) -> Result<(), String> {
+fn walk(value: &Bson, redactor: &Redactor, index: &SchemaIndex) -> Result<(), String> {
     match value {
         Bson::Document(document) => {
             for (key, inner) in document {
                 if MONGO_DANGEROUS.contains(&key.as_str()) {
                     return Err(format!("Operator '{key}' ist über den MCP gesperrt."));
+                }
+                let collection = match (key.as_str(), inner) {
+                    ("$lookup" | "$graphLookup", Bson::Document(stage)) => stage.get("from"),
+                    ("$unionWith", Bson::Document(stage)) => stage.get("coll"),
+                    ("$unionWith", other) => Some(other),
+                    _ => None,
+                };
+                if let Some(collection) = collection {
+                    match collection.as_str() {
+                        Some(name) if !index.table_hidden(&name.to_lowercase()) => {}
+                        _ => {
+                            return Err(format!(
+                                "'{key}' verweist auf eine nicht freigegebene Collection."
+                            ))
+                        }
+                    }
+                }
+                if MONGO_FIELD_OPERATORS.contains(&key.as_str()) {
+                    let field = match inner {
+                        Bson::String(field) => Some(field.as_str()),
+                        Bson::Document(args) => args.get_str("field").ok(),
+                        _ => None,
+                    };
+                    if field.is_none_or(|field| redactor.column_is_sensitive(field)) {
+                        return Err(format!(
+                            "'{key}' braucht einen freigegebenen, festen Feldnamen."
+                        ));
+                    }
                 }
                 if key
                     .split('.')
@@ -193,11 +229,13 @@ fn walk(value: &Bson, redactor: &Redactor) -> Result<(), String> {
                         "Feld '{key}' ist redigiert und darf im Befehl nicht referenziert werden."
                     ));
                 }
-                walk(inner, redactor)?;
+                walk(inner, redactor, index)?;
             }
             Ok(())
         }
-        Bson::Array(items) => items.iter().try_for_each(|item| walk(item, redactor)),
+        Bson::Array(items) => items
+            .iter()
+            .try_for_each(|item| walk(item, redactor, index)),
         Bson::String(text) => match text.strip_prefix('$') {
             Some(path)
                 if path
@@ -305,6 +343,60 @@ mod tests {
         assert!(check("db.users.find({ $where: 'true' })", false, false).is_err());
         assert!(check("db.users.aggregate([{ $out: 'y' }])", true, true).is_err());
         assert!(check("db.secrets.find({})", false, false).is_err());
+        assert!(check(
+            "db.users.aggregate([{ $lookup: { from: 'secrets', localField: 'a', foreignField: 'b', as: 'c' } }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $unionWith: 'secrets' }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $unionWith: { coll: 'secrets', pipeline: [] } }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $graphLookup: { from: 'secrets', startWith: '$a', connectFromField: 'a', connectToField: 'b', as: 'c' } }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $unionWith: 'users' }])",
+            false,
+            false
+        )
+        .is_ok());
+        assert!(check(
+            "db.users.aggregate([{ $project: { leak: { $getField: 'password' } } }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $project: { leak: { $getField: { field: { $concat: ['pass', 'word'] }, input: '$$ROOT' } } } }])",
+            false,
+            false
+        )
+        .is_err());
+        assert!(check(
+            "db.users.aggregate([{ $project: { n: { $getField: 'name' } } }])",
+            false,
+            false
+        )
+        .is_ok());
+        assert!(check(
+            "db.users.aggregate([{ $project: { kv: { $objectToArray: '$$ROOT' } } }])",
+            false,
+            false
+        )
+        .is_err());
     }
 
     #[test]

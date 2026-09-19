@@ -33,7 +33,13 @@ function reset() {
   storage.clear();
   useConnectionsStore.setState({ connections: [], activeId: null });
   useTableTabs.setState({ tabs: [], tabsByConnection: {}, queryCounter: 0 });
-  useSplitView.setState({ panes: [], focusedPane: 0, byConnection: {}, orientation: "horizontal" });
+  useSplitView.setState({
+    panes: [],
+    masters: [],
+    focusedPane: 0,
+    byConnection: {},
+    orientation: "horizontal",
+  });
 }
 
 beforeEach(() => {

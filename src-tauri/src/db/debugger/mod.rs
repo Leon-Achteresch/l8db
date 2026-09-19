@@ -336,6 +336,9 @@ pub async fn debug_action(
     database: Option<String>,
     action: Action,
 ) -> Result<(), String> {
+    if super::connection::connection_string_is_read_only(&connection_string) {
+        return Err("Lesemodus: Debug-Ausführung ist nicht erlaubt.".into());
+    }
     if let Action::Breakpoints { breakpoints } = &action {
         validate_breakpoints(breakpoints)?;
     }
@@ -407,12 +410,12 @@ pub async fn debug_stop(
     }
     let entry = session(&id, &connection_string, database.as_deref()).await?;
     entry.cancel.cancel();
-    let mut backend = entry.backend.lock().await;
-    if let Some(backend) = backend.as_mut() {
-        backend.stop().await?;
-    }
+    let result = match entry.backend.lock().await.as_mut() {
+        Some(backend) => backend.stop().await,
+        None => Ok(()),
+    };
     sessions().lock().await.remove(&id);
-    Ok(())
+    result
 }
 
 #[cfg(test)]

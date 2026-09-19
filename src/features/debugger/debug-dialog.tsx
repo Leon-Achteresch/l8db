@@ -85,7 +85,10 @@ export function DebugDialog(
         const next = await debugSnapshot(context, pollId);
         if (!cancelled) setSnapshot(next);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (cancelled) return;
+        setError(String(e));
+        setSnapshot((value) => (value ? { ...value, status: "error" } : value));
+        return;
       }
       if (!cancelled) timer = setTimeout(poll, pollStatus === "paused" ? 1000 : 350);
     };

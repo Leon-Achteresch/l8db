@@ -58,8 +58,15 @@ export function proxyUserConnectionString(
   connection: Pick<SavedConnection, "kind" | "proxyUser">,
 ): string {
   const user = connection.proxyUser?.trim();
-  if (!user || !capabilitiesFor(connection.kind).proxy_user) return value;
-  return `${value}${value.includes("?") ? "&" : "?"}proxy_user=${encodeURIComponent(user)}`;
+  if (!user && !value.includes("proxy_user=")) return value;
+  if (!capabilitiesFor(connection.kind).proxy_user) return value;
+  const query = value.indexOf("?");
+  const params = (query < 0 ? "" : value.slice(query + 1))
+    .split("&")
+    .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "proxy_user");
+  if (user) params.push(`proxy_user=${encodeURIComponent(user)}`);
+  const base = query < 0 ? value : value.slice(0, query);
+  return params.length ? `${base}?${params.join("&")}` : base;
 }
 
 registerReadOnlyResolver((connectionString) => {

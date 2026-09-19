@@ -7,7 +7,6 @@ export function installDebuggerMock() {
     debugAvailable: boolean;
     debugFailure: boolean;
   };
-  const previous = target.__TAURI_INTERNALS__?.invoke;
   target.debugCalls = [];
   target.debugAvailable = true;
   target.debugFailure = false;
@@ -15,9 +14,11 @@ export function installDebuggerMock() {
   let line = 4;
   const source =
     "DECLARE\n  value integer := 4;\nBEGIN\n  value := value + 1;\n  value := value * 2;\n  RETURN value;\nEND;";
-  target.__TAURI_INTERNALS__ = {
-    ...target.__TAURI_INTERNALS__,
+  type Internals = typeof target.__TAURI_INTERNALS__;
+  const wrap = (internals?: Internals): Internals => ({
+    ...internals,
     invoke: async (command, args) => {
+      const previous = internals?.invoke;
       if (command.startsWith("debug_")) target.debugCalls.push({ command, args });
       switch (command) {
         case "get_function_definition":
@@ -66,5 +67,13 @@ export function installDebuggerMock() {
           return previous ? previous(command, args) : [];
       }
     },
-  };
+  });
+  let current = wrap(target.__TAURI_INTERNALS__);
+  Object.defineProperty(window, "__TAURI_INTERNALS__", {
+    configurable: true,
+    get: () => current,
+    set: (value: Internals) => {
+      current = wrap(value);
+    },
+  });
 }
