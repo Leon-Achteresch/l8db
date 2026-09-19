@@ -1,3 +1,4 @@
+import { queryTabLabel } from "@/lib/query-tab-title";
 import type { Tab } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 
@@ -73,7 +74,7 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab): unknown {
 
 export function tabLabel(tab: Tab): string {
   if (tab.kind === "table") return tab.table;
-  if (tab.kind === "query") return tab.title;
+  if (tab.kind === "query") return queryTabLabel(tab);
   if (tab.kind === "function") return tab.name;
   if (tab.kind === "procedure") return tab.name;
   if (tab.kind === "trigger") return tab.trigger;

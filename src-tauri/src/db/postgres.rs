@@ -217,23 +217,12 @@ impl PostgresAdapter {
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
+        let conn = self.get_meta().await?;
         self.timed(async {
-            let (client, connection) = self
-                .config
-                .connect(super::connection::tls_connector(self.ssl)?)
-                .await
-                .map_err(map_pg_err)?;
-            let task = tokio::spawn(async move {
-                let _ = connection.await;
-            });
-            let result = client
-                .simple_query("SELECT 1")
+            conn.simple_query("SELECT 1")
                 .await
                 .map(|_| ())
-                .map_err(map_pg_err);
-            drop(client);
-            task.abort();
-            result
+                .map_err(map_pg_err)
         })
         .await
     }
@@ -2192,9 +2181,22 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         self.timed(async {
             conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
-            let result = conn.simple_query(sql).await.map_err(map_pg_err);
+            let mut result = conn.simple_query(sql).await;
+            if let Some(temp_sql) = result
+                .as_ref()
+                .err()
+                .filter(|e| {
+                    e.as_db_error().map(|d| d.code())
+                        == Some(&tokio_postgres::error::SqlState::INSUFFICIENT_PRIVILEGE)
+                })
+                .and_then(|_| routine_ddl_in_pg_temp(sql))
+            {
+                let _ = conn.simple_query("ROLLBACK").await;
+                conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+                result = conn.simple_query(&temp_sql).await;
+            }
             let _ = conn.simple_query("ROLLBACK").await;
-            result.map(|_| ())
+            result.map(|_| ()).map_err(map_pg_err)
         })
         .await
     }
@@ -3942,9 +3944,6 @@ impl PostgresAdapter {
         if source_schema.is_empty() || target_schema.is_empty() {
             return Err("Quell- und Zielschema müssen gewählt sein.".to_string());
         }
-        if source_schema == target_schema {
-            return Err("Quell- und Zielschema sind identisch.".to_string());
-        }
         match object_type {
             "table" => {
                 let columns = self
@@ -4217,9 +4216,45 @@ pub async fn run_params_query(
     })
 }
 
+fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
+    let re = regex::Regex::new(
+        r#"(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)\s+(?:(?:"(?:[^"]|"")+"|[a-z_][\w$]*)\s*\.\s*)?("(?:[^"]|"")+"|[a-z_][\w$]*)"#,
+    )
+    .ok()?;
+    let m = re.captures(sql)?;
+    let whole = m.get(0)?;
+    Some(format!(
+        "{}CREATE {} pg_temp.{}{}",
+        &sql[..whole.start()],
+        &m[1],
+        &m[2],
+        &sql[whole.end()..]
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{infer_view_foreign_keys, like_pattern, source_snippet, PostgresAdapter};
+    use super::{
+        infer_view_foreign_keys, like_pattern, routine_ddl_in_pg_temp, source_snippet,
+        PostgresAdapter,
+    };
+
+    #[test]
+    fn routine_ddl_is_rewritten_into_pg_temp() {
+        assert_eq!(
+            routine_ddl_in_pg_temp(
+                "-- x\nCREATE OR REPLACE FUNCTION public.admin_overview() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;"
+            )
+            .unwrap(),
+            "-- x\nCREATE FUNCTION pg_temp.admin_overview() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;"
+        );
+        assert_eq!(
+            routine_ddl_in_pg_temp("create procedure \"Admin\".\"Proc X\"() language sql as ''")
+                .unwrap(),
+            "CREATE procedure pg_temp.\"Proc X\"() language sql as ''"
+        );
+        assert!(routine_ddl_in_pg_temp("CREATE VIEW v AS SELECT 1").is_none());
+    }
 
     #[test]
     fn like_pattern_escapes_wildcards() {
@@ -4304,6 +4339,25 @@ mod tests {
     }
 
     use crate::db::{pool::create_pool_state, DatabaseAdapter};
+
+    #[tokio::test]
+    #[ignore]
+    async fn validate_sql_checks_foreign_owned_function() {
+        let adapter = lab_adapter();
+        adapter
+            .validate_sql(
+                "CREATE OR REPLACE FUNCTION public.admin_overview() RETURNS integer LANGUAGE plpgsql AS $$ BEGIN RETURN 2; END $$",
+            )
+            .await
+            .unwrap();
+        let err = adapter
+            .validate_sql(
+                "CREATE OR REPLACE FUNCTION public.admin_overview() RETURNS integer LANGUAGE plpgsql AS $$ BEGIN RETRN 2; END $$",
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("syntax error"), "{err}");
+    }
 
     fn lab_connection_string() -> String {
         std::env::var("L8DB_E2E_PG_URL")

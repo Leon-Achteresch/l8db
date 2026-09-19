@@ -23,6 +23,7 @@ export function ColumnSelect({
   allowNone,
   filter,
   className,
+  label,
 }: {
   value: string | null;
   onChange: (ref: string | null) => void;
@@ -31,11 +32,12 @@ export function ColumnSelect({
   allowNone?: string;
   filter?: (col: ColumnOpt) => boolean;
   className?: string;
+  label?: string;
 }) {
   const list = filter ? columns.filter(filter) : columns;
   return (
     <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)}>
-      <SelectTrigger size="sm" className={cn("h-8 w-full text-xs", className)}>
+      <SelectTrigger size="sm" aria-label={label} className={cn("h-8 w-full text-xs", className)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent searchable>

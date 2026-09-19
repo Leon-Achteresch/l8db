@@ -366,7 +366,10 @@ impl DatabaseAdapter for MongoAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let client = self.client().await?;
         let start = std::time::Instant::now();
-        let command = parse_document(sql, "Der Befehl")?;
+        let command = match super::mongo_shell::to_command(sql) {
+            Some(command) => command?,
+            None => parse_document(sql, "Der Befehl")?,
+        };
         if command.is_empty() {
             return Err("Gib ein MongoDB-Befehlsdokument ein, z. B. {\"find\": \"users\", \"filter\": {}} oder {\"aggregate\": \"orders\", \"pipeline\": [], \"cursor\": {}}".to_string());
         }

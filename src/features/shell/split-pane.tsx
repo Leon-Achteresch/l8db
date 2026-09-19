@@ -21,6 +21,8 @@ import { type Tab, tabKey } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { WorkspacePaneContext } from "@/lib/workspace-pane";
 
+import { ColorDot } from "./split-pane/color-dot";
+
 const MasterDetailResult = lazy(() =>
   import("@/features/shell/master-detail-result").then((module) => ({
     default: module.MasterDetailResult,
@@ -35,15 +37,6 @@ interface SplitPaneProps {
   tab: Tab | undefined;
   onFocus: () => void;
   onClose: () => void;
-}
-
-function ColorDot({ color }: { color?: string | null }) {
-  return (
-    <span
-      className="size-2 shrink-0 rounded-full"
-      style={{ backgroundColor: color ?? "var(--muted-foreground)" }}
-    />
-  );
 }
 
 export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPaneProps) {

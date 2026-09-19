@@ -83,8 +83,8 @@ export function DdlPreviewDialog({
                 readOnly
                 value={ddl}
                 spellCheck={false}
-                rows={Math.min(12, ddl.split("\n").length + 1)}
-                className="resize-none bg-muted/30 font-mono text-xs"
+                rows={Math.min(16, ddl.split("\n").length + 1)}
+                className="field-sizing-fixed max-h-[50vh] resize-none overflow-auto whitespace-pre bg-muted/30 font-mono text-xs"
               />
             ) : (
               <p className="rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground">

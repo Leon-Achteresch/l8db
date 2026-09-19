@@ -2,9 +2,19 @@ import { Database, Filter, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { McpConnectionCard } from "@/features/mcp/mcp-connection-card";
+import { ConnectionSelectCard } from "@/features/connections/connection-pick-card";
+import { ConnectionsGroupedLayout } from "@/features/connections/connections-view/grouped-layout";
+import { ServerGroupSection } from "@/features/connections/connections-view/server-group-section";
+import { McpConnectionSettings } from "@/features/mcp/mcp-connection-settings";
 import { McpEmptyState } from "@/features/mcp/mcp-empty-state";
-import type { McpConnection } from "@/lib/mcp";
+import {
+  groupByServer,
+  matchesConnectionQuery,
+  type ServerGroup,
+  sortServerGroups,
+} from "@/lib/connection-groups";
+import { sortConnectionsByName, useConnectionsStore } from "@/lib/connections";
+import { type McpConnection, mcpConnectionUnsupported } from "@/lib/mcp";
 
 interface McpConnectionsSectionProps {
   connections: McpConnection[];
@@ -19,19 +29,69 @@ export function McpConnectionsSection({
 }: McpConnectionsSectionProps) {
   const [search, setSearch] = useState("");
   const [onlyExposed, setOnlyExposed] = useState(false);
+  const [selectedKey, setSelectedKey] = useState("all");
+  const saved = useConnectionsStore((state) => state.connections);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
+  const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
+  const serverOrder = useConnectionsStore((state) => state.serverOrder);
 
-  const filtered = useMemo(() => {
-    return connections.filter((conn) => {
-      if (onlyExposed && !conn.exposed) return false;
-      if (!search.trim()) return true;
-      const term = search.toLowerCase();
-      return (
-        conn.name.toLowerCase().includes(term) ||
-        conn.kind.toLowerCase().includes(term) ||
-        conn.connectionString.toLowerCase().includes(term)
-      );
-    });
-  }, [connections, search, onlyExposed]);
+  const byId = useMemo(
+    () => new Map(connections.map((connection) => [connection.id, connection])),
+    [connections],
+  );
+  const filtered = useMemo(
+    () =>
+      sortConnectionsByName(
+        saved.filter((connection) => {
+          const mcp = byId.get(connection.id);
+          if (!mcp || (onlyExposed && !mcp.exposed)) return false;
+          return matchesConnectionQuery(connection, search);
+        }),
+      ),
+    [saved, byId, onlyExposed, search],
+  );
+  const groups = sortServerGroups(
+    groupByServer(filtered, hostGroupRules),
+    favoriteServerKeys,
+    serverOrder,
+  );
+  const effectiveKey =
+    selectedKey === "all" || groups.some((group) => group.key === selectedKey)
+      ? selectedKey
+      : "all";
+  const displayGroups =
+    effectiveKey === "all" ? groups : groups.filter((group) => group.key === effectiveKey);
+
+  function renderGroup(group: ServerGroup) {
+    return (
+      <ServerGroupSection
+        key={group.key}
+        group={group}
+        favorite={favoriteServerKeys.includes(group.key)}
+      >
+        {group.connections.map((connection) => {
+          const mcp = byId.get(connection.id);
+          if (!mcp) return null;
+          return (
+            <ConnectionSelectCard
+              key={connection.id}
+              connection={connection}
+              checked={mcp.exposed}
+              disabledReason={mcpConnectionUnsupported(mcp)}
+              onCheckedChange={(exposed) => onUpdateConnection(connection.id, { exposed })}
+            >
+              {mcp.exposed ? (
+                <McpConnectionSettings
+                  connection={mcp}
+                  onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
+                />
+              ) : null}
+            </ConnectionSelectCard>
+          );
+        })}
+      </ServerGroupSection>
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -100,15 +160,16 @@ export function McpConnectionsSection({
           }
         />
       ) : (
-        <div className="grid gap-3.5 xl:grid-cols-2">
-          {filtered.map((connection) => (
-            <McpConnectionCard
-              key={connection.id}
-              connection={connection}
-              onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
-            />
-          ))}
-        </div>
+        <ConnectionsGroupedLayout
+          groups={groups}
+          effectiveKey={effectiveKey}
+          filtered={filtered}
+          favoriteServerKeys={favoriteServerKeys}
+          activeGroupKey={null}
+          setSelectedKey={setSelectedKey}
+          displayGroups={displayGroups}
+          renderGroup={renderGroup}
+        />
       )}
     </section>
   );

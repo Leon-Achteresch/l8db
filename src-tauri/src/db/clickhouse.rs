@@ -149,14 +149,23 @@ impl ClickhouseAdapter {
     }
 
     async fn raw(&self, sql: &str) -> Result<(String, Option<serde_json::Value>), String> {
+        self.raw_with(sql, &[]).await
+    }
+
+    async fn raw_with(
+        &self,
+        sql: &str,
+        extra: &[(&str, &str)],
+    ) -> Result<(String, Option<serde_json::Value>), String> {
         timed(async {
             let response = http()
                 .post(&self.base)
                 .query(&[
                     ("database", self.database.as_str()),
                     ("default_format", "JSONCompact"),
-                    ("output_format_json_quote_64bit_integers", "0"),
+                    ("output_format_json_quote_64bit_integers", "1"),
                 ])
+                .query(extra)
                 .header("X-ClickHouse-User", &self.user)
                 .header("X-ClickHouse-Key", &self.password)
                 .body(sql.to_string())
@@ -206,18 +215,30 @@ impl ClickhouseAdapter {
                 ))
             }
         };
-        let columns: Vec<String> = parsed
+        let meta = parsed
             .get("meta")
             .and_then(|m| m.as_array())
-            .map(|m| m.iter().map(|c| text(&c["name"])).collect())
+            .cloned()
             .unwrap_or_default();
-        let columns = super::unique_column_names(columns);
+        let columns = super::unique_column_names(meta.iter().map(|c| text(&c["name"])).collect());
+        let wide: Vec<bool> = meta
+            .iter()
+            .map(|c| WIDE_INT.iter().any(|w| text(&c["type"]).contains(w)))
+            .collect();
         let rows: Vec<Vec<serde_json::Value>> = parsed
             .get("data")
             .and_then(|d| d.as_array())
             .map(|d| {
                 d.iter()
-                    .map(|r| r.as_array().cloned().unwrap_or_default())
+                    .map(|r| {
+                        let mut row = r.as_array().cloned().unwrap_or_default();
+                        for (i, v) in row.iter_mut().enumerate() {
+                            if wide.get(i).copied().unwrap_or(false) {
+                                unquote_safe_ints(v);
+                            }
+                        }
+                        row
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -230,6 +251,23 @@ impl ClickhouseAdapter {
 
     async fn exec(&self, sql: &str) -> Result<(), String> {
         self.raw(sql).await.map(|_| ())
+    }
+}
+
+const WIDE_INT: [&str; 6] = ["Int64", "UInt64", "Int128", "UInt128", "Int256", "UInt256"];
+
+fn unquote_safe_ints(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Ok(n) = s.parse::<i64>() {
+                if n.unsigned_abs() <= (1u64 << 53) {
+                    *value = serde_json::Value::from(n);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(unquote_safe_ints),
+        serde_json::Value::Object(map) => map.values_mut().for_each(unquote_safe_ints),
+        _ => {}
     }
 }
 
@@ -335,8 +373,17 @@ impl DatabaseAdapter for ClickhouseAdapter {
             ),
             _ => String::new(),
         };
+        let select = if columns.is_empty() {
+            "*".to_string()
+        } else {
+            columns
+                .iter()
+                .map(|c| quote(c))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let sql = format!(
-            "SELECT * FROM {}.{}{}{} LIMIT {} OFFSET {}",
+            "SELECT {select} FROM {}.{}{}{} LIMIT {} OFFSET {}",
             quote(schema),
             quote(table),
             where_sql,
@@ -585,19 +632,45 @@ impl DatabaseAdapter for ClickhouseAdapter {
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
-        let keyword = if analyze {
-            "EXPLAIN PIPELINE"
-        } else {
-            "EXPLAIN json = 1, indexes = 1"
-        };
-        let rows = self.rows(&format!("{keyword} {sql}")).await?;
+        let rows = self
+            .rows(&format!("EXPLAIN json = 1, indexes = 1 {sql}"))
+            .await?;
         let lines: Vec<String> = rows.iter().map(|r| text(&r[0])).collect();
+        let mut plan = serde_json::from_str::<serde_json::Value>(&lines.join("\n"))
+            .unwrap_or_else(|_| serde_json::Value::String(lines.join("\n")));
         if !analyze {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&lines.join("\n")) {
-                return Ok(parsed);
+            return Ok(plan);
+        }
+        let trimmed = sql.trim().trim_end_matches(';');
+        let run = if trimmed.to_ascii_uppercase().contains(" FORMAT ") {
+            trimmed.to_string()
+        } else {
+            format!("{trimmed} FORMAT Null")
+        };
+        let start = std::time::Instant::now();
+        let (_, summary) = self.raw_with(&run, &[("wait_end_of_query", "1")]).await?;
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        let stat = |key: &str| summary.as_ref().map(|s| int(&s[key])).unwrap_or(0);
+        let elapsed_ms = match stat("elapsed_ns") {
+            0 => ms,
+            ns => ns as f64 / 1_000_000.0,
+        };
+        if let Some(root) = plan.get_mut(0).and_then(|p| p.get_mut("Plan")) {
+            if let Some(obj) = root.as_object_mut() {
+                obj.insert("Actual Rows".into(), stat("result_rows").into());
+                obj.insert("Plan Rows".into(), stat("read_rows").into());
+                obj.insert("Actual Total Time".into(), elapsed_ms.into());
+                obj.insert("Actual Startup Time".into(), 0.0.into());
+                obj.insert("Read Rows".into(), stat("read_rows").into());
+                obj.insert("Read Bytes".into(), stat("read_bytes").into());
+                obj.insert("Memory Usage".into(), stat("memory_usage").into());
             }
         }
-        Ok(serde_json::Value::String(lines.join("\n")))
+        if let Some(entry) = plan.get_mut(0).and_then(|p| p.as_object_mut()) {
+            entry.insert("Execution Time".into(), elapsed_ms.into());
+            entry.insert("Planning Time".into(), 0.0.into());
+        }
+        Ok(plan)
     }
 
     async fn create_schema(&self, name: &str) -> Result<(), String> {
