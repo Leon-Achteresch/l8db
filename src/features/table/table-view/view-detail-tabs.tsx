@@ -5,6 +5,7 @@ import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
+import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
@@ -98,6 +99,10 @@ export function ViewDetailTabs({
         >
           <ViewDefinitionPanel schema={schema} view={table} />
         </Suspense>
+      </TabsContent>
+
+      <TabsContent value="grants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableGrantsPanel schema={schema} name={table} />
       </TabsContent>
 
       <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">

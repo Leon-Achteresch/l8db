@@ -105,7 +105,8 @@ export function CompareSetupModal(props: CompareSetupModalProps) {
               <h2 className="text-sm font-semibold">Vergleich einrichten</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Quelle ist immer die aktuelle Verbindung
-                {props.sourceConnection ? ` (${props.sourceConnection.name})` : ""}.
+                {props.sourceConnection ? ` (${props.sourceConnection.name})` : ""}. Zielverbindung
+                wählen – eindeutige Schemas und gleichnamige Objekte werden automatisch ausgewählt.
               </p>
             </div>
           </div>
@@ -149,6 +150,7 @@ export function CompareSetupModal(props: CompareSetupModalProps) {
                   title="Ziel"
                   value={props.right}
                   onChange={props.onRightChange}
+                  preferredObjectName={props.left.objectName}
                   hideObjectType
                 />
               </>
@@ -171,7 +173,7 @@ export function CompareSetupModal(props: CompareSetupModalProps) {
 
           <CenterMorphModalClose>
             <Button size="sm" className="w-full text-xs">
-              Fertig
+              Vergleich öffnen
             </Button>
           </CenterMorphModalClose>
         </div>

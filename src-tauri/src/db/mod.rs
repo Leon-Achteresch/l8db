@@ -2,12 +2,13 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 pub mod execution;
 pub mod export;
-mod mongo_shell;
-mod mongodb;
+pub(crate) mod mongo_shell;
+pub(crate) mod mongodb;
 mod mssql;
 mod mysql;
 #[cfg(feature = "odbc")]
@@ -16,7 +17,7 @@ mod oracle;
 pub mod pool;
 mod postgres;
 pub mod provider;
-mod redis;
+pub(crate) mod redis;
 pub mod secrets;
 pub mod server_output;
 mod sql_script;
@@ -178,6 +179,15 @@ pub struct SourceMatch {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ObjectGrantInfo {
+    pub grantee: String,
+    pub privilege: String,
+    pub grantor: String,
+    pub grantable: bool,
+    pub column_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DependencyInfo {
     pub owner: String,
     pub name: String,
@@ -294,6 +304,13 @@ pub struct ExtensionInfo {
     pub version: Option<String>,
     pub schema: Option<String>,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProxyUserInfo {
+    pub name: String,
+    pub category: &'static str,
+    pub bypasses_rls: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -530,6 +547,14 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = (schema, term, limit);
         Err(unsupported("Quelltextsuche"))
     }
+    async fn list_object_grants(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<ObjectGrantInfo>, String> {
+        let _ = (schema, name);
+        Err(unsupported("Objekt-Grants"))
+    }
     async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let _ = (schema, name);
         Err(unsupported("Verwendungsnachweis"))
@@ -554,6 +579,9 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn list_roles(&self) -> Result<Vec<RoleInfo>, String> {
         Err(unsupported("Rollen"))
+    }
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        Err(unsupported("Proxy-User"))
     }
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         let _ = options;

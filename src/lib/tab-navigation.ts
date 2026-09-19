@@ -61,7 +61,7 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab): unknown {
     });
   }
   if (tab.kind === "tool") {
-    return navigate({ to: TOOL_TABS[tab.tool].path });
+    return navigate({ to: TOOL_TABS[tab.tool].path, search: tab.id ? { compareId: tab.id } : {} });
   }
   if (tab.kind === "extension-panel") {
     return navigate({
@@ -81,6 +81,6 @@ export function tabLabel(tab: Tab): string {
   if (tab.kind === "view-editor") return tab.view;
   if (tab.kind === "alter-table") return tab.table;
   if (tab.kind === "extension-panel") return tab.title;
-  if (tab.kind === "tool") return TOOL_TABS[tab.tool].label;
+  if (tab.kind === "tool") return tab.title ?? TOOL_TABS[tab.tool].label;
   return tab.name;
 }

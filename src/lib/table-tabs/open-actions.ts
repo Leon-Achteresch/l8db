@@ -33,6 +33,7 @@ export function createOpenActions(
   | "openExtensionPanel"
   | "openPackageTab"
   | "openToolTab"
+  | "updateCompareTab"
   | "openRoleTab"
   | "openTriggerTab"
   | "openViewEditorTab"
@@ -140,12 +141,31 @@ export function createOpenActions(
       });
     },
 
-    openToolTab: (tool) => {
-      const tt: ToolTab = { kind: "tool", tool };
+    updateCompareTab: (id, compare, title) => {
+      set((state) =>
+        storeFor(
+          state.tabs.map((tab) =>
+            tab.kind === "tool" && tab.tool === "compare" && tab.id === id
+              ? { ...tab, compare, title }
+              : tab,
+          ),
+          state,
+        ),
+      );
+    },
+
+    openToolTab: (tool, id) => {
+      const tt: ToolTab = { kind: "tool", tool, ...(id ? { id } : {}) };
       const key = tabKey(tt);
       set((state) => {
         if (state.tabs.some((t) => tabKey(t) === key)) return state;
-        return storeFor([...state.tabs, tt], state);
+        const tabs =
+          tool === "compare" && id
+            ? state.tabs.filter(
+                (tab) => !(tab.kind === "tool" && tab.tool === "compare" && !tab.id),
+              )
+            : state.tabs;
+        return storeFor([...tabs, tt], state);
       });
     },
 

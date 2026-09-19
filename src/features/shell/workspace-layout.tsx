@@ -41,7 +41,7 @@ export function WorkspaceLayout() {
 
   useEffect(() => {
     const tool = toolIdForPath(pathname);
-    if (tool) openToolTab(tool);
+    if (tool && tool !== "compare") openToolTab(tool);
   }, [pathname, openToolTab]);
 
   const activeTab = useActiveWorkspaceTab();

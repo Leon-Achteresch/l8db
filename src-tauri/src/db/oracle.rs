@@ -13,9 +13,9 @@ use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
     ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, QueryResult,
-    SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo,
-    TriggerInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
+    ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo,
+    SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -616,7 +616,10 @@ impl OracleAdapter {
             Some((host, url.port().unwrap_or(1521)))
         };
         Ok(Self {
-            user: percent(url.username()),
+            user: match super::connection::proxy_user(&url) {
+                Some(target) => format!("{}[{target}]", percent(url.username())),
+                None => percent(url.username()),
+            },
             password: percent(url.password().unwrap_or("")),
             connect_string,
             tcp,
@@ -909,8 +912,14 @@ impl OracleAdapter {
     }
 
     fn objects_source(&self, schema: Option<&str>) -> String {
+        let own = self
+            .user
+            .split_once('[')
+            .map_or(self.user.as_str(), |(_, target)| {
+                target.trim_end_matches(']')
+            });
         match schema {
-            Some(s) if !s.eq_ignore_ascii_case(&self.user) => format!(
+            Some(s) if !s.eq_ignore_ascii_case(own) => format!(
                 "(SELECT owner, object_name, object_type, status FROM all_objects WHERE owner = {})",
                 lit(s)
             ),
@@ -1093,6 +1102,19 @@ impl DatabaseAdapter for OracleAdapter {
             .await?
             .iter()
             .map(|r| s(r, 0))
+            .collect())
+    }
+
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        Ok(self
+            .rows("SELECT client FROM user_proxies ORDER BY client".to_string())
+            .await?
+            .iter()
+            .map(|r| ProxyUserInfo {
+                name: s(r, 0),
+                category: "user",
+                bypasses_rls: false,
+            })
             .collect())
     }
 
@@ -1561,6 +1583,33 @@ impl DatabaseAdapter for OracleAdapter {
             self.exec(statement.clone()).await?;
         }
         Ok(statements.join("\n/\n\n"))
+    }
+
+    async fn list_object_grants(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<ObjectGrantInfo>, String> {
+        let rows = self.rows(format!(
+            "SELECT grantee, privilege, grantor, grantable, CAST(NULL AS VARCHAR2(128)) AS column_name \
+             FROM all_tab_privs WHERE table_schema = {0} AND table_name = {1} \
+             UNION ALL \
+             SELECT grantee, privilege, grantor, grantable, column_name \
+             FROM all_col_privs WHERE table_schema = {0} AND table_name = {1} \
+             ORDER BY 1, 2, 3, 5",
+            lit(schema), lit(name)
+        )).await?;
+        rows.iter()
+            .map(|row| {
+                Ok(ObjectGrantInfo {
+                    grantee: row.get(0).map_err(|e| e.to_string())?,
+                    privilege: row.get(1).map_err(|e| e.to_string())?,
+                    grantor: row.get(2).map_err(|e| e.to_string())?,
+                    grantable: row.get::<_, String>(3).map_err(|e| e.to_string())? == "YES",
+                    column_name: row.get(4).map_err(|e| e.to_string())?,
+                })
+            })
+            .collect()
     }
 
     async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
@@ -2580,6 +2629,96 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_proxy_user_sees_rows_through_vpd() {
+        let (Ok(url), Ok(system_url)) = (
+            std::env::var("L8DB_SMOKE_ORACLE_URL"),
+            std::env::var("L8DB_E2E_ORACLE_SYSTEM_URL"),
+        ) else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let system = OracleAdapter::new(&system_url, pool.clone(), "px-system".into()).unwrap();
+        let owner = OracleAdapter::new(&url, pool.clone(), "px-owner".into()).unwrap();
+        let schema = url::Url::parse(&url).unwrap().username().to_uppercase();
+        let _ = system
+            .execute_query(&format!(
+                "BEGIN DBMS_RLS.DROP_POLICY('{schema}', 'L8DB_PX_T', 'L8DB_PX_P'); END;"
+            ))
+            .await;
+        let _ = owner.execute_query("DROP TABLE L8DB_PX_T").await;
+        let _ = system
+            .execute_query("DROP USER L8DB_PX_TARGET CASCADE")
+            .await;
+        for sql in [
+            "CREATE USER L8DB_PX_TARGET IDENTIFIED BY l8dbtarget".to_string(),
+            "GRANT CREATE SESSION TO L8DB_PX_TARGET".to_string(),
+            format!("ALTER USER L8DB_PX_TARGET GRANT CONNECT THROUGH {schema}"),
+        ] {
+            system.execute_query(&sql).await.expect(&sql);
+        }
+        for sql in [
+            "CREATE TABLE L8DB_PX_T (OWNER_NAME VARCHAR2(128), V NUMBER)",
+            "INSERT INTO L8DB_PX_T VALUES ('L8DB_PX_TARGET', 1)",
+            "INSERT INTO L8DB_PX_T VALUES ('OTHER', 2)",
+            "INSERT INTO L8DB_PX_T VALUES ('OTHER', 3)",
+            "CREATE OR REPLACE FUNCTION L8DB_PX_F(s VARCHAR2, o VARCHAR2) RETURN VARCHAR2 AS BEGIN IF SYS_CONTEXT('USERENV', 'SESSION_USER') = s THEN RETURN NULL; END IF; RETURN 'OWNER_NAME = SYS_CONTEXT(''USERENV'', ''SESSION_USER'')'; END;",
+            "GRANT SELECT ON L8DB_PX_T TO L8DB_PX_TARGET",
+        ] {
+            owner.execute_query(sql).await.expect(sql);
+        }
+        let policy = format!("BEGIN DBMS_RLS.ADD_POLICY(object_schema => '{schema}', object_name => 'L8DB_PX_T', policy_name => 'L8DB_PX_P', function_schema => '{schema}', policy_function => 'L8DB_PX_F'); END;");
+        system.execute_query(&policy).await.expect("vpd policy");
+        let separator = if url.contains('?') { "&" } else { "?" };
+        let proxied = OracleAdapter::new(
+            &format!("{url}{separator}proxy_user=l8db_px_target"),
+            pool.clone(),
+            "px-proxied".into(),
+        )
+        .unwrap();
+        proxied.test_connection().await.expect("proxy connection");
+        assert_eq!(
+            owner
+                .count_rows(&schema, "L8DB_PX_T", None, false)
+                .await
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            proxied
+                .count_rows(&schema, "L8DB_PX_T", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        let who = proxied
+            .execute_query(
+                "SELECT USER AS WHO, SYS_CONTEXT('USERENV', 'PROXY_USER') AS PROXY FROM DUAL",
+            )
+            .await
+            .unwrap();
+        assert_eq!(who.rows[0]["WHO"], "L8DB_PX_TARGET");
+        assert_eq!(who.rows[0]["PROXY"], schema.as_str());
+        let denied = OracleAdapter::new(
+            &format!("{url}{separator}proxy_user=system"),
+            pool,
+            "px-denied".into(),
+        )
+        .unwrap();
+        assert!(denied.test_connection().await.is_err());
+        let _ = system
+            .execute_query(&format!(
+                "BEGIN DBMS_RLS.DROP_POLICY('{schema}', 'L8DB_PX_T', 'L8DB_PX_P'); END;"
+            ))
+            .await;
+        let _ = owner.execute_query("DROP TABLE L8DB_PX_T").await;
+        let _ = owner.execute_query("DROP FUNCTION L8DB_PX_F").await;
+        let _ = system
+            .execute_query("DROP USER L8DB_PX_TARGET CASCADE")
+            .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_validate_sql_parses_without_executing() {
         let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
             return;
@@ -2926,6 +3065,28 @@ mod tests {
             .list_procedures(Some(&schema))
             .await
             .expect("list_procedures");
+        q("GRANT SELECT ON L8_LIVE_PARENT TO PUBLIC")
+            .await
+            .expect("grant select");
+        q("GRANT UPDATE (ID) ON L8_LIVE_PARENT TO PUBLIC")
+            .await
+            .expect("grant column update");
+        let grants = a
+            .list_object_grants(&schema, "L8_LIVE_PARENT")
+            .await
+            .expect("list grants");
+        assert!(grants.iter().any(|grant| grant.grantee == "PUBLIC"
+            && grant.privilege == "SELECT"
+            && grant.column_name.is_none()
+            && !grant.grantable));
+        assert!(grants.iter().any(|grant| grant.grantee == "PUBLIC"
+            && grant.privilege == "UPDATE"
+            && grant.column_name.as_deref() == Some("ID")));
+        assert!(a
+            .list_object_grants(&schema, "L8_MISSING'OBJECT")
+            .await
+            .expect("missing object grants")
+            .is_empty());
         let proc_oid = procs
             .iter()
             .find(|f| f.name == "L8_LIVE_PROC")

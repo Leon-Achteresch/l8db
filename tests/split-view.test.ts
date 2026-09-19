@@ -33,7 +33,13 @@ function reset() {
   storage.clear();
   useConnectionsStore.setState({ connections: [], activeId: null });
   useTableTabs.setState({ tabs: [], tabsByConnection: {}, queryCounter: 0 });
-  useSplitView.setState({ panes: [], focusedPane: 0, byConnection: {}, orientation: "horizontal" });
+  useSplitView.setState({
+    panes: [],
+    masters: [],
+    focusedPane: 0,
+    byConnection: {},
+    orientation: "horizontal",
+  });
 }
 
 beforeEach(() => {
@@ -199,5 +205,80 @@ describe("Verbindung pro Bereich", () => {
     useSplitView.getState().setPaneConnection("table:public.t", b.id);
     useSplitView.getState().clearForConnection(b.id);
     expect(useSplitView.getState().paneConnections).toEqual({});
+  });
+});
+
+describe("Master pro Bereich", () => {
+  function fourPanes() {
+    const a = addConnection("a");
+    useConnectionsStore.getState().setActiveId(a.id);
+    for (const table of ["t0", "t1", "t2", "t3"])
+      useTableTabs.getState().openTab({ schema: "public", table });
+    const keys = ["t0", "t1", "t2", "t3"].map((table) =>
+      tabKey({ kind: "table", schema: "public", table }),
+    );
+    useSplitView.getState().addPane(keys[0]);
+    return { a, keys };
+  }
+
+  test("neuer Bereich wird Detail des fokussierten Bereichs", () => {
+    fourPanes();
+    expect(useSplitView.getState().masters).toEqual([null, 0]);
+    useSplitView.getState().addPane(null);
+    expect(useSplitView.getState().masters).toEqual([null, 0, 1]);
+    useSplitView.getState().focusPane(0);
+    useSplitView.getState().addPane(null);
+    expect(useSplitView.getState().masters).toEqual([null, 0, 1, 0]);
+  });
+
+  test("ein Master mit drei Details und vierfache Kette, Zyklen werden abgelehnt", () => {
+    fourPanes();
+    useSplitView.getState().addPane(null);
+    useSplitView.getState().addPane(null);
+    const { setMaster } = useSplitView.getState();
+    setMaster(2, 0);
+    setMaster(3, 0);
+    expect(useSplitView.getState().masters).toEqual([null, 0, 0, 0]);
+    setMaster(2, 1);
+    setMaster(3, 2);
+    expect(useSplitView.getState().masters).toEqual([null, 0, 1, 2]);
+    setMaster(0, 3);
+    setMaster(1, 1);
+    setMaster(1, 9);
+    expect(useSplitView.getState().masters).toEqual([null, 0, 1, 2]);
+    setMaster(2, null);
+    expect(useSplitView.getState().masters).toEqual([null, 0, null, 2]);
+  });
+
+  test("Tauschen, Schließen, Rehydrieren und Verbindungswechsel behalten die Beziehungen", async () => {
+    const { keys } = fourPanes();
+    useSplitView.getState().addPane(null);
+    useSplitView.getState().addPane(null);
+    useSplitView.getState().setMaster(3, 0);
+    useSplitView.getState().swapPanes(0, 3);
+    expect(useSplitView.getState().panes).toEqual([keys[3], keys[1], keys[2], keys[0]]);
+    expect(useSplitView.getState().masters).toEqual([3, 3, 1, null]);
+    useSplitView.getState().setPane(1, keys[0]);
+    expect(useSplitView.getState().masters).toEqual([1, null, 3, 1]);
+    await useSplitView.persist.rehydrate();
+    expect(useSplitView.getState().masters).toEqual([1, null, 3, 1]);
+    const b = addConnection("b");
+    const a = useConnectionsStore.getState().activeId;
+    useConnectionsStore.getState().setActiveId(b.id);
+    expect(useSplitView.getState().masters).toEqual([]);
+    useConnectionsStore.getState().setActiveId(a);
+    expect(useSplitView.getState().masters).toEqual([1, null, 3, 1]);
+    useSplitView.getState().closePane(1);
+    expect(useSplitView.getState().masters).toEqual([null, 2, null]);
+  });
+
+  test("gespeicherte Splits ohne Master starten als Kette", async () => {
+    const { a } = fourPanes();
+    await useSplitView.persist.getOptions().storage?.setItem("l8db.split-view", {
+      state: { byConnection: { [a.id]: { panes: ["x", "y", "z"], focusedPane: 0 } } },
+      version: 0,
+    } as never);
+    await useSplitView.persist.rehydrate();
+    expect(useSplitView.getState().masters).toEqual([null, 0, 1]);
   });
 });

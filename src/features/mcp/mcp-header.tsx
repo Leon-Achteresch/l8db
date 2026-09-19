@@ -10,8 +10,7 @@ interface McpHeaderProps {
 
 export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderProps) {
   return (
-    <header className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-b from-card/80 to-card/40 p-6 shadow-sm backdrop-blur-md">
-      <div className="absolute top-0 right-0 -mt-10 -mr-10 size-48 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+    <header className="relative overflow-hidden py-6 px-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-4">
           <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl border border-border/80 bg-background/80 shadow-xs">

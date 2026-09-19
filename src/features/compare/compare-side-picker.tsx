@@ -28,6 +28,7 @@ interface CompareSidePickerProps {
   onChange: (value: CompareSideSelection) => void;
   lockConnection?: SavedConnection | null;
   hideObjectType?: boolean;
+  preferredObjectName?: string | null;
 }
 
 export function CompareSidePicker({
@@ -36,6 +37,7 @@ export function CompareSidePicker({
   onChange,
   lockConnection,
   hideObjectType,
+  preferredObjectName,
 }: CompareSidePickerProps) {
   const {
     databases,
@@ -51,7 +53,7 @@ export function CompareSidePicker({
     usesOid,
     emit,
     handleConnection,
-  } = useCompareSidePicker(value, onChange, lockConnection);
+  } = useCompareSidePicker(value, onChange, lockConnection, preferredObjectName);
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3">

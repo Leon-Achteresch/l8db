@@ -7,6 +7,7 @@ import {
   listEnums,
   listLocks,
   listMaterializedViews,
+  listObjectGrants,
   listPublications,
   listSchedulerJobs,
   listSessions,
@@ -119,6 +120,23 @@ export function useLocksQuery(refetchInterval = 5000) {
       listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "locks"),
     refetchInterval,
+  });
+}
+
+export function useObjectGrantsQuery(schema: string, name: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["object-grants", connection?.id, database, schema, name],
+    queryFn: () =>
+      listObjectGrants(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        name,
+        database ?? undefined,
+      ),
+    enabled: supports(connection, "object_grants") && schema.length > 0 && name.length > 0,
   });
 }
 

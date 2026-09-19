@@ -12,9 +12,9 @@ use super::{
     CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
     CreateTableRequest, DatabaseKind, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
     ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
-    InvalidObjectInfo, PrivilegeChange, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo,
-    ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo,
-    TriggerInfo,
+    InvalidObjectInfo, ObjectGrantInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo,
+    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -408,6 +408,25 @@ pub async fn search_source(
         &term,
         limit.unwrap_or(200).clamp(1, 1000),
     )
+    .await
+}
+
+#[tauri::command]
+pub async fn list_object_grants(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ObjectGrantInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_object_grants(&schema, &name)
     .await
 }
 
@@ -932,6 +951,23 @@ pub async fn validate_sql(
         pool_state.inner().clone(),
     )?
     .validate_sql(&sql)
+    .await
+}
+
+#[tauri::command]
+pub async fn list_proxy_users(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<ProxyUserInfo>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_proxy_users()
     .await
 }
 

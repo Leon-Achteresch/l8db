@@ -32,6 +32,7 @@ const icons = {
   constraints: ShieldCheckIcon,
   rls: ShieldIcon,
   partitions: NetworkIcon,
+  grants: ShieldCheckIcon,
   "used-by": NetworkIcon,
   performance: GaugeIcon,
   audit: HistoryIcon,

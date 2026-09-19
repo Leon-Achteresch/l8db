@@ -19,6 +19,7 @@ import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterPanel } from "@/features/table/table-filter-panel";
+import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
@@ -85,7 +86,9 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
   return (
     <Tabs
       value={activeTab}
-      onValueChange={(v) => setActiveTab(v as "data" | "columns" | "definition" | "used-by")}
+      onValueChange={(v) =>
+        setActiveTab(v as "data" | "columns" | "definition" | "used-by" | "grants")
+      }
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-3">
@@ -102,6 +105,12 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             <CodeIcon className="size-3.5" />
             Definition
           </TabsTrigger>
+          {capabilities.object_grants && (
+            <TabsTrigger value="grants">
+              <ShieldCheckIcon className="size-3.5" />
+              Grants
+            </TabsTrigger>
+          )}
           {capabilities.used_by && (
             <TabsTrigger value="used-by">
               <NetworkIcon className="size-3.5" />
@@ -261,6 +270,10 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             )}
           </div>
         )}
+      </TabsContent>
+
+      <TabsContent value="grants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableGrantsPanel schema={schema} name={view} />
       </TabsContent>
 
       <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">

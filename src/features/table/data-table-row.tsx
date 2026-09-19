@@ -28,6 +28,7 @@ export type DataTableRowProps = {
   visibleColumns: Column<TableRow>[];
   customCellColumns: Set<string>;
   isMarked: boolean;
+  isContextMenuTarget?: boolean;
   toggleRowMarker: (row: TableRow) => void;
   columnWindow: ColumnWindowItem[];
   measureElement: (element: HTMLTableRowElement | null) => void;
@@ -65,6 +66,7 @@ export const DataTableRow = memo(function DataTableRow({
   visibleColumns,
   customCellColumns,
   isMarked,
+  isContextMenuTarget,
   toggleRowMarker,
   pageOffset,
   fontSize,
@@ -100,6 +102,7 @@ export const DataTableRow = memo(function DataTableRow({
       data-row-index={rowIndex}
       data-ctid={rowCtid}
       data-marked={isMarked || undefined}
+      data-context-menu-target={isContextMenuTarget || undefined}
       className={cn(
         "group/row",
         isMarked

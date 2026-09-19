@@ -5,6 +5,7 @@ import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
+import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableIndexesList } from "@/features/table/table-indexes-list";
 import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
@@ -202,7 +203,7 @@ export function TableView(props: TableViewProps) {
       </TabsContent>
 
       <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableColumnsList schema={schema} table={table} />
+        <TableColumnsList schema={schema} table={table} editable />
       </TabsContent>
 
       <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -223,6 +224,10 @@ export function TableView(props: TableViewProps) {
 
       <TabsContent value="partitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <TablePartitionsPanel schema={schema} table={table} />
+      </TabsContent>
+
+      <TabsContent value="grants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TableGrantsPanel schema={schema} name={table} />
       </TabsContent>
 
       <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">

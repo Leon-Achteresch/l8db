@@ -30,6 +30,7 @@ export interface Capabilities {
   constraints: boolean;
   foreign_keys: boolean;
   rls: boolean;
+  proxy_user: boolean;
   partitions: boolean;
   replication: boolean;
   sessions: boolean;
@@ -54,6 +55,7 @@ export interface Capabilities {
   debugger: boolean;
   bind_parameters: boolean;
   used_by: boolean;
+  object_grants: boolean;
   synonyms: boolean;
   scheduler_jobs: boolean;
   object_admin: boolean;

@@ -67,17 +67,21 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "mongodb",
+  "redis",
 ];
 
 export function mcpSupported(connection: Pick<SavedConnection, "kind" | "ssh">): string | null {
   if (connection.ssh?.host) return "SSH-Tunnel werden vom MCP nicht unterstützt";
-  if (!MCP_SQL_KINDS.includes(connection.kind)) return "Nur SQL-Datenbanken";
+  if (!MCP_SQL_KINDS.includes(connection.kind))
+    return "Datenbanktyp wird vom MCP nicht unterstützt";
   return null;
 }
 
 export function mcpConnectionUnsupported(connection: McpConnection): string | null {
   if (connection.ssh) return "SSH-Tunnel nicht unterstützt";
-  if (!MCP_SQL_KINDS.includes(connection.kind)) return "Nur SQL-Datenbanken";
+  if (!MCP_SQL_KINDS.includes(connection.kind))
+    return "Datenbanktyp wird vom MCP nicht unterstützt";
   return null;
 }
 

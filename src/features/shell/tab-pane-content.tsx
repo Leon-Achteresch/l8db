@@ -2,6 +2,10 @@ import { lazy } from "react";
 import type { Tab } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 
+const CompareView = lazy(() =>
+  import("@/features/compare/compare-view").then((m) => ({ default: m.CompareView })),
+);
+
 const AlterTableView = lazy(() =>
   import("@/features/alter-table/alter-table-view").then((module) => ({
     default: module.AlterTableView,
@@ -73,6 +77,7 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
     case "alter-table":
       return <AlterTableView schema={tab.schema} table={tab.table} />;
     case "tool": {
+      if (tab.tool === "compare") return <CompareView tabId={tab.id} />;
       const ToolComponent = TOOL_TABS[tab.tool].Component;
       return <ToolComponent />;
     }
