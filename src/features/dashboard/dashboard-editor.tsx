@@ -9,8 +9,7 @@ import {
   RefreshCwIcon,
   TimerIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { confirmExpertSql, fileLabel, fileStamp, readDashboardFile } from "@/lib/dashboard-file";
+import { fileLabel } from "@/lib/dashboard-file";
 import {
   CHARTS,
   createId,
@@ -37,6 +36,7 @@ import {
 import { ChartDialog, type ChartDraft } from "./chart-dialog";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
 import { DashboardCanvas } from "./dashboard-canvas";
+import { useDashboardFileReload } from "./dashboard-editor/use-dashboard-file-reload";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
 
 export function DashboardEditor({
@@ -62,48 +62,7 @@ export function DashboardEditor({
 
   const path = dashboard.filePath ?? null;
 
-  const reloadFile = useCallback(
-    async (auto: boolean) => {
-      if (!path) return;
-      try {
-        const stamp = await fileStamp(path);
-        const current = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboard.id);
-        if (!current || current.fileStamp === stamp) {
-          if (!auto) toast.success("Dashboard ist aktuell");
-          return;
-        }
-        if (!current.locked && auto) {
-          toast.warning(`${fileLabel(path)} wurde geändert`, {
-            action: { label: "Neu laden", onClick: () => void reloadFile(false) },
-          });
-          return;
-        }
-        const { dashboard: parsed } = await readDashboardFile(path);
-        if (!confirmExpertSql(parsed)) return;
-        store.update(dashboard.id, {
-          name: parsed.name,
-          datasets: parsed.datasets,
-          widgets: parsed.widgets,
-          refreshSec: parsed.refreshSec,
-          fileStamp: stamp,
-        });
-        void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
-        toast.success(`${fileLabel(path)} neu geladen`);
-      } catch (error) {
-        if (!auto)
-          toast.error(error instanceof Error ? error.message : "Datei konnte nicht gelesen werden");
-      }
-    },
-    [path, dashboard.id, store, queryClient],
-  );
-
-  useEffect(() => {
-    if (!path) return;
-    void reloadFile(true);
-    const onFocus = () => void reloadFile(true);
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [path, reloadFile]);
+  const reloadFile = useDashboardFileReload(dashboard.id, path);
 
   const startNewChart = () => {
     const index = dashboard.widgets.length;

@@ -9,7 +9,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FilterValueInput } from "@/features/filters/filter-value-input";
 import { queryErrorMessage } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -21,7 +20,9 @@ import {
   type SimpleDataset,
   toLabel,
 } from "@/lib/dashboards";
-import { filterOperatorsForKind, operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
+import { operatorNeedsValue, parseFilterList } from "@/lib/sql-filter";
+import { ChartFilterConditionInputs } from "./chart-filter-editor/condition-inputs";
+import { ChartFilterRangeInputs } from "./chart-filter-editor/range-inputs";
 import { useSqlQuery } from "./use-dataset-query";
 
 export interface ChartFilterField {
@@ -192,41 +193,14 @@ export function ChartFilterEditor({
         </div>
       )}
       {mode === "range" ? (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-3">
-            <label htmlFor="range-from" className="space-y-1 text-xs">
-              <span>Von (einschließlich)</span>
-              <Input
-                id="range-from"
-                aria-label="Filter von"
-                type={isDateType(field.dataType) ? "date" : "number"}
-                value={lower}
-                onChange={(e) => setLower(e.target.value)}
-                placeholder="Keine Untergrenze"
-              />
-            </label>
-            <label htmlFor="range-to" className="space-y-1 text-xs">
-              <span>Bis (einschließlich)</span>
-              <Input
-                id="range-to"
-                aria-label="Filter bis"
-                type={isDateType(field.dataType) ? "date" : "number"}
-                value={upper}
-                onChange={(e) => setUpper(e.target.value)}
-                placeholder="Keine Obergrenze"
-              />
-            </label>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Du kannst eine Grenze frei lassen. Gefiltert werden die einzelnen Datensätze, bevor ihre
-            Werte zusammengefasst werden.
-          </p>
-          {!boundsValid && (
-            <p role="alert" className="text-xs text-destructive">
-              Die Untergrenze muss kleiner oder gleich der Obergrenze sein.
-            </p>
-          )}
-        </div>
+        <ChartFilterRangeInputs
+          field={field}
+          lower={lower}
+          upper={upper}
+          setLower={setLower}
+          setUpper={setUpper}
+          boundsValid={boundsValid}
+        />
       ) : mode === "values" ? (
         <>
           <div className="flex flex-wrap gap-2">
@@ -285,41 +259,14 @@ export function ChartFilterEditor({
           </p>
         </>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={operator} onValueChange={setOperator}>
-            <SelectTrigger aria-label="Filterbedingung" className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {filterOperatorsForKind(connection?.kind).map((op) => (
-                <SelectItem key={op.key} value={op.key}>
-                  {op.key === "isNull"
-                    ? "hat keinen Wert"
-                    : op.key === "isNotNull"
-                      ? "hat einen Wert"
-                      : op.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {operatorNeedsValue(operator) && (
-            <FilterValueInput
-              aria-label="Filterwert"
-              operator={operator}
-              value={value}
-              onValueChange={setValue}
-              type={
-                isDateType(field.dataType)
-                  ? "date"
-                  : isNumericType(field.dataType) && !["in", "notIn"].includes(operator)
-                    ? "number"
-                    : "text"
-              }
-              placeholder={isNumericType(field.dataType) ? "z. B. 100" : "Wert eingeben"}
-              className="h-8 min-w-40 flex-1 text-xs"
-            />
-          )}
-        </div>
+        <ChartFilterConditionInputs
+          field={field}
+          kind={connection?.kind}
+          operator={operator}
+          setOperator={setOperator}
+          value={value}
+          setValue={setValue}
+        />
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onCancel}>

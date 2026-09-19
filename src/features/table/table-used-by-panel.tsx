@@ -1,13 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  BracesIcon,
-  EyeIcon,
-  LayoutGridIcon,
-  ListTreeIcon,
-  NetworkIcon,
-  TableIcon,
-  ZapIcon,
-} from "lucide-react";
+import { LayoutGridIcon, ListTreeIcon, NetworkIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,18 +12,11 @@ import type { DependencyInfo } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useUsedByQuery } from "@/lib/queries";
 import { dependencyRoute, filterDependencies, groupDependencies } from "@/lib/used-by";
+import { DependencyIcon } from "./table-used-by-panel/dependency-icon";
 
 interface TableUsedByPanelProps {
   schema: string;
   name: string;
-}
-
-function DependencyIcon({ objectType }: { objectType: string }) {
-  const type = objectType.toLowerCase();
-  if (type.includes("view")) return <EyeIcon className="size-4 text-blue-500" />;
-  if (type.includes("trigger")) return <ZapIcon className="size-4 text-amber-500" />;
-  if (type.includes("table")) return <TableIcon className="size-4 text-muted-foreground" />;
-  return <BracesIcon className="size-4 text-violet-500" />;
 }
 
 export function TableUsedByPanel({ schema, name }: TableUsedByPanelProps) {
