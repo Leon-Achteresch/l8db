@@ -19,8 +19,8 @@ function startup(tabs?: object, split?: object, activeId: string | null = "a", v
     };
     globalThis.window = { localStorage: storage };
     Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
-    const { useConnectionsStore } = await import("./src/lib/connections.ts");
-    const { useTableTabs } = await import("./src/lib/table-tabs.ts");
+    const { useConnectionsStore } = await import("./src/lib/connections/index.ts");
+    const { useTableTabs } = await import("./src/lib/table-tabs/index.ts");
     const { useSplitView } = await import("./src/lib/split-view.ts");
     const snapshot = () => ({
       tabs: useTableTabs.getState().tabs,

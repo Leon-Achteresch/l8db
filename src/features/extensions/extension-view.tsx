@@ -1,29 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Loader, Play } from "lucide";
-import {
-  CheckCircleIcon,
-  PencilIcon,
-  TriangleAlertIcon,
-  UndoIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { PencilIcon, TriangleAlertIcon, UndoIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { useTheme } from "next-themes";
-import { useCallback, useEffect, useRef, useState } from "react";
-
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, validateSql } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { addSqlFormatAction, monaco } from "@/lib/monaco";
 import { useExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-
-function themeFor(resolved: string | undefined): string {
-  return resolved === "dark" ? "l8db-dark" : "l8db-light";
-}
+import { FeedbackPanel } from "./extension-view/feedback-panel";
+import { SqlEditorPane } from "./extension-view/sql-editor-pane";
 
 type ValidationState =
   | { status: "idle" }
@@ -242,124 +231,4 @@ export function ExtensionView({ name }: { name: string }) {
       )}
     </div>
   );
-}
-
-function FeedbackPanel({
-  state,
-}: {
-  state: { status: "success"; time?: number } | { status: "error"; message: string };
-}) {
-  return (
-    <div
-      className={
-        state.status === "success"
-          ? "flex items-start gap-2 border-t bg-emerald-500/5 px-4 py-2.5"
-          : "flex items-start gap-2 border-t bg-destructive/5 px-4 py-2.5"
-      }
-    >
-      {state.status === "success" ? (
-        <>
-          <CheckCircleIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            Erfolgreich
-            {state.time != null ? ` (${state.time} ms)` : ""}
-          </span>
-        </>
-      ) : (
-        <>
-          <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <pre className="flex-1 whitespace-pre-wrap break-all text-xs font-mono text-destructive select-text">
-            {state.message}
-          </pre>
-        </>
-      )}
-    </div>
-  );
-}
-
-interface SqlEditorPaneProps {
-  value: string;
-  readOnly: boolean;
-  onChange?: (value: string) => void;
-}
-
-function SqlEditorPane({ value, readOnly, onChange }: SqlEditorPaneProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const onChangeRef = useRef(onChange);
-  const { resolvedTheme } = useTheme();
-
-  onChangeRef.current = onChange;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const editor = monaco.editor.create(container, {
-      value,
-      language: "plsql",
-      theme: themeFor(resolvedTheme),
-      readOnly,
-      domReadOnly: readOnly,
-      automaticLayout: true,
-      minimap: { enabled: false },
-      lineNumbers: "on",
-      glyphMargin: false,
-      folding: true,
-      lineDecorationsWidth: 0,
-      lineNumbersMinChars: 3,
-      scrollBeyondLastLine: false,
-      wordWrap: "on",
-      fontSize: 13,
-      lineHeight: 24,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      padding: { top: 16, bottom: 16 },
-      renderLineHighlight: "line",
-      overviewRulerLanes: 0,
-      hideCursorInOverviewRuler: true,
-      overviewRulerBorder: false,
-      scrollbar: {
-        vertical: "auto",
-        horizontal: "auto",
-        useShadows: false,
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
-      },
-      tabSize: 2,
-    });
-
-    editorRef.current = editor;
-
-    const changeSub = editor.onDidChangeModelContent(() => {
-      onChangeRef.current?.(editor.getValue());
-    });
-
-    const formatAction = addSqlFormatAction(editor);
-
-    return () => {
-      changeSub.dispose();
-      formatAction.dispose();
-      editor.dispose();
-      editorRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.updateOptions({ readOnly, domReadOnly: readOnly });
-  }, [readOnly]);
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && editor.getValue() !== value) {
-      editor.setValue(value);
-    }
-  }, [value]);
-
-  useEffect(() => {
-    monaco.editor.setTheme(themeFor(resolvedTheme));
-  }, [resolvedTheme]);
-
-  return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
 }

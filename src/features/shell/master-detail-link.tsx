@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowRight } from "lucide";
-import { ArrowRightIcon, PlayIcon, XIcon } from "lucide-react";
+import { ArrowRightIcon, PlayIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,19 +12,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ResizableHandle } from "@/components/ui/resizable";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
+import { MasterDetailPreview } from "@/features/shell/master-detail-link/master-detail-preview";
+import { SavedScriptsPicker } from "@/features/shell/master-detail-link/saved-scripts-picker";
 import { MasterDetailRelationPicker } from "@/features/shell/master-detail-relation-picker";
-import { MasterDetailResult } from "@/features/shell/master-detail-result";
 import { ConnectionScopeContext, useConnectionsStore } from "@/lib/connections";
 import {
-  MasterSelectionContext,
   masterColumnReference,
   masterDetailKey,
   masterDetailScriptError,
@@ -183,52 +176,11 @@ export function MasterDetailLink({
                   : "Noch keine Master-Zeile ausgewählt"}
               </span>
             </div>
-            <details className="shrink-0 rounded-md border px-3 py-2">
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                Gespeicherte SQL-Vorlagen
-              </summary>
-              <div className="mt-2 flex items-center gap-2">
-                <Select value={savedKey} onValueChange={setSavedKey}>
-                  <SelectTrigger
-                    className="min-w-0 flex-1"
-                    aria-label="Gespeichertes Master-Detail-SQL"
-                  >
-                    <SelectValue placeholder="Gespeichertes Tabellenpaar auswählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(savedScripts).map(([id, entry]) => (
-                      <SelectItem key={id} value={id}>
-                        {entry.master} → {entry.detail}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  disabled={!savedScripts[savedKey]}
-                  onClick={() => {
-                    loadDraft(
-                      qualifyMasterDetail(
-                        savedScripts[savedKey].sql,
-                        savedScripts[savedKey].column,
-                      ),
-                    );
-                  }}
-                >
-                  SQL laden
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={!savedScripts[savedKey]}
-                  onClick={() => {
-                    useMasterDetail.getState().removeSavedScript(savedKey);
-                    setSavedKey("");
-                  }}
-                >
-                  Vorlage löschen
-                </Button>
-              </div>
-            </details>
+            <SavedScriptsPicker
+              savedKey={savedKey}
+              setSavedKey={setSavedKey}
+              loadDraft={loadDraft}
+            />
             {master?.kind === "table" && sameDatabase && (
               <ConnectionScopeContext.Provider value={masterConnectionId}>
                 <MasterDetailRelationPicker
@@ -284,31 +236,14 @@ export function MasterDetailLink({
               </p>
             )}
             {previewSql && source && (
-              <section
-                aria-label="SQL-Vorschau"
-                className="flex min-h-40 max-h-[35vh] flex-1 flex-col overflow-hidden rounded-md border"
-              >
-                <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1 text-xs">
-                  <span className="flex-1">
-                    {previewSql === draft
-                      ? "Ergebnis für die aktuelle Master-Zeile"
-                      : "SQL geändert · Vorschau erneut laden"}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Vorschau schließen"
-                    onClick={() => setPreviewSql(null)}
-                  >
-                    <XIcon />
-                  </Button>
-                </div>
-                <ConnectionScopeContext.Provider value={targetConnectionId}>
-                  <MasterSelectionContext.Provider value={null}>
-                    <MasterDetailResult key={previewId} source={source} sql={previewSql} preview />
-                  </MasterSelectionContext.Provider>
-                </ConnectionScopeContext.Provider>
-              </section>
+              <MasterDetailPreview
+                previewSql={previewSql}
+                draft={draft}
+                source={source}
+                previewId={previewId}
+                targetConnectionId={targetConnectionId}
+                setPreviewSql={setPreviewSql}
+              />
             )}
           </div>
           <DialogFooter className="shrink-0 items-center">
