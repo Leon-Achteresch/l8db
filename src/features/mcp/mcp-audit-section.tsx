@@ -119,7 +119,7 @@ export function McpAuditSection({ audit, onRefresh }: McpAuditSectionProps) {
                   <th className="px-3.5 py-2">Zeitpunkt</th>
                   <th className="px-3.5 py-2">Verbindung</th>
                   <th className="px-3.5 py-2">Tool</th>
-                  <th className="px-3.5 py-2">SQL-Befehl</th>
+                  <th className="px-3.5 py-2">Befehl</th>
                   <th className="px-3.5 py-2 text-right">Dauer</th>
                   <th className="px-3.5 py-2 text-right">Status</th>
                 </tr>
