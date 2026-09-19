@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { WorkspacePaneContext } from "@/lib/workspace-pane";
 
 import { ColorDot } from "./split-pane/color-dot";
+import { MasterSelect } from "./split-pane/master-select";
+import { PaneNumber } from "./split-pane/pane-number";
 
 const MasterDetailResult = lazy(() =>
   import("@/features/shell/master-detail-result").then((module) => ({
@@ -44,19 +46,18 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
   const key = tab ? tabKey(tab) : `split-detail:${index}`;
-  const masterKey = useSplitView((state) =>
-    index > 0 ? (state.panes[index - 1] ?? `split-detail:${index - 1}`) : null,
-  );
+  const masterKey = useSplitView((state) => {
+    const master = state.masters[index];
+    return master == null ? null : (state.panes[master] ?? `split-detail:${master}`);
+  });
   const source = usePaneSourceKey(masterKey);
   const target = usePaneSourceKey(key);
-  const linkKey = index > 0 ? masterDetailKey(source, target) : null;
+  const linkKey = masterKey ? masterDetailKey(source, target) : null;
   const detailSql = useMasterDetail((state) => (linkKey ? state.scripts[linkKey] : undefined));
   const sourceColumn = useMasterDetail((state) =>
     linkKey ? state.sourceColumns[linkKey] : undefined,
   );
-  const feedsNext = useMasterDetail((state) =>
-    Object.keys(state.scripts).some((entry) => JSON.parse(entry)[0] === target),
-  );
+  const feedsNext = useSplitView((state) => state.masters.includes(index));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -96,6 +97,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     <WorkspacePaneContext.Provider value={{ index, focused }}>
       <div
         ref={dropRef}
+        data-split-pane={index}
         onMouseDown={() => {
           if (!focused && tab) navigateToTab(navigate, tab);
           onFocus();
@@ -112,7 +114,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
       >
         <div
           ref={dragRef}
-          className="flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40 px-1"
+          className="@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40 px-1"
           style={override ? { backgroundColor: `${override.color ?? "#64748b"}1a` } : undefined}
           title={override ? `Verbindung: ${override.name}` : undefined}
         >
@@ -123,16 +125,18 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
           >
             <GripVerticalIcon className="size-3.5" />
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+          <PaneNumber index={index} />
+          <span className="min-w-[4.5rem] flex-1 truncate text-xs font-medium text-muted-foreground">
             {detailSql && feedsNext
               ? "Detail → Master · "
               : detailSql
                 ? "Detail · "
-                : index === 0 || feedsNext
+                : feedsNext
                   ? "Master · "
                   : ""}
             {tab ? tabLabel(tab) : detailSql ? "SQL-Abfrage" : "Leer"}
           </span>
+          <MasterSelect index={index} />
           {tab || detailSql ? (
             <Select value={overrideId ?? ACTIVE_VALUE} onValueChange={selectConnection}>
               <SelectTrigger
