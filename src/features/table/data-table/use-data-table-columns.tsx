@@ -76,7 +76,8 @@ export function useDataTableColumns({
       },
       ...columnNames.map(
         (column): ColumnDef<TableRow> => ({
-          accessorKey: column,
+          id: column,
+          accessorFn: (row) => row[column],
           enableSorting: !sortableColumns || sortableColumns.includes(column),
           size: 200,
           minSize: COLUMN_SIZE_MIN,
