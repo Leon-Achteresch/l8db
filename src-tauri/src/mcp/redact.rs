@@ -570,7 +570,7 @@ impl SchemaIndex {
         }
     }
 
-    fn table_hidden(&self, table: &str) -> bool {
+    pub fn table_hidden(&self, table: &str) -> bool {
         if self.allowed_schemas.is_empty() {
             return false;
         }

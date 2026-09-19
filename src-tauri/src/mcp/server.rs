@@ -4,6 +4,7 @@ use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
 
 use super::config::{self, McpConfig, McpConnection};
+use super::nosql;
 use super::redact::{self, Redactor};
 use crate::db::{
     self, execution::ExecutionOptions, pool::PoolState, ColumnInfo, DatabaseKind, QueryResult,
@@ -22,6 +23,7 @@ const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Duckdb,
     DatabaseKind::Odbc,
 ];
+const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 
 struct Server {
     pool: PoolState,
@@ -89,7 +91,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "query",
-            "description": "Run a read-only SQL statement. Returns TSV, sensitive values redacted. Default limit 50 rows.",
+            "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
                 "sql": {"type": "string"},
@@ -98,7 +100,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "execute",
-            "description": "Run a writing SQL statement on a connection that allows writes. Requires confirm=true. Returns affected rows.",
+            "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
                 "sql": {"type": "string"},
@@ -128,7 +130,7 @@ impl Server {
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "l8db", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted."
+                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1)."
             })),
             "ping" => Ok(json!({})),
             "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
@@ -303,26 +305,34 @@ impl Server {
         if sql.is_empty() {
             return Err("sql fehlt".into());
         }
-        if redact::statement_count(sql) > 1 {
-            return Err("Nur ein Statement pro Aufruf.".into());
-        }
-        if let Some(word) = redact::write_word(sql) {
-            return Err(format!(
-                "query ist read-only, '{word}' ist nicht erlaubt.{}",
-                if connection.read_only {
-                    ""
-                } else {
-                    " Für Schreibzugriffe execute nutzen."
-                }
-            ));
-        }
-        if let Some(word) = redact::dangerous_word(sql) {
-            return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
-        }
         let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
-        redact::check_references(sql, &index)?;
+        match connection.kind {
+            DatabaseKind::Mongodb => {
+                nosql::mongo_check(&nosql::mongo_command(sql)?, false, false, &redactor, &index)?
+            }
+            DatabaseKind::Redis => nosql::redis_check(sql, false)?,
+            _ => {
+                if redact::statement_count(sql) > 1 {
+                    return Err("Nur ein Statement pro Aufruf.".into());
+                }
+                if let Some(word) = redact::write_word(sql) {
+                    return Err(format!(
+                        "query ist read-only, '{word}' ist nicht erlaubt.{}",
+                        if connection.read_only {
+                            ""
+                        } else {
+                            " Für Schreibzugriffe execute nutzen."
+                        }
+                    ));
+                }
+                if let Some(word) = redact::dangerous_word(sql) {
+                    return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+                }
+                redact::check_references(sql, &index)?;
+            }
+        }
         let limit = args
             .get("limit")
             .and_then(Value::as_u64)
@@ -354,17 +364,34 @@ impl Server {
         if sql.is_empty() {
             return Err("sql fehlt".into());
         }
-        if redact::statement_count(sql) > 1 {
-            return Err("Nur ein Statement pro Aufruf.".into());
-        }
-        if let Some(word) = redact::dangerous_word(sql) {
-            return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
-        }
-        if !connection.allow_ddl && redact::is_ddl(sql) {
-            return Err(format!(
-                "DDL ist für '{}' nicht freigegeben.",
-                connection.name
-            ));
+        match connection.kind {
+            DatabaseKind::Mongodb => {
+                let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+                let columns = self.columns_for(config, connection).await?;
+                let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
+                nosql::mongo_check(
+                    &nosql::mongo_command(sql)?,
+                    true,
+                    connection.allow_ddl,
+                    &redactor,
+                    &index,
+                )?
+            }
+            DatabaseKind::Redis => nosql::redis_check(sql, true)?,
+            _ => {
+                if redact::statement_count(sql) > 1 {
+                    return Err("Nur ein Statement pro Aufruf.".into());
+                }
+                if let Some(word) = redact::dangerous_word(sql) {
+                    return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+                }
+                if !connection.allow_ddl && redact::is_ddl(sql) {
+                    return Err(format!(
+                        "DDL ist für '{}' nicht freigegeben.",
+                        connection.name
+                    ));
+                }
+            }
         }
         let adapter = adapter(connection, &self.pool)?;
         let result = run(config, async { adapter.execute_query(sql).await }).await?;
@@ -409,7 +436,9 @@ fn cap(text: String, max_chars: usize) -> String {
 
 pub fn exposed(config: &McpConfig) -> impl Iterator<Item = &McpConnection> {
     config.connections.iter().filter(|connection| {
-        connection.exposed && !connection.ssh && SQL_KINDS.contains(&connection.kind)
+        connection.exposed
+            && !connection.ssh
+            && (SQL_KINDS.contains(&connection.kind) || NOSQL_KINDS.contains(&connection.kind))
     })
 }
 
@@ -713,7 +742,8 @@ mod tests {
         mongo.name = "Mongo".into();
         mongo.kind = DatabaseKind::Mongodb;
         config.connections.push(mongo);
-        assert_eq!(exposed(&config).count(), 1);
+        assert_eq!(exposed(&config).count(), 2);
+        assert!(find_connection(&config, "Mongo").is_ok());
         assert!(find_connection(&config, "prod").is_ok());
         assert!(find_connection(&config, "c1").is_ok());
         assert!(find_connection(&config, "Hidden").is_err());
