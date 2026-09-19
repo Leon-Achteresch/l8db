@@ -7,10 +7,25 @@ import {
   KeyRoundIcon,
   TypeIcon,
 } from "lucide-react";
+import { unwrapDataType } from "@/features/table/data-table/column-type-info";
 import type { DetailedColumnInfo } from "@/lib/db";
 
+const COMPOSITE = /^(?:array|map|tuple|nested|variant|dynamic|json)\(/;
+
+function isJsonLike(lower: string): boolean {
+  return lower.includes("json") || lower === "object" || lower === "array" || COMPOSITE.test(lower);
+}
+
 export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
-  const lower = dataType.toLowerCase();
+  const lower = unwrapDataType(dataType);
+  if (isJsonLike(lower)) {
+    return {
+      icon: BracesIcon,
+      color: "text-pink-500 bg-rose-500/10 border-rose-500/20",
+      label: "JSON",
+      badgeColor: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    };
+  }
   if (isPrimaryKey) {
     return {
       icon: KeyRoundIcon,
@@ -42,7 +57,8 @@ export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
     lower.includes("text") ||
     lower.includes("varchar") ||
     lower.includes("uuid") ||
-    lower.includes("xml")
+    lower.includes("xml") ||
+    /^(?:enum(?:8|16)?\(|ipv[46]|fixedstring)/.test(lower)
   ) {
     return {
       icon: TypeIcon,
@@ -67,7 +83,7 @@ export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
       badgeColor: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     };
   }
-  if (lower.includes("json") || lower === "object" || lower === "array") {
+  if (isJsonLike(lower)) {
     return {
       icon: BracesIcon,
       color: "text-pink-500 bg-rose-500/10 border-rose-500/20",
@@ -99,7 +115,9 @@ export function matchesColumnFilter(
   if (selectedFilter === "not-null") return !column.is_nullable;
   if (selectedFilter === "has-default") return column.column_default !== null;
 
-  const lower = column.data_type.toLowerCase();
+  const lower = unwrapDataType(column.data_type);
+  if (selectedFilter === "json") return isJsonLike(lower);
+  if (COMPOSITE.test(lower)) return false;
   if (selectedFilter === "numeric") {
     return (
       lower === "long" ||
@@ -123,13 +141,13 @@ export function matchesColumnFilter(
     );
   }
   if (selectedFilter === "date") {
-    return lower.includes("time") || lower.includes("date") || lower.includes("interval");
+    return (
+      !lower.startsWith("enum") &&
+      (lower.includes("time") || lower.includes("date") || lower.includes("interval"))
+    );
   }
   if (selectedFilter === "boolean") {
     return lower.includes("bool");
-  }
-  if (selectedFilter === "json") {
-    return lower.includes("json") || lower === "object" || lower === "array";
   }
 
   return true;

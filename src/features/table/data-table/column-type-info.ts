@@ -3,8 +3,19 @@ import type { TableRow } from "../data-table-types";
 
 export type ColumnTypeKind = "text" | "number" | "boolean" | "date" | "json" | "key" | "uuid";
 
+export function unwrapDataType(dataType: string): string {
+  let lower = dataType.toLowerCase().trim();
+  for (;;) {
+    const inner = lower.match(/^(?:nullable|lowcardinality)\((.*)\)$/);
+    if (!inner) return lower;
+    lower = inner[1];
+  }
+}
+
 function kindFromDataType(dataType: string): ColumnTypeKind | null {
-  const lower = dataType.toLowerCase();
+  const lower = unwrapDataType(dataType);
+  if (/^(?:array|map|tuple|nested|variant|dynamic|json)\(/.test(lower)) return "json";
+  if (/^(?:enum(?:8|16)?\(|ipv[46]|fixedstring)/.test(lower)) return "text";
   if (lower.includes("bool")) return "boolean";
   if (lower.includes("uuid") || lower === "uniqueidentifier") return "uuid";
   if (lower.includes("json") || lower === "object" || lower === "array") return "json";
