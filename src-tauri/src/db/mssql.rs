@@ -24,6 +24,7 @@ const IDLE_TTL: Duration = Duration::from_secs(300);
 
 pub struct MssqlAdapter {
     config: Config,
+    proxy_user: Option<String>,
     pool_state: PoolState,
     key: String,
 }
@@ -312,6 +313,7 @@ impl MssqlAdapter {
         }
         Ok(Self {
             config,
+            proxy_user: super::connection::proxy_user(&url),
             pool_state,
             key,
         })
@@ -337,9 +339,13 @@ impl MssqlAdapter {
                         .await
                         .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
                     tcp.set_nodelay(true).ok();
-                    Client::connect(self.config.clone(), tcp.compat_write())
+                    let mut client = Client::connect(self.config.clone(), tcp.compat_write())
                         .await
-                        .map_err(map_err)
+                        .map_err(map_err)?;
+                    if let Some(user) = &self.proxy_user {
+                        impersonate(&mut client, user).await?;
+                    }
+                    Ok(client)
                 })
                 .await?
             }
@@ -389,6 +395,23 @@ impl MssqlAdapter {
     fn object(schema: &str, name: &str) -> String {
         format!("{}.{}", quote(schema), quote(name))
     }
+}
+
+async fn impersonate(client: &mut MsClient, user: &str) -> Result<(), String> {
+    let login = format!("EXECUTE AS LOGIN = {}", lit(user));
+    if client.execute(login, &[]).await.is_ok() {
+        return Ok(());
+    }
+    client
+        .execute(format!("EXECUTE AS USER = {}", lit(user)), &[])
+        .await
+        .map(|_| ())
+        .map_err(|e| {
+            format!(
+                "Proxy-User {user} kann nicht übernommen werden: {}",
+                map_err(e)
+            )
+        })
 }
 
 fn percent_decode(value: &str) -> String {
@@ -1189,5 +1212,79 @@ mod tests {
         assert!(is_tx_control("begin tran"));
         assert!(is_tx_control("ROLLBACK"));
         assert!(!is_tx_control("BEGIN SELECT 1 END"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_proxy_user_sees_rows_through_security_policy() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let server =
+            MssqlAdapter::new(&url, Some("master"), pool.clone(), "px-master".into()).unwrap();
+        for sql in [
+            "IF DB_ID('l8db_px') IS NOT NULL BEGIN ALTER DATABASE l8db_px SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE l8db_px END",
+            "IF SUSER_ID('l8db_px_viewer') IS NOT NULL DROP LOGIN l8db_px_viewer",
+            "CREATE DATABASE l8db_px",
+            "CREATE LOGIN l8db_px_viewer WITH PASSWORD = 'L8db-Viewer-pw1', CHECK_POLICY = OFF",
+        ] {
+            server.execute_query(sql).await.expect(sql);
+        }
+        let admin =
+            MssqlAdapter::new(&url, Some("l8db_px"), pool.clone(), "px-admin".into()).unwrap();
+        for sql in [
+            "CREATE USER l8db_px_viewer FOR LOGIN l8db_px_viewer",
+            "CREATE TABLE dbo.probe (owner sysname, v int)",
+            "INSERT INTO dbo.probe VALUES ('l8db_px_viewer', 1), ('other', 2), ('other', 3)",
+            "CREATE FUNCTION dbo.probe_pred(@owner sysname) RETURNS TABLE WITH SCHEMABINDING AS RETURN SELECT 1 AS ok WHERE @owner = USER_NAME() OR IS_MEMBER('db_owner') = 1",
+            "CREATE SECURITY POLICY dbo.probe_policy ADD FILTER PREDICATE dbo.probe_pred(owner) ON dbo.probe WITH (STATE = ON)",
+            "GRANT SELECT ON dbo.probe TO l8db_px_viewer",
+        ] {
+            admin.rows(sql).await.expect(sql);
+        }
+        let separator = if url.contains('?') { "&" } else { "?" };
+        let proxied = MssqlAdapter::new(
+            &format!("{url}{separator}proxy_user=l8db_px_viewer"),
+            Some("l8db_px"),
+            pool.clone(),
+            "px-proxied".into(),
+        )
+        .unwrap();
+        proxied.test_connection().await.expect("proxy connection");
+        assert_eq!(
+            admin.count_rows("dbo", "probe", None, false).await.unwrap(),
+            3
+        );
+        assert_eq!(
+            proxied
+                .count_rows("dbo", "probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        let who = proxied
+            .execute_query("SELECT SUSER_SNAME() AS who")
+            .await
+            .unwrap();
+        assert_eq!(who.rows[0]["who"], "l8db_px_viewer");
+        assert!(proxied
+            .execute_query("INSERT INTO dbo.probe VALUES ('l8db_px_viewer', 4)")
+            .await
+            .is_err());
+        let denied = MssqlAdapter::new(
+            &format!("{url}{separator}proxy_user=l8db_px_missing"),
+            Some("l8db_px"),
+            pool,
+            "px-denied".into(),
+        )
+        .unwrap();
+        assert!(denied.test_connection().await.is_err());
+        drop(proxied);
+        drop(admin);
+        server
+            .execute_query("ALTER DATABASE l8db_px SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE l8db_px; DROP LOGIN l8db_px_viewer")
+            .await
+            .expect("cleanup");
     }
 }

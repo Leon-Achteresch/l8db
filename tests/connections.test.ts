@@ -25,7 +25,13 @@ function provider(
     hint: "",
     hosts,
     driver: { type: "builtin" },
-    capabilities: { ssl: true, ssh: true, views: true, read_only_mode: kind === "postgres" },
+    capabilities: {
+      ssl: true,
+      ssh: true,
+      views: true,
+      read_only_mode: kind === "postgres",
+      proxy_user: ["postgres", "mssql", "oracle"].includes(kind),
+    },
     driver_status: { available: true, detail: "", install: [] },
     ...extra,
   };
@@ -598,6 +604,35 @@ describe("Lesemodus", () => {
       connections: [{ ...direct, readOnly: false }],
       activeId: null,
     });
+  });
+});
+
+describe("Proxy-User", () => {
+  test("postgres connections carry the proxy user next to the read-only option", () => {
+    const url = new URL(
+      effectiveConnectionString({ ...direct, readOnly: true, proxyUser: " app user " }),
+    );
+    expect(url.searchParams.get("proxy_user")).toBe("app user");
+    expect(url.searchParams.get("options")).toBe("-c default_transaction_read_only=on");
+    expect(effectiveConnectionString({ ...direct, proxyUser: "  " })).toBe(direct.connectionString);
+  });
+
+  test("tunneled connections keep the proxy user", () => {
+    const url = new URL(
+      effectiveConnectionString({ ...tunneled, tunnelPort: 40000, proxyUser: "alice" }),
+    );
+    expect(url.searchParams.get("proxy_user")).toBe("alice");
+    expect(url.searchParams.get("hostaddr")).toBe("127.0.0.1");
+  });
+
+  test("providers without impersonation ignore the proxy user", () => {
+    const mysql = {
+      ...direct,
+      kind: "mysql" as const,
+      connectionString: "mysql://root:pw@localhost:3306/app",
+      proxyUser: "alice",
+    };
+    expect(effectiveConnectionString(mysql)).toBe(mysql.connectionString);
   });
 });
 

@@ -28,11 +28,21 @@ pub fn connection_string_is_read_only(value: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub const PROXY_USER_PARAM: &str = "proxy_user";
+
+pub fn proxy_user(url: &url::Url) -> Option<String> {
+    url.query_pairs()
+        .find(|(key, _)| key == PROXY_USER_PARAM)
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, SslMode), String> {
     let mut url = url::Url::parse(value).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
     if !matches!(url.scheme(), "postgres" | "postgresql") {
         return Err("Eine postgresql:// oder postgres:// URL ist erforderlich".to_string());
     }
+    let role = proxy_user(&url);
     let mut ssl = SslMode::Prefer;
 
     for (key, value) in url.query_pairs() {
@@ -51,7 +61,9 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
         .query()
         .unwrap_or_default()
         .split('&')
-        .filter(|part| !part.is_empty() && !part.starts_with("sslmode="))
+        .filter(|part| {
+            !part.is_empty() && !part.starts_with("sslmode=") && !part.starts_with("proxy_user=")
+        })
         .map(str::to_string)
         .collect();
     let query = params.join("&");
@@ -63,6 +75,20 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
         .connect_timeout(super::execution::connection_duration());
     if let Some(database) = database.filter(|db| !db.is_empty()) {
         config.dbname(database);
+    }
+    if let Some(role) = role {
+        let role: String = role
+            .chars()
+            .flat_map(|c| {
+                let escape = (c == '\\' || c.is_whitespace()).then_some('\\');
+                escape.into_iter().chain(std::iter::once(c))
+            })
+            .collect();
+        let options = match config.get_options() {
+            Some(existing) if !existing.trim().is_empty() => format!("{existing} -c role={role}"),
+            _ => format!("-c role={role}"),
+        };
+        config.options(options);
     }
     Ok((config, ssl))
 }
@@ -126,6 +152,23 @@ mod tests {
         ));
         let (config, _) = parse_connection(url, None).unwrap();
         assert!(options_are_read_only(config.get_options()));
+    }
+
+    #[test]
+    fn proxy_user_becomes_role_option() {
+        let (config, _) = parse_connection(
+            "postgres://user@localhost/app?options=-c%20default_transaction_read_only%3Don&proxy_user=app%20user",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            config.get_options(),
+            Some("-c default_transaction_read_only=on -c role=app\\ user")
+        );
+        assert!(options_are_read_only(config.get_options()));
+        let (config, _) =
+            parse_connection("postgres://user@localhost/app?proxy_user=", None).unwrap();
+        assert_eq!(config.get_options(), None);
     }
 
     #[test]
