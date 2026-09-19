@@ -12,8 +12,8 @@ use super::{
     attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
-    QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo,
-    TxSession,
+    ProxyUserInfo, QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData,
+    TableInfo, TriggerInfo, TxSession,
 };
 
 type MsClient = Client<Compat<TcpStream>>;
@@ -505,6 +505,34 @@ impl TxSession for MssqlTx {
 impl DatabaseAdapter for MssqlAdapter {
     async fn test_connection(&self) -> Result<(), String> {
         self.rows("SELECT 1").await.map(|_| ())
+    }
+
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        let rows = self
+            .rows(
+                "SELECT name, 'login' FROM sys.server_principals WHERE type IN ('S','U') AND is_disabled = 0 AND name NOT LIKE '##%' \
+                   AND name NOT LIKE 'NT AUTHORITY\\%' AND name NOT LIKE 'NT SERVICE\\%' AND name NOT LIKE 'BUILTIN\\%' AND name <> SUSER_SNAME() \
+                 UNION ALL SELECT name, 'user' FROM sys.database_principals WHERE type IN ('S','U','E') AND principal_id > 4 AND name <> USER_NAME() \
+                 ORDER BY 1, 2",
+            )
+            .await?;
+        let mut users: Vec<ProxyUserInfo> = Vec::new();
+        for row in &rows {
+            let name = text(row, 0);
+            if users.iter().any(|user| user.name == name) {
+                continue;
+            }
+            users.push(ProxyUserInfo {
+                name,
+                category: if text(row, 1) == "login" {
+                    "login"
+                } else {
+                    "user"
+                },
+                bypasses_rls: false,
+            });
+        }
+        Ok(users)
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {

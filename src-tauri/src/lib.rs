@@ -116,6 +116,7 @@ pub fn run() {
             db::commands::list_extensions,
             db::commands::validate_sql,
             db::commands::list_roles,
+            db::commands::list_proxy_users,
             db::commands::create_role,
             db::commands::alter_role,
             db::commands::drop_role,

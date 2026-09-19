@@ -16,9 +16,9 @@ use super::{
     AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo, CompileResult,
     ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
     DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
-    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode,
-    TableData, TableInfo, TablePrivileges, TriggerInfo,
+    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, ProxyUserInfo,
+    QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo,
+    SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -217,7 +217,7 @@ impl PostgresAdapter {
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let conn = self.get_meta().await?;
+        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         self.timed(async {
             conn.simple_query("SELECT 1")
                 .await
@@ -1429,6 +1429,31 @@ impl DatabaseAdapter for PostgresAdapter {
                     })
                     .collect()
             })
+        })
+        .await
+    }
+
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(async {
+            let rows = conn
+                .query(
+                    "SELECT rolname, rolcanlogin, rolsuper OR rolbypassrls FROM pg_roles \
+                     WHERE rolname <> session_user AND rolname NOT LIKE 'pg\\_%' \
+                       AND pg_has_role(session_user, oid, 'MEMBER') \
+                     ORDER BY rolname",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|row| ProxyUserInfo {
+                    name: row.get(0),
+                    category: if row.get(1) { "user" } else { "role" },
+                    bypasses_rls: row.get(2),
+                })
+                .collect())
         })
         .await
     }
@@ -4727,7 +4752,8 @@ mod tests {
             create_pool_state(),
         )
         .expect("adapter");
-        assert!(denied.test_connection().await.is_err());
+        let error = denied.test_connection().await.unwrap_err();
+        assert!(error.contains("l8db_missing_role"), "{error}");
         lab_execute(&admin, "DROP TABLE IF EXISTS l8db_rls_probe").await;
         lab_execute(&admin, "DROP ROLE IF EXISTS l8db_rls_viewer").await;
     }

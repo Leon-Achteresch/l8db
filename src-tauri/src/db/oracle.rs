@@ -13,9 +13,9 @@ use super::{
     create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
     ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, QueryResult,
-    SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo,
-    TriggerInfo,
+    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
+    ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
+    SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -1102,6 +1102,19 @@ impl DatabaseAdapter for OracleAdapter {
             .await?
             .iter()
             .map(|r| s(r, 0))
+            .collect())
+    }
+
+    async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
+        Ok(self
+            .rows("SELECT client FROM user_proxies ORDER BY client".to_string())
+            .await?
+            .iter()
+            .map(|r| ProxyUserInfo {
+                name: s(r, 0),
+                category: "user",
+                bypasses_rls: false,
+            })
             .collect())
     }
 
