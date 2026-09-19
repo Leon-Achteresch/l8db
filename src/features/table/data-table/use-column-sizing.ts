@@ -15,14 +15,15 @@ export function useColumnSizing(
   const fitColumnsToHeader = useSettingsStore((state) => state.fitColumnsToHeader);
   const columnSizing = useMemo(() => {
     if (!fitColumnsToHeader) return savedColumnSizing;
-    const fitted: Record<string, number> = {};
+    const fitted: Record<string, number> = { ...savedColumnSizing };
     for (const column of order) {
-      fitted[column] = fitHeaderColumnWidth(
+      const minWidth = fitHeaderColumnWidth(
         measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
         fkByColumn.has(column),
       );
+      fitted[column] = Math.max(minWidth, savedColumnSizing[column] ?? 0);
     }
-    return { ...fitted, ...savedColumnSizing };
+    return fitted;
   }, [fitColumnsToHeader, order, fkByColumn, typeInfoByColumn, savedColumnSizing]);
   return { savedColumnSizing, setColumnSizing, columnSizing };
 }
