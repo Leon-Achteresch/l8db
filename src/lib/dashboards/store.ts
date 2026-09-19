@@ -68,7 +68,7 @@ export const useDashboardsStore = create<DashboardsState>()(
         const source = get().dashboards.find((d) => d.id === id);
         if (!source) return id;
         return get().importDashboard(
-          { ...source, name: `${source.name} (Kopie)` },
+          { ...source, mcpId: null, name: `${source.name} (Kopie)` },
           source.connectionId,
           source.database,
         );
