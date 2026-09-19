@@ -179,6 +179,15 @@ pub struct SourceMatch {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ObjectGrantInfo {
+    pub grantee: String,
+    pub privilege: String,
+    pub grantor: String,
+    pub grantable: bool,
+    pub column_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DependencyInfo {
     pub owner: String,
     pub name: String,
@@ -537,6 +546,14 @@ pub trait DatabaseAdapter: Send + Sync {
     ) -> Result<Vec<SourceMatch>, String> {
         let _ = (schema, term, limit);
         Err(unsupported("Quelltextsuche"))
+    }
+    async fn list_object_grants(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<ObjectGrantInfo>, String> {
+        let _ = (schema, name);
+        Err(unsupported("Objekt-Grants"))
     }
     async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let _ = (schema, name);

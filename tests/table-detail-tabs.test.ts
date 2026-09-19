@@ -81,3 +81,10 @@ test("ausgeblendeter aktiver Tab fällt auf einen sichtbaren Tab zurück", () =>
   expect(resolveTableDetailTab("audit", visible)).toBe("audit");
   expect(resolveTableDetailTab("data", [])).toBe("");
 });
+
+test("Grants sind für unterstützte Tabellen und Views verfügbar", () => {
+  for (const isView of [false, true]) {
+    expect(availableTableDetailTabs(isView, { object_grants: true } as Capabilities).map((tab) => tab.id)).toContain("grants");
+    expect(availableTableDetailTabs(isView, { object_grants: false } as Capabilities).map((tab) => tab.id)).not.toContain("grants");
+  }
+});

@@ -63,6 +63,7 @@ pub struct Capabilities {
     pub server_output: bool,
     pub query_cancel: bool,
     pub used_by: bool,
+    pub object_grants: bool,
     pub synonyms: bool,
     pub scheduler_jobs: bool,
     pub object_admin: bool,
@@ -116,6 +117,7 @@ const NONE: Capabilities = Capabilities {
     debugger: false,
     bind_parameters: false,
     used_by: false,
+    object_grants: false,
     synonyms: false,
     scheduler_jobs: false,
     object_admin: false,
@@ -242,6 +244,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                object_grants: true,
                 proxy_user: true,
                 bind_parameters: true,
                 schema_object_copy: true,

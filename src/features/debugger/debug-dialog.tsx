@@ -1,12 +1,7 @@
+import { Bug, CircleDot, Code2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   type DebugAction,
   type DebugAvailability,
@@ -21,6 +16,10 @@ import {
 } from "@/lib/db";
 import type { DebugButtonProps } from "./debug-button";
 import { DebugEditor } from "./debug-editor";
+import { DebugInspector } from "./debug-inspector";
+import { DebugSetup } from "./debug-setup";
+import { DebugToolbar } from "./debug-toolbar";
+import "./debugger.css";
 
 const labels: Record<DebugSnapshot["status"], string> = {
   starting: "Verbindung wird aufgebaut",
@@ -57,8 +56,6 @@ export function DebugDialog(
   const [breakpoints, setBreakpoints] = useState<DebugBreakpoint[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [watch, setWatch] = useState("");
-  const [watchName, setWatchName] = useState("");
   const session = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
 
@@ -153,10 +150,7 @@ export function DebugDialog(
   const paused = snapshot?.status === "paused" && !busy;
   const active = snapshot && ["starting", "running", "paused"].includes(snapshot.status);
   const frame = snapshot?.frames.find((item) => item.id === snapshot.selectedFrame);
-  const visibleVariables =
-    snapshot?.variables.filter(
-      (v) => !watch || v.name.toLowerCase().includes(watch.toLowerCase()),
-    ) ?? [];
+  const preparing = !active && !snapshot?.source;
 
   return (
     <Dialog
@@ -166,7 +160,7 @@ export function DebugDialog(
       }}
     >
       <DialogContent
-        className="flex h-[85vh] w-[min(1200px,95vw)] max-w-none flex-col gap-3 sm:max-w-none"
+        className="debug-workbench"
         showCloseButton={false}
         onKeyDown={(event) => {
           if (!["F5", "F10", "F11"].includes(event.key)) return;
@@ -183,223 +177,132 @@ export function DebugDialog(
             void act({ type: "step_out" });
         }}
       >
-        <DialogHeader>
-          <DialogTitle>
-            Debugger · {props.schema}.{props.name}
-          </DialogTitle>
-          <DialogDescription>
-            {availability?.message ?? "Debug-Unterstützung wird geprüft …"}
-          </DialogDescription>
-        </DialogHeader>
-        <fieldset className="flex flex-wrap items-center gap-2" aria-label="Debug-Steuerung">
-          <Button
-            size="sm"
-            title="Starten (F5)"
-            disabled={!availability?.available || Boolean(active) || busy}
-            onClick={() => void start()}
-          >
-            Starten
-          </Button>
-          {!active && snapshot?.source ? (
-            <Button size="sm" variant="outline" onClick={() => setSnapshot(undefined)}>
-              Aufruf bearbeiten
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!paused}
-            onClick={() => void act({ type: "continue" })}
-          >
-            Weiter
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!paused}
-            onClick={() => void act({ type: "step_into" })}
-          >
-            Hinein
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!paused}
-            onClick={() => void act({ type: "step_over" })}
-          >
-            Darüber
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!paused || !availability?.stepOut}
-            onClick={() => void act({ type: "step_out" })}
-          >
-            Heraus
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!active || busy}
-            onClick={() => void stop()}
-          >
-            Stoppen
-          </Button>
-          <span className="ml-auto text-xs" role="status">
-            {snapshot ? labels[snapshot.status] : "Bereit"}
+        <header className="debug-header">
+          <span className="debug-brand-icon">
+            <Bug />
           </span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void close()}>
-            Schließen
+          <div className="min-w-0 flex-1">
+            <span className="debug-eyebrow">Debugger</span>
+            <DialogTitle className="truncate font-mono text-sm font-medium">
+              {props.schema}.{props.name}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Datenbankcode schrittweise ausführen und Variablen untersuchen.
+            </DialogDescription>
+          </div>
+          <span className="debug-engine">
+            {context.kind === "oracle" ? "Oracle · PL/SQL" : "PostgreSQL · PL/pgSQL"}
+          </span>
+          <span
+            className="debug-status"
+            data-state={snapshot?.status ?? (availability?.available ? "ready" : "pending")}
+            role="status"
+          >
+            <span />
+            {snapshot
+              ? labels[snapshot.status]
+              : availability?.available
+                ? "Bereit"
+                : availability
+                  ? "Nicht verfügbar"
+                  : "Wird geprüft"}
+          </span>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Schließen"
+            disabled={busy}
+            onClick={() => void close()}
+          >
+            <X />
           </Button>
-        </fieldset>
+        </header>
+        <DebugToolbar
+          active={Boolean(active)}
+          paused={paused}
+          busy={busy}
+          available={Boolean(availability?.available)}
+          stepOut={Boolean(availability?.stepOut)}
+          hasSource={Boolean(snapshot?.source)}
+          onStart={() => void start()}
+          onStop={() => void stop()}
+          onEdit={() => setSnapshot(undefined)}
+          onAction={(action) => void act(action)}
+        />
         {error || snapshot?.message ? (
-          <p role="alert" className="whitespace-pre-wrap text-xs text-destructive">
+          <p role="alert" className="debug-alert">
             {error ?? snapshot?.message}
           </p>
         ) : null}
-        {!active && !snapshot?.source ? (
-          <label className="flex min-h-0 flex-1 flex-col gap-2 text-xs">
-            Aufrufskript — Parameter und Rückgabetyp anpassen
-            <textarea
-              className="min-h-32 flex-1 resize-none rounded-md border bg-background p-3 font-mono"
-              value={sql}
-              onChange={(event) => setSql(event.target.value)}
-              spellCheck={false}
-            />
-            <span className="text-muted-foreground">
-              Start führt echten Datenbankcode aus. COMMIT, DDL und autonome Transaktionen können
-              dauerhaft Änderungen speichern.
-            </span>
-          </label>
-        ) : (
-          <div className="flex min-h-0 flex-1 gap-3">
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border">
-              <p className="border-b px-3 py-2 text-xs">
-                {frame?.name ?? "Quelltext"}
-                {frame ? ` · Zeile ${frame.line}` : ""} · Breakpoints am linken Rand setzen
-              </p>
-              <DebugEditor
-                source={snapshot?.source ?? ""}
-                line={frame?.line}
-                enabled={Boolean(paused && frame)}
-                breakpoints={breakpoints.filter((b) => b.oid === frame?.oid).map((b) => b.line)}
-                onToggle={(line) => {
-                  if (!frame) return;
-                  const next = breakpoints.some((b) => b.oid === frame.oid && b.line === line)
-                    ? breakpoints.filter((b) => b.oid !== frame.oid || b.line !== line)
-                    : [...breakpoints, { oid: frame.oid, line }];
-                  void run(async () => {
-                    if (!snapshot) return;
-                    await debugAction(context, snapshot.id, {
-                      type: "breakpoints",
-                      breakpoints: next,
-                    });
-                    setBreakpoints(next);
-                    setSnapshot({ ...snapshot, status: "running" });
-                  });
-                }}
-              />
+        <div className="debug-body">
+          <div className="debug-code-pane">
+            <div className="debug-filebar">
+              <span className="debug-file-tab">
+                <Code2 className="size-3.5" />
+                <span className="truncate">
+                  {preparing ? "Aufrufskript" : (frame?.name ?? "Quelltext")}
+                </span>
+                <span className="debug-file-extension">sql</span>
+              </span>
+              <span className="debug-file-hint">
+                {preparing
+                  ? "Parameter und Rückgabetyp anpassen"
+                  : frame
+                    ? `Zeile ${frame.line}`
+                    : "Warte auf Quelltext"}
+              </span>
             </div>
-            <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-auto text-xs">
-              <div className="rounded-md border p-3">
-                <h3 className="mb-2 font-semibold">Watches</h3>
-                <form
-                  className="flex gap-1"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const name = watchName.trim();
-                    if (!name || !paused) return;
-                    void act({
-                      type: "watches",
-                      names: [
-                        ...new Set([...(snapshot?.watches ?? []).map((item) => item.name), name]),
-                      ],
-                    });
-                    setWatchName("");
-                  }}
-                >
-                  <input
-                    aria-label="Watch hinzufügen"
-                    placeholder="Variablenname"
-                    className="min-w-0 flex-1 rounded border bg-background px-2 py-1"
-                    value={watchName}
-                    onChange={(event) => setWatchName(event.target.value)}
-                  />
-                  <Button
-                    size="xs"
-                    type="submit"
-                    variant="outline"
-                    disabled={!paused || !watchName.trim()}
-                  >
-                    +
-                  </Button>
-                </form>
-                {(snapshot?.watches ?? []).map((item) => (
-                  <div className="border-b py-2 last:border-0" key={item.name}>
-                    <div className="flex justify-between gap-2">
-                      <span className="font-mono">{item.name}</span>
-                      <button
-                        type="button"
-                        aria-label={`Watch ${item.name} entfernen`}
-                        disabled={!paused}
-                        onClick={() =>
-                          void act({
-                            type: "watches",
-                            names:
-                              snapshot?.watches
-                                .filter((value) => value.name !== item.name)
-                                .map((value) => value.name) ?? [],
-                          })
-                        }
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <pre className="whitespace-pre-wrap break-all text-muted-foreground">
-                      {item.error ?? item.value ?? "NULL"}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-md border p-3">
-                <h3 className="mb-2 font-semibold">Call Stack</h3>
-                {snapshot?.frames.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    disabled={!paused}
-                    aria-pressed={item.id === snapshot.selectedFrame}
-                    className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted aria-pressed:bg-muted"
-                    onClick={() => void act({ type: "select_frame", frame: item.id })}
-                  >
-                    {item.name} : {item.line}
-                  </button>
-                ))}
-              </div>
-              <div className="min-h-0 rounded-md border p-3">
-                <h3 className="mb-2 font-semibold">Variablen und Parameter</h3>
-                <input
-                  aria-label="Variablen filtern"
-                  placeholder="Variable suchen …"
-                  className="mb-2 w-full rounded border bg-background px-2 py-1"
-                  value={watch}
-                  onChange={(event) => setWatch(event.target.value)}
-                />
-                {visibleVariables.map((variable, index) => (
-                  <div key={`${variable.name}-${index}`} className="border-b py-2 last:border-0">
-                    <span className="font-mono font-medium">{variable.name}</span>
-                    <pre className="mt-1 whitespace-pre-wrap break-all text-muted-foreground">
-                      {variable.value ?? "NULL"}
-                    </pre>
-                  </div>
-                ))}
-                {!visibleVariables.length ? (
-                  <p className="text-muted-foreground">Keine Variablen verfügbar.</p>
-                ) : null}
-              </div>
-            </aside>
+            <DebugEditor
+              source={preparing ? sql : (snapshot?.source ?? "")}
+              onChange={preparing ? setSql : undefined}
+              line={preparing ? undefined : frame?.line}
+              enabled={Boolean(paused && frame)}
+              breakpoints={
+                preparing ? [] : breakpoints.filter((b) => b.oid === frame?.oid).map((b) => b.line)
+              }
+              onToggle={(line) => {
+                if (!frame) return;
+                const next = breakpoints.some((b) => b.oid === frame.oid && b.line === line)
+                  ? breakpoints.filter((b) => b.oid !== frame.oid || b.line !== line)
+                  : [...breakpoints, { oid: frame.oid, line }];
+                void run(async () => {
+                  if (!snapshot) return;
+                  await debugAction(context, snapshot.id, {
+                    type: "breakpoints",
+                    breakpoints: next,
+                  });
+                  setBreakpoints(next);
+                  setSnapshot({ ...snapshot, status: "running" });
+                });
+              }}
+            />
+            <div className="debug-editor-footer">
+              <span className="flex items-center gap-1.5">
+                <CircleDot className="size-3" />
+                {breakpoints.length} Breakpoints
+              </span>
+              <span>{preparing ? "Bearbeitbar" : "Schreibgeschützt"}</span>
+              <span className="ml-auto">{context.kind === "oracle" ? "PL/SQL" : "PL/pgSQL"}</span>
+            </div>
           </div>
-        )}
+          {preparing ? (
+            <DebugSetup availability={availability} />
+          ) : (
+            <DebugInspector
+              snapshot={snapshot}
+              paused={paused}
+              onAction={(action) => void act(action)}
+            />
+          )}
+        </div>
+        <footer className="debug-footer">
+          <span className="debug-footer-dot" />
+          {preparing
+            ? "Start führt echten Datenbankcode aus. COMMIT, DDL und autonome Transaktionen können Änderungen dauerhaft speichern."
+            : paused
+              ? "Ausführung angehalten. Breakpoints am linken Editorrand setzen."
+              : "Die Sitzung bleibt mit der Datenbank verbunden, bis sie beendet wird."}
+        </footer>
       </DialogContent>
     </Dialog>
   );

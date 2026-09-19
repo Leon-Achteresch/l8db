@@ -14,8 +14,8 @@ use super::{
     ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
     ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
-    ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo, SessionInfo,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo,
+    SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -1585,6 +1585,33 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(statements.join("\n/\n\n"))
     }
 
+    async fn list_object_grants(
+        &self,
+        schema: &str,
+        name: &str,
+    ) -> Result<Vec<ObjectGrantInfo>, String> {
+        let rows = self.rows(format!(
+            "SELECT grantee, privilege, grantor, grantable, CAST(NULL AS VARCHAR2(128)) AS column_name \
+             FROM all_tab_privs WHERE table_schema = {0} AND table_name = {1} \
+             UNION ALL \
+             SELECT grantee, privilege, grantor, grantable, column_name \
+             FROM all_col_privs WHERE table_schema = {0} AND table_name = {1} \
+             ORDER BY 1, 2, 3, 5",
+            lit(schema), lit(name)
+        )).await?;
+        rows.iter()
+            .map(|row| {
+                Ok(ObjectGrantInfo {
+                    grantee: row.get(0).map_err(|e| e.to_string())?,
+                    privilege: row.get(1).map_err(|e| e.to_string())?,
+                    grantor: row.get(2).map_err(|e| e.to_string())?,
+                    grantable: row.get::<_, String>(3).map_err(|e| e.to_string())? == "YES",
+                    column_name: row.get(4).map_err(|e| e.to_string())?,
+                })
+            })
+            .collect()
+    }
+
     async fn list_used_by(&self, schema: &str, name: &str) -> Result<Vec<DependencyInfo>, String> {
         let deps = self
             .rows(format!(
@@ -3038,6 +3065,28 @@ mod tests {
             .list_procedures(Some(&schema))
             .await
             .expect("list_procedures");
+        q("GRANT SELECT ON L8_LIVE_PARENT TO PUBLIC")
+            .await
+            .expect("grant select");
+        q("GRANT UPDATE (ID) ON L8_LIVE_PARENT TO PUBLIC")
+            .await
+            .expect("grant column update");
+        let grants = a
+            .list_object_grants(&schema, "L8_LIVE_PARENT")
+            .await
+            .expect("list grants");
+        assert!(grants.iter().any(|grant| grant.grantee == "PUBLIC"
+            && grant.privilege == "SELECT"
+            && grant.column_name.is_none()
+            && !grant.grantable));
+        assert!(grants.iter().any(|grant| grant.grantee == "PUBLIC"
+            && grant.privilege == "UPDATE"
+            && grant.column_name.as_deref() == Some("ID")));
+        assert!(a
+            .list_object_grants(&schema, "L8_MISSING'OBJECT")
+            .await
+            .expect("missing object grants")
+            .is_empty());
         let proc_oid = procs
             .iter()
             .find(|f| f.name == "L8_LIVE_PROC")

@@ -84,6 +84,7 @@ pub fn run() {
             db::commands::search_columns,
             db::commands::search_source,
             db::commands::list_used_by,
+            db::commands::list_object_grants,
             db::commands::list_synonyms,
             db::commands::list_scheduler_jobs,
             db::commands::set_scheduler_job_enabled,
