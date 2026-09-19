@@ -34,6 +34,7 @@ pub struct Capabilities {
     pub constraints: bool,
     pub foreign_keys: bool,
     pub rls: bool,
+    pub proxy_user: bool,
     pub partitions: bool,
     pub replication: bool,
     pub sessions: bool,
@@ -88,6 +89,7 @@ const NONE: Capabilities = Capabilities {
     constraints: false,
     foreign_keys: false,
     rls: false,
+    proxy_user: false,
     partitions: false,
     replication: false,
     sessions: false,
@@ -183,6 +185,7 @@ impl DatabaseKind {
                 sequences: true,
                 enums: true,
                 rls: true,
+                proxy_user: true,
                 partitions: true,
                 replication: true,
                 sessions: true,
@@ -218,6 +221,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                proxy_user: true,
                 sessions: true,
                 sequences: true,
                 transactions: true,
@@ -237,6 +241,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                proxy_user: true,
                 bind_parameters: true,
                 schema_object_copy: true,
                 databases: false,

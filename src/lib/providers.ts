@@ -25,6 +25,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   constraints: true,
   foreign_keys: true,
   rls: true,
+  proxy_user: true,
   partitions: true,
   replication: true,
   sessions: true,

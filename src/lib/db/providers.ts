@@ -30,6 +30,7 @@ export interface Capabilities {
   constraints: boolean;
   foreign_keys: boolean;
   rls: boolean;
+  proxy_user: boolean;
   partitions: boolean;
   replication: boolean;
   sessions: boolean;

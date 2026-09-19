@@ -4672,6 +4672,68 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn proxy_user_sees_rows_through_rls() {
+        let admin = lab_adapter();
+        for sql in [
+            "DROP TABLE IF EXISTS l8db_rls_probe",
+            "DROP ROLE IF EXISTS l8db_rls_viewer",
+            "CREATE ROLE l8db_rls_viewer NOLOGIN",
+            "CREATE TABLE l8db_rls_probe (owner text, v int)",
+            "INSERT INTO l8db_rls_probe VALUES ('l8db_rls_viewer', 1), ('someone_else', 2), ('someone_else', 3)",
+            "ALTER TABLE l8db_rls_probe ENABLE ROW LEVEL SECURITY",
+            "CREATE POLICY own_rows ON l8db_rls_probe USING (owner = current_user)",
+            "GRANT SELECT ON l8db_rls_probe TO l8db_rls_viewer",
+        ] {
+            lab_execute(&admin, sql).await;
+        }
+        let base = lab_connection_string();
+        let separator = if base.contains('?') { "&" } else { "?" };
+        let proxied = PostgresAdapter::from_connection_string(
+            &format!("{base}{separator}proxy_user=l8db_rls_viewer"),
+            None,
+            create_pool_state(),
+        )
+        .expect("adapter");
+        proxied.test_connection().await.expect("proxy connection");
+        assert_eq!(
+            admin
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            proxied
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        let _ = proxied.execute_query("RESET ROLE").await;
+        assert_eq!(
+            proxied
+                .count_rows("public", "l8db_rls_probe", None, false)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(proxied
+            .execute_query("INSERT INTO l8db_rls_probe VALUES ('l8db_rls_viewer', 4)")
+            .await
+            .is_err());
+        let denied = PostgresAdapter::from_connection_string(
+            &format!("{base}{separator}proxy_user=l8db_missing_role"),
+            None,
+            create_pool_state(),
+        )
+        .expect("adapter");
+        assert!(denied.test_connection().await.is_err());
+        lab_execute(&admin, "DROP TABLE IF EXISTS l8db_rls_probe").await;
+        lab_execute(&admin, "DROP ROLE IF EXISTS l8db_rls_viewer").await;
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn connection_test_rejects_changed_password() {
         let state = create_pool_state();
         let value = lab_connection_string();
