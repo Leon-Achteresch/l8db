@@ -12,7 +12,7 @@ use crate::db::{
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const CACHE_TTL: Duration = Duration::from_secs(60);
-const SQL_KINDS: &[DatabaseKind] = &[
+pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Postgres,
     DatabaseKind::Mysql,
     DatabaseKind::Sqlite,
@@ -25,9 +25,9 @@ const SQL_KINDS: &[DatabaseKind] = &[
 ];
 const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 
-struct Server {
-    pool: PoolState,
-    columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
+pub(super) struct Server {
+    pub(super) pool: PoolState,
+    pub(super) columns: HashMap<String, (Instant, Vec<ColumnInfo>)>,
 }
 
 pub fn serve() {
@@ -98,6 +98,7 @@ pub fn tool_definitions() -> Value {
                 "limit": {"type": "integer", "minimum": 1}
             }, "required": ["connection", "sql"]}
         },
+        super::dashboard::tool_definition(),
         {
             "name": "execute",
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
@@ -111,7 +112,7 @@ pub fn tool_definitions() -> Value {
 }
 
 impl Server {
-    async fn handle_line(&mut self, line: &str) -> Option<Value> {
+    pub(super) async fn handle_line(&mut self, line: &str) -> Option<Value> {
         let request: Value = match serde_json::from_str(line) {
             Ok(value) => value,
             Err(e) => return Some(rpc_error(Value::Null, -32700, format!("Parse error: {e}"))),
@@ -130,7 +131,7 @@ impl Server {
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "l8db", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1)."
+                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types."
             })),
             "ping" => Ok(json!({})),
             "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
@@ -150,7 +151,7 @@ impl Server {
         })
     }
 
-    async fn call(&mut self, params: &Value) -> Value {
+    pub(super) async fn call(&mut self, params: &Value) -> Value {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let config = config::load();
@@ -163,6 +164,7 @@ impl Server {
         let started = Instant::now();
         let outcome = match name {
             "connections" => Ok(list_connections(&config)),
+            "dashboard" => self.dashboard(&config, &args).await,
             "search" | "describe" | "query" | "execute" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(&config, target) {
@@ -195,7 +197,7 @@ impl Server {
         }
     }
 
-    async fn columns_for(
+    pub(super) async fn columns_for(
         &mut self,
         config: &McpConfig,
         connection: &McpConnection,
@@ -313,25 +315,7 @@ impl Server {
                 nosql::mongo_check(&nosql::mongo_command(sql)?, false, false, &redactor, &index)?
             }
             DatabaseKind::Redis => nosql::redis_check(sql, false)?,
-            _ => {
-                if redact::statement_count(sql) > 1 {
-                    return Err("Nur ein Statement pro Aufruf.".into());
-                }
-                if let Some(word) = redact::write_word(sql) {
-                    return Err(format!(
-                        "query ist read-only, '{word}' ist nicht erlaubt.{}",
-                        if connection.read_only {
-                            ""
-                        } else {
-                            " Für Schreibzugriffe execute nutzen."
-                        }
-                    ));
-                }
-                if let Some(word) = redact::dangerous_word(sql) {
-                    return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
-                }
-                redact::check_references(sql, &index)?;
-            }
+            _ => check_read_sql(sql, connection, &index)?,
         }
         let limit = args
             .get("limit")
@@ -406,7 +390,31 @@ impl Server {
     }
 }
 
-fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
+pub(super) fn check_read_sql(
+    sql: &str,
+    connection: &McpConnection,
+    index: &redact::SchemaIndex,
+) -> Result<(), String> {
+    if redact::statement_count(sql) > 1 {
+        return Err("Nur ein Statement pro Aufruf.".into());
+    }
+    if let Some(word) = redact::write_word(sql) {
+        return Err(format!(
+            "query ist read-only, '{word}' ist nicht erlaubt.{}",
+            if connection.read_only {
+                ""
+            } else {
+                " Für Schreibzugriffe execute nutzen."
+            }
+        ));
+    }
+    if let Some(word) = redact::dangerous_word(sql) {
+        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+    }
+    redact::check_references(sql, index)
+}
+
+pub(super) fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
     args.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
@@ -426,7 +434,7 @@ fn table_line(name: &str, columns: &[&ColumnInfo]) -> String {
     format!("{name}({})", cols.join(", "))
 }
 
-fn cap(text: String, max_chars: usize) -> String {
+pub(super) fn cap(text: String, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text;
     }
@@ -466,7 +474,10 @@ fn list_connections(config: &McpConfig) -> String {
     format!("name\tkind\taccess\n{}", lines.join("\n"))
 }
 
-fn find_connection<'a>(config: &'a McpConfig, target: &str) -> Result<&'a McpConnection, String> {
+pub(super) fn find_connection<'a>(
+    config: &'a McpConfig,
+    target: &str,
+) -> Result<&'a McpConnection, String> {
     let wanted = target.trim().to_lowercase();
     if wanted.is_empty() {
         return Err("connection fehlt".into());
@@ -517,16 +528,19 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
     url.to_string()
 }
 
-fn adapter(
+pub(super) fn adapter(
     connection: &McpConnection,
     pool: &PoolState,
 ) -> Result<Box<dyn db::DatabaseAdapter>, String> {
-    let password = keychain_password(&connection.id)?;
+    let password = match connection.kind {
+        DatabaseKind::Sqlite | DatabaseKind::Duckdb => None,
+        _ => keychain_password(&connection.id)?,
+    };
     let url = with_password(connection, password.as_deref());
     db::create_adapter_from_string(connection.kind, &url, None, pool.clone())
 }
 
-async fn run<T, F>(config: &McpConfig, future: F) -> Result<T, String>
+pub(super) async fn run<T, F>(config: &McpConfig, future: F) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
@@ -608,7 +622,7 @@ fn scrub_error(error: &str) -> String {
     re.replace_all(error, "[connection-url]").into_owned()
 }
 
-fn audit(
+pub(super) fn audit(
     connection: &McpConnection,
     tool: &str,
     sql: &str,
@@ -645,7 +659,7 @@ fn audit(
 mod tests {
     use super::*;
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use crate::mcp::TEST_ENV_LOCK as ENV_LOCK;
 
     fn temp_config(enabled: bool) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -777,7 +791,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 5);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 6);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();
