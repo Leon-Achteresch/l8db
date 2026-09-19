@@ -1,15 +1,38 @@
-import { BookmarkIcon, CheckIcon, DatabaseIcon, HelpCircleIcon, PaletteIcon } from "lucide-react";
+import {
+  BookmarkIcon,
+  CopyIcon,
+  EllipsisIcon,
+  SlidersHorizontalIcon,
+  Trash2Icon,
+  Undo2Icon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { makeChartFile } from "@/lib/chart-file";
 import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
-import { type Dataset, type DatasetShape, datasetShape, type Widget } from "@/lib/dashboards";
-import { cn } from "@/lib/utils";
+import {
+  CHARTS,
+  type ChartKind,
+  chartFits,
+  type Dataset,
+  datasetShape,
+  refLabel,
+  type Widget,
+} from "@/lib/dashboards";
 import { ChartDataStep } from "./chart-data-step";
 import { ChartPreviewTable } from "./chart-preview-table";
 import { ChartQuestionStep } from "./chart-question-step";
+import { ChartQuickForm } from "./chart-quick-form";
 import { ChartStyleStep } from "./chart-style-step";
 import { useDatasetSql, useDebounced, useSqlQuery } from "./use-dataset-query";
 import { WidgetCardInner } from "./widget-card-inner";
@@ -19,20 +42,35 @@ export interface ChartDraft {
   dataset: Dataset;
 }
 
-const STEPS = [
-  { id: 1, label: "Daten", question: "Woher kommen deine Daten?", icon: DatabaseIcon },
-  { id: 2, label: "Frage", question: "Was möchtest du herausfinden?", icon: HelpCircleIcon },
-  { id: 3, label: "Darstellung", question: "Wie soll dein Chart aussehen?", icon: PaletteIcon },
-] as const;
-
-function dataReady(dataset: Dataset): boolean {
-  return dataset.mode === "expert" ? dataset.sql.trim().length > 0 : Boolean(dataset.simple.table);
+function ready(dataset: Dataset): boolean {
+  return dataset.mode === "expert"
+    ? dataset.sql.trim().length > 0 && dataset.mapping.metrics.length > 0
+    : Boolean(dataset.simple.table) &&
+        dataset.simple.metrics.some((m) => m.agg === "count" || m.column);
 }
 
-function questionReady(dataset: Dataset): boolean {
-  return dataset.mode === "expert"
-    ? dataset.mapping.metrics.length > 0
-    : dataset.simple.metrics.some((m) => m.agg === "count" || m.column);
+function autoTitle(dataset: Dataset): string {
+  const shape = datasetShape(dataset);
+  const metric = shape.metrics[0]?.label;
+  if (dataset.mode === "expert" || !metric || !dataset.simple.table) return dataset.name;
+  const dim = dataset.simple.dimension;
+  return dim ? `${metric} pro ${refLabel(dim.column, dataset.simple)}` : metric;
+}
+
+function preferredChart(dataset: Dataset): ChartKind {
+  const shape = datasetShape(dataset);
+  const dated =
+    dataset.mode === "simple" &&
+    dataset.simple.dimension &&
+    dataset.simple.dimension.bucket !== "none";
+  const preferred: ChartKind = !shape.dimension ? "kpi" : dated ? "line" : "column";
+  const all = Object.keys(CHARTS) as ChartKind[];
+  return [preferred, ...all].find((k) => !chartFits(k, shape)) ?? preferred;
+}
+
+function fitChart(current: ChartKind, prev: Dataset, next: Dataset): ChartKind {
+  const auto = current === preferredChart(prev);
+  return auto || chartFits(current, datasetShape(next)) ? preferredChart(next) : current;
 }
 
 const noop = () => {};
@@ -55,11 +93,11 @@ export function ChartDialog({
   onDuplicate?: () => void;
 }) {
   const [state, setState] = useState<ChartDraft | null>(draft);
-  const [step, setStep] = useState(1);
+  const [advanced, setAdvanced] = useState(false);
   useEffect(() => {
     if (open) {
       setState(draft ? structuredClone(draft) : null);
-      setStep(1);
+      setAdvanced(draft?.dataset.mode === "expert");
     }
   }, [open, draft]);
 
@@ -68,176 +106,165 @@ export function ChartDialog({
   const liveSql = useDatasetSql(dataset, widget?.period ?? "all");
   const sql = useDebounced(liveSql, dataset?.mode === "expert" ? 1200 : 500);
   const preview = useSqlQuery(sql);
-  const shape: DatasetShape | null = useMemo(
-    () => (dataset ? datasetShape(dataset) : null),
-    [dataset],
-  );
+  const shape = useMemo(() => (dataset ? datasetShape(dataset) : null), [dataset]);
 
-  if (!state || !dataset || !widget) return null;
+  if (!state || !dataset || !widget || !shape) return null;
 
-  const stepReady = [true, dataReady(dataset), questionReady(dataset)];
-  const canFinish = dataReady(dataset) && questionReady(dataset);
+  const title = autoTitle(dataset);
+  const finished = { widget, dataset: { ...dataset, name: title } };
+  const canFinish = ready(dataset);
   const patchDataset = (patch: Partial<Dataset>) =>
-    setState((s) => (s ? { ...s, dataset: { ...s.dataset, ...patch } } : s));
+    setState((s) => {
+      if (!s) return s;
+      const next = { ...s.dataset, ...patch };
+      return {
+        dataset: next,
+        widget: { ...s.widget, chart: fitChart(s.widget.chart, s.dataset, next) },
+      };
+    });
   const patchWidget = (patch: Partial<Widget>) =>
     setState((s) => (s ? { ...s, widget: { ...s.widget, ...patch } } : s));
-  const resultColumns = preview.data?.columns ?? [];
+  const close = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[min(860px,calc(100vh-2rem))] max-w-6xl! grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
+        className="flex h-[min(760px,calc(100vh-2rem))] max-w-5xl! flex-col gap-0 overflow-hidden p-0"
         aria-describedby={undefined}
       >
-        <div className="border-b px-6 pt-5 pb-4">
+        <div className="border-b px-6 py-4">
           <DialogTitle className="text-base">
             {isNew ? "Neuer Chart" : "Chart bearbeiten"}
           </DialogTitle>
-          <nav aria-label="Chart-Schritte" className="mt-3 grid grid-cols-3 gap-2">
-            {STEPS.map((s) => {
-              const reachable = s.id === 1 || stepReady[s.id - 1];
-              const done = s.id < step && stepReady[s.id];
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  disabled={!reachable}
-                  aria-current={step === s.id ? "step" : undefined}
-                  onClick={() => setStep(s.id)}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                    step === s.id
-                      ? "border-primary bg-primary/5"
-                      : reachable
-                        ? "hover:bg-muted"
-                        : "opacity-45",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold",
-                      step === s.id && "border-primary bg-primary text-primary-foreground",
-                    )}
-                  >
-                    {done ? <CheckIcon className="size-3.5" /> : <s.icon className="size-3.5" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-xs font-semibold">
-                      {s.id}. {s.label}
-                    </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {s.question}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
         </div>
-        <div className="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
           <div className="min-h-0 overflow-y-auto p-6">
-            {step === 1 && <ChartDataStep dataset={dataset} onChange={patchDataset} />}
-            {step === 2 && (
-              <ChartQuestionStep
+            {advanced ? (
+              <Tabs defaultValue="question">
+                <TabsList className="mb-5 w-full">
+                  <TabsTrigger value="question">Daten & Filter</TabsTrigger>
+                  <TabsTrigger value="style">Aussehen</TabsTrigger>
+                  <TabsTrigger value="source">Quelle & SQL</TabsTrigger>
+                </TabsList>
+                <TabsContent value="question">
+                  <ChartQuestionStep
+                    dataset={dataset}
+                    onChange={patchDataset}
+                    resultColumns={preview.data?.columns ?? []}
+                  />
+                </TabsContent>
+                <TabsContent value="style">
+                  <ChartStyleStep widget={widget} shape={shape} onChange={patchWidget} />
+                </TabsContent>
+                <TabsContent value="source">
+                  <ChartDataStep dataset={dataset} onChange={patchDataset} />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <ChartQuickForm
                 dataset={dataset}
-                onChange={patchDataset}
-                resultColumns={resultColumns}
+                widget={widget}
+                shape={shape}
+                titlePlaceholder={title || "Titel"}
+                onDataset={patchDataset}
+                onWidget={patchWidget}
               />
             )}
-            {step === 3 && shape && (
-              <ChartStyleStep widget={widget} shape={shape} onChange={patchWidget} />
-            )}
           </div>
-          <aside className="hidden min-h-0 flex-col border-l bg-muted/20 lg:flex">
-            <div className="border-b px-4 py-3">
-              <h2 className="text-xs font-semibold">So sieht dein Chart aus</h2>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Die Vorschau zeigt echte Daten und folgt jeder deiner Entscheidungen.
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 p-4">
-              <div className="h-full min-h-56">
+          <aside className="hidden min-h-0 flex-col gap-3 border-l bg-muted/20 p-4 md:flex">
+            <div className="min-h-56 flex-1">
+              {dataset.mode === "simple" && !dataset.simple.table ? (
+                <div className="grid h-full place-items-center rounded-2xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+                  Wähle links eine Tabelle, dann erscheint hier sofort die Vorschau.
+                </div>
+              ) : (
                 <WidgetCardInner
-                  widget={widget}
-                  dataset={dataset}
+                  widget={finished.widget}
+                  dataset={finished.dataset}
                   refreshSec={0}
                   locked
                   onChange={noop}
                   onRemove={noop}
                 />
+              )}
+            </div>
+            {advanced && (
+              <div className="max-h-44 shrink-0 overflow-hidden rounded-xl border bg-card">
+                <ChartPreviewTable query={preview} />
               </div>
-            </div>
-            <div className="max-h-44 shrink-0 overflow-hidden border-t">
-              <ChartPreviewTable query={preview} />
-            </div>
+            )}
           </aside>
         </div>
         <div className="flex items-center gap-2 border-t px-6 py-3">
-          {!isNew && onDelete && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => {
-                if (window.confirm("Diesen Chart wirklich löschen?")) {
-                  onDelete();
-                  onOpenChange(false);
-                }
-              }}
-            >
-              Löschen
-            </Button>
-          )}
-          {!isNew && onDuplicate && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onDuplicate();
-                onOpenChange(false);
-              }}
-            >
-              Duplizieren
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Weitere Aktionen">
+                <EllipsisIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-52">
+              <DropdownMenuItem
+                disabled={!canFinish}
+                onClick={() => {
+                  useDashboardWorkspaceStore
+                    .getState()
+                    .saveChart(makeChartFile(widget, finished.dataset, widget.title || title));
+                  toast.success("Chart in deiner Sammlung gespeichert");
+                }}
+              >
+                <BookmarkIcon className="size-3.5" /> In Sammlung speichern
+              </DropdownMenuItem>
+              {onDuplicate && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    onDuplicate();
+                    close();
+                  }}
+                >
+                  <CopyIcon className="size-3.5" /> Duplizieren
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => {
+                      if (window.confirm("Diesen Chart wirklich löschen?")) {
+                        onDelete();
+                        close();
+                      }
+                    }}
+                  >
+                    <Trash2Icon className="size-3.5" /> Löschen
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-pressed={advanced}
+            onClick={() => setAdvanced(!advanced)}
+          >
+            {advanced ? <Undo2Icon /> : <SlidersHorizontalIcon />}
+            {advanced ? "Einfache Ansicht" : "Erweitert"}
+          </Button>
           <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={close}>
+              Abbrechen
+            </Button>
             <Button
-              variant="ghost"
               size="sm"
               disabled={!canFinish}
               onClick={() => {
-                useDashboardWorkspaceStore
-                  .getState()
-                  .saveChart(makeChartFile(widget, dataset, widget.title || dataset.name));
-                toast.success("Chart in deiner Sammlung gespeichert");
+                onSave(finished);
+                close();
               }}
             >
-              <BookmarkIcon /> In Sammlung speichern
+              {isNew ? "Zum Dashboard hinzufügen" : "Speichern"}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-              Abbrechen
-            </Button>
-            {step > 1 && (
-              <Button variant="outline" size="sm" onClick={() => setStep(step - 1)}>
-                ← Zurück
-              </Button>
-            )}
-            {step < 3 ? (
-              <Button size="sm" disabled={!stepReady[step]} onClick={() => setStep(step + 1)}>
-                Weiter →
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                disabled={!canFinish}
-                onClick={() => {
-                  onSave(state);
-                  onOpenChange(false);
-                }}
-              >
-                Fertig
-              </Button>
-            )}
           </div>
         </div>
       </DialogContent>

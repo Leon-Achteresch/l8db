@@ -1,24 +1,30 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  EyeIcon,
+  CheckIcon,
+  EllipsisIcon,
   FolderOpenIcon,
   LibraryIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
+  TimerIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { confirmExpertSql, fileLabel, fileStamp, readDashboardFile } from "@/lib/dashboard-file";
 import {
   CHARTS,
@@ -142,7 +148,13 @@ export function DashboardEditor({
   const saveDraft = (next: ChartDraft) => {
     if (draftIsNew) {
       update((d) => ({
-        widgets: [...d.widgets, next.widget],
+        widgets: [
+          ...d.widgets,
+          settle(
+            { ...next.widget, w: CHARTS[next.widget.chart].w, h: CHARTS[next.widget.chart].h },
+            d.widgets,
+          ),
+        ],
         datasets: [...d.datasets, next.dataset],
       }));
       return;
@@ -196,20 +208,16 @@ export function DashboardEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <Button variant="outline" size="sm" onClick={() => setDrawer("dashboards")}>
-          <FolderOpenIcon />
-          Dashboards
-        </Button>
+      <header className="flex items-center gap-2 border-b px-3 py-2">
         {editing ? (
           <Input
-            className="h-8 w-48 text-xs"
+            className="h-8 w-56 text-sm font-medium"
             aria-label="Dashboard-Name"
             value={dashboard.name}
             onChange={(e) => update({ name: e.target.value })}
           />
         ) : (
-          <span className="truncate text-xs font-medium">{dashboard.name}</span>
+          <h1 className="truncate px-1 text-sm font-semibold">{dashboard.name}</h1>
         )}
         {path && (
           <span
@@ -219,59 +227,61 @@ export function DashboardEditor({
             {fileLabel(path)}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1">
-          <IconButton
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Alle Charts neu laden"
-            onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
-              void reloadFile(false);
-            }}
-          >
-            <RefreshCwIcon />
-          </IconButton>
-          {editing && (
-            <Select
-              value={String(dashboard.refreshSec)}
-              onValueChange={(v) => update({ refreshSec: Number(v) })}
-            >
-              <SelectTrigger size="sm" className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="0">Kein Auto-Refresh</SelectItem>
-                <SelectItem value="30">Alle 30 s</SelectItem>
-                <SelectItem value="60">Jede Minute</SelectItem>
-                <SelectItem value="300">Alle 5 Minuten</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setDrawer("charts")}>
-            <LibraryIcon />
-            Gespeicherte Charts
-          </Button>
-          <Button
-            variant={editing ? "default" : "outline"}
-            size="xs"
-            aria-label={editing ? "Zur Ansicht wechseln" : "Dashboard bearbeiten"}
-            onClick={() => update({ locked: editing })}
-          >
-            {editing ? (
-              <>
-                <EyeIcon /> Fertig
-              </>
-            ) : (
-              <>
-                <PencilIcon /> Bearbeiten
-              </>
-            )}
-          </Button>
+        <div className="ml-auto flex items-center gap-1.5">
           {editing && (
             <Button size="sm" onClick={startNewChart}>
               <PlusIcon /> Chart
             </Button>
           )}
+          <Button
+            variant={editing ? "outline" : "default"}
+            size="sm"
+            aria-label={editing ? "Zur Ansicht wechseln" : "Dashboard bearbeiten"}
+            onClick={() => update({ locked: editing })}
+          >
+            {editing ? <CheckIcon /> : <PencilIcon />}
+            {editing ? "Fertig" : "Bearbeiten"}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Weitere Dashboard-Aktionen">
+                <EllipsisIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuItem
+                onClick={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
+                  void reloadFile(false);
+                }}
+              >
+                <RefreshCwIcon className="size-3.5" /> Jetzt neu laden
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <TimerIcon className="size-3.5" /> Automatisch neu laden
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={String(dashboard.refreshSec)}
+                    onValueChange={(v) => update({ refreshSec: Number(v) })}
+                  >
+                    <DropdownMenuRadioItem value="0">Aus</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="30">Alle 30 s</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="60">Jede Minute</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="300">Alle 5 Minuten</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDrawer("dashboards")}>
+                <FolderOpenIcon className="size-3.5" /> Dashboards verwalten
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDrawer("charts")}>
+                <LibraryIcon className="size-3.5" /> Gespeicherte Charts
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
       <DashboardLibraryDrawer
