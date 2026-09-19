@@ -3,6 +3,47 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.71] - 2026-09-19
+
+### Features
+- Verbindungsauswahl nutzt Gruppen-Layout und Karten des Verbindungsmanagers mit Checkbox statt Verwaltungsaktionen
+- Verbindungen nach Server/Host-Regeln gruppiert wie im Verbindungsmanager
+- Spalten verknüpfter Tabellen (auch über zwei Schritte und rückwärts) direkt wählbar, Verknüpfungen werden automatisch ergänzt und entfernt
+- Chart-Erstellung als einfaches Einseiten-Formular, Expertenoptionen hinter Erweitert und ⋯-Menüs
+- FK-Vorschau-Einstellungen und Spaltenbreiten-Anpassungen
+- Tab-Titel per Tokenizer aus komplexen Skripten ableiten (CTEs, Subqueries, Blöcke, Multi-Statement)
+- erstes Zielschema automatisch wählen und Editor-Öffnen gegen fehlgeschlagenen Verbindungswechsel absichern
+- Panel schließt automatisch, sobald keine Transaktion mehr offen ist
+- Query-Tabs zeigen automatisch einen kurzen Titel aus dem SQL statt „Query n“
+- Zielschema-Liste folgt der gewählten Zielverbindung und deren zugewiesenen Schemas
+- Zielschema als Sidebar-Select und nach Verbindungswechsel als aktives Schema setzen
+- DDL in Query-Editor der gewählten Zielverbindung öffnen statt direkt auszuführen
+- Strg+Klick auf END/END IF springt zum passenden BEGIN/IF in PL/SQL
+- Objekte, Prozeduren und Packages in anderem Schema erstellen
+- Shell-Syntax wie db.coll.aggregate([...]) mit ISODate im Query-Editor ausführen
+- Objekte und Arrays in Zellen als Inhalt statt {} Object anzeigen
+- Objekte per Kontextmenü in anderem Schema erstellen
+- Suche pro Objekt-Tab und Connection merken
+
+### Fixes
+- MATERIALIZED-Spalten, Nested-Spalten, 64-Bit-Ints und Typ-Badges korrekt; Performance-Tab misst echte Laufzeit; bigdata-Seed für Browser-Lab
+- globale Einstellung 'An Spaltentitel anpassen' setzt Mindestbreite auch bei gespeicherten Spaltenbreiten durch
+- ungenutzte Imports entfernt
+- DDL-Vorschau scrollt bei langen Skripten statt den Dialog zu sprengen
+- Zielschema-Auswahl nutzt komplette Schemaliste statt gefilterter Sidebar-Schemas
+- Strg+C blockiert natives Kopieren nicht mehr app-weit und kopiert Mehrfachauswahl wieder als TSV
+
+### Performance
+- Keychain-Secrets beim Start parallel statt sequenziell laden
+- Seite 1 zuerst laden, Zeilenanzahl erst danach abfragen
+
+### Änderungen
+- große Dateien und Mehrfach-Komponenten in fokussierte Module aufgeteilt (max. 300 Zeilen, eine Komponente pro Datei)
+- Verbindungs-Dropdown der Sidebar als ConnectionPicker extrahiert und im Schema-Copy-Dialog verwendet
+
+### Weitere Änderungen
+- Type(scope): Beschreibung
+
 ## [0.6.34] - 2026-09-18
 
 ### Features
