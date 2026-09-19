@@ -376,7 +376,11 @@ impl DatabaseAdapter for ClickhouseAdapter {
         let select = if columns.is_empty() {
             "*".to_string()
         } else {
-            columns.iter().map(|c| quote(c)).collect::<Vec<_>>().join(", ")
+            columns
+                .iter()
+                .map(|c| quote(c))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
         let sql = format!(
             "SELECT {select} FROM {}.{}{}{} LIMIT {} OFFSET {}",
