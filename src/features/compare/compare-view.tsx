@@ -1,185 +1,121 @@
-import { CameraIcon, CopyIcon, FileCodeIcon, GitCompareIcon, TableIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AnalysisWorkspaceBar } from "@/features/compare/analysis-workspace-bar";
-import { CompareSetupModal } from "@/features/compare/compare-setup-modal";
-import {
-  type DataCompareSideSelection,
-  EMPTY_DATA_SIDE,
-} from "@/features/compare/data-compare-side-picker";
-import { DataCompareView } from "@/features/compare/data-compare-view";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import { DefinitionCompareView } from "@/features/compare/definition-compare-view";
-import { SchemaSnapshotView } from "@/features/compare/schema-snapshot-view";
-import { SchemaCopyView } from "@/features/schema-copy/schema-copy-view";
-import { type CompareSideSelection, EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
+import { EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
 import { useActiveConnection } from "@/lib/connections";
 import {
   databaseFromConnectionString,
   useActiveDatabase,
   useActiveSchema,
 } from "@/lib/db-selection";
-import { supports } from "@/lib/providers";
-import { effectiveConnectionString } from "@/lib/ssh";
+import { useTableTabs } from "@/lib/table-tabs";
+import type { CompareWorkspace } from "@/lib/table-tabs/types";
 
-type CompareTab = "definitions" | "snapshot" | "data" | "schema-copy";
-
-function sourceSide(
-  connectionId: string,
-  database: string | null,
-  schema: string,
-  current: CompareSideSelection,
-): CompareSideSelection {
-  if (current.connectionId === connectionId) {
-    return { ...current, connectionId };
-  }
-  return {
-    ...EMPTY_COMPARE_SIDE,
-    objectType: current.objectType,
-    connectionId,
-    database,
-    schema,
-  };
-}
-
-function sourceDataSide(
-  connectionId: string,
-  database: string | null,
-  schema: string,
-  current: DataCompareSideSelection,
-): DataCompareSideSelection {
-  if (current.connectionId === connectionId) {
-    return { ...current, connectionId };
-  }
-  return { ...EMPTY_DATA_SIDE, connectionId, database, schema };
-}
-
-export function CompareView() {
+export function CompareView({ tabId }: { tabId?: string } = {}) {
+  const search = useSearch({ strict: false }) as { compareId?: string };
+  const fallbackId = useRef(crypto.randomUUID());
+  const id = tabId ?? search.compareId ?? fallbackId.current;
+  const navigate = useNavigate();
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const schema = useActiveSchema();
-  const snapshotEnabled = supports(connection, "schema_snapshot");
-  const dataCompareEnabled = supports(connection, "data_compare");
-  const schemaCopyEnabled = supports(connection, "schema_object_copy");
-  const [tab, setTab] = useState<CompareTab>("definitions");
-  const [left, setLeft] = useState<CompareSideSelection>(EMPTY_COMPARE_SIDE);
-  const [right, setRight] = useState<CompareSideSelection>(EMPTY_COMPARE_SIDE);
-  const [dataLeft, setDataLeft] = useState<DataCompareSideSelection>(EMPTY_DATA_SIDE);
-  const [dataRight, setDataRight] = useState<DataCompareSideSelection>(EMPTY_DATA_SIDE);
+  const tab = useTableTabs((state) =>
+    state.tabs.find((item) => item.kind === "tool" && item.tool === "compare" && item.id === id),
+  );
+  const initial = useRef<CompareWorkspace>({
+    left: {
+      ...EMPTY_COMPARE_SIDE,
+      connectionId: connection?.id ?? null,
+      database:
+        database ?? (connection ? databaseFromConnectionString(connection.connectionString) : null),
+      schema,
+    },
+    right: EMPTY_COMPARE_SIDE,
+    draft: null,
+    onlyDifferences: false,
+  });
+  const workspace = tab?.kind === "tool" && tab.compare ? tab.compare : initial.current;
+  const update = (patch: Partial<CompareWorkspace>) => {
+    const current = useTableTabs
+      .getState()
+      .tabs.find((item) => item.kind === "tool" && item.tool === "compare" && item.id === id);
+    const next = {
+      ...workspace,
+      ...(current?.kind === "tool" ? current.compare : undefined),
+      ...patch,
+    };
+    const name = next.left.objectName?.trim().replace(/\s+/g, "_");
+    useTableTabs
+      .getState()
+      .updateCompareTab(id, next, name ? `Vergleich ${name}` : "Neuer Vergleich");
+  };
 
   useEffect(() => {
-    if (!connection) return;
-    const fallbackDatabase =
-      database ?? databaseFromConnectionString(effectiveConnectionString(connection));
-    setLeft((current) => sourceSide(connection.id, fallbackDatabase, schema, current));
-    setDataLeft((current) => sourceDataSide(connection.id, fallbackDatabase, schema, current));
-  }, [connection, database, schema]);
+    useTableTabs.getState().openToolTab("compare", id);
+    if (!tabId && !search.compareId)
+      void navigate({ to: "/compare", search: { compareId: id }, replace: true });
+  }, [id, tabId, search.compareId, navigate]);
 
   useEffect(() => {
-    setRight((current) =>
-      current.objectType === left.objectType
-        ? current
-        : { ...current, objectType: left.objectType, objectName: null, objectOid: null },
-    );
-  }, [left.objectType]);
-
-  const headerVisible = snapshotEnabled || dataCompareEnabled || schemaCopyEnabled;
+    if (tab?.kind === "tool" && !tab.compare)
+      useTableTabs.getState().updateCompareTab(id, initial.current, "Neuer Vergleich");
+  }, [id, tab]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <AnalysisWorkspaceBar
-        value={{ tab: tab === "data" ? "data" : "definitions", left, right, dataLeft, dataRight }}
-        onLoad={(value) => {
-          const source = value.tab === "data" ? value.dataLeft : value.left;
-          if (source.connectionId !== connection?.id) {
-            toast.error("Bitte zuerst die Quellverbindung dieses Arbeitsstands aktivieren.");
-            return;
-          }
-          if (value.tab === "data" && !dataCompareEnabled) {
-            toast.error("Diese Verbindung unterstützt keinen Datenvergleich.");
-            return;
-          }
-          setTab(value.tab);
-          setLeft(value.left);
-          setRight(value.right);
-          setDataLeft(value.dataLeft);
-          setDataRight(value.dataRight);
-        }}
+      <div className="flex items-center justify-between border-b px-3 py-1">
+        <span className="text-xs text-muted-foreground">
+          Zielentwurf · automatisch gespeichert · Ausführung nach Bestätigung
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const nextId = crypto.randomUUID();
+            useTableTabs.getState().openToolTab("compare", nextId);
+            void navigate({ to: "/compare", search: { compareId: nextId } });
+          }}
+        >
+          <PlusIcon className="size-3.5" />
+          Neuer Vergleich
+        </Button>
+      </div>
+      <DefinitionCompareView
+        key={id}
+        mode="definitions"
+        sourceConnection={connection}
+        left={workspace.left}
+        right={workspace.right}
+        onLeftChange={(left) =>
+          update({
+            left,
+            ...(left.objectType !== workspace.right.objectType ||
+            left.objectName !== workspace.left.objectName
+              ? {
+                  right: {
+                    ...workspace.right,
+                    objectType: left.objectType,
+                    objectName: null,
+                    objectOid: null,
+                  },
+                  draft: null,
+                  draftBase: null,
+                }
+              : {}),
+          })
+        }
+        onRightChange={(right) => update({ right, draft: null, draftBase: null })}
+        draft={workspace.draft}
+        draftBase={workspace.draftBase ?? null}
+        onDraftChange={(draft, baseline) =>
+          update({ draft, draftBase: workspace.draftBase ?? baseline })
+        }
+        onApplied={() => update({ draft: null, draftBase: null })}
+        onlyDifferences={workspace.onlyDifferences}
+        onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
       />
-      <Tabs
-        value={tab}
-        onValueChange={(value) => setTab(value as CompareTab)}
-        className="flex min-h-0 flex-1 flex-col gap-0"
-      >
-        {headerVisible && (
-          <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
-            <GitCompareIcon className="size-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Vergleich</span>
-            <TabsList className="h-7">
-              <TabsTrigger value="definitions" className="gap-1 text-xs">
-                <FileCodeIcon className="size-3" />
-                Definitionen
-              </TabsTrigger>
-              {snapshotEnabled && (
-                <TabsTrigger value="snapshot" className="gap-1 text-xs">
-                  <CameraIcon className="size-3" />
-                  Metadaten-Snapshot
-                </TabsTrigger>
-              )}
-              {dataCompareEnabled && (
-                <TabsTrigger value="data" className="gap-1 text-xs">
-                  <TableIcon className="size-3" />
-                  Tabellendaten
-                </TabsTrigger>
-              )}
-              {schemaCopyEnabled && (
-                <TabsTrigger value="schema-copy" className="gap-1 text-xs">
-                  <CopyIcon className="size-3" />
-                  Schema-Kopie
-                </TabsTrigger>
-              )}
-            </TabsList>
-            {tab === "data" && dataCompareEnabled && (
-              <div className="ml-auto">
-                <CompareSetupModal
-                  mode="data"
-                  sourceConnection={connection}
-                  left={dataLeft}
-                  right={dataRight}
-                  onLeftChange={setDataLeft}
-                  onRightChange={setDataRight}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        <TabsContent value="definitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DefinitionCompareView
-            mode="definitions"
-            sourceConnection={connection}
-            left={left}
-            right={right}
-            onLeftChange={setLeft}
-            onRightChange={setRight}
-          />
-        </TabsContent>
-        {snapshotEnabled && (
-          <TabsContent value="snapshot" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <SchemaSnapshotView />
-          </TabsContent>
-        )}
-        {dataCompareEnabled && (
-          <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DataCompareView left={dataLeft} right={dataRight} />
-          </TabsContent>
-        )}
-        {schemaCopyEnabled && (
-          <TabsContent value="schema-copy" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <SchemaCopyView />
-          </TabsContent>
-        )}
-      </Tabs>
     </div>
   );
 }

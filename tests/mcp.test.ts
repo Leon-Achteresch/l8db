@@ -84,6 +84,7 @@ test("merge scrubs passwords, keeps settings, drops removed", () => {
 
 test("support rules", () => {
   expect(mcpSupported(saved({}))).toBeNull();
-  expect(mcpSupported(saved({ kind: "mongodb" }))).toBe("Nur SQL-Datenbanken");
+  expect(mcpSupported(saved({ kind: "mongodb" }))).toBeNull();
+  expect(mcpSupported(saved({ kind: "redis" }))).toBeNull();
   expect(mcpSupported(saved({ ssh: { host: "x" } as never }))).toContain("SSH");
 });

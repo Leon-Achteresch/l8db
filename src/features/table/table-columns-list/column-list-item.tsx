@@ -1,174 +1,184 @@
-import { ChevronDown, ChevronUp } from "lucide";
-import { CheckCheckIcon, CopyIcon } from "lucide-react";
-import { MorphIcon } from "morphicons/react";
+import { CheckCheckIcon, CopyIcon, PencilIcon, SaveIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { Collapse } from "@/components/motion/collapse";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-type-combobox";
 import { copyText } from "@/lib/clipboard";
-import type { DetailedColumnInfo } from "@/lib/db";
+import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
 import { getTypeConfig } from "./column-type-config";
 
 export function ColumnListItem({
   column,
-  isExpanded,
   copiedColumn,
-  setExpandedColumn,
   setCopiedColumn,
+  editable,
+  editing,
+  editForm,
+  setEditForm,
+  kind,
+  saving,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
 }: {
   column: DetailedColumnInfo;
-  isExpanded: boolean;
   copiedColumn: string | null;
-  setExpandedColumn: (name: string | null) => void;
   setCopiedColumn: (name: string | null) => void;
+  editable: boolean;
+  editing: boolean;
+  editForm: AlterColumnRequest;
+  setEditForm: (
+    form: AlterColumnRequest | ((form: AlterColumnRequest) => AlterColumnRequest),
+  ) => void;
+  kind?: DatabaseKind;
+  saving: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
 }) {
   const dataType =
     column.character_maximum_length != null
       ? `${column.data_type}(${column.character_maximum_length})`
       : column.data_type;
-
   const typeConfig = getTypeConfig(column.data_type, column.is_primary_key);
   const IconComponent = typeConfig.icon;
 
   return (
     <motion.div
       layout
-      variants={{
-        hidden: { opacity: 0, y: 8 },
-        visible: { opacity: 1, y: 0 },
-      }}
-      className={`group flex flex-col rounded-xl border transition-all duration-200 ${
-        isExpanded
-          ? "border-primary/50 bg-primary/[0.02] shadow-sm"
-          : "border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/30"
+      variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+      className={`group grid min-w-[720px] grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_auto] items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+        editing
+          ? "border-primary/50 bg-primary/[0.035] shadow-sm"
+          : "border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/25"
       }`}
     >
-      <div
-        onClick={() => setExpandedColumn(isExpanded ? null : column.name)}
-        className="flex cursor-pointer items-center gap-3 p-3.5"
-      >
-        <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
-          {column.ordinal_position}
-        </span>
-
-        <div className={`rounded-lg border p-1.5 shrink-0 ${typeConfig.color}`}>
-          <IconComponent className="size-4" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-semibold tracking-tight text-foreground">
-              {column.name}
+      {editing && kind ? (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="w-5 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+              {column.ordinal_position}
             </span>
-            {column.is_primary_key && (
-              <Badge
-                variant="outline"
-                className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] py-0 px-1.5 shrink-0 font-medium"
-              >
-                PK
-              </Badge>
-            )}
-            {!column.is_nullable && (
-              <Badge
-                variant="outline"
-                className="bg-muted text-foreground/80 border-border text-[10px] py-0 px-1.5 shrink-0 font-medium"
-              >
-                NOT NULL
-              </Badge>
-            )}
+            <Input
+              aria-label={`Name von ${column.name}`}
+              value={editForm.new_name ?? column.name}
+              onChange={(event) =>
+                setEditForm((form) => ({ ...form, new_name: event.target.value }))
+              }
+              className="h-8 min-w-0 font-mono text-xs"
+              autoFocus
+            />
           </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono text-xs text-muted-foreground/80 bg-muted/40 px-2 py-0.5 rounded border border-border/50 shrink-0">
+          <DataTypeCombobox
+            value={editForm.data_type ?? column.data_type}
+            onChange={(data_type) => setEditForm((form) => ({ ...form, data_type }))}
+            kind={kind}
+            className="h-8"
+          />
+          <div className="flex items-center gap-2">
+            <Switch
+              size="sm"
+              checked={editForm.set_not_null ?? false}
+              onCheckedChange={(set_not_null) => setEditForm((form) => ({ ...form, set_not_null }))}
+              aria-label={`${column.name} als Pflichtfeld markieren`}
+            />
+            <span className="text-xs text-muted-foreground">Pflicht</span>
+          </div>
+          <Input
+            aria-label={`Standardwert von ${column.name}`}
+            value={editForm.new_default ?? ""}
+            onChange={(event) =>
+              setEditForm((form) => ({ ...form, new_default: event.target.value }))
+            }
+            placeholder="Kein Standardwert"
+            className="h-8 font-mono text-xs"
+          />
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              onClick={onCancelEdit}
+              disabled={saving}
+            >
+              <XIcon className="size-4" />
+              <span className="sr-only">Abbrechen</span>
+            </Button>
+            <Button size="icon" className="size-8" onClick={onSaveEdit} disabled={saving}>
+              <SaveIcon className="size-4" />
+              <span className="sr-only">Speichern</span>
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+              {column.ordinal_position}
+            </span>
+            <div className={`shrink-0 rounded-md border p-1.5 ${typeConfig.color}`}>
+              <IconComponent className="size-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold tracking-tight">{column.name}</p>
+              <div className="mt-1 flex gap-1.5">
+                {column.is_primary_key && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-500"
+                  >
+                    PK
+                  </Badge>
+                )}
+                {!column.is_nullable && (
+                  <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                    NOT NULL
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+          <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
             {dataType}
           </span>
-
-          {column.column_default != null && (
-            <div className="hidden max-w-[8rem] sm:max-w-[12rem] truncate font-mono text-[10px] text-muted-foreground/60 bg-muted/20 px-1.5 py-0.5 rounded border shrink-0 md:block">
-              {column.column_default}
-            </div>
-          )}
-
-          <div className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors shrink-0">
-            <MorphIcon icon={isExpanded ? ChevronUp : ChevronDown} className="size-4" />
-          </div>
-        </div>
-      </div>
-
-      <Collapse open={isExpanded} durationMs={200}>
-        <div className="border-t border-muted/40 bg-muted/10 p-4">
-          <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
-            <div className="bg-card border rounded-lg p-2.5">
-              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                Position
-              </div>
-              <div className="font-mono text-foreground font-semibold text-sm">
-                {column.ordinal_position}
-              </div>
-            </div>
-            <div className="bg-card border rounded-lg p-2.5">
-              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                Datentyp
-              </div>
-              <div
-                className="font-mono text-foreground font-semibold text-sm truncate"
-                title={column.data_type}
-              >
-                {column.data_type}
-              </div>
-            </div>
-            <div className="bg-card border rounded-lg p-2.5">
-              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                Nullable
-              </div>
-              <div className="font-mono text-foreground font-semibold text-sm">
-                {column.is_nullable ? "YES" : "NO"}
-              </div>
-            </div>
-            <div className="bg-card border rounded-lg p-2.5">
-              <div className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider mb-1">
-                Standardwert
-              </div>
-              <div
-                className="font-mono text-foreground font-semibold text-sm truncate"
-                title={column.column_default ?? "Keiner"}
-              >
-                {column.column_default ?? "NULL"}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-muted/30 pt-3">
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-              Spalte für Abfragen kopieren oder im SQL Editor verwenden
-            </span>
+          <span className="text-xs text-muted-foreground">
+            {column.is_nullable ? "Erlaubt" : "Pflicht"}
+          </span>
+          <span
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={column.column_default ?? "Kein Standardwert"}
+          >
+            {column.column_default ?? "—"}
+          </span>
+          <div className="flex items-center justify-end gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+            {editable && (
+              <Button size="icon" variant="ghost" className="size-8" onClick={onStartEdit}>
+                <PencilIcon className="size-3.5" />
+                <span className="sr-only">{column.name} bearbeiten</span>
+              </Button>
+            )}
             <Button
-              size="xs"
-              variant="outline"
-              className="h-7 gap-1.5 px-2.5 text-[11px]"
-              onClick={(e) => {
-                e.stopPropagation();
+              size="icon"
+              variant="ghost"
+              className="size-8"
+              onClick={() => {
                 copyText(column.name);
                 setCopiedColumn(column.name);
                 setTimeout(() => setCopiedColumn(null), 1500);
               }}
             >
               {copiedColumn === column.name ? (
-                <>
-                  <CheckCheckIcon className="size-3.5 text-emerald-500" />
-                  Kopiert!
-                </>
+                <CheckCheckIcon className="size-3.5 text-emerald-500" />
               ) : (
-                <>
-                  <CopyIcon className="size-3.5" />
-                  Namen kopieren
-                </>
+                <CopyIcon className="size-3.5" />
               )}
+              <span className="sr-only">{column.name} kopieren</span>
             </Button>
           </div>
-        </div>
-      </Collapse>
+        </>
+      )}
     </motion.div>
   );
 }

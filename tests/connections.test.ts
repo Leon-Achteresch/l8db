@@ -25,7 +25,13 @@ function provider(
     hint: "",
     hosts,
     driver: { type: "builtin" },
-    capabilities: { ssl: true, ssh: true, views: true, read_only_mode: kind === "postgres" },
+    capabilities: {
+      ssl: true,
+      ssh: true,
+      views: true,
+      read_only_mode: kind === "postgres",
+      proxy_user: ["postgres", "mssql", "oracle"].includes(kind),
+    },
     driver_status: { available: true, detail: "", install: [] },
     ...extra,
   };
@@ -601,7 +607,69 @@ describe("Lesemodus", () => {
   });
 });
 
+describe("Proxy-User", () => {
+  test("postgres connections carry the proxy user next to the read-only option", () => {
+    const url = new URL(
+      effectiveConnectionString({ ...direct, readOnly: true, proxyUser: " app user " }),
+    );
+    expect(url.searchParams.get("proxy_user")).toBe("app user");
+    expect(url.searchParams.get("options")).toBe("-c default_transaction_read_only=on");
+    expect(effectiveConnectionString({ ...direct, proxyUser: "  " })).toBe(direct.connectionString);
+  });
+
+  test("the selected proxy user replaces one already in the URL", () => {
+    const stale = { ...direct, connectionString: `${direct.connectionString}&proxy_user=old` };
+    const url = new URL(effectiveConnectionString({ ...stale, proxyUser: "alice" }));
+    expect(url.searchParams.getAll("proxy_user")).toEqual(["alice"]);
+    expect(new URL(effectiveConnectionString(stale)).searchParams.has("proxy_user")).toBe(false);
+  });
+
+  test("tunneled connections keep the proxy user", () => {
+    const url = new URL(
+      effectiveConnectionString({ ...tunneled, tunnelPort: 40000, proxyUser: "alice" }),
+    );
+    expect(url.searchParams.get("proxy_user")).toBe("alice");
+    expect(url.searchParams.get("hostaddr")).toBe("127.0.0.1");
+  });
+
+  test("providers without impersonation ignore the proxy user", () => {
+    const mysql = {
+      ...direct,
+      kind: "mysql" as const,
+      connectionString: "mysql://root:pw@localhost:3306/app",
+      proxyUser: "alice",
+    };
+    expect(effectiveConnectionString(mysql)).toBe(mysql.connectionString);
+  });
+});
+
 describe("Lesemodus pro Verbindung", () => {
+  test("debug execution respects read-only connections while stop remains available", async () => {
+    const { debugLaunch, debugAction, debugStop } = await import("../src/lib/db/debugger");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }],
+      activeId: "direct",
+    });
+    const context = {
+      kind: direct.kind,
+      connectionString: effectiveConnectionString({ ...direct, readOnly: true }),
+    };
+    await expect(
+      debugLaunch(context, {
+        id: "read-only-debug-session",
+        oid: "1",
+        sql: "SELECT f()",
+        breakpoints: [],
+      }),
+    ).rejects.toThrow("Lesemodus");
+    await expect(
+      debugAction(context, "read-only-debug-session", { type: "continue" }),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("debug_launch");
+    expect(calls).not.toContain("debug_action");
+    await debugStop(context, "read-only-debug-session");
+    expect(calls).toContain("debug_stop");
+  });
   const other = {
     ...direct,
     id: "other",

@@ -627,3 +627,34 @@
 :root[data-sidebar-extra-compact="true"][data-ui-density] [data-sidebar="menu-button"]:not([data-size="lg"]) ~ :is([data-slot="sidebar-menu-action"], [data-slot="sidebar-menu-badge"]) {
   top: 0;
 }
+
+.context-menu-target[data-state="open"] {
+  background-image: linear-gradient(
+    color-mix(in oklab, var(--primary) 12%, transparent),
+    color-mix(in oklab, var(--primary) 12%, transparent)
+  );
+  outline: 1px solid color-mix(in oklab, var(--primary) 40%, transparent);
+  outline-offset: -1px;
+}
+
+tr[data-context-menu-target] > td {
+  background-image: linear-gradient(
+    color-mix(in oklab, var(--primary) 12%, transparent),
+    color-mix(in oklab, var(--primary) 12%, transparent)
+  );
+}
+
+.debug-breakpoint::after {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 4px auto;
+  border-radius: 50%;
+  background: #e5484d;
+}
+
+.debug-current-line {
+  background: #eab30826;
+  border-left: 2px solid #eab308;
+}

@@ -34,6 +34,7 @@ pub struct Capabilities {
     pub constraints: bool,
     pub foreign_keys: bool,
     pub rls: bool,
+    pub proxy_user: bool,
     pub partitions: bool,
     pub replication: bool,
     pub sessions: bool,
@@ -62,6 +63,7 @@ pub struct Capabilities {
     pub server_output: bool,
     pub query_cancel: bool,
     pub used_by: bool,
+    pub object_grants: bool,
     pub synonyms: bool,
     pub scheduler_jobs: bool,
     pub object_admin: bool,
@@ -88,6 +90,7 @@ const NONE: Capabilities = Capabilities {
     constraints: false,
     foreign_keys: false,
     rls: false,
+    proxy_user: false,
     partitions: false,
     replication: false,
     sessions: false,
@@ -114,6 +117,7 @@ const NONE: Capabilities = Capabilities {
     debugger: false,
     bind_parameters: false,
     used_by: false,
+    object_grants: false,
     synonyms: false,
     scheduler_jobs: false,
     object_admin: false,
@@ -159,6 +163,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                debugger: true,
                 query_cancel: true,
                 object_admin: true,
                 bind_parameters: true,
@@ -183,6 +188,7 @@ impl DatabaseKind {
                 sequences: true,
                 enums: true,
                 rls: true,
+                proxy_user: true,
                 partitions: true,
                 replication: true,
                 sessions: true,
@@ -218,6 +224,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                proxy_user: true,
                 sessions: true,
                 sequences: true,
                 transactions: true,
@@ -237,6 +244,8 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                object_grants: true,
+                proxy_user: true,
                 bind_parameters: true,
                 schema_object_copy: true,
                 databases: false,

@@ -5,6 +5,7 @@ import { useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DebugButton } from "@/features/debugger/debug-button";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import {
   OpenInQueryEditorButton,
@@ -111,6 +112,9 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
             />
             Kompilieren
           </Button>
+        ) : null}
+        {!edit.editing && oid ? (
+          <DebugButton oid={oid} schema={schema} name={name} objectType="function" />
         ) : null}
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
         <SqlEditActions edit={edit} />

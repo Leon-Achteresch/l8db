@@ -10,7 +10,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   if (tab.kind === "alter-table") return `alter-table:${tab.schema}.${tab.table}`;
   if (tab.kind === "package") return `package:${tab.schema}.${tab.name}`;
-  if (tab.kind === "tool") return `tool:${tab.tool}`;
+  if (tab.kind === "tool") return `tool:${tab.tool}${tab.id ? `:${tab.id}` : ""}`;
   if (tab.kind === "extension-panel") return `extension-panel:${tab.extensionId}:${tab.panelId}`;
   return `extension:${tab.name}`;
 }

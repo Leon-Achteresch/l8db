@@ -8,6 +8,7 @@ import { StartupView } from "@/features/shell/startup-view";
 import { initAppearance } from "@/lib/appearance";
 import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
+import { initMcpDashboardSync } from "@/lib/dashboards/mcp-sync";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
@@ -50,7 +51,10 @@ function render() {
 
 Promise.all([executionSettings.ready, loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
-  .then(() => initMcpSync())
+  .then(() => {
+    initMcpDashboardSync();
+    return initMcpSync();
+  })
   .catch(() => undefined)
   .finally(() => {
     render();

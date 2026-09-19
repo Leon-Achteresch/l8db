@@ -62,6 +62,7 @@ export interface SavedConnection {
   favorite?: boolean;
   color?: string | null;
   readOnly?: boolean;
+  proxyUser?: string | null;
   schemas?: string[] | null;
 }
 

@@ -133,16 +133,22 @@ describe("dateigebundene Query-Tabs", () => {
   test("openFileQueryTab erzeugt Tab mit Dateiname und unverändertem Text", () => {
     const a = addConnection("a");
     useConnectionsStore.getState().setActiveId(a.id);
-    const id = useTableTabs
-      .getState()
-      .openFileQueryTab({ path: "/tmp/x/report.sql", sql: "SELECT 1;\n", title: "report.sql", mtime: 100 });
+    const id = useTableTabs.getState().openFileQueryTab({
+      path: "/tmp/x/report.sql",
+      sql: "SELECT 1;\n",
+      title: "report.sql",
+      mtime: 100,
+    });
     const tab = useTableTabs.getState().tabs.find((t) => t.kind === "query" && t.id === id);
     expect(tab?.kind === "query" ? tab.title : null).toBe("report.sql");
     expect(tab?.kind === "query" ? tab.sql : null).toBe("SELECT 1;\n");
     expect(tab?.kind === "query" ? isQueryTabDirty(tab) : null).toBe(false);
-    const again = useTableTabs
-      .getState()
-      .openFileQueryTab({ path: "/tmp/x/report.sql", sql: "other", title: "report.sql", mtime: 200 });
+    const again = useTableTabs.getState().openFileQueryTab({
+      path: "/tmp/x/report.sql",
+      sql: "other",
+      title: "report.sql",
+      mtime: 200,
+    });
     expect(again).toBe(id);
     expect(useTableTabs.getState().tabs).toHaveLength(1);
   });
@@ -348,5 +354,46 @@ describe("tool tabs", () => {
     const tabs = useTableTabs.getState().tabs;
     expect(tabs).toHaveLength(2);
     expect(tabs.map((t) => tabKey(t))).toEqual(["tool:compare", "tool:er-diagram"]);
+  });
+});
+
+describe("Vergleichs-Tabs", () => {
+  test("Entwürfe bleiben zwischen Vergleichen, Verbindungen und Wiederöffnen getrennt", async () => {
+    const { EMPTY_COMPARE_SIDE } = await import("../src/lib/compare-types");
+    const { tabLabel, navigateToTab } = await import("../src/lib/tab-navigation");
+    const connection = addConnection("Quelle");
+    const other = addConnection("Andere");
+    useConnectionsStore.getState().setActiveId(connection.id);
+    const store = useTableTabs.getState();
+    store.openToolTab("compare", "first");
+    store.openToolTab("compare", "second");
+    store.openToolTab("compare", "first");
+    expect(useTableTabs.getState().tabs).toHaveLength(2);
+    const workspace = {
+      left: { ...EMPTY_COMPARE_SIDE, connectionId: connection.id, objectName: "users" },
+      right: { ...EMPTY_COMPARE_SIDE, connectionId: other.id, objectName: "users" },
+      draft: "CREATE TABLE users (id bigint);",
+      onlyDifferences: true,
+    };
+    store.updateCompareTab("first", workspace, "Vergleich users");
+    const first = useTableTabs.getState().tabs[0];
+    expect(tabLabel(first)).toBe("Vergleich users");
+    expect(tabKey(first)).not.toBe(tabKey(useTableTabs.getState().tabs[1]));
+    let destination: unknown;
+    navigateToTab((value) => {
+      destination = value;
+    }, first);
+    expect(destination).toEqual({ to: "/compare", search: { compareId: "first" } });
+    useConnectionsStore.getState().setActiveId(other.id);
+    expect(useTableTabs.getState().tabs).toHaveLength(0);
+    useConnectionsStore.getState().setActiveId(connection.id);
+    expect(useTableTabs.getState().tabs[0]).toEqual(first);
+    store.closeTab(tabKey(first));
+    expect(store.reopenLastTab()).toMatchObject({ compare: workspace });
+    const second = useTableTabs
+      .getState()
+      .tabs.find((tab) => tab.kind === "tool" && tab.id === "second");
+    expect(second).not.toHaveProperty("compare");
+    expect(useTableTabs.getState().tabsByConnection[connection.id]).toContainEqual(first);
   });
 });
