@@ -21,6 +21,8 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
     connection,
     columns,
     isLoading,
+    isError,
+    error,
     editingColumn,
     editForm,
     setEditForm,
@@ -41,6 +43,16 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
       <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground h-full min-h-[300px]">
         <Spinner />
         Lade Spalten…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6 h-full min-h-[300px]">
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
       </div>
     );
   }

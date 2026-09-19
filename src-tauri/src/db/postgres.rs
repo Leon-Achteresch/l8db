@@ -1440,7 +1440,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 .query(
                     "SELECT rolname, rolcanlogin, rolsuper OR rolbypassrls FROM pg_roles \
                      WHERE rolname <> session_user AND rolname NOT LIKE 'pg\\_%' \
-                       AND pg_has_role(session_user, oid, 'MEMBER') \
+                       AND pg_has_role(session_user, oid, \
+                           CASE WHEN current_setting('server_version_num')::int >= 160000 \
+                                THEN 'SET' ELSE 'MEMBER' END) \
                      ORDER BY rolname",
                     &[],
                 )

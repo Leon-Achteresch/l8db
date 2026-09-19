@@ -47,7 +47,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   data_compare: true,
   procedures: true,
   compile_objects: true,
-  debugger: false,
+  debugger: true,
   bind_parameters: true,
   used_by: true,
   object_grants: false,
@@ -101,6 +101,8 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      proxy_user: false,
+      debugger: false,
       query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
@@ -131,6 +133,8 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      proxy_user: false,
+      debugger: false,
       query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
@@ -161,6 +165,8 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      proxy_user: false,
+      debugger: false,
       query_cancel: false,
       read_only_mode: false,
       full_table_export: false,
@@ -193,6 +199,8 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      proxy_user: false,
+      debugger: false,
       query_cancel: true,
       table_transactions: false,
       read_only_mode: false,
