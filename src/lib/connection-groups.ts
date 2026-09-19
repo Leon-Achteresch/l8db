@@ -2,7 +2,7 @@ import { connectionSummary } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 
-type Groupable = Pick<SavedConnection, "connectionString" | "kind">;
+export type Groupable = Pick<SavedConnection, "connectionString" | "kind">;
 
 export interface ServerGroup<T extends Groupable = SavedConnection> {
   key: string;
