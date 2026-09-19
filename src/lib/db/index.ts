@@ -10,6 +10,7 @@ export {
   READ_ONLY_MESSAGE,
   registerReadOnlyResolver,
 } from "./core";
+export * from "./debugger";
 export * from "./providers";
 export * from "./replication";
 export * from "./roles";

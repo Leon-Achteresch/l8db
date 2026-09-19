@@ -161,6 +161,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                debugger: true,
                 query_cancel: true,
                 object_admin: true,
                 bind_parameters: true,

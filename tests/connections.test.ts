@@ -637,6 +637,32 @@ describe("Proxy-User", () => {
 });
 
 describe("Lesemodus pro Verbindung", () => {
+  test("debug execution respects read-only connections while stop remains available", async () => {
+    const { debugLaunch, debugAction, debugStop } = await import("../src/lib/db/debugger");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, readOnly: true }],
+      activeId: "direct",
+    });
+    const context = {
+      kind: direct.kind,
+      connectionString: effectiveConnectionString({ ...direct, readOnly: true }),
+    };
+    await expect(
+      debugLaunch(context, {
+        id: "read-only-debug-session",
+        oid: "1",
+        sql: "SELECT f()",
+        breakpoints: [],
+      }),
+    ).rejects.toThrow("Lesemodus");
+    await expect(
+      debugAction(context, "read-only-debug-session", { type: "continue" }),
+    ).rejects.toThrow("Lesemodus");
+    expect(calls).not.toContain("debug_launch");
+    expect(calls).not.toContain("debug_action");
+    await debugStop(context, "read-only-debug-session");
+    expect(calls).toContain("debug_stop");
+  });
   const other = {
     ...direct,
     id: "other",

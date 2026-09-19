@@ -1,10 +1,11 @@
-import { Bug, Hammer, Loader } from "lucide";
+import { Hammer, Loader } from "lucide";
 import { PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DebugButton } from "@/features/debugger/debug-button";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { ProcedureRunDialog } from "@/features/functions/procedure-run-dialog";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -16,15 +17,13 @@ import {
   useSqlObjectEdit,
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
-import { type DebugSessionInfo, startDebugSession } from "@/lib/db";
-import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import {
   useFunctionDefinitionQuery,
   useInvalidObjectsQuery,
   useProceduresQuery,
 } from "@/lib/queries";
-import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +36,6 @@ export interface ProcedureViewProps {
 
 export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const connection = useActiveConnection();
-  const database = useActiveDatabase();
   const capabilities = useActiveCapabilities();
   const openProcedureTab = useTableTabs((state) => state.openProcedureTab);
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
@@ -57,9 +55,6 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   );
 
   const [runOpen, setRunOpen] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<DebugSessionInfo | null>(null);
-  const [debugError, setDebugError] = useState<string | null>(null);
-  const [debugLoading, setDebugLoading] = useState(false);
 
   useEffect(() => {
     if (oid) {
@@ -74,27 +69,6 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
     if (!oid) return;
     void compile(oid, "procedure", `${schema}.${name}`);
   }, [compile, oid, schema, name]);
-
-  const handleDebug = useCallback(async () => {
-    if (!connection || !oid) return;
-    setDebugLoading(true);
-    setDebugError(null);
-    setDebugInfo(null);
-    try {
-      const info = await startDebugSession(
-        connection.kind,
-        effectiveConnectionString(connection),
-        oid,
-        "procedure",
-        database ?? undefined,
-      );
-      setDebugInfo(info);
-    } catch (e) {
-      setDebugError(String(e));
-    } finally {
-      setDebugLoading(false);
-    }
-  }, [connection, database, oid]);
 
   if (!connection) {
     return (
@@ -174,15 +148,8 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
             Kompilieren
           </Button>
         ) : null}
-        {!edit.editing && capabilities.debugger ? (
-          <Button variant="outline" size="xs" onClick={handleDebug} disabled={debugLoading || !oid}>
-            <MorphIcon
-              icon={debugLoading ? Loader : Bug}
-              data-icon="inline-start"
-              className={cn(debugLoading && "animate-spin")}
-            />
-            Debug-Sitzung starten
-          </Button>
+        {!edit.editing && oid ? (
+          <DebugButton oid={oid} schema={schema} name={name} objectType="procedure" />
         ) : null}
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
         <SqlEditActions edit={edit} />
@@ -219,17 +186,6 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
           </pre>
         </div>
       ) : null}
-      {debugError ? (
-        <div className="border-t bg-destructive/5 px-4 py-2.5 text-xs font-mono text-destructive select-text">
-          {debugError}
-        </div>
-      ) : null}
-      {debugInfo ? (
-        <div className="border-t bg-amber-500/5 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-300 select-text">
-          {debugInfo.message}
-        </div>
-      ) : null}
-
       <ProcedureRunDialog
         open={runOpen}
         onOpenChange={setRunOpen}

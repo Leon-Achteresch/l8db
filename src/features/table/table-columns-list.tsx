@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import type { DetailedColumnInfo } from "@/lib/db";
-import { useDetailedColumnsQuery } from "@/lib/queries";
+import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
+import { supports } from "@/lib/providers";
 
 import { ColumnListItem } from "./table-columns-list/column-list-item";
 import { matchesColumnFilter } from "./table-columns-list/column-type-config";
@@ -13,16 +13,28 @@ import { matchesColumnFilter } from "./table-columns-list/column-type-config";
 interface TableColumnsListProps {
   schema: string;
   table: string;
+  editable?: boolean;
 }
 
-export function TableColumnsList({ schema, table }: TableColumnsListProps) {
-  const { data: columns, isLoading } = useDetailedColumnsQuery(schema, table);
+export function TableColumnsList({ schema, table, editable = false }: TableColumnsListProps) {
+  const {
+    connection,
+    columns,
+    isLoading,
+    editingColumn,
+    editForm,
+    setEditForm,
+    saving,
+    handleStartEdit,
+    handleCancelEdit,
+    handleSaveEdit,
+  } = useAlterTable(schema, table);
   const [search, setSearch] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
-  const [expandedColumn, setExpandedColumn] = useState<string | null>(null);
   const [copiedColumn, setCopiedColumn] = useState<string | null>(null);
 
   const count = columns?.length ?? 0;
+  const canEdit = editable && !!connection && supports(connection, "alter_columns");
 
   if (isLoading) {
     return (
@@ -43,22 +55,12 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
     );
   }
 
-  const pkCount =
-    (columns as DetailedColumnInfo[] | undefined)?.filter(
-      (c: DetailedColumnInfo) => c.is_primary_key,
-    ).length ?? 0;
-  const notNullCount =
-    (columns as DetailedColumnInfo[] | undefined)?.filter((c: DetailedColumnInfo) => !c.is_nullable)
-      .length ?? 0;
-  const defaultCount =
-    (columns as DetailedColumnInfo[] | undefined)?.filter(
-      (c: DetailedColumnInfo) => c.column_default !== null,
-    ).length ?? 0;
+  const pkCount = columns?.filter((column) => column.is_primary_key).length ?? 0;
+  const notNullCount = columns?.filter((column) => !column.is_nullable).length ?? 0;
+  const defaultCount = columns?.filter((column) => column.column_default !== null).length ?? 0;
 
   const filteredColumns =
-    (columns as DetailedColumnInfo[] | undefined)?.filter((column: DetailedColumnInfo) =>
-      matchesColumnFilter(column, search, selectedFilter),
-    ) ?? [];
+    columns?.filter((column) => matchesColumnFilter(column, search, selectedFilter)) ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -213,7 +215,7 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4">
         {filteredColumns.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Columns2Icon className="size-8 text-muted-foreground/50 mb-3" />
@@ -235,29 +237,42 @@ export function TableColumnsList({ schema, table }: TableColumnsListProps) {
             )}
           </div>
         ) : (
-          <motion.div
-            variants={{
-              hidden: { opacity: 0 },
-              visible: {
-                opacity: 1,
-                transition: { staggerChildren: 0.02 },
-              },
-            }}
-            initial="hidden"
-            animate="visible"
-            className="flex flex-col gap-2"
-          >
-            {filteredColumns.map((column: DetailedColumnInfo) => (
-              <ColumnListItem
-                key={column.name}
-                column={column}
-                isExpanded={expandedColumn === column.name}
-                copiedColumn={copiedColumn}
-                setExpandedColumn={setExpandedColumn}
-                setCopiedColumn={setCopiedColumn}
-              />
-            ))}
-          </motion.div>
+          <div className="min-w-[720px]">
+            <div className="grid grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_auto] gap-3 px-4 pb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <span>Spalte</span>
+              <span>Datentyp</span>
+              <span>NULL</span>
+              <span>Standardwert</span>
+              <span className="text-right">Aktionen</span>
+            </div>
+            <motion.div
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.02 } },
+              }}
+              initial="hidden"
+              animate="visible"
+              className="flex flex-col gap-2"
+            >
+              {filteredColumns.map((column) => (
+                <ColumnListItem
+                  key={column.name}
+                  column={column}
+                  copiedColumn={copiedColumn}
+                  setCopiedColumn={setCopiedColumn}
+                  editable={canEdit}
+                  editing={editingColumn === column.name}
+                  editForm={editForm}
+                  setEditForm={setEditForm}
+                  kind={connection?.kind}
+                  saving={saving}
+                  onStartEdit={() => handleStartEdit(column)}
+                  onCancelEdit={handleCancelEdit}
+                  onSaveEdit={handleSaveEdit}
+                />
+              ))}
+            </motion.div>
+          </div>
         )}
       </div>
     </div>
