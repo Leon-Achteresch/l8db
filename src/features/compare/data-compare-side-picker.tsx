@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { errorMessage } from "@/features/compare/data-compare-side-picker/error-message";
 import { providerFor } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas, listTables } from "@/lib/db";
@@ -39,10 +40,6 @@ interface DataCompareSidePickerProps {
   value: DataCompareSideSelection;
   onChange: (value: DataCompareSideSelection) => void;
   lockConnection?: SavedConnection | null;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function DataCompareSidePicker({
