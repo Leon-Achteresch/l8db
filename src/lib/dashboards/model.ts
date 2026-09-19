@@ -176,6 +176,8 @@ export interface Dashboard {
   createdAt: number;
   filePath?: string | null;
   fileStamp?: string | null;
+  mcpId?: string | null;
+  mcpStamp?: string | null;
 }
 
 export const GRID_COLS = 12;
