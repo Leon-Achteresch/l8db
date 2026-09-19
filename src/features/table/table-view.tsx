@@ -202,7 +202,7 @@ export function TableView(props: TableViewProps) {
       </TabsContent>
 
       <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableColumnsList schema={schema} table={table} />
+        <TableColumnsList schema={schema} table={table} editable />
       </TabsContent>
 
       <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">

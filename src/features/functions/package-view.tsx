@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DebugButton } from "@/features/debugger/debug-button";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { PackageMemberOutline } from "@/features/functions/package-member-outline";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -67,6 +68,7 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
   const compileResult = compileState.status === "done" ? compileState.result : null;
   const members = parsePlsqlMembers(edit.editing ? edit.sql : source);
+  const debugMember = members.find((item) => item.name === activeMember) ?? members[0];
   const highlightLine = highlight
     ? findSourceLine(edit.editing ? edit.sql : source, highlight)
     : undefined;
@@ -134,6 +136,16 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
           <Badge variant="destructive">INVALID</Badge>
         ) : null}
         <span className="ml-auto" />
+        {!edit.editing && activePart === "body" ? (
+          <DebugButton
+            oid={oid}
+            schema={schema}
+            name={name}
+            member={debugMember?.name}
+            memberKind={debugMember?.kind}
+            objectType="package_body"
+          />
+        ) : null}
         <OpenInQueryEditorButton sql={source} title={label} />
         {!edit.editing && capabilities.compile_objects ? (
           <Button

@@ -2,6 +2,7 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 pub mod execution;

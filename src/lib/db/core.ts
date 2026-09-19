@@ -34,6 +34,8 @@ const CONFIGURED_COMMANDS = new Set([
 ]);
 
 const WRITE_COMMANDS = new Set([
+  "debug_launch",
+  "debug_action",
   "add_column",
   "alter_column",
   "alter_role",

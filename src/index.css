@@ -643,3 +643,18 @@ tr[data-context-menu-target] > td {
     color-mix(in oklab, var(--primary) 12%, transparent)
   );
 }
+
+.debug-breakpoint::after {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 4px auto;
+  border-radius: 50%;
+  background: #e5484d;
+}
+
+.debug-current-line {
+  background: #eab30826;
+  border-left: 2px solid #eab308;
+}
