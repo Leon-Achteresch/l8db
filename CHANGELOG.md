@@ -3,6 +3,28 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.89] - 2026-09-19
+
+### Features
+- add definition diff editing, apply workflow, and compare tab persistence
+- add object grants support and refactor debugger into components
+- add database debugging workflow
+- Proxy-User per durchsuchbarer Auswahl (Benutzer/Rollen/Logins je DB), keine veralteten Zeilen nach Identitätswechsel, präzise Postgres-Verbindungsfehler
+- Datenbank als Proxy-User ansehen (Postgres SET ROLE/RLS, SQL Server EXECUTE AS, Oracle Proxy-Anmeldung)
+- Master pro Bereich frei wählbar (Ketten bis 4 Ebenen, ein Master mit mehreren Details), Pfeile sitzen auf der gemeinsamen Kante von Master und Detail
+- add context menu row highlighting
+- Dashboard-Tool zum Erstellen und Bearbeiten von Dashboards über den MCP
+- Dashboard auch im Production-Build in der Sidebar anzeigen
+- MongoDB- und Redis-Verbindungen über den MCP freigeben
+
+### Fixes
+- address CodeRabbit review on debugger, MCP MongoDB checks and proxy users
+- Cmd+C kopiert die aktive Zelle auch, wenn der Fokus auf dem umgebenden Tab-Panel liegt
+
+### Änderungen
+- simplify header styling and layout
+- simplify navigation logic and remove unused components
+
 ## [0.6.71] - 2026-09-19
 
 ### Features
