@@ -2,6 +2,7 @@ mod community_extensions;
 mod db;
 mod extension_process;
 mod mcp;
+mod versioning;
 
 #[cfg(target_os = "windows")]
 fn set_memory_target(window: &tauri::Window, low: bool) {
@@ -52,6 +53,7 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            versioning::versioning_repository,
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,

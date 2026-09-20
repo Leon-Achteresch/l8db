@@ -1,5 +1,6 @@
 import {
   GaugeIcon,
+  GitBranchIcon,
   GitCompare,
   HammerIcon,
   Home,
@@ -28,6 +29,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     { title: "Monitor", url: "/monitor", icon: GaugeIcon },
     { title: "Query Builder", url: "/query-builder", icon: Table2 },
     { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
+    { title: "Versionierung", url: "/versioning", icon: GitBranchIcon },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
     { title: "Gespeicherte Pläne", url: "/saved-plan", icon: RouteIcon },
   ],
