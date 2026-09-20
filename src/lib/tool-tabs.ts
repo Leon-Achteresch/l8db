@@ -46,7 +46,9 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     Icon: GitBranchIcon,
     iconColor: "text-indigo-500",
     Component: lazy(() =>
-      import("@/features/versioning/versioning-view").then((m) => ({ default: m.VersioningView })),
+      import("@/features/versioning/versioning-route-view").then((m) => ({
+        default: m.VersioningRouteView,
+      })),
     ),
   },
   compare: {
