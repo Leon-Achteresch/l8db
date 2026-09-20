@@ -40,7 +40,7 @@
     "@paper-design/shaders-react": "^0.0.80",
     "@tanstack/react-hotkeys": "^0.10.0",
     "@tanstack/react-pacer": "^0.23.0",
-    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-query": "^5.103.1",
     "@tanstack/react-router": "^1.170.33",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.11",
