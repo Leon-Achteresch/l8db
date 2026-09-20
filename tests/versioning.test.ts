@@ -7,9 +7,12 @@ import {
   releaseChain,
   validateMigration,
 } from "../src/lib/versioning/model";
+import { changedFiles, pendingVersioningCount } from "../src/lib/versioning/status";
 import type {
   DatabaseRelease,
   ManagedObject,
+  RepositoryStatus,
+  TargetStore,
   VersioningProject,
 } from "../src/lib/versioning/types";
 
@@ -172,5 +175,95 @@ describe("schema mapping", () => {
         "A",
       ),
     ).toThrow("Dollar");
+  });
+});
+
+describe("versioning sidebar attention", () => {
+  const repository = (changes = ""): RepositoryStatus => ({
+    repo: "/repo",
+    head: "a".repeat(40),
+    branch: "main",
+    branches: ["main"],
+    files: [],
+    history: "",
+    changes,
+  });
+  const targets = (ids: string[]): TargetStore => ({
+    format: 1,
+    projectId: "product",
+    targets: ids.map((id, index) => ({
+      id: String(index),
+      name: `Customer ${index}`,
+      connectionId: "connection",
+      database: null,
+      production: false,
+      release: { id, commit: "a".repeat(40), path: `database/releases/${id}.json` },
+      history: [],
+    })),
+  });
+  test("counts a renamed file once and preserves paths with spaces", () => {
+    expect([
+      ...changedFiles(
+        "R  database/new package.pkb\0database/old package.pkb\0 M database/table.sql\0?? database/new.sql\0",
+      ),
+    ]).toEqual([
+      ["database/new package.pkb", "R"],
+      ["database/table.sql", "M"],
+      ["database/new.sql", "??"],
+    ]);
+  });
+  test("includes unsaved drafts and clears resolved changes", () => {
+    expect(pendingVersioningCount(repository(" M database/table.sql\0"), [], null, true)).toBe(2);
+    expect(pendingVersioningCount(repository(), [], null, false)).toBe(0);
+  });
+  test("counts each outdated target once and ignores unrelated release lines", () => {
+    const versions = [
+      release("v1", null),
+      release("v2", "v1"),
+      release("v3", "v2"),
+      release("custom", null),
+    ];
+    expect(
+      pendingVersioningCount(repository(), versions, targets(["v1", "v2", "v3", "custom"]), false),
+    ).toBe(2);
+  });
+  test("an uncommitted release is a file change, not a deployable update", () => {
+    expect(
+      pendingVersioningCount(
+        repository("?? database/releases/v2.json\0"),
+        [release("v1", null), release("v2", "v1")],
+        targets(["v1"]),
+        false,
+      ),
+    ).toBe(1);
+  });
+  test("retains attention for failed deployments and missing baselines", () => {
+    const store = targets(["v1", "v1"]);
+    store.targets[0].release = null;
+    store.targets[1].history = [
+      {
+        id: "failed",
+        startedAt: "2026-09-20",
+        finishedAt: null,
+        from: null,
+        to: { id: "v1", path: "database/releases/v1.json", commit: "a".repeat(40) },
+        status: "failed",
+        completedMigrations: [],
+        error: "Review required",
+      },
+    ];
+    expect(pendingVersioningCount(repository(), [release("v1", null)], store, false)).toBe(2);
+    store.targets[1].history[0].status = "reconciled";
+    expect(pendingVersioningCount(repository(), [release("v1", null)], store, false)).toBe(1);
+  });
+  test("cyclic unrelated release lines cannot stall badge calculation", () => {
+    expect(
+      pendingVersioningCount(
+        repository(),
+        [release("a", "b"), release("b", "a")],
+        targets(["v1"]),
+        false,
+      ),
+    ).toBe(0);
   });
 });

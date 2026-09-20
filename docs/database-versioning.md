@@ -2,15 +2,19 @@
 
 Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit PostgreSQL- oder Oracle-Verbindungen. Ein Git-Branch beschreibt einen Entwicklungsstand. Jede verbundene Datenbank hat unabhängig davon einen geprüften Release-Stand. Branch-Wechsel führen kein SQL aus.
 
+Das Git-Symbol oben rechts öffnet die Seitenleiste neben dem Arbeitsbereich. Wie beim Transaktionspanel bleibt der aktuelle Arbeitsbereich sichtbar; die beiden Panels wechseln sich ab. Die Tabs **Änderungen**, **Releases**, **Datenbanken** und **Aktivität** trennen Dateien, Release-Erstellung, Rollouts und Verlauf. Repository, Branches, Synchronisierung und zusätzliche Aktionen sind über Icon-Buttons mit Popovers erreichbar. Alle Auswahllisten verwenden die durchsuchbare, per Tastatur bedienbare Anwendungskomponente.
+
+Das Badge zählt geänderte Git-Dateien, einen ungespeicherten Entwurf sowie Ziele mit ausstehenden Releases, fehlender Baseline oder ungeklärtem Deployment. Gezählt werden nur Releases derselben Vorgängerkette, die lokal unverändert vorliegen. Der Repository-Status wird bei Fensterfokus und alle 15 Sekunden aktualisiert; während Bearbeitung und laufender Aktionen pausiert die Aktualisierung. Dabei werden keine Datenbankabfragen oder automatischen Remote-Fetches ausgelöst. Entwürfe, Zielauswahl und geprüfte Rollout-Pläne bleiben beim Schließen des Panels erhalten.
+
 ## Einzelne Datenbank
 
 1. Repository öffnen oder Git im gewählten Ordner initialisieren. Git muss installiert und `user.name`/`user.email` eingerichtet sein.
 2. Mit der aktiven PostgreSQL- oder Oracle-Verbindung ein Projekt anlegen.
-3. In **Entwicklung** einzelne Objekte oder die unterstützten Objekte eines Schemas aufnehmen. Dateien vergleichen, bearbeiten und gezielt committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
+3. In **Änderungen** einzelne Objekte oder die unterstützten Objekte eines Schemas aufnehmen. Dateien vergleichen, bearbeiten und gezielt committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
 4. Einen Ausgangsrelease ohne Migration anlegen und dessen Manifest committen.
-5. Unter **Kundendatenbanken** auch eine einzelne Entwicklungs-, Test- oder Produktionsdatenbank als Ziel hinzufügen. Die Baseline wird nur zugeordnet, wenn ihre verwalteten Definitionen tatsächlich zum Release passen.
+5. Unter **Datenbanken** auch eine einzelne Entwicklungs-, Test- oder Produktionsdatenbank als Ziel hinzufügen. Die Baseline wird nur zugeordnet, wenn ihre verwalteten Definitionen tatsächlich zum Release passen.
 6. Auf einem Feature-Branch arbeiten. Den nächsten Release mit Vorgänger und geprüftem Migrations-SQL erstellen und committen.
-7. Für das Ziel **Updates planen**, das tatsächlich für dieses Ziel verwendete SQL prüfen und den Release-Namen zur Ausführung eingeben.
+7. Ziele und Zielrelease auswählen, mit **Planen** das tatsächlich für diese Ziele verwendete SQL prüfen und den Release-Namen zur Ausführung eingeben.
 
 Der SQL-Vorschlag unterstützt die vorhandenen Vergleichsoperationen. Er ersetzt keine Prüfung von Datenmigrationen, Abhängigkeiten oder Betriebsanforderungen. Gespeicherte Tabellendefinitionen sind Vergleichsmetadaten, kein vollständiger Datenbank-Dump.
 
@@ -74,4 +78,6 @@ L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-live.tes
 
 Abgedeckt sind unter anderem unterschiedliche Kundenstände, veraltete Freigaben, konkurrierende Deployments, direkte Schemaänderungen, Schreibschutz, transaktionaler PostgreSQL-Rollback, Oracle-Teilzustände, Stoppen nach Fehlern, Schema-Zuordnung, getrennte Package-Dateien, konfliktbehaftete und konfliktfreie Drei-Wege-Merges mit großen Quellen, unveränderliche Releases, Worktrees, Remote-Synchronisierung und Dateipfadgrenzen. Die Szenarien lassen sich außerdem über die T3-Browsersteuerung ausführen.
 
-Validierung des Feature-Branches am 20.09.2026: 964 Frontend-Tests und 143 Rust-Tests bestanden; drei Live-Szenarien mit PostgreSQL/Oracle in Chromium beziehungsweise WebKit sowie zwei Produktions-/Sandbox-Browsertests bestanden. TypeScript, Vite-Produktionsbuild, Biome und Clippy liefen ohne Fehler. Bestehende Lint- und Bundle-Warnungen bleiben bestehen. Über T3 wurden zusätzlich Rollout-Vorschau, tatsächliche Ausführung, Drift-Anzeige, manueller Standabgleich und Schutz ungespeicherter Release-Entwürfe geprüft.
+Validierung des Feature-Branches am 20.09.2026: 970 Frontend-Tests und 143 Rust-Tests bestanden; drei Live-Szenarien mit PostgreSQL/Oracle in Chromium beziehungsweise WebKit sowie zwei Produktions-/Sandbox-Browsertests bestanden. TypeScript, Vite-Produktionsbuild, Biome und Clippy liefen ohne Fehler. Bestehende Lint- und Bundle-Warnungen bleiben bestehen. Über T3 wurden zusätzlich Rollout-Vorschau, tatsächliche Ausführung, Drift-Anzeige, manueller Standabgleich und Schutz ungespeicherter Release-Entwürfe geprüft. Die überarbeitete Seitenleiste wurde in Chromium und WebKit mit Badge-Aktualisierung, gegenseitigem Panel-Wechsel, erhaltenen SQL- und Release-Entwürfen, Rollout-Plan beim Wiederöffnen, Tastaturauswahl, dunklem Farbschema, reduzierter Bewegung und schmalem Fenster geprüft. Backend-Tests beziehen sich auf den vorangegangenen Implementierungsstand; die anschließende Überarbeitung verändert ausschließlich Frontend und Dokumentation.
+
+Im abschließenden kombinierten Live-Lauf erreichte WebKit einmal das Zeitlimit von 120 Sekunden. Der anschließende isolierte WebKit-Lauf bestand unverändert in 18 Sekunden; die beiden vorangegangenen Browserläufe waren ebenfalls erfolgreich.

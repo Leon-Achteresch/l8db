@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { VersioningView } from "@/features/versioning/versioning-view";
+import { VersioningRouteView } from "@/features/versioning/versioning-route-view";
 
 export const Route = createFileRoute("/_app/_workspace/versioning")({
-  component: VersioningView,
+  component: VersioningRouteView,
 });

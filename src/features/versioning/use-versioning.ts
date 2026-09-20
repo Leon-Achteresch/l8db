@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { versioningRepository } from "@/lib/db";
+import { useVersioningPanel } from "@/lib/versioning/panel";
 import { loadReleases, loadRepository, readTargets } from "@/lib/versioning/repository";
+import { pendingVersioningCount } from "@/lib/versioning/status";
 import type {
   DatabaseRelease,
   RepositoryStatus,
@@ -24,11 +26,14 @@ export function useVersioning() {
   }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const refreshRevision = useRef(0);
   const [message, setMessage] = useState("");
   const refresh = useCallback(
     async (path = repo) => {
       if (dirtyRef.current)
         throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
+      const request = ++refreshRevision.current;
       const loaded = await loadRepository(path);
       const nextReleases = loaded.project
         ? await loadReleases(loaded.status.repo, loaded.project)
@@ -36,6 +41,7 @@ export function useVersioning() {
       const nextTargets = loaded.project
         ? (await readTargets(loaded.status.repo, loaded.project.id)).store
         : null;
+      if (request !== refreshRevision.current || dirtyRef.current) return;
       setRepo(loaded.status.repo);
       localStorage.setItem("l8db.versioning.repo", loaded.status.repo);
       setStatus(loaded.status);
@@ -46,6 +52,40 @@ export function useVersioning() {
     },
     [repo],
   );
+  useEffect(() => {
+    if (!repo || busy || dirty) return;
+    let active = true;
+    let loading = false;
+    const check = async () => {
+      if (loading || document.visibilityState === "hidden") return;
+      loading = true;
+      try {
+        await refresh();
+        if (active) setStatusError(null);
+      } catch (cause) {
+        if (active) setStatusError(String(cause));
+      } finally {
+        loading = false;
+      }
+    };
+    void check();
+    const interval = window.setInterval(() => void check(), 15000);
+    const focus = () => void check();
+    window.addEventListener("focus", focus);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", focus);
+    };
+  }, [repo, busy, dirty, refresh]);
+  useEffect(() => {
+    useVersioningPanel
+      .getState()
+      .setAttention(
+        pendingVersioningCount(status, releases, targets, dirty),
+        Boolean(error || statusError),
+      );
+  }, [status, releases, targets, dirty, error, statusError]);
   const run = async (action: () => Promise<void>, success?: string) => {
     setBusy(true);
     setError(null);
@@ -77,7 +117,7 @@ export function useVersioning() {
     releases,
     targets,
     busy,
-    error,
+    error: error ?? statusError,
     message,
     setMessage,
     refresh,

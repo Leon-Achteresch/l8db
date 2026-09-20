@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bot, GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -14,8 +14,10 @@ import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { useVersioningPanel } from "@/lib/versioning/panel";
 
 export function AppHeader() {
+  const versioning = useVersioningPanel();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const txCount = useTransactionStore((s) => s.transactions.length);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
@@ -94,6 +96,47 @@ export function AppHeader() {
             </button>
           </Tooltip>
         ) : null}
+
+        <Tooltip
+          content={
+            versioning.pending
+              ? `Versionierung · ${versioning.pending} offen`
+              : versioning.hasError
+                ? "Versionierung · Status prüfen"
+                : "Versionierung"
+          }
+          side="bottom"
+        >
+          <button
+            type="button"
+            aria-label={
+              versioning.pending ? `Versionierung: ${versioning.pending} offen` : "Versionierung"
+            }
+            aria-expanded={versioning.open}
+            aria-controls="versioning-panel"
+            onClick={() => versioning.setOpen(!versioning.open)}
+            className={cn(
+              "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              versioning.open && "bg-primary/12 text-foreground",
+            )}
+          >
+            <GitPullRequestIcon className="size-4" strokeWidth={2} />
+            {versioning.pending > 0 ? (
+              <span
+                data-testid="versioning-badge"
+                className="absolute -right-1 -top-1 flex min-w-3.5 h-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold tabular-nums text-primary-foreground"
+              >
+                {versioning.pending > 99 ? "99+" : versioning.pending}
+              </span>
+            ) : versioning.hasError ? (
+              <span
+                role="img"
+                aria-label="Status nicht verfügbar"
+                className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-500"
+              />
+            ) : null}
+          </button>
+        </Tooltip>
 
         <Tooltip content="Transaktionen" side="bottom">
           <button

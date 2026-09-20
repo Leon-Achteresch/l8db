@@ -1,15 +1,21 @@
+import { ArrowLeftIcon, FileDiffIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { buildCompareApplyPlan } from "@/lib/compare-apply-plan";
+import { cn } from "@/lib/utils";
 import { checksum, releasePath, validateMigration } from "@/lib/versioning/model";
 import { encode, saveFile } from "@/lib/versioning/repository";
 import { workingSnapshot } from "@/lib/versioning/sources";
+import { changedFiles } from "@/lib/versioning/status";
 import type { DatabaseRelease, ObjectSnapshot } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningIconButton } from "./versioning-icon-button";
+import { VersioningSelect } from "./versioning-select";
 
 export function VersioningReleases({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, releases, run, refresh } = workspace;
+  const [creating, setCreating] = useState(false);
   const [id, setId] = useState("");
   const [parent, setParent] = useState("");
   const [sql, setSql] = useState("");
@@ -81,114 +87,195 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
     workspace.setDirty(false);
     await refresh();
     setSelected(release);
+    setCreating(false);
     setId("");
     setSql("");
     workspace.setDirty(false);
   };
+  const chosen = selected ?? releases.at(-1);
+  const changes = changedFiles(workspace.status?.changes ?? "");
   return (
-    <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">Releases</h2>
-        {releases.length === 0 && (
-          <p className="text-sm text-muted-foreground">Noch keine Baseline vorhanden.</p>
-        )}
-        {releases.map((release) => (
-          <Button
-            key={release.id}
-            variant="outline"
-            className="justify-start"
-            onClick={() => setSelected(release)}
-          >
-            {release.id} · {release.objects.length} Objekte
-          </Button>
-        ))}
-        {selected && (
-          <div className="rounded border p-3 text-xs">
-            <p>Vorgänger: {selected.parent ?? "Baseline"}</p>
-            <p>Migrationen: {selected.migrations.length}</p>
-            <p>Erstellt: {new Date(selected.createdAt).toLocaleString()}</p>
-            <details className="mt-2">
-              <summary>SQL und verwaltete Objekte</summary>
-              <ul className="my-2">
-                {selected.objects.map((entry) => (
-                  <li key={entry.object.id}>
-                    {entry.object.selection.schema}.{entry.object.selection.objectName}
-                  </li>
-                ))}
-              </ul>
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap">
-                {selected.migrations.map((entry) => entry.sql).join("\n\n") ||
-                  "Keine Migration: bestehender Ausgangsstand"}
-              </pre>
-            </details>
-          </div>
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <h2 className="text-xs font-semibold">{creating ? "Release vorbereiten" : "Releases"}</h2>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {creating
+              ? "Definitionen und Migrationen gemeinsam fixieren."
+              : `${releases.length} Versionen im Repository`}
+          </p>
+        </div>
+        {creating ? (
+          <>
+            <VersioningIconButton
+              icon={Trash2Icon}
+              label="Release-Entwurf verwerfen"
+              onClick={() => {
+                setId("");
+                setSql("");
+                workspace.setDirty(false);
+                setCreating(false);
+              }}
+            />
+            <VersioningIconButton
+              icon={ArrowLeftIcon}
+              label="Zur Releaseübersicht"
+              onClick={() => {
+                if (workspace.dirty)
+                  void run(async () => {
+                    throw new Error("Release-Entwurf zuerst speichern oder verwerfen.");
+                  });
+                else setCreating(false);
+              }}
+            />
+          </>
+        ) : (
+          <VersioningIconButton
+            icon={PlusIcon}
+            label="Release vorbereiten"
+            onClick={() => {
+              setParent(releases.at(-1)?.id ?? "");
+              setCreating(true);
+            }}
+          />
         )}
       </div>
-      <div className="flex flex-col gap-3 rounded border p-4">
-        <h2 className="font-semibold">Release vorbereiten</h2>
-        <p className="text-sm text-muted-foreground">
-          Der Release fixiert Definitionen und Migrationen. Erst nach dem Commit kann er einer
-          Datenbank zugeordnet oder ausgerollt werden.
-        </p>
-        <Input
-          aria-label="Release-ID"
-          placeholder="z. B. 4.2.0"
-          value={id}
-          onChange={(event) => setId(event.target.value)}
-        />
-        <label className="text-sm">
-          Vorgänger
-          <select
-            aria-label="Vorgänger-Release"
-            className="mt-1 block w-full rounded border bg-background p-2"
-            value={parent}
-            onChange={(event) => setParent(event.target.value)}
-          >
-            <option value="">Baseline ohne Vorgänger</option>
-            {releases.map((release) => (
-              <option key={release.id}>{release.id}</option>
-            ))}
-          </select>
-        </label>
-        <Button
-          variant="outline"
-          disabled={!parent}
-          onClick={() =>
-            void run(
-              generate,
-              "Migrationsentwurf erzeugt. Vor Freigabe in einer Testdatenbank ausführen.",
-            )
-          }
-        >
-          Migration aus Objektänderungen entwerfen
-        </Button>
-        <label className="text-sm">
-          Migrations-SQL
+      {creating ? (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label htmlFor="vcs-release-id" className="space-y-1.5 text-xs font-medium">
+              Release-ID
+              <Input
+                id="vcs-release-id"
+                aria-label="Release-ID"
+                placeholder="z. B. 4.2.0"
+                value={id}
+                onChange={(event) => setId(event.target.value)}
+              />
+            </label>
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">Vorgänger</span>
+              <VersioningSelect
+                label="Vorgänger-Release"
+                value={parent}
+                onChange={setParent}
+                options={[
+                  { value: "", label: "Baseline" },
+                  ...releases.map((release) => ({ value: release.id, label: release.id })),
+                ]}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="vcs-migration-sql" className="text-xs font-medium">
+              Migrations-SQL
+            </label>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!parent}
+              onClick={() =>
+                void run(
+                  generate,
+                  "Migrationsentwurf erzeugt. Vor Freigabe in einer Testdatenbank prüfen.",
+                )
+              }
+            >
+              <FileDiffIcon className="size-3.5" />
+              SQL entwerfen
+            </Button>
+          </div>
           <textarea
+            id="vcs-migration-sql"
             aria-label="Migrations-SQL"
-            className="mt-1 min-h-72 w-full rounded border bg-background p-3 font-mono text-xs"
+            className="min-h-64 w-full resize-y rounded-lg bg-muted/35 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={sql}
             onChange={(event) => setSql(event.target.value)}
-            placeholder="SQL wird beim Anlegen des Releases nicht ausgeführt."
+            placeholder={
+              parent
+                ? "Geprüfte Migration für diesen Release …"
+                : "Eine Baseline erfasst den bestehenden Stand ohne Migration."
+            }
           />
-        </label>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setId("");
-            setSql("");
-          }}
-        >
-          Release-Entwurf verwerfen
-        </Button>
-        <Button
-          onClick={() =>
-            void run(create, "Release-Datei erstellt. Unter Entwicklung auswählen und committen.")
-          }
-        >
-          Release-Datei anlegen
-        </Button>
-      </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Der Release wird zunächst als Datei angelegt. Nach dem Commit kann er geprüft und
+            ausgerollt werden.
+          </p>
+          <Button
+            size="sm"
+            disabled={!id.trim()}
+            onClick={() =>
+              void run(create, "Release-Datei erstellt. Unter Änderungen auswählen und committen.")
+            }
+          >
+            Release-Datei anlegen
+          </Button>
+        </div>
+      ) : (
+        <>
+          {!releases.length && (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <TagIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
+              <p className="text-xs font-medium">Der erste Stand beginnt hier</p>
+              <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
+                Nimm deine Definitionen auf und erstelle daraus eine Baseline.
+              </p>
+              <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
+                Baseline vorbereiten
+              </Button>
+            </div>
+          )}
+          <div className="max-h-64 space-y-1 overflow-auto">
+            {[...releases].reverse().map((release) => (
+              <button
+                key={release.id}
+                type="button"
+                onClick={() => setSelected(release)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted/40",
+                  chosen?.id === release.id && "bg-muted/50",
+                )}
+              >
+                <TagIcon className="size-4 shrink-0 text-muted-foreground/70" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-xs font-medium">{release.id}</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    {release.objects.length} Objekte ·{" "}
+                    {release.parent ? `von ${release.parent}` : "Baseline"}
+                  </span>
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {changes.has(`database/releases/${release.id}.json`)
+                    ? "Entwurf"
+                    : new Date(release.createdAt).toLocaleDateString()}
+                </span>
+              </button>
+            ))}
+          </div>
+          {chosen && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold">{chosen.id}</h3>
+                <span className="text-[11px] text-muted-foreground">
+                  {chosen.migrations.length} Migrationen
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                {chosen.objects
+                  .map(
+                    (entry) =>
+                      `${entry.object.selection.schema}.${entry.object.selection.objectName}`,
+                  )
+                  .join(" · ")}
+              </p>
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
+                {chosen.migrations.map((entry) => entry.sql).join("\n\n") ||
+                  "Baseline · bestehender Ausgangsstand ohne Migration"}
+              </pre>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
