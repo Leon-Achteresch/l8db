@@ -2,13 +2,19 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: development
     schedule:
       interval: weekly
   - package-ecosystem: bun
     directory: /
+    target-branch: development
     schedule:
       interval: weekly
   - package-ecosystem: cargo
     directory: /src-tauri
+    target-branch: development
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: windows-core
+        versions: [">=0.62"]
