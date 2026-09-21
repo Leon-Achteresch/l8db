@@ -867,7 +867,7 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         }
 
-        let conn = self.get_conn().await?;
+        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         let column_rows = conn
             .query(
                 "SELECT column_name \
@@ -903,7 +903,7 @@ impl DatabaseAdapter for PostgresAdapter {
             format!(" ORDER BY {}", order_parts.join(", "))
         };
         let sql = format!(
-            "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
+            "DECLARE l8db_export NO SCROLL CURSOR FOR SELECT to_jsonb(t) FROM {}.{} AS t{}{}",
             quote_ident(&request.schema),
             quote_ident(&request.table),
             where_clause,
@@ -924,11 +924,13 @@ impl DatabaseAdapter for PostgresAdapter {
         };
 
         let mut total: i64 = 0;
-        let mut offset: i64 = 0;
         let mut truncated = false;
         let mut failure: Option<String> = None;
         let mut cancelled = false;
 
+        if let Err(e) = conn.query(&sql, &[]).await {
+            failure = Some(map_pg_err(e));
+        }
         if let Err(e) = writer.write_header(&columns) {
             failure = Some(e);
         }
@@ -939,12 +941,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 break;
             }
             let remaining = max_rows - total;
-            if remaining <= 0 {
-                truncated = true;
-                break;
-            }
-            let batch = remaining.min(export::EXPORT_BATCH_ROWS);
-            let data_rows = match conn.query(&sql, &[&batch, &offset]).await {
+            let batch = (remaining + 1).min(export::EXPORT_BATCH_ROWS);
+            let data_rows = match conn
+                .query(&format!("FETCH FORWARD {batch} FROM l8db_export"), &[])
+                .await
+            {
                 Ok(rows) => rows,
                 Err(e) => {
                     failure = Some(map_pg_err(e));
@@ -952,7 +953,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
             };
             let fetched = data_rows.len() as i64;
-            for row in &data_rows {
+            for row in data_rows.iter().take(remaining as usize) {
                 let value: serde_json::Value = row.get(0);
                 let line = export::csv_row_line(&columns, &value, &request.masks, &request.options);
                 if let Err(e) = writer.write_line(&line) {
@@ -963,17 +964,19 @@ impl DatabaseAdapter for PostgresAdapter {
             if failure.is_some() {
                 break;
             }
-            total += fetched;
-            offset += fetched;
+            total += fetched.min(remaining);
+            truncated = fetched > remaining;
             progress(total);
-            if fetched < batch {
+            if truncated || fetched < batch {
                 break;
             }
         }
 
-        let _ = conn.batch_execute("COMMIT").await;
+        if let Err(error) = conn.batch_execute("ROLLBACK").await {
+            failure.get_or_insert_with(|| map_pg_err(error));
+        }
 
-        if cancelled {
+        if cancelled || export::is_cancelled(&request.job_id) {
             writer.abort();
             export::clear_cancel(&request.job_id);
             return Err("Export abgebrochen.".to_string());
@@ -1880,7 +1883,10 @@ impl DatabaseAdapter for PostgresAdapter {
         if request.columns.is_empty() {
             return Err("Keine Zielspalten zugeordnet.".to_string());
         }
-        if request.rows.is_empty() {
+        if request.file.is_some() && !request.rows.is_empty() {
+            return Err("Datei und direkte Datenzeilen dürfen nicht kombiniert werden.".into());
+        }
+        if request.rows.is_empty() && request.file.is_none() {
             return Err("Keine Datenzeilen zum Import.".to_string());
         }
         if request.rows.len() > super::CSV_IMPORT_MAX_ROWS {
@@ -1929,7 +1935,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .map(|(i, ty)| format!("${}::text::{}", i + 1, ty))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!(
+        let mut sql = format!(
             "INSERT INTO {}.{} ({}) VALUES ({})",
             quote_ident(&request.schema),
             quote_ident(&request.table),
@@ -1947,6 +1953,39 @@ impl DatabaseAdapter for PostgresAdapter {
         tokio::spawn(async move {
             let _ = connection.await;
         });
+        if let Some(conflict) = &request.conflict {
+            let key = conn.query_opt("SELECT array_agg(a.attname::text ORDER BY k.position) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum, position) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum WHERE n.nspname = $1 AND t.relname = $2 AND c.conname = $3 AND c.contype IN ('p', 'u') AND NOT c.condeferrable GROUP BY c.oid", &[&request.schema, &request.table, &conflict.constraint]).await.map_err(map_pg_err)?.ok_or("Konfliktziel muss ein nicht aufschiebbarer Primär- oder Unique-Schlüssel sein.")?;
+            let keys: Vec<String> = key.get(0);
+            if keys.iter().any(|key| !request.columns.contains(key)) {
+                return Err("Alle Konfliktschlüssel müssen zugeordnet sein.".into());
+            }
+            let mut updates = Vec::new();
+            for name in &conflict.update_columns {
+                if keys.contains(name)
+                    || !request.columns.contains(name)
+                    || available.iter().any(|column| {
+                        column.name == *name && (column.is_generated || column.is_identity)
+                    })
+                {
+                    return Err(format!("Spalte {name} darf nicht aktualisiert werden."));
+                }
+                updates.push(format!(
+                    "{} = EXCLUDED.{}",
+                    quote_ident(name),
+                    quote_ident(name)
+                ));
+            }
+            sql.push_str(&format!(
+                " ON CONFLICT ON CONSTRAINT {} {}",
+                quote_ident(&conflict.constraint),
+                if updates.is_empty() {
+                    "DO NOTHING".to_string()
+                } else {
+                    format!("DO UPDATE SET {}", updates.join(", "))
+                }
+            ));
+        }
+        sql.push_str(" RETURNING (xmax = 0)");
         let statement = self
             .controlled(&conn, async {
                 conn.prepare(&sql).await.map_err(map_pg_err)
@@ -1958,21 +1997,49 @@ impl DatabaseAdapter for PostgresAdapter {
         .await?;
 
         let mut inserted: u64 = 0;
-        for (index, row) in request.rows.iter().enumerate() {
+        let mut updated: u64 = 0;
+        let mut skipped: u64 = 0;
+        let rows: Box<dyn Iterator<Item = Result<Vec<Option<String>>, String>> + Send> =
+            match &request.file {
+                Some(source) => {
+                    if source.indices.len() != request.columns.len() {
+                        return Err("CSV-Zuordnung stimmt nicht mit Zielspalten überein.".into());
+                    }
+                    Box::new(super::csv_stream::CsvRows::open(source)?)
+                }
+                None => Box::new(request.rows.clone().into_iter().map(Ok)),
+            };
+        for (index, row) in rows.enumerate() {
+            let row = match row {
+                Ok(row) => row,
+                Err(error) => {
+                    conn.batch_execute("ROLLBACK").await.map_err(map_pg_err)?;
+                    return Err(format!(
+                        "Datensatz {}: {error} Import vollständig zurückgerollt.",
+                        index + 1
+                    ));
+                }
+            };
             let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = row
                 .iter()
                 .map(|v| v as &(dyn tokio_postgres::types::ToSql + Sync))
                 .collect();
             match self
                 .controlled(&conn, async {
-                    conn.execute(&statement, &params).await.map_err(map_pg_err)
+                    conn.query_opt(&statement, &params)
+                        .await
+                        .map_err(map_pg_err)
                 })
                 .await
             {
                 Ok(n) => {
-                    inserted += n;
+                    match n {
+                        Some(row) if row.get::<_, bool>(0) => inserted += 1,
+                        Some(_) => updated += 1,
+                        None => skipped += 1,
+                    }
                     if (index + 1) % 100 == 0 || index + 1 == request.rows.len() {
-                        super::execution::progress(inserted);
+                        super::execution::progress((index + 1) as u64);
                     }
                 }
                 Err(err) => {
@@ -1987,6 +2054,8 @@ impl DatabaseAdapter for PostgresAdapter {
                     };
                     return Ok(super::CsvImportOutcome {
                         inserted_rows: 0,
+                        updated_rows: 0,
+                        skipped_rows: 0,
                         failed_row: Some((index + 1) as u32),
                         failed_column,
                         error: Some(message),
@@ -2007,6 +2076,8 @@ impl DatabaseAdapter for PostgresAdapter {
             .map_err(map_pg_err)?;
             return Ok(super::CsvImportOutcome {
                 inserted_rows: 0,
+                updated_rows: 0,
+                skipped_rows: 0,
                 failed_row: None,
                 failed_column: None,
                 error: Some("Import vom Benutzer abgebrochen und zurückgerollt.".into()),
@@ -2021,6 +2092,8 @@ impl DatabaseAdapter for PostgresAdapter {
             let message = format!("Commit-Ergebnis nicht bestätigt: {err}. Vor erneutem Import den Serverzustand prüfen.");
             return Ok(super::CsvImportOutcome {
                 inserted_rows: 0,
+                updated_rows: 0,
+                skipped_rows: 0,
                 failed_row: None,
                 failed_column: None,
                 error: Some(message),
@@ -2029,6 +2102,8 @@ impl DatabaseAdapter for PostgresAdapter {
 
         Ok(super::CsvImportOutcome {
             inserted_rows: inserted,
+            updated_rows: updated,
+            skipped_rows: skipped,
             failed_row: None,
             failed_column: None,
             error: None,
@@ -4458,6 +4533,264 @@ mod tests {
         assert!(err.contains("syntax error"), "{err}");
     }
 
+    #[tokio::test]
+    #[ignore]
+    async fn export_cursor_limits_and_cancellation() {
+        use crate::db::export::{self, CsvExportOptions, TableExportRequest};
+        let adapter = lab_adapter();
+        adapter.execute_query("DROP TABLE IF EXISTS export_cursor_test; CREATE TABLE export_cursor_test AS SELECT n AS id FROM generate_series(1, 1002) n").await.unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.csv");
+        let mut request = TableExportRequest {
+            job_id: "export-cursor-test".into(),
+            schema: "public".into(),
+            table: "export_cursor_test".into(),
+            filter: None,
+            allow_raw_filter: false,
+            order_by: Some("id".into()),
+            order_desc: false,
+            is_view: false,
+            path: path.to_str().unwrap().into(),
+            masks: vec![],
+            max_rows: None,
+            options: CsvExportOptions {
+                delimiter: ",".into(),
+                quote: "\"".into(),
+                header: true,
+                null_text: String::new(),
+                line_ending: "\n".into(),
+                bom: false,
+            },
+        };
+        for limit in [1, 1000, 1001] {
+            for count in [limit - 1, limit, limit + 1] {
+                request.max_rows = Some(limit);
+                request.filter = Some(format!("id <= {count}"));
+                let result = adapter.export_table_csv(&request, &|_| {}).await.unwrap();
+                assert_eq!(result.truncated, count > limit);
+                assert_eq!(result.rows, count.min(limit));
+                assert_eq!(
+                    std::fs::read_to_string(&path).unwrap().lines().count() as i64,
+                    result.rows + 1
+                );
+            }
+        }
+        request.filter = None;
+        request.max_rows = None;
+        std::fs::write(&path, "sentinel").unwrap();
+        let result = adapter
+            .export_table_csv(&request, &|_| export::request_cancel("export-cursor-test"))
+            .await;
+        assert!(result.unwrap_err().contains("abgebrochen"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "sentinel");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+        adapter
+            .execute_query("DROP TABLE export_cursor_test")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn csv_conflict_strategies_are_atomic() {
+        use crate::db::{CsvConflict, CsvImportRequest};
+        let adapter = lab_adapter();
+        adapter.execute_query("DROP TABLE IF EXISTS csv_conflict_test; CREATE TABLE csv_conflict_test (a int, b int, value text UNIQUE, PRIMARY KEY (a,b)); INSERT INTO csv_conflict_test VALUES (1,1,'old')").await.unwrap();
+        let mut request = CsvImportRequest {
+            file: None,
+            schema: "public".into(),
+            table: "csv_conflict_test".into(),
+            columns: vec!["a".into(), "b".into(), "value".into()],
+            rows: vec![vec![Some("1".into()), Some("1".into()), Some("new".into())]],
+            conflict: None,
+        };
+        assert!(adapter.csv_import(&request).await.unwrap().error.is_some());
+        request.conflict = Some(CsvConflict {
+            constraint: "csv_conflict_test_pkey".into(),
+            update_columns: vec![],
+        });
+        assert_eq!(adapter.csv_import(&request).await.unwrap().skipped_rows, 1);
+        request.conflict.as_mut().unwrap().update_columns = vec!["value".into()];
+        let result = adapter.csv_import(&request).await.unwrap();
+        assert_eq!(result.updated_rows, 1);
+        assert_eq!(result.inserted_rows, 0);
+        request
+            .rows
+            .push(vec![Some("2".into()), Some("1".into()), Some("new".into())]);
+        request.rows[0][2] = Some("changed".into());
+        request
+            .rows
+            .push(vec![Some("3".into()), Some("1".into()), Some("new".into())]);
+        let result = adapter.csv_import(&request).await.unwrap();
+        assert!(result.error.is_some());
+        assert_eq!(result.updated_rows, 0);
+        assert_eq!(
+            adapter
+                .execute_query("SELECT value FROM csv_conflict_test")
+                .await
+                .unwrap()
+                .rows[0]["value"],
+            "new"
+        );
+        adapter
+            .execute_query("DROP TABLE csv_conflict_test")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn csv_stream_large_import_and_late_error() {
+        use std::io::Write;
+        let adapter = lab_adapter();
+        adapter.execute_query("DROP TABLE IF EXISTS csv_stream_test; CREATE TABLE csv_stream_test(id int PRIMARY KEY, value text)").await.unwrap();
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "id,value").unwrap();
+        for n in 0..100_000 {
+            writeln!(file, "{n},\"{}\nline\"", "x".repeat(120)).unwrap();
+        }
+        let source = super::super::csv_stream::CsvFileSource {
+            path: file.path().to_str().unwrap().into(),
+            delimiter: ",".into(),
+            quote: "\"".into(),
+            has_header: true,
+            empty_as_null: true,
+            indices: vec![0, 1],
+        };
+        let request = crate::db::CsvImportRequest {
+            file: Some(source),
+            conflict: None,
+            schema: "public".into(),
+            table: "csv_stream_test".into(),
+            columns: vec!["id".into(), "value".into()],
+            rows: vec![],
+        };
+        let start = std::time::Instant::now();
+        let result = adapter.csv_import(&request).await.unwrap();
+        assert_eq!(result.inserted_rows, 100_000);
+        assert!(file.as_file().metadata().unwrap().len() > 10 * 1024 * 1024);
+        println!("100000 CSV rows imported in {:?}", start.elapsed());
+        adapter
+            .execute_query("TRUNCATE csv_stream_test")
+            .await
+            .unwrap();
+        writeln!(file, "invalid,last").unwrap();
+        assert!(adapter.csv_import(&request).await.unwrap().error.is_some());
+        assert_eq!(
+            adapter
+                .execute_query("SELECT count(*) AS n FROM csv_stream_test")
+                .await
+                .unwrap()
+                .rows[0]["n"],
+            "0"
+        );
+        file.as_file()
+            .set_len(file.as_file().metadata().unwrap().len() - "invalid,last\n".len() as u64)
+            .unwrap();
+        let cancelled = super::super::execution::with_progress(
+            |_| {
+                super::super::execution::cancel("stream-cancel").unwrap();
+            },
+            super::super::execution::run(
+                Some(super::super::execution::ExecutionOptions {
+                    job_id: Some("stream-cancel".into()),
+                    ..Default::default()
+                }),
+                true,
+                adapter.csv_import(&request),
+            ),
+        )
+        .await;
+        assert!(cancelled.is_err() || cancelled.unwrap().error.is_some());
+        assert_eq!(
+            adapter
+                .execute_query("SELECT count(*) AS n FROM csv_stream_test")
+                .await
+                .unwrap()
+                .rows[0]["n"],
+            "0"
+        );
+        adapter
+            .execute_query("DROP TABLE csv_stream_test")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn export_cursor_benchmark() {
+        use crate::db::export::{self, CsvExportOptions, TableExportRequest};
+        let adapter = lab_adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("benchmark.csv");
+        let options = CsvExportOptions {
+            delimiter: ",".into(),
+            quote: "\"".into(),
+            header: true,
+            null_text: String::new(),
+            line_ending: "\n".into(),
+            bom: false,
+        };
+        for count in [100_000, 1_000_000] {
+            adapter.execute_query(&format!("DROP TABLE IF EXISTS export_benchmark; CREATE TABLE export_benchmark AS SELECT n AS id, repeat('x',64) AS value FROM generate_series(1,{count}) n; CREATE UNIQUE INDEX ON export_benchmark(id); ANALYZE export_benchmark")).await.unwrap();
+            let client = super::super::execution::connect_postgres(&adapter.config, adapter.ssl)
+                .await
+                .unwrap();
+            client
+                .batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                .await
+                .unwrap();
+            let start = std::time::Instant::now();
+            let mut writer =
+                export::CsvFileWriter::create(path.to_str().unwrap(), &options).unwrap();
+            let columns = vec!["id".into(), "value".into()];
+            writer.write_header(&columns).unwrap();
+            for offset in (0..count).step_by(1000) {
+                let rows = client.query("SELECT to_jsonb(t) FROM export_benchmark t ORDER BY id, ctid LIMIT 1000 OFFSET $1", &[&(offset as i64)]).await.unwrap();
+                for row in rows {
+                    writer
+                        .write_line(&export::csv_row_line(&columns, &row.get(0), &[], &options))
+                        .unwrap();
+                }
+            }
+            client.batch_execute("ROLLBACK").await.unwrap();
+            writer.finish().unwrap();
+            let offset_time = start.elapsed();
+            let start = std::time::Instant::now();
+            let result = adapter
+                .export_table_csv(
+                    &TableExportRequest {
+                        job_id: "benchmark".into(),
+                        schema: "public".into(),
+                        table: "export_benchmark".into(),
+                        filter: None,
+                        allow_raw_filter: false,
+                        order_by: Some("id".into()),
+                        order_desc: false,
+                        is_view: false,
+                        path: path.to_str().unwrap().into(),
+                        options: options.clone(),
+                        masks: vec![],
+                        max_rows: None,
+                    },
+                    &|_| {},
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.rows, count as i64);
+            assert!(!result.truncated);
+            println!(
+                "CSV benchmark {count} rows: OFFSET {:?}; cursor {:?}",
+                offset_time,
+                start.elapsed()
+            );
+        }
+        adapter
+            .execute_query("DROP TABLE export_benchmark")
+            .await
+            .unwrap();
+    }
+
     fn lab_connection_string() -> String {
         std::env::var("L8DB_E2E_PG_URL")
             .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string())
@@ -4576,6 +4909,8 @@ mod tests {
         adapter.execute_query("DROP TABLE IF EXISTS public.l8db_qol_csv; CREATE TABLE public.l8db_qol_csv(id int NOT NULL, name text)").await.unwrap();
         let outcome = adapter
             .csv_import(&crate::db::CsvImportRequest {
+                file: None,
+                conflict: None,
                 schema: "public".into(),
                 table: "l8db_qol_csv".into(),
                 columns: vec!["id".into(), "name".into()],

@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile, stat } from "@tauri-apps/plugin-fs";
+import { readCsvPreview } from "@/lib/db";
 import { MAX_SQL_FILE_BYTES, sqlFileTitle } from "@/lib/sql-file";
 
 export async function readImportFile(path: string, maxBytes = MAX_SQL_FILE_BYTES) {
@@ -10,6 +11,11 @@ export async function readImportFile(path: string, maxBytes = MAX_SQL_FILE_BYTES
   if (new TextEncoder().encode(text).byteLength > maxBytes)
     throw new Error("Datei überschreitet die maximale Importgröße.");
   return { path, name: sqlFileTitle(path), text };
+}
+
+export async function readCsvImportFile(path: string) {
+  const preview = await readCsvPreview(path);
+  return { path, name: sqlFileTitle(path), ...preview };
 }
 
 export async function pickImportFile(kind: "sql" | "csv" | "json") {
@@ -24,5 +30,9 @@ export async function pickImportFile(kind: "sql" | "csv" | "json") {
       },
     ],
   });
-  return typeof path === "string" ? readImportFile(path) : null;
+  return typeof path === "string"
+    ? kind === "csv"
+      ? readCsvImportFile(path)
+      : readImportFile(path)
+    : null;
 }
