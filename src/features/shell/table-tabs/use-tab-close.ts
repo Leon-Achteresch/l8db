@@ -22,10 +22,25 @@ interface UseTabCloseOptions {
 
 export function useTabClose({ tabs, activeTab, isTabActive, navigate }: UseTabCloseOptions) {
   const closeTab = useTableTabs((state) => state.closeTab);
-  const closeOtherTabs = useTableTabs((state) => state.closeOtherTabs);
-  const closeTabsToRight = useTableTabs((state) => state.closeTabsToRight);
-  const closeAllTabs = useTableTabs((state) => state.closeAllTabs);
   const collapse = useSplitView((state) => state.collapse);
+  const closeVisibleTabs = (closing: Tab[]) => {
+    for (const tab of closing) closeTab(tabKey(tab));
+  };
+  const closeAllTabs = () => {
+    const state = useTableTabs.getState();
+    if (tabs.length === state.tabs.length) state.closeAllTabs();
+    else closeVisibleTabs(tabs);
+  };
+  const closeOtherTabs = (key: string) => {
+    const state = useTableTabs.getState();
+    if (tabs.length === state.tabs.length) state.closeOtherTabs(key);
+    else closeVisibleTabs(tabs.filter((tab) => tabKey(tab) !== key));
+  };
+  const closeTabsToRight = (key: string) => {
+    const state = useTableTabs.getState();
+    if (tabs.length === state.tabs.length) state.closeTabsToRight(key);
+    else closeVisibleTabs(tabs.slice(tabs.findIndex((tab) => tabKey(tab) === key) + 1));
+  };
   const [pendingClose, setPendingClose] = useState<PendingClose>(null);
 
   const closeTabNow = (tab: Tab) => {

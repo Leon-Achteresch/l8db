@@ -64,6 +64,13 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   filter_hint: "SQL WHERE-Ausdruck",
 };
 
+const UNAVAILABLE_CAPABILITIES = Object.fromEntries(
+  Object.entries(POSTGRES_CAPABILITIES).map(([key, value]) => [
+    key,
+    typeof value === "boolean" ? false : value,
+  ]),
+) as unknown as Capabilities;
+
 const FALLBACK_DRIVER: DriverStatus = {
   available: true,
   detail: "Eingebetteter Treiber",
@@ -275,7 +282,7 @@ export function providerForKind(kind: DatabaseKind): ProviderInfo | undefined {
 }
 
 export function capabilitiesFor(kind: DatabaseKind | null | undefined): Capabilities {
-  return (kind && providerForKind(kind)?.capabilities) || POSTGRES_CAPABILITIES;
+  return (kind && providerForKind(kind)?.capabilities) || UNAVAILABLE_CAPABILITIES;
 }
 
 export function supports(
@@ -289,6 +296,6 @@ export function useCapabilities(kind: DatabaseKind | null | undefined): Capabili
   return useProvidersStore(
     (state) =>
       (kind && state.providers.find((provider) => provider.kind === kind)?.capabilities) ||
-      POSTGRES_CAPABILITIES,
+      UNAVAILABLE_CAPABILITIES,
   );
 }

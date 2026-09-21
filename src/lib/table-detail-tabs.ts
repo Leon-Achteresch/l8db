@@ -34,9 +34,10 @@ export const TABLE_DETAIL_TABS: {
   { id: "audit", label: "Audit", capability: "object_admin" },
 ];
 
-export function availableTableDetailTabs(isView: boolean, caps: Capabilities) {
+export function availableTableDetailTabs(isView: boolean, caps: Capabilities, easyMode = false) {
   return TABLE_DETAIL_TABS.filter(
     (tab) =>
+      (!easyMode || tab.id === "data" || tab.id === "columns" || tab.id === "definition") &&
       (!tab.entity || tab.entity === (isView ? "view" : "table")) &&
       (!tab.capability || caps[tab.capability]),
   );

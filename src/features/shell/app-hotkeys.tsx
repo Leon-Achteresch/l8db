@@ -2,14 +2,17 @@ import { useHotkeys } from "@tanstack/react-hotkeys";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef } from "react";
 import { useActiveConnection } from "@/lib/connections";
+import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { commandById, emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function AppHotkeys() {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -23,28 +26,32 @@ export function AppHotkeys() {
 
   const goToTabIndex = useCallback(
     (index: number, last = false) => {
-      const tabs = useTableTabs.getState().tabs;
+      const tabs = useTableTabs
+        .getState()
+        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
       if (tabs.length === 0) return;
       const target = last ? tabs[tabs.length - 1] : tabs[index];
       if (target) navigateToTab(navigate, target);
     },
-    [navigate],
+    [navigate, easyMode],
   );
 
   const stepTab = useCallback(
     (direction: 1 | -1) => {
-      const tabs = useTableTabs.getState().tabs;
+      const tabs = useTableTabs
+        .getState()
+        .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
       if (tabs.length < 2) return;
       const current = activeKey ? tabs.findIndex((tab) => tabKey(tab) === activeKey) : -1;
       const next = current === -1 ? 0 : (current + direction + tabs.length) % tabs.length;
       const target = tabs[next];
       if (target) navigateToTab(navigate, target);
     },
-    [activeKey, navigate],
+    [activeKey, navigate, easyMode],
   );
 
   const closeActiveTab = useCallback(() => {
-    const tabs = useTableTabs.getState().tabs;
+    const tabs = useTableTabs.getState().tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
     if (tabs.length === 0) return;
     const key = activeKey ?? (tabs.length > 0 ? tabKey(tabs[tabs.length - 1]) : null);
     if (!key) return;
@@ -65,7 +72,7 @@ export function AppHotkeys() {
       return;
     }
     void Promise.resolve(navigateToTab(navigate, next)).finally(close);
-  }, [activeKey, navigate]);
+  }, [activeKey, navigate, easyMode]);
 
   const reopenTab = useCallback(() => {
     const restored = useTableTabs.getState().reopenLastTab();
@@ -109,7 +116,9 @@ export function AppHotkeys() {
     { id: "settings.open", action: () => void navigate({ to: "/settings" }) },
     {
       id: "view.split",
-      action: () => emitHotkeyAction("view.split"),
+      action: () => {
+        if (!easyMode) emitHotkeyAction("view.split");
+      },
     },
     {
       id: "objects.search",
@@ -147,7 +156,9 @@ export function AppHotkeys() {
     definitions.flatMap((entry) => {
       const command = commandById(entry.id);
       if (!command) return [];
-      const baseEnabled = entry.requiresConnection ? connection !== null : true;
+      const baseEnabled =
+        !(easyMode && entry.id === "view.split") &&
+        (!entry.requiresConnection || connection !== null);
       const primary = (overrides[entry.id] ?? command.defaultHotkey) as never;
       const rows = [
         {
