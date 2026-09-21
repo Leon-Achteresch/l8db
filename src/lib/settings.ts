@@ -20,6 +20,8 @@ export type EditorFontFamily =
   | "jetbrains";
 
 export interface SettingsState {
+  easyMode: boolean;
+  setEasyMode: (value: boolean) => void;
   hiddenTableDetailTabs: TableDetailTab[];
   setTableDetailTabVisible: (tab: TableDetailTab, visible: boolean) => void;
   resetTableDetailTabs: () => void;
@@ -33,6 +35,7 @@ export interface SettingsState {
   autoUpdateInstall: boolean;
   skippedUpdateVersion: string | null;
   tourFinished: boolean;
+  onboardingDone: boolean;
   editorTabSize: number;
   editorKeywordCase: SqlKeywordCase;
   editorWordWrap: boolean;
@@ -81,6 +84,7 @@ export interface SettingsState {
   setAutoUpdateInstall: (v: boolean) => void;
   setSkippedUpdateVersion: (v: string | null) => void;
   setTourFinished: (v: boolean) => void;
+  setOnboardingDone: (v: boolean) => void;
   setEditorTabSize: (v: number) => void;
   setEditorKeywordCase: (v: SqlKeywordCase) => void;
   setEditorWordWrap: (v: boolean) => void;
@@ -140,6 +144,7 @@ export function normalizeUiDensity(value: unknown): UiDensity {
 }
 
 const DEFAULT_SETTINGS = {
+  easyMode: false,
   hiddenTableDetailTabs: [] as TableDetailTab[],
   rowLimit: 100,
   editorFontSize: 13,
@@ -151,6 +156,7 @@ const DEFAULT_SETTINGS = {
   autoUpdateInstall: false,
   skippedUpdateVersion: null,
   tourFinished: false,
+  onboardingDone: false,
   editorTabSize: 2,
   editorKeywordCase: "upper" as SqlKeywordCase,
   editorWordWrap: true,
@@ -195,6 +201,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       ...DEFAULT_SETTINGS,
+      setEasyMode: (easyMode) => set({ easyMode }),
       setTableDetailTabVisible: (tab, visible) =>
         set((state) => ({
           hiddenTableDetailTabs: visible
@@ -216,6 +223,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
       setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
+      setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
       setEditorTabSize: (editorTabSize) => set({ editorTabSize }),
       setEditorKeywordCase: (editorKeywordCase) => set({ editorKeywordCase }),
       setEditorWordWrap: (editorWordWrap) => set({ editorWordWrap }),
@@ -273,6 +281,7 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           ...DEFAULT_SETTINGS,
           tourFinished: state.tourFinished,
+          onboardingDone: state.onboardingDone,
         })),
     }),
     {
@@ -282,6 +291,8 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...current,
           ...saved,
+          easyMode: saved?.easyMode === true,
+          onboardingDone: saved?.onboardingDone === true,
           translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),
