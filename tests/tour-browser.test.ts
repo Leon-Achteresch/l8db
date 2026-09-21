@@ -69,6 +69,10 @@ function mockTauriInit(seeds: Record<string, string>) {
   localStorage.clear();
   for (const [key, value] of Object.entries(seeds)) localStorage.setItem(key, value);
 }
+const ONBOARDED = {
+  "l8db.settings": JSON.stringify({ state: { onboardingDone: true }, version: 0 }),
+};
+
 async function createServer() {
   const root = resolve("dist");
   const policy = Object.entries(config.app.security.csp)
@@ -111,7 +115,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
-      await page.addInitScript(mockTauriInit, {});
+      await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
       await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
       expect(await page.locator('[data-tour-ui="overview"]').count()).toBe(0);
@@ -138,7 +142,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
-      await page.addInitScript(mockTauriInit, {});
+      await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
       await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
       await page.getByRole("button", { name: "Tour starten", exact: true }).click();
@@ -193,7 +197,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
-      await page.addInitScript(mockTauriInit, {});
+      await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
       await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
       await page.getByRole("button", { name: "Tour starten", exact: true }).click();
@@ -239,7 +243,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
-      await page.addInitScript(mockTauriInit, {});
+      await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
       await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
       await page.getByRole("button", { name: "Tour starten", exact: true }).click();
@@ -294,6 +298,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     page.on("pageerror", (error) => errors.push(error.message));
     try {
       await page.addInitScript(mockTauriInit, {
+        ...ONBOARDED,
         "l8db.connections": JSON.stringify({
           state: {
             connections: [
@@ -355,7 +360,10 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     page.on("pageerror", (error) => errors.push(error.message));
     try {
       await page.addInitScript(mockTauriInit, {
-        "l8db.settings": JSON.stringify({ state: { tourFinished: true }, version: 0 }),
+        "l8db.settings": JSON.stringify({
+          state: { tourFinished: true, onboardingDone: true },
+          version: 0,
+        }),
       });
       await page.goto(`http://localhost:${server.port}/settings`);
       expect(await page.locator('[data-tour-ui="offer"]').count()).toBe(0);

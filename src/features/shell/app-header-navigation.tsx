@@ -9,7 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { isEasyModeRouteVisible } from "@/lib/easy-mode";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 function isNavActive(url: string, pathname: string) {
@@ -17,6 +20,13 @@ function isNavActive(url: string, pathname: string) {
 }
 
 export function AppHeaderNavigation({ pathname }: { pathname: string }) {
+  const caps = useActiveCapabilities();
+  const easyMode = useSettingsStore((state) => state.easyMode);
+  const navItems = appSidebarData.navMain.filter(
+    (item) =>
+      isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
+  );
+
   return (
     <nav
       data-tour="header-nav"
@@ -30,7 +40,7 @@ export function AppHeaderNavigation({ pathname }: { pathname: string }) {
         l8db
       </Link>
       <div className="hidden items-center gap-1 @min-[54rem]:flex">
-        {appSidebarData.navMain.map((item) => {
+        {navItems.map((item) => {
           const active = isNavActive(item.url, pathname);
           return (
             <Tooltip key={item.title} content={item.title} side="bottom">
@@ -75,7 +85,7 @@ export function AppHeaderNavigation({ pathname }: { pathname: string }) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {appSidebarData.navMain.map((item) => (
+            {navItems.map((item) => (
               <DropdownMenuItem key={item.url} asChild>
                 <Link
                   to={item.url}

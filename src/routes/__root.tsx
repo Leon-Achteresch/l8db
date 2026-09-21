@@ -1,12 +1,14 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { createRootRoute } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
+import { EasyModeOutlet } from "@/features/shell/easy-mode-outlet";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
+import { Onboarding } from "@/features/onboarding/onboarding";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
 import { AppHeader } from "@/features/shell/app-header";
 import { AppHotkeys } from "@/features/shell/app-hotkeys";
@@ -26,7 +28,7 @@ function RootComponent() {
           <SqlFileDrop />
           <AppHeader />
           <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
-            <Outlet />
+            <EasyModeOutlet />
           </div>
         </DbThemeRoot>
         <UpdateAvailableDialog />
@@ -35,6 +37,7 @@ function RootComponent() {
         <TasksDialog />
         <WindowCloseGuard />
         <AppTour />
+        <Onboarding />
         <Toaster />
       </ThemeProvider>
     </MotionConfig>

@@ -13,8 +13,14 @@ import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsGeneralTab() {
   const { theme, setTheme } = useTheme();
-  const { resetToDefaults, translateFilterOperators, setTranslateFilterOperators } =
-    useSettingsStore();
+  const {
+    resetToDefaults,
+    easyMode,
+    setEasyMode,
+    setOnboardingDone,
+    translateFilterOperators,
+    setTranslateFilterOperators,
+  } = useSettingsStore();
 
   const handleReset = () => {
     resetToDefaults();
@@ -32,6 +38,12 @@ export function SettingsGeneralTab() {
       </div>
 
       <div className="space-y-3">
+        <SettingsRow
+          title="Easy Mode"
+          description="Weniger Ablenkung: Blendet MCP, Versionierung, Monitor, geteilte Ansichten und weitere Verwaltungswerkzeuge aus. Deine Arbeitsstände bleiben erhalten."
+        >
+          <Switch checked={easyMode} onCheckedChange={setEasyMode} aria-label="Easy Mode" />
+        </SettingsRow>
         <SettingsRow title="Erscheinungsbild" description="Hell, dunkel oder dem System folgen.">
           <SegmentedControl
             value={(theme ?? "system") as "light" | "system" | "dark"}
@@ -47,7 +59,7 @@ export function SettingsGeneralTab() {
 
         <SettingsAppearance />
 
-        <SettingsTableTabs />
+        {!easyMode && <SettingsTableTabs />}
 
         <SettingsRow
           title="Filteroperatoren übersetzen"
@@ -58,6 +70,20 @@ export function SettingsGeneralTab() {
             onCheckedChange={setTranslateFilterOperators}
             aria-label="Filteroperatoren übersetzen"
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Onboarding"
+          description="Intro, Theme- und Moduswahl vom ersten Start erneut anzeigen."
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setOnboardingDone(false)}
+          >
+            Erneut anzeigen
+          </Button>
         </SettingsRow>
 
         <TourSection />

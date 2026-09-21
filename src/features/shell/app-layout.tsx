@@ -4,11 +4,13 @@ import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guar
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
 import { VersioningPanel } from "@/features/versioning/versioning-panel";
+import { useSettingsStore } from "@/lib/settings";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { WorkspaceStatus } from "./workspace-status";
 
 export function AppLayout() {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const panelWidth = useSidebarPanel((s) => s.width);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
 
@@ -29,7 +31,7 @@ export function AppLayout() {
             <Outlet />
           </div>
           {panelOpen && <TransactionPanel />}
-          <VersioningPanel />
+          {!easyMode && <VersioningPanel />}
         </div>
         <WorkspaceStatus />
       </SidebarInset>

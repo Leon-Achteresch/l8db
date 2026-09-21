@@ -9,7 +9,8 @@ import { useTourStore } from "@/lib/tour/store";
 function tryOffer() {
   if (!useSettingsStore.persist.hasHydrated()) return;
   if (!useTourStore.persist.hasHydrated()) return;
-  if (useSettingsStore.getState().tourFinished) return;
+  const settings = useSettingsStore.getState();
+  if (settings.tourFinished || !settings.onboardingDone) return;
   const tour = useTourStore.getState();
   if (tour.active || tour.offerOpen || tour.offerDismissed) return;
   tour.openOffer();
@@ -18,7 +19,12 @@ function tryOffer() {
 export function AppTour() {
   const active = useTourStore((s) => s.active);
   const offerOpen = useTourStore((s) => s.offerOpen);
+  const onboardingDone = useSettingsStore((s) => s.onboardingDone);
   useAppTour();
+
+  useEffect(() => {
+    if (onboardingDone) tryOffer();
+  }, [onboardingDone]);
 
   useEffect(() => {
     const offSettings = useSettingsStore.persist.onFinishHydration(tryOffer);

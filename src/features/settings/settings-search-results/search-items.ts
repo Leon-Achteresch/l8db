@@ -9,6 +9,14 @@ export interface SearchItem {
 
 export const SEARCH_ITEMS: SearchItem[] = [
   {
+    id: "easy-mode",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Easy Mode",
+    description: "Erweiterte Werkzeuge ausblenden und die Oberfläche vereinfachen.",
+    keywords: ["einfach", "anfänger", "mcp", "versionierung", "monitor", "split"],
+  },
+  {
     id: "filter-operators",
     tabId: "general",
     tabLabel: "Allgemein",

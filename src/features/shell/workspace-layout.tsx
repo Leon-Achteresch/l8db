@@ -8,6 +8,7 @@ import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspac
 import { TableTabs } from "@/features/shell/table-tabs";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
+import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -36,6 +37,7 @@ const sensors = [
 ];
 
 export function WorkspaceLayout() {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
@@ -57,9 +59,9 @@ export function WorkspaceLayout() {
   const previousKey = useRef(routeKey);
 
   useEffect(() => {
-    if (routeKey && previousKey.current !== routeKey) reveal(routeKey);
+    if (!easyMode && routeKey && previousKey.current !== routeKey) reveal(routeKey);
     previousKey.current = routeKey;
-  }, [routeKey, reveal]);
+  }, [routeKey, reveal, easyMode]);
 
   return (
     <DragDropProvider
@@ -71,7 +73,7 @@ export function WorkspaceLayout() {
         const targetId = typeof target?.id === "string" ? target.id : "";
         const paneIndex = targetId.startsWith("pane:") ? targetId.slice(5) : null;
         const { setPane, swapPanes, addPane, panes } = useSplitView.getState();
-        if (paneIndex !== null && source.type === "tab") {
+        if (!easyMode && paneIndex !== null && source.type === "tab") {
           const key = String(source.id);
           if (paneIndex === "new") {
             addPane(panes.length === 0 && activeTab ? tabKey(activeTab) : null, key);
@@ -82,7 +84,7 @@ export function WorkspaceLayout() {
           if (tab) navigateToTab(navigate, tab);
           return;
         }
-        if (paneIndex !== null && source.type === "pane") {
+        if (!easyMode && paneIndex !== null && source.type === "pane") {
           const from = Number((source.data as { index: number }).index);
           swapPanes(from, Number(paneIndex));
           return;
@@ -103,14 +105,14 @@ export function WorkspaceLayout() {
           <TableTabs />
         </header>
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {split && activeTab ? (
+          {!easyMode && split && activeTab ? (
             <SplitWorkspace />
           ) : (
             <>
               <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
                 <Outlet />
               </MasterSelectionContext.Provider>
-              {activeTab && <NewPaneDropZone />}
+              {!easyMode && activeTab && <NewPaneDropZone />}
             </>
           )}
           {fkDrawerUsed.current && (
