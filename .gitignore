@@ -29,6 +29,7 @@ src-tauri/gen/
 
 # Test artifacts
 coverage/
+test-artifacts/
 *.lcov
 
 # Editor directories and files
@@ -45,7 +46,10 @@ coverage/
 # Agent chat scratch
 chat/
 
-/docs/
+/docs/*
+!/docs/providers.md
+!/docs/integration-tests.md
+!/docs/data-transfer.md
 
 # Nested website repo (separates Projekt)
 l8db-website/

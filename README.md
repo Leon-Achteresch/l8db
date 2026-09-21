@@ -1,6 +1,6 @@
 # l8db
 
-A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://tauri.app), React 19, and Rust.
+A fast, native desktop client for PostgreSQL and other database families — built with [Tauri v2](https://tauri.app), React 19, and Rust.
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
 ![License](https://img.shields.io/badge/license-Elastic--2.0-blue)
@@ -9,6 +9,8 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 ---
 
 ## Features
+
+Features depend on the selected database family and installed driver. The list below describes the PostgreSQL feature set; see the [provider matrix and contributor guide](docs/providers.md) for other products, capabilities and driver requirements.
 
 - **Table browser** — browse rows with filtering, sorting, and pagination
 - **Inline row editing** — edit, insert, duplicate, and delete rows with transaction support
@@ -36,7 +38,7 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 - **Transaction panel** — review and commit/rollback pending changes
 - **Multiple connections** — manage and switch between connections; supports connection strings and individual fields
 - **SSL / TLS** — `disable`, `prefer`, `require`, `verify-ca`, `verify-full` per connection (OS certificate store)
-- **SSH tunnels** — reach private databases through a bastion (password or key auth, known_hosts verification with optional TOFU); app traffic stays end-to-end TLS-encrypted
+- **SSH tunnels** — reach private databases through a bastion (password or key auth, known_hosts verification with optional TOFU); database TLS follows the selected SSL mode
 - **OS keychain secrets** — passwords live in Keychain / Credential Manager / Secret Service, never in localStorage
 - **Dark / light / system theme**
 
@@ -61,7 +63,7 @@ A fast, native desktop client for PostgreSQL — built with [Tauri v2](https://t
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (stable toolchain)
-- [Bun](https://bun.sh/) (`bun` is required — `tauri.conf.json` hardcodes it)
+- [Bun](https://bun.sh/) (version 1.3.10; `bun` is required — `tauri.conf.json` hardcodes it)
 - Tauri CLI v2: `cargo install tauri-cli --version "^2"`
 
 ### Development
@@ -144,8 +146,12 @@ src-tauri/src/
 
 ## Operations
 
+- Data transfer behavior, limits and benchmarks: [data-transfer.md](docs/data-transfer.md).
+- Reproducible database and browser checks: [integration-tests.md](docs/integration-tests.md).
+- Production configuration: [.github/PRODUCTION.md](.github/PRODUCTION.md).
+
 - `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).
-- Releases: every push to `main` auto-publishes installers for macOS (Universal DMG), Windows (MSI/NSIS), and Linux (deb/AppImage) plus `latest.json` for the in-app auto-updater — version (`<major>.<minor>.<commit-count>`) and changelog are generated from Conventional Commits. Full runbook: [`docs/RELEASE.md`](docs/RELEASE.md).
+- Releases: every push to `main` auto-publishes installers for macOS (Universal DMG), Windows (MSI/NSIS), and Linux (deb/AppImage) plus `latest.json` for the in-app auto-updater — version (`<major>.<minor>.<commit-count>`) and changelog are generated from Conventional Commits. Full runbook: [`.github/RELEASING.md`](.github/RELEASING.md).
 - OS package managers (Homebrew, winget, AUR, Flatpak): templates in [`packaging/`](packaging/), guide in [`packaging/README.md`](packaging/README.md).
 - `SECURITY.md` describes supported versions and how to report vulnerabilities.
 

@@ -28,7 +28,7 @@ const shim = `
   };
   if (!localStorage.getItem("l8db.connections")) {
     localStorage.setItem("l8db.connections", JSON.stringify({state:{connections:[{id:"ch",name:"ClickHouse · Test",kind:"clickhouse",connectionString:"clickhouse://l8db:l8db@localhost:8124/bigdata",sslMode:"disable"}],activeId:"ch",favoriteServerKeys:[],serverOrder:[]},version:0}));
-    localStorage.setItem("l8db.settings", JSON.stringify({state:{tourFinished:true},version:0}));
+    localStorage.setItem("l8db.settings", JSON.stringify({state:{tourFinished:true,onboardingDone:true},version:0}));
     localStorage.setItem("l8db.db-selection", JSON.stringify({state:{database:"bigdata",schema:"bigdata"},version:0}));
   }
 })();

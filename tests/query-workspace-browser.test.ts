@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { chromium } from "playwright";
+import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
   "query workspace: layouts, schema, execution, results and custom shortcuts",
   async () => {
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+    page.setDefaultTimeout(10000);
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.addInitScript(() => {
@@ -98,14 +100,15 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.waitForTimeout(250);
       if ((await page.evaluate(() => window.testRuns.length)) !== 2)
         throw Error("Old run shortcut still active");
-      await page.getByRole("button", { name: "Skript", exact: true }).click();
+      await page.getByRole("button", { name: "Weitere Ausführungsarten", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Skript mit Einzelergebnissen" }).click();
+      await page.getByLabel("Skript-Transaktion").selectOption("autocommit");
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();
       await page.getByText("2/2 erfolgreich", { exact: true }).waitFor();
       await page.getByRole("button").filter({ hasText: "SELECT id, email, created_at" }).click();
       await page.getByText("mara@example.test", { exact: true }).waitFor();
       await page.getByRole("button").filter({ hasText: "SELECT count(*)" }).click();
       await page.getByText("7", { exact: true }).last().waitFor();
-      await page.getByRole("textbox", { name: "Schema durchsuchen" }).fill("");
       await page.screenshot({ path: "/tmp/l8db-query-develop.png" });
       await page.setViewportSize({ width: 900, height: 700 });
       await page.screenshot({ path: "/tmp/l8db-query-compact.png" });
@@ -119,6 +122,7 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
         "PASS: run, filtered JSON, presets, navigator insertion, undo, remapped shortcuts, compact viewport.",
       );
     } finally {
+      await saveBrowserArtifacts(browser, "query-workspace");
       await browser.close();
     }
   },
