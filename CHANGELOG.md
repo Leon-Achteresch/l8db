@@ -3,6 +3,112 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.89] - 2026-09-19
+
+### Features
+- add definition diff editing, apply workflow, and compare tab persistence
+- add object grants support and refactor debugger into components
+- add database debugging workflow
+- Proxy-User per durchsuchbarer Auswahl (Benutzer/Rollen/Logins je DB), keine veralteten Zeilen nach Identitätswechsel, präzise Postgres-Verbindungsfehler
+- Datenbank als Proxy-User ansehen (Postgres SET ROLE/RLS, SQL Server EXECUTE AS, Oracle Proxy-Anmeldung)
+- Master pro Bereich frei wählbar (Ketten bis 4 Ebenen, ein Master mit mehreren Details), Pfeile sitzen auf der gemeinsamen Kante von Master und Detail
+- add context menu row highlighting
+- Dashboard-Tool zum Erstellen und Bearbeiten von Dashboards über den MCP
+- Dashboard auch im Production-Build in der Sidebar anzeigen
+- MongoDB- und Redis-Verbindungen über den MCP freigeben
+
+### Fixes
+- address CodeRabbit review on debugger, MCP MongoDB checks and proxy users
+- Cmd+C kopiert die aktive Zelle auch, wenn der Fokus auf dem umgebenden Tab-Panel liegt
+
+### Änderungen
+- simplify header styling and layout
+- simplify navigation logic and remove unused components
+
+## [0.6.71] - 2026-09-19
+
+### Features
+- Verbindungsauswahl nutzt Gruppen-Layout und Karten des Verbindungsmanagers mit Checkbox statt Verwaltungsaktionen
+- Verbindungen nach Server/Host-Regeln gruppiert wie im Verbindungsmanager
+- Spalten verknüpfter Tabellen (auch über zwei Schritte und rückwärts) direkt wählbar, Verknüpfungen werden automatisch ergänzt und entfernt
+- Chart-Erstellung als einfaches Einseiten-Formular, Expertenoptionen hinter Erweitert und ⋯-Menüs
+- FK-Vorschau-Einstellungen und Spaltenbreiten-Anpassungen
+- Tab-Titel per Tokenizer aus komplexen Skripten ableiten (CTEs, Subqueries, Blöcke, Multi-Statement)
+- erstes Zielschema automatisch wählen und Editor-Öffnen gegen fehlgeschlagenen Verbindungswechsel absichern
+- Panel schließt automatisch, sobald keine Transaktion mehr offen ist
+- Query-Tabs zeigen automatisch einen kurzen Titel aus dem SQL statt „Query n“
+- Zielschema-Liste folgt der gewählten Zielverbindung und deren zugewiesenen Schemas
+- Zielschema als Sidebar-Select und nach Verbindungswechsel als aktives Schema setzen
+- DDL in Query-Editor der gewählten Zielverbindung öffnen statt direkt auszuführen
+- Strg+Klick auf END/END IF springt zum passenden BEGIN/IF in PL/SQL
+- Objekte, Prozeduren und Packages in anderem Schema erstellen
+- Shell-Syntax wie db.coll.aggregate([...]) mit ISODate im Query-Editor ausführen
+- Objekte und Arrays in Zellen als Inhalt statt {} Object anzeigen
+- Objekte per Kontextmenü in anderem Schema erstellen
+- Suche pro Objekt-Tab und Connection merken
+
+### Fixes
+- MATERIALIZED-Spalten, Nested-Spalten, 64-Bit-Ints und Typ-Badges korrekt; Performance-Tab misst echte Laufzeit; bigdata-Seed für Browser-Lab
+- globale Einstellung 'An Spaltentitel anpassen' setzt Mindestbreite auch bei gespeicherten Spaltenbreiten durch
+- ungenutzte Imports entfernt
+- DDL-Vorschau scrollt bei langen Skripten statt den Dialog zu sprengen
+- Zielschema-Auswahl nutzt komplette Schemaliste statt gefilterter Sidebar-Schemas
+- Strg+C blockiert natives Kopieren nicht mehr app-weit und kopiert Mehrfachauswahl wieder als TSV
+
+### Performance
+- Keychain-Secrets beim Start parallel statt sequenziell laden
+- Seite 1 zuerst laden, Zeilenanzahl erst danach abfragen
+
+### Änderungen
+- große Dateien und Mehrfach-Komponenten in fokussierte Module aufgeteilt (max. 300 Zeilen, eine Komponente pro Datei)
+- Verbindungs-Dropdown der Sidebar als ConnectionPicker extrahiert und im Schema-Copy-Dialog verwendet
+
+### Weitere Änderungen
+- Type(scope): Beschreibung
+
+## [0.6.34] - 2026-09-18
+
+### Features
+- Kontextmenü für Packages in der Sidebar mit Kompilieren, Aufruf-Vorlage, Namen kopieren und DROP PACKAGE/BODY
+- Kompilieren meldet gebrochene Aufrufer und markiert sie im Editor
+- Prüfen von Views, Funktionen, Prozeduren und Packages über temporäres _L8DB_TEMP-Objekt
+- Spaltentreffer blinkt dreimal
+- Grid-Suche startet im Spaltenmodus
+- ganze Spalte beim Treffer hervorheben, Mehrwort-Ranking in Palette und Spaltensuche
+- opencode als MCP-Client registrierbar
+- About-Seite, Query-Sheets und Tabellenansicht überarbeitet
+- MCP-Server mit Redaktion, Read-only-Modus und CLI-Registrierung
+- Dokumentation eingebettet in der App öffnen
+- row limit, notices, multi-format copy, and related UI improvements
+- Überladungen im Outline anzeigen und per Strg+Klick als Peek öffnen
+- implement ClickHouse browser proxy and database interaction
+
+### Fixes
+- Strg+C lässt markierten Text nativ kopieren statt den aktiven Zellwert
+- Strg+C kopiert keinen Zellwert, wenn der Fokus außerhalb des Grids liegt (z. B. Master-Detail-SQL-Dialog)
+- Prüfen meldet keine Phantom-Reste bei fehlgeschlagenen Views, lässt Tabellen-Qualifier bei gleichnamigem Package stehen und kürzt Temp-Namen auf 30 Bytes
+- Prüfen läuft als ein serverseitiger Block, räumt Temp-Objekte garantiert ab und prüft keine Aufrufer-Kopien mehr
+- Prüfen parst Abfragen, DML und PL/SQL-Blöcke wirklich und lehnt nicht prüfbares DDL ab
+- Bereichsrahmen wird nicht mehr von der Zeilennummern-Spalte überdeckt
+- Master-Detail-Kette über mehrere Bereiche automatisch durchreichen
+- PL/SQL-Blöcke und gemischte Skripte als Transaktion erkennen
+- Biome-Formatierung, fehlendes Github-Icon und toten Query-Code
+- deaktivierten Server als nicht verbunden melden
+- SQL-Härtung gegen Redaktions-Umgehung und Schema-Ausbruch
+- Spaltenbreite an Titel berücksichtigt FK-Icon wieder
+- Oracle-Packages als Packages statt Routinen anzeigen
+- localStorage-Quota nicht mehr überschreiten
+- sticky table header auch bei fixierten Spalten
+- Originalfehler im Passwort-Dialog anzeigen
+
+### Performance
+- WebView2 gibt unter Windows Speicher frei, wenn das Fenster den Fokus verliert
+- Monaco, FK-Drawer und Layout-Animation erst bei Bedarf laden
+- JSON-Ansicht bei großen Ergebnissen in WebKit nicht mehr blockieren
+
+### Änderungen
+- Dashboard-Charts, MCP-Ansicht und About-Seite in kleinere Komponenten aufgeteilt
+
 ## [0.5.98] - 2026-09-16
 
 ### Features
