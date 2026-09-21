@@ -4,6 +4,7 @@ import {
   DownloadIcon,
   FilePlusIcon,
   FileTextIcon,
+  GitBranchIcon,
   GitCompareIcon,
   HashIcon,
   type LucideIcon,
@@ -16,6 +17,7 @@ import {
 import { type LazyExoticComponent, lazy } from "react";
 
 export type ToolId =
+  | "versioning"
   | "compare"
   | "er-diagram"
   | "enums"
@@ -38,6 +40,17 @@ type ToolEntry = {
 };
 
 export const TOOL_TABS: Record<ToolId, ToolEntry> = {
+  versioning: {
+    path: "/versioning",
+    label: "Versionierung",
+    Icon: GitBranchIcon,
+    iconColor: "text-indigo-500",
+    Component: lazy(() =>
+      import("@/features/versioning/versioning-route-view").then((m) => ({
+        default: m.VersioningRouteView,
+      })),
+    ),
+  },
   compare: {
     path: "/compare",
     label: "Vergleich",

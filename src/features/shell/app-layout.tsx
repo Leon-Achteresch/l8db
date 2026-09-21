@@ -3,6 +3,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { VersioningPanel } from "@/features/versioning/versioning-panel";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { WorkspaceStatus } from "./workspace-status";
@@ -28,6 +29,7 @@ export function AppLayout() {
             <Outlet />
           </div>
           {panelOpen && <TransactionPanel />}
+          <VersioningPanel />
         </div>
         <WorkspaceStatus />
       </SidebarInset>

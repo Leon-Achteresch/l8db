@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 
 interface CompareSidePickerProps {
   title: string;
+  className?: string;
   value: CompareSideSelection;
   onChange: (value: CompareSideSelection) => void;
   lockConnection?: SavedConnection | null;
@@ -33,6 +34,7 @@ interface CompareSidePickerProps {
 
 export function CompareSidePicker({
   title,
+  className,
   value,
   onChange,
   lockConnection,
@@ -56,7 +58,7 @@ export function CompareSidePicker({
   } = useCompareSidePicker(value, onChange, lockConnection, preferredObjectName);
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3">
+    <div className={cn("flex flex-col gap-2 rounded-2xl border bg-muted/30 p-3", className)}>
       <div className="flex items-center gap-2">
         <MorphIcon
           icon={lockConnection ? Lock : GitCompare}

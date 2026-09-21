@@ -18,3 +18,4 @@ export * from "./rows";
 export * from "./schema-objects";
 export * from "./transactions";
 export * from "./types";
+export * from "./versioning";

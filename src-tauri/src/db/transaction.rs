@@ -41,7 +41,7 @@ fn validate_ctid(ctid: &str) -> Result<String, String> {
 type OracleConn = Arc<std::sync::Mutex<oracle::Connection>>;
 
 enum TransactionEntry {
-    Pg(super::execution::PgSession, super::SslMode),
+    Pg(Arc<super::execution::PgSession>, super::SslMode),
     Oracle(OracleConn),
     Generic(Generic),
 }
@@ -384,7 +384,7 @@ impl TransactionManager {
         conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
         Ok(self
             .insert_entry(TransactionEntry::Pg(
-                super::execution::PgSession::new(conn),
+                Arc::new(super::execution::PgSession::new(conn)),
                 ssl,
             ))
             .await)
@@ -412,6 +412,39 @@ impl TransactionManager {
         )
         .await;
         session.finish(outcome)
+    }
+
+    pub async fn versioning_adapter(
+        &self,
+        tx_id: &str,
+        pool: PoolState,
+    ) -> Result<Box<dyn DatabaseAdapter>, String> {
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Pg(session, ssl) => Ok(Box::new(
+                super::postgres::PostgresAdapter::from_session(session.clone(), *ssl, pool),
+            )),
+            _ => Err("Transaktionsgebundene Metadaten benötigen PostgreSQL".into()),
+        }
+    }
+
+    pub async fn versioning_oracle_timeout(
+        &self,
+        tx_id: &str,
+        milliseconds: u64,
+    ) -> Result<(), String> {
+        if !(100..=3_600_000).contains(&milliseconds) {
+            return Err("Ungültiges Oracle-Zeitlimit".into());
+        }
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Oracle(c) => {
+                ora(c.clone(), move |c| {
+                    c.set_call_timeout(Some(std::time::Duration::from_millis(milliseconds)))
+                        .map_err(|e| e.to_string())
+                })
+                .await
+            }
+            _ => Err("Zeitlimit benötigt eine Oracle-Sitzung".into()),
+        }
     }
 
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {

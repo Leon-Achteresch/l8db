@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bot, GitBranchIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
+import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -14,8 +14,10 @@ import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { useVersioningPanel } from "@/lib/versioning/panel";
 
 export function AppHeader() {
+  const versioning = useVersioningPanel();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const txCount = useTransactionStore((s) => s.transactions.length);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
@@ -95,6 +97,51 @@ export function AppHeader() {
           </Tooltip>
         ) : null}
 
+        <Tooltip
+          content={
+            versioning.pending
+              ? `Versionierung · ${versioning.pending} offen`
+              : versioning.hasError
+                ? "Versionierung · Status prüfen"
+                : "Versionierung"
+          }
+          side="bottom"
+        >
+          <button
+            type="button"
+            aria-label={
+              versioning.pending ? `Versionierung: ${versioning.pending} offen` : "Versionierung"
+            }
+            aria-expanded={versioning.open}
+            aria-controls="versioning-panel"
+            aria-description="Beta"
+            onClick={() => versioning.setOpen(!versioning.open)}
+            className={cn(
+              "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              versioning.open && "bg-primary/12 text-foreground",
+            )}
+          >
+            <GitPullRequestIcon className="size-4" strokeWidth={2} />
+            <span className="-top-0.5 -left-2 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
+              Beta
+            </span>
+            {versioning.pending > 0 ? (
+              <span
+                data-testid="versioning-badge"
+                className="absolute -right-1 -top-1 flex min-w-3.5 h-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold tabular-nums text-primary-foreground"
+              >
+                {versioning.pending > 99 ? "99+" : versioning.pending}
+              </span>
+            ) : versioning.hasError ? (
+              <span
+                role="img"
+                aria-label="Status nicht verfügbar"
+                className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-500"
+              />
+            ) : null}
+          </button>
+        </Tooltip>
+
         <Tooltip content="Transaktionen" side="bottom">
           <button
             type="button"
@@ -142,7 +189,7 @@ export function AppHeader() {
         <Tooltip content="MCP" side="bottom">
           <Link
             to="/mcp"
-            aria-label="MCP (Beta)"
+            aria-label="MCP"
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -150,9 +197,6 @@ export function AppHeader() {
             )}
           >
             <Bot className="size-4" strokeWidth={2} />
-            <span className="-top-0.5 -right-1 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-              Beta
-            </span>
           </Link>
         </Tooltip>
 
