@@ -22,6 +22,7 @@ import {
   splitHotkeyForKbd,
   useHotkeysStore,
 } from "@/lib/hotkeys";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface ShortcutsDialogProps {
@@ -30,12 +31,19 @@ interface ShortcutsDialogProps {
 }
 
 export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const [term, setTerm] = useState("");
   const connection = useActiveConnection();
   const navigate = useNavigate();
   const overrides = useHotkeysStore((state) => state.overrides);
 
-  const groups = useMemo(() => groupHotkeyCommands(filterHotkeyCommands(term)), [term]);
+  const groups = useMemo(
+    () =>
+      groupHotkeyCommands(
+        filterHotkeyCommands(term).filter((command) => !easyMode || command.id !== "view.split"),
+      ),
+    [term, easyMode],
+  );
   void overrides;
 
   return (

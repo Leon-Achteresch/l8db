@@ -11,16 +11,20 @@ import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import { TableTabsSortableTab } from "@/features/shell/table-tabs-sortable-tab";
 import { copyText } from "@/lib/clipboard";
+import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
+import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
-  const tabs = useTableTabs((state) => state.tabs);
+  const easyMode = useSettingsStore((state) => state.easyMode);
+  const allTabs = useTableTabs((state) => state.tabs);
+  const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
   const setOrientation = useSplitView((state) => state.setOrientation);
@@ -32,7 +36,7 @@ export function TableTabs() {
   const matchTab = useTabRouteMatch();
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const navigate = useNavigate();
-  const split = panes.length > 1;
+  const split = !easyMode && panes.length > 1;
   const orientationLabel =
     orientation === "horizontal" ? "Bereiche untereinander" : "Bereiche nebeneinander";
 
@@ -65,14 +69,16 @@ export function TableTabs() {
   } = useTabClose({ tabs, activeTab, isTabActive, navigate });
 
   const handleSplit = useCallback(() => {
+    if (easyMode) return;
     const key = activeTab ? tabKey(activeTab) : tabs[0] ? tabKey(tabs[0]) : null;
     addPane(key);
     if (!activeTab && tabs[0]) navigateToTab(navigate, tabs[0]);
-  }, [activeTab, addPane, navigate, tabs]);
+  }, [activeTab, addPane, navigate, tabs, easyMode]);
 
   useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
 
   const handleSplitTab = (tab: Tab) => {
+    if (easyMode) return;
     addPane(activeTab ? tabKey(activeTab) : null, tabKey(tab));
     navigateToTab(navigate, tab);
   };
@@ -112,12 +118,12 @@ export function TableTabs() {
               <TableTabsSortableTab
                 key={tabKey(tab)}
                 tab={tab}
-                index={index}
+                index={allTabs.indexOf(tab)}
                 isActive={isTabActive(tab)}
                 isInPane={split && panes.includes(tabKey(tab))}
                 hasTabsToRight={index < tabs.length - 1}
                 tabsCount={tabs.length}
-                canSplit={panes.length < MAX_SPLIT_PANES}
+                canSplit={!easyMode && panes.length < MAX_SPLIT_PANES}
                 onNavigate={() => {
                   if (split) reveal(tabKey(tab));
                   navigateToTab(navigate, tab);
@@ -160,18 +166,20 @@ export function TableTabs() {
       </Tooltip>
       <div className="min-w-0 flex-1" />
 
-      <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
-        <button
-          type="button"
-          onClick={handleSplit}
-          disabled={tabs.length === 0 || panes.length >= MAX_SPLIT_PANES}
-          aria-label="Ansicht teilen"
-          className={iconButton}
-        >
-          <SquareSplitHorizontalIcon className="size-3.5" />
-        </button>
-      </Tooltip>
-      {panes.length === 2 && (
+      {!easyMode && (
+        <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
+          <button
+            type="button"
+            onClick={handleSplit}
+            disabled={tabs.length === 0 || panes.length >= MAX_SPLIT_PANES}
+            aria-label="Ansicht teilen"
+            className={iconButton}
+          >
+            <SquareSplitHorizontalIcon className="size-3.5" />
+          </button>
+        </Tooltip>
+      )}
+      {!easyMode && panes.length === 2 && (
         <Tooltip content={orientationLabel} side="bottom" wrapperClassName="shrink-0">
           <button
             type="button"

@@ -66,15 +66,17 @@ export function useTableViewModel({
   const [selectedTab, setDetailTab] = useTableViewState(stateKey, "detailTab", "data");
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
-  const availableTabs = availableTableDetailTabs(isView, caps);
+  const easyMode = useSettingsStore((s) => s.easyMode);
+  const availableTabs = availableTableDetailTabs(isView, caps, easyMode);
   const visibleTabs = availableTabs.filter((tab) => !hiddenTabs.includes(tab.id));
   const viewTab = resolveTableDetailTab(selectedTab, visibleTabs);
   const tableTab = resolveTableDetailTab(selectedTab, visibleTabs);
 
   useEffect(() => {
+    if (easyMode) return;
     if (isView && viewTab) setDetailTab(viewTab);
     if (!isView && tableTab) setDetailTab(tableTab);
-  }, [isView, viewTab, tableTab, setDetailTab]);
+  }, [isView, viewTab, tableTab, setDetailTab, easyMode]);
   const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
   const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
   const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);

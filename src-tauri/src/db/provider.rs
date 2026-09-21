@@ -244,6 +244,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
+                explain: false,
                 object_grants: true,
                 proxy_user: true,
                 bind_parameters: true,
