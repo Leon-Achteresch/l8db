@@ -3630,7 +3630,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tokio-util",
- "toml_edit 0.20.2",
+ "toml_edit 0.25.11+spec-1.1.0",
  "url",
  "webview2-com",
  "windows-core 0.61.2",
@@ -7989,6 +7989,7 @@ dependencies = [
  "indexmap 2.14.0",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.3",
 ]
 

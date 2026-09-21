@@ -154,7 +154,7 @@ fn is_registered(spec: &ClientSpec, path: &Path) -> bool {
             .is_some(),
         Format::Toml => std::fs::read_to_string(path)
             .ok()
-            .and_then(|text| text.parse::<toml_edit::Document>().ok())
+            .and_then(|text| text.parse::<toml_edit::DocumentMut>().ok())
             .and_then(|doc| doc.get("mcp_servers")?.get(SERVER_KEY).map(|_| ()))
             .is_some(),
     }
@@ -229,7 +229,7 @@ pub fn register(paths: &Paths, id: &str, on: bool, exe: &Path) -> Result<(), Str
         Format::Toml => {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             let mut doc = text
-                .parse::<toml_edit::Document>()
+                .parse::<toml_edit::DocumentMut>()
                 .map_err(|e| format!("{}: {e}", path.display()))?;
             if on {
                 let mut table = toml_edit::Table::new();
