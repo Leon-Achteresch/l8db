@@ -95,7 +95,32 @@ pub fn source_snippet(source: &str, term: &str) -> Option<(i32, String, i32)> {
     first.map(|(line, snippet)| (line, snippet, occurrences))
 }
 
+enum AdapterConnection {
+    Pooled(PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>),
+    Session(tokio::sync::OwnedMutexGuard<tokio_postgres::Client>),
+}
+
+impl std::ops::Deref for AdapterConnection {
+    type Target = tokio_postgres::Client;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Pooled(c) => c,
+            Self::Session(c) => c,
+        }
+    }
+}
+
+impl std::ops::DerefMut for AdapterConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Pooled(c) => c,
+            Self::Session(c) => c,
+        }
+    }
+}
+
 pub struct PostgresAdapter {
+    session: Option<std::sync::Arc<super::execution::PgSession>>,
     config: Config,
     pool_state: PoolState,
     pool_key: String,
@@ -104,6 +129,21 @@ pub struct PostgresAdapter {
 }
 
 impl PostgresAdapter {
+    pub fn from_session(
+        session: std::sync::Arc<super::execution::PgSession>,
+        ssl: SslMode,
+        pool_state: PoolState,
+    ) -> Self {
+        Self {
+            session: Some(session),
+            config: Config::new(),
+            pool_state,
+            pool_key: String::new(),
+            ssl,
+            read_only: false,
+        }
+    }
+
     pub fn from_config(config: ConnectionConfig, pool_state: PoolState) -> Self {
         let ssl = config.ssl_mode.unwrap_or(SslMode::Prefer);
         let mut pg = Config::new();
@@ -122,6 +162,7 @@ impl PostgresAdapter {
             None,
         );
         Self {
+            session: None,
             config: pg,
             pool_state,
             pool_key,
@@ -139,6 +180,7 @@ impl PostgresAdapter {
         let pool_key = super::connection::connection_key(connection_string, database);
         let read_only = super::connection::options_are_read_only(config.get_options());
         Ok(Self {
+            session: None,
             config,
             pool_state,
             pool_key,
@@ -147,10 +189,13 @@ impl PostgresAdapter {
         })
     }
 
-    async fn get_conn(
-        &self,
-    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String>
-    {
+    async fn get_conn(&self) -> Result<AdapterConnection, String> {
+        if let Some(session) = &self.session {
+            return session
+                .metadata_lock()
+                .await
+                .map(AdapterConnection::Session);
+        }
         let pool = self
             .pool_state
             .get_pool(
@@ -162,13 +207,17 @@ impl PostgresAdapter {
             .await?;
         pool.get_owned()
             .await
+            .map(AdapterConnection::Pooled)
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
     }
 
-    async fn get_meta(
-        &self,
-    ) -> Result<PooledConnection<'static, PostgresConnectionManager<MakeTlsConnector>>, String>
-    {
+    async fn get_meta(&self) -> Result<AdapterConnection, String> {
+        if let Some(session) = &self.session {
+            return session
+                .metadata_lock()
+                .await
+                .map(AdapterConnection::Session);
+        }
         let pool = self
             .pool_state
             .get_pool(
@@ -180,6 +229,7 @@ impl PostgresAdapter {
             .await?;
         pool.get_owned()
             .await
+            .map(AdapterConnection::Pooled)
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
     }
 
@@ -1042,6 +1092,17 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(session) = &self.session {
+            let conn = session.lock().await?;
+            let outcome = super::execution::postgres(
+                &conn,
+                self.ssl,
+                Some(session),
+                server_output::pg_run_query(&conn, sql, false),
+            )
+            .await;
+            return session.finish(outcome);
+        }
         if let Some(client) =
             server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
         {
@@ -1116,6 +1177,17 @@ impl DatabaseAdapter for PostgresAdapter {
         sql: &str,
         params: &[Option<String>],
     ) -> Result<QueryResult, String> {
+        if let Some(session) = &self.session {
+            let conn = session.lock().await?;
+            let outcome = super::execution::postgres(
+                &conn,
+                self.ssl,
+                Some(session),
+                run_params_query(&conn, sql, params),
+            )
+            .await;
+            return session.finish(outcome);
+        }
         let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
