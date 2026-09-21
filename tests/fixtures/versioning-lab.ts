@@ -52,6 +52,11 @@ export async function installVersioningLab(page: Page, repo: string) {
       const original = host.__TAURI_INTERNALS__.invoke;
       const commands = new Set([
         "versioning_repository",
+        "versioning_metadata",
+        "versioning_control",
+        "versioning_run",
+        "versioning_run_fleet",
+        "versioning_run_status",
         "versioning_oracle_timeout",
         "list_providers",
         "list_databases",

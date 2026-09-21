@@ -114,6 +114,7 @@ export function AppHeader() {
             }
             aria-expanded={versioning.open}
             aria-controls="versioning-panel"
+            aria-description="Beta"
             onClick={() => versioning.setOpen(!versioning.open)}
             className={cn(
               "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
@@ -121,6 +122,9 @@ export function AppHeader() {
             )}
           >
             <GitPullRequestIcon className="size-4" strokeWidth={2} />
+            <span className="-top-0.5 -left-2 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
+              Beta
+            </span>
             {versioning.pending > 0 ? (
               <span
                 data-testid="versioning-badge"
@@ -185,7 +189,7 @@ export function AppHeader() {
         <Tooltip content="MCP" side="bottom">
           <Link
             to="/mcp"
-            aria-label="MCP (Beta)"
+            aria-label="MCP"
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -193,9 +197,6 @@ export function AppHeader() {
             )}
           >
             <Bot className="size-4" strokeWidth={2} />
-            <span className="-top-0.5 -right-1 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-              Beta
-            </span>
           </Link>
         </Tooltip>
 

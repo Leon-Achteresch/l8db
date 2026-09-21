@@ -1,3 +1,7 @@
+pub mod control;
+pub mod metadata;
+pub mod runner;
+pub mod snapshot;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -514,3 +518,6 @@ mod tests;
 
 #[cfg(test)]
 mod browser_tests;
+
+#[cfg(test)]
+mod enterprise_tests;

@@ -35,7 +35,7 @@ export function VersioningPopover({
         sideOffset={8}
         aria-label={label}
         className={cn(
-          "vcs-surface w-80 max-w-[calc(100vw-2rem)] gap-3 rounded-xl p-4 shadow-lg shadow-black/5 ring-border/50",
+          "vcs-surface max-h-[var(--radix-popover-content-available-height)] overflow-y-auto w-80 max-w-[calc(100vw-2rem)] gap-3 rounded-xl p-4 shadow-lg shadow-black/5 ring-border/50",
           className,
         )}
       >

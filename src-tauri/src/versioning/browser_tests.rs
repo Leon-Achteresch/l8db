@@ -21,12 +21,118 @@ impl Lab {
             }
             return super::handle(request).await;
         }
+        if command == "versioning_run_status" {
+            return super::runner::status(args["id"].as_str().ok_or("id missing")?)
+                .await
+                .map(|s| json!(s));
+        }
+        if command == "versioning_run_fleet" {
+            let mut requests: Vec<super::runner::Request> =
+                serde_json::from_value(args["requests"].clone()).map_err(|e| e.to_string())?;
+            for request in &mut requests {
+                let root = std::fs::canonicalize(&request.repo).map_err(|e| e.to_string())?;
+                if !root.starts_with(&self.root) {
+                    return Err("Only isolated repositories allowed".into());
+                }
+                let key = if request.connection.kind == DatabaseKind::Oracle {
+                    "oracle"
+                } else {
+                    "postgres"
+                };
+                if key == "postgres"
+                    && ![
+                        "l8db_versioning_dev",
+                        "l8db_versioning_a",
+                        "l8db_versioning_b",
+                        "l8db_versioning_edge",
+                    ]
+                    .contains(&request.connection.database.as_deref().unwrap_or(""))
+                {
+                    return Err("Only isolated databases allowed".into());
+                }
+                request.connection.connection_string =
+                    self.urls.get(key).ok_or("Lab provider missing")?.clone();
+            }
+            return super::runner::start_fleet(
+                requests,
+                self.pool.clone(),
+                self.transactions.clone(),
+            )
+            .await
+            .map(|s| json!(s));
+        }
+        if command == "versioning_run" {
+            let mut request: super::runner::Request =
+                serde_json::from_value(args["request"].clone()).map_err(|e| e.to_string())?;
+            let root = std::fs::canonicalize(&request.repo).map_err(|e| e.to_string())?;
+            if !root.starts_with(&self.root) {
+                return Err("Only isolated repositories allowed".into());
+            }
+            let key = if request.connection.kind == DatabaseKind::Oracle {
+                "oracle"
+            } else {
+                "postgres"
+            };
+            if key == "postgres"
+                && ![
+                    "l8db_versioning_dev",
+                    "l8db_versioning_a",
+                    "l8db_versioning_b",
+                    "l8db_versioning_edge",
+                ]
+                .contains(&request.connection.database.as_deref().unwrap_or(""))
+            {
+                return Err("Only isolated databases allowed".into());
+            }
+            request.connection.connection_string =
+                self.urls.get(key).ok_or("Lab provider missing")?.clone();
+            return super::runner::start(request, self.pool.clone(), self.transactions.clone())
+                .await
+                .map(|s| json!(s));
+        }
+        if command == "versioning_control" {
+            let mut request: super::control::Request =
+                serde_json::from_value(args["request"].clone()).map_err(|e| e.to_string())?;
+            let key = if request.connection.kind == DatabaseKind::Oracle {
+                "oracle"
+            } else {
+                "postgres"
+            };
+            if key == "postgres"
+                && ![
+                    "l8db_versioning_dev",
+                    "l8db_versioning_a",
+                    "l8db_versioning_b",
+                    "l8db_versioning_edge",
+                ]
+                .contains(&request.connection.database.as_deref().unwrap_or(""))
+            {
+                return Err("Only isolated databases allowed".into());
+            }
+            request.connection.connection_string =
+                self.urls.get(key).ok_or("Lab provider missing")?.clone();
+            return super::control::handle(request, self.pool.clone(), self.transactions.clone())
+                .await;
+        }
         if command == "list_providers" {
             return Ok(json!(db::provider::list_providers()));
         }
         let tx = args["txId"].as_str().unwrap_or("");
         let sql = args["sql"].as_str().unwrap_or("");
         match command {
+            "versioning_metadata" => {
+                let adapter = self
+                    .transactions
+                    .versioning_adapter(tx, self.pool.clone())
+                    .await?;
+                return super::metadata::read(
+                    adapter.as_ref(),
+                    args["operation"].as_str().ok_or("operation missing")?,
+                    args["schema"].as_str().ok_or("schema missing")?,
+                    args["name"].as_str().ok_or("name missing")?,
+                )
+                .await;
+            }
             "versioning_oracle_timeout" => {
                 return self
                     .transactions

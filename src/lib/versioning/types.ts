@@ -95,7 +95,13 @@ export interface DatabaseTarget {
   pinnedRelease?: string | null;
   paused?: boolean;
   ledgerSchema?: string;
-  binding?: { fingerprint: string; label: string; edition: string | null; physicalKey?: string };
+  binding?: {
+    locationFingerprint?: string;
+    fingerprint: string;
+    label: string;
+    edition: string | null;
+    physicalKey?: string;
+  };
 }
 
 export interface TargetStore {

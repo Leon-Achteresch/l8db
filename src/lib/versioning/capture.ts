@@ -1,4 +1,5 @@
 import {
+  formatSequenceDefinition,
   formatTableDefinition,
   listCompareObjects,
   loadCompareDefinition,
@@ -11,6 +12,8 @@ import {
   listIndexes,
   listTableColumnsDetailed,
   listTriggers,
+  type SequenceInfo,
+  versioningMetadata,
 } from "@/lib/db";
 import { packageOid } from "@/lib/plsql";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -24,6 +27,7 @@ export async function captureObject(
   database: string | null,
   object: ManagedObject,
   targetSchema?: string | null,
+  transaction?: string,
 ): Promise<ObjectSnapshot> {
   const side = {
     ...object.selection,
@@ -36,13 +40,17 @@ export async function captureObject(
   if (!schema || !name) throw new Error("Objektidentität ist unvollständig.");
   const url = effectiveConnectionString(connection);
   const db = database ?? undefined;
+  const metadataRead = <T>(operation: string, fallback: () => Promise<T>): Promise<T> =>
+    transaction ? versioningMetadata<T>(transaction, operation, schema, name) : fallback();
   let definition: string;
   if (side.objectType === "table") {
     const [columns, constraints, indexes, triggers] = await Promise.all([
-      listTableColumnsDetailed(connection.kind, url, schema, name, db),
-      listConstraints(connection.kind, url, schema, name, db),
-      listIndexes(connection.kind, url, schema, name, db),
-      listTriggers(connection.kind, url, schema, name, db),
+      metadataRead("columns", () =>
+        listTableColumnsDetailed(connection.kind, url, schema, name, db),
+      ),
+      metadataRead("constraints", () => listConstraints(connection.kind, url, schema, name, db)),
+      metadataRead("indexes", () => listIndexes(connection.kind, url, schema, name, db)),
+      metadataRead("triggers", () => listTriggers(connection.kind, url, schema, name, db)),
     ]);
     if (!columns.length) throw new Error(`Tabelle ${schema}.${name} fehlt oder ist nicht lesbar.`);
     const metadata =
@@ -100,6 +108,25 @@ export async function captureObject(
       `PACKAGE BODY ${schema}.${name}`,
       body,
     ].join("\n\n");
+  } else if (transaction) {
+    if (side.objectType === "sequence") {
+      const sequences = await versioningMetadata<SequenceInfo[]>(
+        transaction,
+        "sequences",
+        schema,
+        name,
+      );
+      const sequence = sequences.find((entry) => entry.name === name);
+      if (!sequence) throw new Error(`Sequenz ${schema}.${name} fehlt.`);
+      definition = formatSequenceDefinition(sequence);
+    } else {
+      definition = await versioningMetadata<string>(
+        transaction,
+        side.objectType === "materialized_view" ? "view" : side.objectType,
+        schema,
+        name,
+      );
+    }
   } else {
     if (side.objectType === "routine" || side.objectType === "procedure") {
       const objects = await listCompareObjects(connection, side);
@@ -121,9 +148,10 @@ export async function captureObjects(
   database: string | null,
   objects: ManagedObject[],
   targetSchema?: string | null,
+  transaction?: string,
 ): Promise<ObjectSnapshot[]> {
   const result: ObjectSnapshot[] = [];
   for (const object of objects)
-    result.push(await captureObject(connection, database, object, targetSchema));
+    result.push(await captureObject(connection, database, object, targetSchema, transaction));
   return result;
 }

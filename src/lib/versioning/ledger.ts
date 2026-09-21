@@ -53,16 +53,22 @@ export async function baselineLedger(
 ) {
   const table = ledgerTable(project, target);
   const varchar = project.kind === "oracle" ? "VARCHAR2" : "VARCHAR";
+  let current: Awaited<ReturnType<typeof readLedger>>;
   try {
-    await query(
-      connection,
-      target,
-      `CREATE TABLE ${table} ("PROJECT_ID" ${varchar}(100) PRIMARY KEY, "RELEASE_ID" ${varchar}(100) NOT NULL, "RELEASE_HASH" ${varchar}(64) NOT NULL, "LEASE" ${varchar}(64), "STATUS" ${varchar}(20) NOT NULL)`,
-    );
+    current = await readLedger(connection, project, target);
   } catch (error) {
-    if (!/already exists|bereits|ORA-00955|42P07/i.test(String(error))) throw error;
+    if (!/does not exist|existiert nicht|ORA-00942|42P01/i.test(String(error))) throw error;
+    try {
+      await query(
+        connection,
+        target,
+        `CREATE TABLE ${table} ("PROJECT_ID" ${varchar}(100) PRIMARY KEY, "RELEASE_ID" ${varchar}(100) NOT NULL, "RELEASE_HASH" ${varchar}(64) NOT NULL, "LEASE" ${varchar}(64), "STATUS" ${varchar}(20) NOT NULL)`,
+      );
+    } catch (error) {
+      if (!/already exists|bereits|ORA-00955|42P07/i.test(String(error))) throw error;
+    }
+    current = await readLedger(connection, project, target);
   }
-  const current = await readLedger(connection, project, target);
   const hash = await releaseHash(release);
   if (!current) {
     await query(

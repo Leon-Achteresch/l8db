@@ -5,6 +5,7 @@ import {
   HistoryIcon,
 } from "lucide-react";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningJournal } from "./versioning-journal";
 
 export function VersioningActivity({ workspace }: { workspace: VersioningWorkspace }) {
   const events =
@@ -14,6 +15,14 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
   const commits = workspace.status?.history.trim().split("\n").filter(Boolean) ?? [];
   return (
     <div className="space-y-7">
+      <section>
+        <h2 className="text-xs font-semibold">Gemeinsame Historie & Freigaben</h2>
+        {workspace.targets?.targets
+          .filter((target) => target.release)
+          .map((target) => (
+            <VersioningJournal key={target.id} workspace={workspace} target={target} />
+          ))}
+      </section>
       <div>
         <h2 className="mb-3 text-xs font-semibold">
           Deployments{" "}
@@ -62,8 +71,8 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
               {Boolean(event.checked?.length) && <p>Prüfungen: {event.checked?.join(", ")}</p>}
               {Boolean(event.completedStatements?.length) && (
                 <p>
-                  Ausgeführte Oracle-Anweisungen: {event.completedStatements?.join(", ")} ·
-                  Ausführung bestätigt, kein Beweis für Commit aller Datenänderungen.
+                  Ausgeführte Anweisungen: {event.completedStatements?.join(", ")} · Ausführung
+                  bestätigt, kein Beweis für Commit aller Datenänderungen.
                 </p>
               )}
               {event.error && (
