@@ -8,12 +8,14 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import type { useActiveCapabilities } from "@/lib/db-selection";
+import { useSettingsStore } from "@/lib/settings";
 
 interface SidebarFooterActionsProps {
   caps: ReturnType<typeof useActiveCapabilities>;
 }
 
 export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   return (
     <SidebarGroup className="mt-auto border-t pt-2">
       <SidebarGroupContent>
@@ -40,7 +42,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          {caps.sessions && (
+          {!easyMode && caps.sessions && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link to="/sessions">
@@ -50,7 +52,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          {caps.replication && (
+          {!easyMode && caps.replication && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link to="/replication">
@@ -60,7 +62,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          {caps.enums && (
+          {!easyMode && caps.enums && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link to="/enums">

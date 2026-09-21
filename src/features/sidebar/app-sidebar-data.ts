@@ -11,24 +11,46 @@ import {
   Table2,
 } from "lucide-react";
 
+import type { Capabilities } from "@/lib/db";
 import type { FileRouteTypes } from "@/routeTree.gen";
 
 export type AppSidebarNavItem = {
   title: string;
   url: FileRouteTypes["to"];
   icon: LucideIcon;
+  available?: (caps: Capabilities) => boolean;
 };
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Übersicht", url: "/", icon: Home },
+    { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
-    { title: "Invalid Objects", url: "/invalid-objects", icon: HammerIcon },
+    {
+      title: "Invalid Objects",
+      url: "/invalid-objects",
+      icon: HammerIcon,
+      available: (caps) => caps.compile_objects,
+    },
     { title: "Monitor", url: "/monitor", icon: GaugeIcon },
-    { title: "Query Builder", url: "/query-builder", icon: Table2 },
-    { title: "ER-Diagramm", url: "/er-diagram", icon: Network },
+    {
+      title: "Query Builder",
+      url: "/query-builder",
+      icon: Table2,
+      available: (caps) => caps.query_language === "sql",
+    },
+    {
+      title: "ER-Diagramm",
+      url: "/er-diagram",
+      icon: Network,
+      available: (caps) => caps.foreign_keys,
+    },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
-    { title: "Gespeicherte Pläne", url: "/saved-plan", icon: RouteIcon },
+    {
+      title: "Gespeicherte Pläne",
+      url: "/saved-plan",
+      icon: RouteIcon,
+      available: (caps) => caps.explain,
+    },
   ],
 };

@@ -8,15 +8,19 @@ import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { WindowControls } from "@/features/shell/window-controls";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { useVersioningPanel } from "@/lib/versioning/panel";
 
 export function AppHeader() {
+  const caps = useActiveCapabilities();
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const versioning = useVersioningPanel();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const txCount = useTransactionStore((s) => s.transactions.length);
@@ -64,7 +68,7 @@ export function AppHeader() {
         className="flex items-center gap-1 px-3"
         aria-label="Hauptnavigation"
       >
-        {import.meta.env.DEV && (
+        {!easyMode && import.meta.env.DEV && (
           <Tooltip content="DEV · Design Lab" side="bottom">
             <Link
               to="/dev"
@@ -97,71 +101,75 @@ export function AppHeader() {
           </Tooltip>
         ) : null}
 
-        <Tooltip
-          content={
-            versioning.pending
-              ? `Versionierung · ${versioning.pending} offen`
-              : versioning.hasError
-                ? "Versionierung · Status prüfen"
-                : "Versionierung"
-          }
-          side="bottom"
-        >
-          <button
-            type="button"
-            aria-label={
-              versioning.pending ? `Versionierung: ${versioning.pending} offen` : "Versionierung"
+        {!easyMode && (
+          <Tooltip
+            content={
+              versioning.pending
+                ? `Versionierung · ${versioning.pending} offen`
+                : versioning.hasError
+                  ? "Versionierung · Status prüfen"
+                  : "Versionierung"
             }
-            aria-expanded={versioning.open}
-            aria-controls="versioning-panel"
-            aria-description="Beta"
-            onClick={() => versioning.setOpen(!versioning.open)}
-            className={cn(
-              "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              versioning.open && "bg-primary/12 text-foreground",
-            )}
+            side="bottom"
           >
-            <GitPullRequestIcon className="size-4" strokeWidth={2} />
-            <span className="-top-0.5 -left-2 pointer-events-none absolute rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-              Beta
-            </span>
-            {versioning.pending > 0 ? (
-              <span
-                data-testid="versioning-badge"
-                className="absolute -right-1 -top-1 flex min-w-3.5 h-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold tabular-nums text-primary-foreground"
-              >
-                {versioning.pending > 99 ? "99+" : versioning.pending}
+            <button
+              type="button"
+              aria-label={
+                versioning.pending ? `Versionierung: ${versioning.pending} offen` : "Versionierung"
+              }
+              aria-expanded={versioning.open}
+              aria-controls="versioning-panel"
+              aria-description="Beta"
+              onClick={() => versioning.setOpen(!versioning.open)}
+              className={cn(
+                "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                versioning.open && "bg-primary/12 text-foreground",
+              )}
+            >
+              <GitPullRequestIcon className="size-4" strokeWidth={2} />
+              <span className="pointer-events-none absolute -right-2 -top-0.5 rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
+                Beta
               </span>
-            ) : versioning.hasError ? (
-              <span
-                role="img"
-                aria-label="Status nicht verfügbar"
-                className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-500"
-              />
-            ) : null}
-          </button>
-        </Tooltip>
+              {versioning.pending > 0 ? (
+                <span
+                  data-testid="versioning-badge"
+                  className="absolute -bottom-1 -left-1 flex min-w-3.5 h-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold tabular-nums text-primary-foreground"
+                >
+                  {versioning.pending > 99 ? "99+" : versioning.pending}
+                </span>
+              ) : versioning.hasError ? (
+                <span
+                  role="img"
+                  aria-label="Status nicht verfügbar"
+                  className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-500"
+                />
+              ) : null}
+            </button>
+          </Tooltip>
+        )}
 
-        <Tooltip content="Transaktionen" side="bottom">
-          <button
-            type="button"
-            onClick={togglePanel}
-            data-tour="header-tx"
-            aria-label="Transaktionen"
-            className={cn(
-              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",
-              "hover:bg-muted hover:text-foreground",
-              panelOpen && "bg-primary/12 text-foreground",
-            )}
-          >
-            <GitBranchIcon className="size-4" strokeWidth={2} />
-            {txCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
-                {txCount}
-              </span>
-            )}
-          </button>
-        </Tooltip>
+        {((!easyMode && caps.transactions) || txCount > 0) && (
+          <Tooltip content="Transaktionen" side="bottom">
+            <button
+              type="button"
+              onClick={togglePanel}
+              data-tour="header-tx"
+              aria-label="Transaktionen"
+              className={cn(
+                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer",
+                "hover:bg-muted hover:text-foreground",
+                panelOpen && "bg-primary/12 text-foreground",
+              )}
+            >
+              <GitBranchIcon className="size-4" strokeWidth={2} />
+              {txCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
+                  {txCount}
+                </span>
+              )}
+            </button>
+          </Tooltip>
+        )}
 
         <div className="mx-0.5 h-5 w-px bg-border/60" aria-hidden />
 
@@ -186,19 +194,21 @@ export function AppHeader() {
           </Link>
         </Tooltip>
 
-        <Tooltip content="MCP" side="bottom">
-          <Link
-            to="/mcp"
-            aria-label="MCP"
-            className={cn(
-              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-              "hover:bg-muted hover:text-foreground",
-              pathname.startsWith("/mcp") && "bg-primary/12 text-foreground",
-            )}
-          >
-            <Bot className="size-4" strokeWidth={2} />
-          </Link>
-        </Tooltip>
+        {!easyMode && (
+          <Tooltip content="MCP" side="bottom">
+            <Link
+              to="/mcp"
+              aria-label="MCP"
+              className={cn(
+                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                "hover:bg-muted hover:text-foreground",
+                pathname.startsWith("/mcp") && "bg-primary/12 text-foreground",
+              )}
+            >
+              <Bot className="size-4" strokeWidth={2} />
+            </Link>
+          </Tooltip>
+        )}
 
         <Tooltip content="Einstellungen" side="bottom">
           <Link
