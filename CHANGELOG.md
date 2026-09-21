@@ -3,6 +3,25 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.121] - 2026-09-21
+
+### Fixes
+- use editable documents with toml_edit 0.25
+
+## [0.6.101] - 2026-09-21
+
+- Keine Änderungen.
+
+## [0.6.99] - 2026-09-21
+
+### Features
+- enforce shared policies and durable background rollouts
+
+### Weitere Änderungen
+- Strengthen database release safety and customer rollout checks
+- Redesign database versioning as a right sidebar panel
+- Add database Git versioning and customer release deployments
+
 ## [0.6.89] - 2026-09-19
 
 ### Features
