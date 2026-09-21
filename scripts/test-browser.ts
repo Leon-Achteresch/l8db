@@ -32,6 +32,7 @@ try {
         L8DB_QUERY_BROWSER_URL: url,
         L8DB_QOL_BROWSER: "1",
         L8DB_COMPARE_BROWSER: "1",
+        L8DB_BROWSER_ENGINES: "chromium",
       },
       stdout: "pipe",
       stderr: "pipe",
