@@ -1,0 +1,31 @@
+.vcs-surface [data-slot="button"] {
+  border-color: transparent;
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+.vcs-surface [data-slot="input"] {
+  border-color: transparent;
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  font-size: 0.75rem;
+}
+.vcs-surface [data-slot="input"]:not(:focus-visible) {
+  box-shadow: none;
+}
+.vcs-surface input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+.vcs-surface [data-slot="select-trigger"] {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+.vcs-surface [data-slot="select-trigger"]:not(:focus-visible) {
+  box-shadow: none;
+}
+.vcs-surface [data-slot="tabs-trigger"][data-state="active"] {
+  border-color: transparent;
+  background: transparent;
+}
+.vcs-surface [data-slot="tabs-trigger"][data-state="active"]:not(:focus-visible) {
+  box-shadow: none;
+}
