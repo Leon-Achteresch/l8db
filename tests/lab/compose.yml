@@ -18,7 +18,9 @@ services:
     build: .
     ports: ["127.0.0.1::22"]
     volumes:
-      - ${L8DB_LAB_DIR:?}/client.pub:/root/.ssh/authorized_keys:ro
+      - ${L8DB_LAB_DIR:?}/client.pub:/keys/client.pub:ro
+    command:
+      ["/bin/sh", "-c", "install -m 600 -o root -g root /keys/client.pub /root/.ssh/authorized_keys && exec /usr/sbin/sshd -D -e"]
     healthcheck:
       test: [CMD-SHELL, "test -s /run/sshd.pid"]
       interval: 1s
