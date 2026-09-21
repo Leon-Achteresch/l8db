@@ -45,6 +45,9 @@ export async function runOperationalScenario(repo, kind) {
   for (const location of locations) {
     for (const name of [
       pg ? 'public."L8DB_VERSIONING_STATE"' : `"${location}"."L8DB_VERSIONING_STATE"`,
+      ...["LOCKS", "POLICY", "JOURNAL", "APPROVALS"].map(
+        (suffix) => `${pg ? "public" : `"${location}"`}."L8DB_VERSIONING_${suffix}"`,
+      ),
       table(location),
     ]) {
       try {
@@ -149,33 +152,37 @@ export async function runOperationalScenario(repo, kind) {
       plans[0].reviewToken,
     ),
   );
+  const shared = await import("/src/lib/versioning/control.ts");
+  const basePolicy = await shared.control(connection, project, stored[0], "policy");
+  const changePolicy = async (change) => {
+    const current = await shared.control(connection, project, stored[0], "policy");
+    await shared.control(connection, project, stored[0], "save-policy", {
+      revision: current.revision,
+      policy: { ...basePolicy.policy, ...change },
+    });
+  };
+  await changePolicy({ paused: true });
   const pauseBlocked = await blocked(() =>
-    deployment.planDeployment(repo, project, { ...stored[0], paused: true }, connection, "v2"),
+    deployment.planDeployment(repo, project, { ...stored[0], paused: false }, connection, "v2"),
   );
+  await changePolicy({ pinnedRelease: "v1" });
   const pinBlocked = await blocked(() =>
-    deployment.planDeployment(
-      repo,
-      project,
-      { ...stored[0], pinnedRelease: "v1" },
-      connection,
-      "v2",
-    ),
+    deployment.planDeployment(repo, project, stored[0], connection, "v2"),
   );
+  await changePolicy({ track: "customer-variant" });
   const variantBlocked = await blocked(() =>
-    deployment.planDeployment(
-      repo,
-      project,
-      { ...stored[0], track: "customer-variant" },
-      connection,
-      "v2",
-    ),
+    deployment.planDeployment(repo, project, stored[0], connection, "v2"),
   );
+  await changePolicy({});
   const endpointBlocked = await blocked(() =>
     deployment.planDeployment(
       repo,
       project,
       stored[0],
-      { ...connection, connectionString: connection.connectionString.replace("lab@", "other@") },
+      {
+        ...connection,
+        connectionString: connection.connectionString.replace("127.0.0.1", "localhost"),
+      },
       "v2",
     ),
   );

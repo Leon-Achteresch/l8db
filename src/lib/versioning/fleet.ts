@@ -1,5 +1,8 @@
 import type { SavedConnection } from "@/lib/connections";
-import { assertReviewedToken, type DeploymentPlan, deploy, planDeployment } from "./deploy";
+import { versioningRunFleet, versioningRunStatus } from "@/lib/db";
+import { effectiveConnectionString } from "@/lib/ssh";
+import { control } from "./control";
+import { assertReviewedToken, type DeploymentPlan, planDeployment } from "./deploy";
 import { readTargets } from "./repository";
 import type { DatabaseTarget, VersioningProject } from "./types";
 
@@ -47,6 +50,7 @@ export async function deployFleet(
   connections: SavedConnection[],
   releaseId: string,
   onProgress?: (message: string) => void,
+  waveLimit = 1000,
 ) {
   const { store } = await readTargets(repo, project.id);
   const targets = reviewed.map((plan) => {
@@ -58,19 +62,48 @@ export async function deployFleet(
   for (const [index, result] of preflight.entries()) {
     if (!result.plan || result.error) throw new Error(`${result.target.name}: ${result.error}`);
     assertReviewedToken(reviewed[index].reviewToken, result.plan.reviewToken);
-  }
-  for (const plan of reviewed) {
-    if (!plan.releases.length) continue;
-    const connection = connections.find((connection) => connection.id === plan.target.connectionId);
+    const connection = connections.find((item) => item.id === result.target.connectionId);
     if (!connection) throw new Error("Zielverbindung fehlt.");
-    await deploy(
+    if (result.plan.releases.length)
+      await control(connection, project, result.target, "authorize", {
+        revision: result.plan.policy.revision,
+        artifact: result.plan.reviewToken.split(":")[1],
+      });
+  }
+  if (!Number.isInteger(waveLimit) || waveLimit < 1 || waveLimit > 1000)
+    throw new Error("Ungültige Wellengröße.");
+  const wave = preflight
+    .flatMap((entry) => (entry.plan?.releases.length ? [entry.plan] : []))
+    .slice(0, waveLimit);
+  if (!wave.length) return;
+  const requests = wave.map((plan) => {
+    const connection = connections.find((item) => item.id === plan.target.connectionId);
+    if (!connection) throw new Error("Zielverbindung fehlt.");
+    return {
       repo,
-      project,
-      plan.target.id,
-      connection,
-      releaseId,
-      plan.reviewToken,
-      onProgress,
+      targetId: plan.target.id,
+      runId: crypto.randomUUID(),
+      artifact: plan.reviewArtifact,
+      connection: {
+        kind: connection.kind,
+        connectionString: effectiveConnectionString(connection),
+        database: plan.target.database,
+        schema: plan.target.ledgerSchema,
+        projectId: project.id,
+        readOnly: connection.readOnly ?? false,
+      },
+    };
+  });
+  const id = await versioningRunFleet(requests);
+  for (;;) {
+    const status = await versioningRunStatus(id);
+    const target = wave.find((entry) => entry.target.id === status.targetId)?.target;
+    onProgress?.(
+      `${target?.name ?? "Rollout"}: ${status.status === "running" ? "Wird ausgeführt" : "Abgeschlossen"}`,
     );
+    if (status.status === "failed")
+      throw new Error(status.error ?? "Rollout fehlgeschlagen. Datenbankjournal prüfen.");
+    if (status.status === "succeeded") return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }

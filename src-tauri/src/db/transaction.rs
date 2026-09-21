@@ -41,7 +41,7 @@ fn validate_ctid(ctid: &str) -> Result<String, String> {
 type OracleConn = Arc<std::sync::Mutex<oracle::Connection>>;
 
 enum TransactionEntry {
-    Pg(super::execution::PgSession, super::SslMode),
+    Pg(Arc<super::execution::PgSession>, super::SslMode),
     Oracle(OracleConn),
     Generic(Generic),
 }
@@ -384,7 +384,7 @@ impl TransactionManager {
         conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
         Ok(self
             .insert_entry(TransactionEntry::Pg(
-                super::execution::PgSession::new(conn),
+                Arc::new(super::execution::PgSession::new(conn)),
                 ssl,
             ))
             .await)
@@ -412,6 +412,19 @@ impl TransactionManager {
         )
         .await;
         session.finish(outcome)
+    }
+
+    pub async fn versioning_adapter(
+        &self,
+        tx_id: &str,
+        pool: PoolState,
+    ) -> Result<Box<dyn DatabaseAdapter>, String> {
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Pg(session, ssl) => Ok(Box::new(
+                super::postgres::PostgresAdapter::from_session(session.clone(), *ssl, pool),
+            )),
+            _ => Err("Transaktionsgebundene Metadaten benötigen PostgreSQL".into()),
+        }
     }
 
     pub async fn versioning_oracle_timeout(

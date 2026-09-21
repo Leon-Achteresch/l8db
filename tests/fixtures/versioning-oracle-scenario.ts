@@ -38,6 +38,15 @@ export async function runOracleScenario(repo: string) {
     if (results.some((r) => !r.success)) throw new Error(results.find((r) => !r.success).error);
   };
   for (const schema of ["L8DB_VCS_DEV", "L8DB_VCS_A", "L8DB_VCS_B"]) {
+    for (const suffix of ["LOCKS", "POLICY", "JOURNAL", "APPROVALS"]) {
+      await db.executeScript(
+        "oracle",
+        connection.connectionString,
+        `DROP TABLE "${schema}"."L8DB_VERSIONING_${suffix}"`,
+        undefined,
+        { confirmed: true },
+      );
+    }
     await db.executeScript(
       "oracle",
       connection.connectionString,

@@ -10,7 +10,7 @@ Eine Datenbank wird gleichzeitig von alten und neuen App-Versionen, Hintergrundj
 | --- | --- |
 | Geplante Definitionen und Programmlogik | Git-Dateien, Branches, Vergleiche; Oracle-Specification und Body getrennt |
 | Geprüfter Weg zwischen Ständen | Unveränderliche Releases mit SQL, Prüfsummen, Betriebsplan und Datenprüfungen |
-| Tatsächlich angewendeter Stand | Datenbank-Ledger und lokale Deployment-Historie pro Ziel |
+| Tatsächlich angewendeter Stand | Datenbank-Ledger, dauerhaftes Datenbankjournal und lokale Anzeige pro Ziel |
 | Laufende Geschäftsdaten und Sessions | Weiterhin in der Datenbank; keine automatische Git-Zusammenführung |
 
 Ein Branch-Wechsel darf weder Rechnungen zurücksetzen noch ungeprüft Produktions-DDL auslösen. Ein Git-Revert ist kein Daten-Restore. Seeds gehören zu reproduzierbaren Testumgebungen; Backups, Restore-Tests und Anonymisierung benötigen einen eigenen Ablauf.
@@ -34,8 +34,8 @@ In l8db gelten jetzt zusätzlich:
 - `track` bezeichnet die fachliche Release-Linie, beispielsweise `main` oder `kunde-acme`. Das ist unabhängig vom Git-Branch. Ein Hauptlinien-Release kann Ausgangspunkt einer Variante sein; ein Kundenrelease darf seine Linie anschließend nicht stillschweigend verlassen.
 - Eine eigene Baseline pro neuer Variante erlaubt den Einstieg mit bereits abweichenden Beständen. Sie ersetzt keine Prüfung oder Zusammenführung dieser Unterschiede.
 - `pinnedRelease` begrenzt Updates auf einen freigegebenen Nachfolger. `paused` hält Updates für ein Ziel an. Beides wird im Plan und unmittelbar vor der Ausführung berücksichtigt.
-- Einstellungen stehen im Popover des Ziels unter **Update-Regeln**. Ein Pilot wird zunächst allein ausgewählt; die nächste Kundengruppe wird nach dessen Prüfung neu geplant.
-- Doppelte Verbindungsaliase zur selben ermittelten Datenbank und demselben Schema werden innerhalb der Auswahl abgewiesen. Ein Datenbankbenutzer, Endpunkt oder eine Oracle-Edition, die sich seit der Baseline geändert haben, erfordern einen ausdrücklichen Standabgleich.
+- Einstellungen stehen im Popover des Ziels unter **Update-Regeln** und werden verbindlich aus der Datenbank geladen. Der Rollout startet standardmäßig mit einer Canary-Datenbank; alternativ sind Wellen mit bis zu 5, 10 oder 1.000 geprüften Zielen auswählbar. Nach jeder Welle werden Anwendung und Betrieb geprüft, verbleibende Ziele neu geplant und ausdrücklich gestartet.
+- Doppelte Verbindungsaliase zur selben ermittelten Datenbank und demselben Schema werden innerhalb der Auswahl abgewiesen. Ein anderer Endpunkt, Datenbankkontext oder eine Oracle-Edition erfordern einen ausdrücklichen Standabgleich. Ein durch die gemeinsame Policy freigegebener anderer DB-Benutzer kann denselben physischen Stand verwenden; der konkrete Rollout und seine Freigabe bleiben an seine Benutzeridentität gebunden.
 
 Eine bewusste Kundenvariante ist kein beliebiges Überspringen von Migrationen. Gemeinsame Produktkorrekturen werden auf der Variantenlinie geprüft übernommen. Dynamische Kunden-Sonderfälle in einem riesigen SQL-Skript bleiben schwer überprüfbar; die gewählte Linie und ihre Vorgänger sind dagegen sichtbar.
 
@@ -55,7 +55,7 @@ Liquibase beschreibt in [What are preconditions?](https://docs.liquibase.com/sec
 
 Unter **Release vorbereiten → Betriebsplan und Prüfungen** können Vor- und Nachprüfungen angelegt werden. Jede besteht aus einer benannten SELECT-Abfrage, einem erwarteten skalaren Textwert und einer SQL-Prüfsumme. Beispielsweise liefert `SELECT COUNT(*) FROM invoices WHERE amount < 0` den erwarteten Wert `0`. Kein Treffer, mehrere Zeilen, mehrere Spalten, NULL, ein falscher Wert oder ein Abfragefehler stoppen die Ausführung. Zurückgegebene Kundenwerte werden nicht in Fehlermeldungen oder im Deployment-Verlauf gespeichert.
 
-Die erste ausstehende Vorprüfung läuft bereits bei der Planung in einer separaten Lesetransaktion. Vorbedingungen späterer Releases können von vorherigen Migrationen abhängen und werden erst nach ihren jeweiligen Vorgängern geprüft. Jede Vorprüfung wird in der Ausführungssitzung wiederholt. PostgreSQL führt Nachprüfungen vor Commit und Ledger-Fortschreibung aus. Oracle verwendet für einen Release dieselbe Sitzung; noch offene DML wird bei Fehlern zurückgerollt. Ausgeführte Oracle-DDL kann bereits dauerhaft sein.
+Die erste ausstehende Vorprüfung läuft bereits bei der Planung in einer separaten Lesetransaktion. Vorbedingungen späterer Releases können von vorherigen Migrationen abhängen und werden erst nach ihren jeweiligen Vorgängern geprüft. Jede Vorprüfung wird in der Ausführungssitzung wiederholt. PostgreSQL führt Daten-Nachprüfungen und den strukturellen Soll/Ist-Vergleich auf derselben Sitzung vor Commit und Ledger-Fortschreibung aus. Auch aus dem Manifest entfernte Objekte müssen im Datenbankkatalog tatsächlich fehlen. Oracle verwendet für einen Release dieselbe Sitzung; noch offene DML wird bei Fehlern zurückgerollt. Ausgeführte Oracle-DDL kann bereits dauerhaft sein.
 
 Prüfungen müssen fachlich sinnvoll sein. `SELECT 1` beweist keine erfolgreiche Datenübertragung. SELECT-Funktionen müssen seiteneffektfrei sein; insbesondere Oracle-Autonomous-Transactions und externe Funktionsaufrufe sind kein zulässiger Ersatz für eine reine Datenprüfung. Die Abfrageprüfung ist keine vollständige SQL-Sandbox. Concurrent Writes werden durch eine Vorprüfung allein ebenfalls nicht ausgeschlossen; geeignete Constraints, Sperren und kompatible Anwendungslogik bleiben nötig.
 
@@ -85,11 +85,29 @@ Nach einer Tabellenänderung kann Oracle eine Lesetransaktion mit [ORA-01466](ht
 
 Die Schutzmechanismen gelten für den explizit verwalteten Umfang. Vollständige Grants, PostgreSQL-RLS-Policies, Scheduler-Jobs, Synonyme, externe Integrationen und alle physischen Speicherattribute sind weiterhin kein vollständiges Abbild einer Datenbank. Dafür braucht es zusätzliche versionierte Objekttypen mit eigenen Adaptern und Tests. Die aktuelle Definitionserfassung ist kein Ersatz für einen vollständigen Dump.
 
-Der strukturelle Snapshot wird nach dem Release-Commit erneut geprüft. Anders als die neuen PostgreSQL-Daten-Nachprüfungen erfolgt diese strukturelle Prüfung noch nicht innerhalb derselben Transaktion. Bei einer Abweichung bleibt das Deployment fehlgeschlagen, obwohl SQL bereits committed sein kann. Auch entfernte Objekte außerhalb des aktuellen Manifests werden nicht automatisch als erfolgreich gelöscht bestätigt. Entsprechende Nachprüfungen sollten für konkrete Releases ausdrücklich definiert werden.
+Der strukturelle PostgreSQL-Vergleich läuft innerhalb der Migrationstransaktion. Eine falsche Struktur verhindert deren Commit; bereits abgeschlossene Vorgängerreleases bleiben angewendet. Oracle-DDL kann schon wirksam sein, bevor die strukturelle Nachprüfung erfolgt. Ein Fehler markiert den Stand deshalb als ungeklärt, ohne einen DDL-Rollback zu behaupten.
 
-Der Datenbank-Ledger verhindert konkurrierende l8db-Deployments desselben Projekts. Er sperrt keine beliebigen DBA-Sitzungen, externe Deployment-Werkzeuge oder andere Projekte auf denselben Objekten. DNS-/Proxy-Topologien können außerdem dieselbe Datenbank hinter verschiedenen ermittelten Identitäten darstellen; die Alias-Erkennung ist kein globales Serverinventar.
+Die Sperren koordinieren l8db-Ausführungen und Standabgleiche auf den verwalteten Schemas. Beliebige DBA-Sitzungen und andere Deployment-Werkzeuge müssen dieselbe Betriebskonvention einhalten oder organisatorisch ausgeschlossen werden. DNS-/Proxy-Topologien können dieselbe Datenbank hinter verschiedenen ermittelten Identitäten darstellen; die Alias-Erkennung ist kein globales Serverinventar.
 
-Weitere getrennte Ausbaustufen sind transaktionsgebundene vollständige Schema-Snapshots, dauerhafte Datenbank-Audit-Historie je Migration, Backfill-Jobs mit Fortschritt, repräsentative Clone-/Restore-Tests und eine eigene EBR-Orchestrierung. Das sind unterschiedliche Betriebsprobleme und sollten nicht als vermeintlich automatische Git-Merge-Funktion dargestellt werden.
+Weitere eigenständige Ausbaustufen bleiben resumierbare Backfill-Jobs innerhalb eines Releases, vollständige Grants-/RLS-/Scheduler-/Synonym-Erfassung, repräsentative Clone-/Restore-Proben und eine eigene EBR-Orchestrierung. Ein Hintergrund-Rollout führt bestehende Release-Ketten aus; er macht eine beliebige UPDATE-Anweisung nicht automatisch idempotent oder in Batches fortsetzbar. Restore-Fähigkeit und fachliche Lastgrenzen müssen für das konkrete Produkt nachgewiesen werden.
+
+## Gemeinsame Regeln, Freigaben und Rollen
+
+Bei der ersten geprüften Baseline werden `L8DB_VERSIONING_POLICY`, `LOCKS`, `JOURNAL` und `APPROVALS` neben dem bisherigen `STATE`-Ledger angelegt. Bestehende Ziele aus älteren Versionen benötigen einmal einen ausdrücklichen Standabgleich. Der tatsächliche Datenbankbenutzer der Initialisierung wird erster Regeladministrator.
+
+Die Policy enthält Release-Linie, Versionslimit, Pause, Produktionsschutz, optionale Rollout-Benutzer, Regeladministratoren und Freigeber. Änderungen benötigen die geladene Revision und einen Regeladministrator. Policy-Änderung und zugehöriger Journaleintrag werden gemeinsam committed. Eine zwischenzeitliche Änderung verwirft alte Planfreigaben; eine lokal manipulierte Kundenzuordnung überstimmt diese Regeln nicht. Ein Standabgleich benötigt ebenfalls einen Regeladministrator. Das Übernehmen einer bereits passenden, fertigen Baseline in eine neue lokale Zuordnung ist auch für freigegebene Operatoren möglich: Der vorhandene Ledger wird dabei weder zurückgesetzt noch fortgeschrieben. Vorhandene Steuerungstabellen müssen dafür nicht erneut angelegt werden.
+
+Bei aktiviertem Vier-Augen-Prinzip wird der geprüfte Plan unter **Rollout prüfen → Freigabe anfragen** als unveränderliches, gehashtes Artefakt im Zieljournal abgelegt. Unter **Aktivität → Datenbankjournal** lädt ein zweiter Benutzer eine Verbindung zu derselben Datenbank, prüft das Artefakt und gibt es frei. Identifiziert wird `session_user` beziehungsweise Oracles `SESSION_USER`, nicht ein eingegebener Anzeigename. Ein gemeinsamer technischer Login kann daher keine Vier-Augen-Freigabe darstellen. Eigene Freigaben, fremde Artefakte, geänderte Policy-Revisionen und mehr als 15 Minuten alte Freigaben werden abgewiesen. Abgelaufene Freigaben können erneut abgegeben werden; die alten Einträge bleiben erhalten.
+
+Diese Rollenprüfung ersetzt keine Datenbankberechtigungen. Für einen Unternehmensbetrieb werden separate DB-Konten benötigt: ein Bootstrap-/Regeladministrator, eingeschränkte Freigeber und ein kontrollierter Deployment-Account. Freigeber benötigen SELECT auf Policy/Journal/Approvals und INSERT auf Journal/Approvals, jedoch kein UPDATE/DELETE auf das Journal. Deployment benötigt Metadatenzugriff, die ausdrücklich freigegebenen DDL-/DML-Rechte, SELECT/UPDATE auf STATE und LOCKS sowie INSERT auf JOURNAL. Das Bootstrap-Anlegen der Tabellen erfordert entsprechende Schema-Rechte. Ein DB-Owner oder DBA kann Tabellen direkt verändern und wird durch die App nicht zu einem eingeschränkten Benutzer. Das Journal ist dauerhaft, aber gegen solche privilegierten Eingriffe nicht manipulationssicher; externe Audit-Archivierung bleibt erforderlich, wenn diese Bedrohung abgedeckt werden muss.
+
+## Hintergrundausführung, Sperren und Wiederherstellung
+
+Die gesamte gestartete Welle läuft als Rust-Hintergrundauftrag, einschließlich aller Releases eines Ziels. Neuladen oder Schließen des Panels beendet diesen Auftrag nicht. Vor dem ersten Ziel werden die ausgewählten Ziele erneut geprüft; pro Ziel werden Policy, Datenbankkontext, Vorgängerstruktur und Ledger nochmals validiert. Beim ersten Fehler stoppt die Welle. Ziele nach dem Fehler bleiben unangetastet.
+
+Das Schließen des gesamten Desktop-Prozesses beendet dessen Executor. Es gibt keinen automatischen SQL-Retry nach einem Prozess- oder Verbindungsabbruch. Das Zieljournal speichert Start, Statement-ID und SQL-Hash vor einem Aufruf, bestätigte Ausführung, Commit-Anforderung und Commit-Bestätigung. Eine Statement-Bestätigung ist kein Beweis für einen Daten-Commit. Fehlt die Commit-Bestätigung, werden Ledger, tatsächliche Struktur und fachliche Daten geprüft, bevor ein Administrator den Stand abgleicht. Die `.git/l8db-targets.json` dient weiterhin der lokalen Zuordnung und Anzeige; das Datenbankjournal bleibt unabhängig davon erhalten.
+
+Eine Koordinationssperre verhindert parallele Policy-Änderungen und Rollouts. Zusätzlich hält die tatsächliche SQL-Sitzung eine Ausführungssperre. Dadurch bleibt ein Abgleich gesperrt, wenn die Koordinationsverbindung verloren geht, aber SQL noch läuft. PostgreSQL verwendet [transaktionsgebundene Advisory Locks](https://www.postgresql.org/docs/18/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS). Oracle verwendet [`SYS.DBMS_LOCK.REQUEST` mit `release_on_commit => FALSE`](https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/DBMS_LOCK.html): Diese Sitzungssperre überlebt DDL-Commits. Der Oracle-Deployment-Account benötigt dafür `EXECUTE ON SYS.DBMS_LOCK`; fehlt das Recht, wird abgebrochen. Es gibt keinen ungesicherten Fallback.
 
 ## Reproduzierbare Prüfungen
 
@@ -97,6 +115,9 @@ Zusätzlich zu den bestehenden Einzel- und Kundenszenarien testen `tests/version
 
 ```sh
 bun test tests/versioning.test.ts tests/versioning-safety.test.ts
+L8DB_VERSIONING_LAB=/path/to/private-lab.json cargo test --manifest-path src-tauri/Cargo.toml enterprise_controls_and_executor_locks --lib -- --ignored --nocapture
+L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-enterprise-live.test.ts --test-name-pattern postgres
+L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-enterprise-live.test.ts --test-name-pattern oracle
 L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-operations-live.test.ts --test-name-pattern postgres
 L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-operations-live.test.ts --test-name-pattern oracle
 L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-oracle-live.test.ts
@@ -106,17 +127,20 @@ L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-live.tes
 
 Laboraufbau und Testbrücke sind in [database-versioning.md](database-versioning.md#tests) beschrieben. Die Tests verändern ausschließlich die dort benannten isolierten Labordatenbanken und Schemas.
 
-Verifiziert am 21.09.2026:
+Enterprise-Ausbau, verifiziert am 21.09.2026:
 
 | Prüfung | Ergebnis |
 | --- | --- |
-| Vollständige Frontend-Regression | 1001 bestanden, 67 umgebungsabhängige Tests übersprungen |
-| Rust-Tests | 144 bestanden, 53 explizite Labortests ignoriert |
-| Gezielte Versionierungsregression | 58 bestanden |
-| Echte PostgreSQL-/Oracle-Szenarien | Alle fünf oben aufgeführten Einzelaufrufe bestanden |
-| T3-Tools mit realer Testbrücke | PostgreSQL-Betriebsszenario und alle 15 Oracle-Betriebsprüfungen bestanden |
-| Produktionsbuild und Typecheck | Bestanden |
+| Vollständige Frontend-Regression | 1004 bestanden, 69 umgebungsabhängige Tests übersprungen |
+| Rust-Tests | 146 bestanden, 54 explizite Labortests ignoriert |
+| Versionierungsregression einschließlich Identitätsbindung und Lesemodus | 61 bestanden |
+| Echte PostgreSQL-/Oracle-Browsertests | Sieben einzeln gestartete Szenarien bestanden; anschließend zusätzlicher PostgreSQL-Test für unqualifiziertes CREATE TABLE bestanden |
+| Native Enterprise-Integration | Beide Anbieter bestanden, einschließlich echter Zweitbenutzer und verlorener Commit-Antwort |
+| T3-Tools mit realer Testbrücke | Alle 14 PostgreSQL- und 15 Oracle-Betriebsprüfungen bestanden; Freigabe-Tabs und ungespeicherte Regeländerungen über Hintergrund-Refresh geprüft |
+| Produktionsbuild, Typecheck und Produktionskonfiguration | Bestanden |
 | Produktions-CSP und Extension-Sandbox im Browser | Zwei Tests bestanden |
-| Formatierung und Lint | Geänderte Frontend-Dateien sowie Rust-Formatierung bestanden; Clippy abgeschlossen mit bestehenden Warnungen |
+| Formatierung und Lint | Geänderte Frontend-Dateien sowie Rust-Formatierung bestanden; Clippy mit 16 bestehenden Warnungen abgeschlossen |
 
-Der gemeinsame Browserlauf zeigte auf diesem Rechner Start-Timeouts bei Oracle/Chromium und WebKit. Die separaten Prozesse oben bestanden anschließend vollständig. Die SQL-Zeitlimit- und Rollback-Prüfungen laufen davon unabhängig gegen den echten Datenbankserver. Der Betriebsplan-Popover wurde zusätzlich auf seine Fenstergrenzen und auf erhaltene Entwürfe nach Schließen und Wiederöffnen geprüft.
+Die Live-Browsertests werden in getrennten Prozessen ausgeführt. Der Hintergrundtest startet eine Welle mit zwei Kundendatenbanken und lädt während ihrer Ausführung die Oberfläche neu. Auch der Ziel-Popover bleibt innerhalb der Fenstergrenzen und verwendet keine nativen Selects. PostgreSQL verwendet bei genau einem Zielschema dessen Suchpfad mit implizit vorrangigem `pg_catalog`; dadurch bleiben Systemfunktionen geschützt und ein unqualifiziertes CREATE TABLE landet im Kundenschema.
+
+Die neuen Enterprise-Tests verwenden zusätzlich das isolierte PostgreSQL-Schema `l8db_enterprise_edge` in `l8db_versioning_edge`, das Oracle-Schema `L8DB_VCS_EDGE` und jeweils den Laborbenutzer `l8db_vcs_reviewer`. Sie prüfen echte getrennte Datenbankbenutzer, verweigerte Selbstfreigabe, abgelaufene und erneuerte Freigaben, manipulierte Artefakte, konkurrierende Regelrevisionen, fehlende Journal-Änderungsrechte, Unicode-CLOBs und Executor-Sperren nach Oracle-DDL. Ein Test injiziert nach einem tatsächlich ausgeführten PostgreSQL-Commit eine verlorene Antwort: Daten und Ledger sind committed, der Lauf bleibt gesperrt und SQL wird nicht automatisch wiederholt. Browsertests laden die Oberfläche während eines laufenden Rollouts neu und prüfen danach Daten, lokale Anzeige und dauerhaftes Journal.

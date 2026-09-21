@@ -30,7 +30,7 @@ export async function runPostgresScenario(repo: string) {
   ]) {
     const results = await execute(
       database,
-      'DROP TABLE IF EXISTS public."L8DB_VERSIONING_STATE"; DROP TABLE IF EXISTS public.invoices; CREATE TABLE public.invoices(id integer PRIMARY KEY, amount numeric NOT NULL);',
+      'DROP TABLE IF EXISTS public."L8DB_VERSIONING_LOCKS", public."L8DB_VERSIONING_POLICY", public."L8DB_VERSIONING_JOURNAL", public."L8DB_VERSIONING_APPROVALS"; DROP TABLE IF EXISTS public."L8DB_VERSIONING_STATE"; DROP TABLE IF EXISTS public.invoices; CREATE TABLE public.invoices(id integer PRIMARY KEY, amount numeric NOT NULL);',
     );
     if (results.some((r) => !r.success)) throw new Error("Fixture setup failed");
   }

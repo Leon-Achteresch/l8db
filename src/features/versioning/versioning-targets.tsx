@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
+import { control } from "@/lib/versioning/control";
 import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
 import { readTargets, saveTargets } from "@/lib/versioning/repository";
@@ -39,6 +40,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
+  const [waveLimit, setWaveLimit] = useState("1");
   const [confirmation, setConfirmation] = useState("");
   const connectionFor = (target: DatabaseTarget) => {
     const connection = connections.find((entry) => entry.id === target.connectionId);
@@ -93,8 +95,18 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     try {
       if (preflight.some((item) => item.error))
         throw new Error("Alle ausgewählten Ziele müssen die Vorprüfung bestehen.");
-      await deployFleet(repo, project, plans, connections, releaseId, workspace.setMessage);
-      workspace.setMessage("Rollout abgeschlossen.");
+      await deployFleet(
+        repo,
+        project,
+        plans,
+        connections,
+        releaseId,
+        workspace.setMessage,
+        Number(waveLimit),
+      );
+      workspace.setMessage(
+        "Welle abgeschlossen. Betrieb prüfen und verbleibende Ziele neu planen.",
+      );
     } finally {
       setPlans([]);
       setPreflight([]);
@@ -350,7 +362,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           <p className="text-xs leading-relaxed">
             Vorher sicherstellen, dass kein Deployment mehr läuft und alle Datenmigrationen manuell
             geprüft oder repariert wurden. Der Schema-Vergleich allein kann Änderungen an
-            Datenzeilen nicht bestätigen. Die Freigabe hebt auch die Datenbank-Sperre auf.
+            Datenzeilen nicht bestätigen. Ein aktiver Rollout blockiert den Abgleich.
           </p>
           <Input
             aria-label="Wiederherstellung bestätigen"
@@ -442,6 +454,25 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 {item.binding.label}
                 {item.binding.edition ? ` · Edition ${item.binding.edition}` : ""}
               </p>
+              {item.policy.policy.requireApproval && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void run(async () => {
+                      await control(
+                        connectionFor(item.target),
+                        project,
+                        item.target,
+                        "request-review",
+                        { body: item.reviewArtifact },
+                      );
+                    }, "Freigabe angefragt – zweiter Datenbankbenutzer prüft unter Aktivität")
+                  }
+                >
+                  Freigabe anfragen
+                </Button>
+              )}
               {!item.releases.length && <p>Bereits auf dem Zielstand · wird übersprungen.</p>}
               {item.risks.map((risk) => (
                 <p className="mt-2 text-amber-700 dark:text-amber-300" key={risk}>
@@ -473,6 +504,21 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             {project.kind === "oracle"
               ? "Oracle-DDL kann bei einem Fehler bereits gespeichert sein."
               : "Jeder Release wird in einer eigenen Transaktion ausgeführt."}
+          </p>
+          <VersioningSelect
+            label="Rollout-Welle"
+            value={waveLimit}
+            onChange={setWaveLimit}
+            options={[
+              { value: "1", label: "Canary · zunächst eine Datenbank" },
+              { value: "5", label: "Welle · bis zu 5 Datenbanken" },
+              { value: "10", label: "Welle · bis zu 10 Datenbanken" },
+              { value: "1000", label: "Große Welle · bis zu 1.000 Datenbanken" },
+            ]}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Nach jeder Welle Anwendung und Betrieb prüfen. Verbleibende Ziele anschließend neu
+            planen und ausdrücklich starten.
           </p>
           <label className="text-xs leading-relaxed" htmlFor="versioning-deploy-confirmation">
             Release-ID zur Bestätigung eingeben
