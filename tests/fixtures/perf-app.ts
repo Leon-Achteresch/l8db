@@ -182,7 +182,7 @@ export async function seedApp(
     );
     localStorage.setItem(
       "l8db.settings",
-      JSON.stringify({ state: { tourFinished: true }, version: 0 }),
+      JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }),
     );
     localStorage.setItem(
       "l8db.db-selection",

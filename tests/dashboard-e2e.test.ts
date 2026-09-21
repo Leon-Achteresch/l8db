@@ -91,7 +91,7 @@ window.__TAURI_INTERNALS__ = {
   invoke: async (cmd, args) => { const r = await window.__db(cmd, args ?? {}); if (r && r.__error) throw r.__error; return r; }
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
-localStorage.setItem("l8db.settings", JSON.stringify({ state: { tourFinished: true }, version: 0 }));
+localStorage.setItem("l8db.settings", JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }));
 localStorage.setItem("l8db.connections", JSON.stringify({ state: { connections: [{ id: "c1", name: "Dash-Test", kind: "postgres", connectionString: "postgres://leon@localhost/${DB}", sslMode: "disable" }], activeId: "c1", favoriteServerKeys: [], serverOrder: [] }, version: 0 }));
 `;
 

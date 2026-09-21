@@ -397,7 +397,11 @@ mod tests {
     }
 
     fn lab_known_hosts() -> std::path::PathBuf {
-        std::env::temp_dir().join("l8db-e2e-known-hosts")
+        std::env::var_os("L8DB_KNOWN_HOSTS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("l8db-e2e-known-hosts-{}", std::process::id()))
+            })
     }
 
     #[tokio::test]
@@ -434,9 +438,10 @@ mod tests {
         std::env::set_var("L8DB_KNOWN_HOSTS", lab_known_hosts());
         let key_file = std::env::var("L8DB_E2E_KEY_FILE")
             .unwrap_or_else(|_| "/tmp/l8db-e2e-client".to_string());
-        if !std::path::Path::new(&key_file).exists() {
-            return;
-        }
+        assert!(
+            std::path::Path::new(&key_file).exists(),
+            "SSH test key is required"
+        );
         let manager = SshTunnelManager {
             tunnels: Default::default(),
         };
@@ -492,7 +497,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn tunnel_unknown_host_key_rejected_without_consent() {
-        let fresh = std::env::temp_dir().join("l8db-e2e-known-hosts-fresh");
+        let fresh = lab_known_hosts().with_extension("fresh");
         let _ = std::fs::remove_file(&fresh);
         std::env::set_var("L8DB_KNOWN_HOSTS", &fresh);
         let manager = SshTunnelManager {

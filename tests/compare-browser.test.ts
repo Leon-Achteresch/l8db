@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 import { seedApp } from "./fixtures/perf-app";
 
 test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
@@ -176,6 +177,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       );
       expect(errors).toEqual([]);
     } finally {
+      await saveBrowserArtifacts(browser, "compare");
       await browser.close();
       server.stop(true);
     }

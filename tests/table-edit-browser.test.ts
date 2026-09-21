@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { chromium, webkit } from "playwright";
+import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "table grid: first click focuses, second click opens focused editor",
@@ -62,6 +63,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       expect(errors).toEqual([]);
     } finally {
       await page.close();
+      await saveBrowserArtifacts(browser, "table-edit");
       await browser.close();
     }
   },
@@ -146,6 +148,7 @@ for (const engine of [chromium, webkit]) {
         });
         expect(errors).toEqual([]);
       } finally {
+        await saveBrowserArtifacts(browser, "table-edit");
         await browser.close();
       }
     },

@@ -23,6 +23,8 @@
     "format": "biome format --write ./src",
     "check": "biome check ./src",
     "test": "bun test tests",
+    "test:browser": "bun scripts/test-browser.ts",
+    "test:integration": "bash scripts/test-postgres-ssh.sh",
     "test:redis": "node scripts/test-redis-integration.mjs",
     "test:perf:scroll": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_DURATION=10000 bun test tests/perf-browser.test.ts",
     "test:perf": "bun run build && L8DB_PERF_BROWSER=1 L8DB_PERF_STYLED=1 L8DB_PERF_APP=1 bun test tests/perf-browser.test.ts tests/perf-bundle.test.ts tests/perf-app.test.ts",

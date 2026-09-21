@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { chromium, webkit } from "playwright";
+import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 const url = process.env.L8DB_TABLE_BROWSER_URL;
 
@@ -10,6 +11,7 @@ for (const engine of [chromium, webkit]) {
       const browser = await engine.launch({ headless: true });
       try {
         const page = await browser.newPage({ viewport: { width: 1100, height: 820 } });
+        page.setDefaultTimeout(10000);
         const errors: string[] = [];
         page.on("pageerror", (error) => {
           const existingWebKitLayoutNotification =
@@ -93,7 +95,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("link", { name: "Customers", exact: true }).click();
         await page.getByText("Seite 2 / 5", { exact: true }).waitFor();
         expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("Hamburg");
-        await page.getByText("\"name\" = 'Berlin'", { exact: true }).waitFor();
+        await page.getByText("\"name\"::text ILIKE 'Berlin' ESCAPE '!'", { exact: true }).waitFor();
         await page.waitForTimeout(400);
         expect(
           await scroller.evaluate((element) => ({
@@ -146,6 +148,7 @@ for (const engine of [chromium, webkit]) {
         await page.screenshot({ path: `/tmp/l8db-table-state-${engine.name()}.png` });
         expect(errors).toEqual([]);
       } finally {
+        await saveBrowserArtifacts(browser, "table-state");
         await browser.close();
       }
     },
