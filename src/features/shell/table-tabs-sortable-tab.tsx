@@ -23,6 +23,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SPRING } from "@/lib/ease";
+import { useSettingsStore } from "@/lib/settings";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
@@ -100,6 +101,7 @@ export function TableTabsSortableTab({
   onCopyFull,
   onSplit,
 }: TableTabsSortableTabProps) {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const { ref, handleRef, isDragging } = useSortable({
     id: tabKey(tab),
     index,
@@ -189,7 +191,7 @@ export function TableTabsSortableTab({
           Tabs rechts schließen
         </ContextMenuItem>
         <ContextMenuItem onSelect={onCloseAll}>Alle schließen</ContextMenuItem>
-        {onSplit && (
+        {!easyMode && onSplit && (
           <ContextMenuItem disabled={!canSplit} onSelect={onSplit}>
             Rechts teilen
           </ContextMenuItem>

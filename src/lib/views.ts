@@ -22,6 +22,35 @@ export function savedViewKey(
   return JSON.stringify([connectionId, database, schema, table]);
 }
 
+export function transferableFilters(
+  views: Record<string, SavedView[]>,
+  connectionId: string,
+  table: string,
+) {
+  return Object.entries(views).flatMap(([key, saved]) => {
+    let scope: unknown;
+    try {
+      scope = JSON.parse(key);
+    } catch {
+      return [];
+    }
+    if (
+      !Array.isArray(scope) ||
+      scope.length !== 4 ||
+      typeof scope[0] !== "string" ||
+      (scope[1] !== null && typeof scope[1] !== "string") ||
+      typeof scope[2] !== "string" ||
+      scope[0] === connectionId ||
+      scope[3] !== table
+    )
+      return [];
+    const [sourceConnectionId, database, schema] = scope as [string, string | null, string, string];
+    return saved
+      .filter((view) => view.filter.trim() !== "")
+      .map((view) => ({ key, sourceConnectionId, database, schema, view }));
+  });
+}
+
 export const VIEW_COLORS = [
   "#3b82f6",
   "#f97316",

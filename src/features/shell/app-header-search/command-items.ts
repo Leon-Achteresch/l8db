@@ -81,9 +81,11 @@ export function buildHotkeyItems(
   hasConnection: boolean,
   setOpen: (open: boolean) => void,
   setShortcutsOpen: (open: boolean) => void,
+  easyMode = false,
 ): CommandItem[] {
   return HOTKEY_COMMANDS.filter(
     (command) =>
+      !(easyMode && command.id === "view.split") &&
       command.id !== "palette.open" &&
       command.id !== "palette.quickOpen" &&
       command.id !== "shortcuts.open" &&

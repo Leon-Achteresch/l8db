@@ -21,6 +21,7 @@ import {
 } from "@/lib/hotkeys";
 import { supports } from "@/lib/providers";
 import { useAllSchemaObjectsQuery } from "@/lib/queries";
+import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 const MAX_VISIBLE_RESULTS = 60;
 
 export function AppHeaderSearch() {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [open, setOpen] = useState(false);
@@ -186,6 +188,7 @@ export function AppHeaderSearch() {
       activeConnection !== null,
       setOpen,
       setShortcutsOpen,
+      easyMode,
     );
     return [
       ...connectionItems,
@@ -211,6 +214,7 @@ export function AppHeaderSearch() {
     switchTargetId,
     shortcutsHotkey,
     hotkeyOverrideVersion,
+    easyMode,
     pathname,
   ]);
 
