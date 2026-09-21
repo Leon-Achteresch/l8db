@@ -4,6 +4,7 @@ import { MorphIcon } from "morphicons/react";
 import { useEffect, useState } from "react";
 
 import { ProviderLogo } from "@/components/provider-logo";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -20,8 +21,11 @@ import { databaseFromConnectionString } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
+import { DataCompareKeyPicker } from "./data-compare-key-picker";
 
 export interface DataCompareSideSelection {
+  keyColumns?: string[];
+  filter?: string;
   connectionId: string | null;
   database: string | null;
   schema: string | null;
@@ -210,7 +214,9 @@ export function DataCompareSidePicker({
           </Label>
           <Select
             value={value.database ?? ""}
-            onValueChange={(database) => emit({ ...value, database, schema: null, table: null })}
+            onValueChange={(database) =>
+              emit({ ...value, database, schema: null, table: null, keyColumns: undefined })
+            }
             disabled={!connection || databases.length === 0}
           >
             <SelectTrigger className="h-8 w-full min-w-0 text-xs">
@@ -240,7 +246,9 @@ export function DataCompareSidePicker({
           </Label>
           <Select
             value={value.schema ?? ""}
-            onValueChange={(schema) => emit({ ...value, schema, table: null })}
+            onValueChange={(schema) =>
+              emit({ ...value, schema, table: null, keyColumns: undefined })
+            }
             disabled={!connection || loadingSchemas || schemas.length === 0}
           >
             <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
@@ -273,7 +281,7 @@ export function DataCompareSidePicker({
           </Label>
           <Select
             value={value.table ?? ""}
-            onValueChange={(table) => emit({ ...value, table })}
+            onValueChange={(table) => emit({ ...value, table, keyColumns: undefined })}
             disabled={!value.schema || loadingTables || tables.length === 0}
           >
             <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
@@ -293,6 +301,17 @@ export function DataCompareSidePicker({
           </Select>
         </div>
       </div>
+      {value.table && (
+        <Input
+          aria-label={`${title}: Zeilenfilter`}
+          placeholder="SQL WHERE-Ausdruck (optional)"
+          value={value.filter ?? ""}
+          onChange={(event) => emit({ ...value, filter: event.target.value })}
+        />
+      )}
+      {connection && value.table && (
+        <DataCompareKeyPicker connection={connection} value={value} onChange={emit} />
+      )}
     </div>
   );
 }

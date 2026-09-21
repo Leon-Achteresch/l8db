@@ -11,6 +11,7 @@ export type CsvCell = string | null;
 export type CsvEmptyFieldMode = "null" | "empty";
 
 export interface CsvParseOptions {
+  partial?: boolean;
   delimiter?: string;
   quote?: string;
   hasHeader?: boolean;
@@ -18,7 +19,14 @@ export interface CsvParseOptions {
   emptyField?: CsvEmptyFieldMode;
 }
 
+export interface CsvParseError {
+  line: number;
+  column: number;
+  message: string;
+}
+
 export interface CsvParseResult {
+  errors: CsvParseError[];
   delimiter: string;
   quote: string;
   hasHeader: boolean;

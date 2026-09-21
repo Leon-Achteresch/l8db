@@ -3,12 +3,14 @@ import {
   CSV_PREVIEW_ROWS,
   type CsvCell,
   type CsvEmptyFieldMode,
+  type CsvParseError,
   type CsvParseOptions,
   type CsvParseResult,
 } from "./types";
 
 interface RawParse {
   records: CsvCell[][];
+  errors: CsvParseError[];
   truncated: boolean;
 }
 
@@ -18,6 +20,7 @@ function parseRecords(
   quote: string,
   emptyField: CsvEmptyFieldMode,
   maxRecords: number,
+  partial = false,
 ): RawParse {
   const records: CsvCell[][] = [];
   let record: CsvCell[] = [];
@@ -26,6 +29,8 @@ function parseRecords(
   let inQuotes = false;
   let started = false;
   let truncated = false;
+  let quoteStart = 0;
+  const errors: CsvParseError[] = [];
 
   const pushField = () => {
     if (!quoted && field === "" && emptyField === "null") record.push(null);
@@ -35,8 +40,8 @@ function parseRecords(
   };
 
   const pushRecord = () => {
+    const isBlank = record.length === 0 && !started && !quoted && field === "";
     pushField();
-    const isBlank = record.length === 1 && (record[0] === null || record[0] === "");
     if (!isBlank) records.push(record);
     record = [];
     started = false;
@@ -63,6 +68,7 @@ function parseRecords(
     }
     if (char === quote && !started) {
       inQuotes = true;
+      quoteStart = i;
       quoted = true;
       started = true;
       continue;
@@ -85,11 +91,27 @@ function parseRecords(
     started = true;
   }
 
-  if (!truncated && (started || field !== "" || record.length > 0 || quoted)) {
+  if (!truncated && !partial && inQuotes) {
+    const preceding = text.slice(0, quoteStart).split(/\r\n|\r|\n/);
+    const line = preceding.length;
+    const column = (preceding.at(-1)?.length ?? 0) + 1;
+    errors.push({
+      line,
+      column,
+      message: `Nicht geschlossenes Anführungszeichen in Zeile ${line}, Spalte ${column}.`,
+    });
+  }
+
+  if (
+    !truncated &&
+    !partial &&
+    !inQuotes &&
+    (started || field !== "" || record.length > 0 || quoted)
+  ) {
     pushRecord();
   }
 
-  return { records, truncated };
+  return { records, truncated: truncated || partial, errors };
 }
 
 export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseResult {
@@ -100,7 +122,14 @@ export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseR
   const maxRows = options.maxRows ?? Number.MAX_SAFE_INTEGER;
   const limit = maxRows === Number.MAX_SAFE_INTEGER ? maxRows : maxRows + 1;
 
-  const { records, truncated } = parseRecords(content, delimiter, quote, emptyField, limit);
+  const { records, truncated, errors } = parseRecords(
+    content,
+    delimiter,
+    quote,
+    emptyField,
+    limit,
+    options.partial,
+  );
   const hasHeader = options.hasHeader ?? detectHeader(records);
 
   const headerRecord = hasHeader ? (records[0] ?? []) : [];
@@ -127,6 +156,7 @@ export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseR
   });
 
   return {
+    errors,
     delimiter,
     quote,
     hasHeader,
