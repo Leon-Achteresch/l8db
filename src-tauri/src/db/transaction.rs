@@ -414,6 +414,26 @@ impl TransactionManager {
         session.finish(outcome)
     }
 
+    pub async fn versioning_oracle_timeout(
+        &self,
+        tx_id: &str,
+        milliseconds: u64,
+    ) -> Result<(), String> {
+        if !(100..=3_600_000).contains(&milliseconds) {
+            return Err("Ungültiges Oracle-Zeitlimit".into());
+        }
+        match &*self.entry(tx_id).await? {
+            TransactionEntry::Oracle(c) => {
+                ora(c.clone(), move |c| {
+                    c.set_call_timeout(Some(std::time::Duration::from_millis(milliseconds)))
+                        .map_err(|e| e.to_string())
+                })
+                .await
+            }
+            _ => Err("Zeitlimit benötigt eine Oracle-Sitzung".into()),
+        }
+    }
+
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
         let (session, ssl) = match &*entry {

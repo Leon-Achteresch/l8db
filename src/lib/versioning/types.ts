@@ -6,6 +6,7 @@ export interface ManagedObject {
   id: string;
   path: string;
   bodyPath?: string;
+  metadataVersion?: 2;
   selection: Omit<CompareSideSelection, "connectionId" | "database">;
 }
 
@@ -39,6 +40,26 @@ export interface DatabaseRelease {
   createdAt: string;
   objects: ObjectSnapshot[];
   migrations: ReleaseMigration[];
+  track?: string;
+  safety?: ReleaseSafety;
+}
+
+export interface ReleaseCheck {
+  id: string;
+  title: string;
+  sql: string;
+  expected: string;
+  checksum: string;
+}
+
+export interface ReleaseSafety {
+  phase: "expand" | "backfill" | "contract" | "custom";
+  compatibility: "online" | "maintenance";
+  notes: string;
+  lockTimeoutMs: number;
+  statementTimeoutMs: number;
+  preconditions: ReleaseCheck[];
+  postconditions: ReleaseCheck[];
 }
 
 export interface ReleaseReference {
@@ -56,6 +77,9 @@ export interface DeploymentEvent {
   status: "running" | "succeeded" | "failed" | "reconciled";
   completedMigrations: string[];
   error: string | null;
+  checked?: string[];
+  completedStatements?: string[];
+  inFlightStatement?: string | null;
 }
 
 export interface DatabaseTarget {
@@ -67,6 +91,11 @@ export interface DatabaseTarget {
   schema?: string | null;
   release: ReleaseReference | null;
   history: DeploymentEvent[];
+  track?: string;
+  pinnedRelease?: string | null;
+  paused?: boolean;
+  ledgerSchema?: string;
+  binding?: { fingerprint: string; label: string; edition: string | null; physicalKey?: string };
 }
 
 export interface TargetStore {
@@ -92,6 +121,7 @@ export interface RepositoryRequest {
     | "push"
     | "init"
     | "status"
+    | "files"
     | "read"
     | "write"
     | "delete"

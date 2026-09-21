@@ -1,5 +1,11 @@
 import { versioningRepository } from "@/lib/db";
-import { PROJECT_PATH, parseProject, parseRelease, releasePath } from "./model";
+import {
+  PROJECT_PATH,
+  parseProject,
+  parseRelease,
+  releasePath,
+  validateReleaseGraph,
+} from "./model";
 import type {
   DatabaseRelease,
   ReleaseReference,
@@ -39,11 +45,11 @@ export async function loadReleases(
   project: VersioningProject,
   commit?: string,
 ): Promise<DatabaseRelease[]> {
-  const status = await versioningRepository<RepositoryStatus>({ action: "status", repo });
+  const files = commit
+    ? await versioningRepository<string[]>({ action: "files", repo, revision: commit })
+    : (await versioningRepository<RepositoryStatus>({ action: "status", repo })).files;
   const releases: DatabaseRelease[] = [];
-  for (const path of status.files.filter((file) =>
-    /^database\/releases\/[^/]+\.json$/.test(file),
-  )) {
+  for (const path of files.filter((file) => /^database\/releases\/[^/]+\.json$/.test(file))) {
     const text = await readFile(repo, path, commit);
     if (text === null) throw new Error(`Release-Datei ${path} fehlt.`);
     const release = await parseRelease(text, project);
@@ -51,6 +57,7 @@ export async function loadReleases(
       throw new Error("Release-ID und Dateiname unterscheiden sich.");
     releases.push(release);
   }
+  validateReleaseGraph(releases);
   return releases.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
@@ -63,7 +70,10 @@ export async function resolveRelease(
     throw new Error("Ungültige Release-Referenz.");
   const text = await readFile(repo, ref.path, ref.commit);
   if (!text) throw new Error("Der gespeicherte Release ist nicht mehr im Repository verfügbar.");
-  return parseRelease(text, project);
+  const release = await parseRelease(text, project);
+  if (release.id !== ref.id)
+    throw new Error("Gespeicherte Release-ID stimmt nicht mit dem Manifest überein.");
+  return release;
 }
 
 export async function committedRelease(repo: string, project: VersioningProject, id: string) {
@@ -75,6 +85,7 @@ export async function committedRelease(repo: string, project: VersioningProject,
   if (!current || !committed || current !== committed)
     throw new Error("Release enthält nicht commitete Änderungen. Bitte zuerst committen.");
   const release = await parseRelease(committed, project);
+  if (release.id !== id) throw new Error("Release-ID stimmt nicht mit dem Manifest überein.");
   return { release, reference: { id, commit: status.head, path } };
 }
 
@@ -89,7 +100,18 @@ export async function readTargets(
     store.projectId !== projectId ||
     !Array.isArray(store.targets) ||
     new Set(store.targets.map((t) => t.id)).size !== store.targets.length ||
-    store.targets.some((t) => !t.id || !t.name || !t.connectionId || !Array.isArray(t.history))
+    store.targets.some(
+      (t) =>
+        !t.id ||
+        !t.name ||
+        !t.connectionId ||
+        !Array.isArray(t.history) ||
+        (t.track !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(t.track)) ||
+        (t.paused !== undefined && typeof t.paused !== "boolean") ||
+        (t.production !== true && t.production !== false) ||
+        (t.binding &&
+          (!/^[a-f0-9]{64}$/.test(t.binding.fingerprint) || typeof t.binding.label !== "string")),
+    )
   )
     throw new Error(
       "Lokale Kundenzuordnungen sind ungültig oder gehören zu einem anderen Projekt.",

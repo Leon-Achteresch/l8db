@@ -15,6 +15,7 @@ import {
 import { packageOid } from "@/lib/plsql";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { checksum, normalizeSource } from "./model";
+import { oracleConstraintMetadataSql, portableOracleMetadata } from "./oracle-metadata";
 import { requalify } from "./schema";
 import type { ManagedObject, ObjectSnapshot } from "./types";
 
@@ -44,12 +45,29 @@ export async function captureObject(
       listTriggers(connection.kind, url, schema, name, db),
     ]);
     if (!columns.length) throw new Error(`Tabelle ${schema}.${name} fehlt oder ist nicht lesbar.`);
+    const metadata =
+      connection.kind === "oracle" && object.metadataVersion === 2
+        ? await portableOracleMetadata(
+            constraints,
+            indexes,
+            (
+              await executeQuery(
+                connection.kind,
+                url,
+                oracleConstraintMetadataSql(schema, name),
+                db,
+              )
+            ).rows,
+            schema,
+            object.selection.schema ?? schema,
+          )
+        : { constraints, indexes };
     definition = formatTableDefinition({
       schema,
       table: name,
       columns,
-      constraints,
-      indexes,
+      constraints: metadata.constraints,
+      indexes: metadata.indexes,
       triggers,
     });
   } else if (side.objectType === "package") {

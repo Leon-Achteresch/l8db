@@ -2,6 +2,8 @@
 
 Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit PostgreSQL- oder Oracle-Verbindungen. Ein Git-Branch beschreibt einen Entwicklungsstand. Jede verbundene Datenbank hat unabhängig davon einen geprüften Release-Stand. Branch-Wechsel führen kein SQL aus.
 
+Die [Erweiterung für den produktiven Betrieb](database-versioning-operations.md) beschreibt Release-Linien, Update-Regeln, Datenprüfungen, Sitzungs- und Zeitlimits, Oracle-Metadaten sowie die zugrunde liegende Web-Recherche und verbleibende Grenzen.
+
 Das Git-Symbol oben rechts öffnet die Seitenleiste neben dem Arbeitsbereich. Wie beim Transaktionspanel bleibt der aktuelle Arbeitsbereich sichtbar; die beiden Panels wechseln sich ab. Die Tabs **Änderungen**, **Releases**, **Datenbanken** und **Aktivität** trennen Dateien, Release-Erstellung, Rollouts und Verlauf. Repository, Branches, Synchronisierung und zusätzliche Aktionen sind über Icon-Buttons mit Popovers erreichbar. Alle Auswahllisten verwenden die durchsuchbare, per Tastatur bedienbare Anwendungskomponente.
 
 Das Badge zählt geänderte Git-Dateien, einen ungespeicherten Entwurf sowie Ziele mit ausstehenden Releases, fehlender Baseline oder ungeklärtem Deployment. Gezählt werden nur Releases derselben Vorgängerkette, die lokal unverändert vorliegen. Der Repository-Status wird bei Fensterfokus und alle 15 Sekunden aktualisiert; während Bearbeitung und laufender Aktionen pausiert die Aktualisierung. Dabei werden keine Datenbankabfragen oder automatischen Remote-Fetches ausgelöst. Entwürfe, Zielauswahl und geprüfte Rollout-Pläne bleiben beim Schließen des Panels erhalten.
@@ -24,7 +26,7 @@ Fetch, Fast-forward-Pull und Push verwenden `origin` und die vorhandene Git-Auth
 
 Ein Repository enthält die Releases eines Produkts. Beispielsweise kann Kunde A auf `v1`, Kunde B auf `v2` und Kunde C weiterhin auf `v1` stehen. Beim Zielrelease `v3` plant l8db für A die Schritte `v2 → v3` und für B nur `v3`. Nicht ausgewählte Kunden bleiben auf ihrem bisherigen Stand.
 
-Pro Ziel werden Verbindung, Datenbank, optional abweichendes Schema und Produktionskennzeichnung gespeichert. Die Vorschau zeigt die Schritte und das SQL jedes Ziels. Mehrere ausgewählte Ziele werden nacheinander aktualisiert; beim ersten Fehler endet der Rollout. Bereits erfolgreiche Ziele und Releases behalten ihren neuen Stand.
+Pro Ziel werden Verbindung, Datenbank, optional abweichendes Schema und Produktionskennzeichnung gespeichert. Über **Update-Regeln** lassen sich eine Release-Linie, ein maximal freigegebener Release und eine Pause setzen. Die Vorschau zeigt die Schritte und das SQL jedes Ziels. Vor dem ersten Schreibzugriff werden alle ausgewählten Ziele erneut geprüft. Mehrere ausgewählte Ziele werden nacheinander aktualisiert; beim ersten Fehler endet der Rollout. Bereits erfolgreiche Ziele und Releases behalten ihren neuen Stand.
 
 Unterschiedliche Versionsstände benötigen keine dauerhaften Kundenbranches. Absichtlich unterschiedliche Programmlogik benötigt dagegen ausdrücklich gepflegte Varianten. Ein abweichender Package-Body wird als Drift angezeigt und nicht ungeprüft mit dem Produktstand überschrieben.
 
@@ -44,7 +46,7 @@ Vor dem Deployment werden Datenbankdefinitionen erneut gelesen und mit der Basel
 
 ## Fehler und Wiederaufnahme
 
-PostgreSQL führt jede Release-Migration in einer eigenen Transaktion aus, einschließlich Aktualisierung des gemeinsamen Release-Stands. Ein SQL-Fehler rollt diesen Release zurück. Zuvor abgeschlossene Releases bleiben angewendet. Nicht transaktionale Operationen wie `CREATE INDEX CONCURRENTLY` werden in diesem Modus abgewiesen.
+PostgreSQL führt alle Migrationen eines Releases in einer gemeinsamen Transaktion aus, einschließlich seiner SQL-Nachprüfungen und Aktualisierung des gemeinsamen Release-Stands. Ein SQL- oder Nachprüfungsfehler rollt diesen Release zurück. Zuvor abgeschlossene Releases bleiben angewendet. Nicht transaktionale Operationen wie `CREATE INDEX CONCURRENTLY` werden in diesem Modus abgewiesen. Die zusätzliche strukturelle Snapshot-Prüfung erfolgt nach dem Commit; eine dort festgestellte Abweichung kann bereits angewendetes SQL betreffen.
 
 Oracle führt Anweisungen einzeln aus und stoppt bei Fehlern. DDL kann bereits dauerhaft gespeichert sein. Nach der Ausführung werden verwaltete beziehungsweise neu ungültige Objekte und der erwartete Objektstand geprüft. Package-Specification und Body werden als vollständige Programmeinheiten ausgeführt.
 
@@ -74,6 +76,7 @@ Bei laufendem Vite auf Port 1420 und vorbereiteten Labordatenbanken:
 ```sh
 L8DB_VERSIONING_LAB=/path/to/private-lab.json cargo test --manifest-path src-tauri/Cargo.toml versioning_browser_bridge --lib -- --ignored --nocapture
 L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-live.test.ts tests/versioning-oracle-live.test.ts
+L8DB_VERSIONING_LAB=/path/to/private-lab.json bun test tests/versioning-operations-live.test.ts
 ```
 
 Abgedeckt sind unter anderem unterschiedliche Kundenstände, veraltete Freigaben, konkurrierende Deployments, direkte Schemaänderungen, Schreibschutz, transaktionaler PostgreSQL-Rollback, Oracle-Teilzustände, Stoppen nach Fehlern, Schema-Zuordnung, getrennte Package-Dateien, konfliktbehaftete und konfliktfreie Drei-Wege-Merges mit großen Quellen, unveränderliche Releases, Worktrees, Remote-Synchronisierung und Dateipfadgrenzen. Die Szenarien lassen sich außerdem über die T3-Browsersteuerung ausführen.

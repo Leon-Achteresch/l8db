@@ -159,6 +159,9 @@ export async function runOracleScenario(repo: string) {
     failed,
     partial: actual.definition.includes("value * 4"),
     stopped: !actual.definition.includes("value * 99"),
-    recorded: store.targets[0].history[0].status === "failed",
+    recorded:
+      store.targets[0].history[0].status === "failed" &&
+      store.targets[0].history[0].completedStatements.length === 1 &&
+      store.targets[0].history[0].inFlightStatement.endsWith(":2"),
   };
 }

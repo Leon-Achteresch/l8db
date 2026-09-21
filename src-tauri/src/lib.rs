@@ -54,6 +54,7 @@ pub fn run() {
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
             versioning::versioning_repository,
+            versioning::versioning_oracle_timeout,
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,

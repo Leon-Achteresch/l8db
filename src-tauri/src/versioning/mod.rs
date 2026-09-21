@@ -228,6 +228,31 @@ pub async fn handle(request: Request) -> Result<Value, String> {
     })?;
     let path = request.path.as_deref().unwrap_or("");
     match request.action.as_str() {
+        "files" => {
+            let commit =
+                revision(&root, request.revision.as_deref().ok_or("Revision fehlt")?).await?;
+            let names = git(
+                &root,
+                &[
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    "-z",
+                    &commit,
+                    "--",
+                    "database/",
+                ],
+            )
+            .await?;
+            let files: Vec<_> = names
+                .split('\0')
+                .filter(|path| relative(path).is_ok())
+                .collect();
+            if files.len() > 10000 {
+                return Err("Zu viele Projektdateien".into());
+            }
+            Ok(json!(files))
+        }
         "init" | "status" => {
             let mut files = Vec::new();
             list(&root, &root.join("database"), &mut files)?;
@@ -473,6 +498,15 @@ pub async fn handle(request: Request) -> Result<Value, String> {
 #[tauri::command]
 pub async fn versioning_repository(request: Request) -> Result<Value, String> {
     handle(request).await
+}
+
+#[tauri::command]
+pub async fn versioning_oracle_timeout(
+    tx_id: String,
+    milliseconds: u64,
+    state: tauri::State<'_, crate::db::transaction::TransactionState>,
+) -> Result<(), String> {
+    state.versioning_oracle_timeout(&tx_id, milliseconds).await
 }
 
 #[cfg(test)]

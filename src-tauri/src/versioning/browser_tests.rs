@@ -27,6 +27,16 @@ impl Lab {
         let tx = args["txId"].as_str().unwrap_or("");
         let sql = args["sql"].as_str().unwrap_or("");
         match command {
+            "versioning_oracle_timeout" => {
+                return self
+                    .transactions
+                    .versioning_oracle_timeout(
+                        tx,
+                        args["milliseconds"].as_u64().ok_or("Timeout missing")?,
+                    )
+                    .await
+                    .map(|_| Value::Null)
+            }
             "execute_in_transaction" => {
                 return self.transactions.execute(tx, sql).await.map(|v| json!(v))
             }

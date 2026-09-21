@@ -1,15 +1,14 @@
 import type { SavedConnection } from "@/lib/connections";
 import {
-  beginTransaction,
   commitTransaction,
   executeInTransaction,
-  executeScript,
   listCompileErrors,
   listInvalidObjects,
   rollbackTransaction,
 } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { captureObjects } from "./capture";
+import { preflightChecks, runReleaseChecks } from "./checks";
 import {
   acquireLease,
   advanceLedger,
@@ -18,7 +17,7 @@ import {
   readLedger,
   releaseHash,
 } from "./ledger";
-import { checksum, compareSnapshots, releaseChain, validateMigration } from "./model";
+import { checksum, compareSnapshots, releaseChain, releaseTrack, validateMigration } from "./model";
 import {
   committedRelease,
   loadReleases,
@@ -26,7 +25,9 @@ import {
   resolveRelease,
   saveTargets,
 } from "./repository";
+import { releaseRisks, requiresMaintenance, validateProductionRelease } from "./safety";
 import { requalify } from "./schema";
+import { databaseBinding, openVersioningSession } from "./session";
 import type {
   DatabaseRelease,
   DatabaseTarget,
@@ -45,6 +46,21 @@ export interface DeploymentPlan {
   differences: ObjectDifference[];
   reviewToken: string;
   sql: string[];
+  binding: NonNullable<DatabaseTarget["binding"]>;
+  risks: string[];
+}
+
+export function assertReviewedToken(reviewed: string, current: string, now = Date.now()) {
+  const [issued, hash] = reviewed.split(":");
+  const time = Number(issued);
+  if (
+    !Number.isFinite(time) ||
+    time > now ||
+    now - time > 15 * 60 * 1000 ||
+    !/^[a-f0-9]{64}$/.test(hash ?? "") ||
+    hash !== current.split(":")[1]
+  )
+    throw new Error("Freigabe ist veraltet oder Ziel/Release wurde geändert. Update neu planen.");
 }
 
 export function mappedMigration(
@@ -93,6 +109,9 @@ export async function baselineTarget(
   if (target.release && !reconcile)
     throw new Error("Dieses Ziel hat bereits eine Baseline. Änderungen müssen ausgerollt werden.");
   const { release, reference } = await committedRelease(repo, project, releaseId);
+  if (releaseTrack(release) !== (target.track ?? "main"))
+    throw new Error("Baseline gehört zu einer anderen Release-Linie.");
+  target.ledgerSchema ??= target.schema || release.objects[0]?.object.selection.schema || undefined;
   if (!release.objects.length)
     throw new Error("Eine Baseline benötigt mindestens ein verwaltetes Objekt.");
   const actual = await captureObjects(
@@ -131,9 +150,22 @@ export async function baselineTarget(
   if (pending && !reconcile)
     throw new Error("Ungeklärtes Deployment. Erst den tatsächlichen Stand abgleichen.");
   if (reconcile && pending) {
-    pending.status = "reconciled";
-    pending.finishedAt = new Date().toISOString();
+    for (const event of target.history.filter(
+      (event) => event.status === "running" || event.status === "failed",
+    )) {
+      event.status = "reconciled";
+      event.finishedAt = new Date().toISOString();
+    }
   }
+  if (release.safety?.postconditions.length) {
+    const transaction = await openVersioningSession(connection, target, release, true);
+    try {
+      await runReleaseChecks(transaction, release, target, "postconditions");
+    } finally {
+      await rollbackTransaction(transaction);
+    }
+  }
+  target.binding = await databaseBinding(connection, target);
   await baselineLedger(connection, project, target, release, reconcile);
   target.release = reference;
   await saveTargets(repo, store, text);
@@ -147,11 +179,22 @@ export async function planDeployment(
   releaseId: string,
 ): Promise<DeploymentPlan> {
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
+  if (target.paused) throw new Error("Updates für diese Datenbank sind pausiert.");
   if (target.history.some((event) => event.status === "running" || event.status === "failed"))
     throw new Error(
       "Ein früheres Deployment ist ungeklärt. Vor dem nächsten Update den Stand abgleichen.",
     );
   const { release: from, differences } = await inspectTarget(repo, project, target, connection);
+  target = {
+    ...target,
+    ledgerSchema:
+      target.ledgerSchema || target.schema || from.objects[0]?.object.selection.schema || undefined,
+  };
+  const binding = await databaseBinding(connection, target);
+  if (target.binding && target.binding.fingerprint !== binding.fingerprint)
+    throw new Error(
+      "Verbindungsendpunkt, Datenbankbenutzer oder Oracle-Edition hat sich geändert. Ziel ausdrücklich neu abgleichen.",
+    );
   const ledger = await readLedger(connection, project, target);
   if (
     !ledger ||
@@ -164,21 +207,52 @@ export async function planDeployment(
     );
   const { release: to, reference } = await committedRelease(repo, project, releaseId);
   const releases = await loadReleases(repo, project, reference.commit);
+  if (releaseTrack(to) !== (target.track ?? "main"))
+    throw new Error("Zielrelease gehört zu einer anderen Kundenvariante / Release-Linie.");
+  if (target.pinnedRelease) releaseChain(releases, to.id, target.pinnedRelease);
   const storedFrom = releases.find((entry) => entry.id === from.id);
   if (!storedFrom || JSON.stringify(storedFrom) !== JSON.stringify(from))
     throw new Error("Der Ausgangsrelease wurde nachträglich verändert oder fehlt im Zielbranch.");
+  if (!target.release) throw new Error("Gespeicherter Ausgangsrelease fehlt.");
+  const history = await loadReleases(repo, project, target.release.commit);
+  const previousById = new Map(history.map((release) => [release.id, release]));
+  let ancestor: DatabaseRelease | undefined = from;
+  while (ancestor) {
+    if (
+      JSON.stringify(releases.find((release) => release.id === ancestor?.id)) !==
+      JSON.stringify(ancestor)
+    )
+      throw new Error(
+        "Eine bereits angewendete Vorgängermigration wurde im Zielbranch verändert oder entfernt.",
+      );
+    ancestor = ancestor.parent ? previousById.get(ancestor.parent) : undefined;
+  }
   if (target.schema && new Set(to.objects.map((item) => item.object.selection.schema)).size !== 1)
     throw new Error("Eine Schema-Zuordnung benötigt genau ein Quellschema.");
   const chain = releaseChain(releases, from.id, to.id);
   if (chain.some((release) => !release.migrations.length))
     throw new Error("Ein Update-Release enthält keine Migrationen.");
+  if (target.production && chain.length) {
+    validateProductionRelease(to);
+    if (chain.some(requiresMaintenance) && to.safety?.compatibility !== "maintenance")
+      throw new Error(
+        "Ein Zwischenrelease enthält inkompatible Änderungen. Der Betriebsplan benötigt ein Wartungsfenster für den gesamten Pfad.",
+      );
+  }
+  if (chain[0]) await preflightChecks(connection, target, chain[0]);
   const sql = chain.flatMap((release) =>
     release.migrations.map((migration) => mappedMigration(migration.sql, target, release)),
   );
   for (const statement of sql) validateMigration(statement, project.kind);
-  const reviewToken = await checksum(
+  const hash = await checksum(
     JSON.stringify({
       connectionId: target.connectionId,
+      targetId: target.id,
+      binding,
+      ledgerSchema: target.ledgerSchema,
+      track: target.track ?? "main",
+      pinnedRelease: target.pinnedRelease ?? null,
+      releases: chain,
       database: target.database,
       schema: target.schema ?? null,
       production: target.production,
@@ -187,7 +261,18 @@ export async function planDeployment(
       sql,
     }),
   );
-  return { target, from, to, reference, releases: chain, differences, sql, reviewToken };
+  return {
+    target,
+    from,
+    to,
+    reference,
+    releases: chain,
+    differences,
+    sql,
+    reviewToken: `${Date.now()}:${hash}`,
+    binding,
+    risks: [...new Set(chain.flatMap(releaseRisks))],
+  };
 }
 
 export async function deploy(
@@ -203,8 +288,7 @@ export async function deploy(
   const target = store.targets.find((item) => item.id === targetId);
   if (!target) throw new Error("Datenbankziel fehlt.");
   const plan = await planDeployment(repo, project, target, connection, releaseId);
-  if (plan.reviewToken !== reviewedToken)
-    throw new Error("Repository wurde seit der Prüfung geändert. Update neu planen.");
+  assertReviewedToken(reviewedToken, plan.reviewToken);
   if (plan.differences.some((item) => item.status !== "unchanged"))
     throw new Error("Direkte Datenbankänderungen erkannt. Bitte zuerst prüfen und zusammenführen.");
   if (!plan.releases.length) return;
@@ -217,7 +301,12 @@ export async function deploy(
     status: "running",
     completedMigrations: [],
     error: null,
+    checked: [],
+    completedStatements: [],
+    inFlightStatement: null,
   };
+  target.ledgerSchema = plan.target.ledgerSchema;
+  target.binding = plan.binding;
   target.history.unshift(event);
   text = await saveTargets(repo, store, text);
   const url = effectiveConnectionString(connection);
@@ -251,11 +340,16 @@ export async function deploy(
             ).flat()
           : [];
       if (project.kind === "postgres") {
-        const transaction = await beginTransaction(connection.kind, url, db);
+        const transaction = await openVersioningSession(connection, target, release);
         try {
-          await executeInTransaction(transaction, "SET LOCAL lock_timeout = '5s'", {
-            confirmed: true,
-          });
+          if (
+            (await databaseBinding(connection, target, transaction)).fingerprint !==
+            plan.binding.fingerprint
+          )
+            throw new Error("Ausführungssitzung zeigt auf eine andere Datenbank.");
+          await runReleaseChecks(transaction, release, target, "preconditions", (id) =>
+            event.checked?.push(id),
+          );
           for (const migration of release.migrations) {
             for (const sql of validateMigration(
               mappedMigration(migration.sql, target, release),
@@ -263,6 +357,9 @@ export async function deploy(
             ))
               await executeInTransaction(transaction, sql, { confirmed: true });
           }
+          await runReleaseChecks(transaction, release, target, "postconditions", (id) =>
+            event.checked?.push(id),
+          );
           await advanceLedger(connection, project, target, release, event.id, transaction);
           await commitTransaction(transaction);
         } catch (error) {
@@ -278,23 +375,45 @@ export async function deploy(
         event.completedMigrations.push(...release.migrations.map((migration) => migration.id));
         text = await saveTargets(repo, store, text);
       } else {
-        for (const migration of release.migrations) {
-          const statements = validateMigration(
-            mappedMigration(migration.sql, target, release),
-            project.kind,
+        const transaction = await openVersioningSession(connection, target, release);
+        try {
+          if (
+            (await databaseBinding(connection, target, transaction)).fingerprint !==
+            plan.binding.fingerprint
+          )
+            throw new Error("Ausführungssitzung zeigt auf eine andere Datenbank oder Edition.");
+          await runReleaseChecks(transaction, release, target, "preconditions", (id) =>
+            event.checked?.push(id),
           );
-          for (const statement of statements) {
-            const results = await executeScript(connection.kind, url, statement, db, {
-              confirmed: true,
-            });
-            const failure = results.find((item) => !item.success);
-            if (failure || results.length !== 1)
-              throw new Error(
-                failure?.error ?? "Oracle-Anweisung wurde nicht eindeutig ausgeführt.",
-              );
+          for (const migration of release.migrations) {
+            const statements = validateMigration(
+              mappedMigration(migration.sql, target, release),
+              project.kind,
+            );
+            for (const [index, statement] of statements.entries()) {
+              event.inFlightStatement = `${release.id}:${migration.id}:${index + 1}`;
+              text = await saveTargets(repo, store, text);
+              await executeInTransaction(transaction, statement, { confirmed: true });
+              event.completedStatements?.push(`${release.id}:${migration.id}:${index + 1}`);
+              event.inFlightStatement = null;
+              text = await saveTargets(repo, store, text);
+            }
+            event.completedMigrations.push(migration.id);
+            text = await saveTargets(repo, store, text);
           }
-          event.completedMigrations.push(migration.id);
-          text = await saveTargets(repo, store, text);
+          await runReleaseChecks(transaction, release, target, "postconditions", (id) =>
+            event.checked?.push(id),
+          );
+          await commitTransaction(transaction);
+        } catch (error) {
+          try {
+            await rollbackTransaction(transaction);
+          } catch (rollbackError) {
+            throw new Error(
+              `${String(error)}; Offene Oracle-DML konnte nicht zurückgerollt werden: ${String(rollbackError)}`,
+            );
+          }
+          throw error;
         }
         for (const schema of new Set(
           release.objects.map((item) => item.object.selection.schema ?? ""),

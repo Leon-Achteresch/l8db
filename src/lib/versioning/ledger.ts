@@ -8,7 +8,7 @@ const quote = (text: string) => `"${text.replaceAll('"', '""')}"`;
 const literal = (text: string) => `'${text.replaceAll("'", "''")}'`;
 
 export function ledgerTable(project: VersioningProject, target: DatabaseTarget): string {
-  const schema = target.schema || project.objects[0]?.selection.schema;
+  const schema = target.ledgerSchema || target.schema || project.objects[0]?.selection.schema;
   if (!schema) throw new Error("Ein verwaltetes Schema wird für die Deployment-Historie benötigt.");
   return `${quote(schema)}."L8DB_VERSIONING_STATE"`;
 }

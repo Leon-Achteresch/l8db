@@ -1,16 +1,33 @@
-import { ArrowLeftIcon, FileDiffIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  FileDiffIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  TagIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { buildCompareApplyPlan } from "@/lib/compare-apply-plan";
 import { cn } from "@/lib/utils";
-import { checksum, releasePath, validateMigration } from "@/lib/versioning/model";
+import {
+  checksum,
+  parseRelease,
+  releasePath,
+  releaseTrack,
+  validateMigration,
+  validateReleaseGraph,
+} from "@/lib/versioning/model";
 import { encode, saveFile } from "@/lib/versioning/repository";
+import { defaultSafety } from "@/lib/versioning/safety";
 import { workingSnapshot } from "@/lib/versioning/sources";
 import { changedFiles } from "@/lib/versioning/status";
 import type { DatabaseRelease, ObjectSnapshot } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningIconButton } from "./versioning-icon-button";
+import { VersioningPopover } from "./versioning-popover";
+import { VersioningSafetyEditor } from "./versioning-safety-editor";
 import { VersioningSelect } from "./versioning-select";
 
 export function VersioningReleases({ workspace }: { workspace: VersioningWorkspace }) {
@@ -19,10 +36,19 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
   const [id, setId] = useState("");
   const [parent, setParent] = useState("");
   const [sql, setSql] = useState("");
+  const [track, setTrack] = useState("main");
+  const [safety, setSafety] = useState(defaultSafety);
   const [selected, setSelected] = useState<DatabaseRelease | null>(null);
   useEffect(() => {
-    workspace.setDirty(Boolean(id.trim() || sql.trim()));
-  }, [id, sql, workspace.setDirty]);
+    workspace.setDirty(
+      Boolean(
+        id.trim() ||
+          sql.trim() ||
+          track !== "main" ||
+          JSON.stringify(safety) !== JSON.stringify(defaultSafety()),
+      ),
+    );
+  }, [id, sql, track, safety, workspace.setDirty]);
   const snapshots = async (): Promise<ObjectSnapshot[]> => {
     if (!project?.objects.length) throw new Error("Zuerst mindestens ein Objekt aufnehmen.");
     const result: ObjectSnapshot[] = [];
@@ -61,8 +87,10 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
     const path = releasePath(id);
     if (releases.some((release) => release.id === id))
       throw new Error("Release-ID existiert bereits. Einen neuen Release anlegen.");
-    if (releases.length && !parent)
-      throw new Error("Für weitere Releases einen Vorgänger auswählen.");
+    if (!parent && releases.some((release) => releaseTrack(release) === track))
+      throw new Error(
+        "Für diese Release-Linie existiert bereits eine Baseline. Einen Vorgänger auswählen.",
+      );
     const objects = await snapshots();
     if (parent && !sql.trim())
       throw new Error("Ein Update-Release benötigt eine geprüfte Migration.");
@@ -82,7 +110,25 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
       migrations: sql.trim()
         ? [{ id: `${id}-migration`, title: `Update auf ${id}`, sql, checksum: await checksum(sql) }]
         : [],
+      track,
+      safety: {
+        ...safety,
+        preconditions: await Promise.all(
+          safety.preconditions.map(async (check) => ({
+            ...check,
+            checksum: await checksum(check.sql),
+          })),
+        ),
+        postconditions: await Promise.all(
+          safety.postconditions.map(async (check) => ({
+            ...check,
+            checksum: await checksum(check.sql),
+          })),
+        ),
+      },
     };
+    await parseRelease(encode(release), project);
+    validateReleaseGraph([...releases, release]);
     await saveFile(repo, path, encode(release), null);
     workspace.setDirty(false);
     await refresh();
@@ -90,6 +136,8 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
     setCreating(false);
     setId("");
     setSql("");
+    setTrack("main");
+    setSafety(defaultSafety());
     workspace.setDirty(false);
   };
   const chosen = selected ?? releases.at(-1);
@@ -113,6 +161,8 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
               onClick={() => {
                 setId("");
                 setSql("");
+                setTrack("main");
+                setSafety(defaultSafety());
                 workspace.setDirty(false);
                 setCreating(false);
               }}
@@ -134,7 +184,9 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
             icon={PlusIcon}
             label="Release vorbereiten"
             onClick={() => {
-              setParent(releases.at(-1)?.id ?? "");
+              setParent(
+                releases.filter((release) => releaseTrack(release) === "main").at(-1)?.id ?? "",
+              );
               setCreating(true);
             }}
           />
@@ -166,24 +218,44 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
               />
             </div>
           </div>
+          <label htmlFor="vcs-release-track" className="space-y-1.5 text-xs font-medium">
+            Release-Linie
+            <Input
+              id="vcs-release-track"
+              aria-label="Release-Linie"
+              value={track}
+              onChange={(event) => setTrack(event.target.value)}
+              placeholder="main oder Kundenvariante"
+            />
+          </label>
           <div className="flex items-center justify-between">
             <label htmlFor="vcs-migration-sql" className="text-xs font-medium">
               Migrations-SQL
             </label>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!parent}
-              onClick={() =>
-                void run(
-                  generate,
-                  "Migrationsentwurf erzeugt. Vor Freigabe in einer Testdatenbank prüfen.",
-                )
-              }
-            >
-              <FileDiffIcon className="size-3.5" />
-              SQL entwerfen
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!parent}
+                onClick={() =>
+                  void run(
+                    generate,
+                    "Migrationsentwurf erzeugt. Vor Freigabe in einer Testdatenbank prüfen.",
+                  )
+                }
+              >
+                <FileDiffIcon className="size-3.5" />
+                SQL entwerfen
+              </Button>
+              <VersioningPopover
+                icon={ShieldCheckIcon}
+                label="Betriebsplan und Prüfungen"
+                className="w-[440px] max-h-[min(70vh,var(--radix-popover-content-available-height))] overflow-y-auto"
+                disabled={workspace.busy}
+              >
+                <VersioningSafetyEditor value={safety} onChange={setSafety} />
+              </VersioningPopover>
+            </div>
           </div>
           <textarea
             id="vcs-migration-sql"
@@ -240,7 +312,7 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs font-medium">{release.id}</span>
                   <span className="mt-1 block text-[11px] text-muted-foreground">
-                    {release.objects.length} Objekte ·{" "}
+                    {releaseTrack(release)} · {release.objects.length} Objekte ·{" "}
                     {release.parent ? `von ${release.parent}` : "Baseline"}
                   </span>
                 </span>
@@ -272,6 +344,29 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
                 {chosen.migrations.map((entry) => entry.sql).join("\n\n") ||
                   "Baseline · bestehender Ausgangsstand ohne Migration"}
               </pre>
+              {chosen.safety && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer">Betriebsplan · {chosen.safety.phase}</summary>
+                  <div className="mt-3 space-y-2">
+                    <p>{chosen.safety.notes || "Noch keine Betriebsnotizen"}</p>
+                    <p>
+                      {chosen.safety.compatibility === "maintenance"
+                        ? "Wartungsfenster erforderlich"
+                        : "Mit laufender Anwendung"}
+                    </p>
+                    <p>
+                      Vorprüfung:{" "}
+                      {chosen.safety.preconditions.map((check) => check.title).join(", ") ||
+                        "Keine"}
+                    </p>
+                    <p>
+                      Nachprüfung:{" "}
+                      {chosen.safety.postconditions.map((check) => check.title).join(", ") ||
+                        "Keine"}
+                    </p>
+                  </div>
+                </details>
+              )}
             </div>
           )}
         </>

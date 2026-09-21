@@ -43,7 +43,13 @@ export function requalify(sql: string, from: string, to: string): string {
       if (dollar) {
         const end = rest.indexOf(dollar, dollar.length);
         opaque = end < 0 ? rest : rest.slice(0, end + dollar.length);
-        if (from !== to && opaque.includes(`${from}.`))
+        const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (
+          from !== to &&
+          new RegExp(`(?:"${escaped.replaceAll('"', '""')}"|\\b${escaped})\\s*\\.`, "i").test(
+            opaque,
+          )
+        )
           throw new Error(
             "Schema-Zuordnung im Dollar-String erfordert eine ausdrücklich angepasste Migration.",
           );

@@ -53,6 +53,19 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
             </summary>
             <div className="ml-7 mt-3 space-y-2 text-xs text-muted-foreground">
               <p>Migrationen: {event.completedMigrations.join(", ") || "Keine bestätigt"}</p>
+              {event.inFlightStatement && (
+                <p className="text-amber-700 dark:text-amber-300">
+                  Ausgang unbestätigt: {event.inFlightStatement}. Die Anweisung kann bereits wirksam
+                  sein.
+                </p>
+              )}
+              {Boolean(event.checked?.length) && <p>Prüfungen: {event.checked?.join(", ")}</p>}
+              {Boolean(event.completedStatements?.length) && (
+                <p>
+                  Ausgeführte Oracle-Anweisungen: {event.completedStatements?.join(", ")} ·
+                  Ausführung bestätigt, kein Beweis für Commit aller Datenänderungen.
+                </p>
+              )}
               {event.error && (
                 <pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-destructive/5 p-3 text-destructive">
                   {event.error}
