@@ -34,6 +34,7 @@ import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { INVALID_GROUP_TYPES } from "@/lib/invalid-objects";
+import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 
 import { SchemaManagerDialog } from "./app-sidebar-panel/schema-manager-dialog";
@@ -53,6 +54,7 @@ const TableSearchModal = lazy(() =>
 );
 
 export function AppSidebarPanel() {
+  const easyMode = useSettingsStore((state) => state.easyMode);
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
@@ -88,7 +90,12 @@ export function AppSidebarPanel() {
     { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
     { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
     { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
-    { value: "sequences", label: "Sequenzen", icon: ListOrderedIcon, enabled: caps.sequences },
+    {
+      value: "sequences",
+      label: "Sequenzen",
+      icon: ListOrderedIcon,
+      enabled: !easyMode && caps.sequences,
+    },
   ].filter((tab) => tab.enabled);
   const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
