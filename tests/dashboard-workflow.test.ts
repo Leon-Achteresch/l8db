@@ -81,7 +81,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
         runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
         localStorage.setItem(
           "l8db.settings",
-          JSON.stringify({ state: { tourFinished: true }, version: 0 }),
+          JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }),
         );
         localStorage.setItem(
           "l8db.connections",

@@ -16,7 +16,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       ({ database }) => {
         localStorage.setItem(
           "l8db.settings",
-          JSON.stringify({ state: { tourFinished: true }, version: 0 }),
+          JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }),
         );
         localStorage.setItem(
           "l8db.connections",

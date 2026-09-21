@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: testpw
+      POSTGRES_DB: testdb
+    command: [postgres, -c, wal_level=logical]
+    ports: ["127.0.0.1::5432"]
+    networks:
+      default:
+        aliases: [l8db-pg]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d testdb"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  ssh:
+    build: .
+    ports: ["127.0.0.1::22"]
+    volumes:
+      - ${L8DB_LAB_DIR:?}/client.pub:/root/.ssh/authorized_keys:ro
+    healthcheck:
+      test: [CMD, ssh-keyscan, localhost]
+      interval: 1s
+      timeout: 3s
+      retries: 60
