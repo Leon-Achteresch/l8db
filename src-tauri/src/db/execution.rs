@@ -188,16 +188,26 @@ where
 }
 
 pub struct PgSession {
-    client: tokio::sync::Mutex<tokio_postgres::Client>,
+    client: Arc<tokio::sync::Mutex<tokio_postgres::Client>>,
     interrupted: AtomicBool,
 }
 
 impl PgSession {
     pub fn new(client: tokio_postgres::Client) -> Self {
         Self {
-            client: tokio::sync::Mutex::new(client),
+            client: Arc::new(tokio::sync::Mutex::new(client)),
             interrupted: AtomicBool::new(false),
         }
+    }
+
+    pub async fn metadata_lock(
+        &self,
+    ) -> Result<tokio::sync::OwnedMutexGuard<tokio_postgres::Client>, String> {
+        let guard = self.client.clone().lock_owned().await;
+        if self.interrupted.load(Ordering::Acquire) {
+            return Err("Sitzung wurde unterbrochen".into());
+        }
+        Ok(guard)
     }
 
     pub async fn available(&self) -> bool {
