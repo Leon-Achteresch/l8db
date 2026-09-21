@@ -44,7 +44,7 @@
         "radix-ui": "^1.6.7",
         "react": "19.3.0",
         "react-day-picker": "^10.0.1",
-        "react-dom": "19.2.8",
+        "react-dom": "19.3.0",
         "react-grid-layout": "^2.2.4",
         "react-resizable-panels": "^4.12.4",
         "recharts": "^3.10.1",
