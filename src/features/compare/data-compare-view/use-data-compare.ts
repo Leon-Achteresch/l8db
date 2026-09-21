@@ -1,3 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
+import { listen } from "@tauri-apps/api/event";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { DataCompareSideSelection } from "@/features/compare/data-compare-side-picker";
@@ -8,14 +10,19 @@ import { copyText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections";
 import {
   buildSyncScript,
-  compareTableData,
   type DataDiffRow,
   planDataCompare,
   type SyncDirection,
 } from "@/lib/data-compare";
+import { cancelExecution, compareTableDataRemote } from "@/lib/db";
+import { useDbSelectionStore } from "@/lib/db-selection";
+import { capabilitiesFor } from "@/lib/providers";
+import { activateConnection, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { finishTask, startTask, updateTask } from "@/lib/tasks";
 
 export function useDataCompare(left: DataCompareSideSelection, right: DataCompareSideSelection) {
+  const navigate = useNavigate();
   const connections = useConnectionsStore((state) => state.connections);
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
   const [running, setRunning] = useState(false);
@@ -28,15 +35,41 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
   const leftConnection = connections.find((item) => item.id === left.connectionId) ?? null;
   const rightConnection = connections.find((item) => item.id === right.connectionId) ?? null;
   const ready = Boolean(
-    leftConnection && rightConnection && left.schema && left.table && right.schema && right.table,
+    leftConnection &&
+      rightConnection &&
+      capabilitiesFor(leftConnection.kind).data_compare &&
+      capabilitiesFor(rightConnection.kind).data_compare &&
+      left.schema &&
+      left.table &&
+      right.schema &&
+      right.table,
   );
 
   const runCompare = async () => {
-    if (!leftConnection || !rightConnection) return;
+    if (!ready || running || !leftConnection || !rightConnection) return;
     setRunning(true);
     setError(null);
     setState(null);
     setSelected(new Set());
+    let cancelled = false;
+    let backendStarted = false;
+    const job = startTask(
+      { title: "Datenvergleich", connectionId: leftConnection.id, database: left.database },
+      async () => {
+        cancelled = true;
+        return backendStarted ? cancelExecution(job) : true;
+      },
+    );
+    const unlisten = await listen<{ jobId: string; rows: number }>(
+      "data-compare-progress",
+      (event) => {
+        if (event.payload.jobId === job)
+          updateTask(job, {
+            progress: event.payload.rows,
+            detail: "Zeilen der aktuellen Seite werden gelesen.",
+          });
+      },
+    ).catch(() => () => {});
     try {
       const [leftSide, rightSide] = await Promise.all([
         loadSide(leftConnection, left),
@@ -49,21 +82,42 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
         rightKeyColumns: rightSide.keyColumns,
       });
       if (plan.error) {
-        setError(plan.error);
-        return;
+        throw new Error(plan.error);
       }
-      const result = compareTableData({
-        keyColumns: plan.keyColumns,
-        compareColumns: plan.compareColumns,
-        left: leftSide.rows,
-        right: rightSide.rows,
+      const source = (side: DataCompareSideSelection) => ({
+        schema: side.schema as string,
+        table: side.table as string,
+        filter: side.filter,
+        allowRawFilter: false,
+        orderDesc: false,
+        isView: false,
+        maxRows: 1_000_000,
       });
+      if (cancelled) throw new Error("Vergleich vom Benutzer abgebrochen.");
+      backendStarted = true;
+      const result = await compareTableDataRemote(
+        {
+          left: {
+            connectionString: effectiveConnectionString(leftConnection),
+            database: left.database,
+            source: source(left),
+          },
+          right: {
+            connectionString: effectiveConnectionString(rightConnection),
+            database: right.database,
+            source: source(right),
+          },
+          keyColumns: plan.keyColumns,
+          compareColumns: plan.compareColumns,
+        },
+        { jobId: job, track: false },
+      );
+      if (cancelled) throw new Error("Vergleich vom Benutzer abgebrochen.");
+      finishTask(job, result.counts);
       setState({
         result,
         keyColumns: plan.keyColumns,
         compareColumns: plan.compareColumns,
-        leftCapturedAt: leftSide.capturedAt,
-        rightCapturedAt: rightSide.capturedAt,
         left,
         right,
       });
@@ -71,8 +125,10 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
         new Set(result.rows.filter((row) => row.category !== "equal").map((row) => row.keyText)),
       );
     } catch (loadError) {
+      finishTask(job, undefined, loadError);
       setError(errorMessage(loadError));
     } finally {
+      unlisten();
       setRunning(false);
     }
   };
@@ -136,9 +192,18 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
     toast.success("Skript kopiert");
   };
 
-  const openScript = () => {
-    if (!script?.sql) return;
-    openQueryTabWithSql(script.sql, "Datenabgleich");
+  const openScript = async () => {
+    if (!script?.sql || !state) return;
+    const target = direction === "left_to_right" ? state.right : state.left;
+    if (!target.connectionId || !target.database) return;
+    const outcome = await activateConnection(target.connectionId);
+    if (!outcome.ok) {
+      toast.error(outcome.error ?? "Zielverbindung konnte nicht aktiviert werden.");
+      return;
+    }
+    useDbSelectionStore.getState().setDatabase(target.connectionId, target.database);
+    const id = openQueryTabWithSql(script.sql, "Datenabgleich", false);
+    await navigate({ to: "/query/$id", params: { id } });
     toast.success("Skript in neuem Query-Tab geöffnet (nicht ausgeführt)");
   };
 

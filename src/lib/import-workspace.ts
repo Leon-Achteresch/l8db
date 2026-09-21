@@ -16,6 +16,8 @@ export interface SqlImportDraft {
 }
 
 export interface CsvImportDraft {
+  partial?: boolean;
+  conflict?: import("@/lib/db").CsvImportConflict;
   fileName: string | null;
   filePath: string | null;
   text: string | null;

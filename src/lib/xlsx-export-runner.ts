@@ -1,7 +1,7 @@
 import { writeFile } from "@tauri-apps/plugin-fs";
 import type { FullTableExportSource } from "@/features/export/csv-export-dialog";
 import type { SavedConnection } from "@/lib/connections";
-import { fetchTableRows } from "@/lib/db";
+import { cancelExecution, readTableSnapshot } from "@/lib/db";
 import { applyMasks, type ColumnMask } from "@/lib/export";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
@@ -33,6 +33,7 @@ export async function runXlsxExport(request: {
       stopped = true;
       worker?.terminate();
       rejectWorker?.(new Error("Export vom Benutzer abgebrochen."));
+      await cancelExecution(job);
       updateTask(job, {
         detail: "Abbruch angefordert; eine laufende Leseseite wird noch abgewartet.",
       });
@@ -45,43 +46,23 @@ export async function runXlsxExport(request: {
   try {
     let rows = request.input.rows;
     if (source && connection && url) {
-      rows = [];
-      let offset = 0;
-      let bytes = 0;
-      const maximum = XLSX_MAX_ROWS - (request.input.options?.header !== false ? 1 : 0);
-      for (;;) {
-        check();
-        const page = await fetchTableRows(
-          connection.kind,
-          url,
-          source.schema,
-          source.table,
-          source.filter,
-          2000,
-          offset,
-          database ?? undefined,
-          source.orderBy ? { column: source.orderBy, desc: source.orderDesc } : undefined,
-          source.isView,
-          source.filterRaw,
-        );
-        check();
-        if (!page.rows.length) break;
-        bytes += new TextEncoder().encode(JSON.stringify(page.rows)).length;
-        if (rows.length + page.rows.length > maximum)
-          throw new Error(
-            "Die Daten überschreiten das Excel-Zeilenlimit. Bitte den Filter einschränken.",
-          );
-        if (bytes > 64 * 1024 * 1024)
-          throw new Error(
-            "Der XLSX-Export überschreitet das Speicherlimit von 64 MiB Rohdaten. Bitte Filter einschränken oder CSV verwenden.",
-          );
-        rows.push(...page.rows);
-        offset += page.rows.length;
-        updateTask(job, {
-          progress: rows.length,
-          detail: "Alle gefilterten Zeilen werden gelesen.",
-        });
-      }
+      const snapshot = await readTableSnapshot(
+        connection.kind,
+        url,
+        database ?? undefined,
+        {
+          schema: source.schema,
+          table: source.table,
+          filter: source.filter ?? undefined,
+          allowRawFilter: source.filterRaw ?? false,
+          orderBy: source.orderBy ?? undefined,
+          orderDesc: source.orderDesc ?? false,
+          isView: source.isView ?? false,
+          maxRows: XLSX_MAX_ROWS - (request.input.options?.header !== false ? 1 : 0),
+        },
+        { jobId: job, track: false },
+      );
+      rows = snapshot.rows;
     }
     check();
     updateTask(job, { progress: rows.length, detail: "Excel-Datei wird erstellt." });

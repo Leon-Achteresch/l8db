@@ -13,6 +13,7 @@ import { CsvPresetBar } from "@/features/import/csv-preset-bar";
 import { CSV_MAX_IMPORT_ROWS, CSV_PREVIEW_ROWS, parseCsv } from "@/lib/csv-import";
 import { remapPreset } from "@/lib/csv-mapping-presets";
 import { cancelTask, isTaskActive } from "@/lib/tasks";
+import { CsvConflictOptions } from "./csv-conflict-options";
 import { CsvParseOptions } from "./csv-import-panel/csv-parse-options";
 import { useCsvImport } from "./csv-import-panel/use-csv-import";
 import { CsvMappingTable } from "./csv-mapping-table";
@@ -20,6 +21,8 @@ import { CsvPreviewTable } from "./csv-preview-table";
 
 export function CsvImportPanel() {
   const {
+    conflict,
+    setConflict,
     blocked,
     connection,
     database,
@@ -56,12 +59,17 @@ export function CsvImportPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
       <p className="text-xs text-muted-foreground">
+        CSV-Dateien: höchstens 1 GiB, einzelne Datensätze höchstens 1 MiB. Der gesamte Import wird
+        gemeinsam übernommen.
+      </p>
+      <p className="text-xs text-muted-foreground">
         Ziel: {connection?.name} · {database} · {schema}
       </p>
       {task && isTaskActive(task) && (
         <div className="flex items-center gap-3" role="status">
           <span className="text-xs">
-            {task.progress ?? 0} / {task.total ?? 0} Zeilen verarbeitet
+            {task.progress ?? 0}
+            {task.total !== undefined ? ` / ${task.total}` : ""} Zeilen verarbeitet
           </span>
           <Button
             size="sm"
@@ -194,6 +202,20 @@ export function CsvImportPanel() {
           </div>
         )}
 
+        {connection && targetTable && (
+          <CsvConflictOptions
+            key={`${connection.id}-${database}-${schema}-${targetTable}`}
+            connection={connection}
+            database={database}
+            schema={schema}
+            table={targetTable}
+            columns={targetColumns}
+            mapped={mappings.flatMap((mapping) => (mapping.target ? [mapping.target] : []))}
+            value={conflict}
+            onChange={setConflict}
+          />
+        )}
+
         {issues && issues.errors.length > 0 && (
           <ul className="space-y-1 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
             {issues.errors.slice(0, 10).map((error, index) => (
@@ -230,7 +252,8 @@ export function CsvImportPanel() {
           </Button>
           {parsed && targetTable && (
             <span className="text-xs text-muted-foreground">
-              {rowCount} Zeile(n) nach {schema}.{targetTable}
+              {parsed.truncated ? "Alle Datensätze" : `${rowCount} Zeile(n)`} nach {schema}.
+              {targetTable}
             </span>
           )}
         </div>
@@ -246,7 +269,8 @@ export function CsvImportPanel() {
         {outcome && !outcome.error && (
           <p className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-600">
             <CheckCircle2Icon className="size-4 shrink-0" />
-            {outcome.inserted_rows} Zeile(n) importiert.
+            {outcome.inserted_rows} eingefügt · {outcome.updated_rows ?? 0} aktualisiert ·{" "}
+            {outcome.skipped_rows ?? 0} übersprungen.
           </p>
         )}
       </fieldset>

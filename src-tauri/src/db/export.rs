@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -158,17 +157,22 @@ pub fn csv_row_line(
 
 pub struct CsvFileWriter {
     path: PathBuf,
-    writer: Option<BufWriter<fs::File>>,
+    writer: Option<BufWriter<tempfile::NamedTempFile>>,
     options: CsvExportOptions,
     wrote_line: bool,
 }
 
 impl CsvFileWriter {
     pub fn create(path: &str, options: &CsvExportOptions) -> Result<Self, String> {
-        let file = fs::File::create(path)
+        let path = PathBuf::from(path);
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let file = tempfile::NamedTempFile::new_in(parent)
             .map_err(|e| format!("Datei kann nicht geschrieben werden: {e}"))?;
         let mut writer = Self {
-            path: PathBuf::from(path),
+            path,
             writer: Some(BufWriter::new(file)),
             options: options.clone(),
             wrote_line: false,
@@ -211,13 +215,22 @@ impl CsvFileWriter {
     pub fn finish(mut self) -> Result<(), String> {
         if let Some(mut writer) = self.writer.take() {
             writer.flush().map_err(|e| format!("Schreibfehler: {e}"))?;
+            writer
+                .get_ref()
+                .as_file()
+                .sync_all()
+                .map_err(|e| format!("Schreibfehler: {e}"))?;
+            let file = writer
+                .into_inner()
+                .map_err(|e| format!("Schreibfehler: {e}"))?;
+            file.persist(&self.path)
+                .map_err(|e| format!("Exportdatei kann nicht ersetzt werden: {e}"))?;
         }
         Ok(())
     }
 
     pub fn abort(mut self) {
         self.writer.take();
-        let _ = fs::remove_file(&self.path);
     }
 }
 
@@ -248,6 +261,7 @@ pub fn clear_cancel(job_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn options() -> CsvExportOptions {
         CsvExportOptions {
@@ -258,6 +272,68 @@ mod tests {
             line_ending: "\n".to_string(),
             bom: false,
         }
+    }
+
+    #[test]
+    fn export_publishes_only_after_success() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.csv");
+        fs::write(&path, b"sentinel").unwrap();
+        for abort in [false, true] {
+            let mut writer = CsvFileWriter::create(path.to_str().unwrap(), &options()).unwrap();
+            writer.write_line("replacement").unwrap();
+            assert_eq!(fs::read(&path).unwrap(), b"sentinel");
+            if abort {
+                writer.abort();
+            } else {
+                drop(writer);
+            }
+            assert_eq!(fs::read(&path).unwrap(), b"sentinel");
+            assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        }
+        let mut writer = CsvFileWriter::create(path.to_str().unwrap(), &options()).unwrap();
+        writer.write_line("replacement").unwrap();
+        writer.finish().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"replacement");
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_publish_and_new_target_abort_clean_up() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.csv");
+        let mut writer = CsvFileWriter::create(path.to_str().unwrap(), &options()).unwrap();
+        writer.write_line("data").unwrap();
+        writer.abort();
+        assert!(!path.exists());
+        fs::create_dir(&path).unwrap();
+        let mut writer = CsvFileWriter::create(path.to_str().unwrap(), &options()).unwrap();
+        writer.write_line("data").unwrap();
+        assert!(writer.finish().is_err());
+        assert!(path.is_dir());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn flush_failure_preserves_destination_and_removes_temporary_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.csv");
+        fs::write(&path, "sentinel").unwrap();
+        let mut writer = CsvFileWriter::create(path.to_str().unwrap(), &options()).unwrap();
+        let temporary = tempfile::NamedTempFile::new_in(directory.path()).unwrap();
+        let failing_file = tempfile::NamedTempFile::from_parts(
+            fs::OpenOptions::new()
+                .write(true)
+                .open("/dev/full")
+                .unwrap(),
+            temporary.into_temp_path(),
+        );
+        writer.writer = Some(BufWriter::new(failing_file));
+        writer.write_line("data").unwrap();
+        assert!(writer.finish().is_err());
+        assert_eq!(fs::read_to_string(path).unwrap(), "sentinel");
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
     #[test]

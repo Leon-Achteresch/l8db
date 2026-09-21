@@ -1221,6 +1221,14 @@ pub async fn csv_import(
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<crate::db::CsvImportOutcome, String> {
     use tauri::Emitter;
+    if let Some(source) = &request.file {
+        use tauri_plugin_fs::FsExt;
+        if !app.fs_scope().is_allowed(&source.path) {
+            return Err(
+                "CSV-Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into(),
+            );
+        }
+    }
     let job_id = options.as_ref().and_then(|options| options.job_id.clone());
     super::execution::with_progress(
         move |rows| {
@@ -2162,4 +2170,52 @@ pub async fn copy_schema_table_data(
 #[tauri::command]
 pub fn cancel_execution(job_id: String) -> Result<bool, String> {
     super::execution::cancel(&job_id)
+}
+
+#[tauri::command]
+pub async fn read_table_snapshot(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::snapshot::SnapshotRequest,
+    options: Option<super::execution::ExecutionOptions>,
+) -> Result<TableData, String> {
+    if kind != DatabaseKind::Postgres {
+        return Err("Ein konsistenter Export-Snapshot ist nur für PostgreSQL verfügbar.".into());
+    }
+    super::execution::run(
+        options,
+        true,
+        super::snapshot::read(&connection_string, database.as_deref(), &request),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn compare_table_data(
+    request: super::data_compare::CompareRequest,
+    options: Option<super::execution::ExecutionOptions>,
+    app: tauri::AppHandle,
+) -> Result<super::data_compare::CompareResult, String> {
+    use tauri::Emitter;
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    super::execution::with_progress(
+        move |rows| {
+            let _ = app.emit(
+                "data-compare-progress",
+                serde_json::json!({ "jobId": job_id, "rows": rows }),
+            );
+        },
+        super::execution::run(options, true, super::data_compare::compare(&request)),
+    )
+    .await
+}
+
+#[tauri::command(async)]
+pub fn read_csv_preview(path: String, app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri_plugin_fs::FsExt;
+    if !app.fs_scope().is_allowed(&path) {
+        return Err("CSV-Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
+    }
+    super::csv_stream::preview(&path)
 }

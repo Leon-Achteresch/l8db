@@ -12,6 +12,8 @@ export async function runCsvImport(
 ) {
   const id = crypto.randomUUID();
   const url = effectiveConnectionString(connection);
+  let cancelled = false;
+  let backendStarted = false;
   startTask(
     {
       id,
@@ -19,9 +21,12 @@ export async function runCsvImport(
       connectionId: connection.id,
       connectionName: connection.name,
       database,
-      total: request.rows.length,
+      total: request.file ? undefined : request.rows.length,
     },
-    () => cancelExecution(id),
+    async () => {
+      cancelled = true;
+      return backendStarted ? cancelExecution(id) : true;
+    },
   );
   onJob(id);
   const unlisten = await listen<{ jobId: string; rows: number }>("csv-import-progress", (event) => {
@@ -32,6 +37,8 @@ export async function runCsvImport(
       });
   }).catch(() => () => {});
   try {
+    if (cancelled) throw new Error("Import vom Benutzer abgebrochen.");
+    backendStarted = true;
     const result = await csvImport(connection.kind, url, request, database ?? undefined, {
       jobId: id,
     });

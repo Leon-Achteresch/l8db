@@ -13,7 +13,7 @@ import { runCsvImport } from "@/lib/csv-import-runner";
 import { listImportColumns } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useCsvImportField } from "@/lib/hooks/use-csv-import-field";
-import { pickImportFile, readImportFile } from "@/lib/import-file";
+import { pickImportFile, readCsvImportFile } from "@/lib/import-file";
 import { useTablesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
@@ -27,6 +27,8 @@ export function useCsvImport() {
   const transactions = useTransactionStore((state) => state.transactions);
 
   const scopeKey = JSON.stringify([connection?.id, database, schema]);
+  const [partial, setPartial] = useCsvImportField(scopeKey, "partial");
+  const [conflict, setConflict] = useCsvImportField(scopeKey, "conflict");
   const [fileName, setFileName] = useCsvImportField(scopeKey, "fileName");
   const [filePath, setFilePath] = useCsvImportField(scopeKey, "filePath");
   const [text, setText] = useCsvImportField(scopeKey, "text");
@@ -48,9 +50,12 @@ export function useCsvImport() {
   useEffect(() => {
     if (!filePath || text !== null) return;
     let active = true;
-    void readImportFile(filePath)
+    void readCsvImportFile(filePath)
       .then((file) => {
-        if (active) setText(file.text);
+        if (active) {
+          setText(file.text);
+          setPartial(file.partial);
+        }
       })
       .catch((failure) => {
         if (active) setFileError(`Datei erneut wählen: ${String(failure)}`);
@@ -58,7 +63,7 @@ export function useCsvImport() {
     return () => {
       active = false;
     };
-  }, [filePath, text, setText]);
+  }, [filePath, text, setText, setPartial]);
 
   useEffect(() => {
     if (!connection || !targetTable) return;
@@ -99,8 +104,9 @@ export function useCsvImport() {
       hasHeader: hasHeader ?? undefined,
       emptyField,
       maxRows: CSV_MAX_IMPORT_ROWS,
+      partial,
     });
-  }, [text, delimiter, quote, hasHeader, emptyField]);
+  }, [text, delimiter, quote, hasHeader, emptyField, partial]);
 
   const issues = useMemo(() => {
     if (!parsed || targetColumns.length === 0) return null;
@@ -116,6 +122,7 @@ export function useCsvImport() {
       setFileName(file.name);
       setFilePath(file.path);
       setText(file.text);
+      setPartial("partial" in file && file.partial === true);
       setDelimiter(detected.delimiter);
       setHasHeader(detected.hasHeader);
       setOutcome(null);
@@ -127,6 +134,7 @@ export function useCsvImport() {
 
   const handlePickTable = async (table: string) => {
     setTargetTable(table);
+    setConflict(undefined);
     setOutcome(null);
     if (!connection) return;
     const sequence = ++requestSequence.current;
@@ -163,7 +171,7 @@ export function useCsvImport() {
   };
 
   const handleImport = async () => {
-    if (!connection || !parsed || !targetTable || running || columnsLoading) return;
+    if (!connection || !parsed || blocked || running) return;
     setRunning(true);
     setOutcome(null);
     try {
@@ -172,10 +180,23 @@ export function useCsvImport() {
         connection,
         database,
         {
+          conflict,
           schema,
           table: targetTable,
           columns: payload.columns,
-          rows: payload.rows,
+          rows: filePath ? [] : payload.rows,
+          file: filePath
+            ? {
+                path: filePath,
+                delimiter: parsed.delimiter,
+                quote,
+                has_header: parsed.hasHeader,
+                empty_as_null: emptyField === "null",
+                indices: mappings
+                  .filter((mapping) => mapping.target !== null)
+                  .map((mapping) => mapping.csvIndex),
+              }
+            : undefined,
         },
         setJobId,
       );
@@ -193,22 +214,26 @@ export function useCsvImport() {
   };
 
   const rowCount = parsed?.rows.length ?? 0;
-  const tooManyRows = parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS;
+  const tooManyRows = !filePath && (parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS);
   const blocked =
     !parsed ||
+    parsed.errors.length > 0 ||
     columnsLoading ||
     !targetTable ||
     rowCount === 0 ||
     tooManyRows ||
+    Boolean(conflict && !conflict.constraint) ||
     Boolean(openTransaction) ||
     (issues?.errors.length ?? 1) > 0;
 
   return {
+    conflict,
+    setConflict,
     blocked,
     connection,
     database,
     emptyField,
-    fileError,
+    fileError: parsed?.errors.map((error) => error.message).join(" ") || fileError,
     fileName,
     handleImport,
     handleMappingChange,

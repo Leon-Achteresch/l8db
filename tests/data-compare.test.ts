@@ -257,3 +257,29 @@ describe("buildSyncScript", () => {
     expect(script.updateCount).toBe(0);
   });
 });
+
+describe("collision regressions", () => {
+  test("frames nested values without delimiter collisions", () => {
+    expect(valuesEqual(["a,s:b"], ["a", "b"])).toBe(false);
+    expect(valuesEqual({ a: "x,b=s:y" }, { a: "x", b: "y" })).toBe(false);
+    const alphabet = [",", "=", "\u0001", "s:", "[", "]", "\\", '"', "😀"];
+    for (const a of alphabet) {
+      for (const b of alphabet) {
+        expect(valuesEqual([`${a},s:${b}`], [a, b])).toBe(false);
+        expect(valuesEqual({ a: [a], b: { value: b } }, { b: { value: b }, a: [a] })).toBe(true);
+      }
+    }
+  });
+  test("keeps composite keys distinct and emits previously hidden changes", () => {
+    const result = compareTableData({
+      keyColumns: ["a", "b"],
+      compareColumns: ["value"],
+      left: [
+        { a: "x\u0001s:y", b: "z", value: ["a,s:b"] },
+        { a: "x", b: "y\u0001s:z", value: null },
+      ],
+      right: [{ a: "x\u0001s:y", b: "z", value: ["a", "b"] }],
+    });
+    expect(result.counts).toEqual({ only_left: 1, only_right: 0, changed: 1, equal: 0 });
+  });
+});
