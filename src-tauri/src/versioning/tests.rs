@@ -170,6 +170,38 @@ async fn committed_releases_are_immutable_and_merge_handles_large_packages() {
 }
 
 #[tokio::test]
+async fn historical_file_inventory_ignores_untracked_and_deleted_working_files() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.name", "Test"]).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    let mut req = request(&root, "write");
+    req.path = Some("database/releases/v1.json".into());
+    req.content = Some("{}".into());
+    handle(req).await.unwrap();
+    let mut req = request(&root, "commit");
+    req.paths = Some(vec!["database/releases/v1.json".into()]);
+    req.name = Some("Release".into());
+    let commit = handle(req).await.unwrap();
+    fs::remove_file(root.join("database/releases/v1.json")).unwrap();
+    fs::write(
+        root.join("database/releases/untracked.json"),
+        "invalid draft",
+    )
+    .unwrap();
+    let mut req = request(&root, "files");
+    req.revision = Some(commit.as_str().unwrap().into());
+    assert_eq!(
+        handle(req).await.unwrap(),
+        json!(["database/releases/v1.json"])
+    );
+    assert!(handle(request(&root, "files")).await.is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn local_target_state_is_shared_by_worktrees_and_remote_sync_is_fast_forward_only() {
     let root = temp();
     let remote = temp();

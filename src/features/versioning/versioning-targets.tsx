@@ -14,18 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
-import {
-  baselineTarget,
-  type DeploymentPlan,
-  deploy,
-  inspectTarget,
-  planDeployment,
-} from "@/lib/versioning/deploy";
+import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
+import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
 import { readTargets, saveTargets } from "@/lib/versioning/repository";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningPopover } from "./versioning-popover";
 import { VersioningSelect } from "./versioning-select";
+import { VersioningTargetPolicy } from "./versioning-target-policy";
 
 export function VersioningTargets({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, releases, targets, run, refresh } = workspace;
@@ -40,6 +36,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [differenceName, setDifferenceName] = useState("");
   const [differences, setDifferences] = useState<ObjectDifference[]>([]);
   const [plans, setPlans] = useState<DeploymentPlan[]>([]);
+  const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -78,29 +75,29 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const plan = async () => {
     if (!project || !targets || !releaseId) throw new Error("Ziele und Zielrelease auswählen.");
     setPlans([]);
+    setPreflight([]);
     setConfirmation("");
-    const result: DeploymentPlan[] = [];
-    for (const target of targets.targets.filter((item) => selection.includes(item.id)))
-      result.push(await planDeployment(repo, project, target, connectionFor(target), releaseId));
-    setPlans(result);
+    const result = await preflightFleet(
+      repo,
+      project,
+      targets.targets.filter((item) => selection.includes(item.id)),
+      connections,
+      releaseId,
+    );
+    setPreflight(result);
+    setPlans(result.flatMap((item) => (item.plan ? [item.plan] : [])));
   };
   const execute = async () => {
     if (!project || !plans.length || confirmation !== releaseId)
       throw new Error("Zur Bestätigung die Release-ID eingeben.");
     try {
-      for (const item of plans)
-        await deploy(
-          repo,
-          project,
-          item.target.id,
-          connectionFor(item.target),
-          releaseId,
-          item.reviewToken,
-          workspace.setMessage,
-        );
+      if (preflight.some((item) => item.error))
+        throw new Error("Alle ausgewählten Ziele müssen die Vorprüfung bestehen.");
+      await deployFleet(repo, project, plans, connections, releaseId, workspace.setMessage);
       workspace.setMessage("Rollout abgeschlossen.");
     } finally {
       setPlans([]);
+      setPreflight([]);
       setConfirmation("");
       await refresh();
     }
@@ -173,6 +170,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               onChange={(value) => {
                 setReleaseId(value);
                 setPlans([]);
+                setPreflight([]);
                 setRecovery(null);
               }}
               placeholder="Zielrelease auswählen"
@@ -218,6 +216,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                       : items.filter((item) => item !== target.id),
                   );
                   setPlans([]);
+                  setPreflight([]);
                 }}
               />
               <ServerIcon className="size-4 shrink-0 text-muted-foreground/60" />
@@ -242,6 +241,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                   <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
                     <CircleAlertIcon className="size-3" />
                     Stand abgleichen
+                  </p>
+                )}
+                {(target.paused || target.pinnedRelease || target.track) && (
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {target.track ?? "main"}
+                    {target.paused ? " · Pausiert" : ""}
+                    {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
                   </p>
                 )}
               </div>
@@ -312,6 +318,14 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                     ? `Gewählter Release: ${releaseId}`
                     : "Für Baseline und Abgleich zuerst einen Zielrelease auswählen."}
                 </p>
+                <VersioningTargetPolicy
+                  workspace={workspace}
+                  target={target}
+                  onSaved={() => {
+                    setPlans([]);
+                    setPreflight([]);
+                  }}
+                />
               </VersioningPopover>
             </li>
           );
@@ -391,9 +405,28 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           ))}
         </div>
       )}
+      {preflight.some((item) => item.error) && (
+        <div
+          role="alert"
+          className="space-y-2 rounded-lg bg-destructive/5 p-3 text-xs text-destructive"
+        >
+          <p className="font-medium">Rollout blockiert · keine Änderungen ausgeführt</p>
+          {preflight
+            .filter((item) => item.error)
+            .map((item) => (
+              <p key={item.target.id}>
+                {item.target.name}: {item.error}
+              </p>
+            ))}
+        </div>
+      )}
       {plans.length > 0 && (
         <div className="flex flex-col gap-3 rounded-xl bg-muted/35 p-4">
           <h2 className="text-xs font-semibold">Rollout prüfen</h2>
+          <p className="text-[11px] text-muted-foreground">
+            Vor dem Start werden alle ausgewählten Ziele erneut geprüft. Freigabe: 15 Minuten.
+            Spätere Release-Vorbedingungen werden nach ihren Vorgängern geprüft.
+          </p>
           {plans.map((item) => (
             <details key={item.target.id} className="text-xs leading-relaxed">
               <summary>
@@ -405,6 +438,34 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">
                 {item.sql.join("\n\n")}
               </pre>
+              <p className="mt-2 text-muted-foreground">
+                {item.binding.label}
+                {item.binding.edition ? ` · Edition ${item.binding.edition}` : ""}
+              </p>
+              {!item.releases.length && <p>Bereits auf dem Zielstand · wird übersprungen.</p>}
+              {item.risks.map((risk) => (
+                <p className="mt-2 text-amber-700 dark:text-amber-300" key={risk}>
+                  {risk}
+                </p>
+              ))}
+              {item.releases.map((release) => (
+                <div className="mt-3 space-y-1" key={release.id}>
+                  <p className="font-medium">
+                    {release.id} · {release.safety?.phase ?? "Ohne Betriebsplan"}
+                  </p>
+                  <p>{release.safety?.notes}</p>
+                  <p>
+                    Vorprüfungen:{" "}
+                    {release.safety?.preconditions.map((check) => check.title).join(", ") ||
+                      "Keine"}
+                  </p>
+                  <p>
+                    Nachprüfungen:{" "}
+                    {release.safety?.postconditions.map((check) => check.title).join(", ") ||
+                      "Keine"}
+                  </p>
+                </div>
+              ))}
             </details>
           ))}
           <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -425,6 +486,8 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           <Button
             disabled={
               confirmation !== releaseId ||
+              preflight.some((item) => item.error) ||
+              plans.every((item) => !item.releases.length) ||
               plans.some((item) =>
                 item.differences.some((difference) => difference.status !== "unchanged"),
               )

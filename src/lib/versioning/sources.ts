@@ -13,6 +13,7 @@ export function newManagedObject(side: CompareSideSelection): ManagedObject {
   return {
     id,
     path: `${path}.${side.objectType === "package" ? "pks" : "sql"}`,
+    ...(side.objectType === "table" ? { metadataVersion: 2 as const } : {}),
     ...(side.objectType === "package" ? { bodyPath: `${path}.pkb` } : {}),
     selection,
   };

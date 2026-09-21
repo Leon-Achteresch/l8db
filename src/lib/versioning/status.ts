@@ -1,3 +1,4 @@
+import { releaseTrack } from "./model";
 import type { DatabaseRelease, RepositoryStatus, TargetStore } from "./types";
 
 export function changedFiles(changes: string): Map<string, string> {
@@ -32,7 +33,21 @@ export function pendingVersioningCount(
         target.history.some((event) => event.status === "failed" || event.status === "running")
       )
         return true;
+      if (target.paused) return false;
+      const allowed = new Set<string>();
+      if (target.pinnedRelease) {
+        let id: string | null = target.pinnedRelease;
+        while (id && !allowed.has(id)) {
+          allowed.add(id);
+          id = available.get(id)?.parent ?? null;
+        }
+      }
       return [...available.values()].some((release) => {
+        if (
+          releaseTrack(release) !== (target.track ?? "main") ||
+          (target.pinnedRelease && !allowed.has(release.id))
+        )
+          return false;
         const seen = new Set<string>();
         let parent = release.parent;
         while (parent && !seen.has(parent)) {

@@ -1,4 +1,6 @@
 import { splitSqlStatements } from "@/lib/sql-statements";
+import { validateSafety } from "./safety";
+import { sqlCode } from "./sql-code";
 import type { DatabaseRelease, ObjectDifference, ObjectSnapshot, VersioningProject } from "./types";
 
 export const PROJECT_PATH = "database/project.json";
@@ -11,7 +13,7 @@ export async function checksum(value: string): Promise<string> {
 }
 
 export function identifier(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(value);
+  return typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(value);
 }
 
 export function releasePath(id: string): string {
@@ -34,14 +36,23 @@ export function parseProject(text: string): VersioningProject {
     throw new Error("Ungültiges Versionierungsprojekt.");
   const ids = new Set<string>();
   const paths = new Set<string>();
+  const identities = new Set<string>();
   for (const object of project.objects) {
+    const identity = JSON.stringify([
+      object.selection?.schema,
+      object.selection?.objectType,
+      object.selection?.objectName,
+    ]);
     if (
       !identifier(object.id) ||
       ids.has(object.id) ||
       paths.has(object.path) ||
+      identities.has(identity) ||
+      (object.metadataVersion !== undefined && object.metadataVersion !== 2) ||
       !/^database\/objects\/[a-zA-Z0-9._-]+\.(sql|pks|pkb)$/.test(object.path) ||
       !object.selection?.schema ||
       !object.selection.objectName ||
+      object.selection.objectName.toUpperCase() === "L8DB_VERSIONING_STATE" ||
       ![
         "table",
         "view",
@@ -54,6 +65,7 @@ export function parseProject(text: string): VersioningProject {
     )
       throw new Error("Ungültige oder doppelte Objektzuordnung.");
     ids.add(object.id);
+    identities.add(identity);
     paths.add(object.path);
     if (object.bodyPath) {
       if (
@@ -80,9 +92,13 @@ export async function parseRelease(
     release.kind !== project.kind ||
     (release.parent !== null && (!identifier(release.parent) || release.parent === release.id)) ||
     !Array.isArray(release.objects) ||
-    !Array.isArray(release.migrations)
+    !Array.isArray(release.migrations) ||
+    (release.track !== undefined && !identifier(release.track)) ||
+    typeof release.createdAt !== "string" ||
+    !Number.isFinite(Date.parse(release.createdAt))
   )
     throw new Error("Release passt nicht zum Projekt oder ist ungültig.");
+  if (release.safety !== undefined) await validateSafety(release.safety, project.kind);
   parseProject(
     JSON.stringify({ ...project, objects: release.objects.map((entry) => entry.object) }),
   );
@@ -119,18 +135,27 @@ export function validateMigration(sql: string, kind: "postgres" | "oracle"): str
     throw new Error("SQL ist unvollständig oder leer.");
   const statements = split.statements.map((entry) => entry.text);
   for (const statement of statements) {
-    const plain = statement
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/--[^\n]*/g, " ")
-      .trim();
+    const plain = sqlCode(statement);
     if (
-      /^(?:COMMIT|ROLLBACK|SAVEPOINT|START\s+TRANSACTION|BEGIN(?=\s*(?:;|TRANSACTION|WORK|$))|END(?=\s|;|$)|PREPARE\s+TRANSACTION|SET\s+(?:SESSION\s+)?(?:AUTHORIZATION|ROLE)|ALTER\s+SESSION)\b/i.test(
+      /^(?:COMMIT|ROLLBACK|SAVEPOINT|RELEASE\s+SAVEPOINT|START\s+TRANSACTION|BEGIN(?=\s*(?:;|TRANSACTION|WORK|$))|END(?=\s|;|$)|PREPARE\s+TRANSACTION|SET|RESET|DISCARD|ALTER\s+(?:SESSION|SYSTEM|ROLE|USER))\b/i.test(
         plain,
       )
     )
       throw new Error(
         "Transaktions- und Sitzungssteuerung sind in verwalteten Migrationen nicht zulässig.",
       );
+    if (/\bL8DB_GENERATED_[A-F0-9]+\b/i.test(plain))
+      throw new Error(
+        "Generierte Oracle-Namen sind Vergleichsplatzhalter. Migration mit echten Constraintnamen oder einer geprüften Dictionary-Auflösung schreiben.",
+      );
+    if (/\b(?:L8DB_VERSIONING_STATE|SET_CONFIG)\b/i.test(plain))
+      throw new Error("Migrationen dürfen Deployment-Historie und Sitzungsschutz nicht verändern.");
+    if (
+      kind === "oracle" &&
+      /^(?:BEGIN|DECLARE)\b/i.test(plain) &&
+      /\b(?:COMMIT|ROLLBACK|AUTONOMOUS_TRANSACTION)\b/i.test(plain)
+    )
+      throw new Error("Ausgeführte PL/SQL-Blöcke dürfen die verwaltete Transaktion nicht steuern.");
     if (
       kind === "postgres" &&
       /^(?:VACUUM|CREATE\s+(?:DATABASE|TABLESPACE)|DROP\s+(?:DATABASE|TABLESPACE)|(?:CREATE|DROP)\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY|REINDEX\b[\s\S]*\bCONCURRENTLY)/i.test(
@@ -142,6 +167,35 @@ export function validateMigration(sql: string, kind: "postgres" | "oracle"): str
       );
   }
   return statements;
+}
+
+export const releaseTrack = (release: Pick<DatabaseRelease, "track">) => release.track ?? "main";
+
+export function validateReleaseGraph(releases: DatabaseRelease[]) {
+  const map = new Map(releases.map((release) => [release.id, release]));
+  if (map.size !== releases.length) throw new Error("Doppelte Release-ID.");
+  for (const release of releases) {
+    const visited = new Set<string>();
+    const migrations = new Set<string>();
+    let current: DatabaseRelease | undefined = release;
+    while (current) {
+      if (visited.has(current.id)) throw new Error("Zyklische Release-Abhängigkeit.");
+      visited.add(current.id);
+      for (const migration of current.migrations) {
+        if (migrations.has(migration.id))
+          throw new Error(
+            `Migrations-ID ${migration.id} wurde in dieser Vorgängerkette bereits verwendet.`,
+          );
+        migrations.add(migration.id);
+      }
+      if (!current.parent) break;
+      const parent = map.get(current.parent);
+      if (!parent) throw new Error(`Release ${current.parent} fehlt. Passenden Git-Branch laden.`);
+      if (releaseTrack(parent) !== "main" && releaseTrack(parent) !== releaseTrack(current))
+        throw new Error("Eine Kundenvariante darf nicht in eine fremde Release-Linie wechseln.");
+      current = parent;
+    }
+  }
 }
 
 export function compareSnapshots(
