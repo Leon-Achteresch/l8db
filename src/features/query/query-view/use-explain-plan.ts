@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { type ExplainNode, explainQuery } from "@/lib/db";
+import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -40,7 +41,7 @@ export function useExplainPlan({
         workspace.runTarget,
         connection?.kind,
       );
-      if (!connection || !target.trim() || planLoading) return;
+      if (!connection || !supports(connection, "explain") || !target.trim() || planLoading) return;
       setPlanLoading(true);
       setPlanError(null);
       try {

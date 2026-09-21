@@ -39,6 +39,9 @@ export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string 
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
 export type PackageTab = { kind: "package"; schema: string; name: string };
 export interface CompareWorkspace {
+  mode?: "definitions" | "data";
+  dataLeft?: import("@/features/compare/data-compare-side-picker").DataCompareSideSelection;
+  dataRight?: import("@/features/compare/data-compare-side-picker").DataCompareSideSelection;
   left: import("@/lib/compare-types").CompareSideSelection;
   right: import("@/lib/compare-types").CompareSideSelection;
   draft: string | null;

@@ -26,7 +26,9 @@ export function ActivityTab({ m }: { m: MonitorViewState }) {
   } = m;
   return (
     <TabsContent value="activity" className="mt-5 space-y-5">
-      <div className="grid grid-cols-2 divide-x divide-border/70 overflow-hidden rounded-2xl border bg-card md:grid-cols-4">
+      <div
+        className={`grid grid-cols-2 divide-x divide-border/70 overflow-hidden rounded-2xl border bg-card ${capabilities.locks ? "md:grid-cols-4" : "md:grid-cols-3"}`}
+      >
         {[
           {
             label: "Sessions",
@@ -57,6 +59,7 @@ export function ActivityTab({ m }: { m: MonitorViewState }) {
             icon: AlertTriangleIcon,
           },
           {
+            supported: capabilities.locks,
             label: "Locks",
             value: capabilities.locks
               ? locksQuery.isPending
@@ -66,19 +69,23 @@ export function ActivityTab({ m }: { m: MonitorViewState }) {
             detail: capabilities.locks ? "Aktuelle Locks" : "Nicht verfügbar",
             icon: LockKeyhole,
           },
-        ].map(({ label, value, detail, icon: Icon }) => (
-          <div key={label} className="min-w-0 px-5 py-5">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Icon className="size-3.5 text-primary" />
-              {label}
+        ]
+          .filter((stat) => stat.supported !== false)
+          .map(({ label, value, detail, icon: Icon }) => (
+            <div key={label} className="min-w-0 px-5 py-5">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Icon className="size-3.5 text-primary" />
+                {label}
+              </div>
+              <p className="mt-2 text-2xl font-medium tracking-tight">{value}</p>
+              <p className="mt-1 truncate text-[10px] text-muted-foreground">{detail}</p>
             </div>
-            <p className="mt-2 text-2xl font-medium tracking-tight">{value}</p>
-            <p className="mt-1 truncate text-[10px] text-muted-foreground">{detail}</p>
-          </div>
-        ))}
+          ))}
       </div>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.8fr)]">
+      <div
+        className={`grid items-start gap-5 ${capabilities.locks ? "xl:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.8fr)]" : ""}`}
+      >
         <Card size="sm">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-sm">
@@ -165,67 +172,67 @@ export function ActivityTab({ m }: { m: MonitorViewState }) {
           </CardContent>
         </Card>
 
-        <Card size="sm">
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <LockKeyhole className="size-4 text-primary" />
-              Locks
-            </CardTitle>
-            <CardDescription>Aktuelle Sperren und wartende Lock-Anfragen.</CardDescription>
-            <CardAction>
-              <Link to="/sessions" className="text-xs text-primary hover:underline">
-                Details
-              </Link>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="p-0">
-            {!capabilities.locks ? (
-              <p className="px-6 py-8 text-center text-xs text-muted-foreground">
-                Dieser Provider unterstützt keine Lock-Übersicht.
-              </p>
-            ) : locksQuery.isPending ? (
-              <div className="flex items-center justify-center gap-2 px-6 py-8 text-xs text-muted-foreground">
-                <Spinner />
-                Locks werden geladen…
-              </div>
-            ) : locksQuery.isError ? (
-              <p className="px-6 py-8 text-center text-xs text-destructive">
-                {String(locksQuery.error)}
-              </p>
-            ) : locksQuery.data?.length ? (
-              <div className="divide-y divide-border/60">
-                {locksQuery.data.slice(0, 14).map((lock) => (
-                  <div
-                    key={[
-                      lock.pid,
-                      lock.lock_type,
-                      lock.relation ?? "",
-                      lock.mode,
-                      lock.granted,
-                    ].join("|")}
-                    className="flex items-center gap-3 px-4 py-2.5 text-xs"
-                  >
-                    <span className="w-12 shrink-0 font-mono tabular-nums">{lock.pid}</span>
-                    <span className="min-w-0 flex-1 truncate font-mono">
-                      {lock.relation || lock.lock_type}
-                    </span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{lock.mode}</span>
-                    <Badge
-                      variant={lock.granted ? "secondary" : "destructive"}
-                      className="shrink-0 px-1.5 py-0 text-[10px]"
+        {capabilities.locks && (
+          <Card size="sm">
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <LockKeyhole className="size-4 text-primary" />
+                Locks
+              </CardTitle>
+              <CardDescription>Aktuelle Sperren und wartende Lock-Anfragen.</CardDescription>
+              <CardAction>
+                <Link to="/sessions" className="text-xs text-primary hover:underline">
+                  Details
+                </Link>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="p-0">
+              {locksQuery.isPending ? (
+                <div className="flex items-center justify-center gap-2 px-6 py-8 text-xs text-muted-foreground">
+                  <Spinner />
+                  Locks werden geladen…
+                </div>
+              ) : locksQuery.isError ? (
+                <p className="px-6 py-8 text-center text-xs text-destructive">
+                  {String(locksQuery.error)}
+                </p>
+              ) : locksQuery.data?.length ? (
+                <div className="divide-y divide-border/60">
+                  {locksQuery.data.slice(0, 14).map((lock) => (
+                    <div
+                      key={[
+                        lock.pid,
+                        lock.lock_type,
+                        lock.relation ?? "",
+                        lock.mode,
+                        lock.granted,
+                      ].join("|")}
+                      className="flex items-center gap-3 px-4 py-2.5 text-xs"
                     >
-                      {lock.granted ? "gewährt" : "wartet"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="px-6 py-8 text-center text-xs text-muted-foreground">
-                Keine Locks vorhanden.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                      <span className="w-12 shrink-0 font-mono tabular-nums">{lock.pid}</span>
+                      <span className="min-w-0 flex-1 truncate font-mono">
+                        {lock.relation || lock.lock_type}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        {lock.mode}
+                      </span>
+                      <Badge
+                        variant={lock.granted ? "secondary" : "destructive"}
+                        className="shrink-0 px-1.5 py-0 text-[10px]"
+                      >
+                        {lock.granted ? "gewährt" : "wartet"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-6 py-8 text-center text-xs text-muted-foreground">
+                  Keine Locks vorhanden.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </TabsContent>
   );

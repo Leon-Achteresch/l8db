@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { useActiveConnection } from "@/lib/connections";
 import { explainQuery } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import {
   buildSavedPerfTest,
   type PerfRun,
@@ -35,6 +35,7 @@ export interface PerfRunnerState {
 export function usePerfRunner(): PerfRunnerState {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const capabilities = useActiveCapabilities();
   const [current, setCurrent] = useState<SavedPerfTest | null>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -43,7 +44,7 @@ export function usePerfRunner(): PerfRunnerState {
 
   const start = useCallback(
     async (request: PerfRunRequest) => {
-      if (!connection || running) return;
+      if (!connection || !capabilities.explain || running) return;
       cancelRef.current = false;
       setRunning(true);
       setError(null);
@@ -101,7 +102,7 @@ export function usePerfRunner(): PerfRunnerState {
         setProgress(null);
       }
     },
-    [connection, database, running],
+    [connection, database, running, capabilities.explain],
   );
 
   const cancel = useCallback(() => {
@@ -117,6 +118,6 @@ export function usePerfRunner(): PerfRunnerState {
     setError,
     start,
     cancel,
-    canRun: Boolean(connection),
+    canRun: Boolean(connection) && capabilities.explain,
   };
 }
