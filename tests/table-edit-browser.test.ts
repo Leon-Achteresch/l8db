@@ -71,7 +71,10 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 );
 
 for (const engine of [chromium, webkit]) {
-  test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
+  test.skipIf(
+    !process.env.L8DB_TABLE_BROWSER_URL ||
+      (engine === webkit && process.env.L8DB_BROWSER_ENGINES === "chromium"),
+  )(
     `${engine.name()}: duplicated rows stay editable until saved and survive insert conflicts`,
     async () => {
       const browser = await engine.launch({ headless: true });
@@ -152,6 +155,6 @@ for (const engine of [chromium, webkit]) {
         await browser.close();
       }
     },
-    60000,
+    60_000,
   );
 }
