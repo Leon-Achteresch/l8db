@@ -4,19 +4,16 @@ import {
   buildImportPayload,
   detectDelimiter,
   detectHeader,
+  type ImportTargetColumn,
   isRequiredColumn,
   parseCsv,
   previewCsv,
   stripBom,
   suggestMappings,
   validateMappings,
-  type ImportTargetColumn,
 } from "../src/lib/csv-import";
 
-const target = (
-  name: string,
-  overrides: Partial<ImportTargetColumn> = {},
-): ImportTargetColumn => ({
+const target = (name: string, overrides: Partial<ImportTargetColumn> = {}): ImportTargetColumn => ({
   name,
   data_type: "text",
   is_nullable: true,
@@ -193,5 +190,36 @@ describe("mapping", () => {
     );
     expect(payload.columns).toEqual(["email", "first_name"]);
     expect(payload.rows).toEqual([["a@b.de", "Anna"]]);
+  });
+});
+
+describe("CSV structure regressions", () => {
+  test("reports the opening quote at real EOF", () => {
+    const result = parseCsv('id,name\r\n1,"Alice\r\n2,Bob', { hasHeader: true });
+    expect(result.errors).toEqual([
+      {
+        line: 2,
+        column: 3,
+        message: "Nicht geschlossenes Anführungszeichen in Zeile 2, Spalte 3.",
+      },
+    ]);
+    expect(result.rows).toEqual([]);
+  });
+  test("keeps explicit empty records and ignores physical blank lines", () => {
+    for (const ending of ["\n", "\r\n"]) {
+      for (const suffix of ["", ending]) {
+        const result = parseCsv(`v${ending}${ending}""${ending}""${suffix}`, { hasHeader: true });
+        expect(result.rows).toEqual([[""], [""]]);
+        expect(result.errors).toEqual([]);
+      }
+    }
+    expect(parseCsv(",\n", { hasHeader: false }).rows).toEqual([[null, null]]);
+    expect(parseCsv(",\n", { hasHeader: false, emptyField: "empty" }).rows).toEqual([["", ""]]);
+  });
+  test("preserves multiline quotes and stops cleanly at a preview boundary", () => {
+    expect(parseCsv('v\n"a\n""b"""', { hasHeader: true }).rows).toEqual([['a\n"b"']]);
+    const preview = previewCsv('v\na\nb\n"unfinished', { hasHeader: true, maxRows: 1 });
+    expect(preview.truncated).toBe(true);
+    expect(preview.errors).toEqual([]);
   });
 });

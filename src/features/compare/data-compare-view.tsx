@@ -17,11 +17,7 @@ import { CATEGORY_ICON, CATEGORY_LABEL } from "@/features/compare/data-compare-v
 import { cellText, sideLabel } from "@/features/compare/data-compare-view/lib";
 import type { CategoryFilter } from "@/features/compare/data-compare-view/types";
 import { useDataCompare } from "@/features/compare/data-compare-view/use-data-compare";
-import {
-  DATA_COMPARE_MAX_ROWS,
-  type DataDiffCategory,
-  type SyncDirection,
-} from "@/lib/data-compare";
+import type { DataDiffCategory, SyncDirection } from "@/lib/data-compare";
 import { cn } from "@/lib/utils";
 import type { DataCompareSideSelection } from "./data-compare-side-picker";
 
@@ -62,8 +58,8 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
           {running ? "Vergleiche…" : "Vergleichen"}
         </Button>
         <span className="text-xs text-muted-foreground">
-          Höchstens {DATA_COMPARE_MAX_ROWS} Zeilen je Seite; gleiche Spaltenstruktur und
-          Primärschlüssel erforderlich.
+          Bis zu 1 Million Zeilen und 64 MiB Rohdaten je Seite; gleiche Spaltenstruktur und
+          eindeutige Schlüssel erforderlich. Abbruch über die Aufgabenübersicht.
         </span>
       </div>
 
@@ -82,14 +78,19 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
 
       {state && (
         <>
+          <p className="text-xs text-muted-foreground">
+            {state.left.filter || state.right.filter
+              ? "Gefilterter Teilvergleich"
+              : "Vollständiger Vergleich der gewählten Tabellen"}{" "}
+            · Gleiche Zeilen werden nur gezählt.{" "}
+            {state.result.detailsTruncated
+              ? "Detailansicht begrenzt: Sync-Skript umfasst ausschließlich die angezeigten und ausgewählten Unterschiede."
+              : "Alle Unterschiede in der Detailansicht."}
+          </p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>
-              Links {sideLabel(state.left, leftConnection)} · erfasst {state.leftCapturedAt}
-            </span>
-            <span>
-              Rechts {sideLabel(state.right, rightConnection)} · erfasst {state.rightCapturedAt}
-            </span>
-            <span>Beide Seiten wurden nacheinander gelesen, kein zeitgleicher Snapshot.</span>
+            <span>Links {sideLabel(state.left, leftConnection)}</span>
+            <span>Rechts {sideLabel(state.right, rightConnection)}</span>
+            <span>Die Seiten wurden unabhängig gelesen, kein gemeinsamer Snapshot.</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

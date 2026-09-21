@@ -21,7 +21,21 @@ export interface ImportColumnInfo {
   ordinal_position: number;
 }
 
+export interface CsvImportConflict {
+  constraint: string;
+  update_columns: string[];
+}
+
 export interface CsvImportRequest {
+  file?: {
+    path: string;
+    delimiter: string;
+    quote: string;
+    has_header: boolean;
+    empty_as_null: boolean;
+    indices: number[];
+  };
+  conflict?: CsvImportConflict;
   schema: string;
   table: string;
   columns: string[];
@@ -29,6 +43,8 @@ export interface CsvImportRequest {
 }
 
 export interface CsvImportOutcome {
+  updated_rows?: number;
+  skipped_rows?: number;
   inserted_rows: number;
   failed_row: number | null;
   failed_column: string | null;
@@ -225,4 +241,47 @@ export async function alterSequence(
   database?: string,
 ): Promise<void> {
   await invoke("alter_sequence", { kind, connectionString, database, schema, name, changes });
+}
+
+export async function readTableSnapshot(
+  kind: DatabaseKind,
+  connectionString: string,
+  database: string | undefined,
+  request: {
+    schema: string;
+    table: string;
+    filter?: string;
+    allowRawFilter: boolean;
+    orderBy?: string;
+    orderDesc: boolean;
+    isView: boolean;
+    maxRows: number;
+  },
+  options?: QueryExecutionOptions,
+): Promise<import("./types").TableData> {
+  return invoke("read_table_snapshot", { kind, connectionString, database, request, options });
+}
+
+export async function compareTableDataRemote(
+  request: {
+    left: {
+      connectionString: string;
+      database: string | null;
+      source: Parameters<typeof readTableSnapshot>[3];
+    };
+    right: {
+      connectionString: string;
+      database: string | null;
+      source: Parameters<typeof readTableSnapshot>[3];
+    };
+    keyColumns: string[];
+    compareColumns: string[];
+  },
+  options?: QueryExecutionOptions,
+): Promise<import("@/lib/data-compare").DataCompareResult & { detailsTruncated: boolean }> {
+  return invoke("compare_table_data", { request, options });
+}
+
+export async function readCsvPreview(path: string): Promise<{ text: string; partial: boolean }> {
+  return invoke("read_csv_preview", { path });
 }

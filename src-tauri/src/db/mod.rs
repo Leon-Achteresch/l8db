@@ -2,6 +2,8 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod csv_stream;
+pub mod data_compare;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
@@ -20,6 +22,7 @@ pub mod provider;
 pub(crate) mod redis;
 pub mod secrets;
 pub mod server_output;
+pub mod snapshot;
 mod sql_script;
 mod sqlite;
 pub mod ssh;
@@ -115,14 +118,26 @@ pub struct ImportColumnInfo {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CsvImportRequest {
+    #[serde(default)]
+    pub file: Option<csv_stream::CsvFileSource>,
+    #[serde(default)]
+    pub conflict: Option<CsvConflict>,
     pub schema: String,
     pub table: String,
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Option<String>>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CsvConflict {
+    pub constraint: String,
+    pub update_columns: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CsvImportOutcome {
+    pub updated_rows: u64,
+    pub skipped_rows: u64,
     pub inserted_rows: u64,
     pub failed_row: Option<u32>,
     pub failed_column: Option<String>,
