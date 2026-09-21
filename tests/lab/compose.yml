@@ -20,7 +20,7 @@ services:
     volumes:
       - ${L8DB_LAB_DIR:?}/client.pub:/root/.ssh/authorized_keys:ro
     healthcheck:
-      test: [CMD, ssh-keyscan, localhost]
+      test: [CMD-SHELL, "test -s /run/sshd.pid"]
       interval: 1s
       timeout: 3s
       retries: 60

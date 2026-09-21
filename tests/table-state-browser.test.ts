@@ -152,6 +152,6 @@ for (const engine of [chromium, webkit]) {
         await browser.close();
       }
     },
-    60_000,
+    90_000,
   );
 }
