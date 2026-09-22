@@ -30,7 +30,7 @@ export const TABLE_DETAIL_TABS: {
   { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
   { id: "grants", label: "Grants", capability: "object_grants" },
   { id: "used-by", label: "Used By", capability: "used_by" },
-  { id: "performance", label: "Performance", capability: "explain" },
+  { id: "performance", label: "Performance" },
   { id: "audit", label: "Audit", capability: "object_admin" },
 ];
 
@@ -39,7 +39,8 @@ export function availableTableDetailTabs(isView: boolean, caps: Capabilities, ea
     (tab) =>
       (!easyMode || tab.id === "data" || tab.id === "columns" || tab.id === "definition") &&
       (!tab.entity || tab.entity === (isView ? "view" : "table")) &&
-      (!tab.capability || caps[tab.capability]),
+      (!tab.capability || caps[tab.capability]) &&
+      (tab.id !== "performance" || caps.query_language !== "redis"),
   );
 }
 

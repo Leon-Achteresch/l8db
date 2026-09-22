@@ -36,6 +36,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   ddl: true,
   alter_columns: true,
   explain: true,
+  query_stats: true,
   overview: true,
   sql_filter: true,
   read_only_mode: true,

@@ -1,4 +1,4 @@
-import { ActivityIcon, GaugeIcon, RefreshCw, TerminalIcon } from "lucide-react";
+import { ActivityIcon, GaugeIcon, ListChecksIcon, RefreshCw, TerminalIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { LogsTab } from "@/features/monitor/monitor-view/logs-tab";
 import { PerformanceTab } from "@/features/monitor/monitor-view/performance-tab";
 import type { MonitorTab } from "@/features/monitor/monitor-view/types";
 import { useMonitorView } from "@/features/monitor/monitor-view/use-monitor-view";
+import { WorkloadTab } from "@/features/monitor/monitor-view/workload-tab";
 import { providerFor } from "@/lib/connection-url";
 
 export function MonitorView() {
@@ -86,6 +87,10 @@ export function MonitorView() {
               <GaugeIcon className="size-3.5" />
               Performance
             </TabsTrigger>
+            <TabsTrigger value="workload" className="gap-1.5 text-xs">
+              <ListChecksIcon className="size-3.5" />
+              Workload
+            </TabsTrigger>
             <TabsTrigger value="logs" className="gap-1.5 text-xs">
               <TerminalIcon className="size-3.5" />
               Logs
@@ -102,6 +107,7 @@ export function MonitorView() {
           </TabsList>
 
           <PerformanceTab m={m} />
+          <WorkloadTab m={m} />
           <LogsTab m={m} connection={connection} />
           <ActivityTab m={m} />
         </Tabs>

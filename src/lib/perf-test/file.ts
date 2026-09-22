@@ -1,7 +1,7 @@
 import type { ExplainNode } from "@/lib/db";
 import { planMetrics } from "@/lib/explain-compare";
 import { EXPLAIN_FILE_KIND, EXPLAIN_FILE_VERSION, type SavedExplainPlan } from "@/lib/explain-file";
-import { normalizeRepeats, numberOrNull } from "./build";
+import { normalizeConcurrency, normalizeRepeats, numberOrNull } from "./build";
 import { PERF_FILE_KIND, PERF_FILE_VERSION } from "./constants";
 import type { PerfRun, PerfTestDefinition, SavedPerfTest } from "./types";
 
@@ -9,18 +9,24 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export function defaultPerfFileName(context: { table?: string; capturedAt?: Date }): string {
-  const at = context.capturedAt ?? new Date();
-  const stamp = `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
-  const slug = (context.table ?? "perf")
+export function fileStamp(at: Date): string {
+  return `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
+}
+
+export function fileSlug(value: string | undefined, fallback: string): string {
+  const slug = (value ?? fallback)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const base = slug.length > 0 ? slug : "perf";
-  return `${base}-perf-${stamp}.l8perf.json`;
+  return slug.length > 0 ? slug : fallback;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function defaultPerfFileName(context: { table?: string; capturedAt?: Date }): string {
+  const at = context.capturedAt ?? new Date();
+  return `${fileSlug(context.table, "perf")}-perf-${fileStamp(at)}.l8perf.json`;
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -58,15 +64,22 @@ function parseDefinition(value: unknown): PerfTestDefinition | null {
     orderBy: typeof value.orderBy === "string" ? value.orderBy : null,
     limit: typeof value.limit === "number" && Number.isFinite(value.limit) ? value.limit : null,
     repeats: normalizeRepeats(typeof value.repeats === "number" ? value.repeats : 1),
+    concurrency: normalizeConcurrency(
+      typeof value.concurrency === "number" ? value.concurrency : 1,
+    ),
     analyze: value.analyze !== false,
+    timed: value.timed === true,
   };
 }
 
-function parseRun(value: unknown, index: number): PerfRun {
+export function parsePerfRun(value: unknown, index: number): PerfRun {
   if (!isRecord(value)) {
     throw new Error(`Ungültiger Lauf bei runs[${index}]: Objekt erwartet.`);
   }
-  const plan = validateNode(value.plan, `runs[${index}].plan`);
+  const plan =
+    value.plan === null || value.plan === undefined
+      ? null
+      : validateNode(value.plan, `runs[${index}].plan`);
   const metrics = isRecord(value.metrics) ? value.metrics : {};
   return {
     index: typeof value.index === "number" ? value.index : index + 1,
@@ -79,9 +92,10 @@ function parseRun(value: unknown, index: number): PerfRun {
       totalCost: numberOrNull(metrics.totalCost),
       sharedHitBlocks: numberOrNull(metrics.sharedHitBlocks),
       sharedReadBlocks: numberOrNull(metrics.sharedReadBlocks),
-      nodeCount: numberOrNull(metrics.nodeCount) ?? planMetrics(plan).nodeCount,
+      nodeCount: numberOrNull(metrics.nodeCount) ?? (plan ? planMetrics(plan).nodeCount : 0),
     },
     plan,
+    error: typeof value.error === "string" && value.error.length > 0 ? value.error : null,
   };
 }
 
@@ -108,8 +122,10 @@ export function parsePerfTestFile(text: string): SavedPerfTest {
       `Unbekannte Dateiversion ${data.version}. Diese l8db-Version unterstützt höchstens Version ${PERF_FILE_VERSION}. Bitte l8db aktualisieren.`,
     );
   }
-  if (data.mode !== "ANALYZE" && data.mode !== "EXPLAIN") {
-    throw new Error('Ungültiger Modus in der Datei. Erlaubt sind "EXPLAIN" und "ANALYZE".');
+  if (data.mode !== "ANALYZE" && data.mode !== "EXPLAIN" && data.mode !== "TIMED") {
+    throw new Error(
+      'Ungültiger Modus in der Datei. Erlaubt sind "EXPLAIN", "ANALYZE" und "TIMED".',
+    );
   }
   if (typeof data.sql !== "string") {
     throw new Error("Der SQL-Text fehlt in der Datei.");
@@ -126,12 +142,15 @@ export function parsePerfTestFile(text: string): SavedPerfTest {
     connectionName: typeof data.connectionName === "string" ? data.connectionName : "",
     databaseKind: typeof data.databaseKind === "string" ? data.databaseKind : "",
     database: typeof data.database === "string" ? data.database : null,
+    concurrency: normalizeConcurrency(typeof data.concurrency === "number" ? data.concurrency : 1),
+    elapsedMs: numberOrNull(data.elapsedMs),
     definition: parseDefinition(data.definition),
-    runs: data.runs.map(parseRun),
+    runs: data.runs.map(parsePerfRun),
   };
 }
 
-export function perfRunAsSavedPlan(saved: SavedPerfTest, run: PerfRun): SavedExplainPlan {
+export function perfRunAsSavedPlan(saved: SavedPerfTest, run: PerfRun): SavedExplainPlan | null {
+  if (!run.plan || saved.mode === "TIMED") return null;
   return {
     kind: EXPLAIN_FILE_KIND,
     version: EXPLAIN_FILE_VERSION,

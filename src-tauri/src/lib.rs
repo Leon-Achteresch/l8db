@@ -35,6 +35,10 @@ pub fn run() {
         mcp::serve();
         return;
     }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--benchmark") {
+        std::process::exit(mcp::benchmark::cli(&args));
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

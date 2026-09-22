@@ -52,7 +52,9 @@ const definition: PerfTestDefinition = {
   orderBy: "id DESC",
   limit: 1000,
   repeats: 3,
+  concurrency: 1,
   analyze: true,
+  timed: false,
 };
 
 function run(index: number, durationMs: number, rows: number): PerfRun {
@@ -106,7 +108,8 @@ describe("normalizeRepeats", () => {
   test("begrenzt auf gültigen Bereich", () => {
     expect(normalizeRepeats(0)).toBe(1);
     expect(normalizeRepeats(2.4)).toBe(2);
-    expect(normalizeRepeats(99)).toBe(PERF_MAX_REPEATS);
+    expect(normalizeRepeats(99)).toBe(99);
+    expect(normalizeRepeats(99999)).toBe(PERF_MAX_REPEATS);
     expect(normalizeRepeats(Number.NaN)).toBe(3);
   });
 });
@@ -143,6 +146,7 @@ describe("summarize", () => {
       count: 3,
       min: 10,
       median: 20,
+      p95: 30,
       max: 30,
       avg: 20,
     });
@@ -159,7 +163,7 @@ describe("summarize", () => {
 
   test("fasst Läufe zusammen", () => {
     const summary = summarizeRuns([run(1, 12, 100), run(2, 8, 100), run(3, 16, 100)]);
-    expect(summary.duration).toEqual({ count: 3, min: 8, median: 12, max: 16, avg: 12 });
+    expect(summary.duration).toEqual({ count: 3, min: 8, median: 12, p95: 16, max: 16, avg: 12 });
     expect(summary.rows?.median).toBe(100);
     expect(summary.planTime?.avg).toBe(1);
   });
