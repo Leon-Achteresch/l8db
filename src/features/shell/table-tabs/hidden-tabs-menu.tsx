@@ -1,4 +1,4 @@
-import type { useNavigate } from "@tanstack/react-router";
+import { type useNavigate, useRouter } from "@tanstack/react-router";
 import { ChevronDownIcon } from "lucide-react";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSplitView } from "@/lib/split-view";
-import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
+import { navigateToTab, preloadTab, tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { iconButton } from "./constants";
 
@@ -21,6 +21,7 @@ interface HiddenTabsMenuProps {
 }
 
 export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: HiddenTabsMenuProps) {
+  const router = useRouter();
   const reveal = useSplitView((state) => state.reveal);
   return (
     <DropdownMenu>
@@ -45,6 +46,8 @@ export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: Hidde
         {hiddenTabs.map((tab) => (
           <DropdownMenuItem
             key={tabKey(tab)}
+            onPointerEnter={() => preloadTab(router, tab)}
+            onFocus={() => preloadTab(router, tab)}
             onSelect={() => {
               revealTab(tabKey(tab));
               if (split) reveal(tabKey(tab));

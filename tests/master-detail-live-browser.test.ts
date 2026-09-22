@@ -123,7 +123,6 @@ for (const kind of ["postgres", "oracle"] as const) {
           await link.click();
           const dialog = page.getByRole("dialog");
           const relation = dialog.getByLabel("FK-/PK-Beziehung");
-          await dialog.getByRole("button", { name: "Beziehungs-SQL laden" }).click();
           await dialog.getByRole("button", { name: "Vorschau", exact: true }).click();
           const preview = dialog.getByRole("region", { name: "SQL-Vorschau" });
           await preview.getByText("Schrauben", { exact: true }).waitFor();
@@ -147,12 +146,8 @@ for (const kind of ["postgres", "oracle"] as const) {
           await page.waitForTimeout(500);
           expect(await detail.getByText("Dichtung", { exact: true }).count()).toBe(0);
           await link.click();
-          const parentId = await relation
-            .locator("option")
-            .filter({ hasText: "MD_CUSTOMERS" })
-            .getAttribute("value");
-          await relation.selectOption(parentId!);
-          await dialog.getByRole("button", { name: "Beziehungs-SQL laden" }).click();
+          await relation.click();
+          await page.getByRole("option").filter({ hasText: "MD_CUSTOMERS" }).click();
           await dialog.getByRole("button", { name: "Vorschau", exact: true }).click();
           await preview.getByText("O'Reilly", { exact: true }).waitFor();
           await dialog.getByRole("button", { name: "Speichern & anwenden" }).click();
@@ -162,12 +157,8 @@ for (const kind of ["postgres", "oracle"] as const) {
           expect(calls.at(-1)?.params).toEqual([null]);
           await master.locator('tbody tr[data-index="1"] td[data-col="REF_TENANT"]').click();
           await link.click();
-          const compositeId = await relation
-            .locator("option")
-            .filter({ hasText: "MD_TENANTS" })
-            .getAttribute("value");
-          await relation.selectOption(compositeId!);
-          await dialog.getByRole("button", { name: "Beziehungs-SQL laden" }).click();
+          await relation.click();
+          await page.getByRole("option").filter({ hasText: "MD_TENANTS" }).click();
           await dialog.getByRole("button", { name: "Vorschau", exact: true }).click();
           await preview.getByText("Tenant B", { exact: true }).waitFor();
           expect(calls.at(-1)?.params).toEqual(["B", "1"]);
@@ -197,7 +188,8 @@ for (const kind of ["postgres", "oracle"] as const) {
             .filter({ hasText: /DOES_NOT_EXIST|does_not_exist/ })
             .waitFor();
           await replaceSql(page, editor, `SELECT * FROM "${schema}"."MD_ORDERS" WHERE "REF" = `);
-          await dialog.getByLabel("Master-Spaltenreferenz einfügen").selectOption("REF");
+          await dialog.getByLabel("Master-Spaltenreferenz einfügen").click();
+          await page.getByRole("option", { name: "REF", exact: true }).click();
           await dialog.getByRole("button", { name: "Vorschau", exact: true }).click();
           await preview.getByText("Erster Auftrag", { exact: true }).waitFor();
           expect(calls.at(-1)?.params).toEqual(["101"]);
