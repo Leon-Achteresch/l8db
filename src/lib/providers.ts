@@ -173,6 +173,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_stats: false,
       proxy_user: false,
       debugger: false,
       query_cancel: false,
@@ -207,6 +208,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_stats: false,
       proxy_user: false,
       debugger: false,
       query_cancel: true,
