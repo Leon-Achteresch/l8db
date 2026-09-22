@@ -6,7 +6,6 @@ import {
   countTableRows,
   countTableRowsCapped,
   fetchTableRows,
-  type QueryExecutionOptions,
   type RowCount,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
@@ -14,20 +13,15 @@ import { sameTableSource } from "@/lib/query-client";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getTableTransaction } from "@/lib/transactions";
+import { runUntilAbandoned } from "./abandoned-jobs";
 import { sortingToRowSort } from "./schema-queries";
 
 export const PAGE_SIZE = 100;
 
 export const ROW_COUNT_CAP = 100_000;
 
-function cancellable<T>(
-  signal: AbortSignal,
-  run: (options: QueryExecutionOptions) => Promise<T>,
-): Promise<T> {
-  const jobId = crypto.randomUUID();
-  const cancel = () => void cancelExecution(jobId).catch(() => undefined);
-  signal.addEventListener("abort", cancel, { once: true });
-  return run({ jobId }).finally(() => signal.removeEventListener("abort", cancel));
+function cancelJob(jobId: string) {
+  void cancelExecution(jobId).catch(() => undefined);
 }
 
 function rowCountKey(
@@ -71,23 +65,26 @@ export function useTableRowsQuery(
       rowLimit,
       allowRaw,
     ],
-    queryFn: ({ signal }) =>
-      cancellable(signal, (options) =>
-        fetchTableRows(
-          connection!.kind,
-          effectiveConnectionString(connection!),
-          schema,
-          table,
-          filter,
-          rowLimit,
-          page * rowLimit,
-          database ?? undefined,
-          sort,
-          isView,
-          allowRaw,
-          getTableTransaction(connection!.id, database, schema, table)?.txId,
-          options,
-        ),
+    queryFn: (context) =>
+      runUntilAbandoned(
+        context,
+        (jobId) =>
+          fetchTableRows(
+            connection!.kind,
+            effectiveConnectionString(connection!),
+            schema,
+            table,
+            filter,
+            rowLimit,
+            page * rowLimit,
+            database ?? undefined,
+            sort,
+            isView,
+            allowRaw,
+            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            { jobId },
+          ),
+        cancelJob,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
@@ -130,20 +127,23 @@ export function useTableRowCountQuery(
   const database = useActiveDatabase();
   return useQuery<RowCount>({
     queryKey: rowCountKey(connection?.id, database, schema, table, filter, allowRaw),
-    queryFn: ({ signal }) =>
-      cancellable(signal, (options) =>
-        countTableRowsCapped(
-          connection!.kind,
-          effectiveConnectionString(connection!),
-          schema,
-          table,
-          ROW_COUNT_CAP,
-          filter,
-          database ?? undefined,
-          allowRaw,
-          getTableTransaction(connection!.id, database, schema, table)?.txId,
-          options,
-        ),
+    queryFn: (context) =>
+      runUntilAbandoned(
+        context,
+        (jobId) =>
+          countTableRowsCapped(
+            connection!.kind,
+            effectiveConnectionString(connection!),
+            schema,
+            table,
+            ROW_COUNT_CAP,
+            filter,
+            database ?? undefined,
+            allowRaw,
+            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            { jobId },
+          ),
+        cancelJob,
       ),
     enabled: enabled && Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
