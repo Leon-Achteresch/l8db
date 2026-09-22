@@ -3,6 +3,17 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.128] - 2026-09-21
+
+### Features
+- refine tabs, filters, and navigation
+- add onboarding and easy mode
+- harden transfers and compare table snapshots
+
+### Fixes
+- make browser smoke and SSH key auth reliable
+- stabilize integration health checks
+
 ## [0.6.121] - 2026-09-21
 
 ### Fixes
