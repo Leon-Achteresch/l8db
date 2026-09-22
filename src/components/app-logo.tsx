@@ -11,7 +11,7 @@ export function AppLogo({ className, alt = "l8db Logo" }: AppLogoProps) {
       src="/logo.png"
       alt={alt}
       draggable={false}
-      className={cn("aspect-square shrink-0 rounded-full object-contain", className)}
+      className={cn("aspect-square shrink-0 rounded-[22%] object-contain", className)}
     />
   );
 }
