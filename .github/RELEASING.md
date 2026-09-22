@@ -53,12 +53,71 @@ veröffentlicht der `finalize`-Job den Release. Die wiederverwendete CI verwende
 eine eigene Concurrency-Gruppe, damit sie den aufrufenden Release nicht abbricht. Bei einem Fehler bleibt er als Entwurf
 stehen; ein erneuter Lauf kann ihn vervollständigen.
 
-### Betrieb ohne Plattformzertifikate
+### Lokale macOS-Signierung und Notarisierung
 
-Die Distribution erfolgt bewusst ohne Apple-Developer- oder Windows-Code-Signing-
-Zertifikate und ohne Apple-Notarisierung. Betriebssysteme können deshalb beim
-Installieren oder ersten Start Warnungen anzeigen. `hardenedRuntime` ersetzt weder
-eine Developer-ID-Signatur noch eine Notarisierung. macOS wird ab Version 12 mit aktuellem WebKit (Safari 16.4 oder neuer) unterstützt.
+Das Developer-ID-Application-Zertifikat für Team `R4LQCWA594` ist auf dem
+Entwicklungs-Mac im Login-Schlüsselbund installiert und bis 17. September 2031
+gültig. Der private Schlüssel gehört nicht ins Repository.
+
+```sh
+bun run build:macos:signed
+```
+
+Dieser Befehl erstellt eine Developer-ID-signierte App und DMG für die Architektur
+des Macs. Er verwendet `src-tauri/tauri.signing.conf.json`; Updater-Artefakte sind
+für diesen lokalen Build deaktiviert. Der Befehl allein notarisiert nicht.
+Der CI-Release benötigt zusätzlich den separaten Updater-Signierschlüssel.
+
+Für die Notarisierung einmalig ein anwendungsspezifisches Passwort im Apple-Account
+erstellen und mit `xcrun notarytool store-credentials l8db --apple-id <Apple-ID>
+--team-id R4LQCWA594` interaktiv im Schlüsselbund speichern. Das Passwort wird
+verdeckt abgefragt und darf nicht in Konfigurationen oder Shell-Befehlen stehen.
+
+Anschließend die erzeugte DMG einreichen und den Status `Accepted` abwarten:
+
+```sh
+xcrun notarytool submit src-tauri/target/release/bundle/dmg/l8db_0.6.0_aarch64.dmg --keychain-profile l8db --wait
+xcrun stapler staple src-tauri/target/release/bundle/dmg/l8db_0.6.0_aarch64.dmg
+xcrun stapler staple src-tauri/target/release/bundle/macos/l8db.app
+xcrun stapler validate src-tauri/target/release/bundle/dmg/l8db_0.6.0_aarch64.dmg
+codesign --verify --deep --strict --verbose=2 src-tauri/target/release/bundle/macos/l8db.app
+spctl --assess --type execute --verbose=2 src-tauri/target/release/bundle/macos/l8db.app
+```
+
+DMG-Dateinamen an Version und Architektur anpassen. Bei längerer Apple-Verarbeitung
+kann der Status mit `xcrun notarytool info <Submission-ID> --keychain-profile l8db`
+abgefragt werden. Erst nach erfolgreicher Notarisierung und Prüfung verteilen.
+
+`profile.release.build-override.strip = false` verhindert einen Rust/LLVM-Fehler
+beim Laden gestrippter Build-Makros unter macOS 27. Die fertige App verwendet
+weiterhin das bestehende Release-Profil mit `strip = true`.
+
+### Signierte macOS-Produktionsreleases
+
+Die Release-Pipeline verlangt folgende GitHub-Repository-Secrets:
+
+| Secret | Inhalt |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Base64-kodiertes PKCS#12 mit Developer-ID-Zertifikat und privatem Schlüssel |
+| `APPLE_CERTIFICATE_PASSWORD` | Passwort des PKCS#12-Exports |
+| `APPLE_ID` | Apple-Account für die Notarisierung |
+| `APPLE_PASSWORD` | Anwendungsspezifisches Apple-Passwort, niemals das Account-Passwort |
+
+Das anwendungsspezifische Passwort erstellt der Account-Inhaber und speichert es
+als `APPLE_PASSWORD`, beispielsweise interaktiv mit
+`gh secret set APPLE_PASSWORD --repo Leon-Achteresch/l8db`.
+
+Der `prepare`-Job bricht bei fehlenden Secrets ab. Nur der macOS-Matrixjob erhält
+die Apple-Zugänge, importiert das Zertifikat in einen temporären Schlüsselbund
+und baut mit Developer ID und Notarisierung. Tauri wartet auf Apple und heftet das
+Notarisierungsticket an die App. Anschließend werden Zertifikatsidentität,
+Team-ID, Hardened Runtime, Ticket und Gatekeeper geprüft. Schlägt eine Prüfung
+fehl, bleibt der Release ein Entwurf. Der temporäre Schlüsselbund wird auch nach
+Fehlern entfernt. Es gibt keinen unsignierten Fallback.
+
+Windows bleibt ohne Plattformzertifikat; Windows kann deshalb beim Installieren
+oder ersten Start warnen. macOS wird ab Version 12 mit aktuellem WebKit
+(Safari 16.4 oder neuer) unterstützt.
 Der Windows-Installer fordert mindestens WebView2 111 an. Diese Laufzeitgrenzen
 folgen den Anforderungen von [Tailwind CSS 4](https://tailwindcss.com/docs/compatibility)
 und [Vite 8](https://v8.vite.dev/config/build-options).
