@@ -31,6 +31,10 @@ jobs:
         env:
           RELEASE_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "::error::Repository-Secret TAURI_SIGNING_PRIVATE_KEY fehlt. Auto-Updates benötigen signierte Artefakte."
@@ -40,6 +44,12 @@ jobs:
             echo "::error::Repository-Secret RELEASE_PR_TOKEN fehlt. Einrichtung siehe .github/RELEASING.md."
             exit 1
           fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository-Secret ${name} fehlt. macOS-Releases müssen signiert und notarisiert sein."
+              exit 1
+            fi
+          done
 
       - uses: actions/checkout@v7
         with:
@@ -129,12 +139,38 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Importiere Apple Developer ID
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          certificate_path="$RUNNER_TEMP/l8db-signing.p12"
+          keychain_path="$RUNNER_TEMP/l8db-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$keychain_password"
+          trap 'rm -f "$certificate_path"' EXIT
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" > /dev/null
+          security list-keychains -d user -s "$keychain_path" "$HOME/Library/Keychains/login.keychain-db"
+          security find-identity -v -p codesigning "$keychain_path" | grep -F 'Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
+
       - name: Build und veroeffentliche Tauri App
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "${{ runner.os == 'macOS' && 'Developer ID Application: LEON ACHTERESCH (R4LQCWA594)' || '' }}"
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && 'R4LQCWA594' || '' }}
         with:
           tauriScript: bun run tauri
           tagName: v__VERSION__
@@ -145,6 +181,28 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      - name: Prüfe macOS-Signatur und Notarisierung
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          app_path="src-tauri/target/universal-apple-darwin/release/bundle/macos/l8db.app"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          signature="$(codesign --display --verbose=4 "$app_path" 2>&1)"
+          printf '%s\n' "$signature" | grep -F 'Authority=Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
+          printf '%s\n' "$signature" | grep -F 'TeamIdentifier=R4LQCWA594'
+          printf '%s\n' "$signature" | grep -F '(runtime)'
+          xcrun stapler validate "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+
+      - name: Entferne temporären Apple-Schlüsselbund
+        if: always() && runner.os == 'macOS'
+        run: |
+          keychain_path="$RUNNER_TEMP/l8db-signing.keychain-db"
+          if [ -f "$keychain_path" ]; then
+            security delete-keychain "$keychain_path"
+          fi
+          rm -f "$RUNNER_TEMP/l8db-signing.p12"
 
   finalize:
     needs: [prepare, publish]

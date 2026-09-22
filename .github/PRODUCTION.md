@@ -1,6 +1,10 @@
 # Produktionsstand
 
-Die App wird bewusst ohne Plattformzertifikate verteilt. Signierte Auto-Updates
+Die Release-Konfiguration verlangt für macOS Developer-ID-Signierung und
+Apple-Notarisierung; fehlende Apple-Secrets blockieren die Veröffentlichung.
+Windows bleibt ohne Plattformzertifikat. Lokale Developer-ID-Builds und die
+Einrichtung der Produktions-Secrets sind in [RELEASING.md](RELEASING.md)
+beschrieben. Signierte Auto-Updates
 bleiben aktiv. Einrichtung, Release-Gates und CSP-Ausnahmen stehen in
 [RELEASING.md](RELEASING.md).
 
