@@ -21,6 +21,8 @@ src-tauri/gen/
 *.key
 *.pem
 *.pub
+*.p12
+*.p8
 
 # Env
 .env

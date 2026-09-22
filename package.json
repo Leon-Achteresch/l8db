@@ -19,6 +19,7 @@
     "build": "tsc -p tsconfig.app.json && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:macos:signed": "tauri build --bundles app,dmg --config src-tauri/tauri.signing.conf.json -- --locked",
     "lint": "biome lint ./src",
     "format": "biome format --write ./src",
     "check": "biome check ./src",
