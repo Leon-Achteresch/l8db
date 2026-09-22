@@ -68,7 +68,7 @@ export function QueryAnalysisSheet({
             variant="outline"
             disabled={!explainEnabled || planLoading}
             onClick={() => onExplain(true)}
-            title="Achtung: führt die Query wirklich aus und misst sie"
+            title="Achtung: führt die Query wirklich aus und misst sie; PostgreSQL rollt Änderungen danach zurück"
           >
             <GaugeIcon className="size-3.5" />
             Explain Analyze

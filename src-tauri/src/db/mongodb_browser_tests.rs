@@ -50,6 +50,16 @@ async fn dispatch(
             .count_rows(schema, table, args["filter"].as_str(), true)
             .await
             .map(|v| json!(v)),
+        "count_table_rows_capped" => adapter
+            .count_rows_capped(
+                schema,
+                table,
+                args["filter"].as_str(),
+                true,
+                args["cap"].as_i64().unwrap_or(100_000),
+            )
+            .await
+            .map(|v| json!(v)),
         "create_table" => adapter
             .create_table(
                 &serde_json::from_value(args["request"].clone()).map_err(|e| e.to_string())?,

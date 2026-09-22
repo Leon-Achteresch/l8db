@@ -27,6 +27,7 @@ export function useDataTable(props: DataTableProps) {
     emptyEditValue,
     page = 0,
     totalCount,
+    countLabel,
     pageSize = 100,
     onPageChange,
     onRefresh,
@@ -157,6 +158,10 @@ export function useDataTable(props: DataTableProps) {
     fkByColumn,
     typeInfoByColumn,
   });
+  const hasNextPage =
+    totalCount != null
+      ? page < Math.ceil(totalCount / pageSize) - 1
+      : countLabel !== undefined && data.length >= pageSize;
   useGridHotkeys({
     rootRef,
     searchInputRef: search.searchInputRef,
@@ -168,11 +173,10 @@ export function useDataTable(props: DataTableProps) {
     selectedCount,
     editingCell,
     onPageChange,
-    totalCount,
-    pageSize,
+    hasNextPage,
     page,
   });
-  const waveRefs = usePageFlip(scrollRef, page, pageSize, totalCount, onPageChange);
+  const waveRefs = usePageFlip(scrollRef, page, hasNextPage, onPageChange);
   useGridKeyboard({
     activeCell,
     setActiveCell,
@@ -212,6 +216,7 @@ export function useDataTable(props: DataTableProps) {
   });
 
   return {
+    hasNextPage,
     activeCell,
     activeMatch,
     activeSort,

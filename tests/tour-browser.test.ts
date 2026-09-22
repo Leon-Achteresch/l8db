@@ -49,6 +49,7 @@ function mockTauriInit(seeds: Record<string, string>) {
       if (cmd === "get_er_schema") return { tables: [], foreign_keys: [] };
       if (cmd === "fetch_table_rows") return { columns: ["id"], rows: [{ id: 1 }] };
       if (cmd === "count_table_rows") return 1;
+      if (cmd === "count_table_rows_capped") return { count: 1, exact: true, estimate: null };
       if (cmd === "execute_query")
         return { columns: [], rows: [], rows_affected: 0, execution_time_ms: 1 };
       if (cmd === "store_secret") {

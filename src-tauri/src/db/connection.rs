@@ -90,6 +90,9 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
         };
         config.options(options);
     }
+    if config.get_application_name().is_none() {
+        config.application_name("l8db");
+    }
     Ok((config, ssl))
 }
 

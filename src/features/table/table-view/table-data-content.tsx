@@ -36,6 +36,8 @@ type Props = Pick<
   | "error"
   | "refetch"
   | "totalCount"
+  | "countLabel"
+  | "handleExactCount"
   | "columnDetails"
   | "filter"
   | "filterRaw"
@@ -75,6 +77,8 @@ export function TableDataContent({
   error,
   refetch,
   totalCount,
+  countLabel,
+  handleExactCount,
   columnDetails,
   filter,
   filterRaw,
@@ -196,6 +200,8 @@ export function TableDataContent({
           revealColumn={revealColumn}
           page={page}
           totalCount={totalCount ?? undefined}
+          countLabel={countLabel}
+          onExactCount={handleExactCount}
           pageSize={rowLimit}
           onPageChange={setPage}
           foreignKeys={foreignKeys}

@@ -14,6 +14,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { dropMaterializedView, refreshMaterializedView } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useMaterializedViewsQuery, useTableRowCountQuery, useTableRowsQuery } from "@/lib/queries";
+import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -42,7 +43,7 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
     page,
     true,
   );
-  const { data: totalCount } = useTableRowCountQuery(schema, name, undefined, true);
+  const { data: rowCount } = useTableRowCountQuery(schema, name, undefined, true);
 
   const refreshQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ["matviews"] });
@@ -176,7 +177,8 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
             onSortingChange={setSorting}
             isFetching={isFetching}
             page={page}
-            totalCount={totalCount ?? undefined}
+            totalCount={exactRowCount(rowCount)}
+            countLabel={approximateRowCount(rowCount)}
             pageSize={rowLimit}
             onPageChange={setPage}
             currentSchema={schema}

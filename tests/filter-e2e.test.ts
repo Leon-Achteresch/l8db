@@ -47,12 +47,13 @@ function db(cmd: string, args: Record<string, string>): unknown {
       );
     case "list_foreign_keys":
       return [];
-    case "count_table_rows": {
+    case "count_table_rows":
+    case "count_table_rows_capped": {
       const sql = `select count(*)::int as n from ${table}${where}`;
       try {
         const n = rows(sql)[0].n as number;
         log.push({ cmd, sql, rows: n });
-        return n;
+        return cmd === "count_table_rows" ? n : { count: n, exact: true, estimate: null };
       } catch (error) {
         log.push({ cmd, sql, error: String(error) });
         throw String(error);
@@ -153,7 +154,7 @@ test.skipIf(!process.env.L8DB_FILTER_E2E)(
       fetch = await run("name <> 'k1' and name is not null");
       expect(fetch.error).toBeUndefined();
       expect(fetch.rows).toBe(100);
-      expect(log.findLast((entry) => entry.cmd === "count_table_rows")?.rows).toBe(499);
+      expect(log.findLast((entry) => entry.cmd === "count_table_rows_capped")?.rows).toBe(499);
       if (process.env.L8DB_FILTER_SCREENSHOT)
         await page.screenshot({ path: process.env.L8DB_FILTER_SCREENSHOT });
       expect(errors).toEqual([]);

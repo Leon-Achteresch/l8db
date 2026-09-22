@@ -87,6 +87,7 @@ pub fn run() {
             db::commands::list_tables,
             db::commands::fetch_table_rows,
             db::commands::count_table_rows,
+            db::commands::count_table_rows_capped,
             db::commands::update_row,
             db::commands::list_all_columns,
             db::commands::search_columns,

@@ -20,8 +20,7 @@ type Options = {
   selectedCount: number;
   editingCell: EditingCell | null;
   onPageChange: ((page: number) => void) | undefined;
-  totalCount: number | undefined;
-  pageSize: number;
+  hasNextPage: boolean;
   page: number;
 };
 
@@ -36,8 +35,7 @@ export function useGridHotkeys({
   selectedCount,
   editingCell,
   onPageChange,
-  totalCount,
-  pageSize,
+  hasNextPage,
   page,
 }: Options) {
   const pane = useWorkspacePane();
@@ -94,11 +92,9 @@ export function useGridHotkeys({
   useHotkey(
     gridNextPageHotkey,
     (event) => {
-      if (!onPageChange || totalCount == null) return;
+      if (!onPageChange || !hasNextPage) return;
       const root = rootRef.current;
       if (!(root?.contains(document.activeElement) ?? false)) return;
-      const totalPages = Math.ceil(totalCount / pageSize);
-      if (page >= totalPages - 1) return;
       event.preventDefault();
       onPageChange(page + 1);
     },

@@ -21,7 +21,7 @@ export function SqlConfirmationDialog() {
           <DialogTitle>Destruktive Abfrage ausführen?</DialogTitle>
           <DialogDescription>
             {request?.connection} · {request?.database ?? "Standard-Datenbank"}. Diese Anweisungen
-            können Daten dauerhaft löschen.
+            verändern oder löschen Daten.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-80 space-y-3 overflow-auto">

@@ -4,6 +4,7 @@ import {
   deleteRowInTransaction,
   duplicateRowInTransaction,
   insertRowInTransaction,
+  type RowCount,
   type TableData,
   updateRowInTransaction,
 } from "@/lib/db";
@@ -128,12 +129,12 @@ export function useInsertRowMutation(schema: string, table: string) {
         },
         (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
       );
-      queryClient.setQueriesData<number>(
+      queryClient.setQueriesData<RowCount>(
         {
           predicate: (q) =>
             matchesTable(q.queryKey, "count", schema, table, connection?.id, database),
         },
-        (old) => (typeof old === "number" ? old + 1 : old),
+        (old) => (old?.exact ? { ...old, count: old.count + 1 } : old),
       );
     },
   });
@@ -163,12 +164,12 @@ export function useDuplicateRowMutation(schema: string, table: string) {
         },
         (old) => (old ? { ...old, rows: [...old.rows, row] } : old),
       );
-      queryClient.setQueriesData<number>(
+      queryClient.setQueriesData<RowCount>(
         {
           predicate: (q) =>
             matchesTable(q.queryKey, "count", schema, table, connection?.id, database),
         },
-        (old) => (typeof old === "number" ? old + 1 : old),
+        (old) => (old?.exact ? { ...old, count: old.count + 1 } : old),
       );
     },
   });
@@ -210,12 +211,12 @@ export function useDeleteRowMutation(schema: string, table: string) {
               }
             : old,
       );
-      queryClient.setQueriesData<number>(
+      queryClient.setQueriesData<RowCount>(
         {
           predicate: (q) =>
             matchesTable(q.queryKey, "count", schema, table, connection?.id, database),
         },
-        (old) => (typeof old === "number" ? Math.max(0, old - 1) : old),
+        (old) => (old?.exact ? { ...old, count: Math.max(0, old.count - 1) } : old),
       );
     },
   });

@@ -1,9 +1,11 @@
 const BRIDGE = "http://127.0.0.1:27021";
-const VITE_STUB = await Bun.file(new URL("./clickhouse-browser-vite-stub.js", import.meta.url)).text();
+const VITE_STUB = await Bun.file(
+  new URL("./clickhouse-browser-vite-stub.js", import.meta.url),
+).text();
 const shim = `
 (() => {
   const BRIDGE = ${JSON.stringify(BRIDGE)};
-  const remote = new Set(["test_connection_string","list_databases","list_schemas","list_tables","list_views","list_functions","get_function_definition","get_view_definition","update_view_definition","list_all_columns","list_table_columns_detailed","fetch_table_rows","count_table_rows","execute_query","explain_query","get_database_overview","create_table","preview_create_table_ddl","list_indexes","list_constraints","list_foreign_keys","list_materialized_views","add_column","alter_column","drop_column","truncate_table","drop_table","create_schema","drop_schema"]);
+  const remote = new Set(["test_connection_string","list_databases","list_schemas","list_tables","list_views","list_functions","get_function_definition","get_view_definition","update_view_definition","list_all_columns","list_table_columns_detailed","fetch_table_rows","count_table_rows","count_table_rows_capped","execute_query","explain_query","get_database_overview","create_table","preview_create_table_ddl","list_indexes","list_constraints","list_foreign_keys","list_materialized_views","add_column","alter_column","drop_column","truncate_table","drop_table","create_schema","drop_schema"]);
   const NativeWS = window.WebSocket; window.WebSocket = function(url, p){ if (String(url).includes("token=")) { return { readyState: 0, send(){}, close(){}, addEventListener(){}, removeEventListener(){}, set onopen(v){}, set onmessage(v){}, set onclose(v){}, set onerror(v){} }; } return new NativeWS(url, p); };
   const calls = []; const errors = []; window.__L8DB_ERRORS__ = errors; window.addEventListener("error", function(e){ errors.push(String(e.message) + " @ " + (e.filename || "")); }); window.addEventListener("unhandledrejection", function(e){ errors.push("rej: " + String((e.reason && e.reason.message) || e.reason)); });
   window.__L8DB_CALLS__ = calls;
@@ -37,14 +39,22 @@ Bun.serve({
   port: 1421,
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === "/__shim.js") return new Response(shim, { headers: { "content-type": "text/javascript" } });
+    if (url.pathname === "/__shim.js")
+      return new Response(shim, { headers: { "content-type": "text/javascript" } });
     const target = "http://localhost:1420" + url.pathname + url.search;
-    const res = await fetch(target, { method: req.method, headers: req.headers, body: req.body, redirect: "manual", duplex: "half" });
+    const res = await fetch(target, {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
+      redirect: "manual",
+      duplex: "half",
+    });
     const type = res.headers.get("content-type") ?? "";
-    const nh = new Headers(res.headers); nh.set("cache-control", "no-store");
-    if (!type.includes("text/html")) return new Response(res.body, { status: res.status, headers: nh });
-    const html = (await res.text())
-      .replace("<head>", '<head><script src="/__shim.js"></script>');
+    const nh = new Headers(res.headers);
+    nh.set("cache-control", "no-store");
+    if (!type.includes("text/html"))
+      return new Response(res.body, { status: res.status, headers: nh });
+    const html = (await res.text()).replace("<head>", '<head><script src="/__shim.js"></script>');
     const headers = new Headers(res.headers);
     headers.delete("content-length");
     headers.set("cache-control", "no-store");

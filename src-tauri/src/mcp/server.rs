@@ -208,7 +208,7 @@ impl Server {
             }
         }
         let adapter = adapter(connection, &self.pool)?;
-        let columns = run(config, async {
+        let columns = run(config, connection.kind, async {
             adapter.list_columns(None, None, None).await
         })
         .await?;
@@ -324,7 +324,10 @@ impl Server {
             .unwrap_or(config.max_rows)
             .clamp(1, db::commands::MAX_RESULT_ROWS);
         let adapter = adapter(connection, &self.pool)?;
-        let result = run(config, async { adapter.execute_query(sql).await }).await?;
+        let result = run(config, connection.kind, async {
+            adapter.execute_query(sql).await
+        })
+        .await?;
         Ok(format_result(&result, config, &redactor, limit))
     }
 
@@ -378,7 +381,10 @@ impl Server {
             }
         }
         let adapter = adapter(connection, &self.pool)?;
-        let result = run(config, async { adapter.execute_query(sql).await }).await?;
+        let result = run(config, connection.kind, async {
+            adapter.execute_query(sql).await
+        })
+        .await?;
         self.columns.remove(&connection.id);
         let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
         let mut text = format!("ok, {} rows affected", result.rows_affected.unwrap_or(0));
@@ -540,7 +546,11 @@ pub(super) fn adapter(
     db::create_adapter_from_string(connection.kind, &url, None, pool.clone())
 }
 
-pub(super) async fn run<T, F>(config: &McpConfig, future: F) -> Result<T, String>
+pub(super) async fn run<T, F>(
+    config: &McpConfig,
+    kind: DatabaseKind,
+    future: F,
+) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
@@ -550,7 +560,7 @@ where
             query_timeout: Some(config.query_timeout),
             connection_timeout: Some(10),
         }),
-        false,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         future,
     )
     .await

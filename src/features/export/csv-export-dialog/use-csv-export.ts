@@ -52,7 +52,7 @@ export function useCsvExport({
   const limit = Number.parseInt(maxRows, 10);
   const limitValid = Number.isFinite(limit) && limit > 0;
   const totalRows = fullExport?.totalRows ?? null;
-  const needsConfirm = fullMode && totalRows !== null && totalRows > CONFIRM_ROWS;
+  const needsConfirm = fullMode && (totalRows === null || totalRows > CONFIRM_ROWS);
 
   const maskedRows = useMemo(() => applyMasks(columns, rows, masks), [columns, rows, masks]);
 
@@ -151,7 +151,6 @@ export function useCsvExport({
         allowRawFilter: fullExport.filterRaw,
         orderBy: fullExport.orderBy,
         orderDesc: fullExport.orderDesc,
-        isView: fullExport.isView,
         path: filePath,
         options: {
           delimiter: options.delimiter,

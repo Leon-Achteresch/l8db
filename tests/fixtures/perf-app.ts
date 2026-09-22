@@ -106,6 +106,8 @@ export async function seedApp(
             return { columns: columns.map((column) => column.name), rows };
           case "count_table_rows":
             return rows.length;
+          case "count_table_rows_capped":
+            return { count: rows.length, exact: true, estimate: null };
           case "get_database_overview":
             return {
               size_bytes: 123456789,
