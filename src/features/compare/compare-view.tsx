@@ -12,9 +12,8 @@ import {
 } from "@/lib/db-selection";
 import { useTableTabs } from "@/lib/table-tabs";
 import type { CompareWorkspace } from "@/lib/table-tabs/types";
-import { AnalysisWorkspaceBar } from "./analysis-workspace-bar";
-import { DataCompareSidePicker, EMPTY_DATA_SIDE } from "./data-compare-side-picker";
-import { DataCompareView } from "./data-compare-view";
+import { AnalysisWorkspaceDrawer } from "./analysis-workspace-drawer";
+import { EMPTY_DATA_SIDE } from "./data-compare-side-picker";
 
 export function CompareView({ tabId }: { tabId?: string } = {}) {
   const search = useSearch({ strict: false }) as { compareId?: string };
@@ -40,7 +39,6 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
     onlyDifferences: false,
   });
   const workspace = tab?.kind === "tool" && tab.compare ? tab.compare : initial.current;
-  const mode = workspace.mode ?? "definitions";
   const dataLeft = workspace.dataLeft ?? {
     ...EMPTY_DATA_SIDE,
     connectionId: workspace.left.connectionId,
@@ -76,99 +74,75 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b px-3 py-1">
-        <select
-          aria-label="Vergleichsmodus"
-          value={mode}
-          onChange={(event) => update({ mode: event.target.value as "definitions" | "data" })}
-          className="rounded border bg-background px-2 py-1 text-xs"
-        >
-          <option value="definitions">Definitionen</option>
-          <option value="data">Daten</option>
-        </select>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const nextId = crypto.randomUUID();
-            useTableTabs.getState().openToolTab("compare", nextId);
-            void navigate({ to: "/compare", search: { compareId: nextId } });
-          }}
-        >
-          <PlusIcon className="size-3.5" />
-          Neuer Vergleich
-        </Button>
-      </div>
-      <AnalysisWorkspaceBar
-        value={{ tab: mode, left: workspace.left, right: workspace.right, dataLeft, dataRight }}
-        onLoad={(saved) =>
+      <DefinitionCompareView
+        key={id}
+        workspaceActions={
+          <>
+            <AnalysisWorkspaceDrawer
+              value={{
+                tab: "definitions",
+                left: workspace.left,
+                right: workspace.right,
+                dataLeft,
+                dataRight,
+              }}
+              onLoad={(saved) =>
+                update({
+                  mode: "definitions",
+                  left: saved.left,
+                  right: saved.right,
+                  draft: null,
+                  draftBase: null,
+                })
+              }
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Neuer Vergleich"
+              title="Neuer Vergleich"
+              onClick={() => {
+                const nextId = crypto.randomUUID();
+                useTableTabs.getState().openToolTab("compare", nextId);
+                void navigate({ to: "/compare", search: { compareId: nextId } });
+              }}
+            >
+              <PlusIcon className="size-3.5" />
+            </Button>
+          </>
+        }
+        mode="definitions"
+        sourceConnection={connection}
+        left={workspace.left}
+        right={workspace.right}
+        onLeftChange={(left) =>
           update({
-            mode: saved.tab,
-            left: saved.left,
-            right: saved.right,
-            dataLeft: saved.dataLeft,
-            dataRight: saved.dataRight,
-            draft: null,
-            draftBase: null,
+            left,
+            ...(left.objectType !== workspace.right.objectType ||
+            left.objectName !== workspace.left.objectName
+              ? {
+                  right: {
+                    ...workspace.right,
+                    objectType: left.objectType,
+                    objectName: null,
+                    objectOid: null,
+                  },
+                  draft: null,
+                  draftBase: null,
+                }
+              : {}),
           })
         }
+        onRightChange={(right) => update({ right, draft: null, draftBase: null })}
+        draft={workspace.draft}
+        draftBase={workspace.draftBase ?? null}
+        onDraftChange={(draft, baseline) =>
+          update({ draft, draftBase: workspace.draftBase ?? baseline })
+        }
+        onApplied={() => update({ draft: null, draftBase: null })}
+        onlyDifferences={workspace.onlyDifferences}
+        onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
       />
-      {mode === "data" ? (
-        <>
-          <div className="grid grid-cols-2 gap-3 p-4">
-            <DataCompareSidePicker
-              title="Links"
-              value={dataLeft}
-              onChange={(dataLeft) => update({ dataLeft })}
-            />
-            <DataCompareSidePicker
-              title="Rechts"
-              value={dataRight}
-              onChange={(dataRight) => update({ dataRight })}
-            />
-          </div>
-          <DataCompareView
-            key={JSON.stringify([id, dataLeft, dataRight])}
-            left={dataLeft}
-            right={dataRight}
-          />
-        </>
-      ) : (
-        <DefinitionCompareView
-          key={id}
-          mode="definitions"
-          sourceConnection={connection}
-          left={workspace.left}
-          right={workspace.right}
-          onLeftChange={(left) =>
-            update({
-              left,
-              ...(left.objectType !== workspace.right.objectType ||
-              left.objectName !== workspace.left.objectName
-                ? {
-                    right: {
-                      ...workspace.right,
-                      objectType: left.objectType,
-                      objectName: null,
-                      objectOid: null,
-                    },
-                    draft: null,
-                    draftBase: null,
-                  }
-                : {}),
-            })
-          }
-          onRightChange={(right) => update({ right, draft: null, draftBase: null })}
-          draft={workspace.draft}
-          draftBase={workspace.draftBase ?? null}
-          onDraftChange={(draft, baseline) =>
-            update({ draft, draftBase: workspace.draftBase ?? baseline })
-          }
-          onApplied={() => update({ draft: null, draftBase: null })}
-          onlyDifferences={workspace.onlyDifferences}
-          onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
-        />
-      )}
     </div>
   );
 }
