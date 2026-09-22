@@ -11,7 +11,6 @@ import type { QueryWorkspaceState } from "./types";
 interface ToolbarViewControlsProps {
   workspace: QueryWorkspaceState;
   isSql: boolean;
-  explain: boolean;
   analysisOpen: boolean;
   onOpenAnalysis: () => void;
   editorFocus: boolean;
@@ -22,7 +21,6 @@ interface ToolbarViewControlsProps {
 export function ToolbarViewControls({
   workspace,
   isSql,
-  explain,
   analysisOpen,
   onOpenAnalysis,
   editorFocus,
@@ -43,19 +41,17 @@ export function ToolbarViewControls({
           <PanelLeftIcon className="size-3.5" />
         </Button>
       )}
-      {explain && (
-        <Button
-          size="sm"
-          variant={analysisOpen ? "secondary" : "ghost"}
-          className="h-7 gap-1.5 text-xs"
-          aria-pressed={analysisOpen}
-          onClick={onOpenAnalysis}
-          title="Explain und Performance-Test"
-        >
-          <GaugeIcon className="size-3.5" />
-          Analyse
-        </Button>
-      )}
+      <Button
+        size="sm"
+        variant={analysisOpen ? "secondary" : "ghost"}
+        className="h-7 gap-1.5 text-xs"
+        aria-pressed={analysisOpen}
+        onClick={onOpenAnalysis}
+        title="Explain und Performance-Test"
+      >
+        <GaugeIcon className="size-3.5" />
+        Analyse
+      </Button>
       <Button
         size="icon-sm"
         variant="ghost"

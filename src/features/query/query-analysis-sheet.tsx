@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 export interface QueryAnalysisProps {
   section: "plan" | "perf";
   onSectionChange: (section: "plan" | "perf") => void;
+  explainSupported: boolean;
   explainEnabled: boolean;
   onExplain: (analyze: boolean) => void;
   planLoading: boolean;
@@ -28,6 +29,7 @@ export function QueryAnalysisSheet({
   onOpenChange,
   section,
   onSectionChange,
+  explainSupported,
   explainEnabled,
   onExplain,
   planLoading,
@@ -52,7 +54,7 @@ export function QueryAnalysisSheet({
           <Button
             size="sm"
             variant="outline"
-            disabled={!explainEnabled || planLoading}
+            disabled={!explainSupported || !explainEnabled || planLoading}
             onClick={() => onExplain(false)}
             title="Ausführungsplan anzeigen (führt nichts aus)"
           >
@@ -66,7 +68,7 @@ export function QueryAnalysisSheet({
           <Button
             size="sm"
             variant="outline"
-            disabled={!explainEnabled || planLoading}
+            disabled={!explainSupported || !explainEnabled || planLoading}
             onClick={() => onExplain(true)}
             title="Achtung: führt die Query wirklich aus und misst sie; PostgreSQL rollt Änderungen danach zurück"
           >
@@ -115,13 +117,13 @@ export function QueryAnalysisSheet({
                   </Badge>
                 ) : null}
               </AccordionTrigger>
-              <AccordionContent className="pb-2">
+              <AccordionContent className="h-auto pb-2">
                 <div className="flex min-h-0 flex-col gap-2">{plan}</div>
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="perf" className="border-b-0">
               <AccordionTrigger className="py-2.5 text-xs">Performance-Test</AccordionTrigger>
-              <AccordionContent className="pb-2">
+              <AccordionContent className="h-auto pb-2">
                 <div className="flex min-h-0 flex-col gap-2">{perf}</div>
               </AccordionContent>
             </AccordionItem>
