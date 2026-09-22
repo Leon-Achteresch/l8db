@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useActiveConnection } from "@/lib/connections";
 import { masterDetailRelationSql, masterDetailRelations } from "@/lib/master-detail-relations";
 import { useForeignKeysQuery } from "@/lib/queries";
@@ -57,47 +66,52 @@ export function MasterDetailRelationPicker({
     <div className="rounded-lg border bg-muted/20 p-3">
       <div className="mb-2 text-xs font-medium">Beziehung</div>
       <div className="flex items-center gap-2">
-        <select
-          aria-label="FK-/PK-Beziehung"
-          value={relation?.id ?? ""}
+        <Select
+          value={`select:${String(relation?.id ?? "")}`}
           disabled={!relations.length}
-          onChange={(event) => {
-            setChosen(event.target.value);
-            const entry = relations.find((item) => item.id === event.target.value);
+          onValueChange={(encodedValue) => {
+            const selectedValue = encodedValue.slice(7);
+            setChosen(selectedValue);
+            const entry = relations.find((item) => item.id === selectedValue);
             if (entry && connection) onLoad(masterDetailRelationSql(entry, connection.kind));
           }}
-          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
         >
-          {!relations.length && (
-            <option value="">
-              {query.isLoading
-                ? "Beziehungen werden geladen…"
-                : "Keine FK-/PK-Beziehungen gefunden"}
-            </option>
-          )}
-          {(["parent", "child"] as const).map((direction) => (
-            <optgroup
-              key={direction}
-              label={
-                direction === "parent"
-                  ? "FK → Referenzierte PK-/Unique-Tabelle"
-                  : "PK/Unique → Abhängige FK-Tabelle"
-              }
-            >
-              {relations
-                .filter((entry) => entry.direction === direction)
-                .map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.schema}.{entry.table} ·{" "}
-                    {entry.columns
-                      .map((column) => `${column.source} → ${column.target}`)
-                      .join(", ")}{" "}
-                    · {entry.constraint}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
+          <SelectTrigger
+            aria-label="FK-/PK-Beziehung"
+            className="min-w-0 flex-1 rounded-md border bg-background px-2 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {!relations.length && (
+              <SelectItem value="select:">
+                {query.isLoading
+                  ? "Beziehungen werden geladen…"
+                  : "Keine FK-/PK-Beziehungen gefunden"}
+              </SelectItem>
+            )}
+            {(["parent", "child"] as const).map((direction) => (
+              <SelectGroup key={direction}>
+                <SelectLabel>
+                  {direction === "parent"
+                    ? "FK → Referenzierte PK-/Unique-Tabelle"
+                    : "PK/Unique → Abhängige FK-Tabelle"}
+                </SelectLabel>
+                {relations
+                  .filter((entry) => entry.direction === direction)
+                  .map((entry) => (
+                    <SelectItem key={entry.id} value={`select:${String(entry.id)}`}>
+                      {entry.schema}.{entry.table} ·{" "}
+                      {entry.columns
+                        .map((column) => `${column.source} → ${column.target}`)
+                        .join(", ")}{" "}
+                      · {entry.constraint}
+                    </SelectItem>
+                  ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {relation

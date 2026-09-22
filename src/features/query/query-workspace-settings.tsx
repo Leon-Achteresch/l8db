@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { QUERY_WORKSPACE_PRESETS, useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
@@ -69,102 +76,138 @@ export function QueryWorkspaceSettings() {
           </span>
         </span>
       </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+      <div className="flex items-center justify-between gap-4 text-sm">
         Ergebnisansicht
-        <select
-          className={selectClass}
-          value={workspace.resultView}
-          onChange={(e) => workspace.update({ resultView: e.target.value as "table" | "json" })}
+        <Select
+          value={String(workspace.resultView)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ resultView: selectedValue as "table" | "json" });
+          }}
         >
-          <option value="table">Tabelle</option>
-          <option value="json">JSON</option>
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Ergebnisansicht">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="table">Tabelle</SelectItem>
+            <SelectItem value="json">JSON</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Aufteilung
-        <select
-          className={selectClass}
-          value={workspace.layout}
-          onChange={(e) =>
-            workspace.update({ layout: e.target.value as "vertical" | "horizontal" })
-          }
+        <Select
+          value={String(workspace.layout)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ layout: selectedValue as "vertical" | "horizontal" });
+          }}
         >
-          <option value="vertical">Ergebnisse unten</option>
-          <option value="horizontal">Ergebnisse rechts</option>
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Aufteilung">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="vertical">Ergebnisse unten</SelectItem>
+            <SelectItem value="horizontal">Ergebnisse rechts</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Cursor
-        <select
-          className={selectClass}
-          value={workspace.cursorStyle}
-          onChange={(e) =>
-            workspace.update({ cursorStyle: e.target.value as typeof workspace.cursorStyle })
-          }
+        <Select
+          value={String(workspace.cursorStyle)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ cursorStyle: selectedValue as typeof workspace.cursorStyle });
+          }}
         >
-          <option value="line">Linie</option>
-          <option value="block">Block</option>
-          <option value="underline">Unterstrich</option>
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Cursor">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="line">Linie</SelectItem>
+            <SelectItem value="block">Block</SelectItem>
+            <SelectItem value="underline">Unterstrich</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Cursor-Animation
-        <select
-          className={selectClass}
-          value={workspace.cursorBlinking}
-          onChange={(e) =>
+        <Select
+          value={String(workspace.cursorBlinking)}
+          onValueChange={(selectedValue) => {
             workspace.update({
-              cursorBlinking: e.target.value as typeof workspace.cursorBlinking,
-            })
-          }
+              cursorBlinking: selectedValue as typeof workspace.cursorBlinking,
+            });
+          }}
         >
-          <option value="smooth">Sanft</option>
-          <option value="blink">Blinkend</option>
-          <option value="solid">Keine</option>
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Cursor-Animation">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="smooth">Sanft</SelectItem>
+            <SelectItem value="blink">Blinkend</SelectItem>
+            <SelectItem value="solid">Keine</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Schriftgröße der Ergebnisse
-        <select
-          className={selectClass}
-          value={workspace.resultFontSize}
-          onChange={(e) => workspace.update({ resultFontSize: Number(e.target.value) })}
+        <Select
+          value={String(workspace.resultFontSize)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ resultFontSize: Number(selectedValue) });
+          }}
         >
-          {[11, 12, 13, 14, 16].map((size) => (
-            <option key={size} value={size}>
-              {size} px
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Schriftgröße der Ergebnisse">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[11, 12, 13, 14, 16].map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size} px
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Zeilenhöhe der Ergebnisse
-        <select
-          className={selectClass}
-          value={workspace.resultRowHeight}
-          onChange={(e) => workspace.update({ resultRowHeight: Number(e.target.value) })}
+        <Select
+          value={String(workspace.resultRowHeight)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ resultRowHeight: Number(selectedValue) });
+          }}
         >
-          {[26, 29, 34, 40, 48].map((height) => (
-            <option key={height} value={height}>
-              {height} px
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center justify-between gap-4 text-sm">
+          <SelectTrigger className={selectClass} aria-label="Zeilenhöhe der Ergebnisse">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[26, 29, 34, 40, 48].map((height) => (
+              <SelectItem key={height} value={String(height)}>
+                {height} px
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-sm">
         Spaltenbreite der Ergebnisse
-        <select
-          className={selectClass}
-          value={workspace.resultColumnWidth}
-          onChange={(e) => workspace.update({ resultColumnWidth: Number(e.target.value) })}
+        <Select
+          value={String(workspace.resultColumnWidth)}
+          onValueChange={(selectedValue) => {
+            workspace.update({ resultColumnWidth: Number(selectedValue) });
+          }}
         >
-          {[100, 150, 200, 280, 360, 480].map((width) => (
-            <option key={width} value={width}>
-              {width} px
-            </option>
-          ))}
-        </select>
-      </label>
+          <SelectTrigger className={selectClass} aria-label="Spaltenbreite der Ergebnisse">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[100, 150, 200, 280, 360, 480].map((width) => (
+              <SelectItem key={width} value={String(width)}>
+                {width} px
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="divide-y">
         {toggles.map(([key, label, description]) => (
           <label key={key} className="flex cursor-pointer items-center justify-between gap-6 py-3">
@@ -182,20 +225,24 @@ export function QueryWorkspaceSettings() {
       </div>
       <div className="space-y-4 border-t pt-4">
         <h3 className="font-semibold">Ausführung</h3>
-        <label className="flex items-center justify-between gap-4 text-sm">
+        <div className="flex items-center justify-between gap-4 text-sm">
           Standard für Ausführen
-          <select
-            className={selectClass}
-            value={workspace.runTarget}
-            onChange={(e) =>
-              workspace.update({ runTarget: e.target.value as typeof workspace.runTarget })
-            }
+          <Select
+            value={String(workspace.runTarget)}
+            onValueChange={(selectedValue) => {
+              workspace.update({ runTarget: selectedValue as typeof workspace.runTarget });
+            }}
           >
-            <option value="selection-or-all">Auswahl, sonst alles</option>
-            <option value="selection-or-statement">Auswahl, sonst Statement</option>
-            <option value="all">Immer gesamter Editor</option>
-          </select>
-        </label>
+            <SelectTrigger className={selectClass} aria-label="Standard für Ausführen">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="selection-or-all">Auswahl, sonst alles</SelectItem>
+              <SelectItem value="selection-or-statement">Auswahl, sonst Statement</SelectItem>
+              <SelectItem value="all">Immer gesamter Editor</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <label className="flex items-center justify-between gap-4 text-sm">
           Verwaltete Transaktionen
           <Switch

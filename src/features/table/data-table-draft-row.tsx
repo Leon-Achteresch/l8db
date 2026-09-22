@@ -1,5 +1,12 @@
 import type { Column } from "@tanstack/react-table";
 import { useEffect, useRef } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DuplicateFieldMode, DuplicatePrefill } from "@/lib/row-duplicate";
 import { cn } from "@/lib/utils";
 import type { TableRow } from "./data-table-types";
@@ -62,22 +69,28 @@ export function DataTableDraftRow({ columns, fields, disabled, onChange }: DataT
                   {field.isPrimaryKey && (
                     <span className="text-[10px] font-semibold text-primary">PK</span>
                   )}
-                  <select
-                    aria-label={`${column.id} Wertmodus`}
-                    value={field.mode}
+                  <Select
+                    value={String(field.mode)}
                     disabled={disabled}
-                    onChange={(event) =>
+                    onValueChange={(selectedValue) => {
                       onChange({
                         ...fields,
-                        [column.id]: { ...field, mode: event.target.value as DuplicateFieldMode },
-                      })
-                    }
-                    className="h-5 min-w-0 flex-1 rounded border border-input bg-background text-[10px] text-muted-foreground"
+                        [column.id]: { ...field, mode: selectedValue as DuplicateFieldMode },
+                      });
+                    }}
                   >
-                    <option value="value">Wert</option>
-                    <option value="null">NULL</option>
-                    <option value="default">Standard</option>
-                  </select>
+                    <SelectTrigger
+                      aria-label={`${column.id} Wertmodus`}
+                      className="h-5 min-w-0 flex-1 rounded border border-input bg-background text-[10px] text-muted-foreground"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="value">Wert</SelectItem>
+                      <SelectItem value="null">NULL</SelectItem>
+                      <SelectItem value="default">Standard</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             ) : (
