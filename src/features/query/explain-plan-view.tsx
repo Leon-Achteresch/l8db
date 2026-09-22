@@ -23,6 +23,9 @@ import {
   EXPLAIN_EXPORT_HINT,
   serializeExplainPlan,
 } from "@/lib/explain-file";
+import type { Json } from "@/lib/extensions/contracts";
+import { summarizeExplainPlan } from "@/lib/extensions/plan-summary";
+import { useExtensionHost, useExtensionSnapshot } from "@/lib/extensions/react-context";
 
 const PLAN_FILTERS = [{ name: "l8db-Plan", extensions: ["json"] }];
 
@@ -47,6 +50,24 @@ export function ExplainPlanView({
 }: ExplainPlanViewProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const host = useExtensionHost();
+  const planActions = useExtensionSnapshot((manager) => {
+    const enabled = new Set(
+      manager
+        .listExtensions()
+        .filter((item) => item.enabled)
+        .map((item) => item.archive.manifest.id),
+    );
+    return manager.commands
+      .menusFor("explain/toolbar")
+      .filter((item) => enabled.has(item.owner))
+      .map((item) => ({
+        id: item.command,
+        title:
+          manager.commands.list().find((command) => command.id === item.command)?.title ??
+          item.command,
+      }));
+  });
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -83,6 +104,21 @@ export function ExplainPlanView({
         <span className="text-xs font-medium">
           Ausführungsplan{analyzed ? " (ANALYZE – Query wurde ausgeführt)" : ""}
         </span>
+        {planActions.map((action) => (
+          <Button
+            key={action.id}
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() =>
+              void host
+                .executeCommand(action.id, summarizeExplainPlan(plan, analyzed) as unknown as Json)
+                .catch((error) => toast.error(String(error)))
+            }
+          >
+            {action.title}
+          </Button>
+        ))}
         <Button
           variant="ghost"
           size="sm"

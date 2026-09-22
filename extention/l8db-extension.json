@@ -1,0 +1,28 @@
+{
+  "id": "l8db.jev",
+  "name": "Jev Plan-Diagnose",
+  "version": "1.0.0",
+  "description": "Optionale BYOK-Diagnose für EXPLAIN-Pläne mit TypeSafe Jev. Überträgt nur freigegebene Strukturmerkmale.",
+  "publisher": "l8db",
+  "engines": { "l8db": ">=0.6.0 <1.0.0", "api": "^1.1.0" },
+  "main": "dist/extension.js",
+  "activationEvents": [
+    "onCommand:jev.analyze",
+    "onCommand:jev.configure",
+    "onCommand:jev.removeKey"
+  ],
+  "permissions": ["network", "filesystem:extension-storage"],
+  "capabilities": { "network": { "hosts": ["api.typesafe.ai"] } },
+  "contributes": {
+    "commands": [
+      { "id": "jev.analyze", "title": "Mit Jev prüfen" },
+      { "id": "jev.configure", "title": "Jev: API-Schlüssel einrichten" },
+      { "id": "jev.removeKey", "title": "Jev: API-Schlüssel löschen" }
+    ],
+    "menus": [
+      { "command": "jev.analyze", "location": "explain/toolbar" },
+      { "command": "jev.configure", "location": "palette" },
+      { "command": "jev.removeKey", "location": "palette" }
+    ]
+  }
+}
