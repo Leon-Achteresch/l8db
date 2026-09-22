@@ -28,7 +28,9 @@ export function MessageDialog({
                 : "Hinweis"}
           </DialogTitle>
         </DialogHeader>
-        <p className="text-sm">{prompt.message}</p>
+        <p className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-sm">
+          {prompt.message}
+        </p>
         <DialogFooter>
           {actions.length === 0 ? (
             <Button onClick={() => resolve(prompt.promptId, undefined as never)}>OK</Button>

@@ -53,7 +53,7 @@ export function validateManifest(value: unknown): ExtensionManifest {
     if (statusBar !== undefined && (!Array.isArray(statusBar) || statusBar.length > 20 || !statusBar.every(s => object(s) && string(s.id) && commandPattern.test(s.id) && (s.alignment === undefined || s.alignment === "left" || s.alignment === "right") && (s.priority === undefined || (typeof s.priority === "number" && Number.isFinite(s.priority)))))) fail("Invalid statusBar");
     if (Array.isArray(statusBar) && new Set(statusBar.map(s => (s as { id: string }).id)).size !== statusBar.length) fail("Duplicate manifest statusBar item");
     const menus = value.contributes.menus;
-    const menuLocations = ["palette", "view/title", "view/item", "statusBar"];
+    const menuLocations = ["palette", "view/title", "view/item", "statusBar", "explain/toolbar"];
     if (menus !== undefined && (!Array.isArray(menus) || menus.length > 100 || !menus.every(m => object(m) && string(m.command) && commandPattern.test(m.command) && menuLocations.includes(String(m.location)) && (m.view === undefined || (string(m.view) && commandPattern.test(m.view))) && (m.group === undefined || string(m.group))))) fail("Invalid menus");
   }
   if (value.capabilities !== undefined) {
