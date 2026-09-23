@@ -119,30 +119,15 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
           dismiss();
         }
       }}
-      className="fixed right-4 bottom-11 z-40 overflow-y-auto rounded-2xl border border-border bg-card text-card-foreground shadow-2xl shadow-black/20"
+      className="fixed right-4 bottom-11 z-40 overflow-x-hidden overflow-y-auto rounded-[24px] border border-border/70 bg-card text-card-foreground shadow-xl shadow-foreground/10"
       style={{
         width: expanded
           ? "min(720px, calc(100vw - 32px), calc((100dvh - 280px) * 16 / 9))"
-          : "min(360px, calc(100vw - 32px))",
+          : "min(380px, calc(100vw - 32px))",
         maxHeight: "calc(100dvh - 60px)",
         visibility: suspended ? "hidden" : "visible",
       }}
     >
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="size-1.5 rounded-full bg-primary" />
-          <span className="font-medium">Neu in l8db</span>
-          <span className="text-muted-foreground">{item.releaseVersion}</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={dismiss}
-          aria-label="Feature-Video schließen"
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
       <div className="relative aspect-video bg-muted">
         {preview ? (
           <img src={item.poster} alt={item.title} className="h-full w-full object-contain" />
@@ -195,6 +180,15 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
             }}
           />
         )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={dismiss}
+          aria-label="Feature-Video schließen"
+          className="absolute top-3 right-3 z-10 size-8 rounded-full bg-foreground/75 text-background shadow-sm backdrop-blur-sm hover:bg-foreground/90 focus-visible:ring-ring dark:bg-background/75 dark:text-foreground dark:hover:bg-background/90"
+        >
+          <X className="size-4" />
+        </Button>
         {!preview && (!playing || failed) && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/35">
             {failed ? (
@@ -214,19 +208,26 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
             )}
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 h-0.5 bg-foreground/10">
+        <div className="absolute inset-x-0 bottom-0 h-0.5 bg-background/40">
           <div className="h-full bg-primary" style={{ width: `${progress * 100}%` }} />
         </div>
       </div>
-      <div className="space-y-3 p-4">
+      <div className="px-4 pt-4 pb-3.5">
         <div>
-          <h2 className="text-sm font-semibold tracking-tight">{item.title}</h2>
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-primary" />
+            <span>Neu in l8db</span>
+            <span aria-hidden="true">·</span>
+            <span>{item.releaseVersion}</span>
+          </div>
+          <h2 className="text-[15px] font-semibold leading-snug tracking-tight">{item.title}</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.summary}</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="mt-4 flex items-center gap-1 border-t border-border/60 pt-3">
           <Button
             variant="ghost"
             size="icon-sm"
+            className="rounded-full"
             onClick={toggle}
             disabled={failed || !!preview}
             title={preview ? "Bildvorschau ohne Videowiedergabe" : undefined}
@@ -240,6 +241,7 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
           <Button
             variant="ghost"
             size="icon-sm"
+            className="rounded-full"
             onClick={() => setExpanded((value) => !value)}
             aria-label={expanded ? "Video verkleinern" : "Video vergrößern"}
           >
@@ -247,12 +249,16 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
           </Button>
           <div className="flex-1" />
           {ended && next ? (
-            <Button size="sm" variant="secondary" onClick={() => open(next.id, true)}>
+            <Button
+              size="sm"
+              className="h-8 rounded-lg px-2.5 text-xs"
+              onClick={() => open(next.id, true)}
+            >
               Nächstes Feature
               <ArrowRight className="size-3.5" />
             </Button>
           ) : (
-            <Button size="sm" variant="secondary" asChild>
+            <Button size="sm" className="h-8 rounded-lg px-2.5 text-xs" asChild>
               <Link
                 to={failed ? "/release-notes" : to}
                 search={
