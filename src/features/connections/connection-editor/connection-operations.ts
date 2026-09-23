@@ -29,6 +29,7 @@ export interface ConnectionOperationsContext {
   ssl: SslMode;
   readOnly: boolean;
   schemaFilter: string[];
+  showSingleSchemaSwitcher: boolean;
   color: string | null;
   tags: string;
   onSaved: () => void;
@@ -53,6 +54,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     ssl,
     readOnly,
     schemaFilter,
+    showSingleSchemaSwitcher,
     color,
     tags,
     onSaved,
@@ -137,6 +139,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         favorite: connection?.favorite ?? false,
         readOnly: readOnly && configInfo.capabilities.read_only_mode,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
+        showSingleSchemaSwitcher,
         color,
         tags: [
           ...new Set(

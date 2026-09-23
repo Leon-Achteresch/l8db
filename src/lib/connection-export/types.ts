@@ -45,6 +45,7 @@ export interface ExportedConnection {
   favorite: boolean;
   color: string | null;
   schemas: string[] | null;
+  showSingleSchemaSwitcher: boolean;
 }
 
 export interface ConnectionExportFile {

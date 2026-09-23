@@ -92,6 +92,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
     schemas: Array.isArray(value.schemas)
       ? value.schemas.filter((entry): entry is string => typeof entry === "string" && entry !== "")
       : null,
+    showSingleSchemaSwitcher: value.showSingleSchemaSwitcher !== false,
   };
 }
 

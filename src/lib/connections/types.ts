@@ -64,6 +64,7 @@ export interface SavedConnection {
   readOnly?: boolean;
   proxyUser?: string | null;
   schemas?: string[] | null;
+  showSingleSchemaSwitcher?: boolean;
 }
 
 export function sortConnectionsByName(connections: SavedConnection[]): SavedConnection[] {
