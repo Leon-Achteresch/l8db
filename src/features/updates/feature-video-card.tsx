@@ -11,9 +11,10 @@ interface Props {
   item: FeatureVideo;
   suspended: boolean;
   next: FeatureVideo | undefined;
+  preview?: { onClose: () => void };
 }
 
-export function FeatureVideoCard({ item, suspended, next }: Props) {
+export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
   const reduce = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLElement>(null);
@@ -31,6 +32,10 @@ export function FeatureVideoCard({ item, suspended, next }: Props) {
   const close = useFeatureVideoStore((s) => s.close);
   const open = useFeatureVideoStore((s) => s.open);
   const dismiss = () => {
+    if (preview) {
+      preview.onClose();
+      return;
+    }
     mark(item.id, "dismissed");
     close();
   };
@@ -139,54 +144,58 @@ export function FeatureVideoCard({ item, suspended, next }: Props) {
         </Button>
       </div>
       <div className="relative aspect-video bg-muted">
-        <video
-          ref={videoRef}
-          className="h-full w-full object-contain"
-          muted
-          playsInline
-          preload="none"
-          poster={item.poster}
-          aria-label={item.title}
-          onPlaying={() => {
-            if (suspended) {
-              videoRef.current?.pause();
-              return;
-            }
-            setPlaying(true);
-            if (!offered.current) {
-              offered.current = true;
-              mark(item.id, "offered");
-            }
-          }}
-          onPause={() => setPlaying(false)}
-          onEnded={() => {
-            setEnded(true);
-            setWantsPlay(false);
-            setPlaying(false);
-            mark(item.id, "seen");
-          }}
-          onTimeUpdate={() => {
-            const video = videoRef.current;
-            if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
-            const fraction = video.currentTime / video.duration;
-            setProgress(fraction);
-            if (!suspended && fraction >= 0.8 && !seen.current) {
-              seen.current = true;
-              mark(item.id, "seen");
-            }
-          }}
-          onError={() => {
-            const video = videoRef.current;
-            if (video && sourceIndex + 1 < sources.current.length) {
-              video.src = sources.current[sourceIndex + 1].url;
-              setSourceIndex((index) => index + 1);
-            } else {
-              setFailed(true);
+        {preview ? (
+          <img src={item.poster} alt={item.title} className="h-full w-full object-contain" />
+        ) : (
+          <video
+            ref={videoRef}
+            className="h-full w-full object-contain"
+            muted
+            playsInline
+            preload="none"
+            poster={item.poster}
+            aria-label={item.title}
+            onPlaying={() => {
+              if (suspended) {
+                videoRef.current?.pause();
+                return;
+              }
+              setPlaying(true);
+              if (!offered.current) {
+                offered.current = true;
+                mark(item.id, "offered");
+              }
+            }}
+            onPause={() => setPlaying(false)}
+            onEnded={() => {
+              setEnded(true);
               setWantsPlay(false);
-            }
-          }}
-        />
-        {(!playing || failed) && (
+              setPlaying(false);
+              mark(item.id, "seen");
+            }}
+            onTimeUpdate={() => {
+              const video = videoRef.current;
+              if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+              const fraction = video.currentTime / video.duration;
+              setProgress(fraction);
+              if (!suspended && fraction >= 0.8 && !seen.current) {
+                seen.current = true;
+                mark(item.id, "seen");
+              }
+            }}
+            onError={() => {
+              const video = videoRef.current;
+              if (video && sourceIndex + 1 < sources.current.length) {
+                video.src = sources.current[sourceIndex + 1].url;
+                setSourceIndex((index) => index + 1);
+              } else {
+                setFailed(true);
+                setWantsPlay(false);
+              }
+            }}
+          />
+        )}
+        {!preview && (!playing || failed) && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/35">
             {failed ? (
               <p role="status" className="max-w-64 rounded-lg bg-card p-3 text-center text-xs">
@@ -219,7 +228,8 @@ export function FeatureVideoCard({ item, suspended, next }: Props) {
             variant="ghost"
             size="icon-sm"
             onClick={toggle}
-            disabled={failed}
+            disabled={failed || !!preview}
+            title={preview ? "Bildvorschau ohne Videowiedergabe" : undefined}
             aria-label={playing ? "Video pausieren" : "Video abspielen"}
           >
             {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
@@ -254,7 +264,7 @@ export function FeatureVideoCard({ item, suspended, next }: Props) {
                         ? { tab: "general" }
                         : {}
                 }
-                onClick={close}
+                onClick={preview ? preview.onClose : close}
               >
                 {failed ? "Release Notes" : "Feature öffnen"}
                 <ArrowRight className="size-3.5" />
