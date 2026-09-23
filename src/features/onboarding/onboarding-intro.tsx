@@ -92,7 +92,7 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
           src="/logo.png"
           alt=""
           draggable={false}
-          className="size-28 rounded-full shadow-[0_0_90px_rgb(99_102_241/0.65)]"
+          className="size-28 rounded-[22%] shadow-[0_0_90px_rgb(99_102_241/0.65)]"
           initial={{ opacity: 0, scale: 1.9, filter: "blur(28px)" }}
           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
           transition={{ duration: 1.7, delay: 1.4, ease: EASE_OUT }}

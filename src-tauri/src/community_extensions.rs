@@ -281,7 +281,7 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             installed.grants =
                 serde_json::from_value(value["grants"].clone()).map_err(|e| e.to_string())?;
             if installed.grants.iter().any(|p| {
-                !["database:read", "filesystem:extension-storage"].contains(&p.as_str())
+                !["database:read", "filesystem:extension-storage", "network"].contains(&p.as_str())
                     || !installed.archive["manifest"]["permissions"]
                         .as_array()
                         .is_some_and(|permissions| permissions.contains(&json!(p)))

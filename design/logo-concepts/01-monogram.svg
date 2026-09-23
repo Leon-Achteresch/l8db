@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="l8db Monogramm">
+  <rect width="512" height="512" rx="112" fill="#151A22"/>
+  <path d="M151 144v191c0 25 15 38 40 38h20" fill="none" stroke="#F6F4EF" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M306 256c-34 0-58-22-58-53s24-53 58-53 58 22 58 53-24 53-58 53Zm0 0c-38 0-64 24-64 58s26 58 64 58 64-24 64-58-26-58-64-58Z" fill="none" stroke="#F6F4EF" stroke-width="33" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

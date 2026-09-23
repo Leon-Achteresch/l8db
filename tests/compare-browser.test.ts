@@ -87,10 +87,19 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
           .getByRole("menuitemcheckbox", { name: "Nur Unterschiede" })
           .getAttribute("aria-checked"),
       ).toBe("true");
-      await page.keyboard.press("Escape");
+      await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).press("Escape");
+      await page
+        .getByRole("menuitemcheckbox", { name: "Nur Unterschiede" })
+        .waitFor({ state: "hidden" });
       await page.locator(".editor.modified .view-lines").click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.type("SELECT 'Entwurf bleibt';");
+      await page.waitForFunction(() =>
+        document
+          .querySelector(".editor.modified .view-lines")
+          ?.textContent?.replace(/\s/g, " ")
+          .includes("Entwurf bleibt"),
+      );
       await page.getByRole("button", { name: "Neuer Vergleich", exact: true }).last().click();
       await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
       await page.waitForFunction(() =>

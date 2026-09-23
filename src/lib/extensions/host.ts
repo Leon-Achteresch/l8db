@@ -37,6 +37,7 @@ async function runFetch(url: string, options: FetchOptions) {
       method: options.method ?? "GET",
       headers: options.headers,
       body: options.body,
+      redirect: "error",
       signal: controller.signal,
     });
     const headers: Record<string, string> = {};

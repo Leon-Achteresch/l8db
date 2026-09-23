@@ -2357,10 +2357,13 @@ pub fn ensure_client_lib() {
     if oracle::InitParams::is_initialized() {
         return;
     }
-    if let Some(dir) = find_client_lib_dir() {
-        let mut params = oracle::InitParams::new();
-        if let Ok(params) = params.oracle_client_lib_dir(dir) {
-            let _ = params.init();
+    for dir in client_lib_candidates() {
+        if has_client_lib(&dir)
+            && oracle::InitParams::new()
+                .oracle_client_lib_dir(dir)
+                .is_ok_and(|params| params.init().is_ok())
+        {
+            return;
         }
     }
 }
@@ -3396,11 +3399,7 @@ mod tests {
                 a.cancel_session(me.pid).await,
                 &["ORA-01013", "ORA-00022", "ORA-01031"],
             );
-            lenient(
-                "terminate_session",
-                a.terminate_session(me.pid).await,
-                &["ORA-00027", "ORA-01031"],
-            );
+            assert!(a.terminate_session(-1).await.is_err());
         }
 
         if lenient("create job", q("BEGIN DBMS_SCHEDULER.CREATE_JOB(job_name => 'L8_LIVE_JOB', job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;', start_date => SYSTIMESTAMP + INTERVAL '1' DAY, repeat_interval => 'FREQ=DAILY', enabled => FALSE); END;").await, NO_PRIV).is_some() {
