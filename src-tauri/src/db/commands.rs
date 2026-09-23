@@ -1401,6 +1401,25 @@ pub async fn alter_sequence(
 }
 
 #[tauri::command]
+pub async fn table_comment(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Option<String>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .table_comment(&schema, &table)
+    .await
+}
+
+#[tauri::command]
 pub async fn list_indexes(
     kind: DatabaseKind,
     connection_string: String,

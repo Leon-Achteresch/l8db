@@ -144,6 +144,7 @@ pub fn run() {
             db::commands::list_foreign_keys,
             db::commands::get_er_schema,
             db::commands::list_triggers,
+            db::commands::table_comment,
             db::commands::drop_table,
             db::commands::truncate_table,
             db::commands::list_table_columns_detailed,

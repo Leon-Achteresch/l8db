@@ -3,6 +3,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
 import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
+import { TableCommentBar } from "@/features/table/table-comment-bar";
 import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
@@ -194,6 +195,7 @@ export function TableView(props: TableViewProps) {
           table={table}
         />
       </div>
+      <TableCommentBar schema={schema} table={table} />
 
       <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.query_language === "redis" && (

@@ -448,6 +448,15 @@ impl DatabaseAdapter for ClickhouseAdapter {
             .collect())
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT comment FROM system.tables WHERE database = {} AND name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self.rows(&sql).await?.first().and_then(|r| text_opt(&r[0])))
+    }
+
     async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
         let sql = format!(
             "SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}",

@@ -979,6 +979,22 @@ impl DatabaseAdapter for MssqlAdapter {
             .collect())
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT CAST(ep.value AS NVARCHAR(MAX)) FROM sys.extended_properties ep \
+             JOIN sys.objects o ON o.object_id = ep.major_id JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE ep.class = 1 AND ep.minor_id = 0 AND ep.name = 'MS_Description' AND s.name = {} AND o.name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .first()
+            .map(|r| text(r, 0))
+            .filter(|c| !c.is_empty()))
+    }
+
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let sql = format!(
             "SELECT i.name, i.is_unique, i.is_primary_key, i.type_desc, c.name FROM sys.indexes i \

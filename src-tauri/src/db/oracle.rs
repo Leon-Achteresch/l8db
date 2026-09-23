@@ -2114,6 +2114,20 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(out)
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT comments FROM all_tab_comments WHERE owner = {} AND table_name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .first()
+            .map(|r| s(r, 0))
+            .filter(|c| !c.is_empty()))
+    }
+
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let sql = format!(
             "SELECT i.index_name, i.uniqueness, i.index_type, ic.column_name, (SELECT COUNT(*) FROM all_constraints k WHERE k.owner = i.owner AND k.index_name = i.index_name AND k.constraint_type = 'P') \

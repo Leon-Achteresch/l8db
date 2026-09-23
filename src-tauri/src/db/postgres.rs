@@ -2928,6 +2928,22 @@ impl DatabaseAdapter for PostgresAdapter {
         self.run_ddl(&[sql], true).await
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            conn.query_opt(
+                "SELECT obj_description(c.oid, 'pg_class') FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE n.nspname = $1 AND c.relname = $2",
+                &[&schema, &table],
+            )
+            .await
+            .map_err(map_pg_err)
+            .map(|row| row.and_then(|r| r.get::<_, Option<String>>(0)))
+        })
+        .await
+    }
+
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         self.list_indexes_impl(schema, table).await
     }

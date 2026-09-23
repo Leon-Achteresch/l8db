@@ -776,6 +776,20 @@ impl DatabaseAdapter for MysqlAdapter {
         Ok(out)
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT table_comment FROM information_schema.tables WHERE table_schema = {} AND table_name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .first()
+            .map(|r| cell(r, 0))
+            .filter(|c| !c.is_empty()))
+    }
+
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let sql = format!(
             "SELECT index_name, non_unique, column_name, index_type FROM information_schema.statistics WHERE table_schema = {} AND table_name = {} ORDER BY index_name, seq_in_index",

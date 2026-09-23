@@ -783,6 +783,11 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = changes;
         Err(unsupported("Sequenzen"))
     }
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let _ = schema;
+        let _ = table;
+        Ok(None)
+    }
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let _ = schema;
         let _ = table;
