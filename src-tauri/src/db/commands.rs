@@ -672,6 +672,25 @@ pub async fn get_view_definition(
 }
 
 #[tauri::command]
+pub async fn get_table_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_table_ddl(&schema, &table)
+    .await
+}
+
+#[tauri::command]
 pub async fn update_view_definition(
     kind: DatabaseKind,
     connection_string: String,

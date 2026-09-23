@@ -521,6 +521,18 @@ impl DatabaseAdapter for MysqlAdapter {
             .ok_or_else(|| "View nicht gefunden".to_string())
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        self.rows(&format!(
+            "SHOW CREATE TABLE {}.{}",
+            quote(schema),
+            quote(table)
+        ))
+        .await?
+        .first()
+        .map(|r| format!("{};\n", cell(r, 1)))
+        .ok_or_else(|| "Tabelle nicht gefunden".to_string())
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,

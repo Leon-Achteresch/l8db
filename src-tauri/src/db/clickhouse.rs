@@ -470,6 +470,19 @@ impl DatabaseAdapter for ClickhouseAdapter {
             .ok_or_else(|| "View nicht gefunden".to_string())
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let sql = format!(
+            "SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}",
+            lit(schema),
+            lit(table)
+        );
+        self.rows(&sql)
+            .await?
+            .first()
+            .map(|r| format!("{};\n", text(&r[0])))
+            .ok_or_else(|| "Tabelle nicht gefunden".to_string())
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,

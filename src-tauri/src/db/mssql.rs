@@ -713,6 +713,103 @@ impl DatabaseAdapter for MssqlAdapter {
             .ok_or_else(|| "View-Definition nicht verfügbar".to_string())
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let sql = format!(
+            "SELECT c.name, TYPE_NAME(c.user_type_id), c.max_length, c.precision, c.scale, c.is_nullable, c.is_identity, \
+             CAST(ic.seed_value AS NVARCHAR(40)), CAST(ic.increment_value AS NVARCHAR(40)), dc.definition, cc.definition, cc.is_persisted \
+             FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id JOIN sys.schemas s ON s.schema_id = t.schema_id \
+             LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id \
+             LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id \
+             LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id \
+             WHERE s.name = {} AND t.name = {} ORDER BY c.column_id",
+            lit(schema),
+            lit(table)
+        );
+        let columns = self.rows(&sql).await?;
+        if columns.is_empty() {
+            return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+        }
+        let mut parts: Vec<String> = columns
+            .iter()
+            .map(|r| {
+                let name = quote(&text(r, 0));
+                if let Some(expr) = text_opt(r, 10) {
+                    let persisted = if int(r, 11) == 1 { " PERSISTED" } else { "" };
+                    return format!("{name} AS {expr}{persisted}");
+                }
+                let data_type = text(r, 1);
+                let length = int(r, 2);
+                let size = |n: i64| {
+                    if length == -1 {
+                        "MAX".to_string()
+                    } else {
+                        n.to_string()
+                    }
+                };
+                let data_type = match data_type.as_str() {
+                    "varchar" | "char" | "varbinary" | "binary" => {
+                        format!("{data_type}({})", size(length))
+                    }
+                    "nvarchar" | "nchar" => format!("{data_type}({})", size(length / 2)),
+                    "decimal" | "numeric" => format!("{data_type}({}, {})", int(r, 3), int(r, 4)),
+                    "datetime2" | "time" | "datetimeoffset" => {
+                        format!("{data_type}({})", int(r, 4))
+                    }
+                    _ => data_type,
+                };
+                let mut def = format!("{name} {data_type}");
+                if int(r, 6) == 1 {
+                    def.push_str(&format!(" IDENTITY({}, {})", text(r, 7), text(r, 8)));
+                }
+                def.push_str(if int(r, 5) == 1 { " NULL" } else { " NOT NULL" });
+                if let Some(default) = text_opt(r, 9) {
+                    def.push_str(&format!(" DEFAULT {default}"));
+                }
+                def
+            })
+            .collect();
+        let quote_all =
+            |cols: &[String]| cols.iter().map(|c| quote(c)).collect::<Vec<_>>().join(", ");
+        let constraints = self.list_constraints(schema, table).await?;
+        for c in &constraints {
+            let body = match c.constraint_type.as_str() {
+                "PRIMARY KEY" | "UNIQUE" => {
+                    format!("{} ({})", c.constraint_type, quote_all(&c.columns))
+                }
+                "CHECK" => c.definition.clone(),
+                _ => continue,
+            };
+            parts.push(format!("CONSTRAINT {} {body}", quote(&c.name)));
+        }
+        let fks = self.list_foreign_keys(schema, table).await?;
+        let mut names: Vec<&str> = fks.iter().map(|f| f.constraint_name.as_str()).collect();
+        names.dedup();
+        for name in names {
+            let group: Vec<_> = fks.iter().filter(|f| f.constraint_name == name).collect();
+            let from: Vec<String> = group.iter().map(|f| f.from_column.clone()).collect();
+            let to: Vec<String> = group.iter().map(|f| f.to_column.clone()).collect();
+            parts.push(format!(
+                "CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({})",
+                quote(name),
+                quote_all(&from),
+                Self::object(&group[0].to_schema, &group[0].to_table),
+                quote_all(&to)
+            ));
+        }
+        let mut ddl = format!(
+            "CREATE TABLE {} (\n  {}\n);\n",
+            Self::object(schema, table),
+            parts.join(",\n  ")
+        );
+        for index in self.list_indexes(schema, table).await? {
+            if index.is_primary || constraints.iter().any(|c| c.name == index.name) {
+                continue;
+            }
+            ddl.push_str(&format!("\n{};\n", index.definition));
+        }
+        Ok(ddl)
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,

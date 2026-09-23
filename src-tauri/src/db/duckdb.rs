@@ -373,6 +373,29 @@ impl DatabaseAdapter for DuckdbAdapter {
             .ok_or_else(|| "View nicht gefunden".to_string())
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let table_sql = format!(
+            "SELECT sql FROM duckdb_tables() WHERE schema_name = {} AND table_name = {}",
+            lit(schema),
+            lit(table)
+        );
+        let mut ddl = self
+            .rows(table_sql)
+            .await?
+            .first()
+            .map(|r| format!("{}\n", text(&r[0])))
+            .ok_or_else(|| "Tabelle nicht gefunden".to_string())?;
+        let index_sql = format!(
+            "SELECT sql FROM duckdb_indexes() WHERE schema_name = {} AND table_name = {} AND sql IS NOT NULL ORDER BY index_name",
+            lit(schema),
+            lit(table)
+        );
+        for r in self.rows(index_sql).await? {
+            ddl.push_str(&format!("\n{}\n", text(&r[0])));
+        }
+        Ok(ddl)
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,

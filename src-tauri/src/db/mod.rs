@@ -519,6 +519,11 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = view;
         Err(unsupported("View-Definitionen"))
     }
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Tabellen-Skripte"))
+    }
     async fn update_view_definition(
         &self,
         schema: &str,

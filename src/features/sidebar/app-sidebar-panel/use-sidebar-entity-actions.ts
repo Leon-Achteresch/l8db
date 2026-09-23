@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
-import { dropTable, truncateTable } from "@/lib/db";
+import { dropTable, getTableDdl, truncateTable } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -70,6 +70,23 @@ export function useSidebarEntityActions(type: "table" | "view") {
     navigate({ to: "/query/$id", params: { id } });
   };
 
+  const handleScriptTable = async (itemSchema: string, itemName: string) => {
+    if (!activeConnection) return;
+    try {
+      const ddl = await getTableDdl(
+        activeConnection.kind,
+        effectiveConnectionString(activeConnection),
+        itemSchema,
+        itemName,
+        activeDatabase ?? undefined,
+      );
+      const id = openQueryTabWithSql(ddl);
+      navigate({ to: "/query/$id", params: { id } });
+    } catch (error) {
+      toast.error("CREATE-Skript konnte nicht erstellt werden", { description: String(error) });
+    }
+  };
+
   const toggleFavoriteObject = (itemSchema: string, itemName: string) => {
     if (!activeConnection) return;
     toggleObjectFavorite({
@@ -130,6 +147,7 @@ export function useSidebarEntityActions(type: "table" | "view") {
     activeDatabase,
     handleConfirmAction,
     handleOpenInEditor,
+    handleScriptTable,
     toggleFavoriteObject,
     isFavorite,
     handleFocusInErDiagram,

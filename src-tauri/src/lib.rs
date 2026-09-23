@@ -108,6 +108,7 @@ pub fn run() {
             db::commands::execute_query_with_params,
             db::commands::list_views,
             db::commands::get_view_definition,
+            db::commands::get_table_ddl,
             db::commands::update_view_definition,
             db::commands::begin_transaction,
             db::commands::execute_in_transaction,

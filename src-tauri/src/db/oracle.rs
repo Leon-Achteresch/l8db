@@ -1436,6 +1436,33 @@ impl DatabaseAdapter for OracleAdapter {
         ))
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let mut ddl = self
+            .rows(format!(
+                "SELECT DBMS_METADATA.GET_DDL('TABLE', {}, {}) FROM dual",
+                lit(table),
+                lit(schema)
+            ))
+            .await?
+            .first()
+            .map(|r| format!("{};\n", s(r, 0).trim()))
+            .ok_or_else(|| "Tabelle nicht gefunden".to_string())?;
+        let indexes = self
+            .rows(format!(
+                "SELECT DBMS_METADATA.GET_DDL('INDEX', i.index_name, i.owner) FROM all_indexes i \
+                 WHERE i.table_owner = {} AND i.table_name = {} AND i.index_type <> 'LOB' \
+                 AND NOT EXISTS (SELECT 1 FROM all_constraints c WHERE c.owner = i.table_owner AND c.table_name = i.table_name AND c.index_name = i.index_name) \
+                 ORDER BY i.index_name",
+                lit(schema),
+                lit(table)
+            ))
+            .await?;
+        for r in &indexes {
+            ddl.push_str(&format!("\n{};\n", s(r, 0).trim()));
+        }
+        Ok(ddl)
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,

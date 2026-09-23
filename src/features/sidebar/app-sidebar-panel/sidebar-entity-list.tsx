@@ -69,6 +69,7 @@ export function SidebarEntityList({
     activeDatabase,
     handleConfirmAction,
     handleOpenInEditor,
+    handleScriptTable,
     toggleFavoriteObject,
     isFavorite,
     handleFocusInErDiagram,
@@ -207,6 +208,7 @@ export function SidebarEntityList({
                         isFavorite={isFavorite(item.schema, item.name)}
                         onToggleFavorite={() => toggleFavoriteObject(item.schema, item.name)}
                         onOpenInEditor={() => handleOpenInEditor(item.schema, item.name)}
+                        onScriptTable={() => handleScriptTable(item.schema, item.name)}
                         onCopy={() =>
                           setCopyTarget({
                             schema: item.schema,
