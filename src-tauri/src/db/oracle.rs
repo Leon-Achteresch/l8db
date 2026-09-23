@@ -2357,10 +2357,13 @@ pub fn ensure_client_lib() {
     if oracle::InitParams::is_initialized() {
         return;
     }
-    if let Some(dir) = find_client_lib_dir() {
-        let mut params = oracle::InitParams::new();
-        if let Ok(params) = params.oracle_client_lib_dir(dir) {
-            let _ = params.init();
+    for dir in client_lib_candidates() {
+        if has_client_lib(&dir)
+            && oracle::InitParams::new()
+                .oracle_client_lib_dir(dir)
+                .is_ok_and(|params| params.init().is_ok())
+        {
+            return;
         }
     }
 }

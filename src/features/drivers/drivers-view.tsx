@@ -35,7 +35,6 @@ export function DriversView() {
   };
 
   const handleInstall = async (kind: DatabaseKind, title: string) => {
-    if (!window.confirm(`„${title}" jetzt installieren? Das kann einige Minuten dauern.`)) return;
     setInstalling(kind);
     try {
       const log = await installDriver(kind);
