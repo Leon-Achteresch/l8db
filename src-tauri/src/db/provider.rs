@@ -556,7 +556,7 @@ const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclien
 
 const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p \"$HOME/lib\" /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach /tmp/l8db-ic/ic.dmg && sh /Volumes/instantclient-basic-macos.arm64-*/install_ic.sh && for f in $(ls -td \"$HOME\"/Downloads/instantclient_* | head -1)/*.dylib*; do ln -sf \"$f\" \"$HOME/lib/\"; done && hdiutil detach /Volumes/instantclient-basic-macos.arm64-* && rm -rf /tmp/l8db-ic";
 
-const ORACLE_WINDOWS_INSTALL: &str = r#"powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $d=Join-Path $env:USERPROFILE 'l8db-ic'; New-Item -ItemType Directory -Force $d | Out-Null; $z=Join-Path $d 'ic.zip'; Invoke-WebRequest -UseBasicParsing -Uri 'https://download.oracle.com/otn_software/nt/instantclient/instantclient-basic-windows.zip' -OutFile $z; Expand-Archive -Force $z $env:USERPROFILE; Remove-Item -Recurse -Force $d; if (-not (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' -ErrorAction SilentlyContinue).Installed) { $v=Join-Path $env:TEMP 'vc_redist.x64.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $v; Start-Process -Wait -Verb RunAs $v -ArgumentList '/install','/quiet','/norestart' }; Get-ChildItem $env:USERPROFILE -Directory -Filter 'instantclient_*' | Select-Object -ExpandProperty FullName""#;
+const ORACLE_WINDOWS_INSTALL: &str = r#"powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $d=Join-Path $env:USERPROFILE 'l8db-ic'; New-Item -ItemType Directory -Force $d | Out-Null; $z=Join-Path $d 'ic.zip'; Invoke-WebRequest -UseBasicParsing -Uri 'https://download.oracle.com/otn_software/nt/instantclient/instantclient-basic-windows.zip' -OutFile $z; Expand-Archive -Force $z $d; Copy-Item -Recurse -Force (Join-Path $d 'instantclient_*') $env:USERPROFILE; Remove-Item -Recurse -Force $d; if (-not (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' -ErrorAction SilentlyContinue).Installed) { $v=Join-Path $env:TEMP 'vc_redist.x64.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $v; Start-Process -Wait -Verb RunAs $v -ArgumentList '/install','/quiet','/norestart' }; Get-ChildItem $env:USERPROFILE -Directory -Filter 'instantclient_*' | Select-Object -ExpandProperty FullName""#;
 
 const ORACLE_LINUX_INSTALL: &str = "(sudo apt install -y unzip libaio1t64 || sudo apt install -y unzip libaio1) && ([ -e /usr/lib/x86_64-linux-gnu/libaio.so.1 ] || sudo ln -sf libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1) && sudo mkdir -p /opt/oracle && sudo unzip -o \"$HOME\"/Downloads/instantclient-basic-linux*.zip -x 'META-INF/*' -d /opt/oracle && ls -d /opt/oracle/instantclient_* | sudo tee /etc/ld.so.conf.d/oracle.conf && sudo ldconfig && ldd /opt/oracle/instantclient_*/libclntsh.so | grep -E 'aio|not found'";
 
@@ -744,6 +744,24 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
     }
 }
 
+fn shell(command: &str) -> tokio::process::Command {
+    #[cfg(windows)]
+    {
+        let mut process = tokio::process::Command::new("cmd");
+        process
+            .arg("/C")
+            .raw_arg(command)
+            .creation_flags(0x0800_0000);
+        process
+    }
+    #[cfg(not(windows))]
+    {
+        let mut process = tokio::process::Command::new("sh");
+        process.arg("-c").arg(command);
+        process
+    }
+}
+
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let command = install_command(kind)?;
     if std::env::consts::OS == "macos" && command.contains("brew ") {
@@ -759,16 +777,9 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
             );
         }
     }
-    let (shell, flag) = if std::env::consts::OS == "windows" {
-        ("cmd", "/C")
-    } else {
-        ("sh", "-c")
-    };
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(600),
-        tokio::process::Command::new(shell)
-            .arg(flag)
-            .arg(command)
+        shell(command)
             .stdin(std::process::Stdio::null())
             .env("HOMEBREW_NO_AUTO_UPDATE", "1")
             .env("HOMEBREW_NO_ENV_HINTS", "1")
@@ -899,8 +910,11 @@ mod tests {
             "{cmd}"
         );
         assert!(cmd.contains("instantclient-basic-windows.zip"), "{cmd}");
+        assert!(cmd.contains("Expand-Archive -Force $z $d;"), "{cmd}");
         assert!(
-            cmd.contains("Expand-Archive -Force $z $env:USERPROFILE"),
+            cmd.contains(
+                "Copy-Item -Recurse -Force (Join-Path $d 'instantclient_*') $env:USERPROFILE"
+            ),
             "{cmd}"
         );
         assert!(cmd.contains("vc_redist.x64.exe"), "{cmd}");
@@ -908,6 +922,16 @@ mod tests {
         if std::env::consts::OS == "windows" {
             assert_eq!(install_command(DatabaseKind::Oracle).unwrap(), cmd);
         }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_shell_runs_powershell_script_instead_of_expanding_it() {
+        let output = shell("powershell -NoProfile -Command \"$x='ok'; Write-Output $x\"")
+            .output()
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ok");
     }
 
     #[cfg(target_os = "macos")]
