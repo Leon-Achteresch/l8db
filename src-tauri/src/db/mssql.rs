@@ -798,7 +798,8 @@ impl DatabaseAdapter for MssqlAdapter {
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let sql = format!(
             "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.ORDINAL_POSITION, c.CHARACTER_MAXIMUM_LENGTH, \
-             CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k ON k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND k.TABLE_SCHEMA = tc.TABLE_SCHEMA WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' AND k.TABLE_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_NAME = c.COLUMN_NAME) THEN 1 ELSE 0 END \
+             CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k ON k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND k.TABLE_SCHEMA = tc.TABLE_SCHEMA WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' AND k.TABLE_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_NAME = c.COLUMN_NAME) THEN 1 ELSE 0 END, \
+             (SELECT CAST(ep.value AS NVARCHAR(MAX)) FROM sys.extended_properties ep WHERE ep.class = 1 AND ep.name = 'MS_Description' AND ep.major_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND ep.minor_id = COLUMNPROPERTY(ep.major_id, c.COLUMN_NAME, 'ColumnId')) \
              FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
             lit(schema),
             lit(table)
@@ -815,6 +816,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 ordinal_position: int(r, 4) as i32,
                 character_maximum_length: text_opt(r, 5).and_then(|v| v.parse().ok()),
                 is_primary_key: int(r, 6) == 1,
+                comment: text_opt(r, 7).filter(|c| !c.is_empty()),
             })
             .collect())
     }

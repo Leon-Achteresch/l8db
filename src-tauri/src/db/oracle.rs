@@ -1943,8 +1943,10 @@ impl DatabaseAdapter for OracleAdapter {
         let sql = format!(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
-             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name) \
-             FROM all_tab_columns c WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
+             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
+             cc.comments \
+             FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
+             WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
             lit(schema),
             lit(table)
         );
@@ -1962,6 +1964,7 @@ impl DatabaseAdapter for OracleAdapter {
                     .and_then(|v| v.parse().ok())
                     .filter(|v| *v > 0),
                 is_primary_key: i(r, 6) > 0,
+                comment: s_opt(r, 7).filter(|c| !c.is_empty()),
             })
             .collect())
     }

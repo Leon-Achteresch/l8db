@@ -193,6 +193,7 @@ impl SqliteAdapter {
                 is_primary_key: truthy(&r[5]),
                 ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
                 character_maximum_length: None,
+                comment: None,
             })
             .collect())
     }

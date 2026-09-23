@@ -272,6 +272,7 @@ impl DatabaseAdapter for MongoAdapter {
                 column_default: None,
                 ordinal_position: i as i32 + 1,
                 character_maximum_length: None,
+                comment: None,
             })
             .collect())
     }

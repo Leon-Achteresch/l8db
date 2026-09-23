@@ -237,6 +237,7 @@ impl DatabaseAdapter for DuckdbAdapter {
                 column_default: Some(text(&r[3])).filter(|d| !d.is_empty()),
                 ordinal_position: r[4].as_i64().unwrap_or(0) as i32,
                 character_maximum_length: r[5].as_i64().map(|v| v as i32),
+                comment: None,
                 is_primary_key: truthy(&r[6]),
             })
             .collect())

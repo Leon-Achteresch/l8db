@@ -538,7 +538,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
+        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position, comment FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
         Ok(self
             .rows(&sql)
             .await?
@@ -551,6 +551,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
                 is_primary_key: int(&r[3]) == 1,
                 ordinal_position: int(&r[4]) as i32,
                 character_maximum_length: None,
+                comment: text_opt(&r[5]),
             })
             .collect())
     }

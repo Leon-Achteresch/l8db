@@ -122,6 +122,7 @@ pub struct DetailedColumnInfo {
     pub is_primary_key: bool,
     pub ordinal_position: i32,
     pub character_maximum_length: Option<i32>,
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

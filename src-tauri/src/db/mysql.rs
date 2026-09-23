@@ -610,7 +610,7 @@ impl DatabaseAdapter for MysqlAdapter {
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let sql = format!(
-            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
+            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
             lit(schema),
             lit(table)
         );
@@ -626,6 +626,7 @@ impl DatabaseAdapter for MysqlAdapter {
                 is_primary_key: cell(r, 4) == "PRI",
                 ordinal_position: cell_i64(r, 5) as i32,
                 character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
+                comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
             })
             .collect())
     }

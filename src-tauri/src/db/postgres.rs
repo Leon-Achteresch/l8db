@@ -1958,7 +1958,8 @@ impl DatabaseAdapter for PostgresAdapter {
             let rows = conn.query(
                 "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.ordinal_position, \
                         c.character_maximum_length, \
-                        COALESCE(c.ordinal_position::int2 = ANY (pk.conkey), false) AS is_primary_key \
+                        COALESCE(c.ordinal_position::int2 = ANY (pk.conkey), false) AS is_primary_key, \
+                        col_description(format('%I.%I', c.table_schema, c.table_name)::regclass, c.ordinal_position::int) AS comment \
                  FROM information_schema.columns c \
                  LEFT JOIN LATERAL ( \
                      SELECT con.conkey FROM pg_catalog.pg_constraint con \
@@ -1984,6 +1985,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     is_primary_key: r.get("is_primary_key"),
                     ordinal_position: ordinal,
                     character_maximum_length: r.get("character_maximum_length"),
+                    comment: r.get("comment"),
                 }
             }).collect())
         }).await
