@@ -1,5 +1,5 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
@@ -19,7 +19,11 @@ const settingsRouteApi = getRouteApi("/settings");
 
 export function SettingsView() {
   const { tab: initialTab } = settingsRouteApi.useSearch();
-  const [activeTab, setActiveTab] = useState(initialTab ?? "general");
+  const navigate = useNavigate();
+  const activeTab = initialTab ?? "general";
+  const setActiveTab = (tab: string) => {
+    void navigate({ to: "/settings", search: { tab }, replace: true });
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const settingsSearchHotkey = useResolvedHotkey("settings.search");
 

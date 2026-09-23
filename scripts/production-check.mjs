@@ -15,6 +15,14 @@ assert(
   "Inline scripts must remain hash restricted",
 );
 assert(!/(?:https?:|\*)/.test(csp["script-src"]), "Remote scripts must remain blocked");
+for (const policy of [csp, security.devCsp]) {
+  assert.equal(
+    policy["media-src"],
+    "'self' https://github.com/Leon-Achteresch/l8db/releases/download/ https://release-assets.githubusercontent.com",
+  );
+  assert(!policy["media-src"].includes("*"));
+  assert(policy["img-src"].includes("https://release-assets.githubusercontent.com"));
+}
 assert.equal(csp["object-src"], "'none'");
 assert.equal(csp["base-uri"], "'none'");
 assert.equal(csp["form-action"], "'none'");

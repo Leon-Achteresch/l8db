@@ -273,6 +273,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["update", "version", "upgrade", "aktualisierung", "neu"],
   },
   {
+    id: "feature-videos",
+    tabId: "about",
+    tabLabel: "Über & Updates",
+    title: "Neue Features als Video",
+    description: "Neue Funktionen automatisch stumm zeigen oder Vorstellungen abschalten.",
+    keywords: ["video", "features", "neu", "autoplay", "vorstellung"],
+  },
+  {
     id: "release-notes",
     tabId: "about",
     tabLabel: "Über & Updates",

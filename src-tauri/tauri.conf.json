@@ -33,14 +33,15 @@
         "style-src": "'self'",
         "style-src-elem": "'self' 'unsafe-inline'",
         "style-src-attr": "'unsafe-inline'",
-        "img-src": "'self' data: blob:",
+        "img-src": "'self' data: blob: https://github.com/Leon-Achteresch/l8db/releases/download/ https://release-assets.githubusercontent.com",
         "font-src": "'self' data:",
         "connect-src": "'self' ipc: http: https:",
         "worker-src": "'self' blob:",
         "frame-src": "'self' https://l8db.leon-achteresch.de",
         "object-src": "'none'",
         "base-uri": "'none'",
-        "form-action": "'none'"
+        "form-action": "'none'",
+        "media-src": "'self' https://github.com/Leon-Achteresch/l8db/releases/download/ https://release-assets.githubusercontent.com"
       },
       "devCsp": {
         "default-src": "'self'",
@@ -48,14 +49,15 @@
         "style-src": "'self'",
         "style-src-elem": "'self' 'unsafe-inline'",
         "style-src-attr": "'unsafe-inline'",
-        "img-src": "'self' data: blob:",
+        "img-src": "'self' data: blob: https://github.com/Leon-Achteresch/l8db/releases/download/ https://release-assets.githubusercontent.com",
         "font-src": "'self' data:",
         "connect-src": "'self' ipc: http: https: ws: wss:",
         "worker-src": "'self' blob:",
         "frame-src": "'self' https://l8db.leon-achteresch.de http://localhost:3000",
         "object-src": "'none'",
         "base-uri": "'none'",
-        "form-action": "'none'"
+        "form-action": "'none'",
+        "media-src": "'self' https://github.com/Leon-Achteresch/l8db/releases/download/ https://release-assets.githubusercontent.com"
       },
       "freezePrototype": false,
       "capabilities": [

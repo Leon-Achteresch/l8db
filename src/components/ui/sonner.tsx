@@ -10,6 +10,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       position="bottom-right"
       gap={8}
+      offset={{ bottom: "calc(var(--feature-video-height, 0px) + 44px)", right: "16px" }}
       icons={{
         success: <CheckIcon className="size-4 shrink-0" />,
         info: <InfoIcon className="size-4 shrink-0" />,
