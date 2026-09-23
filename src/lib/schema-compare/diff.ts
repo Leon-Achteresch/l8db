@@ -10,6 +10,7 @@ const CHILD_TYPES = new Set<CatalogObjectType>([
   "trigger",
   "comment",
   "grant",
+  "sequence",
 ]);
 const ATTRIBUTE_TYPES = new Set<CatalogObjectType>(["table", "column", "sequence"]);
 const STATUS_ATTRIBUTES = ["status"];
@@ -37,7 +38,14 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
   organization: "Organisation",
   unlogged: "Unlogged",
   status: "Status",
+  owned_column: "Besitzer-Spalte",
 };
+
+const SETTING_CONTEXT = /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)$/i;
+const TOKEN =
+  /--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|[nN]?[qQ]'(?:\[[\s\S]*?\]|\{[\s\S]*?\}|\([\s\S]*?\)|<[\s\S]*?>|(\S)[\s\S]*?\1)'|[eE]'(?:[^'\\]|\\.|'')*'|'(?:[^']|'')*'/g;
+const SQL_TEXT =
+  /\b(?:select|from|join|into|update|delete|insert|table|view|truncate|call|execute|alter|drop|create|merge|references)\b/i;
 
 function plainIdentifier(name: string, kind: DatabaseKind): boolean {
   return kind === "oracle" ? /^[A-Z][A-Z0-9_$#]*$/.test(name) : /^[a-z_][a-z0-9_$]*$/.test(name);
@@ -51,18 +59,41 @@ export function quoteName(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-export function requalify(sql: string, from: string, to: string, kind: DatabaseKind): string {
-  if (!from || from === to) return sql;
+function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind): string {
   const quotedTo = `${quoteName(to)}.`;
   let out = sql.split(`${quoteName(from)}.`).join(quotedTo);
   if (plainIdentifier(from, kind)) {
     const bareTo = plainIdentifier(to, kind) ? `${to}.` : quotedTo;
     out = out.replace(
       new RegExp(`(^|[^\\w$#."])${escapeRegExp(from)}\\.`, "gi"),
-      (_match, before: string) => `${before}${bareTo}`,
+      (match, before: string, offset: number, text: string) =>
+        kind === "postgres" &&
+        SETTING_CONTEXT.test(text.slice(Math.max(0, offset - 40), offset + before.length))
+          ? match
+          : `${before}${bareTo}`,
     );
   }
   return out;
+}
+
+export function requalify(sql: string, from: string, to: string, kind: DatabaseKind): string {
+  if (!from || from === to) return sql;
+  let out = "";
+  let code = 0;
+  for (const match of sql.matchAll(TOKEN)) {
+    const token = match[0];
+    if (!token.endsWith("'") || /^(?:--|\/\*|")/.test(token)) continue;
+    const start = match.index ?? 0;
+    const end = start + token.length;
+    const rewrite =
+      SQL_TEXT.test(token) ||
+      /^\s*::\s*reg/i.test(sql.slice(end, end + 12)) ||
+      /\bto_reg\w*\s*\(\s*$/i.test(sql.slice(Math.max(0, start - 30), start));
+    out += requalifyCode(sql.slice(code, start), from, to, kind);
+    out += rewrite ? requalifyCode(token, from, to, kind) : token;
+    code = end;
+  }
+  return out + requalifyCode(sql.slice(code), from, to, kind);
 }
 
 function requalifyObject(

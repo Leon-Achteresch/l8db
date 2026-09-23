@@ -30,6 +30,8 @@ const VIEW_TYPES = new Set<CatalogObjectType>(["view", "materialized_view"]);
 
 const DROP_PHASE: Partial<Record<CatalogObjectType, number>> = {
   trigger: 0,
+  comment: 0.5,
+  grant: 0.5,
   view: 2,
   materialized_view: 2,
   package_body: 3,
@@ -44,8 +46,6 @@ const DROP_PHASE: Partial<Record<CatalogObjectType, number>> = {
   table: 6,
   sequence: 7,
   type: 7.5,
-  comment: 24,
-  grant: 25,
 };
 
 const CREATE_PHASE: Partial<Record<CatalogObjectType, number>> = {
@@ -73,6 +73,12 @@ const FK_DROP_PHASE = 1;
 const FK_CREATE_PHASE = 16;
 const POSTGRES_ROUTINE_PHASE = 11.5;
 const POSTGRES_ROUTINE_DROP_PHASE = 6.5;
+const SEQUENCE_OWNER_PHASE = 13.5;
+const SORTED_TYPES = new Set<CatalogObjectType>(["view", "materialized_view", "type"]);
+
+function routineHeader(ddl: string): string {
+  return ddl.split(/\n(?:AS |BEGIN ATOMIC|RETURN )/)[0];
+}
 
 function isForeignKey(object: CatalogObject): boolean {
   return object.object_type === "constraint" && object.attributes.kind === "R";
@@ -129,6 +135,18 @@ export function buildSyncScript(
   const warnings: string[] = [];
   const seen = new Set<string>();
   let key = "";
+  const relations = (status: DiffItem["status"]) =>
+    result.items.filter(
+      (item) =>
+        selected[item.key] &&
+        item.status === status &&
+        (item.type === "table" || VIEW_TYPES.has(item.type)),
+    );
+  const createdRelations = relations("only_source");
+  const droppedRelations = relations("only_target");
+  const materializedViews = new Set(
+    result.items.filter((item) => item.type === "materialized_view").map((item) => item.name),
+  );
 
   const emit = (
     phase: number,
@@ -181,7 +199,22 @@ export function buildSyncScript(
     let phase = CREATE_PHASE[type] ?? 30;
     if (isForeignKey(object)) phase = FK_CREATE_PHASE;
     if (type === "table" && object.attributes.partition_of) phase += 0.5;
-    if (!oracle && (type === "function" || type === "procedure")) phase = POSTGRES_ROUTINE_PHASE;
+    if (!oracle && (type === "function" || type === "procedure")) {
+      const header = routineHeader(object.ddl);
+      phase = Math.max(
+        POSTGRES_ROUTINE_PHASE,
+        ...createdRelations
+          .filter((item) => mentions(header, item.name))
+          .map((item) => (CREATE_PHASE[item.type] ?? 12) + 0.5),
+      );
+    }
+    if (
+      !oracle &&
+      type === "index" &&
+      /^CREATE UNIQUE INDEX/i.test(object.ddl) &&
+      !materializedViews.has(object.parent ?? "")
+    )
+      phase = FK_CREATE_PHASE - 0.5;
     if (
       type === "table" &&
       object.attributes.organization === "INDEX" &&
@@ -200,8 +233,13 @@ export function buildSyncScript(
       );
     emit(phase, object.ddl, {
       plsql,
-      name: VIEW_TYPES.has(type) ? object.name : undefined,
+      name: SORTED_TYPES.has(type) ? object.name : undefined,
     });
+    if (!oracle && type === "sequence" && object.parent && object.attributes.owned_column)
+      emit(
+        SEQUENCE_OWNER_PHASE,
+        `ALTER SEQUENCE ${qualified(object.name)} OWNED BY ${qualified(object.parent)}.${quoteName(object.attributes.owned_column)}`,
+      );
     if (type === "trigger" && object.attributes.status === "DISABLED")
       emit(phase + 0.1, triggerStatus(object, false));
     const inlineKey = /ORGANIZATION INDEX/i.test(object.ddl);
@@ -213,17 +251,35 @@ export function buildSyncScript(
   const drop = (object: CatalogObject, children: CatalogObject[] = []) => {
     const type = object.object_type;
     let phase = isForeignKey(object) ? FK_DROP_PHASE : (DROP_PHASE[type] ?? 30);
-    if (!oracle && (type === "function" || type === "procedure"))
-      phase = POSTGRES_ROUTINE_DROP_PHASE;
+    if (!oracle && (type === "function" || type === "procedure")) {
+      const header = routineHeader(object.ddl);
+      phase = Math.min(
+        POSTGRES_ROUTINE_DROP_PHASE,
+        ...droppedRelations
+          .filter((item) => mentions(header, item.name))
+          .map((item) => (DROP_PHASE[item.type] ?? 6) - 0.1),
+      );
+    }
     if (type === "table" && object.attributes.partition_of) phase -= 0.5;
     const target = qualified(object.name);
     const parent = qualified(object.parent ?? "");
     switch (type) {
-      case "table":
+      case "table": {
         for (const child of children)
           if (isForeignKey(child) || child.object_type === "trigger") drop(child);
+        const partitions = result.items.filter(
+          (item) =>
+            item.type === "table" &&
+            !selected[item.key] &&
+            mentions(item.target?.attributes.partition_of ?? "", object.name),
+        );
+        if (partitions.length > 0)
+          warnings.push(
+            `${label(object)}: Löschen entfernt auch die nicht ausgewählten Partitionen ${partitions.map((item) => item.name).join(", ")}.`,
+          );
         emit(phase, `DROP TABLE ${target}`, { dangerous: true });
         return;
+      }
       case "column":
         emit(phase, `ALTER TABLE ${parent} DROP COLUMN ${quoteName(object.name)}`, {
           dangerous: true,
@@ -255,7 +311,7 @@ export function buildSyncScript(
         emit(
           phase,
           `DROP ${!oracle && object.attributes.kind === "domain" ? "DOMAIN" : "TYPE"} ${target}`,
-          { dangerous: true },
+          { dangerous: true, name: object.name, body: object.ddl },
         );
         return;
       case "comment":
@@ -272,7 +328,8 @@ export function buildSyncScript(
       default: {
         const keyword =
           type === "materialized_view" ? "MATERIALIZED VIEW" : type.replace("_", " ").toUpperCase();
-        emit(phase, `DROP ${keyword} ${target}`, {
+        const ifExists = !oracle && type === "sequence" && object.parent ? "IF EXISTS " : "";
+        emit(phase, `DROP ${keyword} ${ifExists}${target}`, {
           dangerous: true,
           name: VIEW_TYPES.has(type) ? object.name : undefined,
           body: object.ddl,
@@ -344,6 +401,11 @@ export function buildSyncScript(
     const sequence = qualified(source.name);
     if (clauses.length > 0)
       emit(CREATE_PHASE.sequence ?? 11, `ALTER SEQUENCE ${sequence} ${clauses.join(" ")}`);
+    if (!oracle && changed("owned_column") && source.parent && a.owned_column)
+      emit(
+        SEQUENCE_OWNER_PHASE,
+        `ALTER SEQUENCE ${sequence} OWNED BY ${qualified(source.parent)}.${quoteName(a.owned_column)}`,
+      );
     if (!result.options.ignoreSequenceValues && a.current && changed("current"))
       emit(
         (CREATE_PHASE.sequence ?? 11) + 0.1,
@@ -475,9 +537,14 @@ export function buildSyncScript(
         }
     }
   }
+  if (rebuild.size > 0 && !result.types.includes("grant"))
+    warnings.push(
+      `Views werden neu erstellt (${[...rebuild.keys()].join(", ")}); bestehende Berechtigungen gehen verloren, weil Grants nicht verglichen werden.`,
+    );
   for (const item of rebuild.values()) {
     key = item.key;
-    drop(item.target as CatalogObject);
+    const target = item.target as CatalogObject;
+    drop(target);
     const object = desired(item);
     if (!object) continue;
     const children = result.items
@@ -485,6 +552,11 @@ export function buildSyncScript(
       .map(desired)
       .filter((child): child is CatalogObject => Boolean(child));
     create(object, children);
+    if (!oracle && target.attributes.owner)
+      emit(
+        (CREATE_PHASE.view ?? 17) + 0.1,
+        `ALTER ${item.type === "materialized_view" ? "MATERIALIZED VIEW" : "VIEW"} ${qualified(item.name)} OWNER TO ${quoteName(target.attributes.owner)}`,
+      );
   }
 
   for (const item of result.items) {
@@ -512,9 +584,9 @@ export function buildSyncScript(
   const final: SyncStatement[] = [];
   for (const [phase, group] of phases)
     final.push(
-      ...(phase === CREATE_PHASE.view
+      ...(phase === CREATE_PHASE.view || phase === CREATE_PHASE.type
         ? sortByDependencies(group, dependencies)
-        : phase === DROP_PHASE.view
+        : phase === DROP_PHASE.view || phase === DROP_PHASE.type
           ? sortByDependencies(group, dependencies).reverse()
           : group),
     );

@@ -48,6 +48,23 @@ describe("requalify", () => {
     expect(requalify(sql, "APP", "APP", "oracle")).toBe(sql);
   });
 
+  test("keeps data literals and settings but rewrites sql and regclass literals", () => {
+    const pg = (sql: string) => requalify(sql, "app", "app_test", "postgres");
+    expect(pg("SELECT current_setting('app.tenant_id') FROM app.t")).toBe(
+      "SELECT current_setting('app.tenant_id') FROM app_test.t",
+    );
+    expect(pg("DEFAULT 'https://app.example.com'")).toBe("DEFAULT 'https://app.example.com'");
+    expect(pg(" SET app.tenant_id TO '1'")).toBe(" SET app.tenant_id TO '1'");
+    expect(pg("nextval('app.seq'::regclass)")).toBe("nextval('app_test.seq'::regclass)");
+    expect(pg("EXECUTE 'SELECT 1 FROM app.t'")).toBe("EXECUTE 'SELECT 1 FROM app_test.t'");
+    expect(pg("-- don't\nSELECT 'it''s' FROM app.t")).toBe(
+      "-- don't\nSELECT 'it''s' FROM app_test.t",
+    );
+    expect(
+      requalify("EXECUTE IMMEDIATE q'[DROP TABLE APP.T -- it's]'", "APP", "APP2", "oracle"),
+    ).toBe("EXECUTE IMMEDIATE q'[DROP TABLE APP2.T -- it's]'");
+  });
+
   test("quotes targets that are not plain identifiers", () => {
     expect(requalify("select public.f()", "public", "Kunde A", "postgres")).toBe(
       `select "Kunde A".f()`,
@@ -240,6 +257,66 @@ describe("postgres sync script", () => {
     expect(text).toContain("BEGIN;\nSET LOCAL check_function_bodies = false;");
     expect(text.indexOf("ADD VALUE")).toBeLessThan(text.indexOf("BEGIN;"));
     expect(text.trimEnd().endsWith("COMMIT;")).toBe(true);
+  });
+
+  test("orders types, routines, unique indexes and drops by dependency", () => {
+    const source = [
+      object("table", "a", `CREATE TABLE "s"."a" (\n  "code" text\n)`),
+      object("column", "code", `"code" text`, "a", { type: "text", nullable: "YES" }),
+      object(
+        "index",
+        "a_code_key",
+        "CREATE UNIQUE INDEX a_code_key ON s.a USING btree (code)",
+        "a",
+      ),
+      object("table", "b", `CREATE TABLE "s"."b" (\n  "code" text\n)`),
+      object(
+        "constraint",
+        "b_fk",
+        `ALTER TABLE "s"."b" ADD CONSTRAINT "b_fk" FOREIGN KEY (code) REFERENCES s.a(code)`,
+        "b",
+        { kind: "R", definition: "FOREIGN KEY (code) REFERENCES s.a(code)" },
+      ),
+      object(
+        "function",
+        "all_a()",
+        "CREATE OR REPLACE FUNCTION s.all_a()\n RETURNS SETOF s.a\n LANGUAGE sql\nAS $function$ SELECT * FROM s.a $function$",
+        null,
+        { routine: "all_a", arguments: "" },
+      ),
+      object("type", "a_dom", `CREATE DOMAIN "s"."a_dom" AS s.z_kind`, null, { kind: "domain" }),
+      object("type", "z_kind", `CREATE TYPE "s"."z_kind" AS ENUM ('x')`, null, { kind: "enum" }),
+    ];
+    const created = result("postgres", source, [], "s", "s");
+    const sqls = buildSyncScript(created, defaultSelection(created.items)).statements.map(
+      (statement) => statement.sql,
+    );
+    const at = (prefix: string) => sqls.findIndex((sql) => sql.startsWith(prefix));
+    expect(at(`CREATE TYPE "s"."z_kind"`)).toBeLessThan(at(`CREATE DOMAIN "s"."a_dom"`));
+    expect(at(`CREATE TABLE "s"."a"`)).toBeLessThan(at("CREATE OR REPLACE FUNCTION"));
+    expect(at("CREATE UNIQUE INDEX")).toBeLessThan(at(`ALTER TABLE "s"."b"`));
+    expect(Math.min(...["CREATE TYPE", "CREATE TABLE", "CREATE OR"].map(at))).toBeGreaterThan(-1);
+
+    const target = [
+      object("table", "t", `CREATE TABLE "s"."t" ("old" text)`),
+      object("column", "old", `"old" text`, "t", { type: "text", nullable: "YES" }),
+      object("comment", "t.old", `COMMENT ON COLUMN "s"."t"."old" IS 'x'`, "t"),
+      object("table", "m", `CREATE TABLE "s"."m" ("d" date) PARTITION BY RANGE (d)`),
+      object("table", "m_2024", `CREATE TABLE "s"."m_2024" PARTITION OF s.m`, null, {
+        partition_of: "s.m",
+      }),
+    ];
+    const dropped = result("postgres", [object("table", "t", "")], target, "s", "s");
+    const selection = Object.fromEntries(
+      dropped.items.filter((item) => item.name !== "m_2024").map((item) => [item.key, true]),
+    );
+    const script = buildSyncScript(dropped, selection);
+    expect(script.statements.map((statement) => statement.sql)).toEqual([
+      `COMMENT ON COLUMN "s"."t"."old" IS NULL`,
+      `ALTER TABLE "s"."t" DROP COLUMN "old"`,
+      `DROP TABLE "s"."m"`,
+    ]);
+    expect(script.warnings.some((warning) => warning.includes("m_2024"))).toBe(true);
   });
 
   test("rebuilds dependent views around column type changes", () => {

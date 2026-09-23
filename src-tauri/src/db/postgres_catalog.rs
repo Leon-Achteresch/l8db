@@ -316,7 +316,8 @@ async fn catalog_views(
     let found = rows(
         tx,
         &format!(
-            "SELECT c.relname, c.relkind::text, pg_get_viewdef(c.oid, true), array_to_string(c.reloptions, ', ') \
+            "SELECT c.relname, c.relkind::text, pg_get_viewdef(c.oid, true), array_to_string(c.reloptions, ', '), \
+                    pg_get_userbyid(c.relowner) \
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
              WHERE n.nspname = $1 AND c.relkind IN ('v', 'm') AND {} \
              ORDER BY c.relname",
@@ -330,6 +331,7 @@ async fn catalog_views(
         let kind: String = r.get(1);
         let definition: Option<String> = r.get(2);
         let options: Option<String> = r.get(3);
+        let owner: String = r.get(4);
         let body = definition.unwrap_or_default();
         let body = body.trim().trim_end_matches(';').trim_end();
         if kind == "v" && views {
@@ -341,13 +343,13 @@ async fn catalog_views(
                 "CREATE OR REPLACE VIEW {}{with} AS\n{body}",
                 qualified(schema, &name)
             );
-            out.push(CatalogObject::new("view", name, None, ddl));
+            out.push(CatalogObject::new("view", name, None, ddl).attr("owner", owner));
         } else if kind == "m" && materialized {
             let ddl = format!(
                 "CREATE MATERIALIZED VIEW {} AS\n{body}",
                 qualified(schema, &name)
             );
-            out.push(CatalogObject::new("materialized_view", name, None, ddl));
+            out.push(CatalogObject::new("materialized_view", name, None, ddl).attr("owner", owner));
         }
     }
     Ok(())
@@ -437,11 +439,15 @@ async fn catalog_sequences(
     let found = rows(
         tx,
         "SELECT c.relname, format_type(s.seqtypid, NULL), s.seqstart::text, s.seqincrement::text, s.seqmin::text, \
-                s.seqmax::text, s.seqcache::text, s.seqcycle, ps.last_value::text \
+                s.seqmax::text, s.seqcache::text, s.seqcycle, ps.last_value::text, t.relname, a.attname \
          FROM pg_sequence s \
          JOIN pg_class c ON c.oid = s.seqrelid \
          JOIN pg_namespace n ON n.oid = c.relnamespace \
          LEFT JOIN pg_sequences ps ON ps.schemaname = n.nspname AND ps.sequencename = c.relname \
+         LEFT JOIN pg_depend d ON d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'a' \
+                              AND d.refclassid = 'pg_class'::regclass \
+         LEFT JOIN pg_class t ON t.oid = d.refobjid AND t.relnamespace = n.oid \
+         LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid \
          WHERE n.nspname = $1 AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass \
                                                AND d.objid = c.oid AND d.deptype IN ('i', 'e')) \
          ORDER BY c.relname",
@@ -466,16 +472,22 @@ async fn catalog_sequences(
             "CREATE SEQUENCE {} AS {data_type} INCREMENT BY {increment} MINVALUE {min} MAXVALUE {max} START WITH {start} CACHE {cache} {cycle}",
             qualified(schema, &name)
         );
-        let mut object = CatalogObject::new("sequence", name, None, ddl)
-            .attr("type", data_type)
-            .attr("start", start)
-            .attr("increment", increment)
-            .attr("min", min)
-            .attr("max", max)
-            .attr("cache", cache)
-            .attr("cycle", cycle);
+        let owner: Option<String> = r.get(9);
+        let column: Option<String> = r.get(10);
+        let mut object =
+            CatalogObject::new("sequence", name, owner.filter(|_| column.is_some()), ddl)
+                .attr("type", data_type)
+                .attr("start", start)
+                .attr("increment", increment)
+                .attr("min", min)
+                .attr("max", max)
+                .attr("cache", cache)
+                .attr("cycle", cycle);
         if let Some(current) = current {
             object = object.attr("current", current);
+        }
+        if let (Some(column), Some(_)) = (column, &object.parent) {
+            object = object.attr("owned_column", column);
         }
         out.push(object);
     }
