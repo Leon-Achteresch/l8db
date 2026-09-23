@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -19,6 +19,7 @@ export function PasswordPromptDialog() {
   const resolve = usePasswordPrompt((state) => state.resolve);
   const [password, setPassword] = useState("");
   const [save, setSave] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!connection) return;
@@ -34,7 +35,14 @@ export function PasswordPromptDialog() {
 
   return (
     <Dialog open={connection !== null} onOpenChange={(open) => !open && finish(null)}>
-      <DialogContent className="z-[120] sm:max-w-md" overlayClassName="z-[120]">
+      <DialogContent
+        className="z-[120] sm:max-w-md"
+        overlayClassName="z-[120]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          passwordRef.current?.focus();
+        }}
+      >
         <form
           className="contents"
           onSubmit={(event) => {
@@ -54,10 +62,10 @@ export function PasswordPromptDialog() {
             <div className="grid gap-1.5">
               <Label htmlFor="prompt-password">Passwort</Label>
               <Input
+                ref={passwordRef}
                 id="prompt-password"
                 type="password"
                 autoComplete="current-password"
-                autoFocus
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
@@ -65,8 +73,14 @@ export function PasswordPromptDialog() {
             <div className="flex items-center gap-2">
               <Checkbox
                 id="prompt-save"
+                tabIndex={0}
                 checked={save}
                 onCheckedChange={(value) => setSave(value === true)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  setSave((value) => !value);
+                }}
               />
               <Label htmlFor="prompt-save">Passwort speichern</Label>
             </div>
@@ -75,10 +89,12 @@ export function PasswordPromptDialog() {
             )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => finish(null)}>
+            <Button type="button" tabIndex={0} variant="outline" onClick={() => finish(null)}>
               Abbrechen
             </Button>
-            <Button type="submit">Verbinden</Button>
+            <Button type="submit" tabIndex={0}>
+              Verbinden
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
