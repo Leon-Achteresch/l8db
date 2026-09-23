@@ -12,7 +12,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { sameTableSource } from "@/lib/query-client";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { getTableTransaction } from "@/lib/transactions";
+import { tableReadTransactionId, useTransactionStore } from "@/lib/transactions";
 import { runUntilAbandoned } from "./abandoned-jobs";
 import { sortingToRowSort } from "./schema-queries";
 
@@ -50,6 +50,9 @@ export function useTableRowsQuery(
   const rowLimit = useSettingsStore((s) => s.rowLimit);
   const sort = sortingToRowSort(sorting);
   const queryClient = useQueryClient();
+  const txId = useTransactionStore((state) =>
+    tableReadTransactionId(state.transactions, connection?.id ?? "", database, schema, table),
+  );
   return useQuery({
     queryKey: [
       "rows",
@@ -64,14 +67,16 @@ export function useTableRowsQuery(
       page,
       rowLimit,
       allowRaw,
+      txId,
     ],
-    queryFn: (context) =>
-      runUntilAbandoned(
+    queryFn: (context) => {
+      if (!connection) throw new Error("Keine Verbindung aktiv.");
+      return runUntilAbandoned(
         context,
         (jobId) =>
           fetchTableRows(
-            connection!.kind,
-            effectiveConnectionString(connection!),
+            connection.kind,
+            effectiveConnectionString(connection),
             schema,
             table,
             filter,
@@ -81,11 +86,12 @@ export function useTableRowsQuery(
             sort,
             isView,
             allowRaw,
-            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            txId,
             { jobId },
           ),
         cancelJob,
-      ),
+      );
+    },
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
       if (
@@ -107,6 +113,10 @@ export function useTableRowsQuery(
           "",
           false,
           isView,
+          undefined,
+          undefined,
+          undefined,
+          txId,
         ])
       ) {
         return previousData;
@@ -125,26 +135,31 @@ export function useTableRowCountQuery(
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const txId = useTransactionStore((state) =>
+    tableReadTransactionId(state.transactions, connection?.id ?? "", database, schema, table),
+  );
   return useQuery<RowCount>({
-    queryKey: rowCountKey(connection?.id, database, schema, table, filter, allowRaw),
-    queryFn: (context) =>
-      runUntilAbandoned(
+    queryKey: [...rowCountKey(connection?.id, database, schema, table, filter, allowRaw), txId],
+    queryFn: (context) => {
+      if (!connection) throw new Error("Keine Verbindung aktiv.");
+      return runUntilAbandoned(
         context,
         (jobId) =>
           countTableRowsCapped(
-            connection!.kind,
-            effectiveConnectionString(connection!),
+            connection.kind,
+            effectiveConnectionString(connection),
             schema,
             table,
             ROW_COUNT_CAP,
             filter,
             database ?? undefined,
             allowRaw,
-            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            txId,
             { jobId },
           ),
         cancelJob,
-      ),
+      );
+    },
     enabled: enabled && Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
@@ -159,21 +174,26 @@ export function useExactRowCountMutation(
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
+  const txId = useTransactionStore((state) =>
+    tableReadTransactionId(state.transactions, connection?.id ?? "", database, schema, table),
+  );
   return useMutation({
-    mutationFn: () =>
-      countTableRows(
-        connection!.kind,
-        effectiveConnectionString(connection!),
+    mutationFn: () => {
+      if (!connection) throw new Error("Keine Verbindung aktiv.");
+      return countTableRows(
+        connection.kind,
+        effectiveConnectionString(connection),
         schema,
         table,
         filter,
         database ?? undefined,
         allowRaw,
-        getTableTransaction(connection!.id, database, schema, table)?.txId,
-      ),
+        txId,
+      );
+    },
     onSuccess: (count) =>
       queryClient.setQueryData<RowCount>(
-        rowCountKey(connection?.id, database, schema, table, filter, allowRaw),
+        [...rowCountKey(connection?.id, database, schema, table, filter, allowRaw), txId],
         { count, exact: true, estimate: null },
       ),
   });

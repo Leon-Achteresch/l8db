@@ -1,7 +1,15 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "vite";
 
-const files = ["table-edit", "table-state", "query-workspace", "qol", "compare", "data-compare"];
+const files = [
+  "table-edit",
+  "table-state",
+  "query-workspace",
+  "qol",
+  "compare",
+  "data-compare",
+  "split-transaction",
+];
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
@@ -32,6 +40,7 @@ try {
         L8DB_QUERY_BROWSER_URL: url,
         L8DB_QOL_BROWSER: "1",
         L8DB_COMPARE_BROWSER: "1",
+        L8DB_SPLIT_TRANSACTION_BROWSER_URL: url,
         L8DB_BROWSER_ENGINES: "chromium",
       },
       stdout: "pipe",
