@@ -5,6 +5,7 @@ import { type CompareSideSelection, supportedCompareObjectTypes } from "@/lib/co
 import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
+import { ensurePassword } from "@/lib/password-prompt";
 import { capabilitiesFor } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -161,11 +162,13 @@ export function useCompareSidePicker(
       emit({ ...value, database: databases[0], schema: null, objectName: null, objectOid: null });
   }, [databases, value, emit, connection?.id]);
 
-  const handleConnection = (connectionId: string) => {
-    const picked = usable.find((item) => item.id === connectionId) ?? null;
-    const database = picked
-      ? databaseFromConnectionString(effectiveConnectionString(picked))
-      : null;
+  const handleConnection = async (connectionId: string) => {
+    if (!(await ensurePassword(connectionId))) return;
+    const picked = useConnectionsStore
+      .getState()
+      .connections.find((item) => item.id === connectionId);
+    if (!picked) return;
+    const database = databaseFromConnectionString(effectiveConnectionString(picked));
     const types = supportedCompareObjectTypes(picked);
     const objectType = types.includes(value.objectType) ? value.objectType : (types[0] ?? "table");
     emit({

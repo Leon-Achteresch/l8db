@@ -34,7 +34,7 @@ export function PasswordPromptDialog() {
 
   return (
     <Dialog open={connection !== null} onOpenChange={(open) => !open && finish(null)}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="z-[120] sm:max-w-md" overlayClassName="z-[120]">
         <form
           className="contents"
           onSubmit={(event) => {

@@ -18,6 +18,7 @@ import { providerFor } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas, listTables } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
+import { ensurePassword } from "@/lib/password-prompt";
 import { capabilitiesFor } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
@@ -149,11 +150,13 @@ export function DataCompareSidePicker({
     onChange(lockConnection ? { ...next, connectionId: lockConnection.id } : next);
   };
 
-  const handleConnection = (connectionId: string) => {
-    const picked = usable.find((item) => item.id === connectionId) ?? null;
-    const database = picked
-      ? databaseFromConnectionString(effectiveConnectionString(picked))
-      : null;
+  const handleConnection = async (connectionId: string) => {
+    if (!(await ensurePassword(connectionId))) return;
+    const picked = useConnectionsStore
+      .getState()
+      .connections.find((item) => item.id === connectionId);
+    if (!picked) return;
+    const database = databaseFromConnectionString(effectiveConnectionString(picked));
     emit({ ...EMPTY_DATA_SIDE, connectionId, database });
   };
 
