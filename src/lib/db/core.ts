@@ -90,8 +90,12 @@ export const READ_ONLY_MESSAGE =
 
 let readOnlyResolver: (connectionString?: unknown) => boolean = () => false;
 
-export function registerReadOnlyResolver(resolver: (connectionString?: unknown) => boolean): void {
+export function registerReadOnlyResolver(
+  resolver: (connectionString?: unknown) => boolean,
+): (connectionString?: unknown) => boolean {
+  const previous = readOnlyResolver;
   readOnlyResolver = resolver;
+  return previous;
 }
 
 export function isReadOnlyActive(connectionString?: unknown): boolean {

@@ -4,7 +4,7 @@ import { versioningControl, versioningRun, versioningRunFleet } from "../src/lib
 
 test("versioning mutation entry points preserve explicit and active read-only modes", async () => {
   for (const explicit of [true, false]) {
-    registerReadOnlyResolver(() => !explicit);
+    const previous = registerReadOnlyResolver(() => !explicit);
     try {
       const request = {
         connection: {
@@ -26,7 +26,7 @@ test("versioning mutation entry points preserve explicit and active read-only mo
       ])
         await expect(versioningControl({ ...request, action })).rejects.toThrow("schreibgeschützt");
     } finally {
-      registerReadOnlyResolver(() => false);
+      registerReadOnlyResolver(previous);
     }
   }
 });
