@@ -137,6 +137,7 @@ export async function runSchemaCompare(): Promise<void> {
     set({
       result: {
         ...context,
+        target,
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
         types,

@@ -61,6 +61,7 @@ export function DefinitionDiffEditor({
   modifiedCallback.current = onModifiedChange;
   const syncing = useRef(false);
   statsRef.current = onStats;
+  const readOnlyRef = useRef(readOnly);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -68,8 +69,8 @@ export function DefinitionDiffEditor({
 
     const editor = monaco.editor.createDiffEditor(container, {
       theme: themeFor(resolvedTheme),
-      readOnly: false,
-      renderMarginRevertIcon: true,
+      readOnly: readOnlyRef.current,
+      renderMarginRevertIcon: !readOnlyRef.current,
       originalEditable: false,
       automaticLayout: true,
       renderSideBySide: true,
@@ -120,10 +121,6 @@ export function DefinitionDiffEditor({
     if (models.modified.getValue() !== modified) models.modified.setValue(modified);
     syncing.current = false;
   }, [original, modified]);
-
-  useEffect(() => {
-    diffRef.current?.updateOptions({ readOnly, renderMarginRevertIcon: !readOnly });
-  }, [readOnly]);
 
   useEffect(() => {
     diffRef.current?.updateOptions({

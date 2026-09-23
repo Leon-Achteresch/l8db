@@ -29,6 +29,7 @@ function result(
   const context = { kind, sourceSchema, targetSchema, options: DEFAULT_COMPARE_OPTIONS };
   return {
     ...context,
+    target: { connectionId: null, database: null, schema: targetSchema },
     sourceLabel: sourceSchema,
     targetLabel: targetSchema,
     types: [] as SelectableType[],

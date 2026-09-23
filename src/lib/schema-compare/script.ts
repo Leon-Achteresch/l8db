@@ -412,6 +412,7 @@ export function buildSyncScript(
         oracle
           ? `ALTER SEQUENCE ${sequence} RESTART START WITH ${a.current}`
           : `SELECT setval('${sequence.replace(/'/g, "''")}', ${a.current})`,
+        { dangerous: true },
       );
   };
 

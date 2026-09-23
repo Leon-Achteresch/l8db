@@ -46,6 +46,7 @@ export interface CompareContext {
 }
 
 export interface CompareResult extends CompareContext {
+  target: CompareSide;
   sourceLabel: string;
   targetLabel: string;
   types: SelectableType[];

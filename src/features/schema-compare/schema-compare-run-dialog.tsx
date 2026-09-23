@@ -23,11 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { type RunStep, type RunSummary, runSyncStatements } from "@/lib/schema-compare/run";
 import type { SyncStatement } from "@/lib/schema-compare/script";
-import {
-  prepareConnection,
-  runSchemaCompare,
-  useSchemaCompareStore,
-} from "@/lib/schema-compare/store";
+import { prepareConnection, runSchemaCompare } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +57,7 @@ export function SchemaCompareRunDialog({
   result,
   statements,
 }: SchemaCompareRunDialogProps) {
-  const target = useSchemaCompareStore((state) => state.target);
+  const target = result.target;
   const [steps, setSteps] = useState<RunStep[]>([]);
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<RunSummary | null>(null);

@@ -10,7 +10,6 @@ import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import type { SyncScript } from "@/lib/schema-compare/script";
-import { useSchemaCompareStore } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { useTableTabs } from "@/lib/table-tabs";
 import { SchemaCompareRunDialog } from "./schema-compare-run-dialog";
@@ -22,7 +21,7 @@ interface SchemaCompareScriptProps {
 }
 
 export function SchemaCompareScript({ result, script, text }: SchemaCompareScriptProps) {
-  const target = useSchemaCompareStore((state) => state.target);
+  const target = result.target;
   const active = useActiveConnection();
   const activeDatabase = useActiveDatabase();
   const openQueryTabWithSql = useTableTabs((state) => state.openQueryTabWithSql);
