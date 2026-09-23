@@ -95,9 +95,7 @@ for (const engine of [chromium, webkit]) {
         expect(await draft.getByLabel("email bearbeiten", { exact: true }).inputValue()).toBe(
           "user2@example.test",
         );
-        expect(await draft.getByLabel("id Wertmodus", { exact: true }).textContent()).toBe(
-          "Standard",
-        );
+        expect(await draft.getByLabel("id bearbeiten", { exact: true }).inputValue()).toBe("");
         await draft.getByLabel("email bearbeiten", { exact: true }).fill("conflict@example.test");
         await draft.getByLabel("city bearbeiten", { exact: true }).fill("Leipzig");
         await page.keyboard.press("Enter");
@@ -133,8 +131,6 @@ for (const engine of [chromium, webkit]) {
         await source.click({ button: "right" });
         await page.getByRole("menuitem", { name: "Zeile duplizieren", exact: true }).click();
         await draft.waitFor();
-        await draft.getByLabel("city Wertmodus", { exact: true }).click();
-        await page.getByRole("option", { name: "NULL", exact: true }).click();
         await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
         await draft.waitFor({ state: "detached" });
         expect(await page.evaluate(() => window.testInserts.length)).toBe(2);
@@ -143,14 +139,10 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("menuitem", { name: "Zeile duplizieren", exact: true }).click();
         await draft.waitFor();
         await draft.getByLabel("email bearbeiten", { exact: true }).fill("");
-        await draft.getByLabel("city Wertmodus", { exact: true }).click();
-        await page.getByRole("option", { name: "NULL", exact: true }).click();
+        await draft.getByLabel("city bearbeiten", { exact: true }).fill("");
         await page.getByRole("button", { name: "Speichern", exact: true }).click();
         await draft.waitFor({ state: "detached" });
-        expect(await page.evaluate(() => window.testInserts.at(-1))).toEqual({
-          email: "",
-          city: null,
-        });
+        expect(await page.evaluate(() => window.testInserts.at(-1))).toEqual({});
         expect(errors).toEqual([]);
       } finally {
         await saveBrowserArtifacts(browser, "table-edit");

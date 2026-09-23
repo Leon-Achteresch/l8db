@@ -1,13 +1,6 @@
 import type { Column } from "@tanstack/react-table";
 import { useEffect, useRef } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { DuplicateFieldMode, DuplicatePrefill } from "@/lib/row-duplicate";
+import type { DuplicatePrefill } from "@/lib/row-duplicate";
 import { cn } from "@/lib/utils";
 import type { TableRow } from "./data-table-types";
 
@@ -51,47 +44,26 @@ export function DataTableDraftRow({ columns, fields, disabled, onChange }: DataT
             ) : field ? (
               <div className="flex min-w-0 flex-col gap-1">
                 <input
+                  type="text"
                   aria-label={`${column.id} bearbeiten`}
                   value={field.mode === "value" ? field.value : ""}
-                  placeholder={
-                    field.mode === "default" ? "Standardwert" : field.mode === "null" ? "NULL" : ""
-                  }
+                  placeholder={field.mode === "null" ? "NULL" : "Standardwert"}
                   disabled={disabled}
                   onChange={(event) =>
                     onChange({
                       ...fields,
-                      [column.id]: { ...field, mode: "value", value: event.target.value },
+                      [column.id]: {
+                        ...field,
+                        mode: event.target.value === "" ? "default" : "value",
+                        value: event.target.value,
+                      },
                     })
                   }
-                  className="h-7 w-full min-w-0 rounded border border-input bg-background px-1.5 font-mono text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
+                  className="h-8 w-full min-w-0 rounded border border-input bg-background px-1.5 font-mono text-[13px] outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
                 />
-                <div className="flex min-w-0 items-center gap-1">
-                  {field.isPrimaryKey && (
-                    <span className="text-[10px] font-semibold text-primary">PK</span>
-                  )}
-                  <Select
-                    value={String(field.mode)}
-                    disabled={disabled}
-                    onValueChange={(selectedValue) => {
-                      onChange({
-                        ...fields,
-                        [column.id]: { ...field, mode: selectedValue as DuplicateFieldMode },
-                      });
-                    }}
-                  >
-                    <SelectTrigger
-                      aria-label={`${column.id} Wertmodus`}
-                      className="h-5 min-w-0 flex-1 rounded border border-input bg-background text-[10px] text-muted-foreground"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="value">Wert</SelectItem>
-                      <SelectItem value="null">NULL</SelectItem>
-                      <SelectItem value="default">Standard</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {field.isPrimaryKey && (
+                  <span className="text-[10px] font-semibold text-primary">PK</span>
+                )}
               </div>
             ) : (
               <span className="text-xs text-muted-foreground">Automatisch</span>

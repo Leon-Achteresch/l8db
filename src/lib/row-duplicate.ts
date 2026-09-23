@@ -33,6 +33,30 @@ function isAutoValue(meta: DuplicateColumnMeta | undefined): boolean {
   return meta.column_default !== null && meta.column_default !== undefined;
 }
 
+export function buildEmptyPrefill(
+  columns: string[],
+  columnDetails?: DuplicateColumnMeta[],
+): DuplicatePrefill {
+  const metaByName = new Map<string, DuplicateColumnMeta>();
+  for (const meta of columnDetails ?? []) {
+    metaByName.set(meta.name, meta);
+  }
+
+  const prefill: DuplicatePrefill = {};
+  for (const column of columns) {
+    if (column === CTID_COLUMN) continue;
+    const meta = metaByName.get(column);
+    if (isGenerated(meta)) continue;
+    prefill[column] = {
+      mode: "default",
+      value: "",
+      isPrimaryKey: !!meta?.is_primary_key,
+      cleared: false,
+    };
+  }
+  return prefill;
+}
+
 export function buildDuplicatePrefill(
   columns: string[],
   row: Record<string, unknown>,

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { buildEmptyPrefill } from "@/lib/row-duplicate";
 import type { DataTableProps } from "../data-table-types";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { useCellEditing } from "./use-cell-editing";
@@ -34,6 +35,7 @@ export function useDataTable(props: DataTableProps) {
     columnDetails,
     revealColumn,
     searchRequiresFocus = false,
+    addRowSignal,
   } = props;
   const {
     connection,
@@ -117,6 +119,18 @@ export function useDataTable(props: DataTableProps) {
     commitEditingCell,
     handleCellEdit,
   } = useCellEditing({ onSaveRow, columnNames, emptyEditValue, canEditCell, setActiveCell });
+  const openDraftRef = useRef<() => void>(() => {});
+  openDraftRef.current = () => {
+    setEditingCell(null);
+    setActiveCell(null);
+    setSelectionAnchor(null);
+    setInsertError(null);
+    setDraft(buildEmptyPrefill(columnNames, columnDetails));
+    scrollRef.current?.scrollTo({ top: 0, left: 0 });
+  };
+  useEffect(() => {
+    if (addRowSignal) openDraftRef.current();
+  }, [addRowSignal]);
   useGridScrolling({
     activeCell,
     setActiveCell,

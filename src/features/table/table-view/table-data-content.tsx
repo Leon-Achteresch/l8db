@@ -47,6 +47,7 @@ type Props = Pick<
   | "setRevealColumn"
   | "page"
   | "setPage"
+  | "addRowSignal"
 > & {
   schema: string;
   table: string;
@@ -88,6 +89,7 @@ export function TableDataContent({
   setRevealColumn,
   page,
   setPage,
+  addRowSignal,
   schema,
   table,
   emptyMessage,
@@ -219,6 +221,7 @@ export function TableDataContent({
           columnDetails={columnDetails}
           onRefresh={handleRefresh}
           searchRequiresFocus={inDrawer}
+          addRowSignal={addRowSignal}
         />
       )}
     </div>

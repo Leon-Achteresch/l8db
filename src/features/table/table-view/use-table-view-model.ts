@@ -18,7 +18,6 @@ import {
   useViewsQuery,
 } from "@/lib/queries";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
-import { describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { availableTableDetailTabs, resolveTableDetailTab } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -84,8 +83,7 @@ export function useTableViewModel({
   const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);
   const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
   const [page, setPage] = useTableViewState(stateKey, "page", 0);
-  const [addRowOpen, setAddRowOpen] = useState(false);
-  const [insertError, setInsertError] = useState<string | null>(null);
+  const [addRowSignal, setAddRowSignal] = useState(0);
   const { data, isLoading, isFetching, isError, error, refetch } = useTableRowsQuery(
     schema,
     table,
@@ -157,25 +155,7 @@ export function useTableViewModel({
     setPage(0);
   };
 
-  const handleInsertRow = async (values: Record<string, string | null>) => {
-    try {
-      await insertRowMutation.mutateAsync(values);
-      toast.success("Neue Zeile hinzugefügt.");
-      setInsertError(null);
-      setAddRowOpen(false);
-    } catch (err) {
-      const message = describeInsertError(err);
-      setInsertError(message);
-      toast.error(message);
-    }
-  };
-
-  const handleRowDialogOpenChange = (open: boolean) => {
-    setAddRowOpen(open);
-    if (!open) {
-      setInsertError(null);
-    }
-  };
+  const requestAddRow = () => setAddRowSignal((n) => n + 1);
 
   const handleDeleteRow = async (ctid: string, oldValues: Record<string, unknown>) => {
     try {
@@ -269,8 +249,7 @@ export function useTableViewModel({
     updateRowMutation,
     insertRowMutation,
     handleFilterChange,
-    handleInsertRow,
-    handleRowDialogOpenChange,
+    requestAddRow,
     handleDeleteRow,
     handleRefresh,
     handleNavigateToTable,
@@ -303,9 +282,6 @@ export function useTableViewModel({
     setRevealColumn,
     page,
     setPage,
-    addRowOpen,
-    setAddRowOpen,
-    insertError,
-    setInsertError,
+    addRowSignal,
   };
 }
