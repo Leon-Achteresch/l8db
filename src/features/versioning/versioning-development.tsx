@@ -167,6 +167,14 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
           icon={DatabaseIcon}
           label="Aus Datenbank übernehmen"
           disabled={workspace.busy}
+          trigger={
+            !project.objects.length ? (
+              <Button size="sm" disabled={workspace.busy}>
+                <DatabaseIcon className="size-3.5" />
+                Quellschema aufnehmen
+              </Button>
+            ) : undefined
+          }
         >
           <CompareSidePicker
             title="Quelle auswählen"

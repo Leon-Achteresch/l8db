@@ -20,8 +20,9 @@ import {
   saveTargets,
 } from "./repository";
 import { releaseRisks, requiresMaintenance, validateProductionRelease } from "./safety";
-import { requalify } from "./schema";
+import { assertMappedWriteScope, requalify } from "./schema";
 import { databaseBinding, openVersioningSession, versioningSessionSettings } from "./session";
+import { assertDistinctTarget } from "./targets";
 import type {
   DatabaseRelease,
   DatabaseTarget,
@@ -67,7 +68,9 @@ export function mappedMigration(
   if (!target.schema) return sql;
   if (schemas.length !== 1 || !schemas[0])
     throw new Error("Schema-Zuordnung benötigt genau ein Quellschema pro Release.");
-  return requalify(sql, schemas[0], target.schema);
+  const mapped = requalify(sql, schemas[0], target.schema);
+  assertMappedWriteScope(mapped, target.schema, release.kind);
+  return mapped;
 }
 
 export async function inspectTarget(
@@ -96,6 +99,7 @@ export async function baselineTarget(
   connection: SavedConnection,
   releaseId: string,
   reconcile = false,
+  connections: SavedConnection[] = [connection],
 ) {
   const { store, text } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
@@ -107,6 +111,7 @@ export async function baselineTarget(
   target.ledgerSchema ??= target.schema || release.objects[0]?.object.selection.schema || undefined;
   if (!release.objects.length)
     throw new Error("Eine Baseline benötigt mindestens ein verwaltetes Objekt.");
+  await assertDistinctTarget(target, connection, store.targets, connections, project);
   const shared = await control<PolicyRecord>(connection, project, target, "initialize", {
     policy: initialPolicy(target),
   });
@@ -125,6 +130,8 @@ export async function baselineTarget(
     },
   );
   try {
+    const current = await readTargets(repo, project.id);
+    await assertDistinctTarget(target, connection, current.store.targets, connections, project);
     const actual = await captureObjects(
       connection,
       target.database,
@@ -212,6 +219,16 @@ export async function planDeployment(
       target.ledgerSchema || target.schema || from.objects[0]?.object.selection.schema || undefined,
   };
   const binding = await databaseBinding(connection, target);
+  const registered = (await readTargets(repo, project.id)).store.targets.find(
+    (entry) =>
+      entry.id !== target.id &&
+      entry.binding?.physicalKey &&
+      entry.binding.physicalKey === binding.physicalKey,
+  );
+  if (registered)
+    throw new Error(
+      `${registered.name} verwendet bereits dieselbe Datenbank und dasselbe Schema. Rollout für diesen Alias blockiert.`,
+    );
   if (target.binding && !bindingMatches(target.binding, binding))
     throw new Error(
       "Verbindungsendpunkt, Datenbank oder Oracle-Edition hat sich geändert. Ziel ausdrücklich neu abgleichen.",
