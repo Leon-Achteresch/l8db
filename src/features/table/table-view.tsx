@@ -171,7 +171,7 @@ export function TableView(props: TableViewProps) {
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"
         data-tour="table-toolbar"
       >
-        <TableDetailTabBar tabs={availableTabs} />
+        <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
         <TableToolbarActions
           connection={connection}
           database={database}
