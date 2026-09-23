@@ -184,13 +184,13 @@ export const DataTableCell = memo(function DataTableCell({
         !isSticky && isMatch && "bg-amber-400/15",
         isActiveMatch &&
           cn(
-            "outline outline-2 -outline-offset-2 outline-amber-500 z-20",
-            !isSticky && "bg-amber-400/30",
+            "outline outline-2 -outline-offset-2 outline-amber-500",
+            !isSticky && "z-2 bg-amber-400/30",
           ),
         isActive &&
           cn(
-            "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-            !isSticky && "bg-primary/[0.03]",
+            "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)]",
+            !isSticky && "z-1 bg-primary/[0.03]",
           ),
         !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
       )}
