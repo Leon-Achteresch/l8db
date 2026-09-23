@@ -1,3 +1,4 @@
+import type { AnyRouter } from "@tanstack/react-router";
 import { queryTabLabel } from "@/lib/query-tab-title";
 import type { Tab } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
@@ -70,6 +71,12 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab): unknown {
     });
   }
   return navigate({ to: "/extensions/$name", params: { name: tab.name } });
+}
+
+export function preloadTab(router: AnyRouter, tab: Tab): void {
+  void Promise.resolve(navigateToTab((options) => router.preloadRoute(options), tab)).catch(
+    () => undefined,
+  );
 }
 
 export function tabLabel(tab: Tab): string {

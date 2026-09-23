@@ -9,6 +9,7 @@ import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
+  useExactRowCountMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
   useTableRowCountQuery,
@@ -16,6 +17,7 @@ import {
   useUpdateRowMutation,
   useViewsQuery,
 } from "@/lib/queries";
+import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { describeInsertError } from "@/lib/row-duplicate";
 import { useSettingsStore } from "@/lib/settings";
 import { availableTableDetailTabs, resolveTableDetailTab } from "@/lib/table-detail-tabs";
@@ -100,13 +102,24 @@ export function useTableViewModel({
         : (data?.rows ?? []),
     [data?.rows, caps.query_language],
   );
-  const { data: totalCount } = useTableRowCountQuery(
+  const { data: rowCount } = useTableRowCountQuery(
     schema,
     table,
     filter,
     filterRaw,
     !isView || data !== undefined || isError,
   );
+  const totalCount = exactRowCount(rowCount);
+  const exactCount = useExactRowCountMutation(schema, table, filter, filterRaw);
+  const approximate = approximateRowCount(rowCount);
+  const countLabel = approximate && exactCount.isPending ? `${approximate} (zählt…)` : approximate;
+  const handleExactCount =
+    approximate && !exactCount.isPending
+      ? () =>
+          exactCount.mutate(undefined, {
+            onError: (err) => toast.error(`Zählen fehlgeschlagen: ${String(err)}`),
+          })
+      : undefined;
   useEffect(() => {
     if (totalCount === undefined || isFetching) return;
     const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
@@ -269,6 +282,8 @@ export function useTableViewModel({
     error,
     refetch,
     totalCount,
+    countLabel,
+    handleExactCount,
     columnDetails,
     exporting,
     csvExportOpen,

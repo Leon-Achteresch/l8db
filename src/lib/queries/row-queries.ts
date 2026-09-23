@@ -1,15 +1,40 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useActiveConnection } from "@/lib/connections";
-import { countTableRows, fetchTableRows } from "@/lib/db";
+import {
+  cancelExecution,
+  countTableRows,
+  countTableRowsCapped,
+  fetchTableRows,
+  type RowCount,
+} from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { sameTableSource } from "@/lib/query-client";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getTableTransaction } from "@/lib/transactions";
+import { runUntilAbandoned } from "./abandoned-jobs";
 import { sortingToRowSort } from "./schema-queries";
 
 export const PAGE_SIZE = 100;
+
+export const ROW_COUNT_CAP = 100_000;
+
+function cancelJob(jobId: string) {
+  void cancelExecution(jobId).catch(() => undefined);
+}
+
+function rowCountKey(
+  connectionId: string | undefined,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+  filter: string | undefined,
+  allowRaw: boolean,
+) {
+  const where = filter?.trim() ? filter : "";
+  return ["count", connectionId, database, schema, table, where, where ? allowRaw : true];
+}
 
 export function useTableRowsQuery(
   schema: string,
@@ -40,20 +65,26 @@ export function useTableRowsQuery(
       rowLimit,
       allowRaw,
     ],
-    queryFn: () =>
-      fetchTableRows(
-        connection!.kind,
-        effectiveConnectionString(connection!),
-        schema,
-        table,
-        filter,
-        rowLimit,
-        page * rowLimit,
-        database ?? undefined,
-        sort,
-        isView,
-        allowRaw,
-        getTableTransaction(connection!.id, database, schema, table)?.txId,
+    queryFn: (context) =>
+      runUntilAbandoned(
+        context,
+        (jobId) =>
+          fetchTableRows(
+            connection!.kind,
+            effectiveConnectionString(connection!),
+            schema,
+            table,
+            filter,
+            rowLimit,
+            page * rowLimit,
+            database ?? undefined,
+            sort,
+            isView,
+            allowRaw,
+            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            { jobId },
+          ),
+        cancelJob,
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     placeholderData: (previousData, previousQuery) => {
@@ -94,9 +125,42 @@ export function useTableRowCountQuery(
 ) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  return useQuery({
-    queryKey: ["count", connection?.id, database, schema, table, filter ?? "", allowRaw],
-    queryFn: () =>
+  return useQuery<RowCount>({
+    queryKey: rowCountKey(connection?.id, database, schema, table, filter, allowRaw),
+    queryFn: (context) =>
+      runUntilAbandoned(
+        context,
+        (jobId) =>
+          countTableRowsCapped(
+            connection!.kind,
+            effectiveConnectionString(connection!),
+            schema,
+            table,
+            ROW_COUNT_CAP,
+            filter,
+            database ?? undefined,
+            allowRaw,
+            getTableTransaction(connection!.id, database, schema, table)?.txId,
+            { jobId },
+          ),
+        cancelJob,
+      ),
+    enabled: enabled && Boolean(connection) && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useExactRowCountMutation(
+  schema: string,
+  table: string,
+  filter?: string,
+  allowRaw = true,
+) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
       countTableRows(
         connection!.kind,
         effectiveConnectionString(connection!),
@@ -107,7 +171,10 @@ export function useTableRowCountQuery(
         allowRaw,
         getTableTransaction(connection!.id, database, schema, table)?.txId,
       ),
-    enabled: enabled && Boolean(connection) && Boolean(schema) && Boolean(table),
-    staleTime: 5 * 60 * 1000,
+    onSuccess: (count) =>
+      queryClient.setQueryData<RowCount>(
+        rowCountKey(connection?.id, database, schema, table, filter, allowRaw),
+        { count, exact: true, estimate: null },
+      ),
   });
 }

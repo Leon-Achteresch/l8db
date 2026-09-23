@@ -295,6 +295,7 @@ test("network.fetch enforces the host allowlist", async () => {
   expect(await rpc("network.fetch", ["https://sub.example.org/x"])).toBeDefined();
   await expect(rpc("network.fetch", ["https://evil.com/"])).rejects.toThrow(ExtensionError);
   await expect(rpc("network.fetch", ["ftp://example.com/"])).rejects.toThrow(ExtensionError);
+  await expect(rpc("network.fetch", ["http://example.com/"])).rejects.toThrow(ExtensionError);
 });
 test("secrets, clipboard, files and processes are permission gated", async () => {
   const { manager, runtime, clipboard, files, processes } = setup();

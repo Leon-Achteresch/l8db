@@ -25,6 +25,8 @@ export function DataTable(props: DataTableProps) {
     cellEditorKind,
     page = 0,
     totalCount,
+    countLabel,
+    onExactCount,
     pageSize = 100,
     onPageChange,
     foreignKeys,
@@ -36,6 +38,7 @@ export function DataTable(props: DataTableProps) {
     columnDetails,
   } = props;
   const {
+    hasNextPage,
     activeCell,
     activeMatch,
     activeSort,
@@ -250,6 +253,9 @@ export function DataTable(props: DataTableProps) {
           page={page}
           pageSize={pageSize}
           totalCount={totalCount}
+          countLabel={countLabel}
+          onExactCount={onExactCount}
+          hasNextPage={hasNextPage}
           selectionStats={selectionStats}
           isFetching={isFetching}
           activeSort={activeSort}

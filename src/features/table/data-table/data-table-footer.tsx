@@ -9,6 +9,9 @@ type Props = {
   page: number;
   pageSize: number;
   totalCount: number | undefined;
+  countLabel: string | undefined;
+  onExactCount: (() => void) | undefined;
+  hasNextPage: boolean;
   selectionStats: ReturnType<typeof summarizeCells> | null;
   isFetching: boolean;
   activeSort: SortingState[number] | undefined;
@@ -25,6 +28,9 @@ export function DataTableFooter({
   page,
   pageSize,
   totalCount,
+  countLabel,
+  onExactCount,
+  hasNextPage,
   selectionStats,
   isFetching,
   activeSort,
@@ -36,14 +42,25 @@ export function DataTableFooter({
   onPageChange,
 }: Props) {
   const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
+  const openEnded = totalPages == null && countLabel !== undefined;
   const rangeStart = page * pageSize + 1;
   const rangeEnd = page * pageSize + rowCount;
+  const total = totalCount ?? countLabel;
   return (
     <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
       <span className="whitespace-nowrap">
-        {totalCount != null
-          ? `${rangeStart}–${rangeEnd} von ${totalCount}`
+        {total != null
+          ? `${rangeStart}–${rangeEnd} von ${total}`
           : `${rowCount} ${rowCount === 1 ? "Zeile" : "Zeilen"}`}
+        {onExactCount && (
+          <button
+            type="button"
+            onClick={onExactCount}
+            className="ml-2 cursor-pointer underline-offset-2 hover:text-foreground hover:underline"
+          >
+            genau zählen
+          </button>
+        )}
       </span>
       <div className="min-w-0 truncate text-center">
         {selectionStats ? (
@@ -74,10 +91,11 @@ export function DataTableFooter({
             onIntervalChange={onAutoRefreshChange}
           />
         )}
-        {onPageChange && totalPages != null && totalPages > 1 && (
+        {onPageChange && (openEnded || (totalPages != null && totalPages > 1)) && (
           <div className="flex items-center gap-1 border-l border-border/70 pl-3">
             <span className="mr-1 whitespace-nowrap">
-              Seite {page + 1} / {totalPages}
+              Seite {page + 1}
+              {totalPages != null && ` / ${totalPages}`}
             </span>
             <button
               type="button"
@@ -97,7 +115,7 @@ export function DataTableFooter({
             </button>
             <button
               type="button"
-              disabled={page >= totalPages - 1}
+              disabled={!hasNextPage}
               onClick={() => onPageChange(page + 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
             >
@@ -105,8 +123,8 @@ export function DataTableFooter({
             </button>
             <button
               type="button"
-              disabled={page >= totalPages - 1}
-              onClick={() => onPageChange(totalPages - 1)}
+              disabled={totalPages == null || page >= totalPages - 1}
+              onClick={() => totalPages != null && onPageChange(totalPages - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
             >
               <ChevronLastIcon className="size-3.5" />

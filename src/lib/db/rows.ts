@@ -1,6 +1,6 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
-import type { QueryResult, TableData, TableInfo } from "./types";
+import type { QueryResult, RowCount, TableData, TableInfo } from "./types";
 
 export type TableRowSort = {
   column: string;
@@ -20,6 +20,7 @@ export async function fetchTableRows(
   isView?: boolean,
   allowRaw?: boolean,
   txId?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
@@ -35,6 +36,7 @@ export async function fetchTableRows(
     orderDesc: sort?.desc,
     isView: isView || undefined,
     allowRaw: allowRaw ?? true,
+    options,
   });
 }
 
@@ -47,6 +49,7 @@ export async function countTableRows(
   database?: string,
   allowRaw?: boolean,
   txId?: string,
+  options?: QueryExecutionOptions,
 ): Promise<number> {
   return invoke("count_table_rows", {
     kind,
@@ -57,6 +60,33 @@ export async function countTableRows(
     table,
     filter: filter && filter.trim() !== "" ? filter : undefined,
     allowRaw: allowRaw ?? true,
+    options,
+  });
+}
+
+export async function countTableRowsCapped(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  cap: number,
+  filter?: string,
+  database?: string,
+  allowRaw?: boolean,
+  txId?: string,
+  options?: QueryExecutionOptions,
+): Promise<RowCount> {
+  return invoke("count_table_rows_capped", {
+    kind,
+    txId,
+    connectionString,
+    database,
+    schema,
+    table,
+    cap,
+    filter: filter && filter.trim() !== "" ? filter : undefined,
+    allowRaw: allowRaw ?? true,
+    options,
   });
 }
 

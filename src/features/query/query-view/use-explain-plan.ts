@@ -3,6 +3,9 @@ import { useCallback, useState } from "react";
 import { type ExplainNode, explainQuery } from "@/lib/db";
 import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
+import { useSettingsStore } from "@/lib/settings";
+import { requestSqlConfirmation } from "@/lib/sql-confirmation";
+import { opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { QueryViewConnection, QueryWorkspaceState } from "./types";
@@ -42,6 +45,25 @@ export function useExplainPlan({
         connection?.kind,
       );
       if (!connection || !supports(connection, "explain") || !target.trim() || planLoading) return;
+      if (
+        analyze &&
+        useSettingsStore.getState().confirmDestructiveQueries &&
+        opensManagedTransaction(target, connection.kind) &&
+        !(await requestSqlConfirmation({
+          connection: connection.name,
+          database,
+          statements: [
+            {
+              sql: target,
+              reason:
+                connection.kind === "postgres"
+                  ? "EXPLAIN ANALYZE führt die Änderung aus und rollt sie danach zurück."
+                  : "EXPLAIN ANALYZE führt die Änderung wirklich aus.",
+            },
+          ],
+        }))
+      )
+        return;
       setPlanLoading(true);
       setPlanError(null);
       try {

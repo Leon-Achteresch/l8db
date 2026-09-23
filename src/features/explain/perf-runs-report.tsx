@@ -12,7 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PerfSummaryComparison } from "@/features/explain/perf-summary-comparison";
 import { PlanComparisonPanel } from "@/features/explain/plan-comparison-panel";
+import type { SavedExplainPlan } from "@/lib/explain-file";
 import { formatCapturedAt } from "@/lib/explain-file";
 import {
   defaultPerfFileName,
@@ -36,8 +38,7 @@ interface PerfRunsReportProps {
 interface RunSource {
   id: string;
   label: string;
-  saved: SavedPerfTest;
-  run: PerfRun;
+  plan: SavedExplainPlan;
 }
 
 function fileNameOf(path: string): string {
@@ -60,30 +61,22 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
   const [leftId, setLeftId] = useState<string | null>(null);
   const [rightId, setRightId] = useState<string | null>(null);
 
-  const summary = useMemo(() => (current ? summarizeRuns(current.runs) : null), [current]);
+  const summary = useMemo(
+    () => (current ? summarizeRuns(current.runs, current.elapsedMs) : null),
+    [current],
+  );
+  const timed = current?.mode === "TIMED";
 
   const sources = useMemo<RunSource[]>(() => {
     const entries: RunSource[] = [];
-    if (current) {
-      for (const run of current.runs) {
-        entries.push({
-          id: `current-${run.index}`,
-          label: `Aktueller Test · Lauf ${run.index}`,
-          saved: current,
-          run,
-        });
-      }
-    }
-    if (loaded) {
-      for (const run of loaded.saved.runs) {
-        entries.push({
-          id: `loaded-${run.index}`,
-          label: `${loaded.fileName} · Lauf ${run.index}`,
-          saved: loaded.saved,
-          run,
-        });
-      }
-    }
+    const add = (saved: SavedPerfTest, prefix: string, label: string, run: PerfRun) => {
+      const plan = perfRunAsSavedPlan(saved, run);
+      if (plan)
+        entries.push({ id: `${prefix}-${run.index}`, label: `${label} · Lauf ${run.index}`, plan });
+    };
+    if (current) for (const run of current.runs) add(current, "current", "Aktueller Test", run);
+    if (loaded)
+      for (const run of loaded.saved.runs) add(loaded.saved, "loaded", loaded.fileName, run);
     return entries;
   }, [current, loaded]);
 
@@ -155,18 +148,23 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
               {formatCapturedAt(current.capturedAt)}
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-muted-foreground">
+          <div className="max-h-72 overflow-auto">
+            <table className="w-full text-xs whitespace-nowrap">
+              <thead className="sticky top-0 bg-card text-muted-foreground">
                 <tr className="border-b">
                   <th className="px-3 py-1.5 text-left font-medium">Lauf</th>
                   <th className="px-3 py-1.5 text-right font-medium">Laufzeit</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Planung</th>
+                  {!timed && <th className="px-3 py-1.5 text-right font-medium">Planung</th>}
                   <th className="px-3 py-1.5 text-right font-medium">Zeilen</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Buffer hit</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Buffer read</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Kosten</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Knoten</th>
+                  {!timed && (
+                    <>
+                      <th className="px-3 py-1.5 text-right font-medium">Buffer hit</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Buffer read</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Kosten</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Knoten</th>
+                    </>
+                  )}
+                  <th className="px-3 py-1.5 text-left font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="font-mono">
@@ -174,18 +172,30 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
                   <tr key={run.index} className="border-b last:border-b-0">
                     <td className="px-3 py-1.5">{run.index}</td>
                     <td className="px-3 py-1.5 text-right">{formatMs(run.metrics.durationMs)}</td>
-                    <td className="px-3 py-1.5 text-right">{formatMs(run.metrics.planTimeMs)}</td>
+                    {!timed && (
+                      <td className="px-3 py-1.5 text-right">{formatMs(run.metrics.planTimeMs)}</td>
+                    )}
                     <td className="px-3 py-1.5 text-right">{formatCount(run.metrics.rows)}</td>
-                    <td className="px-3 py-1.5 text-right">
-                      {formatCount(run.metrics.sharedHitBlocks)}
+                    {!timed && (
+                      <>
+                        <td className="px-3 py-1.5 text-right">
+                          {formatCount(run.metrics.sharedHitBlocks)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          {formatCount(run.metrics.sharedReadBlocks)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          {run.metrics.totalCost === null ? "—" : run.metrics.totalCost.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{run.metrics.nodeCount}</td>
+                      </>
+                    )}
+                    <td
+                      className={`max-w-72 truncate px-3 py-1.5 font-sans ${run.error ? "text-destructive" : "text-muted-foreground"}`}
+                      title={run.error ?? undefined}
+                    >
+                      {run.error ?? "ok"}
                     </td>
-                    <td className="px-3 py-1.5 text-right">
-                      {formatCount(run.metrics.sharedReadBlocks)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right">
-                      {run.metrics.totalCost === null ? "—" : run.metrics.totalCost.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right">{run.metrics.nodeCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -194,18 +204,32 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
           {summary?.duration && (
             <p className="border-t px-3 py-2 text-xs text-muted-foreground">
               Laufzeit min {formatMs(summary.duration.min)} · median{" "}
-              {formatMs(summary.duration.median)} · max {formatMs(summary.duration.max)} · ø{" "}
-              {formatMs(summary.duration.avg)}
+              {formatMs(summary.duration.median)} · p95 {formatMs(summary.duration.p95)} · max{" "}
+              {formatMs(summary.duration.max)} · ø {formatMs(summary.duration.avg)}
               {summary.rows ? ` · Zeilen median ${formatCount(summary.rows.median)}` : ""}
+              {summary.throughputPerSec !== null
+                ? ` · Durchsatz ${summary.throughputPerSec.toFixed(1)} Läufe/s`
+                : ""}
+              {` · ${current.concurrency} parallel`}
+              {summary.errors > 0 ? ` · ${summary.errors} Fehler` : ""}
             </p>
           )}
         </div>
       )}
 
+      {loaded && (
+        <PerfSummaryComparison
+          left={current}
+          right={loaded.saved}
+          leftLabel="Aktueller Test"
+          rightLabel={loaded.fileName}
+        />
+      )}
+
       {sources.length > 1 && (
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold">Zwei Läufe vergleichen</span>
+            <span className="text-xs font-semibold">Zwei Ausführungspläne vergleichen</span>
             <Select value={fallbackLeft?.id ?? ""} onValueChange={(value) => setLeftId(value)}>
               <SelectTrigger size="sm" className="h-7 w-64 text-xs">
                 <SelectValue placeholder="Lauf A wählen" />
@@ -233,8 +257,8 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
           </div>
           {fallbackLeft && fallbackRight ? (
             <PlanComparisonPanel
-              left={perfRunAsSavedPlan(fallbackLeft.saved, fallbackLeft.run)}
-              right={perfRunAsSavedPlan(fallbackRight.saved, fallbackRight.run)}
+              left={fallbackLeft.plan}
+              right={fallbackRight.plan}
               leftLabel={fallbackLeft.label}
               rightLabel={fallbackRight.label}
             />

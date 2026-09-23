@@ -124,7 +124,7 @@ export function useRunActions({
       );
       setError(null);
       setErrorSource(null);
-      toast.success("Fehlerfrei kompilierbar — nichts wurde ausgeführt.");
+      toast.success("Fehlerfrei geprüft — nichts wurde übernommen.");
     } catch (err) {
       const message = String(err);
       setError(message);

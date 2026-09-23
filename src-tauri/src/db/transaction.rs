@@ -381,7 +381,9 @@ impl TransactionManager {
         }
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
         let conn = super::execution::connect_postgres(&config, ssl).await?;
-        conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
+        super::postgres::begin_guarded(&conn, "BEGIN", &[super::postgres::TRANSACTION_IDLE_GUARD])
+            .await
+            .map_err(map_pg_err)?;
         Ok(self
             .insert_entry(TransactionEntry::Pg(
                 Arc::new(super::execution::PgSession::new(conn)),
@@ -807,6 +809,9 @@ impl TransactionManager {
             TransactionEntry::Pg(c, _) => {
                 let conn = c.lock().await?;
                 conn.simple_query("SELECT 1").await.map_err(|error| {
+                    if error.is_closed() {
+                        return "Commit nicht möglich: Die Datenbank hat die Sitzung beendet (z. B. nach 30 Minuten Leerlauf in der Transaktion). Die Änderungen wurden verworfen; Transaktion zurückrollen, um sie zu schließen.".to_string();
+                    }
                     format!(
                         "Commit nicht ausgeführt; Transaktion prüfen und zurückrollen: {}",
                         map_pg_err(error)
@@ -828,12 +833,10 @@ impl TransactionManager {
         let entry = self.entry(tx_id).await?;
         let outcome = match &*entry {
             TransactionEntry::Pg(c, _) => {
-                c.lock_for_cleanup()
-                    .await
-                    .simple_query("ROLLBACK")
-                    .await
-                    .map_err(map_pg_err)?;
-                Ok(())
+                match c.lock_for_cleanup().await.simple_query("ROLLBACK").await {
+                    Err(error) if !error.is_closed() => Err(map_pg_err(error)),
+                    _ => Ok(()),
+                }
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, false)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.rollback().await,

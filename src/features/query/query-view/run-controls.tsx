@@ -110,7 +110,7 @@ export function RunControls({
         data-tour="query-check"
         onClick={() => void actions.handleCheck()}
         disabled={isRunning || isChecking || !connected || !hasSql}
-        title={`Nur prüfen — kompiliert ohne etwas auszuführen (${shortcutLabel("query.check")})`}
+        title={`Nur prüfen — Änderungen werden zurückgerollt, nichts wird übernommen (${shortcutLabel("query.check")})`}
       >
         <MorphIcon
           icon={isChecking ? Loader : ShieldCheck}

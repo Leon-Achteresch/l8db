@@ -8,6 +8,12 @@ export interface TableData {
   rows: Record<string, unknown>[];
 }
 
+export interface RowCount {
+  count: number;
+  exact: boolean;
+  estimate: number | null;
+}
+
 export interface ColumnInfo {
   schema: string;
   table: string;

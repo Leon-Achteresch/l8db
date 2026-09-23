@@ -167,9 +167,8 @@ export function QueryView({ tabId }: QueryViewProps) {
           <ToolbarViewControls
             workspace={workspace}
             isSql={isSql}
-            explain={caps.explain}
             analysisOpen={analysis.open}
-            onOpenAnalysis={() => analysis.openAnalysis("plan")}
+            onOpenAnalysis={() => analysis.openAnalysis(caps.explain ? "plan" : "perf")}
             editorFocus={editorFocus}
             onEditorFocusChange={setEditorFocus}
             toolsMenu={

@@ -46,8 +46,8 @@ async function handleNetworkFetch(ctx: RpcContext): Promise<Json | void> {
   } catch {
     throw new ExtensionError("ProtocolError", "Invalid URL");
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
-    throw new ExtensionError("ProtocolError", "Only http(s) URLs are allowed");
+  if (parsed.protocol !== "https:")
+    throw new ExtensionError("ProtocolError", "Only HTTPS URLs are allowed");
   const hosts = extension.archive.manifest.capabilities?.network?.hosts ?? [];
   if (!hosts.some((pattern) => matchesHost(parsed.host, pattern)))
     throw new ExtensionError("PermissionDeniedError", `Host not allowed: ${parsed.host}`);

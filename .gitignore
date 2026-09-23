@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+!extention/dist/
+!extention/dist/extension.js
 dist-ssr
 *.local
 
@@ -52,6 +54,7 @@ chat/
 !/docs/providers.md
 !/docs/integration-tests.md
 !/docs/data-transfer.md
+!/docs/performance.md
 
 # Nested website repo (separates Projekt)
 l8db-website/

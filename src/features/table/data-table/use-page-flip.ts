@@ -5,8 +5,7 @@ import { animatePageWave } from "../page-wave";
 export function usePageFlip(
   scrollRef: RefObject<HTMLDivElement | null>,
   page: number,
-  pageSize: number,
-  totalCount: number | undefined,
+  hasNextPage: boolean,
   onPageChange: ((page: number) => void) | undefined,
 ) {
   const armedRef = useRef(false);
@@ -30,7 +29,6 @@ export function usePageFlip(
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || !onPageChange) return;
-    const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
     const handleWheel = (event: WheelEvent) => {
       const atTop = element.scrollTop <= 0;
       const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
@@ -44,11 +42,11 @@ export function usePageFlip(
         return;
       }
       armedRef.current = false;
-      if (down && totalPages != null && page < totalPages - 1) onPageChange(page + 1);
+      if (down && hasNextPage) onPageChange(page + 1);
       else if (!down && page > 0) onPageChange(page - 1);
     };
     element.addEventListener("wheel", handleWheel, { passive: true });
     return () => element.removeEventListener("wheel", handleWheel);
-  }, [onPageChange, page, pageSize, totalCount, armPageFlip]);
+  }, [onPageChange, page, hasNextPage, armPageFlip]);
   return waveRefs;
 }

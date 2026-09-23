@@ -79,7 +79,6 @@ export interface TableExportRequest {
   allowRawFilter: boolean;
   orderBy?: string | null;
   orderDesc: boolean;
-  isView: boolean;
   path: string;
   options: {
     delimiter: string;

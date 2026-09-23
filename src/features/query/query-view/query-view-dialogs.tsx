@@ -132,41 +132,40 @@ export function QueryViewDialogs({
         defaultFileName="query-result.csv"
       />
 
-      {caps.explain && (
-        <QueryAnalysisSheet
-          open={analysis.open}
-          onOpenChange={analysis.onOpenChange}
-          section={analysis.section}
-          onSectionChange={analysis.onSectionChange}
-          explainEnabled={Boolean(connection) && !isRunning && sql.trim().length > 0}
-          onExplain={(analyze) => {
-            analysis.onSectionChange("plan");
-            void explain.handleExplain(analyze);
-          }}
-          planLoading={explain.planLoading}
-          planError={explain.planError}
-          onPlanErrorDismiss={() => explain.setPlanError(null)}
-          plan={
-            explain.plan ? (
-              <ExplainPlanView
-                plan={explain.plan.node}
-                analyzed={explain.plan.analyzed}
-                sql={explain.plan.sql}
-                connectionName={connection?.name ?? ""}
-                databaseKind={connection?.kind ?? ""}
-                database={database}
-                onClose={() => explain.setPlan(null)}
-              />
-            ) : null
-          }
-          perf={
-            <QueryPerfPanel
-              sql={selectedSql.trim() ? selectedSql : sql}
-              onClose={() => analysis.onSectionChange("plan")}
+      <QueryAnalysisSheet
+        open={analysis.open}
+        onOpenChange={analysis.onOpenChange}
+        explainSupported={caps.explain}
+        section={analysis.section}
+        onSectionChange={analysis.onSectionChange}
+        explainEnabled={Boolean(connection) && !isRunning && sql.trim().length > 0}
+        onExplain={(analyze) => {
+          analysis.onSectionChange("plan");
+          void explain.handleExplain(analyze);
+        }}
+        planLoading={explain.planLoading}
+        planError={explain.planError}
+        onPlanErrorDismiss={() => explain.setPlanError(null)}
+        plan={
+          explain.plan ? (
+            <ExplainPlanView
+              plan={explain.plan.node}
+              analyzed={explain.plan.analyzed}
+              sql={explain.plan.sql}
+              connectionName={connection?.name ?? ""}
+              databaseKind={connection?.kind ?? ""}
+              database={database}
+              onClose={() => explain.setPlan(null)}
             />
-          }
-        />
-      )}
+          ) : null
+        }
+        perf={
+          <QueryPerfPanel
+            sql={selectedSql.trim() ? selectedSql : sql}
+            onClose={() => analysis.onSectionChange("plan")}
+          />
+        }
+      />
     </>
   );
 }

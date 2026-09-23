@@ -41,6 +41,7 @@ export interface Capabilities {
   ddl: boolean;
   alter_columns: boolean;
   explain: boolean;
+  query_stats: boolean;
   overview: boolean;
   sql_filter: boolean;
   read_only_mode: boolean;

@@ -1,4 +1,10 @@
-export { AUTH_FAILED_MESSAGE, connectionError, isAuthFailure, queryErrorMessage } from "./errors";
+export {
+  AUTH_FAILED_MESSAGE,
+  connectionError,
+  isAuthFailure,
+  isInterruptedQuery,
+  queryErrorMessage,
+} from "./errors";
 export {
   normalizeOracleHost,
   oracleConnectString,

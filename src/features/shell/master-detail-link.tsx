@@ -9,6 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { MasterDetailPreview } from "@/features/shell/master-detail-link/master-detail-preview";
 import { SavedScriptsPicker } from "@/features/shell/master-detail-link/saved-scripts-picker";
@@ -205,27 +212,34 @@ export function MasterDetailLink({
             <div className="flex shrink-0 items-center gap-2">
               <span className="text-xs font-medium">SQL</span>
               <span className="text-xs text-muted-foreground">Master-Wert einfügen:</span>
-              <select
-                aria-label="Master-Spaltenreferenz einfügen"
-                value=""
-                onChange={(event) => {
-                  if (event.target.value)
-                    editorRef.current?.insertText(masterColumnReference(event.target.value));
+              <Select
+                value="select:"
+                onValueChange={(encodedValue) => {
+                  const selectedValue = encodedValue.slice(7);
+                  if (selectedValue)
+                    editorRef.current?.insertText(masterColumnReference(selectedValue));
                 }}
-                className="min-w-0 rounded-md border bg-background px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-ring"
                 disabled={!selection}
               >
-                <option value="">:master.SPALTE</option>
-                {Object.keys(
-                  selection?.row ?? (selection ? { [selection.column]: selection.value } : {}),
-                )
-                  .filter((name) => name !== "__ctid__")
-                  .map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-              </select>
+                <SelectTrigger
+                  aria-label="Master-Spaltenreferenz einfügen"
+                  className="min-w-0 rounded-md border bg-background px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="select:">:master.SPALTE</SelectItem>
+                  {Object.keys(
+                    selection?.row ?? (selection ? { [selection.column]: selection.value } : {}),
+                  )
+                    .filter((name) => name !== "__ctid__")
+                    .map((name) => (
+                      <SelectItem key={name} value={`select:${String(name)}`}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="min-h-48 flex-1 overflow-hidden rounded-md border">
               <Suspense fallback={<p className="p-3 text-sm">SQL-Editor wird geladen…</p>}>

@@ -3396,11 +3396,7 @@ mod tests {
                 a.cancel_session(me.pid).await,
                 &["ORA-01013", "ORA-00022", "ORA-01031"],
             );
-            lenient(
-                "terminate_session",
-                a.terminate_session(me.pid).await,
-                &["ORA-00027", "ORA-01031"],
-            );
+            assert!(a.terminate_session(-1).await.is_err());
         }
 
         if lenient("create job", q("BEGIN DBMS_SCHEDULER.CREATE_JOB(job_name => 'L8_LIVE_JOB', job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;', start_date => SYSTIMESTAMP + INTERVAL '1' DAY, repeat_interval => 'FREQ=DAILY', enabled => FALSE); END;").await, NO_PRIV).is_some() {

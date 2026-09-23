@@ -71,8 +71,10 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("");
       await page.getByRole("button", { name: "Anpassen", exact: true }).click();
       await page.getByRole("button", { name: "Analysieren Ergebnisse rechts" }).click();
-      await page.getByLabel("Zeilenhöhe der Ergebnisse").selectOption("40");
-      await page.getByLabel("Spaltenbreite der Ergebnisse").selectOption("280");
+      await page.getByLabel("Zeilenhöhe der Ergebnisse").click();
+      await page.getByRole("option", { name: "40 px", exact: true }).click();
+      await page.getByLabel("Spaltenbreite der Ergebnisse").click();
+      await page.getByRole("option", { name: "280 px", exact: true }).click();
       await page.getByRole("button", { name: "Close", exact: true }).click();
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       const editorBox = await page.locator("#editor").boundingBox();
@@ -102,7 +104,8 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
         throw Error("Old run shortcut still active");
       await page.getByRole("button", { name: "Weitere Ausführungsarten", exact: true }).click();
       await page.getByRole("menuitem", { name: "Skript mit Einzelergebnissen" }).click();
-      await page.getByLabel("Skript-Transaktion").selectOption("autocommit");
+      await page.getByLabel("Skript-Transaktion").click();
+      await page.getByRole("option", { name: "Autocommit", exact: true }).click();
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();
       await page.getByText("2/2 erfolgreich", { exact: true }).waitFor();
       await page.getByRole("button").filter({ hasText: "SELECT id, email, created_at" }).click();
@@ -114,8 +117,8 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.screenshot({ path: "/tmp/l8db-query-compact.png" });
       await page.reload();
       await page.getByRole("button", { name: "Anpassen", exact: true }).click();
-      expect(await page.getByLabel("Zeilenhöhe der Ergebnisse").inputValue()).toBe("40");
-      expect(await page.getByLabel("Spaltenbreite der Ergebnisse").inputValue()).toBe("280");
+      expect(await page.getByLabel("Zeilenhöhe der Ergebnisse").textContent()).toBe("40 px");
+      expect(await page.getByLabel("Spaltenbreite der Ergebnisse").textContent()).toBe("280 px");
       await page.screenshot({ path: "/tmp/l8db-query-settings.png" });
       expect(errors).toEqual([]);
       console.log(

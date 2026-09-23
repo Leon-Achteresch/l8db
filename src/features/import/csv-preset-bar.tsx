@@ -2,6 +2,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { type CsvMappingPreset, useCsvMappingPresets } from "@/lib/csv-mapping-presets";
 export function CsvPresetBar({
   value,
@@ -15,21 +22,30 @@ export function CsvPresetBar({
   const [id, setId] = useState("");
   return (
     <div className="flex flex-wrap gap-2">
-      <select
-        aria-label="Mappingvorlage"
-        className="max-w-64 rounded border bg-background px-2 text-xs"
-        value={id}
-        onChange={(event) => setId(event.target.value)}
+      <Select
+        value={`select:${String(id)}`}
+        onValueChange={(encodedValue) => {
+          const selectedValue = encodedValue.slice(7);
+          setId(selectedValue);
+        }}
       >
-        <option value="">Mappingvorlage</option>
-        {presets
-          .filter((preset) => preset.scope === value.scope)
-          .map((preset) => (
-            <option value={preset.id} key={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-      </select>
+        <SelectTrigger
+          aria-label="Mappingvorlage"
+          className="max-w-64 rounded border bg-background px-2 text-xs"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="select:">Mappingvorlage</SelectItem>
+          {presets
+            .filter((preset) => preset.scope === value.scope)
+            .map((preset) => (
+              <SelectItem value={`select:${String(preset.id)}`} key={preset.id}>
+                {preset.name}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
       <Button
         size="sm"
         variant="outline"

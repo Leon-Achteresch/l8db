@@ -1031,7 +1031,10 @@ impl Server {
     ) -> Result<QueryResult, String> {
         let started = Instant::now();
         let adapter = server::adapter(connection, &self.pool)?;
-        let result = server::run(config, async { adapter.execute_query(sql).await }).await;
+        let result = server::run(config, connection.kind, async {
+            adapter.execute_query(sql).await
+        })
+        .await;
         let logged = result.as_ref().map(|_| String::new()).map_err(Clone::clone);
         server::audit(connection, "dashboard", sql, &logged, started);
         result.map_err(|e| format!("SQL-Fehler: {e}"))
