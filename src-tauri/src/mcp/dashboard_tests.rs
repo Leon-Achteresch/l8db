@@ -30,6 +30,7 @@ fn connection(id: &str, name: &str, kind: DatabaseKind, url: &str, exposed: bool
         read_only: true,
         allow_ddl: false,
         redact_columns: vec![],
+        database: None,
     }
 }
 
