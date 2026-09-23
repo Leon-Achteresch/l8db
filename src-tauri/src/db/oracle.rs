@@ -478,6 +478,8 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
+#[path = "oracle_catalog.rs"]
+mod catalog;
 #[path = "oracle_sql.rs"]
 mod sql;
 use sql::prepare;
@@ -1534,6 +1536,14 @@ impl DatabaseAdapter for OracleAdapter {
                 language: "PL/SQL".to_string(),
             })
             .collect())
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
     }
 
     async fn list_schema_copy_objects(

@@ -38,6 +38,7 @@ interface DefinitionDiffEditorProps {
   onlyDifferences: boolean;
   onStats?: (stats: DiffStats) => void;
   onModifiedChange?: (value: string) => void;
+  readOnly?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -47,6 +48,7 @@ export function DefinitionDiffEditor({
   onlyDifferences,
   onStats,
   onModifiedChange,
+  readOnly = false,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -118,6 +120,10 @@ export function DefinitionDiffEditor({
     if (models.modified.getValue() !== modified) models.modified.setValue(modified);
     syncing.current = false;
   }, [original, modified]);
+
+  useEffect(() => {
+    diffRef.current?.updateOptions({ readOnly, renderMarginRevertIcon: !readOnly });
+  }, [readOnly]);
 
   useEffect(() => {
     diffRef.current?.updateOptions({
