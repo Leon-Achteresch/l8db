@@ -3130,6 +3130,14 @@ impl DatabaseAdapter for PostgresAdapter {
             .await
     }
 
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
+
     async fn list_schema_copy_objects(
         &self,
         source_schema: &str,
@@ -4544,6 +4552,9 @@ impl PostgresAdapter {
 
 #[path = "postgres_bind.rs"]
 mod bind;
+
+#[path = "postgres_catalog.rs"]
+mod catalog;
 
 pub async fn run_params_query(
     client: &tokio_postgres::Client,

@@ -38,6 +38,7 @@ interface DefinitionDiffEditorProps {
   onlyDifferences: boolean;
   onStats?: (stats: DiffStats) => void;
   onModifiedChange?: (value: string) => void;
+  readOnly?: boolean;
   ref?: Ref<DefinitionDiffApi>;
 }
 
@@ -47,6 +48,7 @@ export function DefinitionDiffEditor({
   onlyDifferences,
   onStats,
   onModifiedChange,
+  readOnly = false,
   ref,
 }: DefinitionDiffEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,6 +61,7 @@ export function DefinitionDiffEditor({
   modifiedCallback.current = onModifiedChange;
   const syncing = useRef(false);
   statsRef.current = onStats;
+  const readOnlyRef = useRef(readOnly);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -66,8 +69,8 @@ export function DefinitionDiffEditor({
 
     const editor = monaco.editor.createDiffEditor(container, {
       theme: themeFor(resolvedTheme),
-      readOnly: false,
-      renderMarginRevertIcon: true,
+      readOnly: readOnlyRef.current,
+      renderMarginRevertIcon: !readOnlyRef.current,
       originalEditable: false,
       automaticLayout: true,
       renderSideBySide: true,

@@ -20,6 +20,7 @@ pub mod pool;
 mod postgres;
 pub mod provider;
 pub(crate) mod redis;
+pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
@@ -1022,6 +1023,14 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         Err(unsupported("Datenbankübersicht"))
+    }
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<schema_catalog::CatalogObject>, String> {
+        let _ = (schema, types);
+        Err(unsupported("Schema-Vergleich"))
     }
     async fn list_schema_copy_objects(
         &self,
