@@ -137,6 +137,7 @@ export interface RepositoryRequest {
     | "checkout"
     | "local-read"
     | "local-write"
+    | "merge-base"
     | "merge";
   repo: string;
   path?: string;

@@ -135,6 +135,16 @@ fn write(path: &Path, content: &str, expected: Option<&str>) -> Result<(), Strin
     result
 }
 
+fn has_conflict_markers(content: &str) -> bool {
+    content.lines().any(|line| {
+        let line = line.trim_end_matches('\r');
+        line.starts_with("<<<<<<< ")
+            || line.starts_with("||||||| ")
+            || line == "======="
+            || line.starts_with(">>>>>>> ")
+    })
+}
+
 fn list(root: &Path, dir: &Path, files: &mut Vec<String>) -> Result<(), String> {
     if !dir.exists() {
         return Ok(());
@@ -373,7 +383,21 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 return Err("Bitte Dateien auswählen".into());
             }
             for path in &paths {
-                safe_file(&root, path)?;
+                let file = safe_file(&root, path)?;
+                if read(&file)?.as_deref().is_some_and(has_conflict_markers) {
+                    return Err(format!(
+                        "{path} enthält ungelöste Merge-Konflikte. Bitte vor dem Commit auflösen."
+                    ));
+                }
+            }
+            if !git(&root, &["ls-files", "-u", "--", "database/"])
+                .await?
+                .is_empty()
+            {
+                return Err(
+                    "Git enthält ungelöste Merge-Konflikte unter database/. Bitte zuerst auflösen."
+                        .into(),
+                );
             }
             let name = request.name.ok_or("Commit-Nachricht fehlt")?;
             if name.trim().is_empty() || name.len() > 4000 {
@@ -403,6 +427,36 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             };
             git(&root, &args).await?;
             Ok(Value::Null)
+        }
+        "merge-base" => {
+            let name = request.name.ok_or("Quell-Branch fehlt")?;
+            if name.starts_with('-') || name == "HEAD" {
+                return Err("Ungültiger Branchname".into());
+            }
+            git(&root, &["check-ref-format", &format!("refs/heads/{name}")]).await?;
+            let head = revision(&root, "HEAD").await?;
+            let incoming = revision(&root, &format!("refs/heads/{name}")).await?;
+            if head == incoming {
+                return Err("Beide Branches zeigen auf denselben Commit.".into());
+            }
+            let base = git(&root, &["merge-base", &head, &incoming])
+                .await
+                .map_err(|_| "Die Branches haben keine gemeinsame Basis.".to_string())?;
+            if base.trim() == incoming {
+                return Err("Der Quell-Branch ist bereits im aktuellen Branch enthalten.".into());
+            }
+            if let Some(path) = request.path.as_deref() {
+                safe_file(&root, path)?;
+                for commit in [base.trim(), incoming.as_str()] {
+                    let entry = git(&root, &["ls-tree", "-z", commit, "--", path]).await?;
+                    if !entry.starts_with("100644 blob ") && !entry.starts_with("100755 blob ") {
+                        return Err(format!(
+                            "{path} ist in der gemeinsamen Basis oder im Quell-Branch keine reguläre Datei."
+                        ));
+                    }
+                }
+            }
+            Ok(json!({"head":head,"base":base.trim(),"incoming":incoming}))
         }
         "fetch" | "pull" | "push" => {
             if request.action != "fetch"
@@ -450,11 +504,11 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                             "--diff3",
                             "-p",
                             "-L",
-                            "Kunde",
+                            "Aktueller Branch",
                             "-L",
-                            "Basis",
+                            "Gemeinsame Basis",
                             "-L",
-                            "Produkt",
+                            "Quell-Branch",
                             "customer",
                             "base",
                             "product",

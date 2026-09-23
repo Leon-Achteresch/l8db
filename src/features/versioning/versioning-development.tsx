@@ -18,13 +18,16 @@ import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { captureObject } from "@/lib/versioning/capture";
+import { hasMergeMarkers } from "@/lib/versioning/conflicts";
 import { PROJECT_PATH } from "@/lib/versioning/model";
 import { encode, readFile, saveFile } from "@/lib/versioning/repository";
 import { newManagedObject, sourceFiles } from "@/lib/versioning/sources";
 import { changedFiles } from "@/lib/versioning/status";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningConflicts } from "./versioning-conflicts";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningPopover } from "./versioning-popover";
+import { VersioningSelect } from "./versioning-select";
 
 export function VersioningDevelopment({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, projectText, status, run, refresh } = workspace;
@@ -37,8 +40,8 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("");
-  const [base, setBase] = useState("");
-  const [incoming, setIncoming] = useState("");
+  const [mergeBranch, setMergeBranch] = useState("");
+  const [mergedFrom, setMergedFrom] = useState<string | null>(null);
   useEffect(() => {
     workspace.setDirty(Boolean(path) && draft !== (saved ?? ""));
   }, [draft, saved, path, workspace.setDirty]);
@@ -57,6 +60,7 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
     setOriginal(diff.original);
     setDraft(diff.modified);
     setSaved(current);
+    setMergedFrom(null);
   };
   const capture = async () => {
     if (path && draft !== (saved ?? ""))
@@ -130,12 +134,26 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
     await refresh();
   };
   const merge = async () => {
-    if (!base.trim() || !incoming.trim()) throw new Error("Basis- und Produkt-Commit angeben.");
+    if (!path || !mergeSource) throw new Error("Datei und Quell-Branch auswählen.");
+    if (hasMergeMarkers(draft))
+      throw new Error("Vor einem weiteren Merge zuerst vorhandene Konflikte auflösen.");
+    if (path.startsWith("database/releases/"))
+      throw new Error("Commitete Releases sind unveränderlich. Bitte einen neuen Release anlegen.");
+    const revisions = await versioningRepository<{
+      head: string;
+      base: string;
+      incoming: string;
+    }>({ action: "merge-base", repo, name: mergeSource, path });
+    if (revisions.head !== status?.head)
+      throw new Error("Der aktuelle Branch hat sich geändert. Bitte Versionierung aktualisieren.");
     const [ancestor, product] = await Promise.all([
-      readFile(repo, path, base),
-      readFile(repo, path, incoming),
+      readFile(repo, path, revisions.base),
+      readFile(repo, path, revisions.incoming),
     ]);
-    if (ancestor === null || product === null) throw new Error("Objekt fehlt in einer Revision.");
+    if (ancestor === null || product === null)
+      throw new Error(
+        "Die Datei muss in beiden Branches und ihrer gemeinsamen Basis vorhanden sein.",
+      );
     const result = await versioningRepository<{ content: string; conflicts: boolean }>({
       action: "merge",
       repo,
@@ -143,15 +161,22 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
       base: ancestor,
       incoming: product,
     });
-    setOriginal(product);
+    if (result.content === draft) {
+      setMergedFrom(null);
+      workspace.setMessage("Für diese Datei gibt es keine neuen Änderungen aus dem Quell-Branch.");
+      return;
+    }
     setDraft(result.content);
+    setMergedFrom(`${mergeSource} · ${revisions.incoming.slice(0, 8)}`);
     workspace.setMessage(
       result.conflicts
-        ? "Merge-Konflikte im Entwurf auflösen. Es wurde nichts gespeichert."
-        : "Text-Merge erstellt. Fachliche Prüfung und Tests bleiben erforderlich.",
+        ? "Merge-Konflikte unten auflösen. Es wurde nichts gespeichert."
+        : "Branch-Änderungen im Entwurf zusammengeführt. Bitte prüfen und speichern.",
     );
   };
   if (!project || !status) return null;
+  const mergeBranches = status.branches.filter((branch) => branch !== status.branch);
+  const mergeSource = mergeBranches.includes(mergeBranch) ? mergeBranch : (mergeBranches[0] ?? "");
   const changes = changedFiles(status.changes);
   const files = status.files.filter((file) => showAll || changes.has(file));
   return (
@@ -349,53 +374,59 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
             )}
             <VersioningPopover
               icon={GitMergeIcon}
-              label="Drei-Wege-Merge"
-              disabled={workspace.busy}
+              label="Aus Branch zusammenführen"
+              disabled={
+                workspace.busy || !mergeBranches.length || path.startsWith("database/releases/")
+              }
             >
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Kundenentwurf mit dem Produktstand zusammenführen. Konflikte bleiben im Editor
-                sichtbar.
+                Änderungen an dieser Datei aus einem anderen Branch übernehmen. Die gemeinsame Basis
+                wird automatisch gefunden. Andere Dateien bleiben unberührt.
               </p>
-              <Input
-                aria-label="Gemeinsamer Basis-Commit"
-                placeholder="Gemeinsamer Basis-Commit"
-                value={base}
-                onChange={(event) => setBase(event.target.value)}
-              />
-              <Input
-                aria-label="Neuer Produkt-Commit"
-                placeholder="Neuer Produkt-Commit"
-                value={incoming}
-                onChange={(event) => setIncoming(event.target.value)}
+              <VersioningSelect
+                label="Quell-Branch"
+                value={mergeSource}
+                onChange={setMergeBranch}
+                options={mergeBranches.map((branch) => ({ value: branch, label: branch }))}
               />
               <Button
                 size="sm"
-                disabled={!base.trim() || !incoming.trim()}
+                disabled={!mergeSource || hasMergeMarkers(draft)}
                 onClick={() => void run(merge)}
               >
-                Drei-Wege-Merge
+                Datei zusammenführen
               </Button>
             </VersioningPopover>
             <VersioningIconButton
               icon={Undo2Icon}
               label="Entwurf verwerfen"
               disabled={draft === (saved ?? "")}
-              onClick={() => setDraft(saved ?? "")}
+              onClick={() => {
+                setDraft(saved ?? "");
+                setMergedFrom(null);
+              }}
             />
             <VersioningIconButton
               icon={CheckIcon}
               label="Entwurf speichern"
-              disabled={draft === (saved ?? "")}
+              disabled={draft === (saved ?? "") || hasMergeMarkers(draft)}
               onClick={() =>
                 void run(async () => {
                   await saveFile(repo, path, draft, saved);
                   setSaved(draft);
+                  setMergedFrom(null);
                   workspace.setDirty(false);
                   await refresh();
                 }, "Entwurf gespeichert")
               }
             />
           </div>
+          {mergedFrom && draft !== (saved ?? "") && (
+            <p className="text-[11px] text-muted-foreground">
+              Entwurf mit {mergedFrom} zusammengeführt. Prüfe die Definition vor dem Commit.
+            </p>
+          )}
+          <VersioningConflicts content={draft} onChange={setDraft} />
           <div className="h-[360px] min-w-0 overflow-hidden rounded-lg bg-muted/20">
             <DefinitionDiffEditor
               original={original}
