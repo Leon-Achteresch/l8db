@@ -72,19 +72,8 @@ export function TableDetailTabBar({
     );
   }, []);
 
-  useLayoutEffect(() => {
+  const revealActiveTab = useCallback(() => {
     const scroll = scrollRef.current;
-    if (!scroll) return;
-    const observer = new ResizeObserver(updateScrollState);
-    observer.observe(scroll);
-    if (visible.length && scroll.firstElementChild) observer.observe(scroll.firstElementChild);
-    updateScrollState();
-    return () => observer.disconnect();
-  }, [updateScrollState, visible.length]);
-
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    if (!scrollState.overflow) return;
     const active = Array.from(scroll?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []).find(
       (tab) => tab.dataset.tabId === activeTab,
     );
@@ -96,8 +85,21 @@ export function TableDetailTabBar({
     } else if (activeBounds.right > scrollBounds.right) {
       scroll.scrollLeft += activeBounds.right - scrollBounds.right;
     }
-    updateScrollState();
-  }, [activeTab, scrollState.overflow, updateScrollState]);
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const measure = () => {
+      revealActiveTab();
+      updateScrollState();
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    if (visible.length && scroll.firstElementChild) observer.observe(scroll.firstElementChild);
+    measure();
+    return () => observer.disconnect();
+  }, [revealActiveTab, updateScrollState, visible.length]);
 
   const handleWheel = (event: WheelEvent<HTMLElement>) => {
     const scroll = scrollRef.current;
