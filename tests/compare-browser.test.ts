@@ -61,9 +61,45 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       const modified = page.locator(".monaco-diff-editor .editor.modified textarea");
       await modified.waitFor();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
+      expect(await page.locator("select:visible").count()).toBe(0);
+      expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
+      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Arbeitsstände" });
+      await drawer.getByLabel("Name des Arbeitsstands").fill("Gespeicherter Vergleich");
+      await drawer.getByRole("button", { name: "Speichern", exact: true }).click();
+      await drawer
+        .getByRole("button", { name: "Gespeicherter Vergleich", exact: false })
+        .first()
+        .click();
+      await drawer.waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
+      await drawer
+        .getByRole("button", { name: "Gespeicherter Vergleich entfernen", exact: true })
+        .click();
+      await drawer.getByText("Noch keine Arbeitsstände gespeichert.").waitFor();
+      await page.keyboard.press("Escape");
+      await drawer.waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
+      await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).click();
+      await page.getByRole("button", { name: "Vergleichsoptionen" }).click();
+      expect(
+        await page
+          .getByRole("menuitemcheckbox", { name: "Nur Unterschiede" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      await page.getByRole("menuitemcheckbox", { name: "Nur Unterschiede" }).press("Escape");
+      await page
+        .getByRole("menuitemcheckbox", { name: "Nur Unterschiede" })
+        .waitFor({ state: "hidden" });
       await page.locator(".editor.modified .view-lines").click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.type("SELECT 'Entwurf bleibt';");
+      await page.waitForFunction(() =>
+        document
+          .querySelector(".editor.modified .view-lines")
+          ?.textContent?.replace(/\s/g, " ")
+          .includes("Entwurf bleibt"),
+      );
       await page.getByRole("button", { name: "Neuer Vergleich", exact: true }).last().click();
       await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
       await page.waitForFunction(() =>

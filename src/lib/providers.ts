@@ -36,6 +36,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   ddl: true,
   alter_columns: true,
   explain: true,
+  query_stats: true,
   overview: true,
   sql_filter: true,
   read_only_mode: true,
@@ -172,6 +173,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_stats: false,
       proxy_user: false,
       debugger: false,
       query_cancel: false,
@@ -206,6 +208,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     driver: { type: "builtin" },
     capabilities: {
       ...POSTGRES_CAPABILITIES,
+      query_stats: false,
       proxy_user: false,
       debugger: false,
       query_cancel: true,

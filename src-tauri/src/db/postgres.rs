@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use bb8::PooledConnection;
 use bb8_postgres::PostgresConnectionManager;
 use postgres_native_tls::MakeTlsConnector;
-use tokio::time::timeout;
 use tokio_postgres::{Config, SimpleQueryMessage};
 
 use super::pool::{PoolState, PoolUse};
@@ -17,8 +16,8 @@ use super::{
     ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
     DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
     IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, ProxyUserInfo,
-    QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, SchemaPrivileges, SequenceInfo,
-    SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
+    QueryResult, RoleInfo, RolePrivileges, RowCount, SchedulerJobInfo, SchemaPrivileges,
+    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -153,6 +152,7 @@ impl PostgresAdapter {
             .password(&config.password)
             .dbname(&config.database)
             .ssl_mode(ssl.to_pg())
+            .application_name("l8db")
             .connect_timeout(super::execution::connection_duration());
         if config.read_only {
             pg.options(super::connection::READ_ONLY_OPTION);
@@ -254,13 +254,185 @@ impl PostgresAdapter {
         super::execution::postgres(client, self.ssl, None, future).await
     }
 
-    async fn timed<F, T>(&self, future: F) -> Result<T, String>
+    async fn timed<F, T>(&self, token: tokio_postgres::CancelToken, future: F) -> Result<T, String>
     where
         F: std::future::Future<Output = Result<T, String>>,
     {
-        timeout(super::execution::query_duration(), future)
-            .await
-            .map_err(|_| super::execution::timeout_message())?
+        super::execution::guarded(token, self.ssl, self.session.as_deref(), future).await
+    }
+
+    async fn run_ddl(&self, statements: &[String], commit: bool) -> Result<(), String> {
+        let mut conn = self.get_conn().await?;
+        self.timed(conn.cancel_token(), async {
+            if self.session.is_some() {
+                for statement in statements {
+                    conn.execute(statement.as_str(), &[])
+                        .await
+                        .map_err(map_pg_err)?;
+                }
+                return Ok(());
+            }
+            let statements: Vec<&str> = statements.iter().map(String::as_str).collect();
+            guarded_transaction(&mut conn, &statements, false, commit)
+                .await
+                .map_err(map_pg_err)
+        })
+        .await
+    }
+}
+
+async fn guarded_transaction(
+    conn: &mut tokio_postgres::Client,
+    statements: &[&str],
+    simple: bool,
+    commit: bool,
+) -> Result<(), tokio_postgres::Error> {
+    let tx = conn.transaction().await?;
+    let tx = if tx
+        .batch_execute(&session_guards(&[LOCK_GUARD]))
+        .await
+        .is_ok()
+    {
+        tx
+    } else {
+        tx.rollback().await?;
+        conn.transaction().await?
+    };
+    for statement in statements {
+        if simple {
+            tx.batch_execute(statement).await?;
+        } else {
+            tx.execute(*statement, &[]).await?;
+        }
+    }
+    if commit {
+        tx.commit().await
+    } else {
+        tx.rollback().await
+    }
+}
+
+pub(crate) async fn begin_guarded(
+    conn: &tokio_postgres::Client,
+    begin: &str,
+    guards: &[&str],
+) -> Result<(), tokio_postgres::Error> {
+    if conn
+        .batch_execute(&format!("{begin}; {}", session_guards(guards)))
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    conn.batch_execute(&format!("ROLLBACK; {begin}")).await
+}
+
+fn ends_transaction(sql: &str) -> bool {
+    let Ok(pattern) = regex::Regex::new(
+        r"(?is)^(?:\s|--[^\n]*|/\*.*?\*/)*(?:COMMIT|END|ROLLBACK|ABORT|PREPARE\s+TRANSACTION)\b",
+    ) else {
+        return true;
+    };
+    super::sql_script::split_postgres(sql)
+        .iter()
+        .any(|statement| pattern.is_match(statement))
+}
+
+pub(crate) fn table_page_sql(
+    schema: &str,
+    table: &str,
+    where_clause: &str,
+    order: Option<(&str, bool)>,
+    with_ctid: bool,
+) -> String {
+    let (inner_order, outer_order) = match order {
+        Some((column, desc)) => {
+            let direction = if desc { "DESC" } else { "ASC" };
+            let column = quote_ident(column);
+            (
+                format!(" ORDER BY t.{column} {direction}"),
+                format!(" ORDER BY p.{column} {direction}"),
+            )
+        }
+        None => (String::new(), String::new()),
+    };
+    let (projection, ctid) = if with_ctid {
+        (
+            "to_jsonb(p) - '__l8db_ctid__' || jsonb_build_object('__ctid__', p.\"__l8db_ctid__\"::text)",
+            ", t.ctid AS \"__l8db_ctid__\"",
+        )
+    } else {
+        ("to_jsonb(p)", "")
+    };
+    format!(
+        "SELECT {projection} FROM (SELECT t.*{ctid} FROM {}.{} AS t{where_clause}{inner_order} LIMIT $1 OFFSET $2) AS p{outer_order}",
+        quote_ident(schema),
+        quote_ident(table),
+    )
+}
+
+pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
+const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
+pub(crate) const TRANSACTION_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '30min'";
+
+pub(crate) fn session_guards(settings: &[&str]) -> String {
+    settings
+        .iter()
+        .map(|setting| format!("SET LOCAL {setting}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+async fn cancellable_export<T>(
+    conn: &tokio_postgres::Client,
+    ssl: SslMode,
+    job_id: &str,
+    query: impl std::future::Future<Output = Result<T, tokio_postgres::Error>>,
+) -> Result<T, String> {
+    tokio::pin!(query);
+    let cancelled = async {
+        while !super::export::is_cancelled(job_id) {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    };
+    tokio::select! {
+        result = &mut query => return result.map_err(map_pg_err),
+        _ = cancelled => {}
+    }
+    let _ = conn
+        .cancel_token()
+        .cancel_query(super::connection::tls_connector(ssl)?)
+        .await;
+    query.await.map_err(map_pg_err)
+}
+
+pub(crate) fn capped_count_sql(schema: &str, table: &str, where_clause: &str, cap: i64) -> String {
+    format!(
+        "SELECT (SELECT count(*) FROM (SELECT 1 FROM {}.{}{where_clause} LIMIT {}) AS l8db_capped), \
+         (SELECT reltuples::bigint FROM pg_catalog.pg_class WHERE oid = to_regclass($1))",
+        quote_ident(schema),
+        quote_ident(table),
+        cap.saturating_add(1),
+    )
+}
+
+pub(crate) fn relation_name(schema: &str, table: &str) -> String {
+    format!("{}.{}", quote_ident(schema), quote_ident(table))
+}
+
+pub(crate) fn capped_count(
+    count: i64,
+    estimate: Option<i64>,
+    cap: i64,
+    filtered: bool,
+) -> RowCount {
+    if count <= cap {
+        return RowCount::exact(count);
+    }
+    RowCount {
+        count,
+        exact: false,
+        estimate: estimate.filter(|value| !filtered && *value > cap),
     }
 }
 
@@ -268,7 +440,7 @@ impl PostgresAdapter {
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
         let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.simple_query("SELECT 1")
                 .await
                 .map(|_| ())
@@ -279,7 +451,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT datname FROM pg_database \
                  WHERE datistemplate = false AND datallowconn = true \
@@ -295,7 +467,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_schemas(&self) -> Result<Vec<String>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT schema_name FROM information_schema.schemata \
                  WHERE schema_name <> 'information_schema' \
@@ -312,7 +484,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let query = match schema {
                 Some(schema) => {
                     conn.query(
@@ -356,7 +528,7 @@ impl DatabaseAdapter for PostgresAdapter {
     ) -> Result<Vec<ColumnInfo>, String> {
         let conn = self.get_meta().await?;
         let type_filter = table_type.unwrap_or("BASE TABLE");
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let result = match (schema, table) {
                 (Some(s), Some(t)) => {
                     conn.query(
@@ -416,7 +588,7 @@ impl DatabaseAdapter for PostgresAdapter {
     ) -> Result<Vec<ColumnMatch>, String> {
         let conn = self.get_meta().await?;
         let pattern = like_pattern(term);
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, t.table_type \
                  FROM information_schema.columns c \
@@ -455,7 +627,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         let pattern = like_pattern(term);
         let rows = self
-            .timed(async {
+            .timed(conn.cancel_token(), async {
                 conn.query(
                     "SELECT n.nspname, p.proname, p.oid::text, \
                             pg_get_function_identity_arguments(p.oid), \
@@ -527,7 +699,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut out: Vec<DependencyInfo> = Vec::new();
 
         let views = self
-            .timed(async {
+            .timed(conn.cancel_token(), async {
                 conn.query(
                     "SELECT DISTINCT dn.nspname, dc.relname, dc.oid::text, \
                             CASE dc.relkind WHEN 'm' THEN 'materialized_view'::text \
@@ -565,7 +737,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         let fks = self
-            .timed(async {
+            .timed(conn.cancel_token(), async {
                 conn.query(
                     "SELECT n.nspname, c.relname, c.oid::text, con.conname \
                      FROM pg_constraint con \
@@ -598,7 +770,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         let triggers = self
-            .timed(async {
+            .timed(conn.cancel_token(), async {
                 conn.query(
                     "SELECT n.nspname, t.tgname, np.nspname, p.proname \
                      FROM pg_trigger t \
@@ -790,7 +962,7 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         }
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let column_rows = conn
                 .query(
                     "SELECT column_name \
@@ -809,33 +981,18 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 _ => String::new(),
             };
-            let order_clause = match order_by {
-                Some(column) if columns.iter().any(|name| name == column) => {
-                    let direction = if order_desc { "DESC" } else { "ASC" };
-                    format!(" ORDER BY t.{} {}", quote_ident(column), direction)
-                }
-                _ => String::new(),
-            };
-            let sql_with_ctid = format!(
-                "SELECT to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
-                quote_ident(schema),
-                quote_ident(table),
-                where_clause,
-                order_clause,
-            );
-            let sql_without_ctid = format!(
-                "SELECT to_jsonb(t) FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
-                quote_ident(schema),
-                quote_ident(table),
-                where_clause,
-                order_clause,
-            );
-
-            let sql = if is_view { &sql_without_ctid } else { &sql_with_ctid };
-            let data_rows = match conn.query(sql, &[&limit, &offset]).await {
+            let order = order_by
+                .filter(|column| columns.iter().any(|name| name == column))
+                .map(|column| (column, order_desc));
+            let sql = table_page_sql(schema, table, &where_clause, order, !is_view);
+            let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
                 Ok(rows) => rows,
-                Err(_) if !is_view => {
-                    conn.query(&sql_without_ctid, &[&limit, &offset])
+                Err(e)
+                    if !is_view
+                        && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
+                {
+                    let sql = table_page_sql(schema, table, &where_clause, order, false);
+                    conn.query(&sql, &[&limit, &offset])
                         .await
                         .map_err(map_pg_err)?
                 }
@@ -887,20 +1044,12 @@ impl DatabaseAdapter for PostgresAdapter {
             Some(expression) => format!(" WHERE {expression}"),
             None => String::new(),
         };
-        let mut order_parts: Vec<String> = Vec::new();
-        if let Some(column) = request.order_by.as_deref() {
-            if columns.iter().any(|name| name == column) {
+        let order_clause = match request.order_by.as_deref() {
+            Some(column) if columns.iter().any(|name| name == column) => {
                 let direction = if request.order_desc { "DESC" } else { "ASC" };
-                order_parts.push(format!("t.{} {}", quote_ident(column), direction));
+                format!(" ORDER BY t.{} {direction}", quote_ident(column))
             }
-        }
-        if !request.is_view {
-            order_parts.push("t.ctid".to_string());
-        }
-        let order_clause = if order_parts.is_empty() {
-            String::new()
-        } else {
-            format!(" ORDER BY {}", order_parts.join(", "))
+            _ => String::new(),
         };
         let sql = format!(
             "DECLARE l8db_export NO SCROLL CURSOR FOR SELECT to_jsonb(t) FROM {}.{} AS t{}{}",
@@ -910,9 +1059,13 @@ impl DatabaseAdapter for PostgresAdapter {
             order_clause,
         );
 
-        conn.batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            .await
-            .map_err(map_pg_err)?;
+        begin_guarded(
+            &conn,
+            "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+            &[STREAM_IDLE_GUARD],
+        )
+        .await
+        .map_err(map_pg_err)?;
 
         let max_rows = export::effective_max_rows(request.max_rows);
         let mut writer = match export::CsvFileWriter::create(&request.path, &request.options) {
@@ -928,8 +1081,10 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut failure: Option<String> = None;
         let mut cancelled = false;
 
-        if let Err(e) = conn.query(&sql, &[]).await {
-            failure = Some(map_pg_err(e));
+        if let Err(e) =
+            cancellable_export(&conn, self.ssl, &request.job_id, conn.query(&sql, &[])).await
+        {
+            failure = Some(e);
         }
         if let Err(e) = writer.write_header(&columns) {
             failure = Some(e);
@@ -942,16 +1097,17 @@ impl DatabaseAdapter for PostgresAdapter {
             }
             let remaining = max_rows - total;
             let batch = (remaining + 1).min(export::EXPORT_BATCH_ROWS);
-            let data_rows = match conn
-                .query(&format!("FETCH FORWARD {batch} FROM l8db_export"), &[])
-                .await
-            {
-                Ok(rows) => rows,
-                Err(e) => {
-                    failure = Some(map_pg_err(e));
-                    break;
-                }
-            };
+            let fetch = format!("FETCH FORWARD {batch} FROM l8db_export");
+            let data_rows =
+                match cancellable_export(&conn, self.ssl, &request.job_id, conn.query(&fetch, &[]))
+                    .await
+                {
+                    Ok(rows) => rows,
+                    Err(e) => {
+                        failure = Some(e);
+                        break;
+                    }
+                };
             let fetched = data_rows.len() as i64;
             for row in data_rows.iter().take(remaining as usize) {
                 let value: serde_json::Value = row.get(0);
@@ -1007,7 +1163,7 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         }
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let where_clause = match filter {
                 Some(expression) if !expression.trim().is_empty() => {
                     format!(" WHERE {}", expression.trim())
@@ -1024,6 +1180,33 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map_err(map_pg_err)
                 .map(|row| row.get::<_, i64>(0))
+        })
+        .await
+    }
+
+    async fn count_rows_capped(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw_filter: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
+        if !allow_raw_filter {
+            if let Some(expression) = trimmed {
+                validate_table_filter(expression)?;
+            }
+        }
+        let where_clause = trimmed
+            .map(|expression| format!(" WHERE {expression}"))
+            .unwrap_or_default();
+        let sql = capped_count_sql(schema, table, &where_clause, cap);
+        let name = relation_name(schema, table);
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
+            Ok(capped_count(row.get(0), row.get(1), cap, trimmed.is_some()))
         })
         .await
     }
@@ -1049,7 +1232,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let col_rows = conn
                 .query(
                     "SELECT column_name FROM information_schema.columns \
@@ -1208,7 +1391,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let query = match schema {
                 Some(schema) => {
                     conn.query(
@@ -1245,7 +1428,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query_one(
                 "SELECT pg_get_viewdef(c.oid, true) \
                  FROM pg_class c \
@@ -1268,32 +1451,18 @@ impl DatabaseAdapter for PostgresAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
         let ddl = format!(
             "CREATE OR REPLACE VIEW {}.{} AS {}",
             quote_ident(schema),
             quote_ident(view),
             body
         );
-        self.timed(async {
-            if dry_run {
-                conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
-                let result = conn.simple_query(&ddl).await.map_err(map_pg_err);
-                let _ = conn.simple_query("ROLLBACK").await;
-                result.map(|_| ())
-            } else {
-                conn.simple_query(&ddl)
-                    .await
-                    .map_err(map_pg_err)
-                    .map(|_| ())
-            }
-        })
-        .await
+        self.run_ddl(&[ddl], !dry_run).await
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let query = match schema {
                 Some(schema) => {
                     conn.query(
@@ -1348,7 +1517,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn get_function_definition(&self, oid: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
         let oid_val: u32 = oid.parse().map_err(|_| format!("Ungültige OID: {oid}"))?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query_one("SELECT pg_get_functiondef($1::oid)", &[&oid_val])
                 .await
                 .map_err(map_pg_err)
@@ -1359,7 +1528,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_procedures(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let query = match schema {
                 Some(schema) => {
                     conn.query(
@@ -1416,7 +1585,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let oid_val: u32 = oid.parse().map_err(|_| format!("Ungültige OID: {oid}"))?;
         let mut conn = self.get_meta().await?;
-        self.timed(async move {
+        self.timed(conn.cancel_token(), async move {
             let definition: String = conn
                 .query_one("SELECT pg_get_functiondef($1::oid)", &[&oid_val])
                 .await
@@ -1478,7 +1647,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_extensions(&self) -> Result<Vec<ExtensionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT e.extname, \
                         e.extversion, \
@@ -1510,7 +1679,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn
                 .query(
                     "SELECT rolname, rolcanlogin, rolsuper OR rolbypassrls FROM pg_roles \
@@ -1537,7 +1706,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_roles(&self) -> Result<Vec<RoleInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let role_rows = conn
                 .query(
                     "SELECT r.rolname, r.oid::text, r.rolsuper, r.rolcanlogin, \
@@ -1615,7 +1784,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
             let mut with_opts = Vec::new();
 
@@ -1679,7 +1848,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let mut with_opts = Vec::new();
 
             if let Some(v) = options.superuser {
@@ -1751,7 +1920,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn drop_role(&self, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = format!("DROP ROLE {}", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
@@ -1761,32 +1930,22 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "DROP TABLE {}.{} CASCADE",
-                quote_ident(schema),
-                quote_ident(table)
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "DROP TABLE {}.{} CASCADE",
+            quote_ident(schema),
+            quote_ident(table)
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn truncate_table(&self, schema: &str, table: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "TRUNCATE TABLE {}.{}",
-                quote_ident(schema),
-                quote_ident(table)
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "TRUNCATE TABLE {}.{}",
+            quote_ident(schema),
+            quote_ident(table)
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn list_table_columns_detailed(
@@ -1795,21 +1954,21 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn.query(
                 "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.ordinal_position, \
                         c.character_maximum_length, \
-                        COALESCE(( \
-                            SELECT true FROM information_schema.table_constraints tc \
-                            JOIN information_schema.key_column_usage kcu \
-                              ON tc.constraint_name = kcu.constraint_name \
-                             AND tc.table_schema = kcu.table_schema \
-                            WHERE tc.constraint_type = 'PRIMARY KEY' \
-                              AND tc.table_schema = c.table_schema \
-                              AND tc.table_name = c.table_name \
-                              AND kcu.column_name = c.column_name \
-                        ), false) AS is_primary_key \
+                        COALESCE(c.ordinal_position::int2 = ANY (pk.conkey), false) AS is_primary_key \
                  FROM information_schema.columns c \
+                 LEFT JOIN LATERAL ( \
+                     SELECT con.conkey FROM pg_catalog.pg_constraint con \
+                     JOIN pg_catalog.pg_class cl ON cl.oid = con.conrelid \
+                     JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace \
+                     WHERE con.contype = 'p' AND n.nspname = c.table_schema AND cl.relname = c.table_name \
+                       AND (pg_has_role(cl.relowner, 'USAGE') \
+                            OR has_table_privilege(cl.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') \
+                            OR has_any_column_privilege(cl.oid, 'INSERT, UPDATE, REFERENCES')) \
+                 ) pk ON true \
                  WHERE c.table_schema = $1 AND c.table_name = $2 \
                  ORDER BY c.ordinal_position",
                 &[&schema, &table],
@@ -1836,7 +1995,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
     ) -> Result<Vec<super::ImportColumnInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn
                 .query(
                     "SELECT a.attname AS name, \
@@ -1992,7 +2151,9 @@ impl DatabaseAdapter for PostgresAdapter {
             })
             .await?;
         self.controlled(&conn, async {
-            conn.simple_query("BEGIN").await.map_err(map_pg_err)
+            begin_guarded(&conn, "BEGIN", &[STREAM_IDLE_GUARD])
+                .await
+                .map_err(map_pg_err)
         })
         .await?;
 
@@ -2117,25 +2278,20 @@ impl DatabaseAdapter for PostgresAdapter {
         column: &AddColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let mut sql = format!(
-                "ALTER TABLE {}.{} ADD COLUMN {} {}",
-                quote_ident(schema),
-                quote_ident(table),
-                quote_ident(&column.name),
-                column.data_type
-            );
-            if !column.is_nullable {
-                sql.push_str(" NOT NULL");
-            }
-            if let Some(ref def) = column.default_value {
-                sql.push_str(&format!(" DEFAULT {def}"));
-            }
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let mut sql = format!(
+            "ALTER TABLE {}.{} ADD COLUMN {} {}",
+            quote_ident(schema),
+            quote_ident(table),
+            quote_ident(&column.name),
+            column.data_type
+        );
+        if !column.is_nullable {
+            sql.push_str(" NOT NULL");
+        }
+        if let Some(ref def) = column.default_value {
+            sql.push_str(&format!(" DEFAULT {def}"));
+        }
+        self.run_ddl(&[sql], true).await
     }
 
     async fn alter_column(
@@ -2145,63 +2301,51 @@ impl DatabaseAdapter for PostgresAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
-            let col = quote_ident(&changes.old_name);
-            let mut stmts: Vec<String> = Vec::new();
-            if let Some(ref dt) = changes.data_type {
-                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}"));
-            }
-            if let Some(not_null) = changes.set_not_null {
-                if not_null {
-                    stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
-                } else {
-                    stmts.push(format!(
-                        "ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"
-                    ));
-                }
-            }
-            if changes.drop_default {
-                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
-            } else if let Some(ref def) = changes.new_default {
+        let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
+        let col = quote_ident(&changes.old_name);
+        let mut stmts: Vec<String> = Vec::new();
+        if let Some(ref dt) = changes.data_type {
+            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}"));
+        }
+        if let Some(not_null) = changes.set_not_null {
+            if not_null {
+                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
+            } else {
                 stmts.push(format!(
-                    "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
+                    "ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"
                 ));
             }
-            if let Some(ref new_name) = changes.new_name {
-                stmts.push(format!(
-                    "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
-                    quote_ident(new_name)
-                ));
-            }
-            for stmt in &stmts {
-                conn.execute(stmt.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-            Ok(())
-        })
-        .await
+        }
+        if changes.drop_default {
+            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
+        } else if let Some(ref def) = changes.new_default {
+            stmts.push(format!(
+                "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
+            ));
+        }
+        if let Some(ref new_name) = changes.new_name {
+            stmts.push(format!(
+                "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
+                quote_ident(new_name)
+            ));
+        }
+        self.run_ddl(&stmts, true).await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
-                quote_ident(schema),
-                quote_ident(table),
-                quote_ident(column)
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
+            quote_ident(schema),
+            quote_ident(table),
+            quote_ident(column)
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn list_role_privileges(&self, role_name: &str) -> Result<RolePrivileges, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let schema_rows = conn
                 .query(
                     "SELECT n.nspname, \
@@ -2296,7 +2440,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
 
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = match change.object_type.as_str() {
                 "schema" => {
                     let schema = change
@@ -2352,10 +2496,12 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn validate_sql(&self, sql: &str) -> Result<(), String> {
-        let conn = self.get_meta().await?;
-        self.timed(async {
-            conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
-            let mut result = conn.simple_query(sql).await;
+        if ends_transaction(sql) {
+            return Err("Prüfen nicht möglich: Das SQL beendet die Transaktion (COMMIT/ROLLBACK) und würde Änderungen dauerhaft speichern.".into());
+        }
+        let mut conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let mut result = guarded_transaction(&mut conn, &[sql], true, false).await;
             if let Some(temp_sql) = result
                 .as_ref()
                 .err()
@@ -2365,12 +2511,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 })
                 .and_then(|_| routine_ddl_in_pg_temp(sql))
             {
-                let _ = conn.simple_query("ROLLBACK").await;
-                conn.simple_query("BEGIN").await.map_err(map_pg_err)?;
-                result = conn.simple_query(&temp_sql).await;
+                result = guarded_transaction(&mut conn, &[&temp_sql], true, false).await;
             }
-            let _ = conn.simple_query("ROLLBACK").await;
-            result.map(|_| ()).map_err(map_pg_err)
+            result.map_err(map_pg_err)
         })
         .await
     }
@@ -2381,7 +2524,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
     ) -> Result<Vec<ForeignKeyInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let direct: Vec<ForeignKeyInfo> = conn
                 .query(
                     "SELECT \
@@ -2521,7 +2664,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn get_er_schema(&self, schema: Option<&str>) -> Result<ERSchema, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let schema_filter = schema.unwrap_or("public");
 
             let col_rows = conn
@@ -2627,7 +2770,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT \
                      t.tgname, \
@@ -2694,7 +2837,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let query = match schema {
                 Some(s) => {
                     conn.query(
@@ -2747,47 +2890,42 @@ impl DatabaseAdapter for PostgresAdapter {
         changes: &AlterSequenceRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let mut parts: Vec<String> = Vec::new();
-            if let Some(ref inc) = changes.increment_by {
-                parts.push(format!("INCREMENT BY {}", inc.trim()));
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(ref inc) = changes.increment_by {
+            parts.push(format!("INCREMENT BY {}", inc.trim()));
+        }
+        match &changes.min_value {
+            Some(v) if !v.trim().is_empty() => parts.push(format!("MINVALUE {}", v.trim())),
+            Some(_) => parts.push("NO MINVALUE".to_string()),
+            None => {}
+        }
+        match &changes.max_value {
+            Some(v) if !v.trim().is_empty() => parts.push(format!("MAXVALUE {}", v.trim())),
+            Some(_) => parts.push("NO MAXVALUE".to_string()),
+            None => {}
+        }
+        if let Some(cycle) = changes.cycle {
+            parts.push(if cycle {
+                "CYCLE".to_string()
+            } else {
+                "NO CYCLE".to_string()
+            });
+        }
+        if let Some(ref restart) = changes.restart_with {
+            if !restart.trim().is_empty() {
+                parts.push(format!("RESTART WITH {}", restart.trim()));
             }
-            match &changes.min_value {
-                Some(v) if !v.trim().is_empty() => parts.push(format!("MINVALUE {}", v.trim())),
-                Some(_) => parts.push("NO MINVALUE".to_string()),
-                None => {}
-            }
-            match &changes.max_value {
-                Some(v) if !v.trim().is_empty() => parts.push(format!("MAXVALUE {}", v.trim())),
-                Some(_) => parts.push("NO MAXVALUE".to_string()),
-                None => {}
-            }
-            if let Some(cycle) = changes.cycle {
-                parts.push(if cycle {
-                    "CYCLE".to_string()
-                } else {
-                    "NO CYCLE".to_string()
-                });
-            }
-            if let Some(ref restart) = changes.restart_with {
-                if !restart.trim().is_empty() {
-                    parts.push(format!("RESTART WITH {}", restart.trim()));
-                }
-            }
-            if parts.is_empty() {
-                return Ok(());
-            }
-            let sql = format!(
-                "ALTER SEQUENCE {}.{} {}",
-                quote_ident(schema),
-                quote_ident(name),
-                parts.join(" ")
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        }
+        if parts.is_empty() {
+            return Ok(());
+        }
+        let sql = format!(
+            "ALTER SEQUENCE {}.{} {}",
+            quote_ident(schema),
+            quote_ident(name),
+            parts.join(" ")
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
@@ -2805,7 +2943,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = match schema {
                 Some(s) => format!(
                     "CREATE EXTENSION IF NOT EXISTS {} SCHEMA {}",
@@ -2823,7 +2961,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
@@ -2833,7 +2971,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_available_extensions(&self) -> Result<Vec<AvailableExtensionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn.query(
                 "SELECT ae.name, ae.default_version, ae.comment, \
                         (SELECT true FROM pg_extension e WHERE e.extname = ae.name) IS NOT NULL AS installed \
@@ -2872,10 +3010,8 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
         self.ensure_writable()?;
-        let ddl = Self::build_create_table_sql(req);
-        let conn = self.get_conn().await?;
-        conn.execute(&ddl as &str, &[]).await.map_err(map_pg_err)?;
-        Ok(())
+        self.run_ddl(&[Self::build_create_table_sql(req)], true)
+            .await
     }
 
     async fn list_schema_copy_objects(
@@ -3012,7 +3148,7 @@ impl DatabaseAdapter for PostgresAdapter {
             limit
         );
         let mut conn = self.get_conn().await?;
-        self.timed(async move {
+        self.timed(conn.cancel_token(), async move {
             let tx = conn.transaction().await.map_err(map_pg_err)?;
             let affected = tx.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             tx.commit().await.map_err(map_pg_err)?;
@@ -3029,7 +3165,7 @@ impl DatabaseAdapter for PostgresAdapter {
         self.ensure_writable()?;
         let ddl = build_object_ddl(req)?;
         let mut conn = self.get_conn().await?;
-        self.timed(async move {
+        self.timed(conn.cancel_token(), async move {
             let tx = conn.transaction().await.map_err(map_pg_err)?;
             tx.batch_execute(&ddl).await.map_err(map_pg_err)?;
             tx.commit().await.map_err(map_pg_err)?;
@@ -3048,7 +3184,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let schema = schema.to_string();
         let name = name.to_string();
         let object_type = object_type.to_string();
-        self.timed(async move {
+        self.timed(conn.cancel_token(), async move {
             let base = conn
                 .query_opt(
                     "SELECT c.oid, pg_get_userbyid(c.relowner)::text AS owner,                      pg_size_pretty(pg_total_relation_size(c.oid))::text AS size,                      c.reltuples::bigint AS row_estimate, c.relkind::text AS relkind                      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace                      WHERE n.nspname = $1 AND c.relname = $2",
@@ -3149,12 +3285,21 @@ impl DatabaseAdapter for PostgresAdapter {
             "FORMAT JSON"
         };
         let statement = format!("EXPLAIN ({options}) {trimmed}");
-        let conn = self.get_meta().await?;
-        self.timed(async {
-            let row = conn
+        let mut conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            if !analyze || self.session.is_some() {
+                let row = conn
+                    .query_one(statement.as_str(), &[])
+                    .await
+                    .map_err(map_pg_err)?;
+                return Ok(row.get::<_, serde_json::Value>(0));
+            }
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            let row = tx
                 .query_one(statement.as_str(), &[])
                 .await
                 .map_err(map_pg_err)?;
+            tx.rollback().await.map_err(map_pg_err)?;
             Ok(row.get::<_, serde_json::Value>(0))
         })
         .await
@@ -3165,7 +3310,7 @@ impl DatabaseAdapter for PostgresAdapter {
         schema: Option<&str>,
     ) -> Result<Vec<super::MatviewInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = match schema {
                 Some(schema) => {
                     conn.query(
@@ -3207,34 +3352,24 @@ impl DatabaseAdapter for PostgresAdapter {
         concurrently: bool,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let modifier = if concurrently { " CONCURRENTLY" } else { "" };
-            let sql = format!(
-                "REFRESH MATERIALIZED VIEW{} {}.{}",
-                modifier,
-                quote_ident(schema),
-                quote_ident(name),
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let modifier = if concurrently { " CONCURRENTLY" } else { "" };
+        let sql = format!(
+            "REFRESH MATERIALIZED VIEW{} {}.{}",
+            modifier,
+            quote_ident(schema),
+            quote_ident(name),
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn drop_materialized_view(&self, schema: &str, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "DROP MATERIALIZED VIEW {}.{}",
-                quote_ident(schema),
-                quote_ident(name),
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "DROP MATERIALIZED VIEW {}.{}",
+            quote_ident(schema),
+            quote_ident(name),
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn create_materialized_view(
@@ -3249,24 +3384,19 @@ impl DatabaseAdapter for PostgresAdapter {
         if query.contains(';') {
             return Err("Nur eine einzelne SELECT-Abfrage ist erlaubt.".to_string());
         }
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let data = if req.with_data {
-                "WITH DATA"
-            } else {
-                "WITH NO DATA"
-            };
-            let sql = format!(
-                "CREATE MATERIALIZED VIEW {}.{} AS {} {}",
-                quote_ident(&req.schema),
-                quote_ident(&req.name),
-                query,
-                data,
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let data = if req.with_data {
+            "WITH DATA"
+        } else {
+            "WITH NO DATA"
+        };
+        let sql = format!(
+            "CREATE MATERIALIZED VIEW {}.{} AS {} {}",
+            quote_ident(&req.schema),
+            quote_ident(&req.name),
+            query,
+            data,
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn get_table_rls(
@@ -3275,7 +3405,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
     ) -> Result<super::TableRlsInfo, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let flags: (bool, bool) = conn
                 .query_one(
                     "SELECT c.relrowsecurity, c.relforcerowsecurity \
@@ -3367,25 +3497,16 @@ impl DatabaseAdapter for PostgresAdapter {
         force: bool,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
-            let mode = if enabled { "ENABLE" } else { "DISABLE" };
-            let force_mode = if force { "FORCE" } else { "NO FORCE" };
-            conn.execute(
-                format!("ALTER TABLE {target} {mode} ROW LEVEL SECURITY").as_str(),
-                &[],
-            )
-            .await
-            .map_err(map_pg_err)?;
-            conn.execute(
-                format!("ALTER TABLE {target} {force_mode} ROW LEVEL SECURITY").as_str(),
-                &[],
-            )
-            .await
-            .map_err(map_pg_err)?;
-            Ok(())
-        })
+        let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+        let mode = if enabled { "ENABLE" } else { "DISABLE" };
+        let force_mode = if force { "FORCE" } else { "NO FORCE" };
+        self.run_ddl(
+            &[
+                format!("ALTER TABLE {target} {mode} ROW LEVEL SECURITY"),
+                format!("ALTER TABLE {target} {force_mode} ROW LEVEL SECURITY"),
+            ],
+            true,
+        )
         .await
     }
 
@@ -3420,68 +3541,58 @@ impl DatabaseAdapter for PostgresAdapter {
                 return Err(format!("Ungültiger Rollenname: {role}"));
             }
         }
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let to = if policy.roles.is_empty() {
-                "PUBLIC".to_string()
-            } else {
-                policy
-                    .roles
-                    .iter()
-                    .map(|r| {
-                        if r == "PUBLIC" || r == "CURRENT_USER" || r == "SESSION_USER" {
-                            r.clone()
-                        } else {
-                            quote_ident(r)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            let mut sql = format!(
-                "CREATE POLICY {} ON {}.{} FOR {} TO {}",
-                quote_ident(name),
-                quote_ident(schema),
-                quote_ident(table),
-                command,
-                to,
-            );
-            if let Some(expr) = policy
-                .using_expr
-                .as_deref()
-                .map(str::trim)
-                .filter(|e| !e.is_empty())
-            {
-                sql.push_str(&format!(" USING ({expr})"));
-            }
-            if let Some(expr) = policy
-                .check_expr
-                .as_deref()
-                .map(str::trim)
-                .filter(|e| !e.is_empty())
-            {
-                sql.push_str(&format!(" WITH CHECK ({expr})"));
-            }
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let to = if policy.roles.is_empty() {
+            "PUBLIC".to_string()
+        } else {
+            policy
+                .roles
+                .iter()
+                .map(|r| {
+                    if r == "PUBLIC" || r == "CURRENT_USER" || r == "SESSION_USER" {
+                        r.clone()
+                    } else {
+                        quote_ident(r)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut sql = format!(
+            "CREATE POLICY {} ON {}.{} FOR {} TO {}",
+            quote_ident(name),
+            quote_ident(schema),
+            quote_ident(table),
+            command,
+            to,
+        );
+        if let Some(expr) = policy
+            .using_expr
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
+            sql.push_str(&format!(" USING ({expr})"));
+        }
+        if let Some(expr) = policy
+            .check_expr
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
+            sql.push_str(&format!(" WITH CHECK ({expr})"));
+        }
+        self.run_ddl(&[sql], true).await
     }
 
     async fn drop_policy(&self, schema: &str, table: &str, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "DROP POLICY {} ON {}.{}",
-                quote_ident(name),
-                quote_ident(schema),
-                quote_ident(table),
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "DROP POLICY {} ON {}.{}",
+            quote_ident(name),
+            quote_ident(schema),
+            quote_ident(table),
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn get_partition_info(
@@ -3490,7 +3601,7 @@ impl DatabaseAdapter for PostgresAdapter {
         table: &str,
     ) -> Result<super::PartitionInfo, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let row = conn
                 .query_one(
                     "SELECT c.relkind, p.partstrat, pg_get_partkeydef(c.oid) \
@@ -3549,19 +3660,14 @@ impl DatabaseAdapter for PostgresAdapter {
         child_table: &str,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "ALTER TABLE {}.{} DETACH PARTITION {}.{}",
-                quote_ident(parent_schema),
-                quote_ident(parent_table),
-                quote_ident(child_schema),
-                quote_ident(child_table),
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "ALTER TABLE {}.{} DETACH PARTITION {}.{}",
+            quote_ident(parent_schema),
+            quote_ident(parent_table),
+            quote_ident(child_schema),
+            quote_ident(child_table),
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn attach_partition(
@@ -3583,25 +3689,20 @@ impl DatabaseAdapter for PostgresAdapter {
                 return Err("Die Partition-Bindung enthält unzulässige Zeichen.".to_string());
             }
         }
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let sql = format!(
-                "ALTER TABLE {}.{} ATTACH PARTITION {}.{} {}",
-                quote_ident(parent_schema),
-                quote_ident(parent_table),
-                quote_ident(child_schema),
-                quote_ident(child_table),
-                trimmed,
-            );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let sql = format!(
+            "ALTER TABLE {}.{} ATTACH PARTITION {}.{} {}",
+            quote_ident(parent_schema),
+            quote_ident(parent_table),
+            quote_ident(child_schema),
+            quote_ident(child_table),
+            trimmed,
+        );
+        self.run_ddl(&[sql], true).await
     }
 
     async fn list_publications(&self) -> Result<Vec<super::PublicationInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn
                 .query(
                     "SELECT p.pubname, r.rolname, p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate \
@@ -3674,7 +3775,7 @@ impl DatabaseAdapter for PostgresAdapter {
             );
         }
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let target = if req.for_all_tables {
                 "FOR ALL TABLES".to_string()
             } else {
@@ -3701,7 +3802,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn drop_publication(&self, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = format!("DROP PUBLICATION {}", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
@@ -3711,7 +3812,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_subscriptions(&self) -> Result<Vec<super::SubscriptionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT subname, subenabled, subconninfo, subslotname, subpublications \
                  FROM pg_subscription ORDER BY subname",
@@ -3757,7 +3858,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .replace('\\', "\\\\")
             .replace('\'', "\\'");
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let publications = req
                 .publications
                 .iter()
@@ -3796,7 +3897,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn drop_subscription(&self, name: &str) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = format!("DROP SUBSCRIPTION {}", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
@@ -3806,7 +3907,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_sessions(&self) -> Result<Vec<super::SessionInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
                         state, COALESCE(left(query, 500), ''), query_start::text, xact_start::text, \
@@ -3845,7 +3946,7 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Ungültige Prozess-ID.".to_string());
         }
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query_one("SELECT pg_cancel_backend($1)", &[&pid])
                 .await
                 .map_err(map_pg_err)
@@ -3868,7 +3969,7 @@ impl DatabaseAdapter for PostgresAdapter {
         if own == pid {
             return Err("Die eigene Sitzung kann nicht beendet werden.".to_string());
         }
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query_one("SELECT pg_terminate_backend($1)", &[&pid])
                 .await
                 .map_err(map_pg_err)
@@ -3879,7 +3980,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_locks(&self) -> Result<Vec<super::LockInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             conn.query(
                 "SELECT l.pid, l.locktype, \
                         CASE WHEN l.relation IS NOT NULL THEN n.nspname || '.' || c.relname ELSE NULL END, \
@@ -3909,7 +4010,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn list_enums(&self, schema: Option<&str>) -> Result<Vec<super::EnumInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = match schema {
                 Some(schema) => {
                     conn.query(
@@ -3965,7 +4066,7 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Der Schema-Name darf nicht leer sein.".to_string());
         }
         let conn = self.get_conn().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let sql = format!("CREATE SCHEMA {}", quote_ident(name));
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
@@ -3979,19 +4080,14 @@ impl DatabaseAdapter for PostgresAdapter {
         if ["pg_catalog", "information_schema", "public", "pg_toast"].contains(&lowered.as_str()) {
             return Err(format!("Das Schema {name} darf nicht gelöscht werden."));
         }
-        let conn = self.get_conn().await?;
-        self.timed(async {
-            let suffix = if cascade { " CASCADE" } else { "" };
-            let sql = format!("DROP SCHEMA {}{suffix}", quote_ident(name));
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            Ok(())
-        })
-        .await
+        let suffix = if cascade { " CASCADE" } else { "" };
+        let sql = format!("DROP SCHEMA {}{suffix}", quote_ident(name));
+        self.run_ddl(&[sql], true).await
     }
 
     async fn get_database_overview(&self) -> Result<super::DatabaseOverview, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let row = conn
                 .query_one(
                     "SELECT current_database(), pg_database_size(current_database()), \
@@ -4073,7 +4169,7 @@ impl PostgresAdapter {
             return Ok(Vec::new());
         }
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn.query(sql, &[&schema]).await.map_err(map_pg_err)?;
             Ok(rows
                 .iter()
@@ -4089,7 +4185,7 @@ impl PostgresAdapter {
 
     async fn routine_definition(&self, schema: &str, signature: &str) -> Result<String, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn
                 .query(
                     "SELECT pg_get_functiondef(p.oid) AS definition \
@@ -4178,7 +4274,7 @@ impl PostgresAdapter {
 impl PostgresAdapter {
     async fn list_indexes_impl(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn.query(
                 "SELECT i.relname, ix.indisunique, ix.indisprimary, a.attname, am.amname, pg_get_indexdef(i.oid) \
                  FROM pg_class c \
@@ -4220,7 +4316,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
         let conn = self.get_meta().await?;
-        self.timed(async {
+        self.timed(conn.cancel_token(), async {
             let rows = conn.query(
                 "SELECT con.conname, \
                         CASE con.contype \
@@ -4409,9 +4505,58 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        infer_view_foreign_keys, like_pattern, routine_ddl_in_pg_temp, source_snippet,
-        PostgresAdapter,
+        capped_count, ends_transaction, infer_view_foreign_keys, like_pattern,
+        routine_ddl_in_pg_temp, session_guards, source_snippet, PostgresAdapter,
     };
+    use crate::db::RowCount;
+
+    #[test]
+    fn capped_count_reports_lower_bound_and_estimate_only_when_unfiltered() {
+        assert_eq!(capped_count(10, Some(9), 100, false), RowCount::exact(10));
+        assert_eq!(capped_count(100, None, 100, true), RowCount::exact(100));
+        let over = capped_count(101, Some(2_000_000), 100, false);
+        assert_eq!(
+            (over.count, over.exact, over.estimate),
+            (101, false, Some(2_000_000))
+        );
+        assert_eq!(capped_count(101, Some(2_000_000), 100, true).estimate, None);
+        assert_eq!(capped_count(101, Some(50), 100, false).estimate, None);
+        assert_eq!(capped_count(101, Some(-1), 100, false).estimate, None);
+    }
+
+    #[test]
+    fn validation_rejects_statements_that_end_the_transaction() {
+        for sql in [
+            "UPDATE t SET a = 1; COMMIT",
+            "-- note\ncommit;",
+            "/* x */ END",
+            "insert into t values (1);\nROLLBACK;",
+            "abort",
+            "PREPARE TRANSACTION 'x'",
+        ] {
+            assert!(ends_transaction(sql), "{sql}");
+        }
+        for sql in [
+            "UPDATE t SET note = 'COMMIT; ROLLBACK'",
+            "CREATE FUNCTION f() RETURNS void AS $$ BEGIN COMMIT; END $$ LANGUAGE plpgsql",
+            "SELECT 1 -- COMMIT",
+            "DO $$ BEGIN RAISE NOTICE 'x'; END $$",
+            "BEGIN",
+        ] {
+            assert!(!ends_transaction(sql), "{sql}");
+        }
+    }
+
+    #[test]
+    fn session_guards_are_transaction_local() {
+        assert_eq!(
+            session_guards(&[
+                "lock_timeout = '5s'",
+                "idle_in_transaction_session_timeout = '5min'"
+            ]),
+            "SET LOCAL lock_timeout = '5s'; SET LOCAL idle_in_transaction_session_timeout = '5min'"
+        );
+    }
 
     #[test]
     fn routine_ddl_is_rewritten_into_pg_temp() {
@@ -4549,7 +4694,6 @@ mod tests {
             allow_raw_filter: false,
             order_by: Some("id".into()),
             order_desc: false,
-            is_view: false,
             path: path.to_str().unwrap().into(),
             masks: vec![],
             max_rows: None,
@@ -4767,7 +4911,6 @@ mod tests {
                         allow_raw_filter: false,
                         order_by: Some("id".into()),
                         order_desc: false,
-                        is_view: false,
                         path: path.to_str().unwrap().into(),
                         options: options.clone(),
                         masks: vec![],

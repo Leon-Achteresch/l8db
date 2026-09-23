@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   isTransactionalStatement,
+  opensManagedTransaction,
   splitSqlStatements,
   sqlToRun,
   statementAtOffset,
@@ -243,6 +244,22 @@ test("view DDL läuft ohne Transaktion", () => {
     ),
   ).toBe(false);
   expect(isTransactionalStatement("-- fix\nDELETE FROM t", "oracle")).toBe(true);
+});
+
+test("nur Datenänderungen öffnen eine verwaltete Transaktion", () => {
+  expect(opensManagedTransaction("UPDATE t SET a = 1", "postgres")).toBe(true);
+  expect(opensManagedTransaction("-- fix\n/* x */ DELETE FROM t WHERE id = 1", "postgres")).toBe(
+    true,
+  );
+  expect(opensManagedTransaction("ALTER TABLE t ADD b int", "postgres")).toBe(false);
+  expect(opensManagedTransaction("DROP TABLE t", "postgres")).toBe(false);
+  expect(opensManagedTransaction("CREATE INDEX i ON t (a)", "mssql")).toBe(false);
+  expect(opensManagedTransaction("SELECT 1", "postgres")).toBe(false);
+  expect(opensManagedTransaction("ALTER TABLE t ADD b int; UPDATE t SET b = 1", "postgres")).toBe(
+    true,
+  );
+  expect(opensManagedTransaction("BEGIN pkg.run; END;", "oracle")).toBe(true);
+  expect(isTransactionalStatement("ALTER TABLE t ADD b int", "postgres")).toBe(true);
 });
 
 test("DDL ohne Transaktion bei implizitem Commit", () => {

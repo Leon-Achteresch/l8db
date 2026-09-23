@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="l8db Datenbank">
+  <rect width="512" height="512" rx="112" fill="#164765"/>
+  <path d="M256 117c-72 0-123 24-123 59v161c0 36 51 60 123 60s123-24 123-60V176c0-35-51-59-123-59Z" fill="#F5FBFD"/>
+  <path d="M133 176c0 35 51 59 123 59s123-24 123-59M133 258c0 35 51 59 123 59s123-24 123-59" fill="none" stroke="#164765" stroke-width="23"/>
+  <ellipse cx="256" cy="176" rx="78" ry="26" fill="#77D9D0"/>
+</svg>

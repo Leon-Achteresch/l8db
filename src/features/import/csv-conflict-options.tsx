@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { SavedConnection } from "@/lib/connections";
 import type { ImportTargetColumn } from "@/lib/csv-import";
 import { type CsvImportConflict, listConstraints } from "@/lib/db";
@@ -47,35 +54,48 @@ export function CsvConflictOptions({
   return (
     <fieldset className="flex flex-col gap-2 text-xs">
       <legend>Bei Konflikten</legend>
-      <select
-        aria-label="Konfliktstrategie"
-        className="rounded border bg-background p-2"
-        value={mode}
-        onChange={(event) => {
-          const mode = event.target.value;
+      <Select
+        value={`select:${String(mode)}`}
+        onValueChange={(encodedValue) => {
+          const selectedValue = encodedValue.slice(7);
+          const mode = selectedValue;
           setMode(mode);
           onChange(mode === "abort" ? undefined : { constraint: "", update_columns: [] });
         }}
       >
-        <option value="abort">Abbrechen und vollständig zurückrollen</option>
-        <option value="skip">Überspringen</option>
-        <option value="update">Ausgewählte Spalten aktualisieren</option>
-      </select>
+        <SelectTrigger aria-label="Konfliktstrategie" className="rounded border bg-background p-2">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="select:abort">Abbrechen und vollständig zurückrollen</SelectItem>
+          <SelectItem value="select:skip">Überspringen</SelectItem>
+          <SelectItem value="select:update">Ausgewählte Spalten aktualisieren</SelectItem>
+        </SelectContent>
+      </Select>
       {mode !== "abort" && (
         <>
-          <select
-            aria-label="Konfliktschlüssel"
-            className="rounded border bg-background p-2"
-            value={value?.constraint ?? ""}
-            onChange={(event) => onChange({ constraint: event.target.value, update_columns: [] })}
+          <Select
+            value={`select:${String(value?.constraint ?? "")}`}
+            onValueChange={(encodedValue) => {
+              const selectedValue = encodedValue.slice(7);
+              onChange({ constraint: selectedValue, update_columns: [] });
+            }}
           >
-            <option value="">Konfliktschlüssel ausdrücklich wählen</option>
-            {keys?.map((key) => (
-              <option key={key.name} value={key.name}>
-                {key.name} ({key.columns.join(", ")})
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-label="Konfliktschlüssel"
+              className="rounded border bg-background p-2"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="select:">Konfliktschlüssel ausdrücklich wählen</SelectItem>
+              {keys?.map((key) => (
+                <SelectItem key={key.name} value={`select:${String(key.name)}`}>
+                  {key.name} ({key.columns.join(", ")})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {constraints.error && (
             <span className="text-destructive">{String(constraints.error)}</span>
           )}

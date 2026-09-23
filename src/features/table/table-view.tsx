@@ -60,6 +60,8 @@ export function TableView(props: TableViewProps) {
     error,
     refetch,
     totalCount,
+    countLabel,
+    handleExactCount,
     columnDetails,
     exporting,
     csvExportOpen,
@@ -120,6 +122,8 @@ export function TableView(props: TableViewProps) {
       error={error}
       refetch={refetch}
       totalCount={totalCount}
+      countLabel={countLabel}
+      handleExactCount={handleExactCount}
       columnDetails={columnDetails}
       filter={filter}
       filterRaw={filterRaw}
@@ -235,17 +239,15 @@ export function TableView(props: TableViewProps) {
       </TabsContent>
 
       <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {caps.explain && (
-          <Suspense
-            fallback={
-              <div role="status" className="p-4 text-sm text-muted-foreground">
-                Ansicht wird geladen…
-              </div>
-            }
-          >
-            <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
-          </Suspense>
-        )}
+        <Suspense
+          fallback={
+            <div role="status" className="p-4 text-sm text-muted-foreground">
+              Ansicht wird geladen…
+            </div>
+          }
+        >
+          <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+        </Suspense>
       </TabsContent>
 
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">

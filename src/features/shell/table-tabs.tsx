@@ -1,9 +1,10 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, Rows2 } from "lucide";
 import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
+import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useId } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
@@ -17,11 +18,12 @@ import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
 import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
-import { navigateToTab } from "@/lib/tab-navigation";
+import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
+  const activeIndicatorId = useId();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const allTabs = useTableTabs((state) => state.tabs);
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
@@ -35,6 +37,8 @@ export function TableTabs() {
   const reveal = useSplitView((state) => state.reveal);
   const matchTab = useTabRouteMatch();
   const activeWorkspaceTab = useActiveWorkspaceTab();
+  const pendingTab = useActiveWorkspaceTab(true);
+  const router = useRouter();
   const navigate = useNavigate();
   const split = !easyMode && panes.length > 1;
   const orientationLabel =
@@ -51,7 +55,7 @@ export function TableTabs() {
 
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
-    activeTab ? tabKey(activeTab) : undefined,
+    pendingTab ? tabKey(pendingTab) : activeTab ? tabKey(activeTab) : undefined,
     tabs,
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
@@ -107,7 +111,8 @@ export function TableTabs() {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <div ref={containerRef} className="flex min-w-0 items-center">
-        <nav
+        <motion.nav
+          layoutScroll
           ref={navRef}
           onWheel={handleWheel}
           aria-label="Geöffnete Objekte"
@@ -117,9 +122,12 @@ export function TableTabs() {
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
+                activeIndicatorId={activeIndicatorId}
                 tab={tab}
                 index={allTabs.indexOf(tab)}
-                isActive={isTabActive(tab)}
+                isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}
+                isPending={Boolean(pendingTab && tabKey(pendingTab) === tabKey(tab))}
+                onPreload={() => preloadTab(router, tab)}
                 isInPane={split && panes.includes(tabKey(tab))}
                 hasTabsToRight={index < tabs.length - 1}
                 tabsCount={tabs.length}
@@ -144,7 +152,7 @@ export function TableTabs() {
               />
             ))}
           </div>
-        </nav>
+        </motion.nav>
         {overflow && (
           <HiddenTabsMenu
             hiddenTabs={hiddenTabs}

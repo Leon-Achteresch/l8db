@@ -17,6 +17,7 @@ import {
   useViewDefinitionQuery,
 } from "@/lib/queries";
 import { buildViewDdl } from "@/lib/query-builder";
+import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -49,13 +50,15 @@ export function useViewEditor(schema: string, view: string) {
     page,
     filterRaw,
   );
-  const { data: totalCount } = useTableRowCountQuery(
+  const { data: rowCount } = useTableRowCountQuery(
     schema,
     view,
     filter,
     filterRaw,
     data !== undefined || isError,
   );
+  const totalCount = exactRowCount(rowCount);
+  const countLabel = approximateRowCount(rowCount);
 
   const { data: columnDetails } = useDetailedColumnsQuery(schema, view);
   const stateKey = tableViewStateKey(connection?.id, database, schema, view);
@@ -245,5 +248,6 @@ export function useViewEditor(schema: string, view: string) {
     sorting,
     stateKey,
     totalCount,
+    countLabel,
   };
 }

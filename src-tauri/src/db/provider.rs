@@ -45,6 +45,7 @@ pub struct Capabilities {
     pub ddl: bool,
     pub alter_columns: bool,
     pub explain: bool,
+    pub query_stats: bool,
     pub overview: bool,
     pub sql_filter: bool,
     pub read_only_mode: bool,
@@ -101,6 +102,7 @@ const NONE: Capabilities = Capabilities {
     ddl: false,
     alter_columns: false,
     explain: false,
+    query_stats: false,
     overview: false,
     sql_filter: true,
     read_only_mode: false,
@@ -163,6 +165,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                query_stats: true,
                 debugger: true,
                 query_cancel: true,
                 object_admin: true,
@@ -199,6 +202,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
+                query_stats: true,
                 sessions: true,
                 transactions: true,
                 table_transactions: true,
@@ -224,6 +228,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                query_stats: true,
                 proxy_user: true,
                 sessions: true,
                 sequences: true,
@@ -233,6 +238,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                query_stats: true,
                 ssl: false,
                 views: true,
                 view_editor: true,
@@ -245,6 +251,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Oracle => Capabilities {
                 explain: false,
+                query_stats: true,
                 object_grants: true,
                 proxy_user: true,
                 bind_parameters: true,

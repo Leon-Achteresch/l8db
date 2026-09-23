@@ -106,6 +106,17 @@ fn hostile_paths_and_permissions_are_rejected() {
         json!({"enabled":true,"grants":["network"],"configuration":{}})
     )
     .is_err());
+    let mut network_archive = archive();
+    network_archive["manifest"]["id"] = json!("test.network");
+    network_archive["manifest"]["permissions"] = json!(["network"]);
+    operate(&root.0, "install", "", json!({"archive":network_archive})).unwrap();
+    operate(
+        &root.0,
+        "update",
+        "test.network",
+        json!({"enabled":true,"grants":["network"],"configuration":{}}),
+    )
+    .unwrap();
 }
 #[test]
 fn discovery_isolates_corrupt_entries() {

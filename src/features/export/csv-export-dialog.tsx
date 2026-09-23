@@ -157,7 +157,7 @@ export function CsvExportDialog({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {totalRows === null
-                    ? "Der Export streamt direkt aus der Datenbank in die Datei."
+                    ? "Die Zeilenzahl ist nicht genau bekannt. Der Export streamt direkt aus der Datenbank in die Datei."
                     : `${totalRows} Zeilen entsprechen dem aktuellen Filter.`}
                 </p>
                 {needsConfirm && (

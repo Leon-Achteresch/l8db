@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useActiveConnection } from "@/lib/connections";
 import {
+  executeQuery,
   getDatabaseOverview,
   getPartitionInfo,
   getTableRls,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
+import { loadQueryStats } from "@/lib/query-stats";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function useMaterializedViewsQuery(schema?: string, enabled = true) {
@@ -220,5 +222,25 @@ export function useDatabaseOverviewQuery(refetchInterval?: number) {
     enabled: supports(connection, "overview"),
     refetchInterval,
     staleTime: 60_000,
+  });
+}
+
+export function useQueryStatsQuery(limit: number, enabled = true) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["query-stats", connection?.id, database, limit],
+    queryFn: () =>
+      loadQueryStats(connection!.kind, limit, (sql) =>
+        executeQuery(
+          connection!.kind,
+          effectiveConnectionString(connection!),
+          sql,
+          database ?? undefined,
+        ),
+      ),
+    enabled: enabled && supports(connection, "query_stats"),
+    staleTime: 15_000,
+    retry: false,
   });
 }

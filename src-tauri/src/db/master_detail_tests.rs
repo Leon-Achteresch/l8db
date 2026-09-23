@@ -254,6 +254,17 @@ impl Lab {
                     .count_rows(&self.schema, table, args["filter"].as_str(), false)
                     .await?
             )),
+            "count_table_rows_capped" => Ok(json!(
+                self.adapter
+                    .count_rows_capped(
+                        &self.schema,
+                        table,
+                        args["filter"].as_str(),
+                        false,
+                        args["cap"].as_i64().unwrap_or(100_000),
+                    )
+                    .await?
+            )),
             "execute_query_with_params" => {
                 let sql = args["sql"].as_str().ok_or("Missing SQL")?;
                 if !sql.trim().to_ascii_uppercase().starts_with("SELECT ") || sql.contains(';') {

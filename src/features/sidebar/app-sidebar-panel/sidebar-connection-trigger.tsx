@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, DatabaseIcon } from "lucide-react";
+import { CommandIcon, DatabaseIcon } from "lucide-react";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Spinner } from "@/components/ui/spinner";
 import { providerFor } from "@/lib/connection-url";
@@ -29,7 +29,7 @@ export function SidebarConnectionTriggerContent({
         <DatabaseIcon className="size-4 shrink-0 text-primary" />
       )}
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="truncate">
+        <span className="min-w-0 truncate">
           {isSwitching
             ? switchTarget
               ? `Verbinde… ${switchTarget.name}`
@@ -38,19 +38,21 @@ export function SidebarConnectionTriggerContent({
               ? activeConnection.name
               : "Keine Verbindung"}
         </span>
-        {isSwitching
-          ? null
-          : activeConnection?.tags?.map((tag, index) => (
-              <span
-                key={index}
-                className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
-                style={{ backgroundColor: tag.color }}
-              >
-                {tag.name}
-              </span>
-            ))}
+        {!isSwitching && activeConnection?.tags?.[0] && (
+          <span
+            className="inline-flex max-w-20 shrink-0 truncate rounded px-1.5 py-px text-[9px] font-medium text-white"
+            style={{ backgroundColor: activeConnection.tags[0].color }}
+          >
+            {activeConnection.tags[0].name}
+          </span>
+        )}
+        {!isSwitching && (activeConnection?.tags?.length ?? 0) > 1 && (
+          <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+            +{(activeConnection?.tags?.length ?? 0) - 1}
+          </span>
+        )}
       </span>
-      <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
+      <CommandIcon className="size-3.5 shrink-0 text-muted-foreground" />
     </>
   );
 }

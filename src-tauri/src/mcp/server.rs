@@ -99,6 +99,7 @@ pub fn tool_definitions() -> Value {
             }, "required": ["connection", "sql"]}
         },
         super::dashboard::tool_definition(),
+        super::benchmark::tool_definition(),
         {
             "name": "execute",
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
@@ -131,7 +132,7 @@ impl Server {
                 "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "l8db", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types."
+                "instructions": "Call search before query to learn table and column names. Results are TSV; sensitive columns and values are redacted. MongoDB connections take shell syntax (db.users.find({...})) or command documents; Redis connections take plain commands (HGETALL user:1). The dashboard tool builds charts that appear in the l8db app; start with action=chart_types. The benchmark tool measures read-only statements repeatedly and returns latency percentiles."
             })),
             "ping" => Ok(json!({})),
             "tools/list" if !config::load().enabled => Ok(json!({"tools": []})),
@@ -165,7 +166,7 @@ impl Server {
         let outcome = match name {
             "connections" => Ok(list_connections(&config)),
             "dashboard" => self.dashboard(&config, &args).await,
-            "search" | "describe" | "query" | "execute" => {
+            "search" | "describe" | "query" | "execute" | "benchmark" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
                 match find_connection(&config, target) {
                     Err(e) => Err(e),
@@ -180,10 +181,15 @@ impl Server {
                                     .await
                             }
                             "query" => self.query(&config, connection, &args).await,
+                            "benchmark" => self.benchmark(&config, connection, &args).await,
                             _ => self.execute(&config, connection, &args).await,
                         };
-                        if matches!(name, "query" | "execute") {
-                            audit(connection, name, arg_str(&args, "sql"), &result, started);
+                        if matches!(name, "query" | "execute" | "benchmark") {
+                            let statement = match arg_str(&args, "sql") {
+                                "" => arg_str(&args, "file"),
+                                sql => sql,
+                            };
+                            audit(connection, name, statement, &result, started);
                         }
                         result
                     }
@@ -208,7 +214,7 @@ impl Server {
             }
         }
         let adapter = adapter(connection, &self.pool)?;
-        let columns = run(config, async {
+        let columns = run(config, connection.kind, async {
             adapter.list_columns(None, None, None).await
         })
         .await?;
@@ -324,7 +330,10 @@ impl Server {
             .unwrap_or(config.max_rows)
             .clamp(1, db::commands::MAX_RESULT_ROWS);
         let adapter = adapter(connection, &self.pool)?;
-        let result = run(config, async { adapter.execute_query(sql).await }).await?;
+        let result = run(config, connection.kind, async {
+            adapter.execute_query(sql).await
+        })
+        .await?;
         Ok(format_result(&result, config, &redactor, limit))
     }
 
@@ -378,7 +387,10 @@ impl Server {
             }
         }
         let adapter = adapter(connection, &self.pool)?;
-        let result = run(config, async { adapter.execute_query(sql).await }).await?;
+        let result = run(config, connection.kind, async {
+            adapter.execute_query(sql).await
+        })
+        .await?;
         self.columns.remove(&connection.id);
         let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
         let mut text = format!("ok, {} rows affected", result.rows_affected.unwrap_or(0));
@@ -540,7 +552,11 @@ pub(super) fn adapter(
     db::create_adapter_from_string(connection.kind, &url, None, pool.clone())
 }
 
-pub(super) async fn run<T, F>(config: &McpConfig, future: F) -> Result<T, String>
+pub(super) async fn run<T, F>(
+    config: &McpConfig,
+    kind: DatabaseKind,
+    future: F,
+) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
@@ -550,7 +566,7 @@ where
             query_timeout: Some(config.query_timeout),
             connection_timeout: Some(10),
         }),
-        false,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         future,
     )
     .await
@@ -617,7 +633,7 @@ pub fn format_result(
     cap(lines.join("\n"), config.max_chars)
 }
 
-fn scrub_error(error: &str) -> String {
+pub(super) fn scrub_error(error: &str) -> String {
     let re = regex::Regex::new(r"[a-z][a-z0-9+.-]*://[^\s]+").unwrap();
     re.replace_all(error, "[connection-url]").into_owned()
 }
@@ -791,7 +807,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 6);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 7);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();

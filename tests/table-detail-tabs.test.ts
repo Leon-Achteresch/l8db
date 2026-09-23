@@ -71,8 +71,11 @@ test("Tabauswahl berücksichtigt Objekttyp und Treiberfunktionen", () => {
     "data", "columns", "definition", "performance",
   ]);
   expect(availableTableDetailTabs(false, {} as Capabilities).map((tab) => tab.id)).toEqual([
-    "data", "columns",
+    "data", "columns", "performance",
   ]);
+  expect(
+    availableTableDetailTabs(false, { query_language: "redis" } as Capabilities).map((tab) => tab.id),
+  ).toEqual(["data", "columns"]);
 });
 
 test("ausgeblendeter aktiver Tab fällt auf einen sichtbaren Tab zurück", () => {

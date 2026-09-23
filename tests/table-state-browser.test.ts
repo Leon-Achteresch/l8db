@@ -5,9 +5,7 @@ import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 const url = process.env.L8DB_TABLE_BROWSER_URL;
 
 for (const engine of [chromium, webkit]) {
-  test.skipIf(
-    !url || (engine === webkit && process.env.L8DB_BROWSER_ENGINES === "chromium"),
-  )(
+  test.skipIf(!url || (engine === webkit && process.env.L8DB_BROWSER_ENGINES === "chromium"))(
     `${engine.name()}: table tabs restore filters, drafts, page, detail and scrolling`,
     async () => {
       const browser = await engine.launch({ headless: true });
@@ -26,6 +24,8 @@ for (const engine of [chromium, webkit]) {
             __TAURI_INTERNALS__: {
               invoke: async (command: string) => {
                 if (command === "count_table_rows") return 500;
+                if (command === "count_table_rows_capped")
+                  return { count: 500, exact: true, estimate: null };
                 if (command === "fetch_table_rows") {
                   await new Promise((resolve) => setTimeout(resolve, 80));
                   const columns = [

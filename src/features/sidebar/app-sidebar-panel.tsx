@@ -1,5 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import {
   BracesIcon,
   EyeIcon,
@@ -8,14 +7,11 @@ import {
   LinkIcon,
   ListOrderedIcon,
   PackageIcon,
-  SettingsIcon,
   SquareFunctionIcon,
   TableIcon,
-  UnplugIcon,
   UsersIcon,
 } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -25,8 +21,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { ConnectionPicker } from "@/features/connections/connection-picker";
-import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { ExtensionSidebarViews } from "@/features/extensions/extension-sidebar-views";
 import { CompileInvalidButton } from "@/features/sidebar/compile-invalid-button";
 import { SidebarFavorites } from "@/features/sidebar/sidebar-favorites";
@@ -39,7 +33,7 @@ import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 
 import { SchemaManagerDialog } from "./app-sidebar-panel/schema-manager-dialog";
 
-import { SidebarConnectionTriggerContent } from "./app-sidebar-panel/sidebar-connection-trigger";
+import { SidebarConnectionPicker } from "./app-sidebar-panel/sidebar-connection-picker";
 import { SidebarFooterActions } from "./app-sidebar-panel/sidebar-footer-actions";
 import { SidebarScopeSelects } from "./app-sidebar-panel/sidebar-scope-selects";
 import { type SidebarTabValue, sidebarTabLabel } from "./app-sidebar-panel/sidebar-tab";
@@ -62,7 +56,6 @@ export function AppSidebarPanel() {
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
   const matchRoute = useMatchRoute();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const scope = useSidebarScope(connections, activeConnection);
   const [selectedTab, setSidebarTab] = useState<SidebarTabValue>("tables");
   const q = useSidebarObjectQueries(selectedTab);
@@ -109,10 +102,11 @@ export function AppSidebarPanel() {
       className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
-        <ConnectionPicker
-          value={activeConnection?.id ?? null}
+        <SidebarConnectionPicker
+          activeConnection={activeConnection}
           busyId={isSwitching ? switchTargetId : null}
-          disabled={isSwitching}
+          isSwitching={isSwitching}
+          switchTarget={switchTarget}
           onSelect={(id) => {
             if (useConnectionSwitch.getState().isSwitching) return;
             if (id === activeConnection?.id) return;
@@ -120,38 +114,6 @@ export function AppSidebarPanel() {
               if (ok) void navigate({ to: "/" });
             });
           }}
-          trigger={
-            <button
-              type="button"
-              data-tour="sidebar-connection"
-              className="flex w-full items-center gap-2 rounded-2xl border bg-background px-3 py-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <SidebarConnectionTriggerContent
-                isSwitching={isSwitching}
-                switchTarget={switchTarget}
-                activeConnection={activeConnection}
-              />
-            </button>
-          }
-          footer={
-            <>
-              {activeConnection ? (
-                <DropdownMenuItem
-                  disabled={isSwitching}
-                  onSelect={() => void disconnectActiveConnection(queryClient)}
-                >
-                  <UnplugIcon className="text-muted-foreground" />
-                  Verbindung trennen
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem asChild>
-                <Link to="/connections">
-                  <SettingsIcon className="text-muted-foreground" />
-                  Verbindungen verwalten
-                </Link>
-              </DropdownMenuItem>
-            </>
-          }
         />
         {activeConnection ? (
           <SidebarScopeSelects

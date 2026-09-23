@@ -1,21 +1,23 @@
-import { AlertTriangleIcon, PlayIcon, SquareIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PerfModeHint } from "@/features/explain/perf-mode-hint";
+import { PerfRunControls, type PerfRunSettings } from "@/features/explain/perf-run-controls";
 import { PerfRunsReport } from "@/features/explain/perf-runs-report";
 import { useActiveConnection } from "@/lib/connections";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { usePerfRunner } from "@/lib/hooks/use-perf-runner";
 import {
   buildPerfTestSql,
+  isReadOnlyFor,
+  normalizeConcurrency,
   normalizeRepeats,
-  PERF_ANALYZE_HINT,
+  PERF_DEFAULT_CONCURRENCY,
   PERF_DEFAULT_LIMIT,
   PERF_DEFAULT_REPEATS,
-  PERF_MAX_REPEATS,
-  PERF_MIN_REPEATS,
   type PerfTestDefinition,
+  readOnlyRequirement,
 } from "@/lib/perf-test";
 
 interface TablePerfPanelProps {
@@ -25,14 +27,26 @@ interface TablePerfPanelProps {
   isView: boolean;
 }
 
+function planPrefix(kind: string | undefined, timed: boolean): string {
+  if (timed || kind === "clickhouse") return "";
+  return "EXPLAIN (ANALYZE, BUFFERS) ";
+}
+
 export function TablePerfPanel({ schema, table, filter, isView }: TablePerfPanelProps) {
   const connection = useActiveConnection();
+  const language = useActiveCapabilities().query_language;
   const runner = usePerfRunner();
+  const mongo = language === "json";
 
   const [whereClause, setWhereClause] = useState(filter);
   const [orderBy, setOrderBy] = useState("");
   const [limit, setLimit] = useState(String(PERF_DEFAULT_LIMIT));
-  const [repeats, setRepeats] = useState(String(PERF_DEFAULT_REPEATS));
+  const [settings, setSettings] = useState<PerfRunSettings>({
+    repeats: String(PERF_DEFAULT_REPEATS),
+    concurrency: String(PERF_DEFAULT_CONCURRENCY),
+    timed: false,
+  });
+  const timed = settings.timed || !runner.canExplain;
 
   const definition = useMemo<PerfTestDefinition>(() => {
     const parsedLimit = Number.parseInt(limit, 10);
@@ -42,120 +56,89 @@ export function TablePerfPanel({ schema, table, filter, isView }: TablePerfPanel
       filter: whereClause.trim().length > 0 ? whereClause.trim() : null,
       orderBy: orderBy.trim().length > 0 ? orderBy.trim() : null,
       limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null,
-      repeats: normalizeRepeats(Number.parseInt(repeats, 10)),
+      repeats: normalizeRepeats(Number.parseInt(settings.repeats, 10)),
+      concurrency: normalizeConcurrency(Number.parseInt(settings.concurrency, 10)),
       analyze: true,
+      timed,
     };
-  }, [schema, table, whereClause, orderBy, limit, repeats]);
+  }, [schema, table, whereClause, orderBy, limit, settings, timed]);
 
   const sql = useMemo(
     () => buildPerfTestSql(definition, connection?.kind),
     [definition, connection?.kind],
   );
+  const readOnly = useMemo(() => isReadOnlyFor(language, sql), [language, sql]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-        <p className="flex items-start gap-2 text-xs">
-          <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-          <span>{PERF_ANALYZE_HINT}</span>
-        </p>
-      </div>
+      <PerfModeHint timed={timed} />
 
       <div className="grid gap-3 rounded-lg border bg-card p-3 md:grid-cols-2">
         <div className="flex flex-col gap-1 md:col-span-2">
           <Label className="text-xs" htmlFor="perf-filter">
-            Filter (WHERE)
+            {mongo ? "Filter (JSON)" : "Filter (WHERE)"}
           </Label>
           <Input
             id="perf-filter"
             value={whereClause}
             onChange={(event) => setWhereClause(event.target.value)}
-            placeholder="z. B. status = 'aktiv'"
+            placeholder={mongo ? 'z. B. {"status": "aktiv"}' : "z. B. status = 'aktiv'"}
             className="h-8 font-mono text-xs"
             disabled={runner.running}
           />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor="perf-order">
-            Sortierung (ORDER BY)
+            {mongo ? "Sortierung (JSON)" : "Sortierung (ORDER BY)"}
           </Label>
           <Input
             id="perf-order"
             value={orderBy}
             onChange={(event) => setOrderBy(event.target.value)}
-            placeholder="z. B. id DESC"
+            placeholder={mongo ? 'z. B. {"_id": -1}' : "z. B. id DESC"}
             className="h-8 font-mono text-xs"
             disabled={runner.running}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs" htmlFor="perf-limit">
-              Limit
-            </Label>
-            <Input
-              id="perf-limit"
-              type="number"
-              min={1}
-              value={limit}
-              onChange={(event) => setLimit(event.target.value)}
-              className="h-8 text-xs"
-              disabled={runner.running}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs" htmlFor="perf-repeats">
-              Wiederholungen
-            </Label>
-            <Input
-              id="perf-repeats"
-              type="number"
-              min={PERF_MIN_REPEATS}
-              max={PERF_MAX_REPEATS}
-              value={repeats}
-              onChange={(event) => setRepeats(event.target.value)}
-              className="h-8 text-xs"
-              disabled={runner.running}
-            />
-          </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs" htmlFor="perf-limit">
+            Limit
+          </Label>
+          <Input
+            id="perf-limit"
+            type="number"
+            min={1}
+            value={limit}
+            onChange={(event) => setLimit(event.target.value)}
+            className="h-8 w-28 text-xs"
+            disabled={runner.running}
+          />
         </div>
         <pre className="overflow-x-auto rounded-md bg-muted/50 px-3 py-2 font-mono text-[11px] md:col-span-2">
-          {connection?.kind === "clickhouse" ? sql : `EXPLAIN (ANALYZE, BUFFERS) ${sql}`}
+          {`${planPrefix(connection?.kind, timed)}${sql}`}
         </pre>
-        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Button
-            size="sm"
-            className="h-7 gap-1.5 px-2.5 text-xs"
-            onClick={() =>
+        {!readOnly && (
+          <p className="text-xs text-destructive md:col-span-2">{readOnlyRequirement(language)}</p>
+        )}
+        <div className="md:col-span-2">
+          <PerfRunControls
+            idPrefix="perf"
+            runner={runner}
+            settings={settings}
+            onSettingsChange={setSettings}
+            startLabel={isView ? "View testen" : "Tabelle testen"}
+            startDisabled={!readOnly}
+            onStart={() =>
               void runner.start({
                 sql,
                 repeats: definition.repeats,
+                concurrency: definition.concurrency,
                 analyze: definition.analyze,
+                timed,
                 definition,
               })
             }
-            disabled={runner.running || !runner.canRun}
-          >
-            <PlayIcon className="size-3.5" />
-            {isView ? "View testen" : "Tabelle testen"}
-          </Button>
-          {runner.running && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1.5 px-2.5 text-xs"
-              onClick={runner.cancel}
-            >
-              <SquareIcon className="size-3.5" />
-              Abbrechen
-            </Button>
-          )}
-          {runner.progress && (
-            <span className="text-xs text-muted-foreground">
-              Lauf {Math.min(runner.progress.done + 1, runner.progress.total)} von{" "}
-              {runner.progress.total}…
-            </span>
-          )}
+          />
         </div>
       </div>
 

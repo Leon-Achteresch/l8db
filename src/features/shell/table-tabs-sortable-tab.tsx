@@ -3,6 +3,7 @@ import {
   BracesIcon,
   CopyIcon,
   EyeIcon,
+  LoaderCircleIcon,
   PackageIcon,
   PanelRightIcon,
   SquareTerminalIcon,
@@ -12,7 +13,7 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 import {
   ContextMenu,
@@ -22,7 +23,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SPRING } from "@/lib/ease";
+import { SPRING, SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
@@ -30,9 +31,12 @@ import { TOOL_TABS } from "@/lib/tool-tabs";
 import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
+  activeIndicatorId: string;
   tab: Tab;
   index: number;
   isActive: boolean;
+  isPending?: boolean;
+  onPreload?: () => void;
   isInPane?: boolean;
   canSplit?: boolean;
   hasTabsToRight: boolean;
@@ -83,9 +87,12 @@ function tabVisual(tab: Tab) {
 }
 
 export function TableTabsSortableTab({
+  activeIndicatorId,
   tab,
   index,
   isActive,
+  isPending = false,
+  onPreload,
   isInPane = false,
   canSplit = true,
   hasTabsToRight,
@@ -101,6 +108,7 @@ export function TableTabsSortableTab({
   onCopyFull,
   onSplit,
 }: TableTabsSortableTabProps) {
+  const reduceMotion = useReducedMotion();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const { ref, handleRef, isDragging } = useSortable({
     id: tabKey(tab),
@@ -120,26 +128,41 @@ export function TableTabsSortableTab({
         <motion.div
           ref={ref}
           data-tab-key={tabKey(tab)}
-          layout={!isDragging ? "position" : false}
+          layout={!isDragging && !reduceMotion ? "position" : false}
           transition={{ layout: SPRING }}
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
           className={cn(
-            "group relative flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
+            "group relative isolate flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
             isActive
-              ? "bg-card text-foreground shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
+              ? "text-foreground"
               : isInPane
                 ? "bg-accent/40 text-foreground ring-1 ring-inset ring-border/70"
                 : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
           )}
         >
-          <button
+          {isActive && (
+            <motion.span
+              aria-hidden="true"
+              layoutId={reduceMotion ? undefined : activeIndicatorId}
+              initial={false}
+              transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
+              style={{ borderRadius: 9999 }}
+              className="pointer-events-none absolute inset-0 -z-10 bg-card shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
+            />
+          )}
+          <motion.button
             type="button"
             ref={handleRef}
+            whileTap={reduceMotion || isDragging ? undefined : { scale: 0.96 }}
+            transition={SPRING_PRESS}
+            onPointerEnter={onPreload}
+            onFocus={onPreload}
             onClick={onNavigate}
+            aria-busy={isPending || undefined}
             title={label}
-            aria-pressed={isActive}
+            aria-current={isActive ? "page" : undefined}
             className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <span
@@ -148,7 +171,11 @@ export function TableTabsSortableTab({
                 iconColor,
               )}
             >
-              <Icon className="relative size-3" />
+              {isPending ? (
+                <LoaderCircleIcon className="relative size-3 motion-safe:animate-spin" />
+              ) : (
+                <Icon className="relative size-3" />
+              )}
             </span>
             <span className="truncate font-medium">{label}</span>
             {tab.kind === "query" && tab.externalChange && (
@@ -161,7 +188,7 @@ export function TableTabsSortableTab({
                 ●
               </span>
             )}
-          </button>
+          </motion.button>
           <button
             type="button"
             onClick={onClose}

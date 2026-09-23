@@ -1,5 +1,6 @@
 import { XIcon } from "lucide-react";
 import { useTableRowCountQuery } from "@/lib/queries";
+import { shortRowCount } from "@/lib/row-count";
 import { cn } from "@/lib/utils";
 
 interface TableViewChipProps {
@@ -42,9 +43,7 @@ export function TableViewChip({
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <span>{label}</span>
         {count.data !== undefined && (
-          <span className="text-xs text-muted-foreground">
-            {Intl.NumberFormat("de-DE", { notation: "compact" }).format(count.data)}
-          </span>
+          <span className="text-xs text-muted-foreground">{shortRowCount(count.data)}</span>
         )}
       </button>
       {onRemove && (

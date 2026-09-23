@@ -9,7 +9,7 @@ import {
 } from "@/lib/db";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { useSettingsStore } from "@/lib/settings";
-import { isTransactionalStatement } from "@/lib/sql-statements";
+import { isTransactionalStatement, opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
@@ -60,7 +60,11 @@ export async function executeSqlWithTransactions({
     }
     return res;
   }
-  if (isDml && transactionsCapable && useSettingsStore.getState().transactionsEnabled) {
+  if (
+    opensManagedTransaction(sql, connection.kind) &&
+    transactionsCapable &&
+    useSettingsStore.getState().transactionsEnabled
+  ) {
     const { txId } = await ensureManagedTransaction(connection, database ?? null, {
       type: "query",
     });

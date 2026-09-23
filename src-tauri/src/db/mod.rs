@@ -94,6 +94,25 @@ pub struct TableData {
     pub rows: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RowCount {
+    pub count: i64,
+    pub exact: bool,
+    pub estimate: Option<i64>,
+}
+
+impl RowCount {
+    pub fn exact(count: i64) -> Self {
+        Self {
+            count,
+            exact: true,
+            estimate: None,
+        }
+    }
+}
+
+pub const MAX_ROW_COUNT_CAP: i64 = 10_000_000;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DetailedColumnInfo {
     pub name: String,
@@ -454,6 +473,19 @@ pub trait DatabaseAdapter: Send + Sync {
         filter: Option<&str>,
         allow_raw_filter: bool,
     ) -> Result<i64, String>;
+    async fn count_rows_capped(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw_filter: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let _ = cap;
+        self.count_rows(schema, table, filter, allow_raw_filter)
+            .await
+            .map(RowCount::exact)
+    }
     async fn update_row(
         &self,
         schema: &str,
@@ -1357,6 +1389,12 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         if let Some(tokio_postgres::error::ErrorPosition::Original(pos)) = db_err.position() {
             msg.push_str(&format!("\nPosition: {pos}"));
         }
+        let code = db_err.code();
+        if code == &tokio_postgres::error::SqlState::LOCK_NOT_AVAILABLE {
+            msg.push_str("\nHinweis: Eine andere Sitzung hält eine Sperre auf dem Objekt. Später erneut versuchen.\nSQLSTATE 55P03");
+        } else if code == &tokio_postgres::error::SqlState::QUERY_CANCELED {
+            msg.push_str("\nSQLSTATE 57014");
+        }
         msg
     } else {
         format!("Datenbankfehler: {e}")
@@ -2148,3 +2186,9 @@ mod master_detail_tests;
 
 #[cfg(test)]
 mod clickhouse_browser_tests;
+
+#[cfg(test)]
+mod load_perf_tests;
+
+#[cfg(test)]
+mod live_plan_tests;

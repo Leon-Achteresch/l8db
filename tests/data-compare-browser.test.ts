@@ -4,7 +4,7 @@ import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 import { seedApp } from "./fixtures/perf-app";
 
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
-  "data comparison restores custom keys and opens scripts on the selected target",
+  "retired data workspaces stay stored and are hidden from the definition comparison",
   async () => {
     const browser = await chromium.launch();
     try {
@@ -90,59 +90,21 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
         };
       });
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/compare`);
-      await page.getByLabel("Analyse-Arbeitsstand").selectOption("saved");
-      await page.getByRole("button", { name: "Laden", exact: true }).click();
-      expect(await page.getByLabel("Vergleichsmodus").inputValue()).toBe("data");
-      await page.waitForFunction(() =>
-        localStorage.getItem("l8db.table-tabs")?.includes('"dataLeft"'),
+      expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
+      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
+      await page.getByText("Noch keine Arbeitsstände gespeichert.").waitFor();
+      expect(await page.getByText("Custom data", { exact: true }).count()).toBe(0);
+      expect(await page.evaluate(() => localStorage.getItem("l8db.analysis-workspaces"))).toContain(
+        "Custom data",
       );
-      await page.reload();
-      expect(await page.getByLabel("Vergleichsmodus").inputValue()).toBe("data");
-      await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
-      await page.getByRole("button", { name: "Als Query-Tab", exact: true }).click();
-      await page.waitForURL(/\/query\//);
-      expect(
-        await page.evaluate(
-          () => JSON.parse(localStorage.getItem("l8db.connections") ?? "null").state.activeId,
-        ),
-      ).toBe("target");
-      expect(
-        await page.evaluate(
-          () =>
-            JSON.parse(localStorage.getItem("l8db.db-selection") ?? "null").state
-              .databaseByConnection.target,
-        ),
-      ).toBe("target_db");
       expect(
         await page.evaluate(() =>
-          (window as unknown as { compareCalls: string[] }).compareCalls.includes("execute_query"),
+          (window as unknown as { compareCalls: string[] }).compareCalls.includes(
+            "compare_table_data",
+          ),
         ),
       ).toBe(false);
-      await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/compare`);
-      await page.getByLabel("Analyse-Arbeitsstand").selectOption("saved");
-      await page.getByRole("button", { name: "Laden", exact: true }).click();
-      await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
-      await page.getByRole("combobox").filter({ hasText: "Links nach rechts" }).click();
-      await page.getByRole("option", { name: "Rechts nach links" }).click();
-      await page.getByRole("button", { name: "Als Query-Tab", exact: true }).click();
-      await page.waitForURL(/\/query\//);
-      expect(
-        await page.evaluate(
-          () => JSON.parse(localStorage.getItem("l8db.connections") ?? "null").state.activeId,
-        ),
-      ).toBe("perf");
-      expect(
-        await page.evaluate(
-          () =>
-            JSON.parse(localStorage.getItem("l8db.db-selection") ?? "null").state
-              .databaseByConnection.perf,
-        ),
-      ).toBe("l8db_perf");
-      expect(
-        await page.evaluate(() =>
-          (window as unknown as { compareCalls: string[] }).compareCalls.includes("execute_query"),
-        ),
-      ).toBe(false);
+      expect(errors).toEqual([]);
     } finally {
       await saveBrowserArtifacts(browser, "data-compare");
       await browser.close();

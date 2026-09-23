@@ -270,6 +270,18 @@ pub async fn postgres<T, F>(
 where
     F: Future<Output = Result<T, String>>,
 {
+    guarded(client.cancel_token(), ssl, session, future).await
+}
+
+pub async fn guarded<T, F>(
+    token: tokio_postgres::CancelToken,
+    ssl: super::SslMode,
+    session: Option<&PgSession>,
+    future: F,
+) -> Result<T, String>
+where
+    F: Future<Output = Result<T, String>>,
+{
     let cancel = CONTEXT
         .try_with(|ctx| ctx.cancel.clone())
         .unwrap_or_default();
@@ -287,7 +299,6 @@ where
         session.interrupted.store(true, Ordering::Release);
     }
     let _ = CONTEXT.try_with(|ctx| ctx.interrupted.store(true, Ordering::Release));
-    let token = client.cancel_token();
     let cancellation = token.cancel_query(super::connection::tls_connector(ssl)?);
     match tokio::time::timeout(connection_duration(), cancellation).await {
         Ok(Ok(())) => {}

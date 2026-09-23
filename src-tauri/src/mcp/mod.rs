@@ -1,3 +1,4 @@
+pub mod benchmark;
 pub mod clients;
 pub mod config;
 pub mod dashboard;

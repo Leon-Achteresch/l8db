@@ -1,5 +1,7 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
-use crate::db::{attach_row_keys, quote_ident, where_clause, TableData};
+use crate::db::execution::guarded;
+use crate::db::postgres::{capped_count, capped_count_sql, relation_name, table_page_sql};
+use crate::db::{attach_row_keys, quote_ident, where_clause, RowCount, TableData};
 
 #[derive(Clone)]
 pub struct TransactionTableRead {
@@ -85,43 +87,31 @@ impl TransactionManager {
                     rows: result.rows,
                 })
             }
-            TransactionEntry::Pg(c, _) => {
+            TransactionEntry::Pg(c, ssl) => {
                 let conn = c.lock().await?;
-                conn.batch_execute("SAVEPOINT l8_read")
-                    .await
-                    .map_err(map_pg_err)?;
-                let result = async {
+                pg_read(&conn, *ssl, async {
                     let column_rows = conn.query(
                         "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
                         &[&request.schema, &request.table],
                     ).await.map_err(map_pg_err)?;
                     let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
-                    let projection = if request.is_view {
-                        "to_jsonb(t)"
-                    } else {
-                        "to_jsonb(t) || jsonb_build_object('__ctid__', t.ctid::text)"
-                    };
-                    let sql = format!(
-                        "SELECT {} FROM {}.{} AS t{}{} LIMIT $1 OFFSET $2",
-                        projection,
-                        quote_ident(&request.schema),
-                        quote_ident(&request.table),
-                        where_sql,
-                        request.order_sql(&columns, DatabaseKind::Postgres),
+                    let order = request
+                        .order_by
+                        .as_deref()
+                        .filter(|column| columns.iter().any(|name| name == column))
+                        .map(|column| (column, request.order_desc));
+                    let sql = table_page_sql(
+                        &request.schema,
+                        &request.table,
+                        &where_sql,
+                        order,
+                        !request.is_view,
                     );
                     let data = conn.query(&sql, &[&request.limit.max(0), &request.offset.max(0)])
                         .await.map_err(map_pg_err)?;
                     Ok(TableData { columns, rows: data.iter().map(|row| row.get(0)).collect() })
-                }.await;
-                if result.is_err() {
-                    conn.batch_execute("ROLLBACK TO SAVEPOINT l8_read")
-                        .await
-                        .map_err(map_pg_err)?;
-                }
-                conn.batch_execute("RELEASE SAVEPOINT l8_read")
-                    .await
-                    .map_err(map_pg_err)?;
-                result
+                })
+                .await
             }
         }
     }
@@ -161,7 +151,7 @@ impl TransactionManager {
                 );
                 count_value(&g.execute(&sql).await?.rows)
             }
-            TransactionEntry::Pg(c, _) => {
+            TransactionEntry::Pg(c, ssl) => {
                 let conn = c.lock().await?;
                 let sql = format!(
                     "SELECT COUNT(*) FROM {}.{}{}",
@@ -169,26 +159,71 @@ impl TransactionManager {
                     quote_ident(table),
                     where_sql
                 );
-                conn.batch_execute("SAVEPOINT l8_read")
-                    .await
-                    .map_err(map_pg_err)?;
-                let result = conn
-                    .query_one(&sql, &[])
-                    .await
-                    .map(|row| row.get(0))
-                    .map_err(map_pg_err);
-                if result.is_err() {
-                    conn.batch_execute("ROLLBACK TO SAVEPOINT l8_read")
+                pg_read(&conn, *ssl, async {
+                    conn.query_one(&sql, &[])
                         .await
-                        .map_err(map_pg_err)?;
-                }
-                conn.batch_execute("RELEASE SAVEPOINT l8_read")
-                    .await
-                    .map_err(map_pg_err)?;
-                result
+                        .map(|row| row.get(0))
+                        .map_err(map_pg_err)
+                })
+                .await
             }
         }
     }
+
+    pub async fn count_rows_capped(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let entry = self.entry(tx_id).await?;
+        let TransactionEntry::Pg(c, ssl) = &*entry else {
+            return self
+                .count_rows(tx_id, schema, table, filter, allow_raw)
+                .await
+                .map(RowCount::exact);
+        };
+        let where_sql = where_clause(filter, allow_raw)?;
+        let sql = capped_count_sql(schema, table, &where_sql, cap);
+        let name = relation_name(schema, table);
+        let conn = c.lock().await?;
+        pg_read(&conn, *ssl, async {
+            let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
+            Ok(capped_count(
+                row.get(0),
+                row.get(1),
+                cap,
+                !where_sql.is_empty(),
+            ))
+        })
+        .await
+    }
+}
+
+async fn pg_read<T, F>(
+    conn: &tokio_postgres::Client,
+    ssl: crate::db::SslMode,
+    read: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    conn.batch_execute("SAVEPOINT l8_read")
+        .await
+        .map_err(map_pg_err)?;
+    let result = guarded(conn.cancel_token(), ssl, None, read).await;
+    if result.is_err() {
+        conn.batch_execute("ROLLBACK TO SAVEPOINT l8_read")
+            .await
+            .map_err(map_pg_err)?;
+    }
+    conn.batch_execute("RELEASE SAVEPOINT l8_read")
+        .await
+        .map_err(map_pg_err)?;
+    result
 }
 
 fn count_value(rows: &[serde_json::Value]) -> Result<i64, String> {

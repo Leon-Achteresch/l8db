@@ -71,6 +71,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
     sorting,
     stateKey,
     totalCount,
+    countLabel,
   } = useViewEditor(schema, view);
 
   if (!connection) {
@@ -176,6 +177,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
               onApplyFilter={handleFilterChange}
               page={page}
               totalCount={totalCount ?? undefined}
+              countLabel={countLabel}
               pageSize={rowLimit}
               onPageChange={setPage}
               foreignKeys={foreignKeys}

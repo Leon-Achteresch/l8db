@@ -64,7 +64,7 @@ async function handleWindowShowmessage(ctx: RpcContext): Promise<Json | void> {
   const level = text(0, 16);
   if (!["info", "warning", "error"].includes(level))
     throw new ExtensionError("ProtocolError", "Invalid message level");
-  const message = text(1);
+  const message = text(1, 16384);
   const actions = Array.isArray(args[2])
     ? (args[2] as Json[]).map((action) => {
         if (typeof action !== "string" || !action || action.length > 120)

@@ -148,6 +148,7 @@ src-tauri/src/
 
 - Data transfer behavior, limits and benchmarks: [data-transfer.md](docs/data-transfer.md).
 - Reproducible database and browser checks: [integration-tests.md](docs/integration-tests.md).
+- Performance tests, workload replay and `l8db --benchmark`: [performance.md](docs/performance.md).
 - Production configuration: [.github/PRODUCTION.md](.github/PRODUCTION.md).
 
 - `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).

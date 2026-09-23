@@ -110,17 +110,15 @@ export function ViewDetailTabs({
       </TabsContent>
 
       <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {caps.explain && (
-          <Suspense
-            fallback={
-              <div role="status" className="p-4 text-sm text-muted-foreground">
-                Ansicht wird geladen…
-              </div>
-            }
-          >
-            <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
-          </Suspense>
-        )}
+        <Suspense
+          fallback={
+            <div role="status" className="p-4 text-sm text-muted-foreground">
+              Ansicht wird geladen…
+            </div>
+          }
+        >
+          <TablePerfPanel schema={schema} table={table} filter={filter} isView={true} />
+        </Suspense>
       </TabsContent>
 
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">

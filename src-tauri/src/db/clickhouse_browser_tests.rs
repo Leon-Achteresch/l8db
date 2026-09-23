@@ -70,6 +70,16 @@ async fn dispatch(
             .count_rows(schema, table, args["filter"].as_str(), true)
             .await
             .map(|v| json!(v)),
+        "count_table_rows_capped" => adapter
+            .count_rows_capped(
+                schema,
+                table,
+                args["filter"].as_str(),
+                true,
+                args["cap"].as_i64().unwrap_or(100_000),
+            )
+            .await
+            .map(|v| json!(v)),
         "execute_query" => adapter
             .execute_query(args["sql"].as_str().unwrap_or(""))
             .await

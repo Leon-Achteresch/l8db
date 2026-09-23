@@ -6,11 +6,12 @@ import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
+import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
-import { navigateToTab } from "@/lib/tab-navigation";
+import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
 import { toolIdForPath } from "@/lib/tool-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
@@ -47,6 +48,8 @@ export function WorkspaceLayout() {
   }, [pathname, openToolTab]);
 
   const activeTab = useActiveWorkspaceTab();
+  const pendingTab = useActiveWorkspaceTab(true);
+  const switchingTab = pendingTab && (!activeTab || tabKey(pendingTab) !== tabKey(activeTab));
   const navigate = useNavigate();
   const split = useSplitView((state) => state.panes.length > 1);
   const hasFkDrawer = useFkDrawerStack((state) => state.stack.length > 0);
@@ -105,16 +108,22 @@ export function WorkspaceLayout() {
           <TableTabs />
         </header>
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {!easyMode && split && activeTab ? (
-            <SplitWorkspace />
-          ) : (
-            <>
-              <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
-                <Outlet />
-              </MasterSelectionContext.Provider>
-              {!easyMode && activeTab && <NewPaneDropZone />}
-            </>
-          )}
+          <div
+            inert={Boolean(switchingTab)}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          >
+            {!easyMode && split && activeTab ? (
+              <SplitWorkspace />
+            ) : (
+              <>
+                <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
+                  <Outlet />
+                </MasterSelectionContext.Provider>
+                {!easyMode && activeTab && <NewPaneDropZone />}
+              </>
+            )}
+          </div>
+          {switchingTab && <WorkspacePendingView label={tabLabel(pendingTab)} />}
           {fkDrawerUsed.current && (
             <Suspense fallback={null}>
               <FkDrawerStack />

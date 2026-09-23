@@ -1,14 +1,21 @@
 import {
   ChevronDownIcon,
   ChevronUpIcon,
+  EllipsisIcon,
   GitCompareIcon,
   LoaderIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
@@ -41,6 +48,7 @@ function sideReady(side: CompareSideSelection): boolean {
 }
 
 type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definitions" }> & {
+  workspaceActions?: ReactNode;
   draft: string | null;
   draftBase: string | null;
   onDraftChange: (value: string, baseline: string) => void;
@@ -114,52 +122,73 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-3 py-2">
+      <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
         <GitCompareIcon className="size-4 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">
-          {changeCount === 0
-            ? "Keine Unterschiede"
-            : `${changeCount} geänderte ${changeCount === 1 ? "Stelle" : "Stellen"}`}
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {!sideReady(left) || !sideReady(right)
+            ? "Definitionen vergleichen"
+            : leftState.loading || rightState.loading
+              ? "Wird geladen…"
+              : leftState.error || rightState.error
+                ? "Vergleich nicht verfügbar"
+                : changeCount === 0
+                  ? "Keine Unterschiede"
+                  : `${changeCount} geänderte ${changeCount === 1 ? "Stelle" : "Stellen"}`}
         </span>
         <Button
           size="sm"
-          variant="outline"
-          className="h-7 text-xs"
+          variant="ghost"
+          className="size-7 p-0"
+          aria-label="Vorherige Änderung"
+          title="Vorherige Änderung"
           onClick={() => diffRef.current?.goToChange(-1)}
           disabled={changeCount === 0}
         >
           <ChevronUpIcon className="size-3" />
-          Vorherige
         </Button>
         <Button
           size="sm"
-          variant="outline"
-          className="h-7 text-xs"
+          variant="ghost"
+          className="size-7 p-0"
+          aria-label="Nächste Änderung"
+          title="Nächste Änderung"
           onClick={() => diffRef.current?.goToChange(1)}
           disabled={changeCount === 0}
         >
           <ChevronDownIcon className="size-3" />
-          Nächste
         </Button>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="compare-only-differences"
-            checked={onlyDifferences}
-            onCheckedChange={setOnlyDifferences}
-          />
-          <Label htmlFor="compare-only-differences" className="text-xs">
-            Nur Unterschiede
-          </Label>
+        <div className="ml-auto flex items-center gap-1">
+          {props.workspaceActions}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Vergleichsoptionen"
+                title="Vergleichsoptionen"
+              >
+                <EllipsisIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuCheckboxItem
+                checked={onlyDifferences}
+                onCheckedChange={setOnlyDifferences}
+              >
+                Nur Unterschiede
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuItem onSelect={() => setReloadToken((token) => token + 1)}>
+                <RefreshCwIcon className="size-3.5" />
+                Neu laden
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <p className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">
+                Mit den Pfeilen im Editor Änderungen ins Ziel übernehmen. Rechts den Entwurf
+                bearbeiten; Strg/Cmd+Z macht Änderungen rückgängig.
+              </p>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto h-7 text-xs"
-          onClick={() => setReloadToken((token) => token + 1)}
-        >
-          <RefreshCwIcon className="size-3" />
-          Neu laden
-        </Button>
         <CompareSetupModal {...props} />
         <CompareApplyDialog
           connection={connections.find((item) => item.id === right.connectionId) ?? null}
@@ -174,24 +203,22 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         />
       </div>
 
-      <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-        Mit den Pfeilen zwischen den Definitionen einzelne Änderungen ins Ziel übernehmen. Rechts
-        kannst du den Entwurf frei bearbeiten und mit Strg/Cmd+Z rückgängig machen.
-      </p>
-      <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
-        <CompareSideSummary
-          side={left}
-          loading={leftState.loading}
-          error={leftState.error}
-          delta={{ sign: "-", count: stats.removed }}
-        />
-        <CompareSideSummary
-          side={right}
-          loading={rightState.loading}
-          error={rightState.error}
-          delta={{ sign: "+", count: stats.added }}
-        />
-      </div>
+      {(sideReady(left) || sideReady(right)) && (
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
+          <CompareSideSummary
+            side={left}
+            loading={leftState.loading}
+            error={leftState.error}
+            delta={{ sign: "-", count: stats.removed }}
+          />
+          <CompareSideSummary
+            side={right}
+            loading={rightState.loading}
+            error={rightState.error}
+            delta={{ sign: "+", count: stats.added }}
+          />
+        </div>
+      )}
 
       {!sideReady(left) || !sideReady(right) ? (
         <div className="flex flex-1 items-center justify-center">

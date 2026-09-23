@@ -52,6 +52,8 @@ export type DataTableProps = {
   onApplyFilter?: (where: string, isRaw: boolean) => void;
   page?: number;
   totalCount?: number;
+  countLabel?: string;
+  onExactCount?: () => void;
   pageSize?: number;
   onPageChange?: (page: number) => void;
   foreignKeys?: ForeignKeyInfo[];

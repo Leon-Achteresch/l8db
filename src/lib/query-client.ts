@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { isAuthFailure } from "@/lib/connection-url";
+import { isAuthFailure, isInterruptedQuery } from "@/lib/connection-url";
 
 export const METADATA_QUERY_ROOTS = [
   "databases",
@@ -70,7 +70,8 @@ export function createAppQueryClient() {
     defaultOptions: {
       queries: {
         refetchOnWindowFocus: false,
-        retry: (failureCount, error) => !isAuthFailure(error) && failureCount < 3,
+        retry: (failureCount, error) =>
+          !isAuthFailure(error) && !isInterruptedQuery(error) && failureCount < 3,
       },
     },
   });

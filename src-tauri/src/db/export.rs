@@ -44,7 +44,6 @@ pub struct TableExportRequest {
     pub allow_raw_filter: bool,
     pub order_by: Option<String>,
     pub order_desc: bool,
-    pub is_view: bool,
     pub path: String,
     pub options: CsvExportOptions,
     pub masks: Vec<ColumnMask>,

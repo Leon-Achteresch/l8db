@@ -1,4 +1,5 @@
 import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
+import { ExtensionMarketSection } from "@/features/community-extensions/extension-market-section";
 
 export function SettingsExtensionsTab() {
   return (
@@ -11,6 +12,7 @@ export function SettingsExtensionsTab() {
       </div>
 
       <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-xs">
+        <ExtensionMarketSection />
         <CommunityExtensionsSection />
       </div>
     </div>

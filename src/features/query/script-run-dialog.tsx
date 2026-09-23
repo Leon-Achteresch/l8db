@@ -8,6 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type ScriptRunMode = "existing-transaction" | "new-transaction" | "autocommit";
 
@@ -58,27 +65,37 @@ export function ScriptRunDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 text-xs">
-          <label className="grid gap-2">
+          <div className="grid gap-2">
             Transaktion
-            <select
-              aria-label="Skript-Transaktion"
-              className="rounded border bg-background p-2"
-              value={selectedMode}
-              onChange={(event) => setSelectedMode(event.target.value as ScriptRunMode)}
+            <Select
+              value={String(selectedMode)}
+              onValueChange={(selectedValue) => {
+                setSelectedMode(selectedValue as ScriptRunMode);
+              }}
               disabled={mode === "existing-transaction"}
             >
-              {mode === "existing-transaction" ? (
-                <option value="existing-transaction">Offene Transaktion verwenden</option>
-              ) : (
-                <>
-                  <option value="autocommit">Autocommit</option>
-                  {transactions && (
-                    <option value="new-transaction">Neue Transaktion, danach prüfen</option>
-                  )}
-                </>
-              )}
-            </select>
-          </label>
+              <SelectTrigger
+                aria-label="Skript-Transaktion"
+                className="rounded border bg-background p-2"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {mode === "existing-transaction" ? (
+                  <SelectItem value="existing-transaction">Offene Transaktion verwenden</SelectItem>
+                ) : (
+                  <>
+                    <SelectItem value="autocommit">Autocommit</SelectItem>
+                    {transactions && (
+                      <SelectItem value="new-transaction">
+                        Neue Transaktion, danach prüfen
+                      </SelectItem>
+                    )}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
           <p>{SCRIPT_RUN_MODE_TEXT[selectedMode]}</p>
           <label className="flex items-center gap-2">
             <input

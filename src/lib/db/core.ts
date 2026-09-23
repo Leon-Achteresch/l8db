@@ -28,6 +28,7 @@ const CONFIGURED_COMMANDS = new Set([
   "list_schemas",
   "fetch_table_rows",
   "count_table_rows",
+  "count_table_rows_capped",
   "begin_transaction",
   "open_ssh_tunnel",
   "csv_import",

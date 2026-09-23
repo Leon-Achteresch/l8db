@@ -324,6 +324,57 @@ pub async fn count_table_rows(
 }
 
 #[tauri::command]
+pub async fn count_table_rows_capped(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    filter: Option<String>,
+    allow_raw: Option<bool>,
+    cap: i64,
+    tx_id: Option<String>,
+    tx_state: tauri::State<'_, TransactionState>,
+    pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
+) -> Result<super::RowCount, String> {
+    let cap = cap.clamp(1, super::MAX_ROW_COUNT_CAP);
+    super::execution::run(
+        options,
+        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        async {
+            if let Some(tx_id) = tx_id {
+                return tx_state
+                    .count_rows_capped(
+                        &tx_id,
+                        &schema,
+                        &table,
+                        filter.as_deref(),
+                        allow_raw.unwrap_or(false),
+                        cap,
+                    )
+                    .await;
+            }
+            create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?
+            .count_rows_capped(
+                &schema,
+                &table,
+                filter.as_deref(),
+                allow_raw.unwrap_or(false),
+                cap,
+            )
+            .await
+        },
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn update_row(
     kind: DatabaseKind,
     connection_string: String,

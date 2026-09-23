@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
-import { countTableRows } from "@/lib/db";
+import { cancelExecution, countTableRowsCapped, type RowCount } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
+import { shortRowCount } from "@/lib/row-count";
 import { compileContentFilter } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -22,12 +23,14 @@ interface Candidate {
 }
 
 interface Hit extends Candidate {
-  count: number | null;
+  count: RowCount | null;
   error?: string;
   filter: string;
 }
 
 const CONCURRENCY = 4;
+
+const HIT_COUNT_CAP = 1000;
 
 export function TableContentSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -44,10 +47,17 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
   const [hits, setHits] = useState<Hit[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const runRef = useRef(0);
+  const jobsRef = useRef(new Set<string>());
+
+  const cancelJobs = () => {
+    for (const jobId of jobsRef.current) void cancelExecution(jobId).catch(() => undefined);
+    jobsRef.current.clear();
+  };
 
   useEffect(
     () => () => {
       runRef.current += 1;
+      for (const jobId of jobsRef.current) void cancelExecution(jobId).catch(() => undefined);
     },
     [],
   );
@@ -87,19 +97,26 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
         const c = candidates[index++];
         const filter = compileContentFilter(c.columns, valueTrimmed, connection.kind);
         let hit: Hit | null = null;
+        const jobId = crypto.randomUUID();
+        jobsRef.current.add(jobId);
         try {
-          const count = await countTableRows(
+          const count = await countTableRowsCapped(
             connection.kind,
             connStr,
             c.schema,
             c.name,
+            HIT_COUNT_CAP,
             filter,
             database ?? undefined,
             false,
+            undefined,
+            { jobId },
           );
-          if (count > 0) hit = { ...c, count, filter };
+          if (count.count > 0) hit = { ...c, count, filter };
         } catch (e) {
           hit = { ...c, count: null, error: e instanceof Error ? e.message : String(e), filter };
+        } finally {
+          jobsRef.current.delete(jobId);
         }
         if (runRef.current !== runId) return;
         done += 1;
@@ -115,11 +132,13 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
 
   const stop = () => {
     runRef.current += 1;
+    cancelJobs();
     setProgress((p) => (p ? { ...p, total: p.done } : null));
   };
 
   const reset = () => {
     runRef.current += 1;
+    cancelJobs();
     setHits([]);
     setProgress(null);
   };
@@ -220,7 +239,7 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
                 </span>
                 {hit.count !== null && (
                   <Badge variant="secondary" className="shrink-0 text-[10px]">
-                    {hit.count}
+                    {shortRowCount(hit.count)}
                   </Badge>
                 )}
               </button>
