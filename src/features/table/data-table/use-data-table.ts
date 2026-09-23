@@ -206,6 +206,8 @@ export function useDataTable(props: DataTableProps) {
     focusCell,
     copySelection,
     selectedCount,
+    rowVirtualizer,
+    scrollRef,
   });
 
   const tableHeader = useTableHeader({
