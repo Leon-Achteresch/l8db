@@ -1,8 +1,15 @@
 import type { SortingState } from "@tanstack/react-table";
-import { ChevronFirstIcon, ChevronLastIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import {
+  ChevronFirstIcon,
+  ChevronLastIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import type { autoRefreshPauseReason } from "@/lib/auto-refresh";
 import { describeSelectionStats, type summarizeCells } from "@/lib/grid-selection";
+import { cn } from "@/lib/utils";
 
 type Props = {
   rowCount: number;
@@ -85,6 +92,18 @@ export function DataTableFooter({
       </div>
       <div className="flex items-center justify-end gap-4">
         {onRefresh && (
+          <button
+            type="button"
+            onClick={() => void onRefresh()}
+            title="Tabelle aktualisieren"
+            aria-label="Tabelle aktualisieren"
+            disabled={isFetching}
+            className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+          >
+            <RefreshCwIcon className={cn("size-3.5", isFetching && "animate-spin")} />
+          </button>
+        )}
+        {onRefresh && (
           <DataTableAutoRefresh
             intervalMs={autoRefreshMs}
             pauseReason={autoRefreshPause}
@@ -99,6 +118,7 @@ export function DataTableFooter({
             </span>
             <button
               type="button"
+              aria-label="Erste Seite"
               disabled={page === 0}
               onClick={() => onPageChange(0)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -107,6 +127,7 @@ export function DataTableFooter({
             </button>
             <button
               type="button"
+              aria-label="Vorherige Seite"
               disabled={page === 0}
               onClick={() => onPageChange(page - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -115,6 +136,7 @@ export function DataTableFooter({
             </button>
             <button
               type="button"
+              aria-label="Nächste Seite"
               disabled={!hasNextPage}
               onClick={() => onPageChange(page + 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -123,6 +145,7 @@ export function DataTableFooter({
             </button>
             <button
               type="button"
+              aria-label="Letzte Seite"
               disabled={totalPages == null || page >= totalPages - 1}
               onClick={() => totalPages != null && onPageChange(totalPages - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"

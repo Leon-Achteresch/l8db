@@ -55,6 +55,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
 
   return (
     <motion.div
+      data-tx-id={tx.txId}
       layout
       transition={{ layout: SPRING_LAYOUT }}
       className="rounded-lg border border-border bg-card shadow-xs"
@@ -110,11 +111,14 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           variant="default"
           className="h-7 gap-1.5 px-3 text-xs"
           disabled={busy}
+          data-tx-commit
           aria-label={`${title} committen`}
+          aria-keyshortcuts="Enter"
           onClick={() => void handleCommit()}
         >
           <CheckIcon className="size-3" />
           {tx.scope?.type === "table" ? "Tabelle committen" : "Alles committen"}
+          <kbd className="font-sans text-[10px] opacity-60">↵</kbd>
         </Button>
         <Button
           size="sm"

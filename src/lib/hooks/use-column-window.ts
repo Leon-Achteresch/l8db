@@ -1,7 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type RefObject, useCallback, useEffect, useMemo } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { columnWindowRange } from "@/lib/column-window";
+import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
 
 export type ColumnWindowItem = { index: number; span: number; width: number; spacer: boolean };
 
@@ -34,8 +35,15 @@ export function useColumnWindow(
     rangeExtractor,
     enabled,
     scrollPaddingStart: pinned.reduce((sum, index) => sum + widths[index], 0),
+    initialRect: { ...lastGridRect },
+    onChange: rememberGridRect,
   });
-  useEffect(() => virtualizer.measure(), [virtualizer, widths]);
+  const measuredWidths = useRef(widths);
+  useEffect(() => {
+    if (measuredWidths.current === widths) return;
+    measuredWidths.current = widths;
+    virtualizer.measure();
+  }, [virtualizer, widths]);
   const indices = enabled
     ? virtualizer
         .getVirtualItems()

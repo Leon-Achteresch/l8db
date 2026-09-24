@@ -478,6 +478,8 @@ fn is_query(sql: &str) -> bool {
     matches!(first.as_str(), "SELECT" | "WITH")
 }
 
+#[path = "oracle_catalog.rs"]
+mod catalog;
 #[path = "oracle_sql.rs"]
 mod sql;
 use sql::prepare;
@@ -1436,6 +1438,33 @@ impl DatabaseAdapter for OracleAdapter {
         ))
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let mut ddl = self
+            .rows(format!(
+                "SELECT DBMS_METADATA.GET_DDL('TABLE', {}, {}) FROM dual",
+                lit(table),
+                lit(schema)
+            ))
+            .await?
+            .first()
+            .map(|r| format!("{};\n", s(r, 0).trim()))
+            .ok_or_else(|| "Tabelle nicht gefunden".to_string())?;
+        let indexes = self
+            .rows(format!(
+                "SELECT DBMS_METADATA.GET_DDL('INDEX', i.index_name, i.owner) FROM all_indexes i \
+                 WHERE i.table_owner = {} AND i.table_name = {} AND i.index_type <> 'LOB' \
+                 AND NOT EXISTS (SELECT 1 FROM all_constraints c WHERE c.owner = i.table_owner AND c.table_name = i.table_name AND c.index_name = i.index_name) \
+                 ORDER BY i.index_name",
+                lit(schema),
+                lit(table)
+            ))
+            .await?;
+        for r in &indexes {
+            ddl.push_str(&format!("\n{};\n", s(r, 0).trim()));
+        }
+        Ok(ddl)
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,
@@ -1507,6 +1536,22 @@ impl DatabaseAdapter for OracleAdapter {
                 language: "PL/SQL".to_string(),
             })
             .collect())
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
+
+    async fn schema_partition_ddl(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        self.schema_partition_ddl_impl(schema, tables).await
     }
 
     async fn list_schema_copy_objects(
@@ -1943,8 +1988,10 @@ impl DatabaseAdapter for OracleAdapter {
         let sql = format!(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
-             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name) \
-             FROM all_tab_columns c WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
+             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
+             cc.comments \
+             FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
+             WHERE c.owner = {} AND c.table_name = {} ORDER BY c.column_id",
             lit(schema),
             lit(table)
         );
@@ -1962,6 +2009,7 @@ impl DatabaseAdapter for OracleAdapter {
                     .and_then(|v| v.parse().ok())
                     .filter(|v| *v > 0),
                 is_primary_key: i(r, 6) > 0,
+                comment: s_opt(r, 7).filter(|c| !c.is_empty()),
             })
             .collect())
     }
@@ -2112,6 +2160,20 @@ impl DatabaseAdapter for OracleAdapter {
             });
         }
         Ok(out)
+    }
+
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT comments FROM all_tab_comments WHERE owner = {} AND table_name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .first()
+            .map(|r| s(r, 0))
+            .filter(|c| !c.is_empty()))
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {

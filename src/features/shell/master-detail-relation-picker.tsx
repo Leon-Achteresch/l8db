@@ -70,7 +70,7 @@ export function MasterDetailRelationPicker({
       <div className="mb-2 text-xs font-medium">Beziehung</div>
       <div className="flex items-center gap-2">
         <Select
-          value={chosen ? `select:${chosen}` : undefined}
+          value={`select:${String(relation?.id ?? "")}`}
           disabled={!relations.length}
           onValueChange={(encodedValue) => {
             const selectedValue = encodedValue.slice(7);

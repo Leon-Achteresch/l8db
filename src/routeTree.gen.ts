@@ -34,6 +34,7 @@ import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
 import { Route as AppWorkspaceSavedPlanRouteImport } from './routes/_app._workspace.saved-plan'
+import { Route as AppWorkspaceSchemaCompareRouteImport } from './routes/_app._workspace.schema-compare'
 import { Route as AppWorkspaceSequencesRouteImport } from './routes/_app._workspace.sequences'
 import { Route as AppWorkspaceSessionsRouteImport } from './routes/_app._workspace.sessions'
 import { Route as AppWorkspaceVersioningRouteImport } from './routes/_app._workspace.versioning'
@@ -176,6 +177,12 @@ const AppWorkspaceSavedPlanRoute = AppWorkspaceSavedPlanRouteImport.update({
   path: '/saved-plan',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceSchemaCompareRoute =
+  AppWorkspaceSchemaCompareRouteImport.update({
+    id: '/schema-compare',
+    path: '/schema-compare',
+    getParentRoute: () => AppWorkspaceRoute,
+  } as any)
 const AppWorkspaceSequencesRoute = AppWorkspaceSequencesRouteImport.update({
   id: '/sequences',
   path: '/sequences',
@@ -290,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
   '/saved-plan': typeof AppWorkspaceSavedPlanRoute
+  '/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
@@ -329,6 +337,7 @@ export interface FileRoutesByTo {
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
   '/saved-plan': typeof AppWorkspaceSavedPlanRoute
+  '/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/sequences': typeof AppWorkspaceSequencesRoute
   '/sessions': typeof AppWorkspaceSessionsRoute
   '/versioning': typeof AppWorkspaceVersioningRoute
@@ -372,6 +381,7 @@ export interface FileRoutesById {
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/_app/_workspace/replication': typeof AppWorkspaceReplicationRoute
   '/_app/_workspace/saved-plan': typeof AppWorkspaceSavedPlanRoute
+  '/_app/_workspace/schema-compare': typeof AppWorkspaceSchemaCompareRoute
   '/_app/_workspace/sequences': typeof AppWorkspaceSequencesRoute
   '/_app/_workspace/sessions': typeof AppWorkspaceSessionsRoute
   '/_app/_workspace/versioning': typeof AppWorkspaceVersioningRoute
@@ -415,6 +425,7 @@ export interface FileRouteTypes {
     | '/query-builder'
     | '/replication'
     | '/saved-plan'
+    | '/schema-compare'
     | '/sequences'
     | '/sessions'
     | '/versioning'
@@ -454,6 +465,7 @@ export interface FileRouteTypes {
     | '/query-builder'
     | '/replication'
     | '/saved-plan'
+    | '/schema-compare'
     | '/sequences'
     | '/sessions'
     | '/versioning'
@@ -496,6 +508,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/query-builder'
     | '/_app/_workspace/replication'
     | '/_app/_workspace/saved-plan'
+    | '/_app/_workspace/schema-compare'
     | '/_app/_workspace/sequences'
     | '/_app/_workspace/sessions'
     | '/_app/_workspace/versioning'
@@ -705,6 +718,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSavedPlanRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/schema-compare': {
+      id: '/_app/_workspace/schema-compare'
+      path: '/schema-compare'
+      fullPath: '/schema-compare'
+      preLoaderRoute: typeof AppWorkspaceSchemaCompareRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/sequences': {
       id: '/_app/_workspace/sequences'
       path: '/sequences'
@@ -857,6 +877,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
   AppWorkspaceReplicationRoute: typeof AppWorkspaceReplicationRoute
   AppWorkspaceSavedPlanRoute: typeof AppWorkspaceSavedPlanRoute
+  AppWorkspaceSchemaCompareRoute: typeof AppWorkspaceSchemaCompareRoute
   AppWorkspaceSequencesRoute: typeof AppWorkspaceSequencesRoute
   AppWorkspaceSessionsRoute: typeof AppWorkspaceSessionsRoute
   AppWorkspaceVersioningRoute: typeof AppWorkspaceVersioningRoute
@@ -886,6 +907,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,
   AppWorkspaceReplicationRoute: AppWorkspaceReplicationRoute,
   AppWorkspaceSavedPlanRoute: AppWorkspaceSavedPlanRoute,
+  AppWorkspaceSchemaCompareRoute: AppWorkspaceSchemaCompareRoute,
   AppWorkspaceSequencesRoute: AppWorkspaceSequencesRoute,
   AppWorkspaceSessionsRoute: AppWorkspaceSessionsRoute,
   AppWorkspaceVersioningRoute: AppWorkspaceVersioningRoute,

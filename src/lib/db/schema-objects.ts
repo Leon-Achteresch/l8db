@@ -20,6 +20,16 @@ export async function listIndexes(
   return invoke("list_indexes", { kind, connectionString, database, schema, table });
 }
 
+export async function tableComment(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<string | null> {
+  return invoke("table_comment", { kind, connectionString, database, schema, table });
+}
+
 export interface ConstraintInfo {
   name: string;
   constraint_type: string;

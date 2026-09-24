@@ -54,6 +54,14 @@ fn writes_require_matching_previous_content() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn detects_incomplete_merge_markers() {
+    assert!(has_conflict_markers("<<<<<<< Aktueller Branch\nours\n"));
+    assert!(has_conflict_markers(">>>>>>> Quell-Branch\n"));
+    assert!(has_conflict_markers("=======\r\n"));
+    assert!(!has_conflict_markers("SELECT '<<<<<<<' AS sample;\n"));
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symlinks() {
@@ -166,6 +174,111 @@ async fn committed_releases_are_immutable_and_merge_handles_large_packages() {
     req.content = Some("customer\n".into());
     req.incoming = Some("product\n".into());
     assert_eq!(handle(req).await.unwrap()["conflicts"], true);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn branch_merge_uses_common_ancestor_and_blocks_unresolved_commits() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.name", "Test"]).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    let folder = root.join("database/objects");
+    fs::create_dir_all(&folder).unwrap();
+    let file = folder.join("orders.sql");
+    let other = folder.join("other.sql");
+    fs::write(&file, "CREATE VIEW orders AS\nSELECT 1 AS value;\n").unwrap();
+    fs::write(&other, "SELECT 'untouched';\n").unwrap();
+    git(&root, &["add", "--", "database/"]).await.unwrap();
+    git(&root, &["commit", "-m", "Baseline"]).await.unwrap();
+    let current_branch = git(&root, &["symbolic-ref", "--short", "HEAD"])
+        .await
+        .unwrap();
+    git(&root, &["switch", "-c", "product"]).await.unwrap();
+    fs::write(&file, "CREATE VIEW orders AS\nSELECT 2 AS value;\n").unwrap();
+    fs::write(&other, "SELECT 'product only';\n").unwrap();
+    git(&root, &["commit", "-am", "Product changes"])
+        .await
+        .unwrap();
+    git(&root, &["switch", current_branch.trim()])
+        .await
+        .unwrap();
+    fs::write(&file, "CREATE VIEW orders AS\nSELECT 3 AS value;\n").unwrap();
+    git(&root, &["commit", "-am", "Customer change"])
+        .await
+        .unwrap();
+
+    let mut req = request(&root, "merge-base");
+    req.name = Some("product".into());
+    req.path = Some("database/objects/orders.sql".into());
+    let revisions = handle(req).await.unwrap();
+    let base = revisions["base"].as_str().unwrap();
+    let incoming = revisions["incoming"].as_str().unwrap();
+    assert_ne!(base, incoming);
+    assert_eq!(revisions["head"], revision(&root, "HEAD").await.unwrap());
+    let mut req = request(&root, "read");
+    req.path = Some("database/objects/orders.sql".into());
+    req.revision = Some(base.into());
+    let ancestor = handle(req).await.unwrap().as_str().unwrap().to_string();
+    let mut req = request(&root, "read");
+    req.path = Some("database/objects/orders.sql".into());
+    req.revision = Some(incoming.into());
+    let product = handle(req).await.unwrap().as_str().unwrap().to_string();
+    let current = fs::read_to_string(&file).unwrap();
+    let mut req = request(&root, "merge");
+    req.content = Some(current.clone());
+    req.base = Some(ancestor);
+    req.incoming = Some(product);
+    let merged = handle(req).await.unwrap();
+    assert_eq!(merged["conflicts"], true);
+    let conflicted = merged["content"].as_str().unwrap();
+    assert!(conflicted.contains("<<<<<<< Aktueller Branch"));
+    assert_eq!(fs::read_to_string(&file).unwrap(), current);
+
+    let mut req = request(&root, "write");
+    req.path = Some("database/objects/orders.sql".into());
+    req.content = Some(conflicted.into());
+    req.expected = Some(current);
+    handle(req).await.unwrap();
+    let mut req = request(&root, "commit");
+    req.paths = Some(vec!["database/objects/orders.sql".into()]);
+    req.name = Some("Conflict must fail".into());
+    assert!(handle(req).await.unwrap_err().contains("Merge-Konflikte"));
+    assert!(git(&root, &["diff", "--cached", "--name-only"])
+        .await
+        .unwrap()
+        .is_empty());
+
+    let mut req = request(&root, "write");
+    req.path = Some("database/objects/orders.sql".into());
+    req.content = Some("CREATE VIEW orders AS\nSELECT 4 AS value;\n".into());
+    req.expected = Some(conflicted.into());
+    handle(req).await.unwrap();
+    let mut req = request(&root, "commit");
+    req.paths = Some(vec!["database/objects/orders.sql".into()]);
+    req.name = Some("Resolve customer conflict".into());
+    handle(req).await.unwrap();
+    assert_eq!(fs::read_to_string(&other).unwrap(), "SELECT 'untouched';\n");
+    assert_eq!(
+        git(&root, &["show", "HEAD:database/objects/orders.sql"])
+            .await
+            .unwrap(),
+        "CREATE VIEW orders AS\nSELECT 4 AS value;\n"
+    );
+    assert!(git(&root, &["merge", "product"]).await.is_err());
+    fs::write(&file, "CREATE VIEW orders AS\nSELECT 5 AS value;\n").unwrap();
+    let mut req = request(&root, "commit");
+    req.paths = Some(vec!["database/objects/orders.sql".into()]);
+    req.name = Some("Unstaged resolution must fail".into());
+    assert!(handle(req).await.unwrap_err().contains("Git enthält"));
+    git(&root, &["merge", "--abort"]).await.unwrap();
+    assert_eq!(fs::read_to_string(&other).unwrap(), "SELECT 'untouched';\n");
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "CREATE VIEW orders AS\nSELECT 4 AS value;\n"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

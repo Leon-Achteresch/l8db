@@ -1,6 +1,5 @@
-import { Link, type useMatchRoute } from "@tanstack/react-router";
 import { Star, StarOff } from "lucide";
-import { Columns2Icon, CopyIcon, EyeIcon, TableIcon } from "lucide-react";
+import { Columns2Icon, CopyIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useMemo, useState } from "react";
 import { SidebarSearchInput } from "@/components/sidebar-search-input";
@@ -10,12 +9,11 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
-import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SchemaCopyObjectType } from "@/lib/db";
@@ -23,6 +21,7 @@ import { buildInvalidSet, isViewInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { EntityConfirmDialog } from "./entity-confirm-dialog";
 import { EntityMatchingColumns } from "./entity-matching-columns";
+import { SidebarEntityButton } from "./sidebar-entity-button";
 import { TableEntityMenuItems } from "./table-entity-menu-items";
 import { useSidebarEntityActions } from "./use-sidebar-entity-actions";
 import { useSidebarEntityFilter } from "./use-sidebar-entity-filter";
@@ -34,7 +33,6 @@ export interface SidebarEntityListProps {
   error: unknown;
   emptyMessage: string;
   type: "table" | "view";
-  matchRoute: ReturnType<typeof useMatchRoute>;
 }
 
 export function SidebarEntityList({
@@ -44,7 +42,6 @@ export function SidebarEntityList({
   error,
   emptyMessage,
   type,
-  matchRoute,
 }: SidebarEntityListProps) {
   const {
     search,
@@ -69,6 +66,7 @@ export function SidebarEntityList({
     activeDatabase,
     handleConfirmAction,
     handleOpenInEditor,
+    handleScriptTable,
     toggleFavoriteObject,
     isFavorite,
     handleFocusInErDiagram,
@@ -153,46 +151,16 @@ export function SidebarEntityList({
         >
           {(index) => {
             const item = filtered![index];
-            const isActive =
-              type === "view"
-                ? Boolean(
-                    matchRoute({
-                      to: "/view-editor/$schema/$view",
-                      params: { schema: item.schema, view: item.name },
-                    }),
-                  )
-                : Boolean(
-                    matchRoute({
-                      to: "/tables/$schema/$table",
-                      params: { schema: item.schema, table: item.name },
-                    }),
-                  );
-
-            const menuButton =
-              type === "view" ? (
-                <SidebarMenuButton
-                  isActive={isActive}
-                  onClick={() => openView(item.schema, item.name)}
-                >
-                  <EyeIcon className="text-muted-foreground" />
-                  <span className="truncate">{item.name}</span>
-                  {isViewInvalid(invalidSet, item.schema, item.name) ? <InvalidMarker /> : null}
-                </SidebarMenuButton>
-              ) : (
-                <SidebarMenuButton asChild isActive={isActive}>
-                  <Link
-                    to="/tables/$schema/$table"
-                    params={{ schema: item.schema, table: item.name }}
-                    search={{ type }}
-                    data-tour={index === 0 && type === "table" ? "sidebar-table" : undefined}
-                    data-schema={item.schema}
-                    data-name={item.name}
-                  >
-                    <TableIcon className="text-muted-foreground" />
-                    <span className="truncate">{item.name}</span>
-                  </Link>
-                </SidebarMenuButton>
-              );
+            const menuButton = (
+              <SidebarEntityButton
+                entity={type}
+                schema={item.schema}
+                name={item.name}
+                first={index === 0 && type === "table"}
+                invalid={type === "view" && isViewInvalid(invalidSet, item.schema, item.name)}
+                onOpenView={() => openView(item.schema, item.name)}
+              />
+            );
 
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
@@ -207,6 +175,7 @@ export function SidebarEntityList({
                         isFavorite={isFavorite(item.schema, item.name)}
                         onToggleFavorite={() => toggleFavoriteObject(item.schema, item.name)}
                         onOpenInEditor={() => handleOpenInEditor(item.schema, item.name)}
+                        onScriptTable={() => handleScriptTable(item.schema, item.name)}
                         onCopy={() =>
                           setCopyTarget({
                             schema: item.schema,

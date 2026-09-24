@@ -1,6 +1,6 @@
 import { CheckIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { type KeyboardEvent, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -22,8 +22,28 @@ export function TransactionPanel() {
     prevCount.current = transactions.length;
   }, [transactions.length, setPanelOpen]);
 
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.repeat) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select, [contenteditable]")) return;
+    const card =
+      target.closest("[data-tx-id]") ??
+      (transactions.length === 1 ? event.currentTarget.querySelector("[data-tx-id]") : null);
+    const commit = card?.querySelector<HTMLButtonElement>("[data-tx-commit]");
+    if (!commit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    commit.click();
+  };
+
   return (
-    <div data-tour="tx-panel" className="flex h-full min-h-0">
+    <section
+      data-tour="tx-panel"
+      aria-label="Transactions"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className="flex h-full min-h-0 outline-none"
+    >
       <motion.div
         layout
         transition={{ layout: SPRING_LAYOUT }}
@@ -74,6 +94,6 @@ export function TransactionPanel() {
           </div>
         </ScrollArea>
       </motion.div>
-    </div>
+    </section>
   );
 }

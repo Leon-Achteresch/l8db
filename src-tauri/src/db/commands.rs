@@ -672,6 +672,25 @@ pub async fn get_view_definition(
 }
 
 #[tauri::command]
+pub async fn get_table_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .get_table_ddl(&schema, &table)
+    .await
+}
+
+#[tauri::command]
 pub async fn update_view_definition(
     kind: DatabaseKind,
     connection_string: String,
@@ -1397,6 +1416,25 @@ pub async fn alter_sequence(
         pool_state.inner().clone(),
     )?
     .alter_sequence(&schema, &name, &changes)
+    .await
+}
+
+#[tauri::command]
+pub async fn table_comment(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Option<String>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .table_comment(&schema, &table)
     .await
 }
 

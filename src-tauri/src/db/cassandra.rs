@@ -310,6 +310,7 @@ impl DatabaseAdapter for CassandraAdapter {
                         is_primary_key: rank < 2,
                         ordinal_position: 0,
                         character_maximum_length: None,
+                        comment: None,
                     },
                 )
             })

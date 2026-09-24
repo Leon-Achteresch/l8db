@@ -70,6 +70,7 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
     favorite: Boolean(connection.favorite),
     color: connection.color ?? null,
     schemas: connection.schemas?.length ? [...connection.schemas] : null,
+    showSingleSchemaSwitcher: connection.showSingleSchemaSwitcher ?? true,
   };
 }
 

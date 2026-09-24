@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
-import { NewRowDialog } from "@/features/table/new-row-dialog";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
@@ -47,8 +46,7 @@ export function TableView(props: TableViewProps) {
     updateRowMutation,
     insertRowMutation,
     handleFilterChange,
-    handleInsertRow,
-    handleRowDialogOpenChange,
+    requestAddRow,
     handleDeleteRow,
     handleRefresh,
     handleNavigateToTable,
@@ -81,10 +79,7 @@ export function TableView(props: TableViewProps) {
     setRevealColumn,
     page,
     setPage,
-    addRowOpen,
-    setAddRowOpen,
-    insertError,
-    setInsertError,
+    addRowSignal,
   } = useTableViewModel(props);
 
   if (!connection) {
@@ -133,6 +128,7 @@ export function TableView(props: TableViewProps) {
       setRevealColumn={setRevealColumn}
       page={page}
       setPage={setPage}
+      addRowSignal={addRowSignal}
       schema={schema}
       table={table}
       emptyMessage={emptyMessage}
@@ -174,7 +170,7 @@ export function TableView(props: TableViewProps) {
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"
         data-tour="table-toolbar"
       >
-        <TableDetailTabBar tabs={availableTabs} />
+        <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
         <TableToolbarActions
           connection={connection}
           database={database}
@@ -188,8 +184,7 @@ export function TableView(props: TableViewProps) {
           setCsvExportOpen={setCsvExportOpen}
           setXlsxExportOpen={setXlsxExportOpen}
           handleExport={handleExport}
-          setAddRowOpen={setAddRowOpen}
-          setInsertError={setInsertError}
+          requestAddRow={requestAddRow}
           schema={schema}
           table={table}
         />
@@ -253,17 +248,6 @@ export function TableView(props: TableViewProps) {
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="table" />}
       </TabsContent>
-
-      <NewRowDialog
-        open={addRowOpen}
-        onOpenChange={handleRowDialogOpenChange}
-        schema={schema}
-        table={table}
-        columns={data?.columns ?? []}
-        isPending={insertRowMutation.isPending}
-        onSubmit={handleInsertRow}
-        errorMessage={insertError}
-      />
 
       <TableExportDialogs
         table={table}

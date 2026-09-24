@@ -10,15 +10,15 @@ export function useRowMarkers<T>(rows: T[], scope?: string, primaryKeys: string[
   const keyOf = useCallback((row: T) => stableMarkerKey(row, primaryKeys) ?? row, [primaryKeys]);
   let keys = state.keys;
   if (state.rows !== rows || state.scope !== scope) {
-    const available = new Set(rows.map(keyOf));
-    keys =
-      state.scope !== scope
-        ? new Set()
-        : new Set([...state.keys].filter((key) => available.has(key)));
+    if (state.scope !== scope || state.keys.size === 0) keys = new Set();
+    else {
+      const available = new Set(rows.map(keyOf));
+      keys = new Set([...state.keys].filter((key) => available.has(key)));
+    }
     setState({ rows, scope, keys });
   }
   const markedRows = useMemo(
-    () => new Set(rows.filter((row) => keys.has(keyOf(row)))),
+    () => (keys.size ? new Set(rows.filter((row) => keys.has(keyOf(row)))) : new Set<T>()),
     [rows, keys, keyOf],
   );
 

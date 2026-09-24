@@ -54,7 +54,6 @@ export function useTabOverflow(activeKey: string | undefined, tabs: readonly unk
     observer.observe(track);
     for (const el of elements()) observer.observe(el);
     nav.addEventListener("scroll", measure, { passive: true });
-    revealActive();
     return () => {
       observer.disconnect();
       nav.removeEventListener("scroll", measure);

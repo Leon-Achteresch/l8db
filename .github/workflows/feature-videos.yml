@@ -1,0 +1,72 @@
+name: Feature videos
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published app tag to record; leave empty for cleanup
+        required: false
+        type: string
+  schedule:
+    - cron: '23 5 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: feature-videos
+  cancel-in-progress: false
+
+jobs:
+  media:
+    if: github.repository == 'Leon-Achteresch/l8db'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag || 'main' }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+      - run: bun install --frozen-lockfile
+      - name: Plan recordings
+        id: plan
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ids=$(bun scripts/feature-videos/publish.ts plan)
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+      - name: Install recording tools
+        if: inputs.release_tag != '' && steps.plan.outputs.ids != '[]'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          bunx playwright install --with-deps chromium
+      - name: Build and record
+        if: inputs.release_tag != '' && steps.plan.outputs.ids != '[]'
+        env:
+          FEATURE_VIDEO_IDS: ${{ steps.plan.outputs.ids }}
+        run: |
+          bun run build
+          bun scripts/feature-videos/record.ts
+      - name: Publish media after successful app release
+        if: inputs.release_tag != '' && steps.plan.outputs.ids != '[]'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bun scripts/feature-videos/publish.ts publish "$RELEASE_TAG"
+      - name: Refresh feed and remove expired videos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun scripts/feature-videos/publish.ts cleanup
+      - name: Remove temporary recordings
+        if: always()
+        run: rm -rf test-artifacts/feature-videos

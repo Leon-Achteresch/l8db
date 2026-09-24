@@ -21,6 +21,7 @@ pub fn tool_definition() -> Value {
         "description": "Measure read-only statements. Runs sql, or every statement of a saved l8db file (.l8perf.json or .l8workload.json), repeats times with up to concurrency parallel executions. Returns JSON per statement: runs, errors, min/median/p95/max/avg ms and throughput per second. No row data is returned. Same read-only rules as query.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
+            "database": server::database_arg(),
             "sql": {"type": "string"},
             "file": {"type": "string", "description": "Absolute path to a .l8perf.json or .l8workload.json file saved by l8db"},
             "repeats": {"type": "integer", "minimum": 1, "maximum": MAX_REPEATS},
@@ -780,6 +781,7 @@ mod tests {
             read_only: false,
             allow_ddl: false,
             redact_columns: vec![],
+            database: None,
         };
         let config = McpConfig {
             enabled: true,

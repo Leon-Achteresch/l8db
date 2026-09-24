@@ -254,3 +254,11 @@ jobs:
 
             Dieser PR wird bei weiteren Releases aktualisiert und durchläuft die regulären Reviews und Pflichtchecks für main.
             Der Merge löst bei ausschließlichen Änderungen an CHANGELOG.md kein weiteres Release aus.
+
+  feature-videos:
+    needs: [prepare, finalize]
+    uses: ./.github/workflows/feature-videos.yml
+    with:
+      release_tag: v${{ needs.prepare.outputs.version }}
+    permissions:
+      contents: write

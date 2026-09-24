@@ -1,6 +1,5 @@
 import {
   ArrowRightIcon,
-  CheckCircle2Icon,
   CircleAlertIcon,
   DatabaseIcon,
   EllipsisIcon,
@@ -9,15 +8,18 @@ import {
   ScanSearchIcon,
   ServerIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
+import { listSchemas } from "@/lib/db";
+import { databaseFromConnectionString } from "@/lib/db-selection";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { control } from "@/lib/versioning/control";
 import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
-import { readTargets, saveTargets } from "@/lib/versioning/repository";
+import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningPopover } from "./versioning-popover";
@@ -31,6 +33,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [connectionId, setConnectionId] = useState("");
   const [database, setDatabase] = useState("");
   const [schema, setSchema] = useState("");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
+  const [schemaError, setSchemaError] = useState("");
+  const [loadingSchemas, setLoadingSchemas] = useState(false);
   const [production, setProduction] = useState(true);
   const [releaseId, setReleaseId] = useState("");
   const [selection, setSelection] = useState<string[]>([]);
@@ -42,37 +48,70 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
   const [waveLimit, setWaveLimit] = useState("1");
   const [confirmation, setConfirmation] = useState("");
+  const selectedConnection = connections.find((entry) => entry.id === connectionId);
+  const sourceSchema = [
+    ...new Set(project?.objects.map((object) => object.selection.schema) ?? []),
+  ];
+  useEffect(() => {
+    const latest = releases.filter((release) => (release.track ?? "main") === "main").at(-1);
+    setReleaseId((current) =>
+      releases.some((release) => release.id === current) ? current : (latest?.id ?? ""),
+    );
+  }, [releases]);
+  useEffect(() => {
+    if (!setupOpen || !selectedConnection) {
+      setAvailableSchemas([]);
+      setSchemaError("");
+      return;
+    }
+    let active = true;
+    setLoadingSchemas(true);
+    setSchemaError("");
+    Promise.resolve()
+      .then(() =>
+        listSchemas(
+          selectedConnection.kind,
+          effectiveConnectionString(selectedConnection),
+          database.trim() || undefined,
+        ),
+      )
+      .then((items) => {
+        if (!active) return;
+        setAvailableSchemas(items);
+        setSchema((current) => current || (items.length === 1 ? items[0] : ""));
+      })
+      .catch((cause) => {
+        if (active) {
+          setAvailableSchemas([]);
+          setSchemaError(String(cause));
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingSchemas(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [setupOpen, selectedConnection, database]);
   const connectionFor = (target: DatabaseTarget) => {
     const connection = connections.find((entry) => entry.id === target.connectionId);
     if (!connection) throw new Error(`Verbindung für ${target.name} fehlt.`);
     return connection;
   };
   const add = async () => {
-    if (!project || !name.trim() || !connectionId)
-      throw new Error("Name und Verbindung auswählen.");
-    const { store, text } = await readTargets(repo, project.id);
-    if (
-      store.targets.some(
-        (target) =>
-          target.connectionId === connectionId &&
-          target.database === (database.trim() || null) &&
-          (target.schema ?? null) === (schema.trim() || null),
-      )
-    )
-      throw new Error("Diese Verbindung und Datenbank sind bereits zugeordnet.");
-    store.targets.push({
-      id: crypto.randomUUID(),
-      name: name.trim(),
+    if (!project) throw new Error("Projekt fehlt.");
+    const created = await addTarget(repo, project, connections, {
+      name,
       connectionId,
-      database: database.trim() || null,
+      database,
+      schema,
       production,
-      schema: schema.trim() || null,
-      release: null,
-      history: [],
     });
-    await saveTargets(repo, store, text);
     await refresh();
+    setSelection([created.id]);
+    setSetupOpen(false);
     setName("");
+    setSchema("");
   };
   const plan = async () => {
     if (!project || !targets || !releaseId) throw new Error("Ziele und Zielrelease auswählen.");
@@ -119,14 +158,32 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <h2 className="text-xs font-semibold">Kundendatenbanken</h2>
+          <h2 className="text-xs font-semibold">Kundenziele</h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {targets.targets.length} Ziele · unabhängig versioniert
+            {targets.targets.length} Datenbank-Schema-Zuordnungen · unabhängig versioniert
           </p>
         </div>
-        <VersioningPopover icon={PlusIcon} label="Datenbank hinzufügen" disabled={workspace.busy}>
+        <Button
+          size="sm"
+          variant="outline"
+          aria-expanded={setupOpen}
+          onClick={() => setSetupOpen((open) => !open)}
+        >
+          <PlusIcon className="size-3.5" />
+          Kundenziel hinzufügen
+        </Button>
+      </div>
+      {setupOpen && (
+        <div className="space-y-4 rounded-xl bg-muted/35 p-4">
+          <div>
+            <h3 className="text-xs font-semibold">Kundenschema zuordnen</h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Die Zuordnung speichert nur das Ziel. Eine Baseline wird erst nach Prüfung des
+              vorhandenen Schemas gesetzt.
+            </p>
+          </div>
           <label htmlFor="vcs-target-name" className="space-y-1.5 text-xs font-medium">
-            Name
+            Kunde / Umgebung
             <Input
               id="vcs-target-name"
               aria-label="Kundenname"
@@ -138,24 +195,64 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           <VersioningSelect
             label="Zielverbindung"
             value={connectionId}
-            onChange={setConnectionId}
+            onChange={(value) => {
+              setConnectionId(value);
+              const connection = connections.find((item) => item.id === value);
+              setDatabase(
+                connection ? (databaseFromConnectionString(connection.connectionString) ?? "") : "",
+              );
+              setSchema("");
+            }}
             placeholder="Verbindung auswählen"
             options={connections
               .filter((connection) => connection.kind === project.kind)
               .map((connection) => ({ value: connection.id, label: connection.name }))}
           />
-          <Input
-            aria-label="Zieldatenbank"
-            placeholder="Datenbank (Verbindungsstandard)"
-            value={database}
-            onChange={(event) => setDatabase(event.target.value)}
-          />
-          <Input
-            aria-label="Zielschema"
-            placeholder="Schema (wie im Projekt)"
-            value={schema}
-            onChange={(event) => setSchema(event.target.value)}
-          />
+          <label className="space-y-1.5 text-xs font-medium" htmlFor="vcs-target-database">
+            Datenbank
+            <Input
+              id="vcs-target-database"
+              aria-label="Zieldatenbank"
+              placeholder="Datenbank der Verbindung"
+              value={database}
+              onChange={(event) => {
+                setDatabase(event.target.value);
+                setSchema("");
+              }}
+            />
+          </label>
+          <label className="space-y-1.5 text-xs font-medium" htmlFor="vcs-target-schema">
+            Kundenschema
+            <Input
+              id="vcs-target-schema"
+              aria-label="Zielschema"
+              list="vcs-target-schemas"
+              placeholder={loadingSchemas ? "Schemas werden geladen" : "Vorhandenes Schema wählen"}
+              value={schema}
+              onChange={(event) => setSchema(event.target.value)}
+            />
+            <datalist id="vcs-target-schemas">
+              {availableSchemas.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          </label>
+          {schemaError && (
+            <p role="alert" className="text-xs text-destructive">
+              {schemaError}
+            </p>
+          )}
+          {sourceSchema.length === 1 && schema && (
+            <p className="text-[11px] text-muted-foreground">
+              Zuordnung: <span className="font-mono">{sourceSchema[0]}</span> →{" "}
+              <span className="font-mono">{schema}</span>
+            </p>
+          )}
+          {sourceSchema.length !== 1 && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-300">
+              Vor der Zuordnung genau ein Quellschema unter Änderungen aufnehmen.
+            </p>
+          )}
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
@@ -166,13 +263,20 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           </label>
           <Button
             size="sm"
-            disabled={!name.trim() || !connectionId}
+            disabled={
+              !name.trim() ||
+              !connectionId ||
+              !schema.trim() ||
+              loadingSchemas ||
+              Boolean(schemaError) ||
+              sourceSchema.length !== 1
+            }
             onClick={() => void run(add, "Datenbank zugeordnet")}
           >
-            Datenbank zuordnen
+            Kundenziel speichern
           </Button>
-        </VersioningPopover>
-      </div>
+        </div>
+      )}
       {targets.targets.length > 0 && (
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -243,9 +347,9 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                   )}
                 </p>
                 <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                  {target.database ??
-                    connections.find((entry) => entry.id === target.connectionId)?.name ??
+                  {connections.find((entry) => entry.id === target.connectionId)?.name ??
                     "Verbindung fehlt"}
+                  {target.database ? ` · ${target.database}` : ""}
                   {target.schema ? ` / ${target.schema}` : ""} ·{" "}
                   {target.production ? "Produktion" : "Test"}
                 </p>
@@ -261,6 +365,29 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                     {target.paused ? " · Pausiert" : ""}
                     {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
                   </p>
+                )}
+                {!target.release && releaseId && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2 h-7 px-2 text-[11px]"
+                    onClick={() =>
+                      void run(async () => {
+                        await baselineTarget(
+                          repo,
+                          project,
+                          target.id,
+                          connectionFor(target),
+                          releaseId,
+                          false,
+                          connections,
+                        );
+                        await refresh();
+                      }, "Baseline geprüft und zugeordnet")
+                    }
+                  >
+                    Baseline {releaseId} prüfen
+                  </Button>
                 )}
               </div>
               <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
@@ -295,26 +422,6 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 </button>
                 <button
                   type="button"
-                  disabled={!releaseId || Boolean(target.release)}
-                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
-                  onClick={() =>
-                    void run(async () => {
-                      await baselineTarget(
-                        repo,
-                        project,
-                        target.id,
-                        connectionFor(target),
-                        releaseId,
-                      );
-                      await refresh();
-                    }, "Baseline geprüft und zugeordnet")
-                  }
-                >
-                  <CheckCircle2Icon className="size-4 text-muted-foreground" />
-                  Baseline zuordnen
-                </button>
-                <button
-                  type="button"
                   disabled={!releaseId}
                   className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
                   onClick={() => {
@@ -328,7 +435,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 <p className="text-[10px] leading-relaxed text-muted-foreground">
                   {releaseId
                     ? `Gewählter Release: ${releaseId}`
-                    : "Für Baseline und Abgleich zuerst einen Zielrelease auswählen."}
+                    : "Für den Abgleich zuerst einen Zielrelease auswählen."}
                 </p>
                 <VersioningTargetPolicy
                   workspace={workspace}
@@ -346,9 +453,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       {!targets.targets.length && (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <DatabaseIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
-          <p className="text-xs font-medium">Jede Datenbank auf ihrem Stand</p>
+          <p className="text-xs font-medium">Jedes Kundenschema auf seinem Stand</p>
           <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
-            Ordne eine Umgebung oder deine Kundendatenbanken über das Plus hinzu.
+            Wähle für jeden Kunden die Connection, Datenbank und das vorhandene Schema. Danach wird
+            der Ausgangsstand geprüft.
           </p>
         </div>
       )}
@@ -382,6 +490,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                     connectionFor(recovery),
                     releaseId,
                     true,
+                    connections,
                   );
                   setRecovery(null);
                   await refresh();

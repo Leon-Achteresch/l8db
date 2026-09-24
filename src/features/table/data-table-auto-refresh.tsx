@@ -1,6 +1,3 @@
-import { Pause, RefreshCw } from "lucide";
-import { MorphIcon } from "morphicons/react";
-
 import {
   Select,
   SelectContent,
@@ -14,7 +11,6 @@ import {
   describeAutoRefreshInterval,
   normalizeAutoRefreshInterval,
 } from "@/lib/auto-refresh";
-import { cn } from "@/lib/utils";
 
 type DataTableAutoRefreshProps = {
   intervalMs: number;
@@ -30,13 +26,6 @@ export function DataTableAutoRefresh({
   const isActive = intervalMs > 0;
   return (
     <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-      <MorphIcon
-        icon={isActive && pauseReason ? Pause : RefreshCw}
-        className={cn(
-          "size-3",
-          isActive && pauseReason ? "text-amber-500" : isActive ? "text-primary" : "opacity-60",
-        )}
-      />
       <Select
         value={String(intervalMs)}
         onValueChange={(value) => onIntervalChange(normalizeAutoRefreshInterval(Number(value)))}

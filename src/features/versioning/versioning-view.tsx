@@ -36,12 +36,23 @@ import { VersioningTargets } from "./versioning-targets";
 import "./versioning.css";
 
 export function VersioningView({ workspace }: { workspace: VersioningWorkspace }) {
-  const { repo, status, project, busy, error, message, run, refresh } = workspace;
+  const { repo, status, project, releases, busy, error, message, run, refresh } = workspace;
   const connection = useActiveConnection();
   const [tab, setTab] = useState("development");
   const [name, setName] = useState("");
   const [branch, setBranch] = useState("");
-  const count = changedFiles(status?.changes ?? "").size;
+  const changes = changedFiles(status?.changes ?? "");
+  const count = changes.size;
+  const baselineReady = Boolean(
+    status?.head &&
+      releases.some(
+        (release) => !release.parent && !changes.has(`database/releases/${release.id}.json`),
+      ),
+  );
+  const customersReady = Boolean(
+    workspace.targets?.targets.length &&
+      workspace.targets.targets.every((target) => Boolean(target.release)),
+  );
   const create = async () => {
     if (!name.trim() || !connection || !["postgres", "oracle"].includes(connection.kind))
       throw new Error("Projektname und eine PostgreSQL- oder Oracle-Verbindung auswählen.");
@@ -230,6 +241,42 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
                 </button>
               ))}
             </VersioningPopover>
+          </div>
+          <div className="mx-5 mb-3 rounded-xl bg-muted/35 px-3 py-3">
+            <p className="text-[11px] font-semibold">Einrichtung</p>
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              {[
+                { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
+                { id: "releases", label: "2 · Baseline", done: baselineReady },
+                {
+                  id: "targets",
+                  label: "3 · Kunden",
+                  done: customersReady,
+                },
+              ].map((step) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  disabled={busy || workspace.dirty}
+                  onClick={() => setTab(step.id)}
+                  className={`rounded-md px-2 py-1.5 text-left text-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-ring ${step.done ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-background/70 text-muted-foreground hover:text-foreground"}`}
+                >
+                  {step.label}
+                  {step.done ? " ✓" : ""}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+              {!project.objects.length
+                ? "Ein Quellschema aufnehmen. Es werden Definitionen gespeichert, keine Datenzeilen."
+                : !baselineReady
+                  ? "Aus den Definitionen eine Baseline erstellen und committen."
+                  : !workspace.targets?.targets.length
+                    ? "Kunden mit eigener Connection, Datenbank und eigenem Schema zuordnen."
+                    : !customersReady
+                      ? "Für jedes Kundenziel den vorhandenen Stand gegen die Baseline prüfen."
+                      : "Kundenziel wählen, Baseline prüfen und spätere Releases zuerst planen."}
+            </p>
           </div>
           <Tabs
             value={tab}

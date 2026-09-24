@@ -55,6 +55,7 @@ chat/
 !/docs/integration-tests.md
 !/docs/data-transfer.md
 !/docs/performance.md
+!/docs/feature-videos-plan.md
 
 # Nested website repo (separates Projekt)
 l8db-website/

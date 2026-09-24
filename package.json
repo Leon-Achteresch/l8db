@@ -32,7 +32,10 @@
     "version:check": "node scripts/version.mjs check",
     "changelog": "node .github/scripts/generate-changelog.mjs",
     "extension": "bun packages/extension-sdk/src/cli.ts",
-    "production:check": "node scripts/production-check.mjs"
+    "production:check": "node scripts/production-check.mjs",
+    "feature-videos:record": "bun scripts/feature-videos/record.ts",
+    "feature-videos:plan": "bun scripts/feature-videos/publish.ts plan",
+    "feature-videos:cleanup": "bun scripts/feature-videos/publish.ts cleanup"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

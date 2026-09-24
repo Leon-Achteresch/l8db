@@ -33,6 +33,7 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     favorite: profile.favorite,
     color: profile.color,
     schemas: profile.schemas?.length ? profile.schemas : null,
+    showSingleSchemaSwitcher: profile.showSingleSchemaSwitcher,
   };
 }
 

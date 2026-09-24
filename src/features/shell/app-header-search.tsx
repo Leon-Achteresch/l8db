@@ -27,12 +27,13 @@ import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_RESULTS = 60;
+const NO_ITEMS: CommandItem[] = [];
 
 export function AppHeaderSearch() {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
@@ -118,6 +119,7 @@ export function AppHeaderSearch() {
   }, [extensionHost, extensionVersion]);
 
   const items = useMemo<CommandItem[]>(() => {
+    if (!open) return NO_ITEMS;
     const connectionItems = connections.map((connection) => ({
       id: `connection:${connection.id}`,
       label: connection.name,
@@ -216,6 +218,7 @@ export function AppHeaderSearch() {
     hotkeyOverrideVersion,
     easyMode,
     pathname,
+    open,
   ]);
 
   return (

@@ -22,8 +22,7 @@ type Props = Pick<
   | "setCsvExportOpen"
   | "setXlsxExportOpen"
   | "handleExport"
-  | "setAddRowOpen"
-  | "setInsertError"
+  | "requestAddRow"
 > & {
   schema: string;
   table: string;
@@ -42,8 +41,7 @@ export function TableToolbarActions({
   setCsvExportOpen,
   setXlsxExportOpen,
   handleExport,
-  setAddRowOpen,
-  setInsertError,
+  requestAddRow,
   schema,
   table,
 }: Props) {
@@ -78,10 +76,7 @@ export function TableToolbarActions({
               className="size-7"
               aria-label="Neue Zeile"
               data-tour="table-add"
-              onClick={() => {
-                setInsertError(null);
-                setAddRowOpen(true);
-              }}
+              onClick={requestAddRow}
               disabled={insertRowMutation.isPending}
             >
               <PlusIcon className="size-3.5" />

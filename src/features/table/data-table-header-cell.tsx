@@ -4,6 +4,7 @@ import { Pin, PinOff } from "lucide";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ClipboardCopyIcon,
   EyeOffIcon,
   FilterIcon,
   GripVerticalIcon,
@@ -48,6 +49,7 @@ type DataTableHeaderCellProps = {
   canHide: boolean;
   isPinned: boolean;
   onTogglePin: () => void;
+  onCopyColumn: () => void;
 };
 
 export function DataTableHeaderCell({
@@ -71,6 +73,7 @@ export function DataTableHeaderCell({
   canHide,
   isPinned,
   onTogglePin,
+  onCopyColumn,
 }: DataTableHeaderCellProps) {
   const { ref, handleRef, isDragging } = useSortable({ id: header.id, index: sortableIndex });
   const pinnedOffset =
@@ -240,6 +243,10 @@ export function DataTableHeaderCell({
           </>
         )}
         <ContextMenuSeparator />
+        <ContextMenuItem onClick={onCopyColumn}>
+          <ClipboardCopyIcon />
+          Spalte kopieren
+        </ContextMenuItem>
         <ContextMenuItem onClick={onTogglePin}>
           <MorphIcon icon={isPinned ? PinOff : Pin} />
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}

@@ -15,6 +15,7 @@ export * from "./providers";
 export * from "./replication";
 export * from "./roles";
 export * from "./rows";
+export * from "./schema-catalog";
 export * from "./schema-objects";
 export * from "./transactions";
 export * from "./types";

@@ -66,5 +66,6 @@ export type DataTableProps = {
   columnDetails?: DetailedColumnInfo[];
   revealColumn?: { name: string; nonce: number } | null;
   searchRequiresFocus?: boolean;
+  addRowSignal?: number;
   autoSelectFirstCell?: boolean;
 };

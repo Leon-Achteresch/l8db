@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createAppQueryClient, isConnectionQuery, sameTableSource } from "../src/lib/query-client";
+import {
+  createAppQueryClient,
+  invalidateTableReads,
+  isConnectionQuery,
+  sameTableSource,
+} from "../src/lib/query-client";
 
 describe("query cache performance and isolation", () => {
   test("reuses fresh metadata and refetches after an explicit refresh", async () => {
@@ -37,6 +42,42 @@ describe("query cache performance and isolation", () => {
       next[index] = "other";
       expect(sameTableSource(original, next)).toBe(false);
     }
+  });
+
+  test("placeholder rows do not cross transaction sessions", () => {
+    const original = [
+      "rows",
+      "a",
+      "db",
+      "public",
+      "users",
+      "",
+      "",
+      false,
+      false,
+      0,
+      100,
+      true,
+      "tx-1",
+    ];
+    expect(sameTableSource(original, [...original.slice(0, 12), "tx-2"])).toBe(false);
+  });
+
+  test("SQL execution refreshes table rows and counts for its database", async () => {
+    const client = createAppQueryClient();
+    const selected = ["rows", "a", "db", "public", "users"];
+    const selectedCount = ["count", "a", "db", "public", "users"];
+    const other = ["rows", "a", "other", "public", "users"];
+    const otherConnection = ["rows", "b", "db", "public", "users"];
+    for (const key of [selected, selectedCount, other, otherConnection]) {
+      client.setQueryData(key, []);
+    }
+    await invalidateTableReads(client, "a", "db");
+    expect(client.getQueryState(selected)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(selectedCount)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(client.getQueryState(otherConnection)?.isInvalidated).toBe(false);
+    client.clear();
   });
 
   test("never repeats timed out, cancelled or lock-blocked queries", () => {

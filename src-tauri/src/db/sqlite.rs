@@ -193,6 +193,7 @@ impl SqliteAdapter {
                 is_primary_key: truthy(&r[5]),
                 ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
                 character_maximum_length: None,
+                comment: None,
             })
             .collect())
     }
@@ -509,6 +510,33 @@ impl DatabaseAdapter for SqliteAdapter {
                 |r| r.get::<_, String>(0),
             )
             .map_err(map_err)
+        })
+        .await
+    }
+
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let (schema, table) = (schema.to_string(), table.to_string());
+        self.run(move |c| {
+            let mut stmt = c
+                .prepare(&format!(
+                    "SELECT sql FROM {} WHERE tbl_name = ?1 AND type IN ('table', 'index', 'trigger') AND sql IS NOT NULL \
+                     ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name",
+                    Self::master(&schema)
+                ))
+                .map_err(map_err)?;
+            let statements = stmt
+                .query_map([&table], |r| r.get::<_, String>(0))
+                .map_err(map_err)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_err)?;
+            if statements.is_empty() {
+                return Err("Tabelle nicht gefunden".to_string());
+            }
+            Ok(statements
+                .iter()
+                .map(|s| format!("{s};\n"))
+                .collect::<Vec<_>>()
+                .join("\n"))
         })
         .await
     }

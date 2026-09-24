@@ -1,6 +1,7 @@
 import {
   GaugeIcon,
   GitCompare,
+  GitCompareArrows,
   HammerIcon,
   Home,
   LayoutDashboard,
@@ -46,6 +47,12 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.foreign_keys,
     },
     { title: "Vergleich", url: "/compare", icon: GitCompare },
+    {
+      title: "Schema-Vergleich",
+      url: "/schema-compare",
+      icon: GitCompareArrows,
+      available: (caps) => caps.schema_object_copy,
+    },
     {
       title: "Gespeicherte Pläne",
       url: "/saved-plan",

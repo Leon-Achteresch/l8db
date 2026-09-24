@@ -83,8 +83,8 @@ export function FkPreviewPopover({
       .finally(() => setIsLoadingPreview(false));
   };
 
-  const handleAltClick = (e: React.MouseEvent) => {
-    if (!e.altKey || value === null || value === undefined) return;
+  const handleModifierClick = (e: React.MouseEvent) => {
+    if (!(e.ctrlKey || e.metaKey || e.altKey) || value === null || value === undefined) return;
     if (!primary || !isSingle) return;
     e.preventDefault();
     e.stopPropagation();
@@ -99,10 +99,13 @@ export function FkPreviewPopover({
     <HoverCard openDelay={400} closeDelay={100} onOpenChange={handleOpenChange}>
       <HoverCardTrigger asChild>
         <div
-          onClick={handleAltClick}
+          onClick={handleModifierClick}
+          onContextMenu={(e) => {
+            if (e.ctrlKey) handleModifierClick(e);
+          }}
           className="flex h-5 w-fit items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
         >
-          <LinkIcon className="size-3 shrink-0 text-blue-500/60 group-hover/fk:text-blue-500 transition-colors" />
+          <LinkIcon className="size-3 shrink-0 text-blue-500/60 fk-hover:text-blue-500 transition-colors" />
           <div className="truncate">{children}</div>
         </div>
       </HoverCardTrigger>
@@ -146,7 +149,7 @@ export function FkPreviewPopover({
                         <button
                           type="button"
                           title={isPinned ? "Lösen" : "Anpinnen"}
-                          className={`shrink-0 self-center cursor-pointer transition-opacity ${isPinned ? "text-blue-500 opacity-70 hover:opacity-100" : "text-muted-foreground opacity-0 group-hover/row:opacity-60 hover:opacity-100!"}`}
+                          className={`shrink-0 self-center cursor-pointer transition-opacity ${isPinned ? "text-blue-500 opacity-70 hover:opacity-100" : "text-muted-foreground opacity-0 row-hover:opacity-60 hover:opacity-100!"}`}
                           onClick={() => togglePinned(pinKey, col)}
                         >
                           <PinIcon className={`size-3 ${isPinned ? "fill-current" : ""}`} />

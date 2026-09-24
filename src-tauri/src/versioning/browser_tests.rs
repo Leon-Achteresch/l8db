@@ -203,11 +203,7 @@ impl Lab {
                 "l8db_versioning_b",
                 "l8db_versioning_edge"
             ])),
-            "list_schemas" => Ok(if kind == DatabaseKind::Oracle {
-                json!(["L8DB_VCS_DEV", "L8DB_VCS_A", "L8DB_VCS_B"])
-            } else {
-                json!(["public"])
-            }),
+            "list_schemas" => adapter.list_schemas().await.map(|v| json!(v)),
             "list_tables" => adapter.list_tables(Some(schema)).await.map(|v| json!(v)),
             "list_all_columns" => adapter
                 .list_columns(Some(schema), None, None)
@@ -313,8 +309,12 @@ async fn versioning_browser_bridge() {
     let settings: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let pool = db::pool::create_pool_state();
     let pg = settings["postgresUrl"].as_str().unwrap();
-    let oracle = settings["oracleUrl"].as_str().unwrap();
-    for (kind, url) in [(DatabaseKind::Postgres, pg), (DatabaseKind::Oracle, oracle)] {
+    let oracle = settings["oracleUrl"].as_str();
+    let mut providers = vec![(DatabaseKind::Postgres, pg)];
+    if let Some(url) = oracle {
+        providers.push((DatabaseKind::Oracle, url));
+    }
+    for (kind, url) in providers {
         let parsed = url::Url::parse(url).unwrap();
         assert_eq!(parsed.host_str(), Some("127.0.0.1"));
         assert!([Some(55440), Some(55441)].contains(&parsed.port()));
@@ -351,12 +351,13 @@ async fn versioning_browser_bridge() {
             }
         }
     }
+    let mut urls = HashMap::from([("postgres".into(), pg.into())]);
+    if let Some(url) = oracle {
+        urls.insert("oracle".into(), url.into());
+    }
     let lab = Arc::new(Lab {
         root: std::fs::canonicalize(settings["root"].as_str().unwrap()).unwrap(),
-        urls: HashMap::from([
-            ("postgres".into(), pg.into()),
-            ("oracle".into(), oracle.into()),
-        ]),
+        urls,
         pool,
         transactions: db::transaction::create_transaction_state(),
     });
