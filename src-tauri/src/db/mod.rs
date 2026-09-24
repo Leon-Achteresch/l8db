@@ -1611,6 +1611,38 @@ pub(crate) fn hex_blob(bytes: &[u8]) -> String {
     out
 }
 
+pub(crate) fn hex_blob_body(value: &str) -> Option<&str> {
+    let hex = value.strip_prefix("\\x")?;
+    (hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
+}
+
+pub(crate) fn is_binary_column_type(data_type: &str) -> bool {
+    let lower = data_type.trim().to_ascii_lowercase();
+    let base = lower.split('(').next().unwrap_or("").trim();
+    if base.starts_with("binary_") || base.contains("char") || base.contains("text") {
+        return false;
+    }
+    base.contains("blob")
+        || base.contains("binary")
+        || base == "bytea"
+        || base == "image"
+        || base == "raw"
+        || base == "long raw"
+        || matches!(
+            base,
+            "geometry"
+                | "geography"
+                | "point"
+                | "linestring"
+                | "polygon"
+                | "multipoint"
+                | "multilinestring"
+                | "multipolygon"
+                | "geometrycollection"
+                | "geomcollection"
+        )
+}
+
 pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<String, String> {
     match filter.map(str::trim).filter(|f| !f.is_empty()) {
         Some(expression) => {
@@ -1785,6 +1817,31 @@ mod tests {
     use super::{redact_connection_string, split_statements, validate_table_filter};
 
     use super::{build_object_ddl, hex_blob, validate_object_name, ObjectDdlRequest};
+
+    #[test]
+    fn hex_blob_body_and_binary_types() {
+        assert_eq!(super::hex_blob_body("\\x00ff"), Some("00ff"));
+        assert_eq!(super::hex_blob_body("\\x"), Some(""));
+        assert_eq!(super::hex_blob_body("\\x0"), None);
+        assert_eq!(super::hex_blob_body("\\xzz"), None);
+        assert_eq!(super::hex_blob_body("00ff"), None);
+        for t in [
+            "BLOB",
+            "longblob",
+            "varbinary(16)",
+            "BINARY(4)",
+            "RAW(16)",
+            "LONG RAW",
+            "image",
+            "geometry",
+            "POINT",
+        ] {
+            assert!(super::is_binary_column_type(t), "{t}");
+        }
+        for t in ["BINARY_DOUBLE", "varchar(10)", "text", "CLOB", "int"] {
+            assert!(!super::is_binary_column_type(t), "{t}");
+        }
+    }
 
     #[test]
     fn hex_blob_encodes_bytes() {
@@ -2222,3 +2279,6 @@ mod load_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;
+
+#[cfg(test)]
+mod value_viewer_live_tests;
