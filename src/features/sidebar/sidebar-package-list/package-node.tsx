@@ -32,6 +32,7 @@ import { SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "@/components
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
+import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, type SchemaCopyObjectType } from "@/lib/db";
@@ -114,6 +115,7 @@ export function PackageNode({ schema, name }: { schema: string; name: string }) 
           <ContextMenuContent>
             <ContextMenuItem onSelect={() => go("spec")}>Spec öffnen</ContextMenuItem>
             <ContextMenuItem onSelect={() => go("body")}>Body öffnen</ContextMenuItem>
+            <CompareObjectMenuItem schema={schema} name={name} objectType="package" />
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={openInEditor}>
               <SquareTerminalIcon />

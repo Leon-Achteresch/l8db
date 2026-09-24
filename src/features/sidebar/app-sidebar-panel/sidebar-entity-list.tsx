@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
+import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SchemaCopyObjectType } from "@/lib/db";
@@ -193,6 +194,11 @@ export function SidebarEntityList({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>{menuButton}</ContextMenuTrigger>
                     <ContextMenuContent>
+                      <CompareObjectMenuItem
+                        schema={item.schema}
+                        name={item.name}
+                        objectType="view"
+                      />
                       <ContextMenuItem
                         onSelect={() => toggleFavoriteObject(item.schema, item.name)}
                       >
