@@ -12,19 +12,7 @@ const save = () => writeFileSync(path, JSON.stringify(state));
 const flag = (name: string) => args[args.indexOf(name) + 1];
 state.clips ??= [];
 if (args[0] === "release") {
-  if (args[1] === "create") {
-    const release = {
-      id: args[2] === "feature-videos" ? 99 : 1000 + state.clips.length,
-      tag_name: args[2],
-      body: flag("--notes"),
-      draft: args.includes("--draft"),
-      prerelease: true,
-      immutable: !args.includes("--draft"),
-      created_at: new Date().toISOString(),
-    };
-    if (args[2] === "feature-videos") state.media = release;
-    else state.clips.push(release);
-  } else if (args[1] === "upload") {
+  if (args[1] === "upload") {
     const release = state.clips.find((item: { tag_name: string }) => item.tag_name === args[2]);
     if (!release?.draft) throw new Error("Cannot upload to immutable release");
     const data = readFileSync(args[3]);
@@ -43,14 +31,39 @@ if (args[0] === "release") {
   if (endpoint === "commits/v0.6.999") output(state.commit);
   else if (endpoint === "releases/tags/v0.6.999")
     output({ draft: false, prerelease: false, immutable: true, tag_name: "v0.6.999" });
-  else if (endpoint === "releases/tags/feature-videos") {
+  else if (endpoint === "releases" && flag("--method") === "POST") {
+    const data = JSON.parse(await Bun.stdin.text());
+    if (data.make_latest !== "false") throw new Error("Media must never become latest");
+    const release = {
+      id: data.tag_name === "feature-videos" ? 99 : 1000 + state.clips.length,
+      tag_name: data.tag_name,
+      body: data.body,
+      draft: data.draft,
+      prerelease: data.prerelease,
+      immutable: !data.draft,
+      created_at: new Date().toISOString(),
+    };
+    if (data.tag_name === "feature-videos") state.media = release;
+    else {
+      state.clips.push(release);
+      state.hideDraftOnce = true;
+    }
+    save();
+    output(release);
+  } else if (endpoint === "releases/tags/feature-videos") {
     if (!state.media) {
       process.stderr.write("HTTP 404\n");
       process.exit(1);
     }
     output(state.media);
-  } else if (endpoint.startsWith("releases?")) output([state.clips]);
-  else if (/^releases\/\d+\/assets\?/.test(endpoint)) {
+  } else if (endpoint.startsWith("releases?")) {
+    const clips = state.hideDraftOnce
+      ? state.clips.filter((release: { draft: boolean }) => !release.draft)
+      : state.clips;
+    state.hideDraftOnce = false;
+    save();
+    output([clips]);
+  } else if (/^releases\/\d+\/assets\?/.test(endpoint)) {
     const id = Number(endpoint.split("/")[1]);
     output([state.assets.filter((asset: { releaseId: number }) => asset.releaseId === id)]);
   } else if (/^releases\/\d+$/.test(endpoint) && flag("--method") === "PATCH") {

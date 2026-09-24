@@ -1,18 +1,18 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compare, valid } from "semver";
 import {
   ASSET_BASE,
   clipTag,
+  type FeatureVideo,
   MAX_AGE,
   MEDIA_REPOSITORY,
   MEDIA_TAG,
   parseFeed,
-  type FeatureVideo,
 } from "../../src/lib/feature-videos/model";
-import { api, gh, mediaRelease, releaseAssets, clipReleases } from "./github";
+import { api, clipReleases, gh, mediaRelease, releaseAssets } from "./github";
 import {
   assetUrls,
   deletableReleases,
@@ -89,44 +89,29 @@ if (mode === "publish") {
     incoming.push(item);
   }
   if (!media) {
-    gh([
-      "release",
-      "create",
-      MEDIA_TAG,
-      "--repo",
-      MEDIA_REPOSITORY,
-      "--target",
-      releasedCommit,
-      "--prerelease",
-      "--latest=false",
-      "--title",
-      "Feature videos",
-      "--notes",
-      JSON.stringify(emptyRegistry(now)),
-    ]);
-    media = mediaRelease();
+    media = api("releases", "POST", {
+      tag_name: MEDIA_TAG,
+      target_commitish: releasedCommit,
+      name: "Feature videos",
+      body: JSON.stringify(emptyRegistry(now)),
+      draft: false,
+      prerelease: true,
+      make_latest: "false",
+    });
   }
   for (const item of incoming) {
     const tag = clipTag(item);
     let release = clipReleases().find((entry) => entry.tag_name === tag);
     if (!release) {
-      gh([
-        "release",
-        "create",
-        tag,
-        "--repo",
-        MEDIA_REPOSITORY,
-        "--target",
-        releasedCommit,
-        "--draft",
-        "--prerelease",
-        "--latest=false",
-        "--title",
-        item.title,
-        "--notes",
-        JSON.stringify({ kind: "l8db-feature-video", id: item.id, revision: item.revision }),
-      ]);
-      release = clipReleases().find((entry) => entry.tag_name === tag);
+      release = api("releases", "POST", {
+        tag_name: tag,
+        target_commitish: releasedCommit,
+        name: item.title,
+        body: JSON.stringify({ kind: "l8db-feature-video", id: item.id, revision: item.revision }),
+        draft: true,
+        prerelease: true,
+        make_latest: "false",
+      });
     }
     if (!release || !isClipRelease(release)) throw new Error("Unbekannter Medien-Release");
     const marker = JSON.parse(release.body);

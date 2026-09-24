@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { ASSET_BASE, DAY } from "../src/lib/feature-videos/model";
 
-test("publisher uploads before feed, avoids republishing and limits deletion to retired media", () => {
+test("publisher handles delayed draft listings, avoids republishing and limits deletion to retired media", () => {
   const dir = mkdtempSync(resolve(tmpdir(), "l8db-video-publish-"));
   try {
     copyFileSync(resolve("tests/fixtures/feature-video-github.ts"), resolve(dir, "gh"));
