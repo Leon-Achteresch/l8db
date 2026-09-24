@@ -12,7 +12,7 @@ export function Bars({ rows, shape, options }: ChartProps) {
           return (
             <div
               key={item.name}
-              className="grid grid-cols-[minmax(56px,auto)_1fr_auto] items-center gap-3 text-xs"
+              className="grid grid-cols-[minmax(56px,auto)_1fr_auto] items-center gap-3 text-xs [contain-intrinsic-size:auto_16px] [content-visibility:auto]"
             >
               <span className="truncate text-right text-muted-foreground">{item.name}</span>
               <div className="relative h-4 overflow-hidden rounded-full bg-muted">

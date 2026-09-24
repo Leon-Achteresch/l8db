@@ -16,15 +16,6 @@ export interface ChartProps {
 
 export const axisTick = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
 
-export const tooltipStyle = {
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  background: "var(--card)",
-  color: "var(--card-foreground)",
-  fontSize: 12,
-  boxShadow: "0 8px 24px rgb(0 0 0 / 0.08)",
-} as const;
-
 export function color(index: number): string {
   return PALETTE[index % PALETTE.length];
 }
@@ -44,4 +35,9 @@ export function series(rows: Row[], shape: DatasetShape) {
     for (const m of shape.metrics) out[m.key] = toNumber(row[m.key]);
     return out;
   });
+}
+
+export function hoveredIndex(target: EventTarget) {
+  const index = (target as Element).closest?.("[data-index]")?.getAttribute("data-index");
+  return index == null ? null : Number(index);
 }
