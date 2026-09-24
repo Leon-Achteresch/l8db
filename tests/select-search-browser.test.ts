@@ -4,7 +4,7 @@ import { chromium, webkit } from "playwright";
 const url = process.env.L8DB_SELECT_BROWSER_URL;
 
 for (const engine of [chromium, webkit]) {
-  for (const query of ["", "?selected"]) {
+  for (const query of ["", "?selected", "?auto"]) {
     test.skipIf(!url)(
       `${engine.name()}: morphing dialog select stays anchored during search ${query}`,
       async () => {
@@ -18,13 +18,16 @@ for (const engine of [chromium, webkit]) {
           const search = page.getByPlaceholder("Suchen…");
           await search.waitFor();
           await page.waitForTimeout(200);
+          expect(await search.evaluate((element) => document.activeElement === element)).toBe(true);
+          await page.keyboard.type("Lo");
+          expect(await search.inputValue()).toBe("Lo");
           for (const term of ["L", "Lober", "missing", ""]) {
             await search.fill(term);
             await page.waitForTimeout(200);
             const anchor = await trigger.boundingBox();
             const content = await page.locator('[data-slot="select-content"]').boundingBox();
             if (!anchor || !content) throw new Error("Select geometry is unavailable");
-            expect(Math.abs(content.x - anchor.x)).toBeLessThan(20);
+            expect(Math.abs(content.x - anchor.x)).toBeLessThan(2);
             expect(content.x + content.width).toBeLessThanOrEqual(1280);
             if (term === "Lober") expect(await page.getByRole("option").count()).toBe(2);
             if (term === "missing")
@@ -38,7 +41,11 @@ for (const engine of [chromium, webkit]) {
           expect(await trigger.innerText()).toContain("LOBERON_TEST");
           await search.waitFor({ state: "hidden" });
           await trigger.click();
-          await search.fill("ECO");
+          await search.waitFor();
+          await page.waitForTimeout(200);
+          expect(await search.evaluate((element) => document.activeElement === element)).toBe(true);
+          expect(await search.inputValue()).toBe("");
+          await page.keyboard.type("ECO");
           await page.getByRole("option", { name: "ECO_TEST", exact: true }).click();
           expect(await trigger.innerText()).toContain("ECO_TEST");
         } finally {
@@ -48,4 +55,24 @@ for (const engine of [chromium, webkit]) {
       30_000,
     );
   }
+
+  test.skipIf(!url)(`${engine.name()}: non-searchable select aligns with its trigger`, async () => {
+    const browser = await engine.launch({ headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await page.goto(`${url}/tests/fixtures/select-search.html?plain`);
+      await page.getByRole("button", { name: "Vergleich einrichten" }).click();
+      const trigger = page.locator('[data-slot="select-trigger"]');
+      await trigger.click();
+      await page.locator('[data-slot="select-content"]').waitFor();
+      await page.waitForTimeout(200);
+      expect(await page.getByPlaceholder("Suchen…").count()).toBe(0);
+      const anchor = await trigger.boundingBox();
+      const content = await page.locator('[data-slot="select-content"]').boundingBox();
+      if (!anchor || !content) throw new Error("Select geometry is unavailable");
+      expect(Math.abs(content.x - anchor.x)).toBeLessThan(2);
+    } finally {
+      await browser.close();
+    }
+  });
 }
