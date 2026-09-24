@@ -43,14 +43,63 @@ function columns(definition: string): { columns: SnapshotColumn[]; rest: string 
   return { columns: parsed, rest: definition.slice(match[0].length) };
 }
 
+function oracleStructure(rest: string): string {
+  const lines = rest
+    .split("\n")
+    .filter((line) => line && !/^\s*\S+ CHECK \([^)]*\) CHECK \("[^"]+" IS NOT NULL\)$/.test(line));
+  return lines
+    .filter(
+      (line, index) =>
+        line !== "CONSTRAINTS" || !/^(INDEXES|TRIGGERS)?$/.test(lines[index + 1] ?? ""),
+    )
+    .map((line) => line.replace(/\bSYS_C\d+\b/g, "SYS_C").replace(/"[^"]+"\./g, ""))
+    .sort()
+    .join("\n");
+}
+
+function oracleTablePlan(
+  target: string,
+  before: SnapshotColumn[],
+  after: SnapshotColumn[],
+): string[] {
+  const name = (column: SnapshotColumn) => quoteIdentifier(column.name, "double");
+  const modify = after.flatMap((column) => {
+    const old = before.find((item) => item.name === column.name);
+    if (!old) return [];
+    const parts = [
+      old.data_type !== column.data_type ? column.data_type : "",
+      old.column_default !== column.column_default
+        ? `DEFAULT ${column.column_default ?? "NULL"}`
+        : "",
+      old.is_nullable !== column.is_nullable ? (column.is_nullable ? "NULL" : "NOT NULL") : "",
+    ].filter(Boolean);
+    return parts.length ? [`${name(column)} ${parts.join(" ")}`] : [];
+  });
+  const add = after
+    .filter((column) => !before.some((item) => item.name === column.name))
+    .map(
+      (column) =>
+        `${name(column)} ${column.data_type}${column.column_default === null ? "" : ` DEFAULT ${column.column_default}`}${column.is_nullable ? "" : " NOT NULL"}`,
+    );
+  const drop = before
+    .filter((column) => !after.some((item) => item.name === column.name))
+    .map(name);
+  return [
+    modify.length ? `ALTER TABLE ${target} MODIFY (${modify.join(", ")})` : "",
+    add.length ? `ALTER TABLE ${target} ADD (${add.join(", ")})` : "",
+    drop.length ? `ALTER TABLE ${target} DROP (${drop.join(", ")})` : "",
+  ].filter(Boolean);
+}
+
 function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: string): string[] {
-  if (kind !== "postgres")
+  if (kind !== "postgres" && kind !== "oracle")
     throw new Error(
-      "Tabellenänderungen können hier derzeit nur für PostgreSQL sicher erzeugt und geprüft werden.",
+      "Tabellenänderungen können hier derzeit nur für PostgreSQL und Oracle sicher erzeugt und geprüft werden.",
     );
   const before = columns(baseline);
   const after = columns(draft);
-  if (before.rest !== after.rest)
+  const structure = kind === "oracle" ? oracleStructure : (rest: string) => rest;
+  if (structure(before.rest) !== structure(after.rest))
     throw new Error(
       "Änderungen an Constraints, Indizes und Triggern bitte im jeweiligen Objekteditor ausführen. Der Entwurf bleibt erhalten.",
     );
@@ -62,6 +111,7 @@ function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: 
       .join("\n");
   if (primary(before.columns) !== primary(after.columns))
     throw new Error("Primärschlüsseländerungen bitte im Tabelleneditor prüfen und ausführen.");
+  if (kind === "oracle") return oracleTablePlan(target, before.columns, after.columns);
   const sql: string[] = [];
   for (const column of after.columns) {
     const old = before.columns.find((item) => item.name === column.name);

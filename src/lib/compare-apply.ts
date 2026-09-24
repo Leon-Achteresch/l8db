@@ -51,13 +51,16 @@ export async function runComparePlan(
   }
   if (connection.kind !== "oracle")
     throw new Error("Prüfen ohne Speichern wird für diese Datenbank nicht unterstützt.");
-  const sql = statements.join("\n/\n");
-  await validateSql(connection.kind, url, sql, database);
+  await validateSql(connection.kind, url, statements.join("\n/\n"), database);
   if (!apply) return;
-  const results = await executeScript(connection.kind, url, sql, database, { confirmed: true });
-  const failed = results.find((item) => !item.success);
-  if (failed || results.length !== statements.length)
-    throw new Error(
-      `${failed?.error ?? "Nicht alle Anweisungen wurden ausgeführt."} Bereits ausgeführte Oracle-DDL-Anweisungen können gespeichert sein. Bitte den Zielstand neu laden.`,
-    );
+  for (const [index, statement] of statements.entries()) {
+    const results = await executeScript(connection.kind, url, statement, database, {
+      confirmed: true,
+    });
+    const failed = results.find((item) => !item.success);
+    if (failed || results.length !== 1)
+      throw new Error(
+        `${failed?.error ?? "Die Anweisung wurde nicht vollständig ausgeführt."}${index > 0 ? " Vorherige Oracle-DDL-Anweisungen sind bereits gespeichert. Bitte den Zielstand neu laden." : ""}`,
+      );
+  }
 }

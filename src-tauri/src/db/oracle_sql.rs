@@ -237,6 +237,49 @@ impl TempObject {
     }
 }
 
+pub(super) struct AlterTable {
+    pub owner: Option<String>,
+    pub name: String,
+    pub temp_name: String,
+    pub table: Range<usize>,
+}
+
+impl AlterTable {
+    pub fn on_temp(&self, sql: &str) -> String {
+        let mut statement = sql.to_string();
+        statement.replace_range(
+            self.table.clone(),
+            &format!("\"{}\"", self.temp_name.replace('"', "\"\"")),
+        );
+        statement
+    }
+}
+
+pub(super) fn alter_table(sql: &str) -> Option<AlterTable> {
+    let toks = tokens(sql);
+    let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
+    let is = |i: usize, w: &str| word(i).is_some_and(|t| t.eq_ignore_ascii_case(w));
+    if !is(0, "ALTER") || !is(1, "TABLE") {
+        return None;
+    }
+    let (owner, last) = if word(3) == Some(".") {
+        (Some(ident_name(word(2)?)), 4)
+    } else {
+        (None, 2)
+    };
+    let clause = last + 1;
+    if !["ADD", "MODIFY", "DROP"].iter().any(|w| is(clause, w)) {
+        return None;
+    }
+    let name = ident_name(word(last)?);
+    Some(AlterTable {
+        owner,
+        temp_name: format!("{}{TEMP_SUFFIX}", temp_stem(&name)),
+        name,
+        table: toks[2].start..toks[last].end,
+    })
+}
+
 pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
     let toks = tokens(sql);
     let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
@@ -348,6 +391,30 @@ mod tests {
             bind_statement("SELECT $10 FROM dual", 10).unwrap_err(),
             "Die Anzahl der Oracle-Bind-Werte passt nicht zur Abfrage."
         );
+    }
+
+    #[test]
+    fn rewrites_alter_table_to_temp_copy() {
+        let sql = "ALTER TABLE \"DEV\".\"ABRECHNUNG_LOCK\" MODIFY (\"NAME\" VARCHAR2(80) NOT NULL)";
+        let alter = alter_table(sql).unwrap();
+        assert_eq!(
+            (alter.owner.as_deref(), alter.name.as_str()),
+            (Some("DEV"), "ABRECHNUNG_LOCK")
+        );
+        assert_eq!(
+            alter.on_temp(sql),
+            "ALTER TABLE \"ABRECHNUNG_LOCK_L8DB_TEMP\" MODIFY (\"NAME\" VARCHAR2(80) NOT NULL)"
+        );
+        assert_eq!(
+            alter_table("alter table t drop (a, b)")
+                .unwrap()
+                .on_temp("alter table t drop (a, b)"),
+            "alter table \"T_L8DB_TEMP\" drop (a, b)"
+        );
+        assert!(alter_table("ALTER TABLE t RENAME TO u").is_none());
+        assert!(alter_table("ALTER TABLE t RENAME COLUMN a TO b").is_none());
+        assert!(alter_table("ALTER TABLE t MOVE").is_none());
+        assert!(alter_table("ALTER SESSION SET x = 1").is_none());
     }
 
     #[test]

@@ -138,4 +138,50 @@ describe("Vergleich: geprüfte Änderungsskripte", () => {
       ),
     ).toThrow();
   });
+  test("Oracle-Tabellen: MODIFY vor ADD vor DROP, System-Constraints werden ignoriert", () => {
+    const table = { ...side, schema: "DEV", objectName: "ABRECHNUNG_LOCK" };
+    const definition = (schema: string, pk: string, columns: string[], checks: string[]) =>
+      [
+        `TABLE ${schema}.ABRECHNUNG_LOCK`,
+        "COLUMNS",
+        ...columns,
+        "CONSTRAINTS",
+        ...checks,
+        `${pk} PRIMARY KEY (REF) PRIMARY KEY (REF)`,
+        "INDEXES",
+        `  CREATE UNIQUE INDEX "${pk}" ON "${schema}"."ABRECHNUNG_LOCK" ("REF")`,
+      ].join("\n");
+    const before = definition(
+      "DEV",
+      "SYS_C0013",
+      ["  REF NUMBER(10,0) NOT NULL PRIMARY KEY", "  NAME VARCHAR2(40) NULL", "  ALT DATE NULL"],
+      ['SYS_C0012 CHECK (REF) CHECK ("REF" IS NOT NULL)'],
+    );
+    const after = definition(
+      "DEV_QUELLE",
+      "SYS_C0097",
+      [
+        "  REF NUMBER(10,0) NOT NULL PRIMARY KEY",
+        "  NAME VARCHAR2(80) NOT NULL DEFAULT 'x'",
+        "  NEU NUMBER NOT NULL DEFAULT 0",
+      ],
+      [
+        'SYS_C0099 CHECK (NAME) CHECK ("NAME" IS NOT NULL)',
+        'SYS_C0098 CHECK (REF) CHECK ("REF" IS NOT NULL)',
+      ],
+    );
+    expect(buildCompareApplyPlan("oracle", table, before, after)).toEqual([
+      `ALTER TABLE "DEV"."ABRECHNUNG_LOCK" MODIFY ("NAME" VARCHAR2(80) DEFAULT 'x' NOT NULL)`,
+      'ALTER TABLE "DEV"."ABRECHNUNG_LOCK" ADD ("NEU" NUMBER DEFAULT 0 NOT NULL)',
+      'ALTER TABLE "DEV"."ABRECHNUNG_LOCK" DROP ("ALT")',
+    ]);
+    expect(() =>
+      buildCompareApplyPlan(
+        "oracle",
+        table,
+        before,
+        before.replace("SYS_C0013 PRIMARY KEY", "UQ_LOCK UNIQUE"),
+      ),
+    ).toThrow("Constraints");
+  });
 });

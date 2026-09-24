@@ -56,7 +56,8 @@ describe("formatTableDefinition", () => {
           function_schema: "public",
           function_name: "audit",
           enabled: "O",
-          definition: "CREATE TRIGGER orders_audit AFTER UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION audit()",
+          definition:
+            "CREATE TRIGGER orders_audit AFTER UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION audit()",
         },
       ],
     });
@@ -68,6 +69,27 @@ describe("formatTableDefinition", () => {
     expect(text).toContain("orders_pkey");
     expect(text).toContain("TRIGGERS");
     expect(text).toContain("orders_audit");
+  });
+  test("hängt keine zweite Länge an Typen an, die sie schon enthalten", () => {
+    const column = {
+      name: "NAME",
+      data_type: "VARCHAR2(40)",
+      is_nullable: true,
+      column_default: null,
+      is_primary_key: false,
+      ordinal_position: 1,
+      character_maximum_length: 40,
+    };
+    const text = formatTableDefinition({
+      schema: "DEV",
+      table: "T",
+      columns: [column, { ...column, name: "CODE", data_type: "varchar", ordinal_position: 2 }],
+      constraints: [],
+      indexes: [],
+      triggers: [],
+    });
+    expect(text).toContain("  NAME VARCHAR2(40) NULL");
+    expect(text).toContain("  CODE varchar(40) NULL");
   });
 });
 

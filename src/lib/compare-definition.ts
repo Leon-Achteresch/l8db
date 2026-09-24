@@ -51,7 +51,10 @@ export function formatTableDefinition(input: {
       const nulls = column.is_nullable ? "NULL" : "NOT NULL";
       const fallback = column.column_default ? ` DEFAULT ${column.column_default}` : "";
       const key = column.is_primary_key ? " PRIMARY KEY" : "";
-      const width = column.character_maximum_length ? `(${column.character_maximum_length})` : "";
+      const width =
+        column.character_maximum_length && !column.data_type.includes("(")
+          ? `(${column.character_maximum_length})`
+          : "";
       return `  ${column.name} ${column.data_type}${width} ${nulls}${fallback}${key}`;
     }),
   ];
