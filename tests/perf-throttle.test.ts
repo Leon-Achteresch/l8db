@@ -136,6 +136,10 @@ beforeAll(async () => {
   });
   page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.route(
+    (url) => url.hostname !== "localhost",
+    (route) => route.fulfill({ contentType: "text/html", body: "" }),
+  );
   await seedApp(page, 3000, { rows: 2000, columns: 60 });
   await page.goto(`http://localhost:${server.port}/`);
   await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
@@ -179,7 +183,7 @@ test.skipIf(!ENABLED)(
     await navigate("/");
     await page.waitForTimeout(2500);
     expectSmooth("Sidebar scrollen", await sample(() => wheel(150, 500, 40, 200)));
-    const search = page.getByPlaceholder("Tabellen…").first();
+    const search = page.locator("[data-tour=sidebar-search] input").first();
     await search.click();
     expectStep(
       "Sidebar filtern",

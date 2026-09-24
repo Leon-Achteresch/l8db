@@ -6,6 +6,7 @@ import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
 import type { QueryViewCapabilities } from "./types";
 import type { EditorCursorState } from "./use-editor-cursor-state";
 import type { QueryExecutionState } from "./use-query-execution-state";
+import type { EditorStateSync } from "./use-editor-state-sync";
 import type { useQueryTabBookmarks } from "./use-query-tab-state";
 import type { RunActions } from "./use-run-actions";
 
@@ -22,7 +23,7 @@ interface QueryEditorContentProps {
   statusVisible: boolean;
   statementCount: number;
   dialectLabel: string;
-  onSqlChange: (tabId: string, sql: string) => void;
+  editorSync: EditorStateSync;
   onSave: () => void;
   onSearchTabs: () => void;
 }
@@ -40,7 +41,7 @@ export function QueryEditorContent({
   statusVisible,
   statementCount,
   dialectLabel,
-  onSqlChange,
+  editorSync,
   onSave,
   onSearchTabs,
 }: QueryEditorContentProps) {
@@ -57,18 +58,14 @@ export function QueryEditorContent({
           }
           ref={editorApiRef}
           value={sql}
-          onChange={(v) => {
-            exec.setStatementRange(null);
-            exec.setStatementError(null);
-            onSqlChange(tabId, v);
-          }}
+          onChange={(v) => editorSync.schedule({ tabId, sql: v })}
           onRun={actions.handleRun}
           onSave={onSave}
           onRunSelection={actions.handleRunSelection}
           onRunStatement={actions.handleRunStatement}
           onCheck={() => void actions.handleCheck()}
-          onSelectionChange={cursor.setSelectedSql}
-          onCursorChange={cursor.setCursorOffset}
+          onSelectionChange={(selectedSql) => editorSync.schedule({ tabId, selectedSql })}
+          onCursorChange={(cursorOffset) => editorSync.schedule({ tabId, cursorOffset })}
           onPositionChange={cursor.setCursorPosition}
           highlight={exec.statementRange}
           error={exec.editorError}
@@ -84,7 +81,7 @@ export function QueryEditorContent({
 
       {statusVisible && (
         <QueryEditorStatusbar
-          position={cursor.cursorPosition}
+          positionStore={cursor.positionStore}
           selectionLength={cursor.selectedSql.length}
           statementCount={statementCount}
           dialectLabel={dialectLabel}

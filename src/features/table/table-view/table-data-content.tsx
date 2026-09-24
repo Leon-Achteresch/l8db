@@ -1,4 +1,5 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
+import { useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
@@ -94,6 +95,8 @@ export function TableDataContent({
   table,
   emptyMessage,
 }: Props) {
+  const gridReady = useDeferredValue(!isLoading, false);
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <TableViewsPanel
@@ -130,7 +133,7 @@ export function TableDataContent({
           onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
         />
       </div>
-      {isLoading ? (
+      {isLoading || (!isError && !gridReady) ? (
         <TableDataSkeleton />
       ) : isError ? (
         <TableDataError

@@ -103,20 +103,135 @@ function routineSuggestions(
   return out;
 }
 
+function columnSuggestion(column: ColumnInfo, sortText: string, afterDot: boolean): Suggestion {
+  return {
+    label: column.name,
+    kind: "column",
+    detail: afterDot ? column.data_type : `${column.data_type} · ${column.schema}.${column.table}`,
+    insertText: quoteIdent(column.name),
+    sortText,
+    afterDot,
+  };
+}
+
 function columnSuggestions(
   columns: ColumnInfo[],
   sortText: (column: ColumnInfo) => string,
   afterDot: boolean,
 ): Suggestion[] {
-  return columns.map((column) => ({
-    label: column.name,
-    kind: "column",
-    detail: afterDot ? column.data_type : `${column.data_type} · ${column.schema}.${column.table}`,
-    insertText: quoteIdent(column.name),
-    sortText: sortText(column),
-    afterDot,
-  }));
+  return columns.map((column) => columnSuggestion(column, sortText(column), afterDot));
 }
+
+function sharedColumnSuggestion(columns: ColumnInfo[]): Suggestion {
+  const [first] = columns;
+  if (columns.length === 1) return columnSuggestion(first, `3_${first.name}`, false);
+  const types = [...new Set(columns.map((column) => column.data_type))].join(" | ");
+  const tables = columns.map((column) => `${column.schema}.${column.table}`);
+  return {
+    label: first.name,
+    kind: "column",
+    detail: `${types} · ${columns.length} Tabellen`,
+    documentation:
+      tables.length > 40
+        ? `${tables.slice(0, 40).join("\n")}\n… ${tables.length - 40} weitere`
+        : tables.join("\n"),
+    insertText: quoteIdent(first.name),
+    sortText: `3_${first.name}`,
+    afterDot: false,
+  };
+}
+
+interface RegistryIndex {
+  columnsByTable: Map<string, ColumnInfo[]>;
+  columnGroups: { name: string; columns: ColumnInfo[]; suggestion: Suggestion }[];
+  tableContext: Suggestion[];
+  generalRelations: Suggestion[];
+}
+
+const registryIndexes = new WeakMap<SqlObjectRegistry, RegistryIndex>();
+
+function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
+  const cached = registryIndexes.get(registry);
+  if (cached) return cached;
+  const columnsByTable = new Map<string, ColumnInfo[]>();
+  const byName = new Map<string, ColumnInfo[]>();
+  for (const column of registry.columns) {
+    const key = column.table.toLowerCase();
+    const list = columnsByTable.get(key);
+    if (list) list.push(column);
+    else columnsByTable.set(key, [column]);
+    const group = byName.get(column.name);
+    if (group) group.push(column);
+    else byName.set(column.name, [column]);
+  }
+  const schemaSuggestion = (sortPrefix: string) =>
+    registry.schemas.map<Suggestion>((schema) => ({
+      label: schema,
+      kind: "schema",
+      detail: "schema",
+      insertText: quoteIdent(schema),
+      sortText: `${sortPrefix}_${schema}`,
+    }));
+  const index: RegistryIndex = {
+    columnsByTable,
+    columnGroups: [...byName].map(([name, columns]) => ({
+      name,
+      columns,
+      suggestion: sharedColumnSuggestion(columns),
+    })),
+    tableContext: [
+      ...schemaSuggestion("0"),
+      ...relationSuggestions(registry, () => true, true, false),
+    ],
+    generalRelations: [
+      ...relationSuggestions(registry, () => true, false, false).map((s) => ({
+        ...s,
+        sortText: `1_${s.label}`,
+      })),
+      ...routineSuggestions(registry, () => true, false),
+      ...schemaSuggestion("2"),
+    ],
+  };
+  registryIndexes.set(registry, index);
+  return index;
+}
+
+function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>): Suggestion[] {
+  const out: Suggestion[] = [];
+  const touched = new Set<string>();
+  for (const table of referenced) {
+    for (const column of index.columnsByTable.get(table) ?? []) {
+      out.push(columnSuggestion(column, `0_${column.name}`, false));
+      touched.add(column.name);
+    }
+  }
+  for (const group of index.columnGroups) {
+    if (!touched.has(group.name)) {
+      out.push(group.suggestion);
+      continue;
+    }
+    const rest = group.columns.filter((column) => !referenced.has(column.table.toLowerCase()));
+    if (rest.length > 0) out.push(sharedColumnSuggestion(rest));
+  }
+  return out;
+}
+
+const STATIC_SUGGESTIONS: Suggestion[] = [
+  ...SQL_KEYWORDS.map<Suggestion>((keyword) => ({
+    label: keyword,
+    kind: "keyword",
+    insertText: keyword,
+    sortText: `4_${keyword}`,
+  })),
+  ...BUILTIN_FUNCTIONS.map<Suggestion>((fn) => ({
+    label: fn.name,
+    kind: "function",
+    detail: fn.signature,
+    insertText: `${fn.name}($0)`,
+    snippet: true,
+    sortText: `5_${fn.name}`,
+  })),
+];
 
 export function suggestCompletions(
   registry: SqlObjectRegistry,
@@ -124,6 +239,7 @@ export function suggestCompletions(
   lineBeforeCursor: string,
   snippets: SnippetLike[] = [],
 ): Suggestion[] {
+  const index = registryIndex(registry);
   const dotMatch = /"?([\w$#]+)"?\s*\.\s*[\w$#]*$/.exec(lineBeforeCursor);
   if (dotMatch) {
     const qualifier = dotMatch[1];
@@ -135,46 +251,23 @@ export function suggestCompletions(
     }
     const tableName = aliasMap(textBeforeCursor).get(qualifier.toLowerCase()) ?? qualifier;
     const table = findTable(registry, tableName, null);
+    const candidates = index.columnsByTable.get(
+      (table ? table.info.name : tableName).toLowerCase(),
+    );
     const columns = table
-      ? registry.columns.filter(
-          (c) => eq(c.schema, table.info.schema) && eq(c.table, table.info.name),
-        )
-      : registry.columns.filter((c) => eq(c.table, tableName));
+      ? (candidates ?? []).filter((c) => eq(c.schema, table.info.schema))
+      : (candidates ?? []);
     return columnSuggestions(columns, (c) => `0_${c.name}`, true);
   }
 
   const context = analyzeContext(textBeforeCursor);
-  const suggestions: Suggestion[] = [];
-  const schemaSuggestion = (sortPrefix: string) =>
-    registry.schemas.map<Suggestion>((schema) => ({
-      label: schema,
-      kind: "schema",
-      detail: "schema",
-      insertText: quoteIdent(schema),
-      sortText: `${sortPrefix}_${schema}`,
-    }));
-
-  if (context === "table") {
-    suggestions.push(...schemaSuggestion("0"));
-    suggestions.push(...relationSuggestions(registry, () => true, true, false));
-  } else {
-    const referenced = referencedTableNames(textBeforeCursor);
-    suggestions.push(
-      ...columnSuggestions(
-        registry.columns,
-        (c) => (referenced.has(c.table.toLowerCase()) ? `0_${c.name}` : `3_${c.name}`),
-        false,
-      ),
-    );
-    suggestions.push(
-      ...relationSuggestions(registry, () => true, false, false).map((s) => ({
-        ...s,
-        sortText: `1_${s.label}`,
-      })),
-    );
-    suggestions.push(...routineSuggestions(registry, () => true, false));
-    suggestions.push(...schemaSuggestion("2"));
-  }
+  const suggestions: Suggestion[] =
+    context === "table"
+      ? [...index.tableContext]
+      : [
+          ...generalColumnSuggestions(index, referencedTableNames(textBeforeCursor)),
+          ...index.generalRelations,
+        ];
 
   for (const snippet of snippets) {
     if (!snippet.shortcut.trim() || !snippet.body.trim()) continue;
@@ -190,25 +283,7 @@ export function suggestCompletions(
     });
   }
 
-  for (const keyword of SQL_KEYWORDS) {
-    suggestions.push({
-      label: keyword,
-      kind: "keyword",
-      insertText: keyword,
-      sortText: `4_${keyword}`,
-    });
-  }
-
-  for (const fn of BUILTIN_FUNCTIONS) {
-    suggestions.push({
-      label: fn.name,
-      kind: "function",
-      detail: fn.signature,
-      insertText: `${fn.name}($0)`,
-      snippet: true,
-      sortText: `5_${fn.name}`,
-    });
-  }
+  for (const item of STATIC_SUGGESTIONS) suggestions.push(item);
 
   return suggestions;
 }

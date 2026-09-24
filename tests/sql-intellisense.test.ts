@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   hoverMarkdown,
+  mayMatchWord,
   packageForQualifier,
   resolveSymbol,
   rowsMarkdownTable,
@@ -146,4 +147,14 @@ describe("hover", () => {
   it("escapes and truncates cells", () => {
     expect(rowsMarkdownTable(["a"], [{ a: "x".repeat(50) }])).toContain("…");
   });
+});
+
+test("mayMatchWord keeps every candidate Monaco's fuzzy filter can match", () => {
+  expect(mayMatchWord("table_0001", "")).toBe(true);
+  expect(mayMatchWord("table_0001", "tbl01")).toBe(true);
+  expect(mayMatchWord("order_items", "item")).toBe(true);
+  expect(mayMatchWord("orderItems", "items")).toBe(true);
+  expect(mayMatchWord("SELECT", "sel")).toBe(true);
+  expect(mayMatchWord("customers", "stom")).toBe(false);
+  expect(mayMatchWord("table_0001", "tx")).toBe(false);
 });

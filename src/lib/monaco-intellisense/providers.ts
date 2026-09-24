@@ -4,6 +4,7 @@ import { selectForResults } from "@/lib/select-extract";
 import { useSnippetsStore } from "@/lib/snippets";
 import {
   hoverMarkdown,
+  mayMatchWord,
   memberSuggestions,
   packageForQualifier,
   resolveSymbol,
@@ -74,20 +75,24 @@ for (const language of ["sql", "plsql"]) {
       const items = pkg
         ? memberSuggestions(await packageMembers(pkg.schema, pkg.name))
         : suggestCompletions(ctx.registry, text, line, useSnippetsStore.getState().snippets);
+      const typed = pkg ? "" : word.word;
       return {
-        suggestions: items.map((item) => ({
-          label: item.label,
-          kind: COMPLETION_KIND[item.kind],
-          detail: item.detail,
-          documentation: item.documentation,
-          filterText: item.filterText,
-          insertText: item.insertText,
-          insertTextRules: item.snippet
-            ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-            : undefined,
-          sortText: item.sortText,
-          range: item.afterDot ? dotRange : wordRange,
-        })),
+        incomplete: typed !== "",
+        suggestions: items
+          .filter((item) => mayMatchWord(item.filterText ?? item.label, typed))
+          .map((item) => ({
+            label: item.label,
+            kind: COMPLETION_KIND[item.kind],
+            detail: item.detail,
+            documentation: item.documentation,
+            filterText: item.filterText,
+            insertText: item.insertText,
+            insertTextRules: item.snippet
+              ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+              : undefined,
+            sortText: item.sortText,
+            range: item.afterDot ? dotRange : wordRange,
+          })),
       };
     },
   });

@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 
+import { createEditorPositionStore } from "./editor-position-store";
+
 export function useEditorCursorState(sql: string) {
   const [selectedSql, setSelectedSql] = useState("");
   const [cursorOffset, setCursorOffset] = useState(0);
@@ -7,7 +9,7 @@ export function useEditorCursorState(sql: string) {
   editorSqlRef.current = sql;
   const cursorOffsetRef = useRef(cursorOffset);
   cursorOffsetRef.current = cursorOffset;
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1, offset: 0 });
+  const [positionStore] = useState(createEditorPositionStore);
 
   return {
     selectedSql,
@@ -16,8 +18,8 @@ export function useEditorCursorState(sql: string) {
     setCursorOffset,
     editorSqlRef,
     cursorOffsetRef,
-    cursorPosition,
-    setCursorPosition,
+    positionStore,
+    setCursorPosition: positionStore.set,
   };
 }
 

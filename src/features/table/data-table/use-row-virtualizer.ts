@@ -1,6 +1,7 @@
 import type { Row } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type RefObject, useEffect } from "react";
+import { type RefObject, useEffect, useRef } from "react";
+import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { useSettingsStore } from "@/lib/settings";
 import type { TableRow } from "../data-table-types";
@@ -24,8 +25,13 @@ export function useRowVirtualizer(
     overscan: Math.ceil(256 / estimatedRowHeight),
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
+    initialRect: { ...lastGridRect },
+    onChange: rememberGridRect,
   });
+  const measuredRowHeight = useRef(estimatedRowHeight);
   useEffect(() => {
+    if (measuredRowHeight.current === estimatedRowHeight) return;
+    measuredRowHeight.current = estimatedRowHeight;
     if (estimatedRowHeight > 0) rowVirtualizer.measure();
   }, [rowVirtualizer, estimatedRowHeight]);
   useTableScrollState(scrollRef, stateKey, scrollIdentity);

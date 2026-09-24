@@ -97,7 +97,6 @@ export function TableDetailTabBar({
     const observer = new ResizeObserver(measure);
     observer.observe(scroll);
     if (visible.length && scroll.firstElementChild) observer.observe(scroll.firstElementChild);
-    measure();
     return () => observer.disconnect();
   }, [revealActiveTab, updateScrollState, visible.length]);
 
