@@ -3056,6 +3056,38 @@ impl DatabaseAdapter for PostgresAdapter {
         self.list_constraints_impl(schema, table).await
     }
 
+    async fn column_value_options(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::constraints::ColumnValueOptions>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let rows = conn
+                .query(
+                    "SELECT a.attname::text, array_agg(e.enumlabel::text ORDER BY e.enumsortorder) \
+                     FROM pg_attribute a \
+                     JOIN pg_class c ON c.oid = a.attrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     JOIN pg_type t ON t.oid = a.atttypid \
+                     JOIN pg_enum e ON e.enumtypid = COALESCE(NULLIF(t.typbasetype, 0), t.oid) \
+                     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+                     GROUP BY a.attname, a.attnum ORDER BY a.attnum",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|r| super::constraints::ColumnValueOptions {
+                    column: r.get(0),
+                    values: r.get(1),
+                })
+                .collect())
+        })
+        .await
+    }
+
     async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
@@ -3121,12 +3153,12 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateTableRequest,
     ) -> Result<String, String> {
-        Ok(Self::build_create_table_sql(req))
+        Self::build_create_table_sql(req)
     }
 
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
         self.ensure_writable()?;
-        self.run_ddl(&[Self::build_create_table_sql(req)], true)
+        self.run_ddl(&[Self::build_create_table_sql(req)?], true)
             .await
     }
 
@@ -4365,8 +4397,9 @@ impl PostgresAdapter {
                             is_unique: false,
                         })
                         .collect(),
+                    ..Default::default()
                 };
-                Ok(Self::build_create_table_sql(&request))
+                Self::build_create_table_sql(&request)
             }
             "view" => {
                 let definition = self.get_view_definition(source_schema, name).await?;
@@ -4508,9 +4541,8 @@ impl PostgresAdapter {
         Ok(results)
     }
 
-    fn build_create_table_sql(req: &super::CreateTableRequest) -> String {
+    fn build_create_table_sql(req: &super::CreateTableRequest) -> Result<String, String> {
         let mut parts: Vec<String> = Vec::new();
-        let mut pk_cols: Vec<String> = Vec::new();
 
         for col in &req.columns {
             let mut def = format!("{} {}", quote_ident(&col.name), col.data_type);
@@ -4526,27 +4558,26 @@ impl PostgresAdapter {
                 def.push_str(" UNIQUE");
             }
             parts.push(def);
-            if col.is_primary_key {
-                pk_cols.push(quote_ident(&col.name));
-            }
         }
 
-        if !pk_cols.is_empty() {
-            parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
-        }
+        parts.extend(super::primary_key_clause(req, quote_ident));
+        parts.extend(super::constraints::table_clauses(
+            super::constraints::ConstraintDialect::Postgres,
+            req,
+        )?);
 
         let if_not_exists = if req.if_not_exists {
             "IF NOT EXISTS "
         } else {
             ""
         };
-        format!(
+        Ok(format!(
             "CREATE TABLE {}{}.{} (\n  {}\n)",
             if_not_exists,
             quote_ident(&req.schema),
             quote_ident(&req.name),
             parts.join(",\n  "),
-        )
+        ))
     }
 }
 
@@ -4773,9 +4804,10 @@ mod tests {
                     is_unique: false,
                 },
             ],
+            ..Default::default()
         };
 
-        let ddl = PostgresAdapter::build_create_table_sql(&req);
+        let ddl = PostgresAdapter::build_create_table_sql(&req).unwrap();
         assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS \"public\".\"kunde\" ("));
         assert!(ddl.contains("\"id\" bigserial NOT NULL"));
         assert!(ddl.contains("\"email\" text NOT NULL UNIQUE"));

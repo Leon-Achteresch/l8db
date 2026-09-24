@@ -9,7 +9,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     ProxyUserInfo, QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData,
@@ -394,6 +394,24 @@ impl MssqlAdapter {
 
     fn object(schema: &str, name: &str) -> String {
         format!("{}.{}", quote(schema), quote(name))
+    }
+
+    fn create_table_statement(req: &CreateTableRequest) -> Result<String, String> {
+        let sql = create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mssql),
+        )?;
+        Ok(if req.if_not_exists {
+            format!(
+                "IF OBJECT_ID({}) IS NULL {}",
+                lit(&Self::object(&req.schema, &req.name)),
+                sql.replacen("IF NOT EXISTS ", "", 1)
+            )
+        } else {
+            sql
+        })
     }
 }
 
@@ -1193,17 +1211,12 @@ impl DatabaseAdapter for MssqlAdapter {
             .collect())
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        Self::create_table_statement(req)
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        let sql = create_table_sql(req, quote, true);
-        let sql = if req.if_not_exists {
-            format!(
-                "IF OBJECT_ID({}) IS NULL {}",
-                lit(&Self::object(&req.schema, &req.name)),
-                sql.replacen("IF NOT EXISTS ", "", 1)
-            )
-        } else {
-            sql
-        };
+        let sql = Self::create_table_statement(req)?;
         self.exec(&sql).await.map(|_| ())
     }
 

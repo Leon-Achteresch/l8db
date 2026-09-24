@@ -62,6 +62,7 @@ async fn mongodb_docker_integration() {
         name: "items".into(),
         columns: vec![],
         if_not_exists: false,
+        ..Default::default()
     };
     adapter.create_table(&request).await.unwrap();
     adapter.create_table(&request).await.unwrap();

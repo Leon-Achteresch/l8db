@@ -5,7 +5,7 @@ use mysql_async::{Column, Conn, Opts, OptsBuilder, Pool, Row, SslOpts, Value};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, where_clause,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
@@ -849,7 +849,7 @@ impl DatabaseAdapter for MysqlAdapter {
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
         let sql = format!(
-            "SELECT tc.constraint_name, tc.constraint_type, GROUP_CONCAT(kcu.column_name ORDER BY kcu.ordinal_position SEPARATOR ',') FROM information_schema.table_constraints tc LEFT JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name WHERE tc.table_schema = {} AND tc.table_name = {} GROUP BY tc.constraint_name, tc.constraint_type ORDER BY tc.constraint_type, tc.constraint_name",
+            "SELECT tc.constraint_name, tc.constraint_type, GROUP_CONCAT(kcu.column_name ORDER BY kcu.ordinal_position SEPARATOR ','), MAX(cc.check_clause) FROM information_schema.table_constraints tc LEFT JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name LEFT JOIN information_schema.check_constraints cc ON tc.constraint_type = 'CHECK' AND cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = {} AND tc.table_name = {} GROUP BY tc.constraint_name, tc.constraint_type ORDER BY tc.constraint_type, tc.constraint_name",
             lit(schema),
             lit(table)
         );
@@ -863,7 +863,9 @@ impl DatabaseAdapter for MysqlAdapter {
                     .unwrap_or_default();
                 ConstraintInfo {
                     name: cell(r, 0),
-                    definition: format!("{} ({})", cell(r, 1), columns.join(", ")),
+                    definition: cell_opt(r, 3)
+                        .map(|clause| format!("CHECK {clause}"))
+                        .unwrap_or_else(|| format!("{} ({})", cell(r, 1), columns.join(", "))),
                     constraint_type: cell(r, 1),
                     columns,
                 }
@@ -872,7 +874,22 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        self.exec(&create_table_sql(req, quote, true)).await
+        self.exec(&create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mysql),
+        )?)
+        .await
+    }
+
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mysql),
+        )
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {

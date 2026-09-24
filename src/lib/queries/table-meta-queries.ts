@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { useActiveConnection } from "@/lib/connections";
+import { buildColumnValueOptions } from "@/lib/constraint-designer";
 import {
+  columnValueOptions,
   getErSchema,
   listAvailableExtensions,
   listConstraints,
@@ -171,4 +174,31 @@ export function useAvailableExtensionsQuery() {
     enabled: supports(connection, "extensions"),
     staleTime: 10 * 60 * 1000,
   });
+}
+
+export function useColumnValueOptions(schema: string, table: string, enabled: boolean) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const active = enabled && Boolean(connection) && Boolean(schema) && Boolean(table);
+  const { data: columns } = useDetailedColumnsQuery(active ? schema : "", active ? table : "");
+  const { data: constraints } = useConstraintsQuery(active ? schema : "", active ? table : "");
+  const { data: enumColumns } = useQuery({
+    queryKey: ["column-value-options", connection?.id, database, schema, table],
+    queryFn: () =>
+      connection
+        ? columnValueOptions(
+            connection.kind,
+            effectiveConnectionString(connection),
+            schema,
+            table,
+            database ?? undefined,
+          )
+        : [],
+    enabled: active && supports(connection, "enums"),
+    staleTime: 5 * 60 * 1000,
+  });
+  return useMemo(
+    () => buildColumnValueOptions(columns, constraints, enumColumns),
+    [columns, constraints, enumColumns],
+  );
 }

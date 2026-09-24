@@ -7,7 +7,7 @@ use odbc_api::{Connection, ConnectionOptions, Cursor, Environment};
 
 use super::pool::PoolState;
 use super::{
-    create_table_sql, rows_to_objects, where_clause, ColumnInfo, CreateTableRequest,
+    create_table_ddl, rows_to_objects, where_clause, ColumnInfo, CreateTableRequest,
     DatabaseAdapter, DetailedColumnInfo, QueryResult, TableData, TableInfo,
 };
 
@@ -456,7 +456,11 @@ impl DatabaseAdapter for OdbcAdapter {
 
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
         self.exec(
-            create_table_sql(req, quote, !req.schema.is_empty()).replacen("IF NOT EXISTS ", "", 1),
+            create_table_ddl(req, quote, !req.schema.is_empty(), None)?.replacen(
+                "IF NOT EXISTS ",
+                "",
+                1,
+            ),
         )
         .await
     }
