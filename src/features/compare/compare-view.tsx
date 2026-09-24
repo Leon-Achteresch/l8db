@@ -16,7 +16,7 @@ import { AnalysisWorkspaceDrawer } from "./analysis-workspace-drawer";
 import { EMPTY_DATA_SIDE } from "./data-compare-side-picker";
 
 export function CompareView({ tabId }: { tabId?: string } = {}) {
-  const search = useSearch({ strict: false }) as { compareId?: string };
+  const search = useSearch({ strict: false }) as { compareId?: string; setup?: boolean };
   const fallbackId = useRef(crypto.randomUUID());
   const id = tabId ?? search.compareId ?? fallbackId.current;
   const navigate = useNavigate();
@@ -76,6 +76,11 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <DefinitionCompareView
         key={id}
+        initialSetupOpen={search.setup === true && search.compareId === id}
+        onSetupOpenChange={(open) => {
+          if (!open && search.setup && search.compareId === id)
+            void navigate({ to: "/compare", search: { compareId: id }, replace: true });
+        }}
         workspaceActions={
           <>
             <AnalysisWorkspaceDrawer
