@@ -107,6 +107,24 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       await page.goto(`http://localhost:${server.port}/compare`);
       await page.getByRole("button", { name: "Vergleich v_table_0000", exact: true }).click();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: "Quelle in Entwurf übernehmen" }).click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector(".merge-draft-editor .view-lines")
+          ?.textContent?.includes("left_flag"),
+      );
+      expect(await page.locator(".merge-draft-editor .view-lines").innerText()).not.toContain(
+        "right_flag",
+      );
+      await page.getByRole("button", { name: "Ziel in Entwurf übernehmen" }).click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector(".merge-draft-editor .view-lines")
+          ?.textContent?.includes("right_flag"),
+      );
+      expect(await page.locator(".merge-draft-editor .view-lines").innerText()).not.toContain(
+        "left_flag",
+      );
       await page.locator(".merge-draft-editor .view-lines").click();
       await page.keyboard.press("ControlOrMeta+a");
       const merged = "SELECT id, left_flag, right_flag FROM items";

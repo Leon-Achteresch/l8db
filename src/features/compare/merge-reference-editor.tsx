@@ -67,10 +67,13 @@ export function MergeReferenceEditor({
       .filter((hunk) => hunk.sourceEnd > hunk.sourceStart)
       .map((hunk) => ({
         range: new monaco.Range(hunk.sourceStart + 1, 1, hunk.sourceEnd, 1),
-        options: { isWholeLine: true, className: "merge-reference-change" },
+        options: {
+          isWholeLine: true,
+          className: label === "Quelle" ? "merge-origin-source" : "merge-origin-target",
+        },
       }));
     decorations.current?.set(nextDecorations);
-  }, [source, hunks]);
+  }, [label, source, hunks]);
 
   useEffect(() => {
     if (editor.current)
@@ -79,20 +82,10 @@ export function MergeReferenceEditor({
 
   return (
     <div className="flex h-full min-h-0 flex-col border-l">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-2 py-1 text-xs">
+      <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1 text-xs">
         <span className="truncate text-muted-foreground">
           {label} · {hunks.length === 0 ? "Entspricht dem Entwurf" : `${hunks.length} Abweichungen`}
         </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs"
-          disabled={hunks.length === 0}
-          onClick={() => onDraftChange(source)}
-        >
-          <ArrowDownIcon className="size-3" />
-          Alles übernehmen
-        </Button>
       </div>
       {hunks.length > 0 && (
         <div className="flex max-h-28 shrink-0 flex-wrap gap-1 overflow-auto border-b p-1.5">
@@ -127,6 +120,20 @@ export function MergeReferenceEditor({
               ))}
         </div>
       )}
+      <div className="flex shrink-0 justify-center border-t bg-muted/30 px-2 py-1.5">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-7 gap-1.5 px-3 text-xs"
+          aria-label={`${label} in Entwurf übernehmen`}
+          title={`Vollständigen Stand aus der ${label} in den gemeinsamen Entwurf übernehmen`}
+          disabled={hunks.length === 0}
+          onClick={() => onDraftChange(source)}
+        >
+          <ArrowDownIcon className="size-3.5" />
+          {label} in Entwurf
+        </Button>
+      </div>
     </div>
   );
 }
