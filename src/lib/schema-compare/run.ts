@@ -7,6 +7,7 @@ import {
   executeQuery,
   executeScript,
   type InvalidCompileOutcome,
+  type QueryExecutionOptions,
   rollbackTransaction,
 } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -27,6 +28,7 @@ export interface RunSummary {
   dryRun: boolean;
   incomplete: boolean;
   checked: number;
+  unchecked: number;
   blocked: boolean;
 }
 
@@ -44,6 +46,31 @@ export function dryRunKind(kind: SavedConnection["kind"]): DryRunKind | null {
   return null;
 }
 
+const NO_DDL_ROLLBACK = /-YB-|Redshift|QuestDB|CrateDB|materialize|Cockroach/i;
+
+async function serverVersion(
+  connection: SavedConnection,
+  url: string,
+  database: string | undefined,
+): Promise<string> {
+  const result = await executeQuery(connection.kind, url, "SELECT version()", database, EXECUTE);
+  return String(Object.values(result.rows[0] ?? {})[0] ?? "");
+}
+
+function rollsBackDdl(version: string): boolean {
+  return /^PostgreSQL \d/.test(version) && !NO_DDL_ROLLBACK.test(version);
+}
+
+export async function supportsDdlRollback(
+  connection: SavedConnection,
+  database: string | null,
+): Promise<boolean> {
+  if (dryRunKind(connection.kind) !== "rollback") return false;
+  return rollsBackDdl(
+    await serverVersion(connection, effectiveConnectionString(connection), database ?? undefined),
+  );
+}
+
 async function precheck(
   connection: SavedConnection,
   url: string,
@@ -51,6 +78,7 @@ async function precheck(
   statements: SyncStatement[],
   onStep: (index: number, step: RunStep) => void,
   summary: RunSummary,
+  execute: QueryExecutionOptions,
 ): Promise<void> {
   for (let index = 0; index < statements.length; index++) {
     const checks = statements[index].checks ?? [];
@@ -61,7 +89,7 @@ async function precheck(
     const unchecked: string[] = [];
     for (const check of checks) {
       try {
-        const result = await executeQuery(connection.kind, url, check.sql, database, EXECUTE);
+        const result = await executeQuery(connection.kind, url, check.sql, database, execute);
         const count = Number(Object.values(result.rows[0] ?? {})[0] ?? 0);
         if (count > 0)
           problems.push(`${check.message} (${count} ${count === 1 ? "Zeile" : "Zeilen"})`);
@@ -77,6 +105,8 @@ async function precheck(
       });
     } else if (unchecked.length > 0) {
       summary.warnings++;
+      summary.unchecked++;
+      summary.incomplete = true;
       onStep(index, {
         status: "warning",
         message: `Datenprüfung nicht möglich: ${unchecked.join("; ")}`,
@@ -97,16 +127,22 @@ async function dryRunPostgres(
   statements: SyncStatement[],
   options: { onStep: (index: number, step: RunStep) => void; stopped: () => boolean },
   summary: RunSummary,
+  execute: QueryExecutionOptions,
 ): Promise<RunSummary> {
   const skipRest = (from: number, message: string | null) => {
     for (let index = from; index < statements.length; index++)
       options.onStep(index, { status: "skipped", message });
   };
+  const version = await serverVersion(connection, url, database);
+  if (!rollsBackDdl(version))
+    throw new Error(
+      `Probelauf nicht möglich: Diese Datenbank kann DDL-Anweisungen nicht zuverlässig zurückrollen (${version.slice(0, 80)}). Es wurde nichts ausgeführt.`,
+    );
   const tx = await beginTransaction(connection.kind, url, database);
   let index = 0;
   try {
-    await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", EXECUTE);
-    await executeInTransaction(tx, "SET LOCAL lock_timeout = '10s'", EXECUTE);
+    await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
+    await executeInTransaction(tx, "SET LOCAL lock_timeout = '10s'", execute);
     for (; index < statements.length; index++) {
       if (options.stopped()) {
         summary.incomplete = true;
@@ -124,10 +160,15 @@ async function dryRunPostgres(
       }
       options.onStep(index, { status: "running", message: null });
       try {
-        await executeInTransaction(tx, statements[index].sql, EXECUTE);
+        await executeInTransaction(tx, statements[index].sql, execute);
         options.onStep(index, { status: "ok", message: null });
       } catch (error) {
         const text = message(error);
+        if (options.stopped()) {
+          summary.incomplete = true;
+          skipRest(index, "Angehalten");
+          break;
+        }
         if (NEW_ENUM_VALUE.test(text)) {
           summary.warnings++;
           summary.incomplete = true;
@@ -162,7 +203,9 @@ export async function runSyncStatements(
   options: {
     continueOnError: boolean;
     dryRun?: boolean;
+    allowUnchecked?: boolean;
     onStep: (index: number, step: RunStep) => void;
+    onJob?: (jobId: string) => void;
     stopped: () => boolean;
   },
 ): Promise<RunSummary> {
@@ -177,20 +220,27 @@ export async function runSyncStatements(
     dryRun: Boolean(options.dryRun),
     incomplete: false,
     checked: 0,
+    unchecked: 0,
     blocked: false,
   };
+  const execute: QueryExecutionOptions = { ...EXECUTE, onJob: options.onJob };
   const mode = dryRunKind(connection.kind);
   if (options.dryRun) {
     if (mode === "rollback")
-      return dryRunPostgres(connection, url, database, statements, options, {
-        ...summary,
-        rolledBack: true,
-      });
+      return dryRunPostgres(
+        connection,
+        url,
+        database,
+        statements,
+        options,
+        { ...summary, rolledBack: true },
+        execute,
+      );
     if (mode !== "precheck")
       throw new Error(
         "Ein Probelauf ist hier nicht möglich: Die Datenbank schreibt DDL-Anweisungen sofort fest.",
       );
-    await precheck(connection, url, database, statements, options.onStep, summary);
+    await precheck(connection, url, database, statements, options.onStep, summary, execute);
     statements.forEach((statement, index) => {
       if (!statement.checks?.length) options.onStep(index, { status: "skipped", message: null });
     });
@@ -201,8 +251,8 @@ export async function runSyncStatements(
       options.onStep(index, { status: "skipped", message: text });
   };
   if (mode === "precheck") {
-    await precheck(connection, url, database, statements, options.onStep, summary);
-    if (summary.failed > 0) {
+    await precheck(connection, url, database, statements, options.onStep, summary, execute);
+    if (summary.failed > 0 || (summary.unchecked > 0 && !options.allowUnchecked)) {
       summary.blocked = true;
       statements.forEach((statement, index) => {
         if (!statement.checks?.length)
@@ -214,11 +264,12 @@ export async function runSyncStatements(
       return summary;
     }
     summary.warnings = 0;
+    summary.incomplete = false;
   }
 
   const scriptError = async (sql: string): Promise<string | null> => {
     try {
-      const results = await executeScript(connection.kind, url, sql, database, EXECUTE);
+      const results = await executeScript(connection.kind, url, sql, database, execute);
       if (results.length === 0) return "Die Anweisung wurde nicht ausgeführt.";
       return results.find((item) => !item.success)?.error ?? null;
     } catch (cause) {
@@ -243,11 +294,11 @@ export async function runSyncStatements(
     }
     const tx = await beginTransaction(connection.kind, url, database);
     try {
-      await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", EXECUTE);
+      await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
       for (; index < statements.length; index++) {
         if (options.stopped()) throw new Error("Abgebrochen.");
         options.onStep(index, { status: "running", message: null });
-        await executeInTransaction(tx, statements[index].sql, EXECUTE);
+        await executeInTransaction(tx, statements[index].sql, execute);
         options.onStep(index, { status: "ok", message: null });
       }
       await commitTransaction(tx);

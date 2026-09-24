@@ -197,6 +197,7 @@ export async function runSchemaCompare(sides?: {
       target,
       result: {
         ...context,
+        source,
         target,
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
@@ -214,6 +215,9 @@ export async function runSchemaCompare(sides?: {
 }
 
 export function reverseSchemaCompare(): Promise<void> {
-  const { source, target } = useSchemaCompareStore.getState();
-  return runSchemaCompare({ source: target, target: source });
+  const { result, source, target } = useSchemaCompareStore.getState();
+  return runSchemaCompare({
+    source: result?.target ?? target,
+    target: result?.source ?? source,
+  });
 }
