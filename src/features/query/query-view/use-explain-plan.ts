@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { type ExplainNode, explainQuery } from "@/lib/db";
+import { normalizeExplainResult } from "@/lib/explain-normalize";
 import { supports } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useSettingsStore } from "@/lib/settings";
@@ -56,7 +57,7 @@ export function useExplainPlan({
             {
               sql: target,
               reason:
-                connection.kind === "postgres"
+                connection.kind === "postgres" || connection.kind === "oracle"
                   ? "EXPLAIN ANALYZE führt die Änderung aus und rollt sie danach zurück."
                   : "EXPLAIN ANALYZE führt die Änderung wirklich aus.",
             },
@@ -74,7 +75,7 @@ export function useExplainPlan({
           analyze,
           database ?? undefined,
         );
-        const node = plans[0]?.Plan;
+        const node = normalizeExplainResult(plans);
         if (!node) {
           setPlanError("Kein Ausführungsplan erhalten.");
           setPlan(null);
