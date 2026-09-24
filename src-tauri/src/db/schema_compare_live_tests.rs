@@ -20,14 +20,20 @@ fn lab_url(args: &Value) -> Result<(DatabaseKind, String), String> {
     let kind: DatabaseKind =
         serde_json::from_value(args["kind"].clone()).map_err(|e| e.to_string())?;
     let url = text(args, "connectionString").to_string();
-    let host = url::Url::parse(&url)
-        .map_err(|e| e.to_string())?
-        .host_str()
-        .map(str::to_string);
-    if !matches!(host.as_deref(), Some("127.0.0.1" | "localhost")) {
+    let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
+    let redirected = parsed
+        .query_pairs()
+        .any(|(key, _)| key.to_ascii_lowercase().contains("host"));
+    if redirected || !matches!(parsed.host_str(), Some("127.0.0.1" | "localhost")) {
         return Err("Nur lokale Lab-Datenbanken sind erlaubt".into());
     }
     Ok((kind, url))
+}
+
+fn local_origin(origin: &str) -> bool {
+    ["http://localhost:", "http://127.0.0.1:"]
+        .iter()
+        .any(|prefix| origin.starts_with(prefix))
 }
 
 impl Lab {
@@ -109,6 +115,7 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
         .await
         .map_err(|e| e.to_string())?;
     let mut size = 0usize;
+    let mut origin = None;
     loop {
         let mut line = String::new();
         reader
@@ -121,6 +128,14 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
         if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
             size = value.trim().parse().map_err(|_| "Ungültige Länge")?;
         }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("origin") {
+                origin = Some(value.trim().to_string());
+            }
+        }
+    }
+    if origin.as_deref().is_some_and(|value| !local_origin(value)) {
+        return Err("Fremder Origin".into());
     }
     let value = if first.starts_with("OPTIONS ") {
         Value::Null
@@ -141,7 +156,8 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
     };
     let body = value.to_string();
     let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: {}\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nVary: Origin\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        origin.as_deref().unwrap_or("null"),
         body.len(),
         body
     );

@@ -7,17 +7,25 @@ type Handler = (command: string, args: Record<string, unknown>) => unknown;
 
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 let handler: Handler = () => undefined;
+let version = "PostgreSQL 18.0 on aarch64-apple-darwin";
+let cancelled: string[] = [];
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
+    if (command === "cancel_execution") {
+      cancelled.push(String(args.jobId));
+      return true;
+    }
     calls.push({ command, args });
+    if (command === "execute_query" && args.sql === "SELECT version()")
+      return { columns: ["version"], rows: [{ version }] };
     return handler(command, args);
   },
 }));
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { useProvidersStore } = await import("../src/lib/providers");
-const { runSyncStatements } = await import("../src/lib/schema-compare/run");
+const { runSyncStatements, supportsDdlRollback } = await import("../src/lib/schema-compare/run");
 const { PRE_TRANSACTION_PHASE } = await import("../src/lib/schema-compare/script");
 const { pickSchema, reverseSchemaCompare, runSchemaCompare, setupProblem, useSchemaCompareStore } =
   await import("../src/lib/schema-compare/store");
@@ -50,6 +58,7 @@ async function execute(
   connection: SavedConnection,
   statements: ReturnType<typeof statement>[],
   dryRun: boolean,
+  extra: { allowUnchecked?: boolean; stopped?: () => boolean } = {},
 ) {
   const steps: { status: string; message: string | null }[] = [];
   const summary = await runSyncStatements(
@@ -60,6 +69,7 @@ async function execute(
       continueOnError: false,
       dryRun,
       stopped: () => false,
+      ...extra,
       onStep: (index, step) => {
         steps[index] = step;
       },
@@ -82,6 +92,8 @@ afterAll(() => useProvidersStore.setState({ loaded: false }));
 
 beforeEach(() => {
   calls.length = 0;
+  cancelled = [];
+  version = "PostgreSQL 18.0 on aarch64-apple-darwin";
   handler = (command) => (command === "begin_transaction" ? "tx" : undefined);
   useConnectionsStore.setState({ connections: [PG, ORA] });
 });
@@ -99,6 +111,7 @@ describe("PostgreSQL-Probelauf", () => {
       true,
     );
     expect(sent()).toEqual([
+      "execute_query: SELECT version()",
       "begin_transaction",
       "execute_in_transaction: SET LOCAL check_function_bodies = false",
       "execute_in_transaction: SET LOCAL lock_timeout = '10s'",
@@ -180,6 +193,51 @@ describe("PostgreSQL-Probelauf", () => {
     expect(summary).toMatchObject({ dryRun: false, failed: 0 });
   });
 
+  test("verweigert den Probelauf auf Datenbanken ohne DDL-Rollback", async () => {
+    for (const other of [
+      "PostgreSQL 11.2-YB-2.20.1.0-b0 on x86_64-pc-linux-gnu",
+      "CockroachDB CCL v23.2.1 (aarch64-apple-darwin21.2, built 2024/01/16)",
+      "PostgreSQL 8.0.2 on i686-pc-linux-gnu, compiled by GCC gcc (GCC) 3.4.2, Redshift 1.0.62",
+      "PostgreSQL 12.3, compiled by Visual C++ build 1914, 64-bit, QuestDB",
+    ]) {
+      calls.length = 0;
+      version = other;
+      await expect(execute(PG, [statement(`DROP TABLE "app"."t"`)], true)).rejects.toThrow(
+        "Probelauf nicht möglich",
+      );
+      expect(sent()).toEqual(["execute_query: SELECT version()"]);
+      expect(await supportsDdlRollback(PG, null)).toBe(false);
+    }
+    version = "PostgreSQL 16.4 (Greenplum Database 7.1.0 build commit:abc)";
+    expect(await supportsDdlRollback(PG, null)).toBe(true);
+    expect(await supportsDdlRollback(ORA, null)).toBe(false);
+  });
+
+  test("Anhalten bricht ab, rollt zurück und meldet keinen Fehler", async () => {
+    let stopped = false;
+    handler = (command, args) => {
+      if (command === "begin_transaction") return "tx";
+      if (String(args.sql).startsWith("CREATE TABLE")) {
+        stopped = true;
+        throw new Error("ERROR: canceling statement due to user request");
+      }
+    };
+    const { summary, steps, messages } = await execute(
+      PG,
+      [
+        statement(`CREATE SEQUENCE "app"."q"`, 11),
+        statement(`CREATE TABLE "app"."t" ()`),
+        statement(`CREATE VIEW "app"."v" AS SELECT 1`, 17),
+      ],
+      true,
+      { stopped: () => stopped },
+    );
+    expect(steps).toEqual(["ok", "skipped", "skipped"]);
+    expect(messages[1].message).toBe("Angehalten");
+    expect(summary).toMatchObject({ failed: 0, incomplete: true });
+    expect(sent().at(-1)).toBe("rollback_transaction");
+  });
+
   test("lehnt schreibgeschützte Verbindungen ab", async () => {
     await expect(
       execute({ ...PG, readOnly: true }, [statement(`CREATE TABLE "app"."t" ()`)], true),
@@ -230,14 +288,35 @@ describe("Oracle-Datenprüfung", () => {
     expect(summary).toMatchObject({ blocked: false, failed: 0, warnings: 0 });
   });
 
-  test("eine nicht ausführbare Prüfung blockiert nicht", async () => {
-    handler = (command) => {
-      if (command === "execute_query") throw new Error("ORA-00942");
-      if (command === "execute_script") return [{ statement: "", success: true, error: null }];
-    };
-    const { summary } = await execute(ORA, [checked], false);
-    expect(summary).toMatchObject({ blocked: false, failed: 0 });
-    expect(sent().filter((line) => line.startsWith("execute_script"))).toHaveLength(1);
+  describe("wenn eine Prüfabfrage nicht laufen kann", () => {
+    beforeEach(() => {
+      handler = (command) => {
+        if (command === "execute_query") throw new Error("ORA-00942: table or view does not exist");
+        if (command === "execute_script") return [{ statement: "", success: true, error: null }];
+      };
+    });
+
+    test("meldet der Prüflauf das statt ohne Befund", async () => {
+      const { summary, steps, messages } = await execute(ORA, [checked], true);
+      expect(steps).toEqual(["warning"]);
+      expect(messages[0].message).toContain("Datenprüfung nicht möglich: ORA-00942");
+      expect(summary).toMatchObject({ failed: 0, unchecked: 1, incomplete: true });
+    });
+
+    test("blockiert die Ausführung ohne Bestätigung", async () => {
+      const { summary } = await execute(ORA, [plain, checked], false);
+      expect(summary).toMatchObject({ blocked: true, failed: 0, unchecked: 1 });
+      expect(sent().some((line) => line.startsWith("execute_script"))).toBe(false);
+    });
+
+    test("führt nach Bestätigung aus", async () => {
+      const { summary, steps } = await execute(ORA, [plain, checked], false, {
+        allowUnchecked: true,
+      });
+      expect(summary).toMatchObject({ blocked: false, failed: 0, incomplete: false });
+      expect(steps).toEqual(["ok", "ok"]);
+      expect(sent().filter((line) => line.startsWith("execute_script"))).toHaveLength(2);
+    });
   });
 });
 
@@ -321,6 +400,20 @@ describe("Richtung umkehren", () => {
       ["nur_b", "only_source"],
     ]);
     expect(Object.keys(state.selection)).toEqual(["table||nur_b"]);
+  });
+
+  test("kehrt die angezeigten Seiten um, auch wenn die Einstellungen inzwischen geändert wurden", async () => {
+    await runSchemaCompare();
+    useSchemaCompareStore.setState({
+      source: { connectionId: "pg", database: "app", schema: "anders" },
+    });
+    await reverseSchemaCompare();
+    const state = useSchemaCompareStore.getState();
+    expect(state.result?.source.schema).toBe("b");
+    expect(state.result?.target.schema).toBe("a");
+    expect(
+      calls.filter((call) => call.command === "schema_catalog").map((call) => call.args.schema),
+    ).not.toContain("anders");
   });
 
   test("lässt Quelle, Ziel und Ergebnis unverändert, wenn der neue Vergleich scheitert", async () => {

@@ -811,7 +811,10 @@ impl OracleAdapter {
         };
         let rows = match self.rows(query("dba_tab_privs", "owner")).await {
             Ok(rows) => rows,
-            Err(_) => self.rows(query("all_tab_privs", "table_schema")).await?,
+            Err(e) if e.contains("ORA-00942") || e.contains("ORA-01031") => {
+                self.rows(query("all_tab_privs", "table_schema")).await?
+            }
+            Err(e) => return Err(e),
         };
         for r in &rows {
             let object = s(r, 0);
