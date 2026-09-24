@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
@@ -9,6 +9,7 @@ import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { WindowControls } from "@/features/shell/window-controls";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
@@ -32,7 +33,7 @@ export function AppHeader() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const versioning = useVersioningPanel();
-  const section = useRouterState({ select: (s) => headerSection(s.location.pathname) });
+  const section = useRouterSelect((s) => headerSection(s.location.pathname));
   const txCount = useTransactionStore((s) => s.transactions.length);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
   const togglePanel = useTransactionStore((s) => s.togglePanel);

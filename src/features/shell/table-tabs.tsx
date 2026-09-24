@@ -20,7 +20,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
-import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
+import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
   const easyMode = useSettingsStore((state) => state.easyMode);
@@ -34,7 +34,6 @@ export function TableTabs() {
   const addPane = useSplitView((state) => state.addPane);
   const collapse = useSplitView((state) => state.collapse);
   const reveal = useSplitView((state) => state.reveal);
-  const matchTab = useTabRouteMatch();
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const router = useRouter();
@@ -50,7 +49,8 @@ export function TableTabs() {
     el.scrollLeft += event.deltaY;
   };
 
-  const isTabActive = (tab: Tab) => (split ? panes[focusedPane] === tabKey(tab) : matchTab(tab));
+  const isTabActive = (tab: Tab) =>
+    split ? panes[focusedPane] === tabKey(tab) : tab === activeWorkspaceTab;
 
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(

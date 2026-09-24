@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
@@ -10,6 +10,7 @@ import {
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -24,10 +25,10 @@ export function AppHeaderNavigation() {
     (item) =>
       isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
   );
-  const activeUrl = useRouterState({
-    select: (state) =>
+  const activeUrl = useRouterSelect(
+    (state) =>
       appSidebarData.navMain.find((item) => isNavActive(item.url, state.location.pathname))?.url,
-  });
+  );
 
   return (
     <nav

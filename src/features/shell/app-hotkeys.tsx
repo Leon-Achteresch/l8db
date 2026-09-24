@@ -1,9 +1,10 @@
-import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
 import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -15,9 +16,7 @@ export function AppHotkeys() {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const router = useRouter();
-  const inQueryRoute = useRouterState({
-    select: (state) => state.location.pathname.startsWith("/query"),
-  });
+  const inQueryRoute = useRouterSelect((state) => state.location.pathname.startsWith("/query"));
   const activeTab = useActiveWorkspaceTab();
   const connection = useActiveConnection();
   const { refresh } = useRefreshConnection();

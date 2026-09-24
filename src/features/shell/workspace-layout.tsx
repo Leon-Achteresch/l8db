@@ -1,7 +1,7 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
@@ -9,6 +9,7 @@ import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspac
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
@@ -40,7 +41,7 @@ const sensors = [
 
 export function WorkspaceLayout() {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const tool = useRouterState({ select: (state) => toolIdForPath(state.location.pathname) });
+  const tool = useRouterSelect((state) => toolIdForPath(state.location.pathname));
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
   useEffect(() => {
