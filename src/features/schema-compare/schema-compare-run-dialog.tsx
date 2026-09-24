@@ -2,6 +2,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleXIcon,
+  FlaskConicalIcon,
   LoaderIcon,
   PlayIcon,
   SquareIcon,
@@ -21,7 +22,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { type RunStep, type RunSummary, runSyncStatements } from "@/lib/schema-compare/run";
+import {
+  dryRunKind,
+  type RunStep,
+  type RunSummary,
+  runSyncStatements,
+} from "@/lib/schema-compare/run";
 import type { SyncStatement } from "@/lib/schema-compare/script";
 import { prepareConnection, runSchemaCompare } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
@@ -51,6 +57,28 @@ function firstLine(sql: string): string {
   return sql.split("\n")[0].slice(0, 160);
 }
 
+function outcomeText(summary: RunSummary): string {
+  if (summary.blocked)
+    return "Nicht ausgeführt: Die Datenprüfung hat Konflikte mit vorhandenen Daten gefunden. Es wurde nichts geändert.";
+  if (summary.dryRun && !summary.rolledBack) {
+    if (summary.failed > 0)
+      return `Datenprüfung: ${statementCount(summary.failed)} ${summary.failed === 1 ? "würde" : "würden"} an vorhandenen Daten scheitern. Es wurde nichts geändert.`;
+    if (summary.checked === 0)
+      return "Keine Anweisung braucht eine Datenprüfung. Es wurde nichts geändert.";
+    return `Datenprüfung ohne Befund: Die vorhandenen Daten passen zu ${statementCount(summary.checked)}. Es wurde nichts geändert.`;
+  }
+  if (summary.dryRun) {
+    if (summary.failed > 0)
+      return "Probelauf fehlgeschlagen. Die markierte Anweisung würde beim Ausführen scheitern. Es wurde nichts geändert.";
+    if (summary.incomplete)
+      return "Probelauf nur teilweise möglich. Bis zur markierten Stelle lief alles fehlerfrei; alles wurde zurückgerollt.";
+    return "Probelauf erfolgreich: Alle Anweisungen liefen fehlerfrei und wurden wieder zurückgerollt. Es wurde nichts geändert.";
+  }
+  if (summary.rolledBack) return "Fehler: Die Transaktion wurde vollständig zurückgerollt.";
+  if (summary.failed > 0) return `${statementCount(summary.failed)} fehlgeschlagen.`;
+  return "Alle Anweisungen wurden ausgeführt.";
+}
+
 export function SchemaCompareRunDialog({
   open,
   onOpenChange,
@@ -59,16 +87,17 @@ export function SchemaCompareRunDialog({
 }: SchemaCompareRunDialogProps) {
   const target = result.target;
   const [steps, setSteps] = useState<RunStep[]>([]);
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState<"dry" | "real" | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [executed, setExecuted] = useState(false);
   const [continueOnError, setContinueOnError] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const stop = useRef(false);
   const oracle = result.kind === "oracle";
+  const dryRun = dryRunKind(result.kind);
   const dangerous = statements.filter((statement) => statement.dangerous);
   const confirmed = dangerous.length === 0 || confirmation.trim() === result.targetSchema;
-  const started = steps.length > 0;
   const done = steps.filter(
     (step) => step.status !== "pending" && step.status !== "running",
   ).length;
@@ -77,15 +106,19 @@ export function SchemaCompareRunDialog({
     setSteps([]);
     setSummary(null);
     setError(null);
+    setExecuted(false);
     setConfirmation("");
     stop.current = false;
   };
 
-  const execute = async () => {
+  const execute = async (dryRun: boolean) => {
     if (!target.connectionId) return;
-    reset();
-    setRunning(true);
     setSteps(statements.map(() => ({ status: "pending", message: null })));
+    setSummary(null);
+    setError(null);
+    stop.current = false;
+    setRunning(dryRun ? "dry" : "real");
+    if (!dryRun) setExecuted(true);
     try {
       const connection = await prepareConnection(target.connectionId);
       const outcome = await runSyncStatements(
@@ -94,6 +127,7 @@ export function SchemaCompareRunDialog({
         statements,
         {
           continueOnError,
+          dryRun,
           stopped: () => stop.current,
           onStep: (index, step) =>
             setSteps((current) =>
@@ -102,16 +136,20 @@ export function SchemaCompareRunDialog({
         },
       );
       setSummary(outcome);
+      if (outcome.blocked) setExecuted(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setRunning(false);
+      setRunning(null);
     }
   };
 
   const close = (next: boolean) => {
     if (running) return;
-    if (!next) reset();
+    if (!next) {
+      if (executed) void runSchemaCompare();
+      reset();
+    }
     onOpenChange(next);
   };
 
@@ -119,24 +157,54 @@ export function SchemaCompareRunDialog({
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Sync-Skript im Ziel ausführen</DialogTitle>
+          <DialogTitle>Sync-Skript ausführen</DialogTitle>
           <DialogDescription>
-            {statementCount(statements.length)} {statements.length === 1 ? "wird" : "werden"} in{" "}
-            <strong>{result.targetLabel}</strong> ausgeführt.
+            {statementCount(statements.length)} für <strong>{result.targetLabel}</strong>. Die
+            Objekte werden dort so angelegt oder geändert, wie sie in{" "}
+            <strong>{result.sourceLabel}</strong> sind.
           </DialogDescription>
         </DialogHeader>
 
-        {!started && (
+        {!executed && (
           <div className="flex min-w-0 flex-col gap-3 text-xs">
-            <p className="rounded-lg border bg-muted/30 px-3 py-2">
-              {oracle
-                ? "Oracle schreibt DDL sofort fest; ein Rollback ist nicht möglich. PL/SQL-Objekte mit Kompilierfehlern werden als Warnung gemeldet und am Ende neu kompiliert."
-                : "Alle Anweisungen laufen in einer Transaktion. Bei einem Fehler wird alles zurückgerollt. Neue Enum-Werte werden vorab festgeschrieben, weil PostgreSQL sie sonst nicht verwenden kann."}
-            </p>
+            <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 px-3 py-2">
+              {dryRun === "rollback" ? (
+                <>
+                  <p>
+                    <strong>Probelauf:</strong> führt das Skript in einer Transaktion aus und rollt
+                    danach alles zurück. So sehen Sie vorher, ob jede Anweisung fehlerfrei läuft. Es
+                    wird nichts geändert; betroffene Tabellen sind während des Probelaufs kurz
+                    gesperrt.
+                  </p>
+                  <p>
+                    <strong>Ausführen:</strong> alle Anweisungen laufen in einer Transaktion. Bei
+                    einem Fehler wird alles zurückgerollt. Neue Enum-Werte werden vorab
+                    festgeschrieben, weil PostgreSQL sie sonst nicht verwenden kann.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <strong>Kein vollständiger Probelauf möglich:</strong> Oracle schreibt jede
+                    DDL-Anweisung sofort fest, ein Rollback ist nicht möglich.
+                  </p>
+                  <p>
+                    <strong>Datenprüfung:</strong> prüft vorher nur lesend, ob vorhandene Daten neue
+                    Constraints, NOT NULL oder kürzere Spalten verletzen. Sie läuft vor dem
+                    Ausführen automatisch; bei Konflikten wird nichts ausgeführt.
+                  </p>
+                  <p>
+                    PL/SQL-Objekte mit Kompilierfehlern werden als Warnung gemeldet und am Ende neu
+                    kompiliert.
+                  </p>
+                </>
+              )}
+            </div>
             {oracle && (
               <Label className="flex items-center gap-2 text-xs font-normal">
                 <Checkbox
                   checked={continueOnError}
+                  disabled={Boolean(running)}
                   onCheckedChange={(checked) => setContinueOnError(checked === true)}
                 />
                 Bei Fehlern mit der nächsten Anweisung fortfahren
@@ -157,14 +225,16 @@ export function SchemaCompareRunDialog({
                 </ul>
                 <Label className="flex flex-col items-start gap-1 text-xs font-normal">
                   <span>
-                    Zur Bestätigung den Zielschema-Namen <strong>{result.targetSchema}</strong>{" "}
+                    Zum Ausführen den Zielschema-Namen <strong>{result.targetSchema}</strong>{" "}
                     eingeben
+                    {dryRun && " (für die Prüfung nicht nötig)"}
                   </span>
                   <Input
                     value={confirmation}
                     onChange={(event) => setConfirmation(event.target.value)}
                     className="h-8 font-mono text-xs"
                     aria-label="Zielschema bestätigen"
+                    disabled={Boolean(running)}
                   />
                 </Label>
               </div>
@@ -172,10 +242,17 @@ export function SchemaCompareRunDialog({
           </div>
         )}
 
-        {started && (
+        {steps.length > 0 && (
           <div className="flex min-h-0 min-w-0 flex-col gap-2">
+            <span className="text-xs font-medium">
+              {running === "dry" || (!running && (summary?.dryRun || summary?.blocked))
+                ? dryRun === "rollback"
+                  ? "Probelauf (wird zurückgerollt)"
+                  : "Datenprüfung (nur lesend)"
+                : "Ausführung"}
+            </span>
             <Progress value={statements.length ? (done / statements.length) * 100 : 0} />
-            <ol className="max-h-[45vh] overflow-auto rounded-lg border text-xs">
+            <ol className="max-h-[40vh] overflow-auto rounded-lg border text-xs">
               {statements.map((statement, index) => {
                 const step = steps[index] ?? { status: "pending", message: null };
                 const { Icon, color } = STEP_ICON[step.status];
@@ -192,7 +269,11 @@ export function SchemaCompareRunDialog({
                       <span
                         className={cn(
                           "whitespace-pre-wrap pl-5.5 font-mono text-[11px]",
-                          step.status === "error" ? "text-destructive" : "text-amber-600",
+                          step.status === "error"
+                            ? "text-destructive"
+                            : step.status === "skipped"
+                              ? "text-muted-foreground"
+                              : "text-amber-600",
                         )}
                       >
                         {step.message}
@@ -203,13 +284,21 @@ export function SchemaCompareRunDialog({
               })}
             </ol>
             {summary && (
-              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                {summary.rolledBack
-                  ? "Fehler: Die Transaktion wurde vollständig zurückgerollt."
-                  : summary.failed > 0
-                    ? `${statementCount(summary.failed)} fehlgeschlagen.`
-                    : "Alle Anweisungen wurden ausgeführt."}
-                {summary.warnings > 0 && ` ${summary.warnings} mit Kompilierwarnungen.`}
+              <div
+                role="status"
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-xs",
+                  summary.failed > 0
+                    ? "border-destructive/40 bg-destructive/5 text-destructive"
+                    : summary.incomplete
+                      ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400"
+                      : "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+                )}
+              >
+                {outcomeText(summary)}
+                {summary.warnings > 0 &&
+                  !summary.dryRun &&
+                  ` ${summary.warnings} mit Kompilierwarnungen.`}
                 {summary.invalid.length > 0 && (
                   <div className="mt-1 text-amber-600">
                     Nach dem Neukompilieren noch ungültig:{" "}
@@ -228,29 +317,33 @@ export function SchemaCompareRunDialog({
               <SquareIcon className="size-3.5" />
               Anhalten
             </Button>
-          ) : summary || error ? (
-            <>
-              <Button variant="outline" onClick={() => close(false)}>
-                Schließen
-              </Button>
-              <Button
-                onClick={() => {
-                  close(false);
-                  void runSchemaCompare();
-                }}
-              >
-                Erneut vergleichen
-              </Button>
-            </>
+          ) : executed ? (
+            <Button onClick={() => close(false)}>Schließen und neu vergleichen</Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => close(false)}>
-                Abbrechen
+                {summary || error ? "Schließen" : "Abbrechen"}
               </Button>
+              {dryRun && (
+                <Button
+                  variant="secondary"
+                  disabled={statements.length === 0}
+                  title={
+                    dryRun === "rollback"
+                      ? "Skript testweise ausführen und zurückrollen"
+                      : "Vorhandene Daten gegen das Skript prüfen, ohne etwas zu ändern"
+                  }
+                  onClick={() => void execute(true)}
+                >
+                  <FlaskConicalIcon className="size-3.5" />
+                  {dryRun === "rollback" ? "Probelauf" : "Datenprüfung"}
+                  {(summary?.dryRun || summary?.blocked) && " wiederholen"}
+                </Button>
+              )}
               <Button
                 variant={dangerous.length > 0 ? "destructive" : "default"}
                 disabled={!confirmed || statements.length === 0}
-                onClick={() => void execute()}
+                onClick={() => void execute(false)}
               >
                 <PlayIcon className="size-3.5" />
                 Ausführen

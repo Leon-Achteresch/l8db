@@ -1,5 +1,6 @@
 import type { CatalogObject, CatalogObjectType } from "@/lib/db";
 import { CONTAINER_TYPES, quoteName } from "./diff";
+import { addColumnCheck, columnChecks, type DataCheck, keyCheck } from "./precheck";
 import type { CompareResult, DiffItem } from "./types";
 import { OBJECT_TYPE_META } from "./types";
 
@@ -9,6 +10,7 @@ export interface SyncStatement {
   plsql: boolean;
   dangerous: boolean;
   phase: number;
+  checks?: DataCheck[];
 }
 
 export interface SyncScript {
@@ -80,6 +82,14 @@ function routineHeader(ddl: string): string {
   return ddl.split(/\n(?:AS |BEGIN ATOMIC|RETURN )/)[0];
 }
 
+function referencesColumn(expression: string, column: string): boolean {
+  const name = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    expression.includes(quoteName(column)) ||
+    new RegExp(`(^|[^\\w$#"])${name}(?![\\w$#])`, "i").test(expression)
+  );
+}
+
 function isForeignKey(object: CatalogObject): boolean {
   return object.object_type === "constraint" && object.attributes.kind === "R";
 }
@@ -147,21 +157,40 @@ export function buildSyncScript(
   const materializedViews = new Set(
     result.items.filter((item) => item.type === "materialized_view").map((item) => item.name),
   );
+  const existingTables = new Set(
+    result.items
+      .filter((item) => item.type === "table" && item.target && item.status !== "only_source")
+      .map((item) => item.name),
+  );
+  const targetPrefix = `${quoteName(schema)}.`;
+  const referenceExists = (name: string) =>
+    !name.startsWith(targetPrefix) ||
+    existingTables.has(name.slice(targetPrefix.length + 1, -1).replace(/""/g, '"'));
 
   const emit = (
     phase: number,
     sql: string,
-    options: { plsql?: boolean; dangerous?: boolean; name?: string; body?: string } = {},
+    options: {
+      plsql?: boolean;
+      dangerous?: boolean;
+      name?: string;
+      body?: string;
+      checks?: (DataCheck | null)[];
+    } = {},
   ) => {
     const text = options.plsql ? sql.trim() : sql.trim().replace(/;\s*$/, "");
     if (!text || seen.has(text)) return;
     seen.add(text);
+    const checks = oracle
+      ? (options.checks ?? []).filter((check): check is DataCheck => Boolean(check))
+      : [];
     const statement: SyncStatement = {
       key,
       sql: text,
       plsql: Boolean(options.plsql),
       dangerous: Boolean(options.dangerous),
       phase,
+      ...(checks.length > 0 ? { checks } : {}),
     };
     statements.push(statement);
     if (options.name)
@@ -188,11 +217,15 @@ export function buildSyncScript(
         warnings.push(
           `${label(object)}: NOT NULL ohne Default schlägt fehl, wenn die Zieltabelle bereits Zeilen enthält.`,
         );
+      const table = qualified(object.parent ?? "");
       emit(
         CREATE_PHASE.column ?? 13,
         oracle
-          ? `ALTER TABLE ${qualified(object.parent ?? "")} ADD (${object.ddl})`
-          : `ALTER TABLE ${qualified(object.parent ?? "")} ADD COLUMN ${object.ddl}`,
+          ? `ALTER TABLE ${table} ADD (${object.ddl})`
+          : `ALTER TABLE ${table} ADD COLUMN ${object.ddl}`,
+        {
+          checks: [existingTables.has(object.parent ?? "") ? addColumnCheck(object, table) : null],
+        },
       );
       return;
     }
@@ -231,9 +264,20 @@ export function buildSyncScript(
       warnings.push(
         `${label(object)} ist partitioniert; die Partitionierung konnte nicht gelesen werden und wird nicht übernommen.`,
       );
+    const keyed =
+      (type === "constraint" || type === "index") && existingTables.has(object.parent ?? "");
     emit(phase, object.ddl, {
       plsql,
       name: SORTED_TYPES.has(type) ? object.name : undefined,
+      checks: keyed
+        ? [
+            keyCheck(
+              object.attributes.definition ?? "",
+              qualified(object.parent ?? ""),
+              referenceExists,
+            ),
+          ]
+        : [],
     });
     if (!oracle && type === "sequence" && object.parent && object.attributes.owned_column)
       emit(
@@ -338,6 +382,21 @@ export function buildSyncScript(
     }
   };
 
+  const computedDependents = (column: CatalogObject) =>
+    result.items
+      .filter(
+        (item) =>
+          item.type === "column" &&
+          item.parent === column.parent &&
+          item.name !== column.name &&
+          item.target &&
+          !(item.status === "only_target" && selected[item.key]),
+      )
+      .map((item) => item.target as CatalogObject)
+      .filter((other) =>
+        referencesColumn(other.attributes.virtual ?? other.attributes.generated ?? "", column.name),
+      );
+
   const alterColumn = (source: CatalogObject, target: CatalogObject) => {
     const a = source.attributes;
     const b = target.attributes;
@@ -350,9 +409,17 @@ export function buildSyncScript(
       );
       return;
     }
+    let typeChanged = changed("type") || changed("collation");
+    const dependents = typeChanged ? computedDependents(target) : [];
+    if (dependents.length > 0) {
+      typeChanged = false;
+      warnings.push(
+        `${label(source)}: Der Datentyp wird nicht geändert, weil die berechnete Spalte ${dependents.map((item) => item.name).join(", ")} darauf aufbaut. Berechnete Spalte entfernen, Datentyp ändern und berechnete Spalte neu anlegen.`,
+      );
+    }
     if (oracle) {
       const parts: string[] = [];
-      if (changed("type")) parts.push(a.type);
+      if (typeChanged) parts.push(a.type);
       if (changed("default")) parts.push(`DEFAULT ${a.default ?? "NULL"}`);
       if (changed("nullable")) parts.push(a.nullable === "NO" ? "NOT NULL" : "NULL");
       if (parts.length > 0)
@@ -360,12 +427,13 @@ export function buildSyncScript(
           CREATE_PHASE.column ?? 13,
           `ALTER TABLE ${table} MODIFY (${column} ${parts.join(" ")})`,
           {
-            dangerous: changed("type"),
+            dangerous: typeChanged,
+            checks: columnChecks(source, target, table, typeChanged),
           },
         );
       return;
     }
-    if (changed("type") || changed("collation"))
+    if (typeChanged)
       emit(
         CREATE_PHASE.column ?? 13,
         `ALTER TABLE ${table} ALTER COLUMN ${column} TYPE ${a.type}${a.collation ? ` COLLATE ${a.collation}` : ""} USING ${column}::${a.type}`,

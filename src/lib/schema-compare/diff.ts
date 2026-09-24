@@ -106,7 +106,13 @@ function requalifyObject(
   const attributes: Record<string, string> = {};
   for (const [key, value] of Object.entries(object.attributes))
     attributes[key] = requalify(value, from, to, kind);
-  return { ...object, ddl: requalify(object.ddl, from, to, kind), attributes };
+  const routine = object.object_type === "function" || object.object_type === "procedure";
+  return {
+    ...object,
+    name: routine ? requalify(object.name, from, to, kind) : object.name,
+    ddl: requalify(object.ddl, from, to, kind),
+    attributes,
+  };
 }
 
 export function canonical(
