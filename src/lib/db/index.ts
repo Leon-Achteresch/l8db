@@ -1,4 +1,5 @@
 export * from "./admin";
+export * from "./backup";
 export * from "./catalog";
 export * from "./columns";
 export type { QueryExecutionOptions } from "./core";

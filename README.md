@@ -147,6 +147,7 @@ src-tauri/src/
 ## Operations
 
 - Data transfer behavior, limits and benchmarks: [data-transfer.md](docs/data-transfer.md).
+- Backup, restore and dump tools: [backup.md](docs/backup.md).
 - Reproducible database and browser checks: [integration-tests.md](docs/integration-tests.md).
 - Performance tests, workload replay and `l8db --benchmark`: [performance.md](docs/performance.md).
 - Production configuration: [.github/PRODUCTION.md](.github/PRODUCTION.md).

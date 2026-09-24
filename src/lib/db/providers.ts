@@ -67,6 +67,7 @@ export interface Capabilities {
   query_cancel: boolean;
   ssl: boolean;
   ssh: boolean;
+  backup: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

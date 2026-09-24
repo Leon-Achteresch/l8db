@@ -23,6 +23,7 @@ import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
+import { Route as AppWorkspaceBackupRouteImport } from './routes/_app._workspace.backup'
 import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
@@ -118,6 +119,11 @@ const AppPlainAvailableExtensionsRoute =
 const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceBackupRoute = AppWorkspaceBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceCompareRoute = AppWorkspaceCompareRouteImport.update({
@@ -286,6 +292,7 @@ export interface FileRoutesByFullPath {
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
@@ -370,6 +378,7 @@ export interface FileRoutesById {
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
   '/_app/_workspace/compare': typeof AppWorkspaceCompareRoute
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
@@ -414,6 +423,7 @@ export interface FileRouteTypes {
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
+    | '/backup'
     | '/compare'
     | '/create-table'
     | '/enums'
@@ -455,6 +465,7 @@ export interface FileRouteTypes {
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
+    | '/backup'
     | '/compare'
     | '/create-table'
     | '/enums'
@@ -497,6 +508,7 @@ export interface FileRouteTypes {
     | '/_app/_plain'
     | '/_app/_workspace'
     | '/_app/_plain/available-extensions'
+    | '/_app/_workspace/backup'
     | '/_app/_workspace/compare'
     | '/_app/_workspace/create-table'
     | '/_app/_workspace/enums'
@@ -639,6 +651,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceIndexRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/backup': {
+      id: '/_app/_workspace/backup'
+      path: '/backup'
+      fullPath: '/backup'
+      preLoaderRoute: typeof AppWorkspaceBackupRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/compare': {
@@ -866,6 +885,7 @@ const AppWorkspaceQueryRouteWithChildren =
   AppWorkspaceQueryRoute._addFileChildren(AppWorkspaceQueryRouteChildren)
 
 interface AppWorkspaceRouteChildren {
+  AppWorkspaceBackupRoute: typeof AppWorkspaceBackupRoute
   AppWorkspaceCompareRoute: typeof AppWorkspaceCompareRoute
   AppWorkspaceCreateTableRoute: typeof AppWorkspaceCreateTableRoute
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
@@ -896,6 +916,7 @@ interface AppWorkspaceRouteChildren {
 }
 
 const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
+  AppWorkspaceBackupRoute: AppWorkspaceBackupRoute,
   AppWorkspaceCompareRoute: AppWorkspaceCompareRoute,
   AppWorkspaceCreateTableRoute: AppWorkspaceCreateTableRoute,
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,

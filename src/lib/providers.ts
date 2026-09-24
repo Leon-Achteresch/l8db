@@ -62,6 +62,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   query_cancel: true,
   ssl: true,
   ssh: true,
+  backup: true,
   query_language: "sql",
   filter_hint: "SQL WHERE-Ausdruck",
 };
