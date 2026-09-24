@@ -17,6 +17,7 @@ import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
 import { AppTour } from "@/features/tour/app-tour";
+import { FeatureVideoHost } from "@/features/updates/feature-video-host";
 import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
 
 function RootComponent() {
@@ -38,6 +39,7 @@ function RootComponent() {
         <WindowCloseGuard />
         <AppTour />
         <Onboarding />
+        <FeatureVideoHost />
         <Toaster />
       </ThemeProvider>
     </MotionConfig>

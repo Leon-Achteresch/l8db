@@ -521,6 +521,18 @@ impl DatabaseAdapter for MysqlAdapter {
             .ok_or_else(|| "View nicht gefunden".to_string())
     }
 
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        self.rows(&format!(
+            "SHOW CREATE TABLE {}.{}",
+            quote(schema),
+            quote(table)
+        ))
+        .await?
+        .first()
+        .map(|r| format!("{};\n", cell(r, 1)))
+        .ok_or_else(|| "Tabelle nicht gefunden".to_string())
+    }
+
     async fn update_view_definition(
         &self,
         schema: &str,
@@ -610,7 +622,7 @@ impl DatabaseAdapter for MysqlAdapter {
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let sql = format!(
-            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
+            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
             lit(schema),
             lit(table)
         );
@@ -626,6 +638,7 @@ impl DatabaseAdapter for MysqlAdapter {
                 is_primary_key: cell(r, 4) == "PRI",
                 ordinal_position: cell_i64(r, 5) as i32,
                 character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
+                comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
             })
             .collect())
     }
@@ -774,6 +787,20 @@ impl DatabaseAdapter for MysqlAdapter {
             });
         }
         Ok(out)
+    }
+
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT table_comment FROM information_schema.tables WHERE table_schema = {} AND table_name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .first()
+            .map(|r| cell(r, 0))
+            .filter(|c| !c.is_empty()))
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {

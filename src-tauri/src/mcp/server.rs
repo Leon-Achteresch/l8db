@@ -66,6 +66,10 @@ fn tool_text(text: String, is_error: bool) -> Value {
     json!({"content": [{"type": "text", "text": text}], "isError": is_error})
 }
 
+pub(super) fn database_arg() -> Value {
+    json!({"type": "string", "description": "Database to use instead of the one in the connection URL, e.g. a MongoDB database. search without database covers every MongoDB database."})
+}
+
 pub fn tool_definitions() -> Value {
     json!([
         {
@@ -78,6 +82,7 @@ pub fn tool_definitions() -> Value {
             "description": "Find tables and columns whose name contains term. Returns schema.table(column type, ...). Empty term lists table names only.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string", "description": "Connection name or id"},
+                "database": database_arg(),
                 "term": {"type": "string"}
             }, "required": ["connection"]}
         },
@@ -86,6 +91,7 @@ pub fn tool_definitions() -> Value {
             "description": "Columns of one table with types. table may be schema.table.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
+                "database": database_arg(),
                 "table": {"type": "string"}
             }, "required": ["connection", "table"]}
         },
@@ -94,6 +100,7 @@ pub fn tool_definitions() -> Value {
             "description": "Run a read-only statement: SQL for SQL databases, db.<collection>.find(...)/aggregate(...) or a command document for MongoDB, one Redis command (GET, HGETALL, SCAN, ...) for Redis. Returns TSV, sensitive values redacted. Default limit 50 rows.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
+                "database": database_arg(),
                 "sql": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1}
             }, "required": ["connection", "sql"]}
@@ -105,6 +112,7 @@ pub fn tool_definitions() -> Value {
             "description": "Run a writing statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a connection that allows writes. Requires confirm=true. Returns affected rows.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
+                "database": database_arg(),
                 "sql": {"type": "string"},
                 "confirm": {"type": "boolean"}
             }, "required": ["connection", "sql", "confirm"]}
@@ -168,9 +176,12 @@ impl Server {
             "dashboard" => self.dashboard(&config, &args).await,
             "search" | "describe" | "query" | "execute" | "benchmark" => {
                 let target = args.get("connection").and_then(Value::as_str).unwrap_or("");
-                match find_connection(&config, target) {
+                match find_connection(&config, target)
+                    .and_then(|connection| with_database(connection, &args))
+                {
                     Err(e) => Err(e),
                     Ok(connection) => {
+                        let connection = &connection;
                         let result = match name {
                             "search" => {
                                 self.search(&config, connection, arg_str(&args, "term"))
@@ -199,6 +210,13 @@ impl Server {
         };
         match outcome {
             Ok(text) => tool_text(text, false),
+            Err(error) if error.contains("Kein Datenbankname") => tool_text(
+                format!(
+                    "{} Parameter database angeben (search zeigt db.collection).",
+                    scrub_error(&error)
+                ),
+                true,
+            ),
             Err(error) => tool_text(scrub_error(&error), true),
         }
     }
@@ -208,18 +226,30 @@ impl Server {
         config: &McpConfig,
         connection: &McpConnection,
     ) -> Result<Vec<ColumnInfo>, String> {
-        if let Some((at, columns)) = self.columns.get(&connection.id) {
+        let key = cache_key(connection);
+        if let Some((at, columns)) = self.columns.get(&key) {
             if at.elapsed() < CACHE_TTL {
                 return Ok(columns.clone());
             }
         }
         let adapter = adapter(connection, &self.pool)?;
         let columns = run(config, connection.kind, async {
-            adapter.list_columns(None, None, None).await
+            if connection.kind != DatabaseKind::Mongodb || adapter.list_schemas().await.is_ok() {
+                return adapter.list_columns(None, None, None).await;
+            }
+            let mut out = Vec::new();
+            for database in adapter.list_databases().await? {
+                if matches!(database.as_str(), "admin" | "config" | "local")
+                    || !(connection.schemas.is_empty() || connection.schemas.contains(&database))
+                {
+                    continue;
+                }
+                out.extend(adapter.list_columns(Some(&database), None, None).await?);
+            }
+            Ok(out)
         })
         .await?;
-        self.columns
-            .insert(connection.id.clone(), (Instant::now(), columns.clone()));
+        self.columns.insert(key, (Instant::now(), columns.clone()));
         Ok(columns)
     }
 
@@ -391,7 +421,7 @@ impl Server {
             adapter.execute_query(sql).await
         })
         .await?;
-        self.columns.remove(&connection.id);
+        self.columns.remove(&cache_key(connection));
         let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
         let mut text = format!("ok, {} rows affected", result.rows_affected.unwrap_or(0));
         if !result.rows.is_empty() {
@@ -486,6 +516,36 @@ fn list_connections(config: &McpConfig) -> String {
     format!("name\tkind\taccess\n{}", lines.join("\n"))
 }
 
+fn cache_key(connection: &McpConnection) -> String {
+    format!(
+        "{}#{}",
+        connection.id,
+        connection.database.as_deref().unwrap_or("")
+    )
+}
+
+pub(super) fn with_database(
+    connection: &McpConnection,
+    args: &Value,
+) -> Result<McpConnection, String> {
+    let mut connection = connection.clone();
+    let database = arg_str(args, "database").trim();
+    if database.is_empty() {
+        return Ok(connection);
+    }
+    if connection.kind == DatabaseKind::Mongodb
+        && !connection.schemas.is_empty()
+        && !connection.schemas.iter().any(|s| s == database)
+    {
+        return Err(format!(
+            "Datenbank '{database}' ist für '{}' nicht freigegeben.",
+            connection.name
+        ));
+    }
+    connection.database = Some(database.to_string());
+    Ok(connection)
+}
+
 pub(super) fn find_connection<'a>(
     config: &'a McpConfig,
     target: &str,
@@ -549,7 +609,12 @@ pub(super) fn adapter(
         _ => keychain_password(&connection.id)?,
     };
     let url = with_password(connection, password.as_deref());
-    db::create_adapter_from_string(connection.kind, &url, None, pool.clone())
+    db::create_adapter_from_string(
+        connection.kind,
+        &url,
+        connection.database.as_deref(),
+        pool.clone(),
+    )
 }
 
 pub(super) async fn run<T, F>(
@@ -703,6 +768,7 @@ mod tests {
             read_only,
             allow_ddl: false,
             redact_columns: vec![],
+            database: None,
         }
     }
 
@@ -723,6 +789,20 @@ mod tests {
         sqlite.kind = DatabaseKind::Sqlite;
         sqlite.connection_string = "sqlite:/tmp/x.db".into();
         assert_eq!(with_password(&sqlite, Some("x")), "sqlite:/tmp/x.db");
+    }
+
+    #[test]
+    fn database_argument_respects_allowed_schemas() {
+        let mut mongo = connection(true);
+        mongo.kind = DatabaseKind::Mongodb;
+        let plain = with_database(&mongo, &json!({})).unwrap();
+        assert_eq!(plain.database, None);
+        let picked = with_database(&mongo, &json!({"database": " shop "})).unwrap();
+        assert_eq!(picked.database.as_deref(), Some("shop"));
+        assert_ne!(cache_key(&plain), cache_key(&picked));
+        mongo.schemas = vec!["shop".into()];
+        assert!(with_database(&mongo, &json!({"database": "shop"})).is_ok());
+        assert!(with_database(&mongo, &json!({"database": "hr"})).is_err());
     }
 
     #[test]

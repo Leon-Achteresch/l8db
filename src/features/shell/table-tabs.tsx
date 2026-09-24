@@ -4,7 +4,7 @@ import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from 
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect, useId } from "react";
+import { useCallback, useEffect } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
@@ -20,10 +20,9 @@ import { useSettingsStore } from "@/lib/settings";
 import { MAX_SPLIT_PANES, useSplitView } from "@/lib/split-view";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
-import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
+import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
-  const activeIndicatorId = useId();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const allTabs = useTableTabs((state) => state.tabs);
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
@@ -35,7 +34,6 @@ export function TableTabs() {
   const addPane = useSplitView((state) => state.addPane);
   const collapse = useSplitView((state) => state.collapse);
   const reveal = useSplitView((state) => state.reveal);
-  const matchTab = useTabRouteMatch();
   const activeWorkspaceTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const router = useRouter();
@@ -51,7 +49,8 @@ export function TableTabs() {
     el.scrollLeft += event.deltaY;
   };
 
-  const isTabActive = (tab: Tab) => (split ? panes[focusedPane] === tabKey(tab) : matchTab(tab));
+  const isTabActive = (tab: Tab) =>
+    split ? panes[focusedPane] === tabKey(tab) : tab === activeWorkspaceTab;
 
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
@@ -122,7 +121,6 @@ export function TableTabs() {
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
-                activeIndicatorId={activeIndicatorId}
                 tab={tab}
                 index={allTabs.indexOf(tab)}
                 isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}

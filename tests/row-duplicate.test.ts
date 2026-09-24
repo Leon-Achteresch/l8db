@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildDuplicatePrefill, describeInsertError } from "../src/lib/row-duplicate";
+import {
+  buildDuplicatePrefill,
+  describeInsertError,
+  planPasteSpread,
+} from "../src/lib/row-duplicate";
 
 const columns = ["__ctid__", "id", "name", "note", "created_at", "full_name"];
 
@@ -115,5 +119,81 @@ describe("describeInsertError", () => {
 
   test("gibt andere Fehler unverändert zurück", () => {
     expect(describeInsertError("connection lost")).toBe("connection lost");
+  });
+});
+
+describe("planPasteSpread", () => {
+  const columns = ["id", "name", "note", "created_at"];
+
+  test("verteilt tab-getrennte Werte ab der Startspalte", () => {
+    const plan = planPasteSpread("Ada\thallo", columns, "name");
+    expect(plan.assignments).toEqual([
+      { column: "name", mode: "value", value: "Ada" },
+      { column: "note", mode: "value", value: "hallo" },
+    ]);
+    expect(plan.droppedRows).toBe(0);
+    expect(plan.droppedCells).toBe(0);
+  });
+
+  test("übernimmt bei mehreren Zeilen nur die erste und zählt den Rest", () => {
+    const plan = planPasteSpread("Ada\tx\nBob\ty\nCid\tz", columns, "id");
+    expect(plan.assignments).toEqual([
+      { column: "id", mode: "value", value: "Ada" },
+      { column: "name", mode: "value", value: "x" },
+    ]);
+    expect(plan.droppedRows).toBe(2);
+  });
+
+  test("kürzt Werte ab, die nicht mehr in die verbleibenden Spalten passen", () => {
+    const plan = planPasteSpread("a\tb\tc\td\te", ["id", "name"], "id");
+    expect(plan.assignments).toEqual([
+      { column: "id", mode: "value", value: "a" },
+      { column: "name", mode: "value", value: "b" },
+    ]);
+    expect(plan.droppedCells).toBe(3);
+  });
+
+  test("bildet leere Zellen auf den Standard-Modus ab", () => {
+    const plan = planPasteSpread("Ada\t\thallo", columns, "name");
+    expect(plan.assignments).toEqual([
+      { column: "name", mode: "value", value: "Ada" },
+      { column: "note", mode: "default", value: "" },
+      { column: "created_at", mode: "value", value: "hallo" },
+    ]);
+  });
+
+  test("übernimmt leere Zellen am Ende als Standard-Modus", () => {
+    const plan = planPasteSpread("Ada\tx\t\t", columns, "id");
+    expect(plan.assignments).toEqual([
+      { column: "id", mode: "value", value: "Ada" },
+      { column: "name", mode: "value", value: "x" },
+      { column: "note", mode: "default", value: "" },
+      { column: "created_at", mode: "default", value: "" },
+    ]);
+    expect(plan.droppedCells).toBe(0);
+  });
+
+  test("behandelt CRLF- und CR-Zeilenumbrüche", () => {
+    const crlf = planPasteSpread("a\tb\r\nc\td", columns, "id");
+    expect(crlf.assignments).toEqual([
+      { column: "id", mode: "value", value: "a" },
+      { column: "name", mode: "value", value: "b" },
+    ]);
+    expect(crlf.droppedRows).toBe(1);
+    const cr = planPasteSpread("a\tb\rc\td", columns, "id");
+    expect(cr.droppedRows).toBe(1);
+  });
+
+  test("ignoriert eine abschließende Leerzeile", () => {
+    const plan = planPasteSpread("Ada\tx\n", columns, "id");
+    expect(plan.droppedRows).toBe(0);
+    expect(plan.assignments).toHaveLength(2);
+  });
+
+  test("liefert für einen einzelnen Wert genau eine Zuweisung", () => {
+    const plan = planPasteSpread("Ada", columns, "name");
+    expect(plan.assignments).toEqual([{ column: "name", mode: "value", value: "Ada" }]);
+    expect(plan.droppedRows).toBe(0);
+    expect(plan.droppedCells).toBe(0);
   });
 });

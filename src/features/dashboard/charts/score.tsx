@@ -1,8 +1,12 @@
-import { Pie, PieChart, ResponsiveContainer } from "recharts";
 import { toLabel, toNumber } from "@/lib/dashboards";
+import { useElementSize } from "@/lib/hooks/use-element-size";
 import { type ChartProps, color } from "./chart-utils";
+import { roundArcPath } from "./svg-geometry";
+
+const PAD = (3 * Math.PI) / 180;
 
 export function Score({ rows, shape, options }: ChartProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [mv, mm] = shape.metrics;
   const items = rows.map((row, i) => ({
     name: shape.dimension ? toLabel(row[shape.dimension]) : `#${i + 1}`,
@@ -12,28 +16,42 @@ export function Score({ rows, shape, options }: ChartProps) {
   }));
   const total = items.reduce((s, i) => s + i.value, 0);
   const totalMax = items.reduce((s, i) => s + i.max, 0) || 1;
-  const slices = items.flatMap((item) => [
-    { name: item.name, value: item.value, fill: item.color },
-    { name: `${item.name} offen`, value: Math.max(0, item.max - item.value), fill: "var(--muted)" },
-  ]);
+  const slices = items
+    .flatMap((item) => [
+      { key: item.name, value: item.value, fill: item.color },
+      {
+        key: `${item.name} offen`,
+        value: Math.max(0, item.max - item.value),
+        fill: "var(--muted)",
+      },
+    ])
+    .filter((slice) => slice.value > 0);
+  const outer = Math.min(width, height) / 2;
+  const stroke = outer * 0.3;
+  const r = outer - stroke / 2;
+  let start = 0;
+
   return (
-    <div className="relative h-full w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            isAnimationActive={false}
-            data={slices}
-            dataKey="value"
-            innerRadius="70%"
-            outerRadius="100%"
-            startAngle={90}
-            endAngle={-270}
-            paddingAngle={3}
-            cornerRadius={99}
-            stroke="none"
-          />
-        </PieChart>
-      </ResponsiveContainer>
+    <div ref={ref} className="relative h-full w-full">
+      {width > 0 && height > 0 && (
+        <svg className="chart-surface" width={width} height={height} aria-hidden="true">
+          {slices.map((slice) => {
+            const sweep = (slice.value / totalMax) * Math.PI * 2;
+            const from = start + PAD / 2;
+            start += sweep;
+            return (
+              <path
+                key={slice.key}
+                d={roundArcPath(width / 2, height / 2, r, stroke, from, start - PAD / 2)}
+                fill="none"
+                stroke={slice.fill}
+                strokeWidth={stroke}
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </svg>
+      )}
       <div className="pointer-events-none absolute inset-0 grid place-items-center">
         <span className="text-3xl font-semibold tabular-nums">
           {Math.round((total / totalMax) * 100)}

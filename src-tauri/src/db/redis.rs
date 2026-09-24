@@ -493,6 +493,7 @@ impl DatabaseAdapter for RedisAdapter {
                 is_primary_key: i == 0,
                 ordinal_position: i as i32 + 1,
                 character_maximum_length: None,
+                comment: None,
             })
             .collect())
     }

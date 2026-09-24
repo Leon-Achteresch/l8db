@@ -31,6 +31,8 @@ export interface SettingsState {
   sshTrustNewHosts: boolean;
   transactionsEnabled: boolean;
   transactionsPerTable: boolean;
+  autoFeatureVideos: boolean;
+  setAutoFeatureVideos: (value: boolean) => void;
   autoUpdateCheck: boolean;
   autoUpdateInstall: boolean;
   skippedUpdateVersion: string | null;
@@ -152,6 +154,7 @@ const DEFAULT_SETTINGS = {
   sshTrustNewHosts: false,
   transactionsEnabled: true,
   transactionsPerTable: true,
+  autoFeatureVideos: true,
   autoUpdateCheck: true,
   autoUpdateInstall: false,
   skippedUpdateVersion: null,
@@ -215,6 +218,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSshTrustNewHosts: (sshTrustNewHosts) => set({ sshTrustNewHosts }),
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
+      setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
       setAutoUpdateCheck: (autoUpdateCheck) =>
         set((state) => ({
           autoUpdateCheck,
@@ -292,6 +296,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...current,
           ...saved,
           easyMode: saved?.easyMode === true,
+          autoFeatureVideos: saved?.autoFeatureVideos !== false,
           onboardingDone: saved?.onboardingDone === true,
           translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),

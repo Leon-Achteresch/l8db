@@ -1,14 +1,17 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
+import { MasterSelectionScope } from "@/features/shell/master-selection-scope";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
-import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
@@ -39,13 +42,12 @@ const sensors = [
 
 export function WorkspaceLayout() {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const tool = useRouterSelect((state) => toolIdForPath(state.location.pathname));
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
   useEffect(() => {
-    const tool = toolIdForPath(pathname);
     if (tool && tool !== "compare") openToolTab(tool);
-  }, [pathname, openToolTab]);
+  }, [tool, openToolTab]);
 
   const activeTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
@@ -116,9 +118,13 @@ export function WorkspaceLayout() {
               <SplitWorkspace />
             ) : (
               <>
-                <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
-                  <Outlet />
-                </MasterSelectionContext.Provider>
+                <DeferredOutlet>
+                  {(outlet) => (
+                    <MasterSelectionScope selectionKey={selectionKey}>
+                      {outlet}
+                    </MasterSelectionScope>
+                  )}
+                </DeferredOutlet>
                 {!easyMode && activeTab && <NewPaneDropZone />}
               </>
             )}

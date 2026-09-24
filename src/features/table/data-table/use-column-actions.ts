@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { copyText } from "@/lib/clipboard";
 import { fitHeaderColumnWidth, measureHeaderTitleWidth } from "@/lib/column-header-width";
 import type { ForeignKeyInfo } from "@/lib/db";
+import { serializeSelectionCell } from "@/lib/grid-selection";
 import { formatVisibleColumnNames, toggleHiddenColumn } from "@/lib/table-column-prefs";
 import type { getColumnTypeInfo } from "./column-type-info";
 
@@ -14,6 +15,7 @@ type Options = {
   setColumnSizing: (sizing: Record<string, number>) => void;
   fkByColumn: Map<string, ForeignKeyInfo[]>;
   typeInfoByColumn: Map<string, ReturnType<typeof getColumnTypeInfo>>;
+  data: Record<string, unknown>[];
 };
 
 export function useColumnActions({
@@ -24,6 +26,7 @@ export function useColumnActions({
   setColumnSizing,
   fkByColumn,
   typeInfoByColumn,
+  data,
 }: Options) {
   const [togglingColumn, setTogglingColumn] = useState<string | null>(null);
 
@@ -33,6 +36,15 @@ export function useColumnActions({
     void copyText(names);
     toast.success("Spaltennamen kopiert.");
   }, [order, hidden]);
+
+  const copyColumnValues = useCallback(
+    (columnId: string) => {
+      const text = data.map((row) => serializeSelectionCell(row[columnId])).join("\n");
+      void copyText(text);
+      toast.success(`Spalte ${columnId} kopiert (${data.length} Werte).`);
+    },
+    [data],
+  );
 
   const fitHeaderWidths = useCallback(() => {
     const hiddenSet = new Set(hidden);
@@ -57,5 +69,5 @@ export function useColumnActions({
     [hidden, order, setHidden, togglingColumn],
   );
 
-  return { togglingColumn, copyColumnNames, fitHeaderWidths, handleColumnToggle };
+  return { togglingColumn, copyColumnNames, copyColumnValues, fitHeaderWidths, handleColumnToggle };
 }

@@ -184,6 +184,7 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
             icon={PlusIcon}
             label="Release vorbereiten"
             onClick={() => {
+              if (!releases.length) setId(`baseline-${new Date().toISOString().slice(0, 10)}`);
               setParent(
                 releases.filter((release) => releaseTrack(release) === "main").at(-1)?.id ?? "",
               );

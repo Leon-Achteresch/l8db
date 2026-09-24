@@ -178,19 +178,19 @@ export const DataTableCell = memo(function DataTableCell({
             "after:pointer-events-none after:absolute after:inset-0 after:-z-10 after:bg-[var(--cell-tint)]",
             isMarked
               ? "bg-[color-mix(in_oklab,var(--primary)_10%,var(--background))]"
-              : "bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_15%,var(--background))]",
+              : "bg-background row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--background))]",
           ),
         !isSticky && isSelected && "bg-primary/10",
         !isSticky && isMatch && "bg-amber-400/15",
         isActiveMatch &&
           cn(
-            "outline outline-2 -outline-offset-2 outline-amber-500 z-20",
-            !isSticky && "bg-amber-400/30",
+            "outline outline-2 -outline-offset-2 outline-amber-500",
+            !isSticky && "z-2 bg-amber-400/30",
           ),
         isActive &&
           cn(
-            "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)] z-10",
-            !isSticky && "bg-primary/[0.03]",
+            "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)]",
+            !isSticky && "z-1 bg-primary/[0.03]",
           ),
         !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
       )}

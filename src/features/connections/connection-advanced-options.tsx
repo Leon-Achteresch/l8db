@@ -43,6 +43,8 @@ interface Props {
   onColor: (value: string | null) => void;
   schemaFilter: string[];
   onSchemaFilter: (value: string[]) => void;
+  showSingleSchemaSwitcher: boolean;
+  onShowSingleSchemaSwitcher: (value: boolean) => void;
   scannedSchemas: string[] | null;
   scannedUser: string;
   scanning: boolean;
@@ -78,6 +80,8 @@ export function ConnectionAdvancedOptions({
   onColor,
   schemaFilter,
   onSchemaFilter,
+  showSingleSchemaSwitcher,
+  onShowSingleSchemaSwitcher,
   scannedSchemas,
   scannedUser,
   scanning,
@@ -245,15 +249,25 @@ export function ConnectionAdvancedOptions({
           </div>
         </fieldset>
         {caps.schemas && (
-          <SchemaPicker
-            selected={schemaFilter}
-            scanned={scannedSchemas}
-            userName={scannedUser}
-            scanning={scanning}
-            error={scanError}
-            onScan={onScan}
-            onChange={onSchemaFilter}
-          />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 text-xs font-medium">
+              <span>Schema-Auswahl bei nur einem Schema anzeigen</span>
+              <Switch
+                checked={showSingleSchemaSwitcher}
+                onCheckedChange={onShowSingleSchemaSwitcher}
+                aria-label="Schema-Auswahl bei nur einem Schema anzeigen"
+              />
+            </div>
+            <SchemaPicker
+              selected={schemaFilter}
+              scanned={scannedSchemas}
+              userName={scannedUser}
+              scanning={scanning}
+              error={scanError}
+              onScan={onScan}
+              onChange={onSchemaFilter}
+            />
+          </div>
         )}
       </CollapsibleContent>
     </Collapsible>

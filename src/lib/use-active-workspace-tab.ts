@@ -1,5 +1,5 @@
-import { useMatchRoute } from "@tanstack/react-router";
-
+import { type useMatchRoute, useRouter } from "@tanstack/react-router";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { type Tab, useTableTabs } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 
@@ -101,12 +101,23 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab, pending?: bool
 }
 
 export function useActiveWorkspaceTab(pending?: boolean): Tab | undefined {
-  const tabs = useTableTabs((state) => state.tabs);
-  const matchRoute = useMatchRoute();
-  return tabs.find((tab) => tabMatchesRoute(matchRoute, tab, pending));
-}
-
-export function useTabRouteMatch(): (tab: Tab) => boolean {
-  const matchRoute = useMatchRoute();
-  return (tab) => tabMatchesRoute(matchRoute, tab);
+  const router = useRouter();
+  const find = () => {
+    const matchRoute: MatchRoute = ({
+      pending: pendingMatch,
+      caseSensitive,
+      fuzzy,
+      includeSearch,
+      ...rest
+    }) =>
+      router.matchRoute(rest as never, {
+        pending: pendingMatch,
+        caseSensitive,
+        fuzzy,
+        includeSearch,
+      });
+    return useTableTabs.getState().tabs.find((tab) => tabMatchesRoute(matchRoute, tab, pending));
+  };
+  useTableTabs(find);
+  return useRouterSelect(find);
 }

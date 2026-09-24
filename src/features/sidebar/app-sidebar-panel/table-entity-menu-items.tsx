@@ -1,5 +1,12 @@
 import { Star, StarOff } from "lucide";
-import { CopyIcon, NetworkIcon, SquareTerminalIcon, TrashIcon, WrenchIcon } from "lucide-react";
+import {
+  CopyIcon,
+  FileCodeIcon,
+  NetworkIcon,
+  SquareTerminalIcon,
+  TrashIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import type { useActiveCapabilities } from "@/lib/db-selection";
@@ -12,6 +19,7 @@ interface TableEntityMenuItemsProps {
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onOpenInEditor: () => void;
+  onScriptTable: () => void;
   onCopy: () => void;
   onAlterTable: () => void;
   onFocusInErDiagram: () => void;
@@ -25,6 +33,7 @@ export function TableEntityMenuItems({
   isFavorite,
   onToggleFavorite,
   onOpenInEditor,
+  onScriptTable,
   onCopy,
   onAlterTable,
   onFocusInErDiagram,
@@ -41,6 +50,12 @@ export function TableEntityMenuItems({
         <SquareTerminalIcon />
         Im Editor öffnen
       </ContextMenuItem>
+      {caps.table_script && (
+        <ContextMenuItem onSelect={onScriptTable}>
+          <FileCodeIcon />
+          CREATE-Skript erstellen
+        </ContextMenuItem>
+      )}
       {caps.schema_object_copy && (
         <ContextMenuItem onSelect={onCopy}>
           <CopyIcon />

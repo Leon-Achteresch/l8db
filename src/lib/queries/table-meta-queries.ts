@@ -9,6 +9,7 @@ import {
   listSequences,
   listTableColumnsDetailed,
   listTriggers,
+  tableComment,
 } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { supports } from "@/lib/providers";
@@ -116,6 +117,24 @@ export function useIndexesQuery(schema: string, table: string) {
         database ?? undefined,
       ),
     enabled: supports(connection, "indexes") && Boolean(schema) && Boolean(table),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTableCommentQuery(schema: string, table: string) {
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  return useQuery({
+    queryKey: ["table-comment", connection?.id, database, schema, table],
+    queryFn: () =>
+      tableComment(
+        connection!.kind,
+        effectiveConnectionString(connection!),
+        schema,
+        table,
+        database ?? undefined,
+      ),
+    enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
   });
 }

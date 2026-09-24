@@ -56,6 +56,7 @@ pub struct Capabilities {
     pub full_table_export: bool,
     pub data_compare: bool,
     pub schema_object_copy: bool,
+    pub table_script: bool,
     pub migration_script: bool,
     pub procedures: bool,
     pub compile_objects: bool,
@@ -113,6 +114,7 @@ const NONE: Capabilities = Capabilities {
     full_table_export: false,
     data_compare: false,
     schema_object_copy: false,
+    table_script: false,
     migration_script: false,
     procedures: false,
     compile_objects: false,
@@ -143,6 +145,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     alter_columns: true,
     explain: true,
     overview: true,
+    table_script: true,
     ..NONE
 };
 
@@ -247,6 +250,7 @@ impl DatabaseKind {
                 alter_columns: true,
                 explain: true,
                 overview: true,
+                table_script: true,
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {

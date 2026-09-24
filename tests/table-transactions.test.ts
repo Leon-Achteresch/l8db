@@ -39,9 +39,8 @@ Object.defineProperty(globalThis, "window", {
 
 const { POSTGRES_CAPABILITIES, useProvidersStore } = await import("../src/lib/providers");
 const { useSettingsStore } = await import("../src/lib/settings");
-const { useTransactionStore, getQueryTransaction, getTableTransaction } = await import(
-  "../src/lib/transactions"
-);
+const { useTransactionStore, getQueryTransaction, getTableTransaction, tableReadTransactionId } =
+  await import("../src/lib/transactions");
 const { ensureManagedTransaction, runTableTransaction, finishManagedTransaction } = await import(
   "../src/lib/managed-transactions"
 );
@@ -147,6 +146,37 @@ describe("table transactions", () => {
     expect(getQueryTransaction("table-test")?.txId).toBe(query.txId);
     expect(getTableTransaction("table-test", null, "APP", "B")).toBeUndefined();
     expect(await edit("A")).toBe(tableId);
+  });
+
+  test("table reads use the open SQL session and stay isolated by database", async () => {
+    const query = await ensureManagedTransaction(connection(), "one", { type: "query" });
+    const read = (database: string, table: string) =>
+      tableReadTransactionId(
+        useTransactionStore.getState().transactions,
+        "table-test",
+        database,
+        "APP",
+        table,
+      );
+    expect(read("one", "A")).toBe(query.txId);
+    expect(read("two", "A")).toBeUndefined();
+    expect(
+      tableReadTransactionId(
+        useTransactionStore.getState().transactions,
+        "another",
+        "one",
+        "APP",
+        "A",
+      ),
+    ).toBeUndefined();
+
+    const table = await edit("A", "one");
+    expect(read("one", "A")).toBe(table);
+    expect(read("one", "B")).toBe(query.txId);
+    await finishManagedTransaction(table, false);
+    expect(read("one", "A")).toBe(query.txId);
+    await finishManagedTransaction(query.txId, false);
+    expect(read("one", "A")).toBeUndefined();
   });
 
   test("existing legacy transactions stay together", async () => {

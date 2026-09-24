@@ -187,6 +187,22 @@ export async function listViews(
   return invoke("list_views", { kind, connectionString, database, schema });
 }
 
+export async function getTableDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<string> {
+  return invoke("get_table_ddl", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+  });
+}
+
 export async function getViewDefinition(
   kind: DatabaseKind,
   connectionString: string,

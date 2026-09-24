@@ -9,6 +9,7 @@ export interface DetailedColumnInfo {
   is_primary_key: boolean;
   ordinal_position: number;
   character_maximum_length: number | null;
+  comment?: string | null;
 }
 
 export interface ImportColumnInfo {

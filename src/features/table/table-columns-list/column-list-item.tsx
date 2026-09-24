@@ -123,6 +123,11 @@ export function ColumnListItem({
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">{column.name}</p>
+              {column.comment && (
+                <p className="truncate text-xs text-muted-foreground" title={column.comment}>
+                  {column.comment}
+                </p>
+              )}
               <div className="mt-1 flex gap-1.5">
                 {column.is_primary_key && (
                   <Badge

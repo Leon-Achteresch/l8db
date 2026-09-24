@@ -117,7 +117,7 @@ test.skipIf(!process.env.L8DB_DASH_WORKFLOW)(
       await field("month").dragTo(shelf("Spalten"));
       await page.getByLabel("Chart-Titel", { exact: true }).fill("Umsatz pro Monat");
       await field("country").dragTo(shelf("Farbe"));
-      await page.locator(".recharts-surface").first().waitFor();
+      await page.locator(".chart-surface").first().waitFor();
       await page.screenshot({ path: "/tmp/l8db-tableau-fields.png" });
       await field("country").dragTo(shelf("Filter"));
       const filterEditor = page.getByRole("region", { name: "Filter für country" });

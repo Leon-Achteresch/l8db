@@ -23,6 +23,7 @@ import { RunControls } from "./query-view/run-controls";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
+import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
 import { useQueryExecutionState } from "./query-view/use-query-execution-state";
 import { useQueryFileActions } from "./query-view/use-query-file-actions";
@@ -64,6 +65,16 @@ export function QueryView({ tabId }: QueryViewProps) {
   const bookmarks = useQueryTabBookmarks(tabId);
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const analysis = useAnalysisSheet();
+  const editorSync = useEditorStateSync((snapshot) => {
+    if (snapshot.sql !== undefined) {
+      exec.setStatementRange(null);
+      exec.setStatementError(null);
+      updateQuerySql(snapshot.tabId, snapshot.sql);
+    }
+    if (snapshot.tabId !== tabId) return;
+    if (snapshot.selectedSql !== undefined) cursor.setSelectedSql(snapshot.selectedSql);
+    if (snapshot.cursorOffset !== undefined) cursor.setCursorOffset(snapshot.cursorOffset);
+  });
   useResetOnTabChange(tabId, cursor, exec);
   useRevealRequest(tabId, editorApiRef);
 
@@ -145,6 +156,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     <div className="flex h-full w-full min-h-0">
       <motion.div
         layout
+        layoutDependency={tabId}
         transition={{ layout: SPRING_LAYOUT }}
         className="flex h-full min-w-0 flex-1 flex-col"
       >
@@ -245,7 +257,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               statusVisible={workspace.statusVisible}
               statementCount={script.scriptSplit.statements.length}
               dialectLabel={schema.dialectLabel}
-              onSqlChange={updateQuerySql}
+              editorSync={editorSync}
               onSave={() => void file.handleFileSave(false)}
               onSearchTabs={() => setTabSearchOpen(true)}
             />

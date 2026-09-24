@@ -1,6 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   hoverMarkdown,
+  limitMatches,
+  mayMatchWord,
   packageForQualifier,
   resolveSymbol,
   rowsMarkdownTable,
@@ -145,5 +147,30 @@ describe("hover", () => {
   });
   it("escapes and truncates cells", () => {
     expect(rowsMarkdownTable(["a"], [{ a: "x".repeat(50) }])).toContain("…");
+  });
+});
+
+test("mayMatchWord keeps every candidate Monaco's fuzzy filter can match", () => {
+  expect(mayMatchWord("table_0001", "")).toBe(true);
+  expect(mayMatchWord("table_0001", "tbl01")).toBe(true);
+  expect(mayMatchWord("order_items", "item")).toBe(true);
+  expect(mayMatchWord("orderItems", "items")).toBe(true);
+  expect(mayMatchWord("SELECT", "sel")).toBe(true);
+  expect(mayMatchWord("customers", "stom")).toBe(false);
+  expect(mayMatchWord("table_0001", "tx")).toBe(false);
+});
+
+test("limitMatches caps large lists and keeps prefix matches first", () => {
+  const items = [
+    ...Array.from({ length: 500 }, (_, index) => ({ label: `x_table_${index}` })),
+    { label: "table_0001" },
+  ];
+  const limited = limitMatches(items, "tab", 10);
+  expect(limited.truncated).toBe(true);
+  expect(limited.items).toHaveLength(10);
+  expect(limited.items[0].label).toBe("table_0001");
+  expect(limitMatches(items.slice(0, 3), "", 10)).toEqual({
+    items: items.slice(0, 3),
+    truncated: false,
   });
 });

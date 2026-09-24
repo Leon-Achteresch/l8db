@@ -20,6 +20,7 @@ pub mod pool;
 mod postgres;
 pub mod provider;
 pub(crate) mod redis;
+pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
@@ -122,6 +123,7 @@ pub struct DetailedColumnInfo {
     pub is_primary_key: bool,
     pub ordinal_position: i32,
     pub character_maximum_length: Option<i32>,
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -518,6 +520,11 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = view;
         Err(unsupported("View-Definitionen"))
     }
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let _ = schema;
+        let _ = table;
+        Err(unsupported("Tabellen-Skripte"))
+    }
     async fn update_view_definition(
         &self,
         schema: &str,
@@ -783,6 +790,11 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = changes;
         Err(unsupported("Sequenzen"))
     }
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let _ = schema;
+        let _ = table;
+        Ok(None)
+    }
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
         let _ = schema;
         let _ = table;
@@ -1011,6 +1023,22 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         Err(unsupported("Datenbankübersicht"))
+    }
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<schema_catalog::CatalogObject>, String> {
+        let _ = (schema, types);
+        Err(unsupported("Schema-Vergleich"))
+    }
+    async fn schema_partition_ddl(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let _ = (schema, tables);
+        Err(unsupported("Partitionierung"))
     }
     async fn list_schema_copy_objects(
         &self,

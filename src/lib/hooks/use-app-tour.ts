@@ -33,8 +33,8 @@ async function goToStepRoute(step: TourStep, navigate: ReturnType<typeof useNavi
 
 export function useAppTour() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = useTourStore((s) => s.active);
+  const pathname = useRouterState({ select: (s) => (active ? s.location.pathname : "") });
   const chapterIndex = useTourStore((s) => s.chapterIndex);
   const stepIndex = useTourStore((s) => s.stepIndex);
   const autoPilot = useTourStore((s) => s.autoPilot);
@@ -42,6 +42,10 @@ export function useAppTour() {
   const minimized = useTourStore((s) => s.minimized);
   const runId = useTourStore((s) => s.runId);
   const generation = useRef(0);
+
+  useEffect(() => {
+    if (active) void import("driver.js/dist/driver.css");
+  }, [active]);
 
   useEffect(() => {
     if (!active || minimized) {

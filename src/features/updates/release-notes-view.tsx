@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { Markdown } from "@/components/markdown";
+import { FeatureVideoGallery } from "@/features/updates/feature-video-gallery";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import changelog from "../../../CHANGELOG.md?raw";
 
@@ -11,6 +12,7 @@ export function ReleaseNotesView() {
         <p className="mt-1 text-sm text-muted-foreground">
           Alle veröffentlichten Änderungen dieser App.
         </p>
+        <FeatureVideoGallery />
         <motion.div
           layout
           transition={{ layout: SPRING_LAYOUT }}

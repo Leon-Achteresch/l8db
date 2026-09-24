@@ -61,6 +61,7 @@ export interface Capabilities {
   scheduler_jobs: boolean;
   object_admin: boolean;
   schema_object_copy: boolean;
+  table_script: boolean;
   migration_script: boolean;
   server_output: boolean;
   query_cancel: boolean;

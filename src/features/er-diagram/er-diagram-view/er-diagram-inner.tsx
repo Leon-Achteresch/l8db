@@ -13,10 +13,12 @@ import {
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildEdges, buildNodes } from "@/features/er-diagram/er-diagram-view/build-graph";
-import { NODE_WIDTH } from "@/features/er-diagram/er-diagram-view/constants";
+import { NODE_WIDTH, REVEAL_BATCH } from "@/features/er-diagram/er-diagram-view/constants";
+import { ErFullDetailContext } from "@/features/er-diagram/er-diagram-view/er-detail-context";
 import { ErFocusPanel } from "@/features/er-diagram/er-diagram-view/er-focus-panel";
+import { ErZoomWatcher } from "@/features/er-diagram/er-diagram-view/er-zoom-watcher";
 import { ExportButtons } from "@/features/er-diagram/er-diagram-view/export-buttons";
-import { computeElkLayout } from "@/features/er-diagram/er-diagram-view/layout";
+import { computeElkLayout, estimateNodeHeight } from "@/features/er-diagram/er-diagram-view/layout";
 import { nodeTypes } from "@/features/er-diagram/er-diagram-view/node-types";
 import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import { useActiveConnection } from "@/lib/connections";
@@ -79,6 +81,15 @@ export function ERDiagramInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [layoutReady, setLayoutReady] = useState(false);
   const layoutVersionRef = useRef(0);
+  const [exporting, setExporting] = useState(false);
+  const [compact, setCompact] = useState(true);
+  const shownEdges = useMemo(
+    () =>
+      compact && !exporting
+        ? edges.map((edge) => ({ ...edge, label: undefined, animated: false }))
+        : edges,
+    [edges, compact, exporting],
+  );
 
   const builtEdges = useMemo(() => {
     if (!erSchema) return [];
@@ -100,9 +111,29 @@ export function ERDiagramInner() {
     const foreignKeys = erSchema.foreign_keys;
     const applyPositions = (positions: Map<string, { x: number; y: number }>) => {
       if (layoutVersionRef.current !== version) return;
-      setNodes(buildNodes(tables, foreignKeys, positions));
+      setNodes(
+        buildNodes(tables, foreignKeys, positions).map((node, index) => ({
+          ...node,
+          initialWidth: NODE_WIDTH,
+          initialHeight: estimateNodeHeight(tables[index]),
+          hidden: index >= REVEAL_BATCH,
+        })),
+      );
       setEdges(builtEdges);
       setLayoutReady(true);
+      let shown = REVEAL_BATCH;
+      const reveal = () => {
+        if (layoutVersionRef.current !== version || shown >= tables.length) return;
+        shown += REVEAL_BATCH;
+        const limit = shown;
+        setNodes((current) =>
+          current.map((node, index) =>
+            node.hidden && index < limit ? { ...node, hidden: false } : node,
+          ),
+        );
+        requestAnimationFrame(() => setTimeout(reveal));
+      };
+      requestAnimationFrame(() => setTimeout(reveal));
     };
     computeElkLayout(tables, foreignKeys).then(applyPositions, () => {
       const columns = 4;
@@ -176,55 +207,60 @@ export function ERDiagramInner() {
   return (
     <main className="flex flex-1 flex-col h-full">
       <div className="flex-1 w-full h-full">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.1}
-          maxZoom={2}
-          proOptions={{ hideAttribution: true }}
-          key={layoutReady ? "ready" : "loading"}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-          <Controls />
-          <MiniMap
-            nodeStrokeColor="var(--color-border)"
-            nodeColor="var(--color-card)"
-            maskColor="rgba(0,0,0,0.1)"
-          />
-          <Panel position="top-left" className="flex flex-col gap-1">
-            <div className="rounded-md bg-card border border-border px-3 py-2 text-xs text-muted-foreground shadow-sm">
-              <span className="font-medium text-foreground">{erSchema.tables.length}</span>{" "}
-              Tabellen,{" "}
-              <span className="font-medium text-foreground">{erSchema.foreign_keys.length}</span>{" "}
-              Foreign Keys
-            </div>
-            <ErFocusPanel
-              tables={fullSchema.tables}
-              focusKey={focusKey}
-              depth={focus?.depth ?? 1}
-              onFocusChange={(key) => setFocus(key, focus?.depth ?? 1)}
-              onDepthChange={(depth) => setFocus(focusKey, depth)}
-              onClear={() => setFocus(null, 1)}
+        <ErFullDetailContext value={exporting}>
+          <ReactFlow
+            nodes={nodes}
+            edges={shownEdges}
+            onlyRenderVisibleElements={!exporting}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.2, includeHiddenNodes: true }}
+            defaultViewport={{ x: 0, y: 0, zoom: 0.1 }}
+            minZoom={0.1}
+            maxZoom={2}
+            proOptions={{ hideAttribution: true }}
+            key={layoutReady ? "ready" : "loading"}
+          >
+            <ErZoomWatcher onChange={setCompact} />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            <Controls />
+            <MiniMap
+              nodeStrokeColor="var(--color-border)"
+              nodeColor="var(--color-card)"
+              maskColor="rgba(0,0,0,0.1)"
             />
-            <ExportButtons nodes={nodes} />
-            <div className="rounded-md bg-card border border-border px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm flex flex-col gap-0.5">
-              <div className="flex items-center gap-1.5">
-                <KeyRound className="size-3 text-amber-500" /> Primary Key
+            <Panel position="top-left" className="flex flex-col gap-1">
+              <div className="rounded-md bg-card border border-border px-3 py-2 text-xs text-muted-foreground shadow-sm">
+                <span className="font-medium text-foreground">{erSchema.tables.length}</span>{" "}
+                Tabellen,{" "}
+                <span className="font-medium text-foreground">{erSchema.foreign_keys.length}</span>{" "}
+                Foreign Keys
               </div>
-              <div className="flex items-center gap-1.5">
-                <KeyRound className="size-3 text-blue-500" /> Foreign Key
+              <ErFocusPanel
+                tables={fullSchema.tables}
+                focusKey={focusKey}
+                depth={focus?.depth ?? 1}
+                onFocusChange={(key) => setFocus(key, focus?.depth ?? 1)}
+                onDepthChange={(depth) => setFocus(focusKey, depth)}
+                onClear={() => setFocus(null, 1)}
+              />
+              <ExportButtons nodes={nodes} exporting={exporting} setExporting={setExporting} />
+              <div className="rounded-md bg-card border border-border px-3 py-1.5 text-[10px] text-muted-foreground shadow-sm flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <KeyRound className="size-3 text-amber-500" /> Primary Key
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <KeyRound className="size-3 text-blue-500" /> Foreign Key
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-500 font-bold">*</span> NOT NULL
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-amber-500 font-bold">*</span> NOT NULL
-              </div>
-            </div>
-          </Panel>
-        </ReactFlow>
+            </Panel>
+          </ReactFlow>
+        </ErFullDetailContext>
       </div>
     </main>
   );

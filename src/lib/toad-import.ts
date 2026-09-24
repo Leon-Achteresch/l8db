@@ -45,6 +45,7 @@ export function parseToadExport(text: string): Array<ExportedConnection | string
         favorite: /^true$/i.test(tag(block, "Favorite")),
         color: null,
         schemas: null,
+        showSingleSchemaSwitcher: true,
       };
     } catch (caught) {
       return `${user}@${source}: ${caught instanceof Error ? caught.message : String(caught)}`;

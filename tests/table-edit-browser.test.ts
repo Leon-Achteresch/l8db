@@ -1,11 +1,23 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import type { Browser, Locator } from "playwright";
 import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
+
+let sharedChromium: Browser | undefined;
+
+async function chromiumBrowser(): Promise<Browser> {
+  if (!sharedChromium) sharedChromium = await chromium.launch({ headless: true });
+  return sharedChromium;
+}
+
+afterAll(async () => {
+  await sharedChromium?.close();
+});
 
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "table grid: first click focuses, second click opens focused editor",
   async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromiumBrowser();
     const page = await browser.newPage({
       viewport: { width: 1280, height: 820 },
     });
@@ -62,12 +74,147 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 
       expect(errors).toEqual([]);
     } finally {
-      await page.close();
       await saveBrowserArtifacts(browser, "table-edit");
-      await browser.close();
+      await page.close();
     }
   },
   60000,
+);
+
+async function pasteInto(el: Locator, text: string) {
+  await el.evaluate((node, value) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", value);
+    node.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+  }, text);
+}
+
+test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
+  "draft row: pasting tab-separated values spreads across columns",
+  async () => {
+    const browser = await chromiumBrowser();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.__TAURI_INTERNALS__ = { invoke: async () => [] };
+    });
+    try {
+      await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
+      const source = page.locator('tr[data-index="1"] td[data-col="email"]');
+      await source.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Zeile duplizieren", exact: true }).click();
+      const draft = page.locator("tr[data-draft-row]");
+      await draft.waitFor();
+
+      const idInput = draft.getByLabel("id bearbeiten", { exact: true });
+      await idInput.click();
+      await pasteInto(idInput, "42\tspread@example.test\tBonn");
+
+      expect(await idInput.inputValue()).toBe("42");
+      expect(await draft.getByLabel("email bearbeiten", { exact: true }).inputValue()).toBe(
+        "spread@example.test",
+      );
+      expect(await draft.getByLabel("city bearbeiten", { exact: true }).inputValue()).toBe("Bonn");
+      await page.screenshot({ path: "/tmp/l8db-paste-spread.png" });
+
+      await pasteInto(idInput, "7\tleer\t");
+      expect(await idInput.inputValue()).toBe("7");
+      expect(await draft.getByLabel("email bearbeiten", { exact: true }).inputValue()).toBe("leer");
+      expect(await draft.getByLabel("city bearbeiten", { exact: true }).inputValue()).toBe("");
+
+      await pasteInto(idInput, "1\tx\ty\n2\tz\tw");
+      expect(await idInput.inputValue()).toBe("1");
+      expect(await draft.getByLabel("email bearbeiten", { exact: true }).inputValue()).toBe("x");
+      expect(await draft.getByLabel("city bearbeiten", { exact: true }).inputValue()).toBe("y");
+
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+  60_000,
+);
+
+test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
+  "column header: right-click copies the whole column as newline-separated text",
+  async () => {
+    const browser = await chromiumBrowser();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.invokes = [];
+      window.__TAURI_INTERNALS__ = {
+        invoke: async (cmd, args) => {
+          window.invokes.push({ cmd, args });
+          return [];
+        },
+      };
+    });
+    try {
+      await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
+      const header = page.locator('th[data-column-id="email"]');
+      await header.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Spalte kopieren", exact: true }).click();
+
+      const expected = Array.from({ length: 12 }, (_, i) => `user${i + 1}@example.test`).join("\n");
+      const write = await page.evaluate(() =>
+        window.invokes.find((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
+      );
+      expect(write).toBeTruthy();
+      expect(write.args.text).toBe(expected);
+      await page.screenshot({ path: "/tmp/l8db-copy-column.png" });
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+  60_000,
+);
+
+test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
+  "row context menu: copies the whole row as tab-separated text",
+  async () => {
+    const browser = await chromiumBrowser();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    page.setDefaultTimeout(10_000);
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.invokes = [];
+      window.__TAURI_INTERNALS__ = {
+        invoke: async (cmd, args) => {
+          window.invokes.push({ cmd, args });
+          return [];
+        },
+      };
+    });
+    try {
+      await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
+      const cell = page.locator('tr[data-index="1"] td[data-col="email"]');
+      await cell.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Zeile kopieren", exact: true }).click();
+      await page.waitForFunction(
+        () => window.invokes.some((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
+        undefined,
+        { timeout: 10_000 },
+      );
+
+      const write = await page.evaluate(() =>
+        window.invokes.find((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
+      );
+      expect(write).toBeTruthy();
+      expect(write.args.text).toBe("2\tuser2@example.test\tHamburg");
+      await page.screenshot({ path: "/tmp/l8db-copy-row.png" });
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+  60_000,
 );
 
 for (const engine of [chromium, webkit]) {
@@ -77,7 +224,8 @@ for (const engine of [chromium, webkit]) {
   )(
     `${engine.name()}: duplicated rows stay editable until saved and survive insert conflicts`,
     async () => {
-      const browser = await engine.launch({ headless: true });
+      const browser =
+        engine === chromium ? await chromiumBrowser() : await engine.launch({ headless: true });
       const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -95,9 +243,7 @@ for (const engine of [chromium, webkit]) {
         expect(await draft.getByLabel("email bearbeiten", { exact: true }).inputValue()).toBe(
           "user2@example.test",
         );
-        expect(await draft.getByLabel("id Wertmodus", { exact: true }).textContent()).toBe(
-          "Standard",
-        );
+        expect(await draft.getByLabel("id bearbeiten", { exact: true }).inputValue()).toBe("");
         await draft.getByLabel("email bearbeiten", { exact: true }).fill("conflict@example.test");
         await draft.getByLabel("city bearbeiten", { exact: true }).fill("Leipzig");
         await page.keyboard.press("Enter");
@@ -133,8 +279,6 @@ for (const engine of [chromium, webkit]) {
         await source.click({ button: "right" });
         await page.getByRole("menuitem", { name: "Zeile duplizieren", exact: true }).click();
         await draft.waitFor();
-        await draft.getByLabel("city Wertmodus", { exact: true }).click();
-        await page.getByRole("option", { name: "NULL", exact: true }).click();
         await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
         await draft.waitFor({ state: "detached" });
         expect(await page.evaluate(() => window.testInserts.length)).toBe(2);
@@ -143,18 +287,15 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("menuitem", { name: "Zeile duplizieren", exact: true }).click();
         await draft.waitFor();
         await draft.getByLabel("email bearbeiten", { exact: true }).fill("");
-        await draft.getByLabel("city Wertmodus", { exact: true }).click();
-        await page.getByRole("option", { name: "NULL", exact: true }).click();
+        await draft.getByLabel("city bearbeiten", { exact: true }).fill("");
         await page.getByRole("button", { name: "Speichern", exact: true }).click();
         await draft.waitFor({ state: "detached" });
-        expect(await page.evaluate(() => window.testInserts.at(-1))).toEqual({
-          email: "",
-          city: null,
-        });
+        expect(await page.evaluate(() => window.testInserts.at(-1))).toEqual({});
         expect(errors).toEqual([]);
       } finally {
         await saveBrowserArtifacts(browser, "table-edit");
-        await browser.close();
+        await page.close();
+        if (engine !== chromium) await browser.close();
       }
     },
     60_000,

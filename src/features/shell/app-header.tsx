@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
@@ -9,6 +9,7 @@ import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { WindowControls } from "@/features/shell/window-controls";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
@@ -18,11 +19,21 @@ import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { useVersioningPanel } from "@/lib/versioning/panel";
 
+const HEADER_SECTIONS = ["/about", "/dev", "/drivers", "/mcp", "/settings"];
+
+function headerSection(pathname: string) {
+  return HEADER_SECTIONS.find((section) =>
+    section === "/about" || section === "/dev"
+      ? pathname === section
+      : pathname.startsWith(section),
+  );
+}
+
 export function AppHeader() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const versioning = useVersioningPanel();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const section = useRouterSelect((s) => headerSection(s.location.pathname));
   const txCount = useTransactionStore((s) => s.transactions.length);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
   const togglePanel = useTransactionStore((s) => s.togglePanel);
@@ -36,7 +47,7 @@ export function AppHeader() {
     syncWithBackend();
   }, [syncWithBackend]);
 
-  if (pathname === "/about") return null;
+  if (section === "/about") return null;
 
   return (
     <header
@@ -49,7 +60,7 @@ export function AppHeader() {
         USE_CUSTOM_WINDOW_CONTROLS && "pr-[140px]",
       )}
     >
-      <AppHeaderNavigation pathname={pathname} />
+      <AppHeaderNavigation />
 
       <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
         <div className="flex w-full max-w-[640px] items-center gap-2">
@@ -73,10 +84,10 @@ export function AppHeader() {
             <Link
               to="/dev"
               aria-label="DEV · Design Lab"
-              aria-current={pathname === "/dev" ? "page" : undefined}
+              aria-current={section === "/dev" ? "page" : undefined}
               className={cn(
                 "inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 font-mono text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                pathname === "/dev" && "bg-primary/12 text-foreground",
+                section === "/dev" && "bg-primary/12 text-foreground",
               )}
             >
               DEV
@@ -187,7 +198,7 @@ export function AppHeader() {
             className={cn(
               "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
-              pathname.startsWith("/drivers") && "bg-primary/12 text-foreground",
+              section === "/drivers" && "bg-primary/12 text-foreground",
             )}
           >
             <PlugZap className="size-4" strokeWidth={2} />
@@ -202,7 +213,7 @@ export function AppHeader() {
               className={cn(
                 "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
                 "hover:bg-muted hover:text-foreground",
-                pathname.startsWith("/mcp") && "bg-primary/12 text-foreground",
+                section === "/mcp" && "bg-primary/12 text-foreground",
               )}
             >
               <Bot className="size-4" strokeWidth={2} />
@@ -217,7 +228,7 @@ export function AppHeader() {
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
-              pathname.startsWith("/settings") && "bg-primary/12 text-foreground",
+              section === "/settings" && "bg-primary/12 text-foreground",
             )}
           >
             <Settings className="size-4" strokeWidth={2} />

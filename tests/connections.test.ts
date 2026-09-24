@@ -711,13 +711,39 @@ describe("Sichtbare Schemas", () => {
   });
 
   test("export and import round-trip the schema selection", () => {
-    const file = buildConnectionExport([{ ...direct, schemas: ["HR", "APP"] }, direct]);
+    const file = buildConnectionExport([
+      { ...direct, schemas: ["HR", "APP"], showSingleSchemaSwitcher: false },
+      direct,
+    ]);
     expect(file.connections[0].schemas).toEqual(["HR", "APP"]);
     expect(file.connections[1].schemas).toBeNull();
+    expect(file.connections.map((connection) => connection.showSingleSchemaSwitcher)).toEqual([
+      false,
+      true,
+    ]);
     const parsed = parseConnectionImport(JSON.stringify(file), []);
     const [withFilter, without] = resolveImport(parsed.candidates, new Set([0, 1]), "skip");
     expect(withFilter.schemas).toEqual(["HR", "APP"]);
     expect(without.schemas).toBeNull();
+    expect(withFilter.showSingleSchemaSwitcher).toBe(false);
+    expect(without.showSingleSchemaSwitcher).toBe(true);
+  });
+
+  test("the single-schema switcher setting persists per connection", () => {
+    useConnectionsStore.getState().updateConnection("direct", {
+      ...direct,
+      showSingleSchemaSwitcher: false,
+    });
+    const stored = JSON.parse(storage.get("l8db.connections") ?? "{}");
+    expect(stored.state.connections[0].showSingleSchemaSwitcher).toBe(false);
+    expect(stored.state.connections[1].showSingleSchemaSwitcher).toBeUndefined();
+  });
+
+  test("older imports default to showing the single-schema switcher", () => {
+    const file = buildConnectionExport([direct]);
+    delete (file.connections[0] as { showSingleSchemaSwitcher?: boolean }).showSingleSchemaSwitcher;
+    const parsed = parseConnectionImport(JSON.stringify(file), []);
+    expect(parsed.candidates[0].profile?.showSingleSchemaSwitcher).toBe(true);
   });
 });
 

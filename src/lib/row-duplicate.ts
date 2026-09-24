@@ -33,6 +33,30 @@ function isAutoValue(meta: DuplicateColumnMeta | undefined): boolean {
   return meta.column_default !== null && meta.column_default !== undefined;
 }
 
+export function buildEmptyPrefill(
+  columns: string[],
+  columnDetails?: DuplicateColumnMeta[],
+): DuplicatePrefill {
+  const metaByName = new Map<string, DuplicateColumnMeta>();
+  for (const meta of columnDetails ?? []) {
+    metaByName.set(meta.name, meta);
+  }
+
+  const prefill: DuplicatePrefill = {};
+  for (const column of columns) {
+    if (column === CTID_COLUMN) continue;
+    const meta = metaByName.get(column);
+    if (isGenerated(meta)) continue;
+    prefill[column] = {
+      mode: "default",
+      value: "",
+      isPrimaryKey: !!meta?.is_primary_key,
+      cleared: false,
+    };
+  }
+  return prefill;
+}
+
 export function buildDuplicatePrefill(
   columns: string[],
   row: Record<string, unknown>,
@@ -87,4 +111,49 @@ export function describeInsertError(error: unknown): string {
     return `Konflikt: Ein Datensatz mit diesen Schlüsselwerten existiert bereits. Bitte Primärschlüssel oder eindeutige Spalten anpassen.\n${message}`;
   }
   return message;
+}
+
+export type PasteSpreadAssignment = {
+  column: string;
+  mode: "value" | "default";
+  value: string;
+};
+
+export type PasteSpread = {
+  assignments: PasteSpreadAssignment[];
+  droppedRows: number;
+  droppedCells: number;
+};
+
+export function splitTabularPaste(text: string): string[][] {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n");
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+  return lines.map((line) => line.split("\t"));
+}
+
+export function planPasteSpread(
+  text: string,
+  orderedColumns: string[],
+  startColumn: string,
+): PasteSpread {
+  const rows = splitTabularPaste(text);
+  const droppedRows = Math.max(0, rows.length - 1);
+  const cells = rows[0] ?? [];
+  const startIndex = Math.max(0, orderedColumns.indexOf(startColumn));
+  const assignments: PasteSpreadAssignment[] = [];
+  let droppedCells = 0;
+  for (let i = 0; i < cells.length; i += 1) {
+    const column = orderedColumns[startIndex + i];
+    if (!column) {
+      droppedCells += 1;
+      continue;
+    }
+    assignments.push({
+      column,
+      mode: cells[i] === "" ? "default" : "value",
+      value: cells[i] === "" ? "" : cells[i],
+    });
+  }
+  return { assignments, droppedRows, droppedCells };
 }

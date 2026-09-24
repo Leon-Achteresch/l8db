@@ -122,7 +122,7 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       await field("amount").dragTo(shelf("Zeilen"));
       await field("created_at").dragTo(shelf("Spalten"));
       await field("channel").dragTo(shelf("Farbe"));
-      await page.locator(".recharts-surface").first().waitFor();
+      await page.locator(".chart-surface").first().waitFor();
       await field("amount").dragTo(shelf("Filter"));
       await page.getByLabel("Filter von", { exact: true }).fill("100");
       await page.getByLabel("Filter bis", { exact: true }).fill("1000");
@@ -145,7 +145,7 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
       const drawer = page.getByRole("dialog", { name: "Gespeicherte Charts", exact: true });
       await drawer.getByRole("button", { name: "Chart speichern", exact: true }).click();
       await drawer.getByRole("button", { name: "Ins Dashboard laden", exact: true }).click();
-      await page.locator(".recharts-surface").first().waitFor();
+      await page.locator(".chart-surface").first().waitFor();
       await page.getByRole("button", { name: "Zum Dashboard →", exact: true }).click();
       expect(await page.locator(".react-grid-item").count()).toBe(2);
       await page.waitForTimeout(500);

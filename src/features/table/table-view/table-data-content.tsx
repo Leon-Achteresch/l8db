@@ -1,4 +1,5 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
+import { useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
@@ -47,6 +48,7 @@ type Props = Pick<
   | "setRevealColumn"
   | "page"
   | "setPage"
+  | "addRowSignal"
 > & {
   schema: string;
   table: string;
@@ -88,10 +90,13 @@ export function TableDataContent({
   setRevealColumn,
   page,
   setPage,
+  addRowSignal,
   schema,
   table,
   emptyMessage,
 }: Props) {
+  const gridReady = useDeferredValue(!isLoading, false);
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <TableViewsPanel
@@ -128,7 +133,7 @@ export function TableDataContent({
           onColumnSelect={(name) => setRevealColumn({ name, nonce: Date.now() })}
         />
       </div>
-      {isLoading ? (
+      {isLoading || (!isError && !gridReady) ? (
         <TableDataSkeleton />
       ) : isError ? (
         <TableDataError
@@ -219,6 +224,7 @@ export function TableDataContent({
           columnDetails={columnDetails}
           onRefresh={handleRefresh}
           searchRequiresFocus={inDrawer}
+          addRowSignal={addRowSignal}
         />
       )}
     </div>

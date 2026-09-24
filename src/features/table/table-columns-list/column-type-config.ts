@@ -106,7 +106,8 @@ export function matchesColumnFilter(
 ): boolean {
   const matchesSearch =
     column.name.toLowerCase().includes(search.toLowerCase()) ||
-    column.data_type.toLowerCase().includes(search.toLowerCase());
+    column.data_type.toLowerCase().includes(search.toLowerCase()) ||
+    !!column.comment?.toLowerCase().includes(search.toLowerCase());
 
   if (!matchesSearch) return false;
 

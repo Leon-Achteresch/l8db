@@ -3,6 +3,7 @@ export { suggestCompletions } from "./completions";
 export type { HoverExtras } from "./hover";
 export { hoverMarkdown, quoteIdent, rowsMarkdownTable } from "./hover";
 export { SQL_KEYWORDS } from "./keywords";
+export { limitMatches, mayMatchWord } from "./prefilter";
 export {
   aliasMap,
   memberSuggestions,

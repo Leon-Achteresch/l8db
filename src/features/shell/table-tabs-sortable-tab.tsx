@@ -23,7 +23,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SPRING, SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
+import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { useSettingsStore } from "@/lib/settings";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
@@ -31,7 +31,6 @@ import { TOOL_TABS } from "@/lib/tool-tabs";
 import { cn } from "@/lib/utils";
 
 export interface TableTabsSortableTabProps {
-  activeIndicatorId: string;
   tab: Tab;
   index: number;
   isActive: boolean;
@@ -87,7 +86,6 @@ function tabVisual(tab: Tab) {
 }
 
 export function TableTabsSortableTab({
-  activeIndicatorId,
   tab,
   index,
   isActive,
@@ -129,6 +127,7 @@ export function TableTabsSortableTab({
           ref={ref}
           data-tab-key={tabKey(tab)}
           layout={!isDragging && !reduceMotion ? "position" : false}
+          layoutDependency={index}
           transition={{ layout: SPRING }}
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
@@ -143,13 +142,9 @@ export function TableTabsSortableTab({
           )}
         >
           {isActive && (
-            <motion.span
+            <span
               aria-hidden="true"
-              layoutId={reduceMotion ? undefined : activeIndicatorId}
-              initial={false}
-              transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
-              style={{ borderRadius: 9999 }}
-              className="pointer-events-none absolute inset-0 -z-10 bg-card shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
+              className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-card shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10"
             />
           )}
           <motion.button

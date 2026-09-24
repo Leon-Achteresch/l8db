@@ -22,7 +22,7 @@ export function ResultSortHeader({ col, sorts, setSorts }: ResultSortHeaderProps
   return (
     <th
       aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
-      className="border-b border-r bg-muted/90 p-0 text-left"
+      className="border-b border-r bg-muted p-0 text-left"
     >
       <button
         type="button"

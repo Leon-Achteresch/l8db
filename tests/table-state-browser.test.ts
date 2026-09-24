@@ -74,10 +74,7 @@ for (const engine of [chromium, webkit]) {
           element.scrollLeft = 850;
         });
         await page.waitForTimeout(100);
-        const nextPage = page
-          .locator("button")
-          .filter({ has: page.locator("svg.lucide-chevron-right") });
-        await nextPage.click();
+        await page.getByRole("button", { name: "Nächste Seite", exact: true }).click();
         await page.getByText("Seite 2 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(200);
         expect(await scroller.evaluate((element) => element.scrollLeft)).toBe(850);

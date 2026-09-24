@@ -190,7 +190,7 @@ export const QueryResultTable = memo(function QueryResultTable({
               <col key={index} style={{ width }} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-10">
+          <thead className="sticky top-0 z-20 bg-muted">
             <tr>
               <th className="sticky left-0 z-20 min-w-12 border-b border-r bg-muted px-3 py-1.5 text-right text-xs font-medium text-muted-foreground">
                 #

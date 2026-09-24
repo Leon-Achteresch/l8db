@@ -61,8 +61,21 @@ export function sameTableSource(previous: readonly unknown[], next: readonly unk
   return (
     previous[0] === "rows" &&
     next[0] === "rows" &&
-    [1, 2, 3, 4, 8].every((index) => previous[index] === next[index])
+    [1, 2, 3, 4, 8, 12].every((index) => previous[index] === next[index])
   );
+}
+
+export function invalidateTableReads(
+  client: QueryClient,
+  connectionId: string,
+  database: string | null | undefined,
+) {
+  return client.invalidateQueries({
+    predicate: (query) =>
+      (query.queryKey[0] === "rows" || query.queryKey[0] === "count") &&
+      query.queryKey[1] === connectionId &&
+      (query.queryKey[2] ?? null) === (database ?? null),
+  });
 }
 
 export function createAppQueryClient() {

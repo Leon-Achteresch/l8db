@@ -7,9 +7,9 @@ import { Search } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { rankCommands } from "@/lib/command-score";
 import { EASE_OUT } from "@/lib/ease";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
+import { useRankedCommands } from "@/lib/hooks/use-ranked-commands";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { PresenceGate } from "@/lib/presence-gate";
@@ -82,10 +82,7 @@ export function CommandPalette({
     };
   }, [open]);
 
-  const filtered = useMemo(() => {
-    const matches = rankCommands(items, query);
-    return maxVisible && matches.length > maxVisible ? matches.slice(0, maxVisible) : matches;
-  }, [items, maxVisible, query]);
+  const { query: rankedQuery, list: filtered } = useRankedCommands(items, query, maxVisible);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.
@@ -108,7 +105,7 @@ export function CommandPalette({
   // array, so they cannot drift apart.
   const rows = useMemo(() => grouped.flatMap(([, list]) => list), [grouped]);
 
-  const { activeIndex: active, moveTo, moveActive } = useRowCursor(rows, query);
+  const { activeIndex: active, moveTo, moveActive } = useRowCursor(rows, rankedQuery);
 
   // Clearing the query would drop the cursor on its own, but only if it had
   // changed; `moveTo(null)` covers reopening on an already-empty query.
@@ -173,7 +170,7 @@ export function CommandPalette({
               transition={{ duration: 0.18, ease: EASE_OUT }}
               {...gate}
               onClick={() => setOpen(false)}
-              className="pointer-events-auto fixed inset-0 z-[100] bg-background/5 [backdrop-filter:blur(12px)_saturate(140%)] [-webkit-backdrop-filter:blur(12px)_saturate(140%)]"
+              className="pointer-events-auto fixed inset-0 z-[100] bg-background/60"
             />
           )}
         </PresenceGate>

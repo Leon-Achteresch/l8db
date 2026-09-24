@@ -1,3 +1,39 @@
+import { splitSqlStatements } from "@/lib/sql-statements";
+import { sqlCode } from "./sql-code";
+import type { VersioningKind } from "./types";
+
+export function assertMappedWriteScope(sql: string, schema: string, kind: VersioningKind) {
+  const identifier = '(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$#]*)';
+  const target = new RegExp(
+    `^(?:UPDATE|DELETE\\s+FROM|INSERT\\s+INTO|MERGE\\s+INTO|TRUNCATE(?:\\s+TABLE)?|ALTER\\s+(?:TABLE(?:\\s+ONLY)?|MATERIALIZED\\s+VIEW|VIEW|INDEX|SEQUENCE|FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?)(?:\\s+IF\\s+EXISTS)?|DROP\\s+(?:TABLE|MATERIALIZED\\s+VIEW|VIEW|INDEX|SEQUENCE|FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?|SCHEMA)(?:\\s+IF\\s+EXISTS)?|CREATE(?:\\s+OR\\s+REPLACE)?\\s+(?:(?:UNIQUE\\s+)?INDEX|TABLE|MATERIALIZED\\s+VIEW|VIEW|SEQUENCE|FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?|TRIGGER)(?:\\s+IF\\s+NOT\\s+EXISTS)?)\\s+(${identifier})\\s*\\.`,
+    "i",
+  );
+  const indexTable = new RegExp(`\\bON\\s+(${identifier})\\s*\\.`, "i");
+  for (const statement of splitSqlStatements(sql, kind).statements) {
+    const code = sqlCode(statement.text);
+    if (
+      /^(?:DROP|TRUNCATE)\b/i.test(code) &&
+      new RegExp(`,\\s*${identifier}\\s*\\.`, "i").test(code)
+    )
+      throw new Error("Mehrere schemaqualifizierte Ziele in einer Migration getrennt ausführen.");
+    const matches = [target.exec(code)];
+    if (/^CREATE(?:\s+OR\s+REPLACE)?\s+(?:(?:UNIQUE\s+)?INDEX|TRIGGER)\b/i.test(code))
+      matches.push(indexTable.exec(code));
+    for (const match of matches) {
+      if (!match) continue;
+      const name = match[1].startsWith('"')
+        ? match[1].slice(1, -1).replaceAll('""', '"')
+        : kind === "oracle"
+          ? match[1].toUpperCase()
+          : match[1].toLowerCase();
+      if (name !== schema)
+        throw new Error(
+          `Migration schreibt in Schema ${name} statt in das zugeordnete Kundenschema ${schema}.`,
+        );
+    }
+  }
+}
+
 export function requalify(sql: string, from: string, to: string): string {
   if (!from || !to) throw new Error("Schema-Zuordnung ist unvollständig.");
   let output = "";

@@ -10,6 +10,7 @@ import {
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
+import { invalidateTableReads } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { locateText } from "@/lib/sql-diagnostics";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -113,6 +114,7 @@ export function useRunSql({
         });
       };
       const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
+      let executionStarted = false;
       try {
         await confirmSqlExecution(
           connection.kind,
@@ -120,6 +122,7 @@ export function useRunSql({
           sql,
           database ?? undefined,
         );
+        executionStarted = true;
         const res = await executeSqlWithTransactions({
           connection,
           database,
@@ -138,12 +141,7 @@ export function useRunSql({
         setResult(null);
         finishHistory({ rowCount: null, error: message });
       } finally {
-        if (caps.query_language === "redis") {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["rows", connection.id] }),
-            queryClient.invalidateQueries({ queryKey: ["count", connection.id] }),
-          ]);
-        }
+        if (executionStarted) await invalidateTableReads(queryClient, connection.id, database);
         await collectOutput();
         runningRef.current = false;
         setIsRunning(false);

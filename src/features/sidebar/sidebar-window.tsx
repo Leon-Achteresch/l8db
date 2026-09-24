@@ -71,7 +71,7 @@ export function SidebarWindow({
         update();
       });
     };
-    update();
+    schedule();
     scroller.addEventListener("scroll", schedule, { passive: true });
     const observer = new ResizeObserver(schedule);
     observer.observe(scroller);

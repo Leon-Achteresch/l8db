@@ -333,6 +333,7 @@ impl DatabaseAdapter for OdbcAdapter {
                     is_primary_key: false,
                     ordinal_position: row.ordinal_position,
                     character_maximum_length: row.column_size.into_opt(),
+                    comment: None,
                 });
             }
             Ok(columns)

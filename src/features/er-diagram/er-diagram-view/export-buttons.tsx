@@ -4,7 +4,7 @@ import { getNodesBounds, getViewportForBounds, useReactFlow } from "@xyflow/reac
 import { toPng, toSvg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { FileCode, FileText, Image } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { EXPORT_PADDING, EXPORT_SCALE } from "@/features/er-diagram/er-diagram-view/constants";
 import {
   dataUrlToUint8Array,
@@ -12,9 +12,16 @@ import {
 } from "@/features/er-diagram/er-diagram-view/export-utils";
 import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
 
-export function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
+export function ExportButtons({
+  nodes,
+  exporting,
+  setExporting,
+}: {
+  nodes: TableNodeType[];
+  exporting: boolean;
+  setExporting: (exporting: boolean) => void;
+}) {
   const { getNodes } = useReactFlow();
-  const [exporting, setExporting] = useState(false);
 
   const doExport = useCallback(
     async (format: "png" | "svg" | "pdf") => {
@@ -50,6 +57,7 @@ export function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
           ],
         });
         if (!filePath) return;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
         if (format === "png") {
           const dataUrl = await toPng(el, {
@@ -104,7 +112,7 @@ export function ExportButtons({ nodes }: { nodes: TableNodeType[] }) {
         setExporting(false);
       }
     },
-    [exporting, getNodes],
+    [exporting, getNodes, setExporting],
   );
 
   return (

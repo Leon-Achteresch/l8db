@@ -81,6 +81,7 @@ export function CenterMorphModalContent({
     });
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === "Escape" && dismissible) {
         event.preventDefault();
         context.setOpen(false);

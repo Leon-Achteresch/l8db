@@ -448,6 +448,15 @@ impl DatabaseAdapter for ClickhouseAdapter {
             .collect())
     }
 
+    async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
+        let sql = format!(
+            "SELECT comment FROM system.tables WHERE database = {} AND name = {}",
+            lit(schema),
+            lit(table)
+        );
+        Ok(self.rows(&sql).await?.first().and_then(|r| text_opt(&r[0])))
+    }
+
     async fn get_view_definition(&self, schema: &str, view: &str) -> Result<String, String> {
         let sql = format!(
             "SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}",
@@ -459,6 +468,19 @@ impl DatabaseAdapter for ClickhouseAdapter {
             .first()
             .map(|r| text(&r[0]))
             .ok_or_else(|| "View nicht gefunden".to_string())
+    }
+
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, String> {
+        let sql = format!(
+            "SELECT create_table_query FROM system.tables WHERE database = {} AND name = {}",
+            lit(schema),
+            lit(table)
+        );
+        self.rows(&sql)
+            .await?
+            .first()
+            .map(|r| format!("{};\n", text(&r[0])))
+            .ok_or_else(|| "Tabelle nicht gefunden".to_string())
     }
 
     async fn update_view_definition(
@@ -529,7 +551,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
+        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position, comment FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
         Ok(self
             .rows(&sql)
             .await?
@@ -542,6 +564,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
                 is_primary_key: int(&r[3]) == 1,
                 ordinal_position: int(&r[4]) as i32,
                 character_maximum_length: None,
+                comment: text_opt(&r[5]),
             })
             .collect())
     }

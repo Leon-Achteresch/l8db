@@ -37,7 +37,7 @@ export function ResultFilterCell({
   };
   const needsValue = operatorNeedsValue(normalizeResultFilterOperator(filter.operator));
   return (
-    <th className="border-b border-r bg-muted/70 px-1 py-1">
+    <th className="border-b border-r bg-muted px-1 py-1">
       <div className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

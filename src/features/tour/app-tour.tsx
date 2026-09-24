@@ -1,4 +1,3 @@
-import "driver.js/dist/driver.css";
 import { useEffect } from "react";
 import { TourOffer } from "@/features/tour/tour-offer";
 import { TourOverview } from "@/features/tour/tour-overview";

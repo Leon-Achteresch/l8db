@@ -1,13 +1,15 @@
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import type * as React from "react";
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { Sidebar, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebarPanel } from "@/features/sidebar/app-sidebar-panel";
 import { AppSidebarResizeHandle } from "@/features/sidebar/app-sidebar-resize-handle";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { cn } from "@/lib/utils";
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export const AppSidebar = memo(function AppSidebar({
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
   const isResizing = useSidebarPanel((state) => state.isResizing);
   const panelWidth = useSidebarPanel((state) => state.width);
   const { open } = useSidebar();
@@ -58,4 +60,4 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </Sidebar>
     </motion.div>
   );
-}
+});

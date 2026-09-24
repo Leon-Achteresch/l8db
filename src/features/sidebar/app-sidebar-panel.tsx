@@ -1,4 +1,4 @@
-import { useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
   BracesIcon,
   EyeIcon,
@@ -54,7 +54,6 @@ export function AppSidebarPanel() {
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const switchTarget = connections.find((connection) => connection.id === switchTargetId);
-  const matchRoute = useMatchRoute();
   const navigate = useNavigate();
   const scope = useSidebarScope(connections, activeConnection);
   const [selectedTab, setSidebarTab] = useState<SidebarTabValue>("tables");
@@ -170,7 +169,6 @@ export function AppSidebarPanel() {
               q={q}
               packages={packages}
               plainFunctions={plainFunctions}
-              matchRoute={matchRoute}
             />
           </SidebarGroupContent>
         </SidebarGroup>

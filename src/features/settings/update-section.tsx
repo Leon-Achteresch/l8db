@@ -28,6 +28,8 @@ export function UpdateSection() {
     useSettingsStore();
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
+  const autoFeatureVideos = useSettingsStore((s) => s.autoFeatureVideos);
+  const setAutoFeatureVideos = useSettingsStore((s) => s.setAutoFeatureVideos);
   const isSkipped = Boolean(pending && skippedUpdateVersion === pending.version);
 
   useEffect(() => {
@@ -106,6 +108,16 @@ export function UpdateSection() {
           disabled={!autoUpdateCheck}
           onCheckedChange={setAutoUpdateInstall}
           aria-label="Updates automatisch installieren"
+        />
+      </SettingsRow>
+      <SettingsRow
+        title="Neue Features als Video"
+        description="Wichtige Neuerungen unten rechts automatisch stumm zeigen. Jederzeit schließbar."
+      >
+        <Switch
+          checked={autoFeatureVideos}
+          onCheckedChange={setAutoFeatureVideos}
+          aria-label="Neue Features automatisch zeigen"
         />
       </SettingsRow>
       <SettingsRow title="Release Notes" description="Änderungen aller veröffentlichten Versionen.">

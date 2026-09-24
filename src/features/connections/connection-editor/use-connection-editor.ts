@@ -72,6 +72,9 @@ export function useConnectionEditor({
   const [color, setColor] = useState<string | null>(seed?.color ?? null);
   const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
   const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
+  const [showSingleSchemaSwitcher, setShowSingleSchemaSwitcher] = useState(
+    seed?.showSingleSchemaSwitcher ?? true,
+  );
   const [scannedSchemas, setScannedSchemas] = useState<string[] | null>(null);
   const [scannedUser, setScannedUser] = useState("");
   const [scanning, setScanning] = useState(false);
@@ -161,6 +164,7 @@ export function useConnectionEditor({
     ssl,
     readOnly,
     schemaFilter,
+    showSingleSchemaSwitcher,
     color,
     tags,
     onSaved,
@@ -241,6 +245,7 @@ export function useConnectionEditor({
     scannedUser,
     scanning,
     schemaFilter,
+    showSingleSchemaSwitcher,
     selectProvider,
     setColor,
     setDatabase,
@@ -253,6 +258,7 @@ export function useConnectionEditor({
     setReadOnly,
     setResult,
     setSchemaFilter,
+    setShowSingleSchemaSwitcher,
     setShowPassword,
     setSshAuth,
     setSshEnabled,

@@ -36,6 +36,12 @@ jobs:
       - run: bun run build
       - run: bun run test
       - run: bunx playwright install --with-deps chromium webkit
+      - name: Install video test encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Feature video playback
+        run: |
+          L8DB_FEATURE_VIDEO_BROWSER=1 bun test tests/feature-video-browser.test.ts
+          L8DB_FEATURE_VIDEO_BROWSER=webkit bun test tests/feature-video-browser.test.ts
       - name: Production CSP and extension isolation
         run: |
           L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts

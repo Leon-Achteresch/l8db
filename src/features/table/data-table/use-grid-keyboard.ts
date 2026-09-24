@@ -1,5 +1,6 @@
 import type { Row } from "@tanstack/react-table";
-import { type Dispatch, type SetStateAction, useEffect } from "react";
+import type { Virtualizer } from "@tanstack/react-virtual";
+import { type Dispatch, type RefObject, type SetStateAction, useEffect } from "react";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { DataTableProps, EditingCell, TableRow } from "../data-table-types";
 import { INDEX_COLUMN } from "./constants";
@@ -19,6 +20,8 @@ type Options = {
   focusCell: (cell: GridCellRef | null, extend?: boolean, additive?: boolean) => void;
   copySelection: () => boolean;
   selectedCount: number;
+  rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
+  scrollRef: RefObject<HTMLDivElement | null>;
 };
 
 export function useGridKeyboard({
@@ -36,6 +39,8 @@ export function useGridKeyboard({
   focusCell,
   copySelection,
   selectedCount,
+  rowVirtualizer,
+  scrollRef,
 }: Options) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -93,6 +98,13 @@ export function useGridKeyboard({
       } else if (e.key === "ArrowRight") {
         nextColIndex = Math.min(visibleDataColumns.length - 1, colIndex + 1);
         e.preventDefault();
+      } else if (e.key === "PageUp" || e.key === "PageDown") {
+        const scroller = scrollRef.current;
+        const rowHeight = rowVirtualizer.options.estimateSize(0) || 24;
+        const pageRows = scroller ? Math.max(1, Math.floor(scroller.clientHeight / rowHeight)) : 10;
+        const delta = e.key === "PageDown" ? pageRows : -pageRows;
+        nextRowIndex = Math.min(rows.length - 1, Math.max(0, rowIndex + delta));
+        e.preventDefault();
       }
 
       const nextColumnId = nextColIndex === -1 ? INDEX_COLUMN : visibleDataColumns[nextColIndex];
@@ -114,5 +126,7 @@ export function useGridKeyboard({
     focusCell,
     copySelection,
     selectedCount,
+    rowVirtualizer,
+    scrollRef,
   ]);
 }

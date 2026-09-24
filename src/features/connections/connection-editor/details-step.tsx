@@ -50,6 +50,7 @@ export function ConnectionDetailsStep({
     scannedUser,
     scanning,
     schemaFilter,
+    showSingleSchemaSwitcher,
     setColor,
     setDatabase,
     setFile,
@@ -60,6 +61,7 @@ export function ConnectionDetailsStep({
     setProvider,
     setReadOnly,
     setSchemaFilter,
+    setShowSingleSchemaSwitcher,
     setShowPassword,
     setSshAuth,
     setSshEnabled,
@@ -232,6 +234,8 @@ export function ConnectionDetailsStep({
         onColor={setColor}
         schemaFilter={schemaFilter}
         onSchemaFilter={setSchemaFilter}
+        showSingleSchemaSwitcher={showSingleSchemaSwitcher}
+        onShowSingleSchemaSwitcher={setShowSingleSchemaSwitcher}
         scannedSchemas={scannedSchemas}
         scannedUser={scannedUser}
         scanning={scanning}

@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { ConnectionSelectLab } from "./connection-select-lab";
+import { FeatureVideoPreview } from "./feature-video-preview";
 import { TabPreview } from "./tab-preview";
 
 const variants = [
@@ -40,7 +41,7 @@ export function DevView() {
 
   return (
     <main className="min-w-0 flex-1 overflow-auto bg-background px-6 py-8 md:px-10">
-      <Tabs defaultValue="table-tabs" className="mx-auto max-w-[1440px] gap-7">
+      <Tabs defaultValue="feature-video" className="mx-auto max-w-[1440px] gap-7">
         <div className="space-y-5">
           <div className="space-y-2">
             <p className="text-xs font-medium tracking-widest text-muted-foreground">
@@ -52,6 +53,9 @@ export function DevView() {
             </p>
           </div>
           <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-fit max-w-full">
+            <TabsTrigger value="feature-video" className="flex-none px-4">
+              Feature-Popup
+            </TabsTrigger>
             <TabsTrigger value="table-tabs" className="flex-none px-4">
               Tab-Leiste
             </TabsTrigger>
@@ -60,6 +64,9 @@ export function DevView() {
             </TabsTrigger>
           </TabsList>
         </div>
+        <TabsContent value="feature-video">
+          <FeatureVideoPreview />
+        </TabsContent>
         <TabsContent value="table-tabs" className="space-y-8">
           <div className="flex flex-wrap items-end justify-between gap-5">
             <div className="space-y-1">

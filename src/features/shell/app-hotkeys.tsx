@@ -1,10 +1,11 @@
-import { useHotkeys } from "@tanstack/react-hotkeys";
-import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
 import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
-import { commandById, emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
 import { navigateToTab } from "@/lib/tab-navigation";
@@ -15,12 +16,11 @@ export function AppHotkeys() {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const router = useRouter();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const inQueryRoute = useRouterSelect((state) => state.location.pathname.startsWith("/query"));
   const activeTab = useActiveWorkspaceTab();
   const connection = useActiveConnection();
   const { refresh } = useRefreshConnection();
   const overrides = useHotkeysStore((state) => state.overrides);
-  const inQueryRoute = pathname.startsWith("/query");
 
   const activeKey = activeTab ? tabKey(activeTab) : null;
 
@@ -141,61 +141,27 @@ export function AppHotkeys() {
 
   const definitionsRef = useRef(definitions);
   definitionsRef.current = definitions;
-
-  useEffect(() => {
-    const listener = (event: Event) => {
-      const id = (event as CustomEvent<string>).detail;
-      const entry = definitionsRef.current.find((definition) => definition.id === id);
-      entry?.action();
-    };
-    window.addEventListener(HOTKEY_ACTION_EVENT, listener);
-    return () => window.removeEventListener(HOTKEY_ACTION_EVENT, listener);
+  const [bindings] = useState(() =>
+    definitions.map(({ id, requiresConnection }) => ({ id, requiresConnection })),
+  );
+  const run = useCallback((id: string) => {
+    definitionsRef.current.find((definition) => definition.id === id)?.action();
   }, []);
 
-  useHotkeys(
-    definitions.flatMap((entry) => {
-      const command = commandById(entry.id);
-      if (!command) return [];
-      const baseEnabled =
-        !(easyMode && entry.id === "view.split") &&
-        (!entry.requiresConnection || connection !== null);
-      const primary = (overrides[entry.id] ?? command.defaultHotkey) as never;
-      const rows = [
-        {
-          hotkey: primary,
-          callback: () => entry.action(),
-          options: {
-            enabled:
-              entry.id === "app.refresh" && !overrides[entry.id]
-                ? baseEnabled && !(inQueryRoute && connection !== null)
-                : baseEnabled,
-            ignoreInputs: command.ignoreInputs ?? false,
-            preventDefault: true,
-            stopPropagation: true,
-          },
-        },
-      ];
-      if (!overrides[entry.id]) {
-        for (const alias of command.aliases ?? []) {
-          rows.push({
-            hotkey: alias as never,
-            callback: () => entry.action(),
-            options: {
-              enabled:
-                entry.id === "app.refresh"
-                  ? baseEnabled && !(inQueryRoute && connection !== null)
-                  : baseEnabled,
-              ignoreInputs: command.ignoreInputs ?? false,
-              preventDefault: true,
-              stopPropagation: true,
-            },
-          });
-        }
-      }
-      return rows;
-    }),
-    { preventDefault: true, stopPropagation: true },
-  );
+  useEffect(() => {
+    const listener = (event: Event) => run((event as CustomEvent<string>).detail);
+    window.addEventListener(HOTKEY_ACTION_EVENT, listener);
+    return () => window.removeEventListener(HOTKEY_ACTION_EVENT, listener);
+  }, [run]);
 
-  return null;
+  return (
+    <AppHotkeyBindings
+      bindings={bindings}
+      easyMode={easyMode}
+      connected={connection !== null}
+      overrides={overrides}
+      inQueryRoute={inQueryRoute}
+      run={run}
+    />
+  );
 }

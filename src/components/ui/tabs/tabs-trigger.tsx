@@ -3,13 +3,17 @@
 import { Tabs as TabsPrimitive } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { TabsStateContext, tabsContentId, tabsTriggerId } from "./shared";
 
 export function TabsTrigger({
   className,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  const state = React.useContext(TabsStateContext);
   return (
     <TabsPrimitive.Trigger
+      id={state ? tabsTriggerId(state.baseId, props.value) : undefined}
+      aria-controls={state ? tabsContentId(state.baseId, props.value) : undefined}
       data-slot="tabs-trigger"
       className={cn(
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",

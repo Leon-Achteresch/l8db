@@ -167,51 +167,54 @@ export function PerformanceTab({ m }: { m: MonitorViewState }) {
           </CardAction>
         </CardHeader>
         <CardContent className="p-0">
-          slowQueries.length === 0 ? (
-          <p className="px-6 py-8 text-center text-xs text-muted-foreground">
-            Keine gemessenen Queries im gewählten Zeitraum.
-          </p>
+          {slowQueries.length === 0 ? (
+            <p className="px-6 py-8 text-center text-xs text-muted-foreground">
+              Keine gemessenen Queries im gewählten Zeitraum.
+            </p>
           ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="border-b bg-muted/30 text-left text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Zeit</th>
-                  <th className="px-4 py-2 font-medium">Query</th>
-                  <th className="px-4 py-2 text-right font-medium">Laufzeit</th>
-                  <th className="px-4 py-2 text-right font-medium">Zeilen</th>
-                  <th className="px-4 py-2 text-right font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {slowQueries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-muted/30">
-                    <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                      {formatDateTime(entry.ranAt)}
-                    </td>
-                    <td className="max-w-[720px] truncate px-4 py-2.5 font-mono" title={entry.sql}>
-                      {firstLine(entry.sql)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums">
-                      {formatMs(entry.durationMs)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                      {entry.rowCount == null ? "—" : entry.rowCount.toLocaleString("de-DE")}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Badge
-                        variant={entry.error ? "destructive" : "secondary"}
-                        className="px-1.5 py-0 text-[10px]"
-                      >
-                        {entry.error ? "Fehler" : "OK"}
-                      </Badge>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b bg-muted/30 text-left text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Zeit</th>
+                    <th className="px-4 py-2 font-medium">Query</th>
+                    <th className="px-4 py-2 text-right font-medium">Laufzeit</th>
+                    <th className="px-4 py-2 text-right font-medium">Zeilen</th>
+                    <th className="px-4 py-2 text-right font-medium">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          )
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {slowQueries.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                        {formatDateTime(entry.ranAt)}
+                      </td>
+                      <td
+                        className="max-w-[720px] truncate px-4 py-2.5 font-mono"
+                        title={entry.sql}
+                      >
+                        {firstLine(entry.sql)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums">
+                        {formatMs(entry.durationMs)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                        {entry.rowCount == null ? "—" : entry.rowCount.toLocaleString("de-DE")}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Badge
+                          variant={entry.error ? "destructive" : "secondary"}
+                          className="px-1.5 py-0 text-[10px]"
+                        >
+                          {entry.error ? "Fehler" : "OK"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </TabsContent>

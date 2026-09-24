@@ -19,6 +19,7 @@ import { type LazyExoticComponent, lazy } from "react";
 export type ToolId =
   | "versioning"
   | "compare"
+  | "schema-compare"
   | "er-diagram"
   | "enums"
   | "sequences"
@@ -58,6 +59,17 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     iconColor: "text-indigo-500",
     Component: lazy(() =>
       import("@/features/compare/compare-view").then((m) => ({ default: m.CompareView })),
+    ),
+  },
+  "schema-compare": {
+    path: "/schema-compare",
+    label: "Schema-Vergleich",
+    Icon: GitCompareIcon,
+    iconColor: "text-indigo-500",
+    Component: lazy(() =>
+      import("@/features/schema-compare/schema-compare-view").then((m) => ({
+        default: m.SchemaCompareView,
+      })),
     ),
   },
   "er-diagram": {

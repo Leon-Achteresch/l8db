@@ -41,6 +41,8 @@ pub struct McpConnection {
     pub allow_ddl: bool,
     #[serde(default)]
     pub redact_columns: Vec<String>,
+    #[serde(skip)]
+    pub database: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

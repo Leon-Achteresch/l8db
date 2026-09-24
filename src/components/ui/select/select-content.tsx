@@ -6,7 +6,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { SelectScrollDownButton } from "./select-scroll-down-button";
 import { SelectScrollUpButton } from "./select-scroll-up-button";
-import { SEARCH_MIN_ITEMS, SelectSearchContext } from "./shared";
+import { SEARCH_MIN_ITEMS, SelectClosedValueContext, SelectSearchContext } from "./shared";
 
 export function SelectContent({
   className,
@@ -20,6 +20,16 @@ export function SelectContent({
   const [autoSearchable, setAutoSearchable] = React.useState(false);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const closedValue = React.useContext(SelectClosedValueContext);
+  const shownChildren =
+    closedValue === null
+      ? children
+      : React.Children.toArray(children).filter(
+          (child) =>
+            !React.isValidElement<{ value?: unknown }>(child) ||
+            child.props.value === undefined ||
+            child.props.value === closedValue,
+        );
   const showSearch = searchable ?? autoSearchable;
   const contentPosition = showSearch ? "popper" : position;
 
@@ -89,7 +99,7 @@ export function SelectContent({
         >
           <div className="[&:has([data-slot=select-item]:not([data-filtered]))_[data-slot=select-empty]]:hidden">
             <SelectSearchContext.Provider value={query.trim().toLowerCase()}>
-              {children}
+              {shownChildren}
             </SelectSearchContext.Provider>
             {showSearch && query.trim() ? (
               <p

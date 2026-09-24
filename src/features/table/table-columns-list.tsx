@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
 import { supports } from "@/lib/providers";
-
 import { ColumnListItem } from "./table-columns-list/column-list-item";
 import { matchesColumnFilter } from "./table-columns-list/column-type-config";
+import { TableCommentBar } from "./table-comment-bar";
 
 interface TableColumnsListProps {
   schema: string;
@@ -76,6 +76,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <TableCommentBar schema={schema} table={table} />
       <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 shrink-0">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative flex-1">
@@ -83,7 +84,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Spalten nach Name oder Typ filtern..."
+              placeholder="Spalten nach Name, Typ oder Kommentar filtern..."
               className="pl-9 pr-8"
             />
             {search && (

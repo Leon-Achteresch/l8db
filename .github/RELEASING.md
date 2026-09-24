@@ -158,3 +158,21 @@ App-Start. Die Entwicklungs-CSP erlaubt zusätzlich Vite-HMR und dessen Inline-S
 
 Offene Upstream-Sicherheitsbefunde und Verifikationsgrenzen stehen in
 [PRODUCTION.md](PRODUCTION.md).
+
+## Feature-Videos
+
+Nach `finalize` ruft der Release-Workflow `.github/workflows/feature-videos.yml` auf.
+Er nimmt neue kuratierte Features aus dem veröffentlichten App-Commit auf und
+speichert sie kostenlos als einzelne Pre-Releases im selben Repository. Jeder
+Clip wird zuerst als Entwurf mit allen Medien aufgebaut und danach veröffentlicht.
+Die bestehende Unveränderlichkeit der App-Releases bleibt aktiv. Der zentrale
+Release `feature-videos` enthält ausschließlich den bearbeitbaren JSON-Feed.
+Kein Medien-Release wird als neueste App-Version markiert.
+
+Ein täglicher Lauf entfernt abgelaufene Einträge und löscht die zugehörigen
+vollständigen Video-Releases nach 48 Stunden. Es werden nur eigens markierte
+Video-Releases bereinigt. Der vorhandene `GITHUB_TOKEN` genügt; es sind keine
+zusätzlichen Secrets oder Speicherkonten erforderlich.
+
+Aufnahme, manuelle Veröffentlichung, Ablaufregeln und Tests stehen in
+[Feature-Videos](../docs/feature-videos-plan.md).

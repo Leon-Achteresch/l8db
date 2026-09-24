@@ -66,7 +66,7 @@ export function ViewDetailTabs({
         className="flex shrink-0 items-center border-b bg-muted/30 px-3"
         data-tour="table-toolbar"
       >
-        <TableDetailTabBar tabs={availableTabs} />
+        <TableDetailTabBar tabs={availableTabs} activeTab={viewTab} />
         <div className="ml-auto flex items-center gap-1">
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && data && (

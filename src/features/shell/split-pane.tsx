@@ -24,6 +24,7 @@ import { WorkspacePaneContext } from "@/lib/workspace-pane";
 import { ColorDot } from "./split-pane/color-dot";
 import { MasterSelect } from "./split-pane/master-select";
 import { PaneNumber } from "./split-pane/pane-number";
+import { ScopedTableContent } from "./split-pane/scoped-table-content";
 
 const MasterDetailResult = lazy(() =>
   import("@/features/shell/master-detail-result").then((module) => ({
@@ -197,7 +198,11 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
                       column={sourceColumn}
                     />
                   ) : tab ? (
-                    <TabPaneContent key={target} tab={tab} />
+                    overrideId && tab.kind === "table" ? (
+                      <ScopedTableContent key={target} tab={tab} />
+                    ) : (
+                      <TabPaneContent key={target} tab={tab} />
+                    )
                   ) : null}
                 </MasterSelectionContext.Provider>
               </Suspense>

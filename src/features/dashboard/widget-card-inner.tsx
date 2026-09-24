@@ -24,6 +24,7 @@ import {
 } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
 import { CHART_RENDERERS, deltaFor, headlineFor, LegendCards, legendFor } from "./charts";
+import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
 
 const EMPTY_ROWS: Record<string, unknown>[] = [];
@@ -68,6 +69,7 @@ export function WidgetCardInner({
   const delta =
     shape && options.showDelta && options.sortBy === "none" ? deltaFor(rows, shape, isTime) : null;
   const Renderer = CHART_RENDERERS[widget.chart];
+  const chartReady = useChartSlot(Boolean(shape) && !problem && query.isSuccess && rows.length > 0);
   const legend = useMemo(
     () =>
       shape && !problem && options.showLegend ? legendFor(widget.chart, rows, shape, options) : [],
@@ -166,7 +168,7 @@ export function WidgetCardInner({
           <p role="alert" className="text-xs text-destructive">
             {queryErrorMessage(query.error)}
           </p>
-        ) : query.isPending ? (
+        ) : query.isPending || (rows.length > 0 && !chartReady) ? (
           <Skeleton className="h-full w-full rounded-xl" />
         ) : rows.length === 0 ? (
           <div className="grid h-full place-items-center text-xs text-muted-foreground">

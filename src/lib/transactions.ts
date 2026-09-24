@@ -138,3 +138,16 @@ export function getTableTransaction(
     table,
   });
 }
+
+export function tableReadTransactionId(
+  transactions: ActiveTransaction[],
+  connectionId: string,
+  database: string | null | undefined,
+  schema: string,
+  table: string,
+): string | undefined {
+  return (
+    findTransaction(transactions, connectionId, database, { type: "table", schema, table }) ??
+    findTransaction(transactions, connectionId, database, { type: "query" })
+  )?.txId;
+}

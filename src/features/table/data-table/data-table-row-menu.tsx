@@ -1,10 +1,13 @@
-import { CopyPlusIcon, Trash2Icon } from "lucide-react";
+import { ClipboardCopyIcon, CopyPlusIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import { copyText } from "@/lib/clipboard";
+import { serializeSelectionCell } from "@/lib/grid-selection";
 import type { TableRow } from "../data-table-types";
 
 export type MenuRow = {
@@ -16,6 +19,7 @@ export type MenuRow = {
 type Props = {
   menuRow: MenuRow;
   rowOffset: number;
+  columns: string[];
   canDuplicate: boolean;
   duplicateDisabled: boolean;
   onDuplicate: () => void;
@@ -25,6 +29,7 @@ type Props = {
 export function DataTableRowMenu({
   menuRow,
   rowOffset,
+  columns,
   canDuplicate,
   duplicateDisabled,
   onDuplicate,
@@ -36,6 +41,16 @@ export function DataTableRowMenu({
         Zeile {menuRow.rowIndex + 1 + rowOffset}
       </ContextMenuLabel>
       <ContextMenuSeparator />
+      <ContextMenuItem
+        onClick={() => {
+          const text = columns.map((id) => serializeSelectionCell(menuRow.original[id])).join("\t");
+          void copyText(text);
+          toast.success("Zeile kopiert.");
+        }}
+      >
+        <ClipboardCopyIcon />
+        Zeile kopieren
+      </ContextMenuItem>
       {canDuplicate && (
         <ContextMenuItem disabled={duplicateDisabled} onClick={onDuplicate}>
           <CopyPlusIcon />

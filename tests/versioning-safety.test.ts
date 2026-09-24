@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mappedMigration } from "../src/lib/versioning/deploy";
 import {
   checksum,
   identifier,
@@ -22,6 +23,7 @@ import { sqlCode } from "../src/lib/versioning/sql-code";
 import { pendingVersioningCount } from "../src/lib/versioning/status";
 import type {
   DatabaseRelease,
+  DatabaseTarget,
   ReleaseCheck,
   TargetStore,
   VersioningProject,
@@ -286,6 +288,41 @@ describe("operational SQL checks", () => {
     ).toThrow("Dollar-String");
     expect(requalify("SELECT 'public.orders' FROM public.orders", "public", "tenant")).toBe(
       "SELECT 'public.orders' FROM \"tenant\".orders",
+    );
+  });
+  test("customer remapping blocks writes to a different explicit schema", () => {
+    const mapped = {
+      ...release("v2", "v1"),
+      objects: [{ object: { selection: { schema: "public" } } }],
+    } as unknown as DatabaseRelease;
+    const target = { schema: "tenant_a" } as DatabaseTarget;
+    expect(
+      mappedMigration("ALTER TABLE public.invoices ADD COLUMN note text", target, mapped),
+    ).toContain('"tenant_a".invoices');
+    for (const sql of [
+      "UPDATE tenant_b.invoices SET amount = 0",
+      "DELETE FROM tenant_b.invoices",
+      "CREATE INDEX x ON tenant_b.invoices(id)",
+      "DROP TABLE tenant_b.invoices",
+      "CREATE TRIGGER t AFTER UPDATE ON tenant_b.invoices EXECUTE FUNCTION f()",
+    ])
+      expect(() => mappedMigration(sql, target, mapped)).toThrow("zugeordnete Kundenschema");
+    expect(() =>
+      mappedMigration(
+        "CREATE OR REPLACE PACKAGE BODY OTHER.P AS END P;",
+        { schema: "TENANT_A" } as DatabaseTarget,
+        {
+          ...mapped,
+          kind: "oracle",
+          objects: [{ object: { selection: { schema: "DEV" } } }],
+        } as DatabaseRelease,
+      ),
+    ).toThrow("zugeordnete Kundenschema");
+    expect(() =>
+      mappedMigration("DROP TABLE tenant_a.invoices, tenant_b.invoices", target, mapped),
+    ).toThrow("getrennt");
+    expect(mappedMigration("SELECT 'UPDATE tenant_b.invoices'", target, mapped)).toContain(
+      "tenant_b",
     );
   });
 });

@@ -4,6 +4,7 @@ import { selectForResults } from "@/lib/select-extract";
 import { useSnippetsStore } from "@/lib/snippets";
 import {
   hoverMarkdown,
+  limitMatches,
   memberSuggestions,
   packageForQualifier,
   resolveSymbol,
@@ -26,6 +27,8 @@ const COMPLETION_KIND: Record<Suggestion["kind"], monaco.languages.CompletionIte
   keyword: monaco.languages.CompletionItemKind.Keyword,
   snippet: monaco.languages.CompletionItemKind.Snippet,
 };
+
+const MAX_SUGGESTIONS = 300;
 
 function textBefore(model: monaco.editor.ITextModel, position: monaco.Position) {
   const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
@@ -74,8 +77,11 @@ for (const language of ["sql", "plsql"]) {
       const items = pkg
         ? memberSuggestions(await packageMembers(pkg.schema, pkg.name))
         : suggestCompletions(ctx.registry, text, line, useSnippetsStore.getState().snippets);
+      const typed = pkg ? "" : word.word;
+      const matches = limitMatches(items, typed, MAX_SUGGESTIONS);
       return {
-        suggestions: items.map((item) => ({
+        incomplete: typed !== "" || matches.truncated,
+        suggestions: matches.items.map((item) => ({
           label: item.label,
           kind: COMPLETION_KIND[item.kind],
           detail: item.detail,

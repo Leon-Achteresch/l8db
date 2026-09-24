@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
-import { motion } from "motion/react";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
   DropdownMenu,
@@ -10,8 +9,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveCapabilities } from "@/lib/db-selection";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
+import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -19,12 +18,16 @@ function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
 }
 
-export function AppHeaderNavigation({ pathname }: { pathname: string }) {
+export function AppHeaderNavigation() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navItems = appSidebarData.navMain.filter(
     (item) =>
       isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
+  );
+  const activeUrl = useRouterSelect(
+    (state) =>
+      appSidebarData.navMain.find((item) => isNavActive(item.url, state.location.pathname))?.url,
   );
 
   return (
@@ -41,34 +44,21 @@ export function AppHeaderNavigation({ pathname }: { pathname: string }) {
       </Link>
       <div className="hidden items-center gap-1 @min-[54rem]:flex">
         {navItems.map((item) => {
-          const active = isNavActive(item.url, pathname);
+          const active = item.url === activeUrl;
           return (
             <Tooltip key={item.title} content={item.title} side="bottom">
-              <motion.div
-                layout="position"
-                transition={{ layout: SPRING_LAYOUT }}
-                className="relative"
-              >
-                {active && (
-                  <motion.span
-                    layoutId="header-nav-active"
-                    transition={SPRING_LAYOUT}
-                    className="absolute inset-0 rounded-full bg-primary/12"
-                  />
+              <Link
+                to={item.url}
+                aria-label={item.title}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+                  "hover:bg-muted hover:text-foreground",
+                  active && "bg-primary/12 text-foreground hover:bg-primary/12",
                 )}
-                <Link
-                  to={item.url}
-                  aria-label={item.title}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-                    "hover:bg-muted hover:text-foreground",
-                    active && "text-foreground",
-                  )}
-                >
-                  <item.icon className="size-4" strokeWidth={2} />
-                </Link>
-              </motion.div>
+              >
+                <item.icon className="size-4" strokeWidth={2} />
+              </Link>
             </Tooltip>
           );
         })}
@@ -87,10 +77,7 @@ export function AppHeaderNavigation({ pathname }: { pathname: string }) {
           <DropdownMenuContent align="start">
             {navItems.map((item) => (
               <DropdownMenuItem key={item.url} asChild>
-                <Link
-                  to={item.url}
-                  aria-current={isNavActive(item.url, pathname) ? "page" : undefined}
-                >
+                <Link to={item.url} aria-current={item.url === activeUrl ? "page" : undefined}>
                   <item.icon className="size-4" />
                   {item.title}
                 </Link>

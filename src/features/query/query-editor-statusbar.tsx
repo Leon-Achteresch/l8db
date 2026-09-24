@@ -1,21 +1,24 @@
-import type { EditorPosition } from "@/features/query/query-editor-pane";
+import { useSyncExternalStore } from "react";
+
+import type { EditorPositionStore } from "@/features/query/query-view/editor-position-store";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface QueryEditorStatusbarProps {
-  position: EditorPosition;
+  positionStore: EditorPositionStore;
   selectionLength: number;
   statementCount: number;
   dialectLabel: string;
 }
 
 export function QueryEditorStatusbar({
-  position,
+  positionStore,
   selectionLength,
   statementCount,
   dialectLabel,
 }: QueryEditorStatusbarProps) {
+  const position = useSyncExternalStore(positionStore.subscribe, positionStore.get);
   const insertSpaces = useQueryWorkspace((s) => s.insertSpaces);
   const editorTabSize = useSettingsStore((s) => s.editorTabSize);
   const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);

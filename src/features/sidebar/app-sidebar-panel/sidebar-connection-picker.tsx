@@ -279,7 +279,7 @@ export function SidebarConnectionPicker({
                 ref={listRef}
                 role="listbox"
                 aria-label="Gespeicherte Verbindungen"
-                className="max-h-[min(20rem,calc(100dvh-12.5rem))] min-h-12 overflow-y-auto overscroll-contain py-1"
+                className="max-h-[min(40rem,calc(100dvh-12.5rem))] min-h-12 overflow-y-auto overscroll-contain py-1"
               >
                 {connections.length === 0 ? (
                   <p className="px-3 py-5 text-center text-xs text-muted-foreground">
