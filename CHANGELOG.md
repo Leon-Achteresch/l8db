@@ -3,6 +3,28 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.162] - 2026-09-24
+
+### Features
+- show line origins and inline merge actions
+- einfachere Einrichtung, Richtungsumkehr, Probelauf und Oracle-Datenprüfung
+- show zoomed feature workflows
+- zoom into recorded feature controls
+
+### Fixes
+- Probelauf nur mit DDL-Rollback, ungeprüfte Oracle-Anweisungen bestätigen
+- Oracle-Tabellen schemaübergreifend ohne Scheinabweichungen vergleichen
+- Oracle-Tabellenänderungen erzeugen und ohne Speichern prüfen
+- Oracle-Views mit vollständigem CREATE-Skript prüfen und übernehmen
+
+### Weitere Änderungen
+- Use one merge arrow on shared divider
+- Place per-side merge arrows above shared draft
+- Open comparison setup when created from object menu
+- Add bidirectional three-pane definition merge
+- Focus searchable selects and align menus with triggers
+- Add prefilled object comparison from sidebar context menus
+
 ## [0.6.143] - 2026-09-24
 
 - Keine Änderungen.
