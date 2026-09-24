@@ -136,6 +136,24 @@ export async function seedApp(
                   execution_time_ms: 4,
                 }
               : { columns: [], rows: [], rows_affected: 0, execution_time_ms: 1 };
+          case "get_view_definition":
+            return `SELECT id, col_1, col_2\nFROM public.${String(args?.view ?? "").replace(/^v_/, "")}\nWHERE id > 0`;
+          case "list_role_privileges":
+            return {
+              schemas: [{ schema: "public", usage: true, create: false }],
+              tables: names.slice(0, 200).map((table, i) => ({
+                schema: "public",
+                table,
+                object_type: "table",
+                select: true,
+                insert: i % 2 === 0,
+                update: i % 3 === 0,
+                delete: false,
+                truncate: false,
+                references: false,
+                trigger: false,
+              })),
+            };
           case "get_er_schema": {
             const erNames = names.slice(0, 150);
             return {

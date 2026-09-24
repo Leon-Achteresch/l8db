@@ -163,14 +163,12 @@ for (const view of VIEWS) {
   test.skipIf(!ENABLED)(
     `${view}: Wechsel, Leerlauf und Scrollen mit ${RATE}× CPU-Drosselung`,
     async () => {
-      expectStep(
-        `${view} wechseln`,
-        await sample(async () => {
-          await navigate(view);
-          await page.waitForTimeout(2500);
-        }),
-      );
+      const step = await sample(async () => {
+        await navigate(view);
+        await page.waitForTimeout(2500);
+      });
       expect(await page.getByText("ROUTE_ERROR").count()).toBe(0);
+      expectStep(`${view} wechseln`, step);
       expectSmooth(`${view} Leerlauf`, await sample(() => page.waitForTimeout(1500)));
       expectSmooth(`${view} scrollen`, await sample(() => wheel(900, 500, 20, 200)));
     },
