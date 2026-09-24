@@ -117,9 +117,13 @@ export function WorkspaceLayout() {
               <SplitWorkspace />
             ) : (
               <>
-                <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
-                  <DeferredOutlet />
-                </MasterSelectionContext.Provider>
+                <DeferredOutlet>
+                  {(outlet) => (
+                    <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
+                      {outlet}
+                    </MasterSelectionContext.Provider>
+                  )}
+                </DeferredOutlet>
                 {!easyMode && activeTab && <NewPaneDropZone />}
               </>
             )}
