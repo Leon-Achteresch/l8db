@@ -44,6 +44,10 @@ export function useAppTour() {
   const generation = useRef(0);
 
   useEffect(() => {
+    if (active) void import("driver.js/dist/driver.css");
+  }, [active]);
+
+  useEffect(() => {
     if (!active || minimized) {
       destroySpotlight();
       return;
