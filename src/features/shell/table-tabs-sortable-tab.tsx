@@ -129,6 +129,7 @@ export function TableTabsSortableTab({
           ref={ref}
           data-tab-key={tabKey(tab)}
           layout={!isDragging && !reduceMotion ? "position" : false}
+          layoutDependency={index}
           transition={{ layout: SPRING }}
           onAuxClick={onAuxClick}
           onMouseDown={onMouseDown}
@@ -146,6 +147,7 @@ export function TableTabsSortableTab({
             <motion.span
               aria-hidden="true"
               layoutId={reduceMotion ? undefined : activeIndicatorId}
+              layoutDependency={index}
               initial={false}
               transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
               style={{ borderRadius: 9999 }}

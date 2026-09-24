@@ -29,3 +29,23 @@ export function mayMatchWord(candidate: string, word: string): boolean {
   }
   return true;
 }
+
+export function limitMatches<T extends { label: string; filterText?: string }>(
+  items: T[],
+  word: string,
+  limit: number,
+): { items: T[]; truncated: boolean } {
+  const matching = items.filter((item) => mayMatchWord(item.filterText ?? item.label, word));
+  if (matching.length <= limit) return { items: matching, truncated: false };
+  const prefix = word.toLowerCase();
+  const startsWith = (item: T) =>
+    (item.filterText ?? item.label).toLowerCase().startsWith(prefix) ? 0 : 1;
+  return {
+    items: matching
+      .map((item, index) => ({ item, index, rank: startsWith(item) }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .slice(0, limit)
+      .map((entry) => entry.item),
+    truncated: true,
+  };
+}

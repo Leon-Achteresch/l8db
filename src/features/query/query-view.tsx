@@ -156,6 +156,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     <div className="flex h-full w-full min-h-0">
       <motion.div
         layout
+        layoutDependency={tabId}
         transition={{ layout: SPRING_LAYOUT }}
         className="flex h-full min-w-0 flex-1 flex-col"
       >
