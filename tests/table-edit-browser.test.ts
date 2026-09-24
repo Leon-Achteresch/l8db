@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { chromium, webkit } from "playwright";
 import type { Locator } from "playwright";
+import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
@@ -170,6 +170,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   async () => {
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    page.setDefaultTimeout(10_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -186,6 +187,11 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       const cell = page.locator('tr[data-index="1"] td[data-col="email"]');
       await cell.click({ button: "right" });
       await page.getByRole("menuitem", { name: "Zeile kopieren", exact: true }).click();
+      await page.waitForFunction(
+        () => window.invokes.some((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
+        undefined,
+        { timeout: 10_000 },
+      );
 
       const write = await page.evaluate(() =>
         window.invokes.find((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
