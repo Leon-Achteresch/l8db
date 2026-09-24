@@ -1,6 +1,9 @@
 # Releases und Changelog
 
 Der Release-Workflow baut und veröffentlicht die App nach Änderungen auf `main`.
+Er ruft die CI einmal als Voraussetzung auf; ein Push nach `main` startet sie nicht
+zusätzlich als eigenen Lauf. `cargo clippy --all-targets` prüft dabei auch den
+Rust-Code, sodass kein separater `cargo check` nötig ist.
 Nach erfolgreichen Builds auf allen Plattformen erzeugt er `CHANGELOG.md` aus
 der Git-Historie und erstellt einen Pull Request von `automation/changelog`
 nach `main`. Ein bereits offener PR wird beim nächsten Release aktualisiert.
