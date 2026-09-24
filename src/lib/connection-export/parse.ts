@@ -1,4 +1,10 @@
-import { createConnectionId, type SavedConnection } from "@/lib/connections";
+import {
+  createConnectionId,
+  type NetworkProxy,
+  type SavedConnection,
+  type SshAuth,
+  type SshJumpHost,
+} from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import { isToadExport, parseToadExport } from "@/lib/toad-import";
 import { stripConnectionSecrets } from "./export";
@@ -42,15 +48,65 @@ function parseSsh(value: unknown): ExportedSsh | null | string {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return "SSH-Port ist ungültig.";
   if (!Number.isInteger(remotePort) || remotePort <= 0 || remotePort > 65535)
     return "SSH-Zielport ist ungültig.";
-  const auth = value.auth === "password" ? "password" : "key";
+  const jumpHosts: SshJumpHost[] = [];
+  for (const entry of Array.isArray(value.jumpHosts) ? value.jumpHosts : []) {
+    const jump = parseJumpHost(entry);
+    if (typeof jump === "string") return jump;
+    jumpHosts.push(jump);
+  }
   return {
     host,
     port,
     user: typeof value.user === "string" ? value.user : "",
-    auth,
-    keyFile: typeof value.keyFile === "string" ? value.keyFile : "",
+    ...parseAuth(value),
+    ...(jumpHosts.length ? { jumpHosts } : {}),
     remoteHost: typeof value.remoteHost === "string" ? value.remoteHost : "",
     remotePort,
+  };
+}
+
+function parseAuth(value: Record<string, unknown>) {
+  const auth: SshAuth =
+    value.auth === "password" ? "password" : value.auth === "agent" ? "agent" : "key";
+  const agentSocket = typeof value.agentSocket === "string" ? value.agentSocket : "";
+  return {
+    auth,
+    keyFile: typeof value.keyFile === "string" ? value.keyFile : "",
+    ...(auth === "agent" && agentSocket ? { agentSocket } : {}),
+  };
+}
+
+function validPort(value: unknown, fallback: number): number | null {
+  const port = Number(value ?? fallback);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function parseJumpHost(value: unknown): SshJumpHost | string {
+  if (!isRecord(value) || typeof value.host !== "string" || !value.host)
+    return "Sprung-Host ist ungültig.";
+  const port = validPort(value.port, 22);
+  if (port === null) return "Port eines Sprung-Hosts ist ungültig.";
+  return {
+    host: value.host,
+    port,
+    user: typeof value.user === "string" ? value.user : "",
+    ...parseAuth(value),
+  };
+}
+
+function parseProxy(value: unknown): NetworkProxy | null | string {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return "Proxy-Konfiguration ist kein Objekt.";
+  const host = typeof value.host === "string" ? value.host : "";
+  if (!host) return null;
+  const port = validPort(value.port, 1080);
+  if (port === null) return "Proxy-Port ist ungültig.";
+  const username = typeof value.username === "string" ? value.username : "";
+  return {
+    type: value.type === "http" ? "http" : "socks5",
+    host,
+    port,
+    ...(username ? { username } : {}),
   };
 }
 
@@ -70,6 +126,8 @@ function parseProfile(value: unknown): ExportedConnection | string {
       : "prefer";
   const ssh = parseSsh(value.ssh);
   if (typeof ssh === "string") return ssh;
+  const proxy = parseProxy(value.proxy);
+  if (typeof proxy === "string") return proxy;
   const tags = Array.isArray(value.tags)
     ? value.tags
         .filter(isRecord)
@@ -86,6 +144,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
     connectionString: stripConnectionSecrets(connectionString),
     sslMode,
     ssh,
+    ...(proxy ? { proxy } : {}),
     tags,
     favorite: value.favorite === true,
     color: typeof value.color === "string" && value.color ? value.color : null,

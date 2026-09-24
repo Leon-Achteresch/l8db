@@ -20,7 +20,14 @@ export function toCandidate(
 }
 
 function toSavedConnection(profile: ExportedConnection): SavedConnection {
-  const ssh: SshConnection | null = profile.ssh ? { ...profile.ssh } : null;
+  const ssh: SshConnection | null = profile.ssh
+    ? {
+        ...profile.ssh,
+        ...(profile.ssh.jumpHosts
+          ? { jumpHosts: profile.ssh.jumpHosts.map((jump) => ({ ...jump })) }
+          : {}),
+      }
+    : null;
   return {
     id: profile.id,
     name: profile.name,
@@ -28,6 +35,7 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     connectionString: profile.connectionString,
     sslMode: profile.sslMode,
     ssh,
+    proxy: profile.proxy ? { ...profile.proxy } : null,
     tunnelPort: null,
     tags: profile.tags,
     favorite: profile.favorite,

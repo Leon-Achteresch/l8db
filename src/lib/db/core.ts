@@ -31,6 +31,7 @@ const CONFIGURED_COMMANDS = new Set([
   "count_table_rows_capped",
   "begin_transaction",
   "open_ssh_tunnel",
+  "open_proxy_tunnel",
   "csv_import",
 ]);
 

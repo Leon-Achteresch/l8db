@@ -36,6 +36,8 @@ export const windowConnectionId: string | null =
 
 export const isMainWindow = windowConnectionId === null;
 
+export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy"];
+
 function readStoredActiveId(): string | null {
   try {
     const raw = window.localStorage.getItem("l8db.connections");
@@ -104,7 +106,9 @@ export const useConnectionsStore = create<ConnectionsState>()(
         })),
       removeConnection: (id) => {
         void deleteSecret(id).catch(() => undefined);
-        void deleteSecret(`${id}:ssh`).catch(() => undefined);
+        for (const suffix of NETWORK_SECRET_SUFFIXES) {
+          void deleteSecret(`${id}${suffix}`).catch(() => undefined);
+        }
         void closeSshTunnel(id).catch(() => undefined);
         set((state) => ({
           connections: state.connections.filter((connection) => connection.id !== id),
@@ -120,7 +124,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
           name: `${source.name} (Kopie)`,
           favorite: false,
         };
-        for (const suffix of ["", ":ssh"]) {
+        for (const suffix of ["", ...NETWORK_SECRET_SUFFIXES]) {
           void loadSecret(`${id}${suffix}`)
             .then((secret) => (secret ? storeSecret(`${copy.id}${suffix}`, secret) : undefined))
             .catch(() => undefined);
