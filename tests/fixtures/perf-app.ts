@@ -136,6 +136,34 @@ export async function seedApp(
                   execution_time_ms: 4,
                 }
               : { columns: [], rows: [], rows_affected: 0, execution_time_ms: 1 };
+          case "get_er_schema": {
+            const erNames = names.slice(0, 150);
+            return {
+              tables: erNames.map((name) => ({
+                schema: "public",
+                name,
+                columns: [
+                  "id",
+                  "parent_id",
+                  ...Array.from({ length: 6 }, (_, i) => `col_${i}`),
+                ].map((column) => ({
+                  name: column,
+                  data_type: column.endsWith("id") ? "integer" : "text",
+                  is_primary_key: column === "id",
+                  is_nullable: column !== "id",
+                })),
+              })),
+              foreign_keys: erNames.slice(1).map((name, i) => ({
+                constraint_name: `${name}_parent_fk`,
+                from_schema: "public",
+                from_table: name,
+                from_column: "parent_id",
+                to_schema: "public",
+                to_table: erNames[Math.floor(i / 3)],
+                to_column: "id",
+              })),
+            };
+          }
           case "load_secret":
             return null;
           default:

@@ -170,6 +170,7 @@ for (const view of VIEWS) {
           await page.waitForTimeout(2500);
         }),
       );
+      expect(await page.getByText("ROUTE_ERROR").count()).toBe(0);
       expectSmooth(`${view} Leerlauf`, await sample(() => page.waitForTimeout(1500)));
       expectSmooth(`${view} scrollen`, await sample(() => wheel(900, 500, 20, 200)));
     },

@@ -52,8 +52,10 @@ export function buildNodes(
   positions: Map<string, { x: number; y: number }>,
 ): TableNodeType[] {
   const fkColumns = new Set<string>();
+  const targetColumns = new Set<string>();
   for (const fk of foreignKeys) {
     fkColumns.add(`${fk.from_schema}.${fk.from_table}.${fk.from_column}`);
+    targetColumns.add(`${fk.to_schema}.${fk.to_table}.${fk.to_column}`);
   }
 
   return tables.map((table) => {
@@ -72,6 +74,7 @@ export function buildNodes(
           isPrimaryKey: col.is_primary_key,
           isNullable: col.is_nullable,
           isForeignKey: fkColumns.has(`${table.schema}.${table.name}.${col.name}`),
+          isTarget: targetColumns.has(`${table.schema}.${table.name}.${col.name}`),
         })),
       },
     };

@@ -1,4 +1,5 @@
-import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
+import ELK, { type ElkNode } from "elkjs/lib/elk-api.js";
+import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import {
   HEADER_HEIGHT,
   NODE_WIDTH,
@@ -10,7 +11,7 @@ export function estimateNodeHeight(table: ERTable): number {
   return HEADER_HEIGHT + table.columns.length * ROW_HEIGHT;
 }
 
-const elk = new ELK();
+const elk = new ELK({ workerUrl: elkWorkerUrl });
 
 export async function computeElkLayout(
   tables: ERTable[],

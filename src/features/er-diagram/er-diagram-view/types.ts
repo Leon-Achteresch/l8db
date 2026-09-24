@@ -9,6 +9,7 @@ export type TableNodeData = {
     isPrimaryKey: boolean;
     isNullable: boolean;
     isForeignKey: boolean;
+    isTarget: boolean;
   }[];
 };
 
