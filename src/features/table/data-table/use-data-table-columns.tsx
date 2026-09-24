@@ -50,6 +50,10 @@ export function useDataTableColumns({
     }
     return map;
   }, [columnNames, data, columnDetails]);
+  const dataTypeByColumn = useMemo(
+    () => new Map((columnDetails ?? []).map((c) => [c.name, c.data_type])),
+    [columnDetails],
+  );
   const headerStateRef = useRef({ typeInfoByColumn, isFetching, page, pageSize });
   headerStateRef.current = { typeInfoByColumn, isFetching, page, pageSize };
 
@@ -78,6 +82,7 @@ export function useDataTableColumns({
         (column): ColumnDef<TableRow> => ({
           id: column,
           accessorFn: (row) => row[column],
+          meta: { dataType: dataTypeByColumn.get(column) },
           enableSorting: !sortableColumns || sortableColumns.includes(column),
           size: 200,
           minSize: COLUMN_SIZE_MIN,
@@ -161,7 +166,15 @@ export function useDataTableColumns({
         }),
       ),
     ],
-    [columnNames, fkByColumn, onNavigateToTable, currentSchema, currentTable, sortableColumns],
+    [
+      columnNames,
+      fkByColumn,
+      onNavigateToTable,
+      currentSchema,
+      currentTable,
+      sortableColumns,
+      dataTypeByColumn,
+    ],
   );
   return { columns, typeInfoByColumn };
 }

@@ -1,5 +1,11 @@
-import type { OnChangeFn, SortingState } from "@tanstack/react-table";
+import type { OnChangeFn, RowData, SortingState } from "@tanstack/react-table";
 import type { DetailedColumnInfo, ForeignKeyInfo } from "@/lib/db";
+
+declare module "@tanstack/react-table" {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    dataType?: string;
+  }
+}
 
 export type TableRow = Record<string, unknown>;
 
