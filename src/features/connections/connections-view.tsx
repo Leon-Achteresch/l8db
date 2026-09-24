@@ -17,6 +17,7 @@ import {
   sortConnectionsByName,
   useConnectionsStore,
 } from "@/lib/connections";
+import { supports } from "@/lib/providers";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { ConnectionBulkEditDialog } from "./connection-bulk-edit-dialog";
 import { ConnectionEditor } from "./connection-editor";
@@ -114,6 +115,13 @@ export function ConnectionsView() {
         onDuplicate={() => duplicateConnection(connection.id)}
         onCreateSimilar={() => openEditor("new", connection)}
         onToggleFavorite={() => toggleFavorite(connection.id)}
+        onBackup={
+          supports(connection, "backup")
+            ? () => {
+                void openBackup(connection.id);
+              }
+            : undefined
+        }
       />
     );
   }
@@ -127,6 +135,13 @@ export function ConnectionsView() {
     if (!moved) return;
     next.splice(target, 0, moved);
     setServerOrder(next);
+  }
+
+  async function openBackup(id: string) {
+    if (useConnectionSwitch.getState().isSwitching) return;
+    if (activeId === id || (await activateConnectionWithToast(id))) {
+      await navigate({ to: "/backup" });
+    }
   }
 
   async function connect(id: string | null) {
