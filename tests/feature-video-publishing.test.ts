@@ -17,19 +17,21 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
       JSON.stringify({ commit, media: null, assets: [], nextId: 1, events: [] }),
     );
     const base = JSON.parse(readFileSync("scripts/feature-videos/catalog.json", "utf8"))[0];
+    const name = `fv-${base.id}-${base.revision}`;
+    const tag = `feature-video-${base.id}-${base.revision}`;
     const item = {
       ...base,
       sourceCommit: commit,
       durationSeconds: 12,
-      poster: `${ASSET_BASE}feature-video-easy-mode-1/fv-easy-mode-1.jpg`,
+      poster: `${ASSET_BASE}${tag}/${name}.jpg`,
       sources: ["mp4", "webm"].map((extension) => ({
-        url: `${ASSET_BASE}feature-video-easy-mode-1/fv-easy-mode-1.${extension}`,
+        url: `${ASSET_BASE}${tag}/${name}.${extension}`,
         type: `video/${extension}`,
         bytes: 4,
       })),
     };
     for (const extension of ["mp4", "webm", "jpg"])
-      writeFileSync(resolve(dir, `fv-easy-mode-1.${extension}`), "demo");
+      writeFileSync(resolve(dir, `${name}.${extension}`), "demo");
     writeFileSync(
       resolve(dir, "rendered.json"),
       JSON.stringify({ commit, dirty: false, items: [item] }),

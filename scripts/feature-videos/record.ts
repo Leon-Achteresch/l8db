@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type Locator, type Page } from "playwright";
 import { ASSET_BASE, clipTag } from "../../src/lib/feature-videos/model";
 import { seedApp } from "../../tests/fixtures/perf-app";
 
@@ -36,7 +36,7 @@ async function caption(page: Page, value: string) {
       label = document.createElement("div");
       label.id = "demo-caption";
       label.style.cssText =
-        "position:fixed;bottom:90px;left:63%;transform:translateX(-50%);z-index:20000000;background:#171717;color:white;border:1px solid #444;border-radius:12px;padding:14px 24px;font:500 23px system-ui;white-space:nowrap;pointer-events:none;box-shadow:0 8px 28px #0003";
+        "position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:20000000;background:#171717;color:white;border:1px solid #444;border-radius:12px;padding:14px 24px;font:500 26px system-ui;white-space:nowrap;pointer-events:none;box-shadow:0 8px 28px #0003";
       document.body.append(label);
     }
     label.textContent = text;
@@ -85,32 +85,54 @@ try {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1000);
     const trimStart = (performance.now() - recordingStart) / 1000;
+    let camera = { scale: 1, x: 0, y: 0 };
+    const focus = async (target: Locator, scale: number, center = { x: 640, y: 260 }) => {
+      const box = await target.boundingBox();
+      if (!box) throw new Error(`Zoom-Ziel für ${item.id} fehlt`);
+      const targetX = (box.x + box.width / 2 - camera.x) / camera.scale;
+      const targetY = (box.y + box.height / 2 - camera.y) / camera.scale;
+      camera = {
+        scale,
+        x: Math.max(1280 - 1280 * scale, Math.min(0, center.x - targetX * scale)),
+        y: Math.max(720 - 720 * scale, Math.min(0, center.y - targetY * scale)),
+      };
+      await page.evaluate(({ scale, x, y }) => {
+        const root = document.getElementById("root");
+        if (!root) throw new Error("App-Wurzel fehlt");
+        root.style.transformOrigin = "top left";
+        root.style.transition = "transform 850ms cubic-bezier(0.22, 1, 0.36, 1)";
+        root.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      }, camera);
+    };
     if (item.id === "easy-mode") {
       const control = page.getByRole("switch", { name: "Easy Mode", exact: true });
       await control.waitFor();
       await caption(page, "Nur die Werkzeuge, die du gerade brauchst.");
-      await page.waitForTimeout(3000);
+      await focus(control.locator("xpath=../.."), 1.5);
+      await page.waitForTimeout(3500);
       await control.click();
       await caption(page, "Easy Mode einschalten.");
-      await page.waitForTimeout(4000);
-      await control.hover();
+      await page.waitForTimeout(3500);
+      await focus(page.getByRole("navigation", { name: "Einstellungskategorien" }), 1.15, {
+        x: 240,
+        y: 320,
+      });
       await caption(page, "Verbindungen, Tabellen und SQL im Fokus.");
       await page.waitForTimeout(5000);
     } else if (item.id === "extension-market") {
       const section = page.getByRole("region", { name: "Extension-Markt", exact: true });
-      await section
-        .getByRole("button", { name: /Installieren|Aktualisieren/ })
-        .first()
-        .waitFor();
+      const packageCard = section.locator("article").first();
+      await packageCard.waitFor();
       await caption(page, "Neue Werkzeuge direkt in l8db entdecken.");
+      await focus(packageCard, 1.5);
       await page.waitForTimeout(4000);
-      await section.scrollIntoViewIfNeeded();
       await caption(page, "Offizieller Katalog. Geprüfte Pakete.");
       await page.waitForTimeout(4000);
-      await page.mouse.move(1060, 450);
-      await page.mouse.wheel(0, 280);
+      const community = page.getByRole("region", { name: "Community Extensions" });
+      await community.scrollIntoViewIfNeeded();
+      await focus(community, 1.4);
       await caption(page, "Berechtigungen prüfen. Dann aktivieren.");
-      await page.waitForTimeout(4000);
+      await page.waitForTimeout(4500);
     }
     if (errors.length) throw new Error(`App-Fehler während Aufnahme: ${errors.join("; ")}`);
     const duration = Math.min(25, (performance.now() - recordingStart) / 1000 - trimStart);
@@ -136,7 +158,7 @@ try {
           duration.toFixed(3),
           "-an",
           "-vf",
-          "crop=940:528:340:144,scale=1280:720",
+          "scale=1280:720",
           ...options,
           path,
         ],
