@@ -200,7 +200,11 @@ export function QueryResultWorkbench({
           />
         </div>
       )}
-      <QueryCellInspector cell={cell} onClose={() => setCell(null)} />
+      <QueryCellInspector
+        cell={cell}
+        onClose={() => setCell(null)}
+        getColumnValues={(column) => filtered?.rows.map((row) => row[column]) ?? []}
+      />
     </div>
   );
 }

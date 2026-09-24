@@ -3,8 +3,10 @@ import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { memo, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { useSettingsStore } from "@/lib/settings";
-import { cellPreviewLimit, tableCellPreview } from "@/lib/table-cell-preview";
+import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
+import { cellValueBadge } from "@/lib/value-viewers/detect";
+import { DataTableCellBadge } from "./data-table-cell/data-table-cell-badge";
 import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
 import { VALUE_CLASSES } from "./data-table-cell/value-classes";
 import type { DataTableRowProps } from "./data-table-row";
@@ -85,9 +87,18 @@ export const DataTableCell = memo(function DataTableCell({
   const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
   const monochromeCells = useSettingsStore((state) => state.monochromeCells);
+  const dataType = column.columnDef.meta?.dataType;
+  const badge = useMemo(
+    () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
+    [value, dataType, cellIndex, hasCustomContent],
+  );
+  const previewLimit = cellPreviewLimit(previewWidth, fontSize);
   const preview = useMemo(
-    () => tableCellPreview(value, cellPreviewLimit(previewWidth, fontSize)),
-    [value, previewWidth, fontSize],
+    () =>
+      badge?.text
+        ? { text: truncateCellPreview(badge.text, previewLimit), kind: "text" as const }
+        : tableCellPreview(value, previewLimit),
+    [value, previewLimit, badge],
   );
   const isCellEditing = !!editingCell;
   if (isCellEditing && editingCell) {
@@ -214,6 +225,11 @@ export const DataTableCell = memo(function DataTableCell({
         </button>
       ) : cell ? (
         flexRender(cell.column.columnDef.cell, cell.getContext())
+      ) : badge ? (
+        <>
+          <DataTableCellBadge badge={badge} />
+          {preview.text}
+        </>
       ) : (
         preview.text
       )}
@@ -230,7 +246,7 @@ export const DataTableCell = memo(function DataTableCell({
           >
             <CopyIcon className="size-3" />
           </button>
-          {(isLargeCellValue(value) || (editable && !!rowCtid)) && (
+          {(isLargeCellValue(value) || !!badge || (editable && !!rowCtid)) && (
             <button
               type="button"
               onClick={(e) => {

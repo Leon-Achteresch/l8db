@@ -631,6 +631,15 @@ mod sql;
 use sql::prepare;
 
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
+    if matches!(
+        kind,
+        OracleType::Raw(_) | OracleType::LongRaw | OracleType::BLOB
+    ) {
+        return match row.get::<usize, Option<Vec<u8>>>(index) {
+            Ok(Some(bytes)) => serde_json::Value::String(super::hex_blob(&bytes)),
+            _ => serde_json::Value::Null,
+        };
+    }
     let text: Option<String> = match row.get(index) {
         Ok(v) => v,
         Err(_) => return serde_json::Value::Null,
@@ -3877,6 +3886,40 @@ fn sql_value(value: &Option<String>) -> String {
         .unwrap_or_else(|| "NULL".to_string())
 }
 
+fn binary_sql_value(value: &Option<String>) -> Option<String> {
+    let hex = super::hex_blob_body(value.as_deref()?)?;
+    Some(format!("HEXTORAW('{hex}')"))
+}
+
+fn binary_columns(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Result<std::collections::HashSet<String>, String> {
+    if !values.values().any(|v| binary_sql_value(v).is_some()) {
+        return Ok(Default::default());
+    }
+    let sql = format!(
+        "SELECT column_name FROM all_tab_cols WHERE owner = {} AND table_name = {} AND data_type IN ('RAW', 'LONG RAW', 'BLOB')",
+        lit(schema),
+        lit(table)
+    );
+    Ok(fetch(c, &sql)?.iter().map(|r| s(r, 0)).collect())
+}
+
+fn column_value(
+    binary: &std::collections::HashSet<String>,
+    col: &str,
+    value: &Option<String>,
+) -> String {
+    binary
+        .contains(col)
+        .then(|| binary_sql_value(value))
+        .flatten()
+        .unwrap_or_else(|| sql_value(value))
+}
+
 pub fn tx_begin(c: &mut Connection) {
     c.set_autocommit(false);
 }
@@ -3948,12 +3991,17 @@ pub fn tx_update_row(
 ) -> Result<String, String> {
     let rowid = validate_rowid(rowid)?;
     let valid = table_columns(c, schema, table, false)?;
+    let binary = binary_columns(c, schema, table, updates)?;
     let mut set_parts = Vec::new();
     for (col, val) in updates {
         if !valid.contains(col) {
             return Err(format!("Unbekannte Spalte: {col}"));
         }
-        set_parts.push(format!("{} = {}", quote(col), sql_value(val)));
+        set_parts.push(format!(
+            "{} = {}",
+            quote(col),
+            column_value(&binary, col, val)
+        ));
     }
     if set_parts.is_empty() {
         return Ok(rowid.to_string());
@@ -3982,6 +4030,7 @@ pub fn tx_insert_row(
     values: &std::collections::HashMap<String, Option<String>>,
 ) -> Result<serde_json::Value, String> {
     let valid = table_columns(c, schema, table, false)?;
+    let binary = binary_columns(c, schema, table, values)?;
     let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
         let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
         (vec![quote(first)], vec!["DEFAULT".to_string()])
@@ -3993,7 +4042,7 @@ pub fn tx_insert_row(
                 return Err(format!("Unbekannte Spalte: {col}"));
             }
             cols.push(quote(col));
-            vals.push(sql_value(val));
+            vals.push(column_value(&binary, col, val));
         }
         (cols, vals)
     };
