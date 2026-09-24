@@ -52,10 +52,11 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
     expect(JSON.parse(run("plan").stdout)).toEqual(["extension-market"]);
     state = JSON.parse(readFileSync(statePath, "utf8"));
     expect(state.assets).toHaveLength(3);
-    const old = new Date(Date.now() - 100 * DAY).toISOString();
+    const now = Date.now();
+    const old = new Date(now - 100 * DAY).toISOString();
     const expired = JSON.parse(state.media.body);
     expired.items[0].publishedAt = old;
-    expired.items[0].expiresAt = new Date(Date.now() - 10 * DAY).toISOString();
+    expired.items[0].expiresAt = new Date(now - 10 * DAY).toISOString();
     expired.published["easy-mode"].publishedAt = old;
     state.media.body = JSON.stringify(expired);
     state.assets.push({ id: 100, name: "latest.json", created_at: old });
