@@ -40,13 +40,12 @@ const sensors = [
 
 export function WorkspaceLayout() {
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const tool = useRouterState({ select: (state) => toolIdForPath(state.location.pathname) });
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
   useEffect(() => {
-    const tool = toolIdForPath(pathname);
     if (tool && tool !== "compare") openToolTab(tool);
-  }, [pathname, openToolTab]);
+  }, [tool, openToolTab]);
 
   const activeTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);

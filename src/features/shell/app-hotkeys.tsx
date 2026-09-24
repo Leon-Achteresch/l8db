@@ -15,12 +15,13 @@ export function AppHotkeys() {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const router = useRouter();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const inQueryRoute = useRouterState({
+    select: (state) => state.location.pathname.startsWith("/query"),
+  });
   const activeTab = useActiveWorkspaceTab();
   const connection = useActiveConnection();
   const { refresh } = useRefreshConnection();
   const overrides = useHotkeysStore((state) => state.overrides);
-  const inQueryRoute = pathname.startsWith("/query");
 
   const activeKey = activeTab ? tabKey(activeTab) : null;
 
