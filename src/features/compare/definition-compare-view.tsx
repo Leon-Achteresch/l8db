@@ -6,7 +6,7 @@ import {
   LoaderIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,17 +19,15 @@ import {
 import { CompareApplyDialog } from "@/features/compare/compare-apply-dialog";
 import { CompareSetupModal, type CompareSetupProps } from "@/features/compare/compare-setup-modal";
 import { CompareSideSummary } from "@/features/compare/compare-side-summary";
-import {
-  type DefinitionDiffApi,
-  DefinitionDiffEditor,
-  type DiffStats,
-} from "@/features/compare/definition-diff-editor";
+import { type MergeDraftApi, MergeDraftEditor } from "@/features/compare/merge-draft-editor";
+import { MergeReferenceEditor } from "@/features/compare/merge-reference-editor";
 import {
   type CompareSideSelection,
   compareLoadErrorMessage,
   loadCompareDefinition,
 } from "@/lib/compare-definition";
 import { useConnectionsStore } from "@/lib/connections";
+import { definitionHunks } from "@/lib/definition-merge";
 
 interface SideState {
   definition: string;
@@ -51,8 +49,10 @@ type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definition
   workspaceActions?: ReactNode;
   draft: string | null;
   draftBase: string | null;
-  onDraftChange: (value: string, baseline: string) => void;
-  onApplied: () => void;
+  sourceBase: string | null;
+  onDraftChange: (value: string, sourceBaseline: string, targetBaseline: string) => void;
+  onApplied: (side: "left" | "right") => void;
+  onDiscard: () => void;
   onlyDifferences: boolean;
   onOnlyDifferencesChange: (value: boolean) => void;
 };
@@ -63,10 +63,37 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [leftState, setLeftState] = useState<SideState>(IDLE_SIDE);
   const [rightState, setRightState] = useState<SideState>(IDLE_SIDE);
   const { onlyDifferences, onOnlyDifferencesChange: setOnlyDifferences } = props;
-  const [stats, setStats] = useState<DiffStats>({ changes: 0, added: 0, removed: 0 });
-  const changeCount = stats.changes;
   const [reloadToken, setReloadToken] = useState(0);
-  const diffRef = useRef<DefinitionDiffApi>(null);
+  const draftRef = useRef<MergeDraftApi>(null);
+  const changeIndex = useRef(-1);
+  const draft = props.draft ?? rightState.definition;
+  const sourceHunks = useMemo(
+    () => definitionHunks(leftState.definition, draft),
+    [leftState.definition, draft],
+  );
+  const targetHunks = useMemo(
+    () => definitionHunks(rightState.definition, draft),
+    [rightState.definition, draft],
+  );
+  const changeLines = useMemo(
+    () =>
+      [...new Set([...sourceHunks, ...targetHunks].map((hunk) => hunk.draftStart + 1))].sort(
+        (a, b) => a - b,
+      ),
+    [sourceHunks, targetHunks],
+  );
+  const changeDraft = (value: string) =>
+    props.onDraftChange(value, leftState.definition, rightState.definition);
+  const goToChange = (direction: 1 | -1) => {
+    if (changeLines.length === 0) return;
+    changeIndex.current =
+      changeIndex.current < 0
+        ? direction === 1
+          ? 0
+          : changeLines.length - 1
+        : (changeIndex.current + direction + changeLines.length) % changeLines.length;
+    draftRef.current?.goToLine(changeLines[changeIndex.current]);
+  };
 
   const loadDefinition = useCallback(
     async (side: CompareSideSelection): Promise<SideState> => {
@@ -131,9 +158,9 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               ? "Wird geladen…"
               : leftState.error || rightState.error
                 ? "Vergleich nicht verfügbar"
-                : changeCount === 0
+                : leftState.definition === draft && rightState.definition === draft
                   ? "Keine Unterschiede"
-                  : `${changeCount} geänderte ${changeCount === 1 ? "Stelle" : "Stellen"}`}
+                  : `Abweichungen: Quelle ${sourceHunks.length} · Ziel ${targetHunks.length}`}
         </span>
         <Button
           size="sm"
@@ -141,8 +168,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
           className="size-7 p-0"
           aria-label="Vorherige Änderung"
           title="Vorherige Änderung"
-          onClick={() => diffRef.current?.goToChange(-1)}
-          disabled={changeCount === 0}
+          onClick={() => goToChange(-1)}
+          disabled={changeLines.length === 0}
         >
           <ChevronUpIcon className="size-3" />
         </Button>
@@ -152,8 +179,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
           className="size-7 p-0"
           aria-label="Nächste Änderung"
           title="Nächste Änderung"
-          onClick={() => diffRef.current?.goToChange(1)}
-          disabled={changeCount === 0}
+          onClick={() => goToChange(1)}
+          disabled={changeLines.length === 0}
         >
           <ChevronDownIcon className="size-3" />
         </Button>
@@ -183,21 +210,50 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <p className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">
-                Mit den Pfeilen im Editor Änderungen ins Ziel übernehmen. Rechts den Entwurf
-                bearbeiten; Strg/Cmd+Z macht Änderungen rückgängig.
+                Änderungen aus Quelle oder Ziel in den mittleren Entwurf übernehmen. Den Entwurf
+                anschließend für jede Seite getrennt prüfen und speichern.
               </p>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
         <CompareSetupModal {...props} />
         <CompareApplyDialog
+          connection={connections.find((item) => item.id === left.connectionId) ?? null}
+          side={left}
+          baseline={props.sourceBase ?? leftState.definition}
+          draft={draft}
+          disabled={
+            !sideReady(left) ||
+            !sideReady(right) ||
+            leftState.loading ||
+            rightState.loading ||
+            Boolean(leftState.error) ||
+            Boolean(rightState.error)
+          }
+          targetLabel="Quelle"
+          onDiscard={props.onDiscard}
+          onApplied={() => {
+            props.onApplied("left");
+            setReloadToken((token) => token + 1);
+          }}
+        />
+        <CompareApplyDialog
           connection={connections.find((item) => item.id === right.connectionId) ?? null}
           side={right}
           baseline={props.draftBase ?? rightState.definition}
-          draft={props.draft}
-          disabled={!sideReady(right) || rightState.loading || Boolean(rightState.error)}
+          draft={draft}
+          disabled={
+            !sideReady(left) ||
+            !sideReady(right) ||
+            leftState.loading ||
+            rightState.loading ||
+            Boolean(leftState.error) ||
+            Boolean(rightState.error)
+          }
+          targetLabel="Ziel"
+          onDiscard={props.onDiscard}
           onApplied={() => {
-            props.onApplied();
+            props.onApplied("right");
             setReloadToken((token) => token + 1);
           }}
         />
@@ -205,18 +261,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
 
       {(sideReady(left) || sideReady(right)) && (
         <div className="grid shrink-0 grid-cols-2 gap-3 border-b px-3 py-2 text-xs">
-          <CompareSideSummary
-            side={left}
-            loading={leftState.loading}
-            error={leftState.error}
-            delta={{ sign: "-", count: stats.removed }}
-          />
-          <CompareSideSummary
-            side={right}
-            loading={rightState.loading}
-            error={rightState.error}
-            delta={{ sign: "+", count: stats.added }}
-          />
+          <CompareSideSummary side={left} loading={leftState.loading} error={leftState.error} />
+          <CompareSideSummary side={right} loading={rightState.loading} error={rightState.error} />
         </div>
       )}
 
@@ -226,14 +272,36 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         </div>
       ) : (
         <div className="relative min-h-0 flex-1">
-          <DefinitionDiffEditor
-            ref={diffRef}
-            original={leftState.definition}
-            modified={props.draft ?? rightState.definition}
-            onModifiedChange={(value) => props.onDraftChange(value, rightState.definition)}
-            onlyDifferences={onlyDifferences}
-            onStats={setStats}
-          />
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-0 flex-1">
+              <div className="min-w-0 flex-1">
+                <MergeReferenceEditor
+                  label="Quelle"
+                  source={leftState.definition}
+                  draft={draft}
+                  onlyDifferences={onlyDifferences}
+                  onDraftChange={changeDraft}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <MergeReferenceEditor
+                  label="Ziel"
+                  source={rightState.definition}
+                  draft={draft}
+                  onlyDifferences={onlyDifferences}
+                  onDraftChange={changeDraft}
+                />
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col border-t">
+              <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
+                Gemeinsamer Entwurf
+              </div>
+              <div className="min-h-0 flex-1">
+                <MergeDraftEditor ref={draftRef} value={draft} onChange={changeDraft} />
+              </div>
+            </div>
+          </div>
           {(leftState.loading || rightState.loading) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/80 text-sm text-muted-foreground">
               <LoaderIcon className="size-4 animate-spin" />

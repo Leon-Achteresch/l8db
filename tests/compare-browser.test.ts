@@ -58,9 +58,11 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       });
       await page.goto(`http://localhost:${server.port}/compare`);
       await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
-      const modified = page.locator(".monaco-diff-editor .editor.modified textarea");
+      const modified = page.locator(".merge-draft-editor textarea");
       await modified.waitFor();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
+      expect(await page.getByText("Gemeinsamer Entwurf").isVisible()).toBe(true);
+      expect(await page.locator(".merge-reference-change").count()).toBe(0);
       expect(await page.locator("select:visible").count()).toBe(0);
       expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
       await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
@@ -91,20 +93,28 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       await page
         .getByRole("menuitemcheckbox", { name: "Nur Unterschiede" })
         .waitFor({ state: "hidden" });
-      await page.locator(".editor.modified .view-lines").click();
+      await page.locator(".merge-draft-editor .view-lines").click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.type("SELECT 'Entwurf bleibt';");
       await page.waitForFunction(() =>
         document
-          .querySelector(".editor.modified .view-lines")
+          .querySelector(".merge-draft-editor .view-lines")
           ?.textContent?.replace(/\s/g, " ")
           .includes("Entwurf bleibt"),
       );
+      await page.getByRole("button", { name: "Zeile 1", exact: true }).last().click();
+      await page.waitForFunction(() =>
+        document.querySelector(".merge-draft-editor .view-lines")?.textContent?.includes("COLUMNS"),
+      );
+      await page.locator(".merge-draft-editor .view-lines").click();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.type("SELECT 'Entwurf bleibt';");
+      expect(await page.getByRole("button", { name: "Quelle prüfen" }).isEnabled()).toBe(true);
       await page.getByRole("button", { name: "Neuer Vergleich", exact: true }).last().click();
       await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
       await page.waitForFunction(() =>
         document
-          .querySelector(".editor.modified .view-lines")
+          .querySelector(".merge-draft-editor .view-lines")
           ?.textContent?.replace(/\s/g, " ")
           .includes("Entwurf bleibt"),
       );
@@ -115,7 +125,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       await modified.waitFor();
       await page.waitForFunction(() =>
         document
-          .querySelector(".editor.modified .view-lines")
+          .querySelector(".merge-draft-editor .view-lines")
           ?.textContent?.replace(/\s/g, " ")
           .includes("Entwurf bleibt"),
       );
@@ -166,12 +176,12 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
           return result;
         };
       });
-      await page.locator(".editor.modified .view-lines").click();
+      await page.locator(".merge-draft-editor .view-lines").click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.insertText(
         "TABLE public.table_0000\nCOLUMNS\n  id integer NOT NULL PRIMARY KEY\n  col_1 numeric NULL\n  email text NULL",
       );
-      await page.getByRole("button", { name: "Änderungen prüfen", exact: true }).click();
+      await page.getByRole("button", { name: "Ziel prüfen", exact: true }).click();
       await page.getByRole("alert").waitFor();
       expect(await page.getByRole("alert").innerText()).toContain("ungültige Definition");
       expect(await page.getByRole("button", { name: "Bestätigen und ausführen" }).isEnabled()).toBe(
@@ -209,7 +219,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
         ),
       ).toHaveLength(1);
       await page.waitForFunction(() =>
-        document.querySelector(".editor.modified .view-lines")?.textContent?.includes("email"),
+        document.querySelector(".merge-draft-editor .view-lines")?.textContent?.includes("email"),
       );
       expect(errors).toEqual([]);
     } finally {
