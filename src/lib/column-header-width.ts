@@ -26,8 +26,7 @@ const measured = new Map<string, number>();
 const ASCII = /^[\x20-\x7e]*$/;
 
 function textWidth(text: string, font: string, fallback: number): number {
-  if (text.length > 1 && ASCII.test(text))
-    return text.length * textWidth("0", font, fallback / text.length);
+  if (ASCII.test(text)) return fallback;
   const key = `${font}|${text}`;
   const cached = measured.get(key);
   if (cached !== undefined) return cached;
@@ -47,7 +46,7 @@ function textWidth(text: string, font: string, fallback: number): number {
 export function measureHeaderTitleWidth(title: string, typeLabel = ""): number {
   const badge = typeLabel ? TYPE_BADGE_CHROME + typeLabel.length * 0.45 : 0;
   return (
-    textWidth(title, TITLE_FONT, title.length * 7.2) +
+    textWidth(title, TITLE_FONT, title.length * 7.22) +
     textWidth(typeLabel.toUpperCase(), TYPE_FONT, typeLabel.length * 5.9) +
     badge
   );
