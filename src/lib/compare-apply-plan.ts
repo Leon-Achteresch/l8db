@@ -10,6 +10,10 @@ const DDL_HEADER = new RegExp(
   `^CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:(?:NON)?EDITIONABLE\\s+)?(FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?)\\s+(${IDENTIFIER}(?:\\s*\\.\\s*${IDENTIFIER})?)`,
   "i",
 );
+const VIEW_HEADER = new RegExp(
+  `^CREATE\\s+(?:OR\\s+REPLACE\\s+)?((?:(?:NO\\s+)?FORCE\\s+)?(?:(?:NON)?EDITION(?:ING|ABLE)\\s+(?:EDITIONING\\s+)?)?)VIEW\\s+${IDENTIFIER}(?:\\s*\\.\\s*${IDENTIFIER})?`,
+  "i",
+);
 
 function columns(definition: string): { columns: SnapshotColumn[]; rest: string } {
   const match = /^TABLE [^\n]+\nCOLUMNS\n([\s\S]*?)(?=\n(?:CONSTRAINTS|INDEXES|TRIGGERS)\n|$)/.exec(
@@ -95,14 +99,20 @@ export function buildCompareApplyPlan(
     statements = tablePlan(kind, baseline, draft, qualified(side.objectName));
   else if (side.objectType === "view") {
     const body = splitSqlStatements(draft, kind);
+    const text = body.statements[0]?.text.trim().replace(/;\s*$/, "") ?? "";
+    const header = VIEW_HEADER.exec(text);
     if (
       body.unterminated ||
       body.statements.length !== 1 ||
-      !/^\s*(SELECT|WITH)\b/i.test(body.statements[0].text)
+      !(header || /^(SELECT|WITH)\b/i.test(text))
     )
-      throw new Error("Die View muss aus genau einer SELECT-Abfrage bestehen.");
+      throw new Error(
+        "Die View muss aus genau einer SELECT-Abfrage oder CREATE VIEW-Anweisung bestehen.",
+      );
     statements = [
-      `CREATE OR REPLACE VIEW ${qualified(side.objectName)} AS ${body.statements[0].text.replace(/;\s*$/, "")}`,
+      header
+        ? `CREATE OR REPLACE ${header[1].replace(/\s+/g, " ")}VIEW ${qualified(side.objectName)}${text.slice(header[0].length)}`
+        : `CREATE OR REPLACE VIEW ${qualified(side.objectName)} AS ${text}`,
     ];
   } else if (["routine", "procedure", "package"].includes(side.objectType)) {
     const source =

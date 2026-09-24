@@ -107,4 +107,35 @@ describe("Vergleich: geprüfte Änderungsskripte", () => {
     const definition = `PACKAGE SPEC destination.DEMO\n\n${spec}\n\nPACKAGE BODY destination.DEMO\n\n${body}`;
     expect(buildCompareApplyPlan("oracle", pkg, definition, definition)).toHaveLength(2);
   });
+  test("Oracle-Views mit vollständigem CREATE-Skript behalten Spaltenliste und Optionen", () => {
+    const view = {
+      ...side,
+      schema: "DEV_ACHTERESCH",
+      objectName: "V_PCD",
+      objectType: "view" as const,
+    };
+    const script = (schema: string, divisor: number) =>
+      `CREATE OR REPLACE FORCE VIEW "${schema}"."V_PCD"\n(\n  "LAGER",\n  "MANDANT",\n  "SUM_GEWICHT"\n)\nBEQUEATH DEFINER\nAS\nSELECT l.name,\n         m.name,\n         a.sum_gewicht / ${divisor}\n    FROM auftrag a, lager l, mandant m;`;
+    expect(
+      buildCompareApplyPlan(
+        "oracle",
+        view,
+        script("DEV_ACHTERESCH", 1000),
+        script("DEV_QUELLE", 100),
+      ),
+    ).toEqual([
+      `CREATE OR REPLACE FORCE VIEW "DEV_ACHTERESCH"."V_PCD"\n(\n  "LAGER",\n  "MANDANT",\n  "SUM_GEWICHT"\n)\nBEQUEATH DEFINER\nAS\nSELECT l.name,\n         m.name,\n         a.sum_gewicht / 100\n    FROM auftrag a, lager l, mandant m`,
+    ]);
+    expect(
+      buildCompareApplyPlan("oracle", view, "", "create view other.x as select 1 from dual"),
+    ).toEqual(['CREATE OR REPLACE VIEW "DEV_ACHTERESCH"."V_PCD" as select 1 from dual']);
+    expect(() =>
+      buildCompareApplyPlan(
+        "oracle",
+        view,
+        "",
+        `${script("DEV_QUELLE", 100)}\nDROP TABLE auftrag;`,
+      ),
+    ).toThrow();
+  });
 });
