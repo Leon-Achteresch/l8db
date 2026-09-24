@@ -24,6 +24,12 @@ describe("detectCellEditorKind", () => {
     expect(detectCellEditorKind('{"a":1}')).toBe("json");
     expect(detectCellEditorKind("{kein json}")).toBe("text");
   });
+
+  test("behandelt Vektor-Spalten als Text", () => {
+    expect(detectCellEditorKind("[1,2,3]", "vector(3)")).toBe("text");
+    expect(detectCellEditorKind("[1,2,3]", "halfvec")).toBe("text");
+    expect(detectCellEditorKind("[1,2,3]")).toBe("json");
+  });
 });
 
 describe("toCellDraft", () => {
