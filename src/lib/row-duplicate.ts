@@ -112,3 +112,48 @@ export function describeInsertError(error: unknown): string {
   }
   return message;
 }
+
+export type PasteSpreadAssignment = {
+  column: string;
+  mode: "value" | "default";
+  value: string;
+};
+
+export type PasteSpread = {
+  assignments: PasteSpreadAssignment[];
+  droppedRows: number;
+  droppedCells: number;
+};
+
+export function splitTabularPaste(text: string): string[][] {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n");
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+  return lines.map((line) => line.split("\t"));
+}
+
+export function planPasteSpread(
+  text: string,
+  orderedColumns: string[],
+  startColumn: string,
+): PasteSpread {
+  const rows = splitTabularPaste(text);
+  const droppedRows = Math.max(0, rows.length - 1);
+  const cells = rows[0] ?? [];
+  const startIndex = Math.max(0, orderedColumns.indexOf(startColumn));
+  const assignments: PasteSpreadAssignment[] = [];
+  let droppedCells = 0;
+  for (let i = 0; i < cells.length; i += 1) {
+    const column = orderedColumns[startIndex + i];
+    if (!column) {
+      droppedCells += 1;
+      continue;
+    }
+    assignments.push({
+      column,
+      mode: cells[i] === "" ? "default" : "value",
+      value: cells[i] === "" ? "" : cells[i],
+    });
+  }
+  return { assignments, droppedRows, droppedCells };
+}

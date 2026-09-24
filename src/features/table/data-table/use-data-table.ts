@@ -171,6 +171,7 @@ export function useDataTable(props: DataTableProps) {
     setColumnSizing,
     fkByColumn,
     typeInfoByColumn,
+    data,
   });
   const hasNextPage =
     totalCount != null

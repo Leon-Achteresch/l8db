@@ -205,6 +205,9 @@ export function DataTableBody({
         <DataTableRowMenu
           menuRow={menuRow}
           rowOffset={page * pageSize}
+          columns={visibleColumns
+            .map((column) => column.id)
+            .filter((id) => id !== "__row_index__")}
           canDuplicate={!!onInsertRow}
           duplicateDisabled={hasDraft || isSaving}
           onDuplicate={() => {

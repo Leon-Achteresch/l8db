@@ -1,16 +1,7 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
 import { Pin, PinOff } from "lucide";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  EyeOffIcon,
-  FilterIcon,
-  GripVerticalIcon,
-  PlayIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ClipboardCopyIcon, EyeOffIcon, FilterIcon, GripVerticalIcon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +39,7 @@ type DataTableHeaderCellProps = {
   canHide: boolean;
   isPinned: boolean;
   onTogglePin: () => void;
+  onCopyColumn: () => void;
 };
 
 export function DataTableHeaderCell({
@@ -71,6 +63,7 @@ export function DataTableHeaderCell({
   canHide,
   isPinned,
   onTogglePin,
+  onCopyColumn,
 }: DataTableHeaderCellProps) {
   const { ref, handleRef, isDragging } = useSortable({ id: header.id, index: sortableIndex });
   const pinnedOffset =
@@ -240,6 +233,10 @@ export function DataTableHeaderCell({
           </>
         )}
         <ContextMenuSeparator />
+        <ContextMenuItem onClick={onCopyColumn}>
+          <ClipboardCopyIcon />
+          Spalte kopieren
+        </ContextMenuItem>
         <ContextMenuItem onClick={onTogglePin}>
           <MorphIcon icon={isPinned ? PinOff : Pin} />
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}

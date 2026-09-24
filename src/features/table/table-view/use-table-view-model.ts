@@ -192,9 +192,9 @@ export function useTableViewModel({
   }, [openTab, appNavigate]);
 
   useEffect(() => {
-    if (inDrawer) return;
+    if (inDrawer || pane) return;
     openTab({ schema, table, entityType: isView ? "view" : "table" });
-  }, [schema, table, isView, openTab, inDrawer]);
+  }, [schema, table, isView, openTab, inDrawer, pane]);
 
   useEffect(() => {
     if (inDrawer) return;
