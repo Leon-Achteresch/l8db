@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { ExplainNodeCard } from "@/features/query/explain-node-card";
+import { PlanVisualizer } from "@/features/explain/plan-visualizer";
 import type { ExplainNode } from "@/lib/db";
 import {
   buildSavedExplainPlan,
@@ -140,8 +140,8 @@ export function ExplainPlanView({
           <XIcon className="size-4" />
         </Button>
       </div>
-      <div className="max-h-64 min-h-0 overflow-y-auto px-3 pb-2">
-        <ExplainNodeCard node={plan} depth={0} />
+      <div className="min-h-0 px-3 pb-2">
+        <PlanVisualizer plan={plan} />
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery, explainQuery } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { normalizeExplainResult } from "@/lib/explain-normalize";
 import {
   buildSavedPerfTest,
   emptyMetrics,
@@ -94,8 +95,10 @@ export function usePerfRunner(): PerfRunnerState {
             database ?? undefined,
           );
           const wall = performance.now() - started;
-          const root = plans[0] as Record<string, unknown> | undefined;
-          const node = plans[0]?.Plan;
+          const root = Array.isArray(plans)
+            ? (plans[0] as Record<string, unknown> | undefined)
+            : undefined;
+          const node = normalizeExplainResult(plans);
           if (!node) throw new Error("Kein Ausführungsplan erhalten.");
           return {
             index,
