@@ -1,7 +1,7 @@
 [
   {
     "id": "easy-mode",
-    "revision": "2",
+    "revision": "3",
     "title": "Mehr Ruhe mit Easy Mode",
     "summary": "Blende Profi-Werkzeuge aus und konzentriere dich auf Verbindungen, Tabellen und SQL.",
     "sourceCommit": "64b344ea",
@@ -14,7 +14,7 @@
   },
   {
     "id": "extension-market",
-    "revision": "2",
+    "revision": "3",
     "title": "Deine Werkzeuge erweitern",
     "summary": "Entdecke offizielle Erweiterungen im Extension-Markt und prüfe ihre Berechtigungen vor dem Aktivieren.",
     "sourceCommit": "8aeb1658",
