@@ -23,7 +23,11 @@ let measureContext: CanvasRenderingContext2D | null | undefined;
 let measureFont = "";
 const measured = new Map<string, number>();
 
+const ASCII = /^[\x20-\x7e]*$/;
+
 function textWidth(text: string, font: string, fallback: number): number {
+  if (text.length > 1 && ASCII.test(text))
+    return text.length * textWidth("0", font, fallback / text.length);
   const key = `${font}|${text}`;
   const cached = measured.get(key);
   if (cached !== undefined) return cached;

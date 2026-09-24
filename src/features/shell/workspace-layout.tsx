@@ -5,12 +5,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
+import { MasterSelectionScope } from "@/features/shell/master-selection-scope";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
-import { MasterSelectionContext, usePaneSourceKey } from "@/lib/master-detail";
+import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import { useSplitView } from "@/lib/split-view";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
@@ -119,9 +120,9 @@ export function WorkspaceLayout() {
               <>
                 <DeferredOutlet>
                   {(outlet) => (
-                    <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
+                    <MasterSelectionScope selectionKey={selectionKey}>
                       {outlet}
-                    </MasterSelectionContext.Provider>
+                    </MasterSelectionScope>
                   )}
                 </DeferredOutlet>
                 {!easyMode && activeTab && <NewPaneDropZone />}
