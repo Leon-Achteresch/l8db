@@ -1,4 +1,4 @@
-import { Outlet } from "@tanstack/react-router";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
@@ -28,7 +28,7 @@ export function AppLayout() {
       <SidebarInset className="overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Outlet />
+            <DeferredOutlet />
           </div>
           {panelOpen && <TransactionPanel />}
           {!easyMode && <VersioningPanel />}

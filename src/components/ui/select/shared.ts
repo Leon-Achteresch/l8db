@@ -5,3 +5,5 @@ import * as React from "react";
 export const SEARCH_MIN_ITEMS = 8;
 
 export const SelectSearchContext = React.createContext("");
+
+export const SelectClosedValueContext = React.createContext<string | null>(null);

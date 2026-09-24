@@ -1,4 +1,3 @@
-import type { useMatchRoute } from "@tanstack/react-router";
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
@@ -18,7 +17,6 @@ interface SidebarTabContentProps {
   q: SidebarObjectQueries;
   packages: SidebarObjectQueries["functions"];
   plainFunctions: SidebarObjectQueries["functions"];
-  matchRoute: ReturnType<typeof useMatchRoute>;
 }
 
 export function SidebarTabContent({
@@ -27,7 +25,6 @@ export function SidebarTabContent({
   q,
   packages,
   plainFunctions,
-  matchRoute,
 }: SidebarTabContentProps) {
   return (
     <>
@@ -41,7 +38,6 @@ export function SidebarTabContent({
           error={q.tablesErrorValue}
           emptyMessage="Keine Tabellen gefunden."
           type="table"
-          matchRoute={matchRoute}
         />
       ) : sidebarTab === "views" ? (
         <>
@@ -52,7 +48,6 @@ export function SidebarTabContent({
             error={q.viewsErrorValue}
             emptyMessage="Keine Views gefunden."
             type="view"
-            matchRoute={matchRoute}
           />
           <SidebarMatviewList items={q.matviews} />
         </>

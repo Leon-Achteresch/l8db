@@ -1,13 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
-import { motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
 import type { SequenceInfo } from "@/lib/db";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useSequencesQuery } from "@/lib/queries";
 import { EditSequenceDialog } from "./sequences-view/edit-sequence-dialog";
 
@@ -17,6 +16,20 @@ export function SequencesView() {
   const { data: sequences, isLoading, isError, error } = useSequencesQuery();
   const [search, setSearch] = useState("");
   const [editingSequence, setEditingSequence] = useState<SequenceInfo | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const q = search.trim().toLowerCase();
+  const filtered = (sequences ?? []).filter(
+    (s) => !q || s.name.toLowerCase().includes(q) || s.schema.toLowerCase().includes(q),
+  );
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 33,
+    overscan: 10,
+  });
+  const items = virtualizer.getVirtualItems();
+  const padTop = items[0]?.start ?? 0;
+  const padBottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
 
   if (!connection) {
     return (
@@ -49,11 +62,6 @@ export function SequencesView() {
     );
   }
 
-  const q = search.trim().toLowerCase();
-  const filtered = (sequences ?? []).filter(
-    (s) => !q || s.name.toLowerCase().includes(q) || s.schema.toLowerCase().includes(q),
-  );
-
   const handleEditSuccess = async () => {
     await queryClient.invalidateQueries({ queryKey: ["sequences"] });
   };
@@ -85,7 +93,7 @@ export function SequencesView() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div ref={scrollRef} className="flex-1 overflow-auto">
             {filtered.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted-foreground">Keine Treffer.</p>
             ) : (
@@ -125,46 +133,51 @@ export function SequencesView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((seq) => (
-                    <motion.tr
-                      key={`${seq.schema}.${seq.name}`}
-                      layout="position"
-                      transition={{ layout: SPRING_LAYOUT }}
-                      className="hover:bg-muted/40 transition-colors group"
-                    >
-                      <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
-                        {seq.schema}
-                      </td>
-                      <td className="px-4 py-2 font-medium font-mono text-xs">{seq.name}</td>
-                      <td className="px-4 py-2 text-muted-foreground text-xs">{seq.data_type}</td>
-                      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                        {seq.start_value}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                        {seq.min_value}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                        {seq.max_value}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                        {seq.increment_by}
-                      </td>
-                      <td className="px-4 py-2 text-center text-xs">{seq.cycle ? "Ja" : "Nein"}</td>
-                      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
-                        {seq.last_value ?? <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => setEditingSequence(seq)}
-                        >
-                          <PencilIcon className="size-3.5" />
-                        </Button>
-                      </td>
-                    </motion.tr>
-                  ))}
+                  {padTop > 0 && <tr aria-hidden style={{ height: padTop }} />}
+                  {items.map(({ index }) => {
+                    const seq = filtered[index];
+                    return (
+                      <tr
+                        key={`${seq.schema}.${seq.name}`}
+                        className="h-[33px] hover:bg-muted/40 transition-colors group"
+                      >
+                        <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
+                          {seq.schema}
+                        </td>
+                        <td className="px-4 py-2 font-medium font-mono text-xs">{seq.name}</td>
+                        <td className="px-4 py-2 text-muted-foreground text-xs">{seq.data_type}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+                          {seq.start_value}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                          {seq.min_value}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                          {seq.max_value}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+                          {seq.increment_by}
+                        </td>
+                        <td className="px-4 py-2 text-center text-xs">
+                          {seq.cycle ? "Ja" : "Nein"}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+                          {seq.last_value ?? <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setEditingSequence(seq)}
+                          >
+                            <PencilIcon className="size-3.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {padBottom > 0 && <tr aria-hidden style={{ height: padBottom }} />}
                 </tbody>
               </table>
             )}

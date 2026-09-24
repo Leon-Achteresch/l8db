@@ -1,4 +1,4 @@
-import { Outlet } from "@tanstack/react-router";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function PlainLayout() {
@@ -8,7 +8,7 @@ export function PlainLayout() {
         <SidebarTrigger className="-ml-1" />
       </header>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Outlet />
+        <DeferredOutlet />
       </div>
     </div>
   );

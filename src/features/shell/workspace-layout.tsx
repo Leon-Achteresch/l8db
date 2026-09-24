@@ -1,9 +1,10 @@
 import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
@@ -117,7 +118,7 @@ export function WorkspaceLayout() {
             ) : (
               <>
                 <MasterSelectionContext.Provider key={selectionKey} value={selectionKey}>
-                  <Outlet />
+                  <DeferredOutlet />
                 </MasterSelectionContext.Provider>
                 {!easyMode && activeTab && <NewPaneDropZone />}
               </>

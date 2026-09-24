@@ -5,7 +5,7 @@ import { Select as SelectPrimitive } from "radix-ui";
 import * as React from "react";
 import { matchesSelectSearch } from "@/lib/select-search";
 import { cn } from "@/lib/utils";
-import { SelectSearchContext } from "./shared";
+import { SelectClosedValueContext, SelectSearchContext } from "./shared";
 
 export function SelectItem({
   className,
@@ -13,6 +13,8 @@ export function SelectItem({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Item>) {
   const query = React.useContext(SelectSearchContext);
+  const closedValue = React.useContext(SelectClosedValueContext);
+  if (closedValue !== null && props.value !== closedValue) return null;
   const filtered = !matchesSelectSearch(children, props.value, query);
 
   return (
