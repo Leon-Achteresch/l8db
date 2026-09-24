@@ -1,12 +1,23 @@
-import { expect, test } from "bun:test";
-import type { Locator } from "playwright";
+import { afterAll, expect, test } from "bun:test";
+import type { Browser, Locator } from "playwright";
 import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
+
+let sharedChromium: Browser | undefined;
+
+async function chromiumBrowser(): Promise<Browser> {
+  if (!sharedChromium) sharedChromium = await chromium.launch({ headless: true });
+  return sharedChromium;
+}
+
+afterAll(async () => {
+  await sharedChromium?.close();
+});
 
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "table grid: first click focuses, second click opens focused editor",
   async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromiumBrowser();
     const page = await browser.newPage({
       viewport: { width: 1280, height: 820 },
     });
@@ -63,9 +74,8 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 
       expect(errors).toEqual([]);
     } finally {
-      await page.close();
       await saveBrowserArtifacts(browser, "table-edit");
-      await browser.close();
+      await page.close();
     }
   },
   60000,
@@ -84,7 +94,7 @@ async function pasteInto(el: Locator, text: string) {
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "draft row: pasting tab-separated values spreads across columns",
   async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromiumBrowser();
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -122,7 +132,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 
       expect(errors).toEqual([]);
     } finally {
-      await browser.close();
+      await page.close();
     }
   },
   60_000,
@@ -131,7 +141,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "column header: right-click copies the whole column as newline-separated text",
   async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromiumBrowser();
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -159,7 +169,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       await page.screenshot({ path: "/tmp/l8db-copy-column.png" });
       expect(errors).toEqual([]);
     } finally {
-      await browser.close();
+      await page.close();
     }
   },
   60_000,
@@ -168,8 +178,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
 test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "row context menu: copies the whole row as tab-separated text",
   async () => {
-    const browser = await chromium.launch({ headless: true });
-    console.info("row-copy: browser launched");
+    const browser = await chromiumBrowser();
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     page.setDefaultTimeout(10_000);
     const errors: string[] = [];
@@ -185,32 +194,24 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
     });
     try {
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
-      console.info("row-copy: fixture loaded");
       const cell = page.locator('tr[data-index="1"] td[data-col="email"]');
       await cell.click({ button: "right" });
-      console.info("row-copy: context menu opened");
       await page.getByRole("menuitem", { name: "Zeile kopieren", exact: true }).click();
-      console.info("row-copy: copy clicked");
       await page.waitForFunction(
         () => window.invokes.some((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
         undefined,
         { timeout: 10_000 },
       );
-      console.info("row-copy: clipboard invoked");
 
       const write = await page.evaluate(() =>
         window.invokes.find((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
       );
-      console.info("row-copy: clipboard inspected");
       expect(write).toBeTruthy();
       expect(write.args.text).toBe("2\tuser2@example.test\tHamburg");
       await page.screenshot({ path: "/tmp/l8db-copy-row.png" });
-      console.info("row-copy: screenshot saved");
       expect(errors).toEqual([]);
     } finally {
-      console.info("row-copy: closing browser");
-      await browser.close();
-      console.info("row-copy: browser closed");
+      await page.close();
     }
   },
   60_000,
@@ -223,7 +224,8 @@ for (const engine of [chromium, webkit]) {
   )(
     `${engine.name()}: duplicated rows stay editable until saved and survive insert conflicts`,
     async () => {
-      const browser = await engine.launch({ headless: true });
+      const browser =
+        engine === chromium ? await chromiumBrowser() : await engine.launch({ headless: true });
       const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -292,7 +294,8 @@ for (const engine of [chromium, webkit]) {
         expect(errors).toEqual([]);
       } finally {
         await saveBrowserArtifacts(browser, "table-edit");
-        await browser.close();
+        await page.close();
+        if (engine !== chromium) await browser.close();
       }
     },
     60_000,
