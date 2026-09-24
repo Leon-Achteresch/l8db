@@ -74,6 +74,7 @@ const WRITE_COMMANDS = new Set([
   "install_extension",
   "modify_privilege",
   "refresh_materialized_view",
+  "run_restore",
   "run_scheduler_job",
   "set_scheduler_job_enabled",
   "set_table_rls",

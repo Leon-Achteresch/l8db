@@ -1,3 +1,5 @@
+pub mod backup;
+pub mod backup_tools;
 mod cassandra;
 mod clickhouse;
 pub mod commands;
@@ -2282,3 +2284,6 @@ mod live_plan_tests;
 
 #[cfg(test)]
 mod value_viewer_live_tests;
+
+#[cfg(test)]
+mod backup_live_tests;

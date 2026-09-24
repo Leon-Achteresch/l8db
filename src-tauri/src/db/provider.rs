@@ -71,6 +71,7 @@ pub struct Capabilities {
     pub object_admin: bool,
     pub ssl: bool,
     pub ssh: bool,
+    pub backup: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -129,6 +130,7 @@ const NONE: Capabilities = Capabilities {
     query_cancel: false,
     ssl: true,
     ssh: true,
+    backup: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -168,6 +170,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                backup: true,
                 query_stats: true,
                 debugger: true,
                 query_cancel: true,
@@ -205,6 +208,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
+                backup: true,
                 query_stats: true,
                 sessions: true,
                 transactions: true,
@@ -213,6 +217,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Sqlite => Capabilities {
+                backup: true,
                 query_cancel: true,
                 databases: false,
                 ssl: false,
@@ -231,6 +236,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                backup: true,
                 query_stats: true,
                 proxy_user: true,
                 sessions: true,
@@ -285,6 +291,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Mongodb => Capabilities {
+                backup: true,
                 ssl: false,
                 indexes: true,
                 ddl: true,
@@ -293,6 +300,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Redis => Capabilities {
+                backup: true,
                 schemas: false,
                 ssl: false,
                 query_language: "redis",
