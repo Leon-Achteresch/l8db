@@ -9,11 +9,13 @@ import { useDbThemeStore } from "@/lib/db-theme";
 import { useProvidersStore } from "@/lib/providers";
 import { loadSecret, withSslModeParam } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
+import type { SshConfigDraft } from "@/lib/ssh";
 import { createConnectionInputActions } from "./connection-input-actions";
 import { createConnectionOperations } from "./connection-operations";
 import { createConnectionUrlActions } from "./connection-url-actions";
 import { seedFields, seedMode } from "./seed";
 import type { ConnectionEditorProps, Mode, TestResult } from "./types";
+import { jumpHostDraft, useNetworkDraft } from "./use-network-draft";
 
 export function useConnectionEditor({
   connection,
@@ -61,6 +63,7 @@ export function useConnectionEditor({
   const [sshAuth, setSshAuth] = useState<SshAuth>(seed?.ssh?.auth ?? "key");
   const [sshKey, setSshKey] = useState(seed?.ssh?.keyFile ?? "");
   const [sshPassword, setSshPassword] = useState("");
+  const network = useNetworkDraft(seed, connection?.id);
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -90,8 +93,24 @@ export function useConnectionEditor({
     (mode === "string" ? quickProviderId : provider) === "supabase" &&
     (port === "6543" || /:6543(?:\/|$)/.test(value));
   const advancedOpen = Boolean(
-    seed?.ssh?.host || seed?.readOnly || seed?.schemas?.length || seed?.color || seed?.tags?.length,
+    seed?.ssh?.host ||
+      seed?.proxy?.host ||
+      seed?.readOnly ||
+      seed?.schemas?.length ||
+      seed?.color ||
+      seed?.tags?.length,
   );
+
+  function applySshConfig(draft: SshConfigDraft) {
+    setSshEnabled(true);
+    setSshHost(draft.host);
+    setSshPort(String(draft.port));
+    setSshUser(draft.user);
+    setSshAuth(draft.auth);
+    setSshKey(draft.keyFile);
+    network.setSshAgentSocket(draft.agentSocket);
+    network.setJumpHosts(draft.jumpHosts.map(jumpHostDraft));
+  }
 
   useEffect(() => {
     if (mode === "string") setPreview(quickKind, quickProviderId);
@@ -143,6 +162,7 @@ export function useConnectionEditor({
     sshAuth,
     sshKey,
     sshPassword,
+    network,
     connection,
   });
 
@@ -210,6 +230,7 @@ export function useConnectionEditor({
   return {
     activeInfo,
     advancedOpen,
+    applySshConfig,
     busy,
     caps,
     color,
@@ -225,6 +246,7 @@ export function useConnectionEditor({
     kind,
     mode,
     name,
+    network,
     password,
     pasteConnectionString,
     pickFile,

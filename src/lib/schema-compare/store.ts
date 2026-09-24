@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/connections";
 import { loadPartitionDdl, loadSchemaCatalog } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
 import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
@@ -69,7 +69,7 @@ export async function prepareConnection(id: string): Promise<SavedConnection> {
   if (!find()) throw new Error("Die Verbindung existiert nicht mehr.");
   if (!(await ensurePassword(id))) throw new Error("Ohne Passwort kann nicht verbunden werden.");
   const fresh = find();
-  if (fresh?.ssh?.host && !fresh.tunnelPort) {
+  if (usesTunnel(fresh) && !fresh.tunnelPort) {
     const outcome = await ensureSshTunnel(fresh);
     if (!outcome.ok) throw new Error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
   }

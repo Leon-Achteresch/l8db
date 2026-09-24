@@ -1,4 +1,4 @@
-import type { ConnectionTag } from "@/lib/connections";
+import type { ConnectionTag, NetworkProxy, SshAuth, SshJumpHost } from "@/lib/connections";
 import type { DatabaseKind, SslMode } from "@/lib/db";
 
 export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
@@ -28,8 +28,10 @@ export interface ExportedSsh {
   host: string;
   port: number;
   user: string;
-  auth: "password" | "key";
+  auth: SshAuth;
   keyFile: string;
+  agentSocket?: string;
+  jumpHosts?: SshJumpHost[];
   remoteHost: string;
   remotePort: number;
 }
@@ -41,6 +43,7 @@ export interface ExportedConnection {
   connectionString: string;
   sslMode: SslMode;
   ssh: ExportedSsh | null;
+  proxy?: NetworkProxy | null;
   tags: ConnectionTag[];
   favorite: boolean;
   color: string | null;
