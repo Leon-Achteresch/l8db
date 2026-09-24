@@ -1,4 +1,5 @@
 import {
+  ArrowDownIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   EllipsisIcon,
@@ -66,9 +67,12 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [rightState, setRightState] = useState<SideState>(IDLE_SIDE);
   const { onlyDifferences, onOnlyDifferencesChange: setOnlyDifferences } = props;
   const [reloadToken, setReloadToken] = useState(0);
+  const [transferSide, setTransferSide] = useState<"left" | "right">("left");
   const draftRef = useRef<MergeDraftApi>(null);
   const changeIndex = useRef(-1);
   const draft = props.draft ?? rightState.definition;
+  const transferState = transferSide === "left" ? leftState : rightState;
+  const transferLabel = transferSide === "left" ? "Quelle" : "Ziel";
   const sourceHunks = useMemo(
     () => definitionHunks(leftState.definition, draft),
     [leftState.definition, draft],
@@ -286,6 +290,8 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   source={leftState.definition}
                   draft={draft}
                   onlyDifferences={onlyDifferences}
+                  selected={transferSide === "left"}
+                  onSelect={() => setTransferSide("left")}
                   onDraftChange={changeDraft}
                 />
               </div>
@@ -295,11 +301,31 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   source={rightState.definition}
                   draft={draft}
                   onlyDifferences={onlyDifferences}
+                  selected={transferSide === "right"}
+                  onSelect={() => setTransferSide("right")}
                   onDraftChange={changeDraft}
                 />
               </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col border-t">
+            <div className="relative flex h-9 shrink-0 items-center justify-center">
+              <div className="absolute inset-x-0 top-1/2 border-t" />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="relative h-7 gap-1.5 border bg-background px-3 text-xs"
+                aria-label={`${transferLabel} in Entwurf übernehmen`}
+                disabled={
+                  transferState.loading ||
+                  Boolean(transferState.error) ||
+                  transferState.definition === draft
+                }
+                onClick={() => changeDraft(transferState.definition)}
+              >
+                <ArrowDownIcon className="size-3.5" />
+                {transferLabel} in Entwurf
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
                 Gemeinsamer Entwurf
               </div>
