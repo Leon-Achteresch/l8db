@@ -3,6 +3,21 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.139] - 2026-09-24
+
+### Fixes
+- allow loading third-party client libraries under hardened runtime (#136)
+
+## [0.6.138] - 2026-09-24
+
+### Fixes
+- Feature-Videos für v0.6.137 veröffentlichen (#135)
+
+## [0.6.137] - 2026-09-24
+
+### Weitere Änderungen
+- release: merge development into main (#133)
+
 ## [0.6.135] - 2026-09-23
 
 ### Fixes
