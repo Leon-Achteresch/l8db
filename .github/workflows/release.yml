@@ -192,6 +192,7 @@ jobs:
           printf '%s\n' "$signature" | grep -F 'Authority=Developer ID Application: LEON ACHTERESCH (R4LQCWA594)'
           printf '%s\n' "$signature" | grep -F 'TeamIdentifier=R4LQCWA594'
           printf '%s\n' "$signature" | grep -F '(runtime)'
+          codesign --display --entitlements - --xml "$app_path" | grep -F 'com.apple.security.cs.disable-library-validation'
           xcrun stapler validate "$app_path"
           spctl --assess --type execute --verbose=2 "$app_path"
 
