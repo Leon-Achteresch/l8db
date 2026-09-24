@@ -38,7 +38,8 @@ Features depend on the selected database family and installed driver. The list b
 - **Transaction panel** — review and commit/rollback pending changes
 - **Multiple connections** — manage and switch between connections; supports connection strings and individual fields
 - **SSL / TLS** — `disable`, `prefer`, `require`, `verify-ca`, `verify-full` per connection (OS certificate store)
-- **SSH tunnels** — reach private databases through a bastion (password or key auth, known_hosts verification with optional TOFU); database TLS follows the selected SSL mode
+- **SSH tunnels** — reach private databases through a bastion (password, key or SSH agent incl. 1Password, ProxyJump chains, known_hosts verification with optional TOFU on every hop, host import from `~/.ssh/config`); database TLS follows the selected SSL mode. See [docs/ssh-network.md](docs/ssh-network.md)
+- **Proxies** — SOCKS5 and HTTP CONNECT (optional credentials) to reach the SSH server or, without SSH, the database itself via a local forwarding port
 - **OS keychain secrets** — passwords live in Keychain / Credential Manager / Secret Service, never in localStorage
 - **Dark / light / system theme**
 

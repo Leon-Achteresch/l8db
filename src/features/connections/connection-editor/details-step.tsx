@@ -22,6 +22,7 @@ export function ConnectionDetailsStep({
   const {
     activeInfo,
     advancedOpen,
+    applySshConfig,
     caps,
     color,
     database,
@@ -34,6 +35,7 @@ export function ConnectionDetailsStep({
     kind,
     mode,
     name,
+    network,
     password,
     pickFile,
     poolerWarning,
@@ -228,6 +230,8 @@ export function ConnectionDetailsStep({
         onSshKey={setSshKey}
         sshPassword={sshPassword}
         onSshPassword={setSshPassword}
+        network={network}
+        onApplySshConfig={applySshConfig}
         tags={tags}
         onTags={setTags}
         color={color}

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { SavedConnection } from "@/lib/connections";
-import { useConnectionsStore } from "@/lib/connections";
+import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 import { scrubUrlPassword } from "@/lib/secrets";
 
@@ -71,8 +71,11 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "redis",
 ];
 
-export function mcpSupported(connection: Pick<SavedConnection, "kind" | "ssh">): string | null {
+export function mcpSupported(
+  connection: Pick<SavedConnection, "kind" | "ssh" | "proxy">,
+): string | null {
   if (connection.ssh?.host) return "SSH-Tunnel werden vom MCP nicht unterstützt";
+  if (connection.proxy?.host) return "Proxy-Verbindungen werden vom MCP nicht unterstützt";
   if (!MCP_SQL_KINDS.includes(connection.kind))
     return "Datenbanktyp wird vom MCP nicht unterstützt";
   return null;
@@ -98,7 +101,7 @@ export function mergeMcpConnections(
       kind: connection.kind,
       connectionString: scrubUrlPassword(connection.connectionString),
       schemas: connection.schemas ?? [],
-      ssh: Boolean(connection.ssh?.host),
+      ssh: usesTunnel(connection),
       exposed: previous?.exposed ?? false,
       readOnly: previous?.readOnly ?? true,
       allowDdl: previous?.allowDdl ?? false,

@@ -187,6 +187,8 @@ pub fn run() {
             db::secrets::load_secret,
             db::secrets::delete_secret,
             db::ssh::open_ssh_tunnel,
+            db::ssh::open_proxy_tunnel,
+            db::ssh::config::list_ssh_config_hosts,
             db::ssh::close_ssh_tunnel,
             db::ssh::list_ssh_tunnels,
             db::commands::explain_query,

@@ -38,7 +38,16 @@ export function connectionColorLabel(color: string | null | undefined): string |
   return CONNECTION_COLORS.find((entry) => entry.value === color)?.label ?? color;
 }
 
-export type SshAuth = "password" | "key";
+export type SshAuth = "password" | "key" | "agent";
+
+export interface SshJumpHost {
+  host: string;
+  port: number;
+  user: string;
+  auth: SshAuth;
+  keyFile: string;
+  agentSocket?: string;
+}
 
 export interface SshConnection {
   host: string;
@@ -46,8 +55,19 @@ export interface SshConnection {
   user: string;
   auth: SshAuth;
   keyFile: string;
+  agentSocket?: string;
+  jumpHosts?: SshJumpHost[];
   remoteHost: string;
   remotePort: number;
+}
+
+export type ProxyType = "socks5" | "http";
+
+export interface NetworkProxy {
+  type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
 }
 
 export interface SavedConnection {
@@ -57,6 +77,7 @@ export interface SavedConnection {
   connectionString: string;
   sslMode: SslMode;
   ssh?: SshConnection | null;
+  proxy?: NetworkProxy | null;
   tunnelPort?: number | null;
   tags?: ConnectionTag[];
   favorite?: boolean;
@@ -65,6 +86,12 @@ export interface SavedConnection {
   proxyUser?: string | null;
   schemas?: string[] | null;
   showSingleSchemaSwitcher?: boolean;
+}
+
+export function usesTunnel<T extends Pick<SavedConnection, "ssh" | "proxy">>(
+  connection: T | null | undefined,
+): connection is T {
+  return Boolean(connection?.ssh?.host || connection?.proxy?.host);
 }
 
 export function sortConnectionsByName(connections: SavedConnection[]): SavedConnection[] {
