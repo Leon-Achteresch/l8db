@@ -74,3 +74,21 @@ export function applyDefinitionHunk(source: string, draft: string, hunk: Definit
   );
   return lines.join("\n");
 }
+
+export type DraftLineOrigin = "source" | "target";
+
+export function draftLineOrigins(
+  sourceHunks: DefinitionHunk[],
+  targetHunks: DefinitionHunk[],
+  lineCount: number,
+): (DraftLineOrigin | null)[] {
+  const differs = (hunks: DefinitionHunk[]) => {
+    const lines = new Array<boolean>(lineCount).fill(false);
+    for (const hunk of hunks) lines.fill(true, hunk.draftStart, hunk.draftEnd);
+    return lines;
+  };
+  const fromTarget = differs(sourceHunks);
+  return differs(targetHunks).map((fromSource, line) =>
+    fromSource === fromTarget[line] ? null : fromSource ? "source" : "target",
+  );
+}

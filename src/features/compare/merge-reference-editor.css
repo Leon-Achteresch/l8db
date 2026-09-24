@@ -1,3 +1,19 @@
-.merge-reference-change {
-  background: color-mix(in oklab, var(--primary) 12%, transparent);
+.merge-origin-source {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+}
+
+.merge-origin-target {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+
+.merge-reference-editor .cgmr.merge-hunk-apply {
+  border-radius: 5px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.merge-reference-editor .cgmr.merge-hunk-apply:hover {
+  background: color-mix(in oklab, var(--primary) 85%, var(--foreground));
 }

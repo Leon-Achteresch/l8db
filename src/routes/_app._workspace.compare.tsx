@@ -9,7 +9,11 @@ export const Route = createFileRoute("/_app/_workspace/compare")({
   }),
   beforeLoad: ({ search }) => {
     if (!search.compareId)
-      throw redirect({ to: "/compare", search: { compareId: crypto.randomUUID() }, replace: true });
+      throw redirect({
+        to: "/compare",
+        search: { compareId: crypto.randomUUID(), setup: undefined },
+        replace: true,
+      });
   },
   component: CompareView,
 });

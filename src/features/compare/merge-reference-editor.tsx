@@ -2,9 +2,13 @@ import { ArrowDownIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { applyDefinitionHunk, definitionHunks } from "@/lib/definition-merge";
+import { applyDefinitionHunk, type DefinitionHunk, definitionHunks } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
 import "./merge-reference-editor.css";
+
+function hunkLine(hunk: DefinitionHunk, source: string): number {
+  return Math.min(hunk.sourceStart + 1, source.split("\n").length);
+}
 
 interface Props {
   label: "Quelle" | "Ziel";
@@ -30,6 +34,16 @@ export function MergeReferenceEditor({
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const { resolvedTheme } = useTheme();
   const hunks = useMemo(() => definitionHunks(source, draft), [source, draft]);
+  const applyHunk = (hunk: DefinitionHunk) => {
+    onSelect();
+    onDraftChange(applyDefinitionHunk(source, draft, hunk));
+  };
+  const applyTitle = `Änderung aus ${label === "Quelle" ? "der Quelle" : "dem Ziel"} in den Entwurf übernehmen`;
+  const applyAtLine = useRef((_line: number) => {});
+  applyAtLine.current = (line) => {
+    const hunk = hunks.find((item) => hunkLine(item, source) === line);
+    if (hunk) applyHunk(hunk);
+  };
 
   useEffect(() => {
     if (!container.current) return;
@@ -39,6 +53,7 @@ export function MergeReferenceEditor({
       readOnly: true,
       theme: "l8db-light",
       automaticLayout: true,
+      glyphMargin: true,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       fontSize: 13,
@@ -53,9 +68,17 @@ export function MergeReferenceEditor({
         horizontalScrollbarSize: 8,
       },
     });
+    const click = instance.onMouseDown((event) => {
+      if (
+        event.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN &&
+        event.target.position
+      )
+        applyAtLine.current(event.target.position.lineNumber);
+    });
     editor.current = instance;
     decorations.current = instance.createDecorationsCollection();
     return () => {
+      click.dispose();
       decorations.current?.clear();
       decorations.current = null;
       instance.dispose();
@@ -67,17 +90,28 @@ export function MergeReferenceEditor({
   useEffect(() => {
     const model = editor.current?.getModel();
     if (model && model.getValue() !== source) model.setValue(source);
-    const nextDecorations = hunks
-      .filter((hunk) => hunk.sourceEnd > hunk.sourceStart)
-      .map((hunk) => ({
-        range: new monaco.Range(hunk.sourceStart + 1, 1, hunk.sourceEnd, 1),
+    const nextDecorations = hunks.flatMap((hunk) => [
+      {
+        range: new monaco.Range(hunkLine(hunk, source), 1, hunkLine(hunk, source), 1),
         options: {
-          isWholeLine: true,
-          className: label === "Quelle" ? "merge-origin-source" : "merge-origin-target",
+          glyphMarginClassName: "merge-hunk-apply codicon-arrow-down",
+          glyphMarginHoverMessage: { value: applyTitle },
         },
-      }));
+      },
+      ...(hunk.sourceEnd > hunk.sourceStart
+        ? [
+            {
+              range: new monaco.Range(hunk.sourceStart + 1, 1, hunk.sourceEnd, 1),
+              options: {
+                isWholeLine: true,
+                className: label === "Quelle" ? "merge-origin-source" : "merge-origin-target",
+              },
+            },
+          ]
+        : []),
+    ]);
     decorations.current?.set(nextDecorations);
-  }, [label, source, hunks]);
+  }, [label, source, hunks, applyTitle]);
 
   useEffect(() => {
     if (editor.current)
@@ -103,39 +137,30 @@ export function MergeReferenceEditor({
           </span>
         </button>
       </div>
-      {hunks.length > 0 && (
-        <div className="flex max-h-28 shrink-0 flex-wrap gap-1 overflow-auto border-b p-1.5">
-          {hunks.map((hunk, index) => (
-            <Button
-              key={`${hunk.sourceStart}-${hunk.draftStart}`}
-              size="sm"
-              variant="outline"
-              className="h-6 px-1.5 text-[11px]"
-              title={`Änderung ${index + 1} aus der ${label} in den Entwurf übernehmen`}
-              onClick={() => {
-                onSelect();
-                onDraftChange(applyDefinitionHunk(source, draft, hunk));
-              }}
-            >
-              <ArrowDownIcon className="size-3" />
-              Zeile {Math.min(hunk.sourceStart + 1, source.split("\n").length)}
-            </Button>
-          ))}
-        </div>
-      )}
-      <div ref={container} className={onlyDifferences ? "hidden" : "min-h-0 flex-1"} />
+      <div
+        ref={container}
+        className={onlyDifferences ? "hidden" : "merge-reference-editor min-h-0 flex-1"}
+      />
       {onlyDifferences && (
         <div className="min-h-0 flex-1 overflow-auto p-3 text-xs text-muted-foreground">
           {hunks.length === 0
             ? "Keine Unterschiede."
             : hunks.map((hunk) => (
-                <pre
-                  key={`${hunk.sourceStart}-${hunk.draftStart}`}
-                  className="mb-3 overflow-auto rounded bg-muted/40 p-2 font-mono text-foreground"
-                >
-                  {source.split("\n").slice(hunk.sourceStart, hunk.sourceEnd).join("\n") ||
-                    "(Zeilen entfernen)"}
-                </pre>
+                <div key={`${hunk.sourceStart}-${hunk.draftStart}`} className="mb-3 flex gap-1.5">
+                  <Button
+                    size="icon-sm"
+                    className="size-6 shrink-0"
+                    aria-label={applyTitle}
+                    title={applyTitle}
+                    onClick={() => applyHunk(hunk)}
+                  >
+                    <ArrowDownIcon className="size-3.5" />
+                  </Button>
+                  <pre className="min-w-0 flex-1 overflow-auto rounded bg-muted/40 p-2 font-mono text-foreground">
+                    {source.split("\n").slice(hunk.sourceStart, hunk.sourceEnd).join("\n") ||
+                      "(Zeilen entfernen)"}
+                  </pre>
+                </div>
               ))}
         </div>
       )}

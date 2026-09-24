@@ -1,6 +1,8 @@
 import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import type { DraftLineOrigin } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
+import "./merge-reference-editor.css";
 
 export interface MergeDraftApi {
   goToLine: (line: number) => void;
@@ -8,13 +10,15 @@ export interface MergeDraftApi {
 
 interface Props {
   value: string;
+  origins: (DraftLineOrigin | null)[];
   onChange: (value: string) => void;
   ref?: Ref<MergeDraftApi>;
 }
 
-export function MergeDraftEditor({ value, onChange, ref }: Props) {
+export function MergeDraftEditor({ value, origins, onChange, ref }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const callback = useRef(onChange);
   const syncing = useRef(false);
   const { resolvedTheme } = useTheme();
@@ -45,7 +49,9 @@ export function MergeDraftEditor({ value, onChange, ref }: Props) {
       if (!syncing.current) callback.current(model.getValue());
     });
     editor.current = instance;
+    decorations.current = instance.createDecorationsCollection();
     return () => {
+      decorations.current = null;
       subscription.dispose();
       instance.dispose();
       model.dispose();
@@ -60,6 +66,21 @@ export function MergeDraftEditor({ value, onChange, ref }: Props) {
     model.setValue(value);
     syncing.current = false;
   }, [value]);
+
+  useEffect(() => {
+    decorations.current?.set(
+      origins.flatMap((origin, line) =>
+        origin
+          ? [
+              {
+                range: new monaco.Range(line + 1, 1, line + 1, 1),
+                options: { isWholeLine: true, className: `merge-origin-${origin}` },
+              },
+            ]
+          : [],
+      ),
+    );
+  }, [origins]);
 
   useEffect(() => {
     if (editor.current)
