@@ -1,3 +1,5 @@
+pub mod backup;
+pub mod backup_tools;
 mod cassandra;
 mod clickhouse;
 pub mod commands;
@@ -2222,3 +2224,6 @@ mod load_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;
+
+#[cfg(test)]
+mod backup_live_tests;

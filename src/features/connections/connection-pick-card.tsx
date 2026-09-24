@@ -1,4 +1,5 @@
 import {
+  Archive,
   Copy,
   CopyPlus,
   Database,
@@ -46,6 +47,7 @@ interface Props {
   onDuplicate: () => void;
   onCreateSimilar: () => void;
   onToggleFavorite: () => void;
+  onBackup?: () => void;
 }
 
 export function ConnectionPickCard({
@@ -57,6 +59,7 @@ export function ConnectionPickCard({
   onDuplicate,
   onCreateSimilar,
   onToggleFavorite,
+  onBackup,
 }: Props) {
   const favorite = Boolean(connection.favorite);
 
@@ -108,6 +111,12 @@ export function ConnectionPickCard({
                     <Pencil className="size-3.5" />
                     Bearbeiten
                   </DropdownMenuItem>
+                  {onBackup && (
+                    <DropdownMenuItem onSelect={onBackup}>
+                      <Archive className="size-3.5" />
+                      Sichern & Wiederherstellen…
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={onDuplicate}>
                     <Copy className="size-3.5" />
@@ -168,6 +177,12 @@ export function ConnectionPickCard({
           <Pencil className="size-3.5" />
           Bearbeiten
         </ContextMenuItem>
+        {onBackup && (
+          <ContextMenuItem onSelect={onBackup}>
+            <Archive className="size-3.5" />
+            Sichern & Wiederherstellen…
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onDuplicate}>
           <Copy className="size-3.5" />

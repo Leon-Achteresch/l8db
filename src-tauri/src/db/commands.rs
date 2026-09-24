@@ -2257,6 +2257,85 @@ pub async fn copy_schema_table_data(
 }
 
 #[tauri::command]
+pub async fn backup_probe(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    tool_paths: Option<std::collections::HashMap<String, String>>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupProbe, String> {
+    Ok(super::backup::probe(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        &tool_paths.unwrap_or_default(),
+        pool_state.inner().clone(),
+    )
+    .await)
+}
+
+fn backup_emitter(app: tauri::AppHandle) -> super::backup::Emit {
+    use tauri::Emitter;
+    std::sync::Arc::new(move |event: &str, payload: serde_json::Value| {
+        let _ = app.emit(event, payload);
+    })
+}
+
+#[tauri::command]
+pub async fn run_backup(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::backup::BackupRequest,
+    options: Option<super::execution::ExecutionOptions>,
+    app: tauri::AppHandle,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupOutcome, String> {
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    let pool = pool_state.inner().clone();
+    super::execution::run(options, true, async {
+        super::backup::backup(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            &request,
+            backup_emitter(app),
+            job_id,
+            pool,
+        )
+        .await
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn run_restore(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::backup::BackupRequest,
+    options: Option<super::execution::ExecutionOptions>,
+    app: tauri::AppHandle,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupOutcome, String> {
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    let pool = pool_state.inner().clone();
+    super::execution::run(options, true, async {
+        super::backup::restore(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            &request,
+            backup_emitter(app),
+            job_id,
+            pool,
+        )
+        .await
+    })
+    .await
+}
+
+#[tauri::command]
 pub fn cancel_execution(job_id: String) -> Result<bool, String> {
     super::execution::cancel(&job_id)
 }
