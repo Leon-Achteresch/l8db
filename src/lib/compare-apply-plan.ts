@@ -66,6 +66,11 @@ function oracleTablePlan(
   const modify = after.flatMap((column) => {
     const old = before.find((item) => item.name === column.name);
     if (!old) return [];
+    if (
+      old.column_default !== column.column_default &&
+      [old.column_default, column.column_default].includes("IDENTITY")
+    )
+      throw new Error("Identitätsspalten bitte im Tabelleneditor ändern.");
     const parts = [
       old.data_type !== column.data_type ? column.data_type : "",
       old.column_default !== column.column_default
@@ -77,10 +82,11 @@ function oracleTablePlan(
   });
   const add = after
     .filter((column) => !before.some((item) => item.name === column.name))
-    .map(
-      (column) =>
-        `${name(column)} ${column.data_type}${column.column_default === null ? "" : ` DEFAULT ${column.column_default}`}${column.is_nullable ? "" : " NOT NULL"}`,
-    );
+    .map((column) => {
+      if (column.column_default === "IDENTITY")
+        throw new Error("Identitätsspalten bitte im Tabelleneditor anlegen.");
+      return `${name(column)} ${column.data_type}${column.column_default === null ? "" : ` DEFAULT ${column.column_default}`}${column.is_nullable ? "" : " NOT NULL"}`;
+    });
   const drop = before
     .filter((column) => !after.some((item) => item.name === column.name))
     .map(name);
@@ -221,7 +227,10 @@ export function buildCompareApplyPlan(
     throw new Error(
       "Für diesen Objekttyp kann noch kein sicheres Änderungsskript erzeugt werden. Der Entwurf bleibt erhalten.",
     );
-  if (statements.length === 0) throw new Error("Keine ausführbaren Änderungen am Ziel gefunden.");
+  if (statements.length === 0)
+    throw new Error(
+      "Der Entwurf weicht nur in Angaben ab, die nichts am Objekt ändern (z. B. Schema, Systemnamen oder Spaltenreihenfolge). Es gibt nichts zu speichern.",
+    );
   for (const statement of statements) {
     const split = splitSqlStatements(statement, kind);
     if (split.unterminated || split.statements.length !== 1)
