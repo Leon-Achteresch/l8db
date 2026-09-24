@@ -179,10 +179,12 @@ impl OracleAdapter {
                     set("REF_CONSTRAINTS", "FALSE"),
                     set("SQLTERMINATOR", "FALSE"),
                 );
-                c.execute(&setup, &[]).map_err(|e| e.to_string())?;
-                let rows = fetch(c, &sql);
+                let rows = c
+                    .execute(&setup, &[])
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| fetch(c, &sql));
                 let reset = format!("BEGIN {} END;", set("DEFAULT", "TRUE"));
-                let _ = c.execute(&reset, &[]);
+                c.execute(&reset, &[]).map_err(|e| e.to_string())?;
                 Ok(rows?
                     .iter()
                     .map(|r| (s(r, 0), s(r, 1)))
