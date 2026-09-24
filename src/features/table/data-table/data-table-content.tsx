@@ -283,6 +283,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
         currentSchema={currentSchema}
         currentTable={currentTable}
         columnDetails={columnDetails}
+        data={data}
       />
     </div>
   );
