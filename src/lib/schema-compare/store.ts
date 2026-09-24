@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { loadSchemaCatalog } from "@/lib/db";
+import { loadPartitionDdl, loadSchemaCatalog } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
 import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
 import { compareCatalogs, defaultSelection } from "./diff";
@@ -126,6 +126,28 @@ export async function runSchemaCompare(): Promise<void> {
         target.database ?? undefined,
       ),
     ]);
+    const targetTables = new Set(
+      targetObjects.filter((object) => object.object_type === "table").map((object) => object.name),
+    );
+    const unpartitioned = sourceObjects.filter(
+      (object) =>
+        object.object_type === "table" &&
+        object.attributes.partitioned === "YES" &&
+        !/PARTITION BY/i.test(object.ddl) &&
+        !targetTables.has(object.name),
+    );
+    if (unpartitioned.length > 0) {
+      set({ loading: "Partitionierung wird gelesen…" });
+      const clauses = await loadPartitionDdl(
+        left.kind,
+        effectiveConnectionString(left),
+        source.schema,
+        unpartitioned.map((object) => object.name),
+        source.database ?? undefined,
+      ).catch((): Record<string, string> => ({}));
+      for (const object of unpartitioned)
+        if (clauses[object.name]) object.ddl = `${object.ddl}\n${clauses[object.name]}`;
+    }
     set({ loading: "Unterschiede werden berechnet…" });
     const context = {
       kind: left.kind,

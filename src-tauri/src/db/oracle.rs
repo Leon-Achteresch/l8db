@@ -1546,6 +1546,14 @@ impl DatabaseAdapter for OracleAdapter {
         self.schema_catalog_impl(schema, types).await
     }
 
+    async fn schema_partition_ddl(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        self.schema_partition_ddl_impl(schema, tables).await
+    }
+
     async fn list_schema_copy_objects(
         &self,
         source_schema: &str,

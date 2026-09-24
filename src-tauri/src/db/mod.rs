@@ -1032,6 +1032,14 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = (schema, types);
         Err(unsupported("Schema-Vergleich"))
     }
+    async fn schema_partition_ddl(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let _ = (schema, tables);
+        Err(unsupported("Partitionierung"))
+    }
     async fn list_schema_copy_objects(
         &self,
         source_schema: &str,

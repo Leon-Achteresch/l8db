@@ -176,6 +176,7 @@ pub fn run() {
             db::commands::execute_schema_object_copy,
             db::commands::copy_schema_table_data,
             db::schema_catalog::schema_catalog,
+            db::schema_catalog::schema_partition_ddl,
             db::commands::preview_object_ddl,
             db::commands::execute_object_ddl,
             db::commands::object_audit_info,

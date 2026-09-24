@@ -57,3 +57,22 @@ pub async fn schema_catalog(
     .schema_catalog(&schema, &types)
     .await
 }
+
+#[tauri::command]
+pub async fn schema_partition_ddl(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    tables: Vec<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<BTreeMap<String, String>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .schema_partition_ddl(&schema, &tables)
+    .await
+}

@@ -37,3 +37,13 @@ export async function loadSchemaCatalog(
 ): Promise<CatalogObject[]> {
   return invoke("schema_catalog", { kind, connectionString, database, schema, types });
 }
+
+export async function loadPartitionDdl(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  tables: string[],
+  database?: string,
+): Promise<Record<string, string>> {
+  return invoke("schema_partition_ddl", { kind, connectionString, database, schema, tables });
+}
