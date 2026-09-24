@@ -3,6 +3,12 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.6.135] - 2026-09-23
+
+### Fixes
+- isolate settings storage and read-only resolver between test files (#131)
+- install Oracle Instant Client on Windows with one click (#130)
+
 ## [0.6.132] - 2026-09-23
 
 ### Weitere Änderungen
