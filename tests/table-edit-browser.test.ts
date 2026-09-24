@@ -169,6 +169,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
   "row context menu: copies the whole row as tab-separated text",
   async () => {
     const browser = await chromium.launch({ headless: true });
+    console.info("row-copy: browser launched");
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     page.setDefaultTimeout(10_000);
     const errors: string[] = [];
@@ -184,24 +185,32 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
     });
     try {
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/tests/fixtures/table-edit.html`);
+      console.info("row-copy: fixture loaded");
       const cell = page.locator('tr[data-index="1"] td[data-col="email"]');
       await cell.click({ button: "right" });
+      console.info("row-copy: context menu opened");
       await page.getByRole("menuitem", { name: "Zeile kopieren", exact: true }).click();
+      console.info("row-copy: copy clicked");
       await page.waitForFunction(
         () => window.invokes.some((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
         undefined,
         { timeout: 10_000 },
       );
+      console.info("row-copy: clipboard invoked");
 
       const write = await page.evaluate(() =>
         window.invokes.find((entry) => entry.cmd === "plugin:clipboard-manager|write_text"),
       );
+      console.info("row-copy: clipboard inspected");
       expect(write).toBeTruthy();
       expect(write.args.text).toBe("2\tuser2@example.test\tHamburg");
       await page.screenshot({ path: "/tmp/l8db-copy-row.png" });
+      console.info("row-copy: screenshot saved");
       expect(errors).toEqual([]);
     } finally {
+      console.info("row-copy: closing browser");
       await browser.close();
+      console.info("row-copy: browser closed");
     }
   },
   60_000,
