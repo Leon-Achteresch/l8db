@@ -1,7 +1,17 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
 import { Pin, PinOff } from "lucide";
-import { ArrowDownIcon, ArrowUpIcon, ClipboardCopyIcon, EyeOffIcon, FilterIcon, GripVerticalIcon, PlayIcon, RotateCcwIcon, XIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ClipboardCopyIcon,
+  EyeOffIcon,
+  FilterIcon,
+  GripVerticalIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  XIcon,
+} from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { Button } from "@/components/ui/button";
 import {

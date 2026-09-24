@@ -5,8 +5,8 @@ import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
 
 import type { QueryViewCapabilities } from "./types";
 import type { EditorCursorState } from "./use-editor-cursor-state";
-import type { QueryExecutionState } from "./use-query-execution-state";
 import type { EditorStateSync } from "./use-editor-state-sync";
+import type { QueryExecutionState } from "./use-query-execution-state";
 import type { useQueryTabBookmarks } from "./use-query-tab-state";
 import type { RunActions } from "./use-run-actions";
 

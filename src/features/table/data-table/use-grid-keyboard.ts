@@ -101,9 +101,7 @@ export function useGridKeyboard({
       } else if (e.key === "PageUp" || e.key === "PageDown") {
         const scroller = scrollRef.current;
         const rowHeight = rowVirtualizer.options.estimateSize(0) || 24;
-        const pageRows = scroller
-          ? Math.max(1, Math.floor(scroller.clientHeight / rowHeight))
-          : 10;
+        const pageRows = scroller ? Math.max(1, Math.floor(scroller.clientHeight / rowHeight)) : 10;
         const delta = e.key === "PageDown" ? pageRows : -pageRows;
         nextRowIndex = Math.min(rows.length - 1, Math.max(0, rowIndex + delta));
         e.preventDefault();

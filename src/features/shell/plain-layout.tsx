@@ -1,5 +1,5 @@
-import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 
 export function PlainLayout() {
   return (

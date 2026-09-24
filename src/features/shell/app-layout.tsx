@@ -1,6 +1,6 @@
-import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
+import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
 import { VersioningPanel } from "@/features/versioning/versioning-panel";
