@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_call:
   push:
-    branches: [main, development]
+    branches: [development]
   pull_request:
     branches: [main, development]
 
@@ -92,8 +92,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: cargo fmt --check
-        working-directory: src-tauri
-      - run: cargo check --locked
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
