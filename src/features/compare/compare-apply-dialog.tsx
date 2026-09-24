@@ -23,6 +23,8 @@ interface Props {
   draft: string | null;
   disabled: boolean;
   onApplied: () => void;
+  onDiscard: () => void;
+  targetLabel: "Quelle" | "Ziel";
 }
 
 export function CompareApplyDialog({
@@ -32,6 +34,8 @@ export function CompareApplyDialog({
   draft,
   disabled,
   onApplied,
+  onDiscard,
+  targetLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"idle" | "checking" | "checked" | "applying" | "error">(
@@ -85,7 +89,7 @@ export function CompareApplyDialog({
       onApplied();
       setOpen(false);
       setStatus("idle");
-      toast.success("Änderungen im Ziel gespeichert.");
+      toast.success(`Änderungen in der ${targetLabel} gespeichert.`);
       void queryClient.invalidateQueries();
     } catch (cause) {
       checked.current = null;
@@ -112,7 +116,7 @@ export function CompareApplyDialog({
         onClick={() => void check()}
       >
         <CheckIcon className="size-3.5" />
-        Änderungen prüfen
+        {targetLabel} prüfen
       </Button>
       <Dialog
         open={open}
@@ -124,12 +128,12 @@ export function CompareApplyDialog({
           <DialogHeader>
             <DialogTitle>Übernahmen bestätigen</DialogTitle>
             <DialogDescription>
-              Ziel: {connection?.name} · {side.database} · {side.schema}.{side.objectName}
+              {targetLabel}: {connection?.name} · {side.database} · {side.schema}.{side.objectName}
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Diese Anweisungen werden erst nach erfolgreicher Prüfung und deiner Bestätigung im Ziel
-            gespeichert.
+            Diese Anweisungen werden erst nach erfolgreicher Prüfung und deiner Bestätigung in der{" "}
+            {targetLabel} gespeichert.
           </p>
           {connection?.kind === "oracle" && (
             <p className="text-xs text-muted-foreground">
@@ -145,7 +149,9 @@ export function CompareApplyDialog({
           {busy && (
             <p role="status" className="flex items-center gap-2 text-sm">
               <LoaderIcon className="size-4 animate-spin" />
-              {status === "checking" ? "Prüfung im Ziel läuft…" : "Änderungen werden ausgeführt…"}
+              {status === "checking"
+                ? `Prüfung in der ${targetLabel} läuft…`
+                : "Änderungen werden ausgeführt…"}
             </p>
           )}
           {status === "checked" && checked.current === fingerprint && (
@@ -163,7 +169,7 @@ export function CompareApplyDialog({
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                onApplied();
+                onDiscard();
                 setOpen(false);
               }}
             >

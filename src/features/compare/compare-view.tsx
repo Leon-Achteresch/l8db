@@ -93,6 +93,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
                   right: saved.right,
                   draft: null,
                   draftBase: null,
+                  sourceBase: null,
                 })
               }
             />
@@ -118,6 +119,9 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         onLeftChange={(left) =>
           update({
             left,
+            draft: null,
+            draftBase: null,
+            sourceBase: null,
             ...(left.objectType !== workspace.right.objectType ||
             left.objectName !== workspace.left.objectName
               ? {
@@ -127,19 +131,23 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
                     objectName: null,
                     objectOid: null,
                   },
-                  draft: null,
-                  draftBase: null,
                 }
               : {}),
           })
         }
-        onRightChange={(right) => update({ right, draft: null, draftBase: null })}
+        onRightChange={(right) => update({ right, draft: null, draftBase: null, sourceBase: null })}
         draft={workspace.draft}
         draftBase={workspace.draftBase ?? null}
-        onDraftChange={(draft, baseline) =>
-          update({ draft, draftBase: workspace.draftBase ?? baseline })
+        sourceBase={workspace.sourceBase ?? null}
+        onDraftChange={(draft, sourceBaseline, targetBaseline) =>
+          update({
+            draft,
+            sourceBase: workspace.sourceBase ?? sourceBaseline,
+            draftBase: workspace.draftBase ?? targetBaseline,
+          })
         }
-        onApplied={() => update({ draft: null, draftBase: null })}
+        onApplied={(side) => update(side === "left" ? { sourceBase: null } : { draftBase: null })}
+        onDiscard={() => update({ draft: null, draftBase: null, sourceBase: null })}
         onlyDifferences={workspace.onlyDifferences}
         onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
       />
