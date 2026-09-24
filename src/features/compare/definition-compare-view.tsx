@@ -47,6 +47,8 @@ function sideReady(side: CompareSideSelection): boolean {
 
 type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definitions" }> & {
   workspaceActions?: ReactNode;
+  initialSetupOpen?: boolean;
+  onSetupOpenChange?: (open: boolean) => void;
   draft: string | null;
   draftBase: string | null;
   sourceBase: string | null;
@@ -216,7 +218,11 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <CompareSetupModal {...props} />
+        <CompareSetupModal
+          {...props}
+          defaultOpen={props.initialSetupOpen}
+          onOpenChange={props.onSetupOpenChange}
+        />
         <CompareApplyDialog
           connection={connections.find((item) => item.id === left.connectionId) ?? null}
           side={left}

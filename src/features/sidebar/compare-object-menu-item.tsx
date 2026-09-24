@@ -60,7 +60,7 @@ export function CompareObjectMenuItem({
           },
           `Vergleich ${objectName.trim().replace(/\s+/g, "_")}`,
         );
-        void navigate({ to: "/compare", search: { compareId: id } });
+        void navigate({ to: "/compare", search: { compareId: id, setup: true } });
       }}
     >
       <GitCompareIcon />
