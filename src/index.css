@@ -4,6 +4,41 @@
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant group-hover {
+  @media (hover: hover) {
+    .group:hover & {
+      @slot;
+    }
+  }
+}
+@custom-variant row-hover {
+  @media (hover: hover) {
+    .group\/row:hover & {
+      @slot;
+    }
+  }
+}
+@custom-variant fk-hover {
+  @media (hover: hover) {
+    .group\/fk:hover & {
+      @slot;
+    }
+  }
+}
+@custom-variant menu-item-hover {
+  @media (hover: hover) {
+    .group\/menu-item:hover & {
+      @slot;
+    }
+  }
+}
+@custom-variant menu-button-peer-hover {
+  @media (hover: hover) {
+    .peer\/menu-button:hover ~ & {
+      @slot;
+    }
+  }
+}
 
 @theme {
   --font-sans: Geist, Avenir, Helvetica, Arial, sans-serif;

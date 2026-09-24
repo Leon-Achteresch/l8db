@@ -39,7 +39,7 @@ export function SavedQueriesList() {
                 e.stopPropagation();
                 deleteQuery(query.id);
               }}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 hover:text-destructive group-hover/menu-item:opacity-100"
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 hover:text-destructive menu-item-hover:opacity-100"
             >
               <TrashIcon className="size-3.5" />
             </button>
