@@ -28,7 +28,7 @@ import {
   loadCompareDefinition,
 } from "@/lib/compare-definition";
 import { useConnectionsStore } from "@/lib/connections";
-import { definitionHunks } from "@/lib/definition-merge";
+import { definitionHunks, draftLineOrigins } from "@/lib/definition-merge";
 
 interface SideState {
   definition: string;
@@ -80,6 +80,10 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const targetHunks = useMemo(
     () => definitionHunks(rightState.definition, draft),
     [rightState.definition, draft],
+  );
+  const origins = useMemo(
+    () => draftLineOrigins(sourceHunks, targetHunks, draft.split("\n").length),
+    [sourceHunks, targetHunks, draft],
   );
   const changeLines = useMemo(
     () =>
@@ -329,8 +333,23 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
               <div className="shrink-0 border-b px-3 py-1.5 text-xs font-medium">
                 Gemeinsamer Entwurf
               </div>
-              <div className="min-h-0 flex-1">
-                <MergeDraftEditor ref={draftRef} value={draft} onChange={changeDraft} />
+              <div className="relative min-h-0 flex-1">
+                <MergeDraftEditor
+                  ref={draftRef}
+                  value={draft}
+                  origins={origins}
+                  onChange={changeDraft}
+                />
+                <div className="pointer-events-none absolute top-2 right-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
+                  <span className="flex items-center gap-1.5">
+                    <span className="merge-origin-source size-2.5 rounded-sm" />
+                    aus Quelle
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="merge-origin-target size-2.5 rounded-sm" />
+                    aus Ziel
+                  </span>
+                </div>
               </div>
             </div>
           </div>

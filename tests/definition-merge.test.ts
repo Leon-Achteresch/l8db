@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { applyDefinitionHunk, definitionHunks } from "../src/lib/definition-merge";
+import {
+  applyDefinitionHunk,
+  definitionHunks,
+  draftLineOrigins,
+} from "../src/lib/definition-merge";
 
 test("übernimmt unabhängige Änderungen von beiden Seiten in einen Entwurf", () => {
   const source = "SELECT\n  id,\n  source_value,\n  common_value\nFROM records";
@@ -21,4 +25,13 @@ test("übernimmt eingefügte und entfernte Zeilen ohne Nachbaränderungen zu ver
   expect(applyDefinitionHunk("a\nb\nc\nd", source, definitionHunks("a\nb\nc\nd", source)[0])).toBe(
     "a\nb\nc\nd",
   );
+});
+
+test("markiert Entwurfszeilen nach ihrer Herkunft aus Quelle oder Ziel", () => {
+  const source = "a\nsource\nb\nc";
+  const target = "a\nb\ntarget\nc";
+  const draft = "a\nsource\nb\ntarget\nmanual\nc";
+  expect(
+    draftLineOrigins(definitionHunks(source, draft), definitionHunks(target, draft), 6),
+  ).toEqual([null, "source", null, "target", null, null]);
 });

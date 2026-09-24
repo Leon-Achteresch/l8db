@@ -64,7 +64,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
   useEffect(() => {
     useTableTabs.getState().openToolTab("compare", id);
     if (!tabId && !search.compareId)
-      void navigate({ to: "/compare", search: { compareId: id }, replace: true });
+      void navigate({ to: "/compare", search: { compareId: id, setup: undefined }, replace: true });
   }, [id, tabId, search.compareId, navigate]);
 
   useEffect(() => {
@@ -79,7 +79,11 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         initialSetupOpen={search.setup === true && search.compareId === id}
         onSetupOpenChange={(open) => {
           if (!open && search.setup && search.compareId === id)
-            void navigate({ to: "/compare", search: { compareId: id }, replace: true });
+            void navigate({
+              to: "/compare",
+              search: { compareId: id, setup: undefined },
+              replace: true,
+            });
         }}
         workspaceActions={
           <>
@@ -110,7 +114,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
               onClick={() => {
                 const nextId = crypto.randomUUID();
                 useTableTabs.getState().openToolTab("compare", nextId);
-                void navigate({ to: "/compare", search: { compareId: nextId } });
+                void navigate({ to: "/compare", search: { compareId: nextId, setup: undefined } });
               }}
             >
               <PlusIcon className="size-3.5" />
