@@ -93,6 +93,7 @@ export function SchemaCompareTree({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 26,
     overscan: 20,
+    useFlushSync: false,
   });
 
   const flip = (setter: typeof setCollapsed, id: string) =>

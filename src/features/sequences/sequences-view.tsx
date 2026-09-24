@@ -26,6 +26,7 @@ export function SequencesView() {
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 33,
     overscan: 10,
+    useFlushSync: false,
   });
   const items = virtualizer.getVirtualItems();
   const padTop = items[0]?.start ?? 0;
@@ -139,7 +140,7 @@ export function SequencesView() {
                     return (
                       <tr
                         key={`${seq.schema}.${seq.name}`}
-                        className="h-[33px] hover:bg-muted/40 transition-colors group"
+                        className="h-[33px] hover:bg-muted/40 group"
                       >
                         <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
                           {seq.schema}
