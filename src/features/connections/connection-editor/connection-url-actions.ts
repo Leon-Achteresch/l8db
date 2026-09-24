@@ -6,11 +6,13 @@ import { loadSecret, withSslModeParam } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import {
   closeSshTunnel,
-  openSshTunnel,
+  openNetworkTunnel,
+  proxySecretAccount,
   sshSecretAccount,
   tunneledConnectionString,
 } from "@/lib/ssh";
 import { type Mode, TEST_TIMEOUT_MS } from "./types";
+import type { NetworkDraft } from "./use-network-draft";
 
 export interface ConnectionUrlActionsContext {
   mode: Mode;
@@ -36,6 +38,7 @@ export interface ConnectionUrlActionsContext {
   sshAuth: SshAuth;
   sshKey: string;
   sshPassword: string;
+  network: NetworkDraft;
   connection: SavedConnection | undefined;
 }
 
@@ -64,6 +67,7 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
     sshAuth,
     sshKey,
     sshPassword,
+    network,
     connection,
   } = ctx;
 
@@ -115,26 +119,68 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
       throw new Error("Ports müssen zwischen 1 und 65535 liegen.");
   }
 
+  function jumpHostsConfig() {
+    return network.jumpHosts.map((jump, index) => {
+      const label = `Sprung-Host ${index + 1}`;
+      validatePort(jump.port);
+      if (!jump.host.trim() || !jump.user.trim())
+        throw new Error(`${label}: Host und Benutzer sind erforderlich.`);
+      if (jump.auth === "key" && !jump.keyFile.trim())
+        throw new Error(`${label}: Wähle eine SSH-Key-Datei.`);
+      if (jump.auth === "password" && !jump.secret)
+        throw new Error(`${label}: Das SSH-Passwort fehlt.`);
+      return {
+        host: jump.host.trim(),
+        port: Number(jump.port),
+        user: jump.user.trim(),
+        auth: jump.auth,
+        keyFile: jump.auth === "key" ? jump.keyFile.trim() : "",
+        ...(jump.auth === "agent" && jump.agentSocket.trim()
+          ? { agentSocket: jump.agentSocket.trim() }
+          : {}),
+      };
+    });
+  }
+
   async function configuration() {
     const inputKind = mode === "string" ? (kindFromUrl(value) ?? kind) : kind;
     const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
     const connectionString = makeUrl();
     const target = inputInfo.file_based ? null : parseConnectionUrl(connectionString, inputKind);
     const useSsh = inputInfo.capabilities.ssh && sshEnabled;
+    const useProxy = Boolean(target) && inputInfo.capabilities.ssh && network.proxyEnabled;
     if (useSsh) {
       validatePort(sshPort);
       if (!sshHost.trim() || !sshUser.trim())
         throw new Error("SSH-Host und SSH-Benutzer sind erforderlich.");
       if (sshAuth === "key" && !sshKey.trim()) throw new Error("Wähle eine SSH-Key-Datei.");
     }
+    if (useProxy) {
+      if (!network.proxyHost.trim()) throw new Error("Der Proxy-Host ist erforderlich.");
+      validatePort(network.proxyPort);
+    }
+    const jumpHosts = useSsh ? jumpHostsConfig() : [];
     const secret =
-      sshPassword ||
-      (connection && useSsh ? await loadSecret(sshSecretAccount(connection.id)) : null) ||
-      "";
+      sshAuth === "agent"
+        ? ""
+        : sshPassword ||
+          (connection && useSsh ? await loadSecret(sshSecretAccount(connection.id)) : null) ||
+          "";
     if (useSsh && sshAuth === "password" && !secret) throw new Error("Das SSH-Passwort fehlt.");
+    const proxyUser = network.proxyUser.trim();
+    const proxySecret = proxyUser
+      ? network.proxyPassword ||
+        (connection && useProxy ? await loadSecret(proxySecretAccount(connection.id)) : null) ||
+        ""
+      : "";
     return {
       connectionString,
       secret,
+      secrets: {
+        ssh: secret || null,
+        jumps: network.jumpHosts.map((jump) => (jump.auth === "agent" ? "" : jump.secret)),
+        proxy: proxySecret || null,
+      },
       kind: inputKind,
       ssh:
         useSsh && target
@@ -144,10 +190,22 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
               user: sshUser.trim(),
               auth: sshAuth,
               keyFile: sshKey.trim(),
+              ...(sshAuth === "agent" && network.sshAgentSocket.trim()
+                ? { agentSocket: network.sshAgentSocket.trim() }
+                : {}),
+              ...(jumpHosts.length ? { jumpHosts } : {}),
               remoteHost: target.hostname.replace(/^\[|\]$/g, ""),
               remotePort: Number(target.port || inputInfo.default_port || 0),
             }
           : null,
+      proxy: useProxy
+        ? {
+            type: network.proxyType,
+            host: network.proxyHost.trim(),
+            port: Number(network.proxyPort),
+            ...(proxyUser ? { username: proxyUser } : {}),
+          }
+        : null,
     };
   }
 
@@ -157,20 +215,13 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
     try {
       const config = await configuration();
       let url = config.connectionString;
-      if (config.ssh) {
-        const tunnel = await openSshTunnel({
-          id: tunnelId,
-          host: config.ssh.host,
-          port: config.ssh.port,
-          user: config.ssh.user,
-          auth:
-            sshAuth === "key"
-              ? { key_file: sshKey, ...(config.secret ? { passphrase: config.secret } : {}) }
-              : { password: config.secret },
-          remote_host: config.ssh.remoteHost,
-          remote_port: config.ssh.remotePort,
-          accept_new_host_key: useSettingsStore.getState().sshTrustNewHosts,
-        });
+      if (config.ssh || config.proxy) {
+        const tunnel = await openNetworkTunnel(
+          tunnelId,
+          config,
+          config.secrets,
+          useSettingsStore.getState().sshTrustNewHosts,
+        );
         tunnelOpened = true;
         url = tunneledConnectionString(url, tunnel.local_port, config.kind);
       }

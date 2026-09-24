@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
-import { ConnectionScopeContext, useConnectionsStore } from "@/lib/connections";
+import { ConnectionScopeContext, useConnectionsStore, usesTunnel } from "@/lib/connections";
 import {
   MasterSelectionContext,
   masterDetailKey,
@@ -81,7 +81,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     const connection = connections.find((entry) => entry.id === value);
     if (!connection) return;
     if (!(await ensurePassword(value))) return;
-    if (connection.ssh?.host && !connection.tunnelPort) {
+    if (usesTunnel(connection) && !connection.tunnelPort) {
       const outcome = await ensureSshTunnel(
         useConnectionsStore.getState().connections.find((entry) => entry.id === value) ??
           connection,

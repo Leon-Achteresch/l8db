@@ -10,14 +10,18 @@ export type {
   ConnectionColor,
   ConnectionInput,
   ConnectionTag,
+  NetworkProxy,
+  ProxyType,
   SavedConnection,
   SshAuth,
   SshConnection,
+  SshJumpHost,
 } from "./types";
 export {
   CONNECTION_COLORS,
   connectionColorLabel,
   sortConnectionsByName,
   TAG_COLORS,
+  usesTunnel,
   visibleSchemas,
 } from "./types";

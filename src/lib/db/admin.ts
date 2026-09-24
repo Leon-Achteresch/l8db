@@ -19,6 +19,16 @@ export async function openSshTunnel(
   return invoke("open_ssh_tunnel", { request });
 }
 
+export async function openProxyTunnel(
+  request: import("@/lib/ssh").ProxyTunnelRequest,
+): Promise<import("@/lib/ssh").SshTunnelInfo> {
+  return invoke("open_proxy_tunnel", { request });
+}
+
+export async function listSshConfigHosts(): Promise<import("@/lib/ssh").SshConfigHost[]> {
+  return invoke("list_ssh_config_hosts");
+}
+
 export async function closeSshTunnel(id: string): Promise<void> {
   await invoke("close_ssh_tunnel", { id });
 }
