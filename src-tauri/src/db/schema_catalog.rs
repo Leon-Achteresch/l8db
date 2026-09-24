@@ -76,3 +76,7 @@ pub async fn schema_partition_ddl(
     .schema_partition_ddl(&schema, &tables)
     .await
 }
+
+#[cfg(test)]
+#[path = "schema_compare_live_tests.rs"]
+mod live_tests;

@@ -16,7 +16,7 @@ import { AnalysisWorkspaceDrawer } from "./analysis-workspace-drawer";
 import { EMPTY_DATA_SIDE } from "./data-compare-side-picker";
 
 export function CompareView({ tabId }: { tabId?: string } = {}) {
-  const search = useSearch({ strict: false }) as { compareId?: string };
+  const search = useSearch({ strict: false }) as { compareId?: string; setup?: boolean };
   const fallbackId = useRef(crypto.randomUUID());
   const id = tabId ?? search.compareId ?? fallbackId.current;
   const navigate = useNavigate();
@@ -64,7 +64,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
   useEffect(() => {
     useTableTabs.getState().openToolTab("compare", id);
     if (!tabId && !search.compareId)
-      void navigate({ to: "/compare", search: { compareId: id }, replace: true });
+      void navigate({ to: "/compare", search: { compareId: id, setup: undefined }, replace: true });
   }, [id, tabId, search.compareId, navigate]);
 
   useEffect(() => {
@@ -76,6 +76,15 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <DefinitionCompareView
         key={id}
+        initialSetupOpen={search.setup === true && search.compareId === id}
+        onSetupOpenChange={(open) => {
+          if (!open && search.setup && search.compareId === id)
+            void navigate({
+              to: "/compare",
+              search: { compareId: id, setup: undefined },
+              replace: true,
+            });
+        }}
         workspaceActions={
           <>
             <AnalysisWorkspaceDrawer
@@ -93,6 +102,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
                   right: saved.right,
                   draft: null,
                   draftBase: null,
+                  sourceBase: null,
                 })
               }
             />
@@ -104,7 +114,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
               onClick={() => {
                 const nextId = crypto.randomUUID();
                 useTableTabs.getState().openToolTab("compare", nextId);
-                void navigate({ to: "/compare", search: { compareId: nextId } });
+                void navigate({ to: "/compare", search: { compareId: nextId, setup: undefined } });
               }}
             >
               <PlusIcon className="size-3.5" />
@@ -118,6 +128,9 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         onLeftChange={(left) =>
           update({
             left,
+            draft: null,
+            draftBase: null,
+            sourceBase: null,
             ...(left.objectType !== workspace.right.objectType ||
             left.objectName !== workspace.left.objectName
               ? {
@@ -127,19 +140,23 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
                     objectName: null,
                     objectOid: null,
                   },
-                  draft: null,
-                  draftBase: null,
                 }
               : {}),
           })
         }
-        onRightChange={(right) => update({ right, draft: null, draftBase: null })}
+        onRightChange={(right) => update({ right, draft: null, draftBase: null, sourceBase: null })}
         draft={workspace.draft}
         draftBase={workspace.draftBase ?? null}
-        onDraftChange={(draft, baseline) =>
-          update({ draft, draftBase: workspace.draftBase ?? baseline })
+        sourceBase={workspace.sourceBase ?? null}
+        onDraftChange={(draft, sourceBaseline, targetBaseline) =>
+          update({
+            draft,
+            sourceBase: workspace.sourceBase ?? sourceBaseline,
+            draftBase: workspace.draftBase ?? targetBaseline,
+          })
         }
-        onApplied={() => update({ draft: null, draftBase: null })}
+        onApplied={(side) => update(side === "left" ? { sourceBase: null } : { draftBase: null })}
+        onDiscard={() => update({ draft: null, draftBase: null, sourceBase: null })}
         onlyDifferences={workspace.onlyDifferences}
         onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
       />

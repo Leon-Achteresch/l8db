@@ -14,35 +14,52 @@ import { useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { capabilitiesFor } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { pickSchema, prepareConnection } from "@/lib/schema-compare/store";
 import { type CompareSide, compareTypesFor } from "@/lib/schema-compare/types";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface SchemaCompareSidePickerProps {
   title: string;
   value: CompareSide;
+  other: CompareSide;
   onChange: (value: CompareSide) => void;
+}
+
+interface Lists {
+  key: string;
+  databases: string[];
+  schemas: string[];
 }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function SchemaCompareSidePicker({ title, value, onChange }: SchemaCompareSidePickerProps) {
+export function SchemaCompareSidePicker({
+  title,
+  value,
+  other,
+  onChange,
+}: SchemaCompareSidePickerProps) {
   const connections = useConnectionsStore((state) => state.connections);
   const usable = connections.filter((item) => compareTypesFor(item.kind).length > 0);
   const connection = usable.find((item) => item.id === value.connectionId) ?? null;
   const withDatabases = Boolean(connection && capabilitiesFor(connection.kind).databases);
-  const [databases, setDatabases] = useState<string[]>([]);
-  const [schemas, setSchemas] = useState<string[]>([]);
+  const [lists, setLists] = useState<Lists | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connectionId = connection?.id ?? null;
+  const key = connectionId ? `${connectionId}|${value.database ?? ""}` : null;
+  const loaded = lists && lists.key === key ? lists : null;
+  const databases = loaded?.databases ?? [];
+  const schemas = loaded?.schemas ?? [];
+  const preferred =
+    other.connectionId !== value.connectionId || (other.database ?? "") !== (value.database ?? "")
+      ? other.schema
+      : null;
 
   useEffect(() => {
-    setDatabases([]);
-    setSchemas([]);
-    if (!connectionId) return;
+    if (!connectionId || !key) return;
     let active = true;
     setLoading(true);
     setError(null);
@@ -53,9 +70,7 @@ export function SchemaCompareSidePicker({ title, value, onChange }: SchemaCompar
           capabilitiesFor(ready.kind).databases ? listDatabases(ready.kind, url) : [],
           listSchemas(ready.kind, url, value.database ?? undefined),
         ]);
-        if (!active) return;
-        setDatabases(dbs);
-        setSchemas(visibleSchemas(ready, list));
+        if (active) setLists({ key, databases: dbs, schemas: visibleSchemas(ready, list) });
       })
       .catch((cause) => {
         if (active) setError(errorText(cause));
@@ -66,7 +81,13 @@ export function SchemaCompareSidePicker({ title, value, onChange }: SchemaCompar
     return () => {
       active = false;
     };
-  }, [connectionId, value.database]);
+  }, [connectionId, key, value.database]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const schema = pickSchema(loaded.schemas, value.schema, preferred);
+    if (schema !== value.schema) onChange({ ...value, schema });
+  }, [loaded, value, preferred, onChange]);
 
   const pickConnection = (id: string) => {
     const picked = connections.find((item) => item.id === id);
@@ -136,7 +157,15 @@ export function SchemaCompareSidePicker({ title, value, onChange }: SchemaCompar
         >
           <SelectTrigger className="h-8 w-full min-w-0 text-xs" aria-label={`${title}: Schema`}>
             {loading && <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />}
-            <SelectValue placeholder={loading ? "Lädt…" : "Schema wählen"} />
+            <SelectValue
+              placeholder={
+                loading
+                  ? "Lädt…"
+                  : loaded && schemas.length === 0
+                    ? "Keine Schemas gefunden"
+                    : "Schema wählen"
+              }
+            />
           </SelectTrigger>
           <SelectContent searchable>
             {schemas.map((schema) => (

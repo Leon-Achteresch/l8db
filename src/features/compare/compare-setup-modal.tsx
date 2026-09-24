@@ -44,7 +44,11 @@ interface DataSetup {
 
 export type CompareSetupProps = DefinitionSetup | DataSetup;
 
-type CompareSetupModalProps = CompareSetupProps & { size?: "sm" | "lg" };
+type CompareSetupModalProps = CompareSetupProps & {
+  size?: "sm" | "lg";
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
 
 export function CompareSetupModal(props: CompareSetupModalProps) {
   const types = supportedCompareObjectTypes(props.sourceConnection);
@@ -67,7 +71,7 @@ export function CompareSetupModal(props: CompareSetupModalProps) {
   };
 
   return (
-    <CenterMorphModal>
+    <CenterMorphModal defaultOpen={props.defaultOpen} onOpenChange={props.onOpenChange}>
       <CenterMorphModalTrigger>
         {props.size === "lg" ? (
           <Button size="lg" className="h-12 px-8 text-base">

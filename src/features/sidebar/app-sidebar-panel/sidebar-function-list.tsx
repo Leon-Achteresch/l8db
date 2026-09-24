@@ -13,6 +13,7 @@ import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog";
+import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
@@ -159,6 +160,13 @@ export function SidebarFunctionList({
                     </SidebarMenuButton>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
+                    <CompareObjectMenuItem
+                      schema={item.schema}
+                      name={item.name}
+                      objectType={item.return_type === "PACKAGE" ? "package" : "routine"}
+                      oid={item.oid}
+                      identityArgs={item.identity_args}
+                    />
                     {caps.compile_objects ? (
                       item.return_type === "PACKAGE" ? (
                         <>

@@ -56,6 +56,12 @@ function statusTitle(status: DiffStatus, count: number, result: CompareResult): 
   }
 }
 
+const STATUS_ACTION: Partial<Record<DiffStatus, string>> = {
+  only_source: "Auswahl wird im Ziel erstellt",
+  only_target: "Auswahl wird im Ziel gelöscht",
+  different: "Auswahl wird im Ziel angepasst",
+};
+
 export function SchemaCompareTree({
   result,
   items,
@@ -168,9 +174,14 @@ export function SchemaCompareTree({
                   <span className="truncate">
                     {statusTitle(row.status, row.keys.length, result)}
                   </span>
-                  {row.status === "only_target" && (
-                    <span className="truncate font-normal text-muted-foreground">
-                      – Auswahl löscht im Ziel
+                  {STATUS_ACTION[row.status] && (
+                    <span
+                      className={cn(
+                        "shrink-0 font-normal",
+                        row.status === "only_target" ? "text-rose-500" : "text-muted-foreground",
+                      )}
+                    >
+                      – {STATUS_ACTION[row.status]}
                     </span>
                   )}
                 </div>

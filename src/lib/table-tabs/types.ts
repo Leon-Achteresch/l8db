@@ -46,6 +46,7 @@ export interface CompareWorkspace {
   right: import("@/lib/compare-types").CompareSideSelection;
   draft: string | null;
   draftBase?: string | null;
+  sourceBase?: string | null;
   onlyDifferences: boolean;
 }
 export type ToolTab = {

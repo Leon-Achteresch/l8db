@@ -26,10 +26,10 @@ Zwei Szenarien sind enthalten:
 
 | Feature | Inhalt | Ursprung auf main |
 | --- | --- | --- |
-| Easy Mode | Vereinfachten Modus in den Einstellungen einschalten | `64b344ea`, 0.6.128 |
-| Extension-Markt | Offiziellen Katalog und den Bereich für Berechtigungen zeigen | `8aeb1658`, 0.6.132 |
+| Easy Mode | Vereinfachten Modus einschalten und die reduzierte Navigation zeigen | `64b344ea`, 0.6.128 |
+| Extension-Markt | Offizielles Paket installieren, Berechtigungen freigeben und aktivieren | `8aeb1658`, 0.6.132 |
 
-Die Aufnahmen verwenden die gebaute echte React-App und vorbereitete Demo-Daten. Der Extension-Katalog wird vor der Aufnahme geladen und für den Ablauf eingefroren; es wird keine Erweiterung installiert. Playwright zeichnet die Bedienung auf, FFmpeg erzeugt einen vergrößerten Ausschnitt, MP4/H.264, WebM/VP9 und ein JPEG-Standbild. Die Clips haben keine Audiospur. Größe, Dauer und Encoding werden geprüft; die Rohaufnahme wird nach erfolgreichem Export gelöscht. [Playwright-Aufnahmen](https://playwright.dev/docs/videos), [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html)
+Die Aufnahmen verwenden die gebaute echte React-App und vorbereitete Demo-Daten. Für den Extension-Clip werden Katalog und Paket aus einer lokalen Testdatei geliefert. Der Browser installiert und aktiviert das Paket über die echte Oberfläche; die vorbereiteten Tauri-Antworten verändern keine lokale Installation. Playwright zoomt auf die tatsächlichen Bedienelemente und prüft Easy Mode, Installation, Berechtigungen und Aktivierung als sichtbare Zustandswechsel. Die eingeblendeten Texte bleiben während der Zooms an ihrer Position. FFmpeg erzeugt MP4/H.264, WebM/VP9 und ein JPEG-Standbild. Die Clips haben keine Audiospur. Größe, Dauer und Encoding werden geprüft; die Rohaufnahme wird nach erfolgreichem Export gelöscht. [Playwright-Aufnahmen](https://playwright.dev/docs/videos), [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html)
 
 Voraussetzungen für lokale Aufnahmen: Bun 1.3.10, Playwright Chromium und FFmpeg mit H.264-, VP9- und JPEG-Encoder. Veröffentlichung/Cleanup benötigen zusätzlich `gh` mit Repository-Schreibrecht. Die App benötigt keinen GitHub-Login.
 

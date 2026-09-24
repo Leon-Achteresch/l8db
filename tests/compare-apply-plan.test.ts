@@ -107,4 +107,81 @@ describe("Vergleich: geprüfte Änderungsskripte", () => {
     const definition = `PACKAGE SPEC destination.DEMO\n\n${spec}\n\nPACKAGE BODY destination.DEMO\n\n${body}`;
     expect(buildCompareApplyPlan("oracle", pkg, definition, definition)).toHaveLength(2);
   });
+  test("Oracle-Views mit vollständigem CREATE-Skript behalten Spaltenliste und Optionen", () => {
+    const view = {
+      ...side,
+      schema: "DEV_ACHTERESCH",
+      objectName: "V_PCD",
+      objectType: "view" as const,
+    };
+    const script = (schema: string, divisor: number) =>
+      `CREATE OR REPLACE FORCE VIEW "${schema}"."V_PCD"\n(\n  "LAGER",\n  "MANDANT",\n  "SUM_GEWICHT"\n)\nBEQUEATH DEFINER\nAS\nSELECT l.name,\n         m.name,\n         a.sum_gewicht / ${divisor}\n    FROM auftrag a, lager l, mandant m;`;
+    expect(
+      buildCompareApplyPlan(
+        "oracle",
+        view,
+        script("DEV_ACHTERESCH", 1000),
+        script("DEV_QUELLE", 100),
+      ),
+    ).toEqual([
+      `CREATE OR REPLACE FORCE VIEW "DEV_ACHTERESCH"."V_PCD"\n(\n  "LAGER",\n  "MANDANT",\n  "SUM_GEWICHT"\n)\nBEQUEATH DEFINER\nAS\nSELECT l.name,\n         m.name,\n         a.sum_gewicht / 100\n    FROM auftrag a, lager l, mandant m`,
+    ]);
+    expect(
+      buildCompareApplyPlan("oracle", view, "", "create view other.x as select 1 from dual"),
+    ).toEqual(['CREATE OR REPLACE VIEW "DEV_ACHTERESCH"."V_PCD" as select 1 from dual']);
+    expect(() =>
+      buildCompareApplyPlan(
+        "oracle",
+        view,
+        "",
+        `${script("DEV_QUELLE", 100)}\nDROP TABLE auftrag;`,
+      ),
+    ).toThrow();
+  });
+  test("Oracle-Tabellen: MODIFY vor ADD vor DROP, System-Constraints werden ignoriert", () => {
+    const table = { ...side, schema: "DEV", objectName: "ABRECHNUNG_LOCK" };
+    const definition = (schema: string, pk: string, columns: string[], checks: string[]) =>
+      [
+        `TABLE ${schema}.ABRECHNUNG_LOCK`,
+        "COLUMNS",
+        ...columns,
+        "CONSTRAINTS",
+        ...checks,
+        `${pk} PRIMARY KEY (REF) PRIMARY KEY (REF)`,
+        "INDEXES",
+        `  CREATE UNIQUE INDEX "${pk}" ON "${schema}"."ABRECHNUNG_LOCK" ("REF")`,
+      ].join("\n");
+    const before = definition(
+      "DEV",
+      "SYS_C0013",
+      ["  REF NUMBER(10,0) NOT NULL PRIMARY KEY", "  NAME VARCHAR2(40) NULL", "  ALT DATE NULL"],
+      ['SYS_C0012 CHECK (REF) CHECK ("REF" IS NOT NULL)'],
+    );
+    const after = definition(
+      "DEV_QUELLE",
+      "SYS_C0097",
+      [
+        "  REF NUMBER(10,0) NOT NULL PRIMARY KEY",
+        "  NAME VARCHAR2(80) NOT NULL DEFAULT 'x'",
+        "  NEU NUMBER NOT NULL DEFAULT 0",
+      ],
+      [
+        'SYS_C0099 CHECK (NAME) CHECK ("NAME" IS NOT NULL)',
+        'SYS_C0098 CHECK (REF) CHECK ("REF" IS NOT NULL)',
+      ],
+    );
+    expect(buildCompareApplyPlan("oracle", table, before, after)).toEqual([
+      `ALTER TABLE "DEV"."ABRECHNUNG_LOCK" MODIFY ("NAME" VARCHAR2(80) DEFAULT 'x' NOT NULL)`,
+      'ALTER TABLE "DEV"."ABRECHNUNG_LOCK" ADD ("NEU" NUMBER DEFAULT 0 NOT NULL)',
+      'ALTER TABLE "DEV"."ABRECHNUNG_LOCK" DROP ("ALT")',
+    ]);
+    expect(() =>
+      buildCompareApplyPlan(
+        "oracle",
+        table,
+        before,
+        before.replace("SYS_C0013 PRIMARY KEY", "UQ_LOCK UNIQUE"),
+      ),
+    ).toThrow("Constraints");
+  });
 });

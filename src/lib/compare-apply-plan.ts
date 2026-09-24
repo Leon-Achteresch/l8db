@@ -10,6 +10,10 @@ const DDL_HEADER = new RegExp(
   `^CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:(?:NON)?EDITIONABLE\\s+)?(FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?)\\s+(${IDENTIFIER}(?:\\s*\\.\\s*${IDENTIFIER})?)`,
   "i",
 );
+const VIEW_HEADER = new RegExp(
+  `^CREATE\\s+(?:OR\\s+REPLACE\\s+)?((?:(?:NO\\s+)?FORCE\\s+)?(?:(?:NON)?EDITION(?:ING|ABLE)\\s+(?:EDITIONING\\s+)?)?)VIEW\\s+${IDENTIFIER}(?:\\s*\\.\\s*${IDENTIFIER})?`,
+  "i",
+);
 
 function columns(definition: string): { columns: SnapshotColumn[]; rest: string } {
   const match = /^TABLE [^\n]+\nCOLUMNS\n([\s\S]*?)(?=\n(?:CONSTRAINTS|INDEXES|TRIGGERS)\n|$)/.exec(
@@ -39,14 +43,69 @@ function columns(definition: string): { columns: SnapshotColumn[]; rest: string 
   return { columns: parsed, rest: definition.slice(match[0].length) };
 }
 
+function oracleStructure(rest: string): string {
+  const lines = rest
+    .split("\n")
+    .filter((line) => line && !/^\s*\S+ CHECK \([^)]*\) CHECK \("[^"]+" IS NOT NULL\)$/.test(line));
+  return lines
+    .filter(
+      (line, index) =>
+        line !== "CONSTRAINTS" || !/^(INDEXES|TRIGGERS)?$/.test(lines[index + 1] ?? ""),
+    )
+    .map((line) => line.replace(/\bSYS_C\d+\b/g, "SYS_C").replace(/"[^"]+"\./g, ""))
+    .sort()
+    .join("\n");
+}
+
+function oracleTablePlan(
+  target: string,
+  before: SnapshotColumn[],
+  after: SnapshotColumn[],
+): string[] {
+  const name = (column: SnapshotColumn) => quoteIdentifier(column.name, "double");
+  const modify = after.flatMap((column) => {
+    const old = before.find((item) => item.name === column.name);
+    if (!old) return [];
+    if (
+      old.column_default !== column.column_default &&
+      [old.column_default, column.column_default].includes("IDENTITY")
+    )
+      throw new Error("Identitätsspalten bitte im Tabelleneditor ändern.");
+    const parts = [
+      old.data_type !== column.data_type ? column.data_type : "",
+      old.column_default !== column.column_default
+        ? `DEFAULT ${column.column_default ?? "NULL"}`
+        : "",
+      old.is_nullable !== column.is_nullable ? (column.is_nullable ? "NULL" : "NOT NULL") : "",
+    ].filter(Boolean);
+    return parts.length ? [`${name(column)} ${parts.join(" ")}`] : [];
+  });
+  const add = after
+    .filter((column) => !before.some((item) => item.name === column.name))
+    .map((column) => {
+      if (column.column_default === "IDENTITY")
+        throw new Error("Identitätsspalten bitte im Tabelleneditor anlegen.");
+      return `${name(column)} ${column.data_type}${column.column_default === null ? "" : ` DEFAULT ${column.column_default}`}${column.is_nullable ? "" : " NOT NULL"}`;
+    });
+  const drop = before
+    .filter((column) => !after.some((item) => item.name === column.name))
+    .map(name);
+  return [
+    modify.length ? `ALTER TABLE ${target} MODIFY (${modify.join(", ")})` : "",
+    add.length ? `ALTER TABLE ${target} ADD (${add.join(", ")})` : "",
+    drop.length ? `ALTER TABLE ${target} DROP (${drop.join(", ")})` : "",
+  ].filter(Boolean);
+}
+
 function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: string): string[] {
-  if (kind !== "postgres")
+  if (kind !== "postgres" && kind !== "oracle")
     throw new Error(
-      "Tabellenänderungen können hier derzeit nur für PostgreSQL sicher erzeugt und geprüft werden.",
+      "Tabellenänderungen können hier derzeit nur für PostgreSQL und Oracle sicher erzeugt und geprüft werden.",
     );
   const before = columns(baseline);
   const after = columns(draft);
-  if (before.rest !== after.rest)
+  const structure = kind === "oracle" ? oracleStructure : (rest: string) => rest;
+  if (structure(before.rest) !== structure(after.rest))
     throw new Error(
       "Änderungen an Constraints, Indizes und Triggern bitte im jeweiligen Objekteditor ausführen. Der Entwurf bleibt erhalten.",
     );
@@ -58,6 +117,7 @@ function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: 
       .join("\n");
   if (primary(before.columns) !== primary(after.columns))
     throw new Error("Primärschlüsseländerungen bitte im Tabelleneditor prüfen und ausführen.");
+  if (kind === "oracle") return oracleTablePlan(target, before.columns, after.columns);
   const sql: string[] = [];
   for (const column of after.columns) {
     const old = before.columns.find((item) => item.name === column.name);
@@ -95,14 +155,20 @@ export function buildCompareApplyPlan(
     statements = tablePlan(kind, baseline, draft, qualified(side.objectName));
   else if (side.objectType === "view") {
     const body = splitSqlStatements(draft, kind);
+    const text = body.statements[0]?.text.trim().replace(/;\s*$/, "") ?? "";
+    const header = VIEW_HEADER.exec(text);
     if (
       body.unterminated ||
       body.statements.length !== 1 ||
-      !/^\s*(SELECT|WITH)\b/i.test(body.statements[0].text)
+      !(header || /^(SELECT|WITH)\b/i.test(text))
     )
-      throw new Error("Die View muss aus genau einer SELECT-Abfrage bestehen.");
+      throw new Error(
+        "Die View muss aus genau einer SELECT-Abfrage oder CREATE VIEW-Anweisung bestehen.",
+      );
     statements = [
-      `CREATE OR REPLACE VIEW ${qualified(side.objectName)} AS ${body.statements[0].text.replace(/;\s*$/, "")}`,
+      header
+        ? `CREATE OR REPLACE ${header[1].replace(/\s+/g, " ")}VIEW ${qualified(side.objectName)}${text.slice(header[0].length)}`
+        : `CREATE OR REPLACE VIEW ${qualified(side.objectName)} AS ${text}`,
     ];
   } else if (["routine", "procedure", "package"].includes(side.objectType)) {
     const source =
@@ -161,7 +227,10 @@ export function buildCompareApplyPlan(
     throw new Error(
       "Für diesen Objekttyp kann noch kein sicheres Änderungsskript erzeugt werden. Der Entwurf bleibt erhalten.",
     );
-  if (statements.length === 0) throw new Error("Keine ausführbaren Änderungen am Ziel gefunden.");
+  if (statements.length === 0)
+    throw new Error(
+      "Der Entwurf weicht nur in Angaben ab, die nichts am Objekt ändern (z. B. Schema, Systemnamen oder Spaltenreihenfolge). Es gibt nichts zu speichern.",
+    );
   for (const statement of statements) {
     const split = splitSqlStatements(statement, kind);
     if (split.unterminated || split.statements.length !== 1)

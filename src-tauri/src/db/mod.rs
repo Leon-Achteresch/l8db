@@ -1422,6 +1422,8 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
             msg.push_str("\nHinweis: Eine andere Sitzung hält eine Sperre auf dem Objekt. Später erneut versuchen.\nSQLSTATE 55P03");
         } else if code == &tokio_postgres::error::SqlState::QUERY_CANCELED {
             msg.push_str("\nSQLSTATE 57014");
+        } else if code == &tokio_postgres::error::SqlState::UNSAFE_NEW_ENUM_VALUE_USAGE {
+            msg.push_str("\nSQLSTATE 55P04");
         }
         msg
     } else {

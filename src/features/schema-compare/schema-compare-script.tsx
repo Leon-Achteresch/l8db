@@ -18,9 +18,14 @@ interface SchemaCompareScriptProps {
   result: CompareResult;
   script: SyncScript;
   text: string;
+  plan: { create: number; alter: number; drop: number };
 }
 
-export function SchemaCompareScript({ result, script, text }: SchemaCompareScriptProps) {
+function count(value: number, one: string, many: string): string {
+  return `${value} ${value === 1 ? one : many}`;
+}
+
+export function SchemaCompareScript({ result, script, text, plan }: SchemaCompareScriptProps) {
   const target = result.target;
   const active = useActiveConnection();
   const activeDatabase = useActiveDatabase();
@@ -43,11 +48,22 @@ export function SchemaCompareScript({ result, script, text }: SchemaCompareScrip
     toast.success("Sync-Skript gespeichert");
   };
 
+  const actions = [
+    plan.create > 0 && `${count(plan.create, "Objekt", "Objekte")} erstellen`,
+    plan.alter > 0 && `${count(plan.alter, "Objekt", "Objekte")} anpassen`,
+    plan.drop > 0 && `${count(plan.drop, "Objekt", "Objekte")} löschen`,
+  ].filter(Boolean);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <p className="shrink-0 border-b bg-muted/30 px-3 py-2 text-xs">
+        Das Skript ändert <strong>{result.targetLabel}</strong> und übernimmt dafür den Stand aus{" "}
+        <strong>{result.sourceLabel}</strong>
+        {actions.length > 0 ? `: ${actions.join(", ")}.` : "."}
+      </p>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
         <Badge variant="secondary" className="text-[10px]">
-          {script.statements.length} Anweisungen
+          {script.statements.length} {script.statements.length === 1 ? "Anweisung" : "Anweisungen"}
         </Badge>
         {dangerous > 0 && (
           <Badge variant="destructive" className="text-[10px]">
@@ -109,7 +125,7 @@ export function SchemaCompareScript({ result, script, text }: SchemaCompareScrip
             onClick={() => setRunning(true)}
           >
             <PlayIcon className="size-3.5" />
-            Im Ziel ausführen
+            In {result.targetSchema} ausführen…
           </Button>
         </div>
       </div>

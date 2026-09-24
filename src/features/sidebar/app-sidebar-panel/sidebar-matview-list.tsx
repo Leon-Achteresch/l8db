@@ -4,6 +4,7 @@ import { LayersIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import { useActiveConnection } from "@/lib/connections";
 import { createMaterializedView } from "@/lib/db";
@@ -95,21 +97,32 @@ export function SidebarMatviewList({
           );
           return (
             <SidebarMenuItem key={`${item.schema}.${item.name}`}>
-              <SidebarMenuButton
-                isActive={isActive}
-                onClick={() => {
-                  navigate({
-                    to: "/matviews/$schema/$name",
-                    params: { schema: item.schema, name: item.name },
-                  });
-                }}
-              >
-                <LayersIcon className="text-muted-foreground" />
-                <span className="truncate">
-                  {item.schema}.{item.name}
-                  {item.is_populated ? "" : " (leer)"}
-                </span>
-              </SidebarMenuButton>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    onClick={() => {
+                      navigate({
+                        to: "/matviews/$schema/$name",
+                        params: { schema: item.schema, name: item.name },
+                      });
+                    }}
+                  >
+                    <LayersIcon className="text-muted-foreground" />
+                    <span className="truncate">
+                      {item.schema}.{item.name}
+                      {item.is_populated ? "" : " (leer)"}
+                    </span>
+                  </SidebarMenuButton>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <CompareObjectMenuItem
+                    schema={item.schema}
+                    name={item.name}
+                    objectType="materialized_view"
+                  />
+                </ContextMenuContent>
+              </ContextMenu>
             </SidebarMenuItem>
           );
         }}
