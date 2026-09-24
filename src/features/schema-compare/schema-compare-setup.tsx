@@ -1,12 +1,21 @@
-import { ArrowLeftRightIcon, GitCompareIcon, LoaderIcon } from "lucide-react";
+import { ArrowLeftRightIcon, GitCompareIcon, InfoIcon, LoaderIcon } from "lucide-react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useActiveConnection } from "@/lib/connections";
+import {
+  databaseFromConnectionString,
+  useActiveDatabase,
+  useActiveSchema,
+} from "@/lib/db-selection";
+import { useSchemasQuery } from "@/lib/queries";
 import {
   activeTypes,
   connectionFor,
   runSchemaCompare,
+  setupProblem,
   useSchemaCompareStore,
 } from "@/lib/schema-compare/store";
 import {
@@ -46,12 +55,23 @@ export function SchemaCompareSetup({ onStarted }: { onStarted?: () => void }) {
   const kind = connectionFor(state.source)?.kind ?? connectionFor(state.target)?.kind;
   const supported = compareTypesFor(kind);
   const selected = activeTypes(state, kind);
-  const ready = Boolean(
-    state.source.connectionId &&
-      state.source.schema &&
-      state.target.connectionId &&
-      state.target.schema,
-  );
+  const problem = setupProblem(state.source, state.target, selected);
+  const active = useActiveConnection();
+  const activeDatabase = useActiveDatabase();
+  const activeSchema = useActiveSchema();
+  const activeReady = useSchemasQuery().isSuccess;
+
+  useEffect(() => {
+    if (!active || !activeReady || compareTypesFor(active.kind).length === 0) return;
+    if (useSchemaCompareStore.getState().source.connectionId) return;
+    set({
+      source: {
+        connectionId: active.id,
+        database: activeDatabase ?? databaseFromConnectionString(active.connectionString),
+        schema: activeSchema,
+      },
+    });
+  }, [active, activeReady, activeDatabase, activeSchema]);
 
   const toggleType = (type: (typeof supported)[number], checked: boolean) =>
     set({
@@ -66,6 +86,7 @@ export function SchemaCompareSetup({ onStarted }: { onStarted?: () => void }) {
         <SchemaCompareSidePicker
           title="Quelle"
           value={state.source}
+          other={state.target}
           onChange={(source) => set({ source })}
         />
         <Button
@@ -80,6 +101,7 @@ export function SchemaCompareSetup({ onStarted }: { onStarted?: () => void }) {
         <SchemaCompareSidePicker
           title="Ziel"
           value={state.target}
+          other={state.source}
           onChange={(target) => set({ target })}
         />
       </div>
@@ -161,9 +183,15 @@ export function SchemaCompareSetup({ onStarted }: { onStarted?: () => void }) {
           {state.error}
         </p>
       )}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {problem && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <InfoIcon className="size-3.5 shrink-0" />
+            {problem}
+          </span>
+        )}
         <Button
-          disabled={!ready || selected.length === 0 || Boolean(state.loading)}
+          disabled={Boolean(problem) || Boolean(state.loading)}
           onClick={() => {
             onStarted?.();
             void runSchemaCompare();

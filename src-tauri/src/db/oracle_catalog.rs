@@ -802,13 +802,17 @@ impl OracleAdapter {
     async fn catalog_grants(&self, schema: &str) -> Objects {
         let mut out = Vec::new();
         let owner = lit(schema);
-        let rows = self
-            .rows(format!(
-                "SELECT table_name, grantee, privilege, grantable FROM all_tab_privs \
-                 WHERE grantor = {owner} AND table_schema = {owner} AND table_name NOT LIKE 'BIN$%' AND type <> 'USER' \
+        let query = |view: &str, owner_column: &str| {
+            format!(
+                "SELECT table_name, grantee, privilege, grantable FROM {view} \
+                 WHERE grantor = {owner} AND {owner_column} = {owner} AND table_name NOT LIKE 'BIN$%' AND type <> 'USER' \
                  ORDER BY table_name, grantee, privilege"
-            ))
-            .await?;
+            )
+        };
+        let rows = match self.rows(query("dba_tab_privs", "owner")).await {
+            Ok(rows) => rows,
+            Err(_) => self.rows(query("all_tab_privs", "table_schema")).await?,
+        };
         for r in &rows {
             let object = s(r, 0);
             let grantee = s(r, 1);

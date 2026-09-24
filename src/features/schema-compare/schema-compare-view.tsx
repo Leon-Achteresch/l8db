@@ -1,5 +1,7 @@
 import {
+  ArrowLeftRightIcon,
   ArrowRightIcon,
+  FileCode2Icon,
   GitCompareIcon,
   LoaderIcon,
   RefreshCwIcon,
@@ -16,7 +18,11 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CatalogObjectType } from "@/lib/db";
 import { buildSyncScript, renderSyncScript } from "@/lib/schema-compare/script";
-import { runSchemaCompare, useSchemaCompareStore } from "@/lib/schema-compare/store";
+import {
+  reverseSchemaCompare,
+  runSchemaCompare,
+  useSchemaCompareStore,
+} from "@/lib/schema-compare/store";
 import type { DiffStatus } from "@/lib/schema-compare/types";
 import { OBJECT_TYPE_META } from "@/lib/schema-compare/types";
 import { SchemaCompareDetail } from "./schema-compare-detail";
@@ -69,9 +75,17 @@ export function SchemaCompareView() {
         : "",
     [result, script],
   );
-  const selectedCount = result
-    ? result.items.filter((item) => selection[item.key] && item.status !== "identical").length
-    : 0;
+  const plan = useMemo(() => {
+    const counts = { create: 0, alter: 0, drop: 0 };
+    for (const item of result?.items ?? []) {
+      if (!selection[item.key]) continue;
+      if (item.status === "only_source") counts.create++;
+      else if (item.status === "different") counts.alter++;
+      else if (item.status === "only_target") counts.drop++;
+    }
+    return counts;
+  }, [result, selection]);
+  const selectedCount = plan.create + plan.alter + plan.drop;
   const actionable = items.filter((item) => item.status !== "identical").map((item) => item.key);
 
   const toggle = (keys: string[], checked: boolean) =>
@@ -106,6 +120,17 @@ export function SchemaCompareView() {
         <div className="ml-auto flex items-center gap-1">
           {result && (
             <>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                disabled={Boolean(loading)}
+                title={`Quelle und Ziel tauschen und neu vergleichen. Das Skript ändert dann ${result.sourceLabel}.`}
+                onClick={() => void reverseSchemaCompare()}
+              >
+                <ArrowLeftRightIcon className="size-3.5" />
+                Richtung umkehren
+              </Button>
               <Button
                 size="sm"
                 variant="ghost"
@@ -187,6 +212,16 @@ export function SchemaCompareView() {
                 >
                   Keine
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-6 text-xs"
+                  disabled={selectedCount === 0}
+                  onClick={() => setTab("script")}
+                >
+                  <FileCode2Icon className="size-3" />
+                  Skript anzeigen
+                </Button>
               </div>
             </div>
             {!showIdentical && result.items.every((item) => item.status === "identical") ? (
@@ -234,7 +269,7 @@ export function SchemaCompareView() {
                 />
               </TabsContent>
               <TabsContent value="script" className="flex min-h-0 flex-1 flex-col">
-                <SchemaCompareScript result={result} script={script} text={text} />
+                <SchemaCompareScript result={result} script={script} text={text} plan={plan} />
               </TabsContent>
             </Tabs>
           </ResizablePanel>
