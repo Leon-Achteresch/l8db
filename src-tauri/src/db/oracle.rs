@@ -10,12 +10,12 @@ use oracle::{Connector, Row};
 use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
-    create_table_sql, rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest,
-    ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo, CreateTableRequest,
-    DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo, DetailedColumnInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
-    ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize, SequenceInfo,
-    SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
+    create_table_ddl, create_table_sql, rows_to_objects, where_clause, AddColumnRequest,
+    AlterColumnRequest, ColumnInfo, CompileErrorInfo, CompileResult, ConstraintInfo,
+    CreateTableRequest, DatabaseAdapter, DatabaseOverview, DebugSessionInfo, DependencyInfo,
+    DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
+    InvalidObjectInfo, ObjectGrantInfo, ProxyUserInfo, QueryResult, SchedulerJobInfo, SchemaSize,
+    SequenceInfo, SessionInfo, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 
 pub struct OracleAdapter {
@@ -1010,6 +1010,7 @@ impl OracleAdapter {
                             is_unique: false,
                         })
                         .collect(),
+                    ..Default::default()
                 };
                 Ok(vec![create_table_sql(&req, quote, true)])
             }
@@ -2432,8 +2433,24 @@ impl DatabaseAdapter for OracleAdapter {
             .collect())
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        Ok(create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Oracle),
+        )?
+        .replacen("IF NOT EXISTS ", "", 1))
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        let sql = create_table_sql(req, quote, true).replacen("IF NOT EXISTS ", "", 1);
+        let sql = create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Oracle),
+        )?
+        .replacen("IF NOT EXISTS ", "", 1);
         match self.exec(sql).await {
             Ok(_) => Ok(()),
             Err(e) if req.if_not_exists && e.contains("ORA-00955") => Ok(()),
@@ -3676,6 +3693,7 @@ mod tests {
                 },
             ],
             if_not_exists: true,
+            ..Default::default()
         };
         a.create_table(&ct).await.expect("create_table");
         a.create_table(&ct)

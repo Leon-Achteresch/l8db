@@ -2,6 +2,7 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod constraints;
 pub mod csv_stream;
 pub mod data_compare;
 pub mod debugger;
@@ -853,6 +854,15 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = req;
         Err(unsupported("CREATE TABLE Vorschau"))
     }
+    async fn column_value_options(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<constraints::ColumnValueOptions>, String> {
+        let _ = schema;
+        let _ = table;
+        Ok(Vec::new())
+    }
     async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
         let _ = req;
         Err(unsupported("Objekt-DDL-Vorschau"))
@@ -1222,12 +1232,16 @@ pub struct ObjectAuditInfo {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CreateTableRequest {
     pub schema: String,
     pub name: String,
     pub columns: Vec<ColumnDefinition>,
     pub if_not_exists: bool,
+    #[serde(default)]
+    pub primary_key_name: Option<String>,
+    #[serde(default)]
+    pub constraints: Vec<constraints::TableConstraint>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1511,8 +1525,53 @@ pub(crate) fn create_table_sql(
     quote: fn(&str) -> String,
     qualify_schema: bool,
 ) -> String {
+    render_create_table(req, quote, qualify_schema, &[])
+}
+
+pub(crate) fn create_table_ddl(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+    qualify_schema: bool,
+    dialect: Option<constraints::ConstraintDialect>,
+) -> Result<String, String> {
+    let extra = match dialect {
+        Some(dialect) => constraints::table_clauses(dialect, req)?,
+        None if req.constraints.is_empty() => Vec::new(),
+        None => return Err(unsupported("Tabellen-Constraints")),
+    };
+    Ok(render_create_table(req, quote, qualify_schema, &extra))
+}
+
+pub(crate) fn primary_key_clause(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+) -> Option<String> {
+    let pk_cols: Vec<String> = req
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| quote(&c.name))
+        .collect();
+    if pk_cols.is_empty() {
+        return None;
+    }
+    let name = req
+        .primary_key_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| format!("CONSTRAINT {} ", quote(n)))
+        .unwrap_or_default();
+    Some(format!("{name}PRIMARY KEY ({})", pk_cols.join(", ")))
+}
+
+fn render_create_table(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+    qualify_schema: bool,
+    extra: &[String],
+) -> String {
     let mut parts: Vec<String> = Vec::new();
-    let mut pk_cols: Vec<String> = Vec::new();
     for col in &req.columns {
         let mut def = format!("{} {}", quote(&col.name), col.data_type);
         if let Some(d) = col.default_value.as_deref().filter(|d| !d.is_empty()) {
@@ -1525,13 +1584,9 @@ pub(crate) fn create_table_sql(
             def.push_str(" UNIQUE");
         }
         parts.push(def);
-        if col.is_primary_key {
-            pk_cols.push(quote(&col.name));
-        }
     }
-    if !pk_cols.is_empty() {
-        parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
-    }
+    parts.extend(primary_key_clause(req, quote));
+    parts.extend(extra.iter().cloned());
     let target = if qualify_schema && !req.schema.is_empty() {
         format!("{}.{}", quote(&req.schema), quote(&req.name))
     } else {

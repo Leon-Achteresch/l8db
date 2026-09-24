@@ -7,7 +7,7 @@ use duckdb::Connection;
 use super::pool::PoolState;
 use super::sqlite::file_path;
 use super::{
-    create_table_sql, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
+    create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
     DatabaseOverview, DetailedColumnInfo, IndexInfo, QueryResult, SchemaSize, TableData, TableInfo,
 };
@@ -551,8 +551,23 @@ impl DatabaseAdapter for DuckdbAdapter {
             .collect())
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Duckdb),
+        )
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        self.exec(create_table_sql(req, quote, true)).await
+        self.exec(create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Duckdb),
+        )?)
+        .await
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
