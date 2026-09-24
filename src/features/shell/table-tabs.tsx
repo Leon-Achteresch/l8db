@@ -4,7 +4,7 @@ import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from 
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect, useId } from "react";
+import { useCallback, useEffect } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
@@ -23,7 +23,6 @@ import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { useActiveWorkspaceTab, useTabRouteMatch } from "@/lib/use-active-workspace-tab";
 
 export function TableTabs() {
-  const activeIndicatorId = useId();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const allTabs = useTableTabs((state) => state.tabs);
   const tabs = allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
@@ -122,7 +121,6 @@ export function TableTabs() {
             {tabs.map((tab, index) => (
               <TableTabsSortableTab
                 key={tabKey(tab)}
-                activeIndicatorId={activeIndicatorId}
                 tab={tab}
                 index={allTabs.indexOf(tab)}
                 isActive={pendingTab ? tabKey(pendingTab) === tabKey(tab) : isTabActive(tab)}

@@ -20,11 +20,11 @@ export function useTableScrollState(
       element.scrollTop = position.top;
       element.scrollLeft = position.left;
     };
-    const save = () => {
+    const last = { ...position };
+    const track = () => {
       if (restoring) return;
-      useTableViewStateStore.getState().patch(key, {
-        scroll: { top: element.scrollTop, left: element.scrollLeft, identity },
-      });
+      last.top = element.scrollTop;
+      last.left = element.scrollLeft;
     };
     restore();
     // ponytail: retry a few frames because columns/rows virtualize in late and clamp scrollLeft to 0
@@ -43,12 +43,11 @@ export function useTableScrollState(
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    element.addEventListener("scroll", save, { passive: true });
+    element.addEventListener("scroll", track, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
-      element.removeEventListener("scroll", save);
-      restoring = false;
-      save();
+      element.removeEventListener("scroll", track);
+      useTableViewStateStore.getState().patch(key, { scroll: { ...last, identity } });
     };
   }, [ref, key, identity]);
 }
