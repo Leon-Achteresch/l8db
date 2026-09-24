@@ -626,6 +626,8 @@ fn is_query(sql: &str) -> bool {
 
 #[path = "oracle_catalog.rs"]
 mod catalog;
+#[path = "oracle_plan.rs"]
+mod plan;
 #[path = "oracle_sql.rs"]
 mod sql;
 use sql::prepare;
@@ -2441,21 +2443,22 @@ impl DatabaseAdapter for OracleAdapter {
         }
     }
 
-    async fn explain_query(&self, sql: &str, _analyze: bool) -> Result<serde_json::Value, String> {
-        let statement = sql.trim().trim_end_matches(';').to_string();
-        self.run(move |c| {
-            c.execute(&format!("EXPLAIN PLAN FOR {statement}"), &[])
-                .map_err(map_err)?;
-            let lines: Vec<String> = fetch(
-                c,
-                "SELECT plan_table_output FROM TABLE(DBMS_XPLAN.DISPLAY())",
-            )?
-            .iter()
-            .map(|r| s(r, 0))
-            .collect();
-            Ok(serde_json::Value::String(lines.join("\n")))
+    async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
+        let statement = prepare(sql);
+        if statement.is_empty() {
+            return Err("Kein SQL für EXPLAIN angegeben.".to_string());
+        }
+        if !analyze {
+            return self.run(move |c| plan::explain(c, &statement)).await;
+        }
+        let mut conn = self.open_raw().await?;
+        tokio::task::spawn_blocking(move || {
+            let result = plan::analyze(&mut conn, &statement);
+            let _ = conn.close();
+            result
         })
         .await
+        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionInfo>, String> {
@@ -2824,6 +2827,95 @@ mod tests {
                 .capabilities()
                 .bind_parameters
         );
+    }
+
+    #[test]
+    fn oracle_advertises_explain() {
+        assert!(
+            super::super::provider::DatabaseKind::Oracle
+                .capabilities()
+                .explain
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_explain_plan_and_analyze() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "explain".into())
+            .unwrap();
+        let _ = a.execute_query("DROP TABLE L8_EXPLAIN_T PURGE").await;
+        a.execute_query("CREATE TABLE L8_EXPLAIN_T (ID NUMBER PRIMARY KEY, GRP NUMBER, V NUMBER)")
+            .await
+            .expect("create");
+        a.execute_query("INSERT INTO L8_EXPLAIN_T SELECT LEVEL, MOD(LEVEL, 10), LEVEL FROM DUAL CONNECT BY LEVEL <= 5000")
+            .await
+            .expect("insert");
+        a.execute_query("BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, 'L8_EXPLAIN_T'); END;")
+            .await
+            .expect("stats");
+        let sql = "SELECT t.GRP, COUNT(*) FROM L8_EXPLAIN_T t JOIN L8_EXPLAIN_T u ON u.ID = t.ID WHERE t.V > 10 GROUP BY t.GRP ORDER BY 2 DESC;";
+
+        let plan = a.explain_query(sql, false).await.expect("explain");
+        let root = &plan[0]["Plan"];
+        assert_eq!(root["Node Type"], "SELECT STATEMENT", "{plan}");
+        assert!(root["Total Cost"].as_f64().unwrap() > 0.0, "{plan}");
+        assert!(
+            root["Plans"].as_array().is_some_and(|p| !p.is_empty()),
+            "{plan}"
+        );
+        let text = plan.to_string();
+        assert!(
+            text.contains("\"Relation Name\":\"L8_EXPLAIN_T\""),
+            "{plan}"
+        );
+        assert!(text.contains("\"Filter\""), "{plan}");
+        assert!(!text.contains("Actual Total Time"), "{plan}");
+        let leftovers = a
+            .execute_query("SELECT COUNT(*) AS N FROM plan_table WHERE statement_id LIKE 'L8DB%'")
+            .await
+            .expect("plan_table");
+        assert_eq!(leftovers.rows[0]["N"], 0);
+
+        let err = a
+            .explain_query("SELECT * FROM L8_EXPLAIN_MISSING", false)
+            .await
+            .unwrap_err();
+        assert!(err.contains("ORA-00942"), "{err}");
+
+        match a.explain_query(sql, true).await {
+            Err(e) if e == plan::MISSING_PRIVILEGES => {
+                assert!(
+                    std::env::var("L8DB_ORACLE_REQUIRE_ANALYZE").is_err(),
+                    "ANALYZE ohne Rechte: {e}"
+                );
+                eprintln!("analyze: {e}");
+            }
+            Err(e) => panic!("analyze: {e}"),
+            Ok(analyzed) => {
+                let root = &analyzed[0]["Plan"];
+                assert!(analyzed[0]["Execution Time"].as_f64().unwrap() >= 0.0);
+                assert_eq!(root["Actual Rows"], 10.0, "{analyzed}");
+                let text = analyzed.to_string();
+                assert!(text.contains("\"Actual Loops\""), "{analyzed}");
+                assert!(text.contains("\"Shared Hit Blocks\""), "{analyzed}");
+                let update = a
+                    .explain_query("UPDATE L8_EXPLAIN_T SET V = -1 WHERE ID <= 100", true)
+                    .await
+                    .expect("analyze update");
+                assert!(update[0]["Plan"].to_string().contains("UPDATE"), "{update}");
+                let changed = a
+                    .execute_query("SELECT COUNT(*) AS N FROM L8_EXPLAIN_T WHERE V = -1")
+                    .await
+                    .unwrap();
+                assert_eq!(changed.rows[0]["N"], 0);
+            }
+        }
+        a.execute_query("DROP TABLE L8_EXPLAIN_T PURGE")
+            .await
+            .expect("drop");
     }
 
     #[tokio::test]
@@ -3693,7 +3785,7 @@ mod tests {
             .await
             .expect("explain_query");
         assert!(
-            plan.as_str().unwrap_or("").contains("L8_LIVE_PARENT"),
+            plan[0]["Plan"].to_string().contains("L8_LIVE_PARENT"),
             "{plan}"
         );
 
