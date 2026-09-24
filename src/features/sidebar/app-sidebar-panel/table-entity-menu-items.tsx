@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
+import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import type { useActiveCapabilities } from "@/lib/db-selection";
 import type { EntityConfirmAction } from "./entity-confirm-dialog";
 
@@ -50,6 +51,7 @@ export function TableEntityMenuItems({
         <SquareTerminalIcon />
         Im Editor öffnen
       </ContextMenuItem>
+      <CompareObjectMenuItem schema={schema} name={name} objectType="table" />
       {caps.table_script && (
         <ContextMenuItem onSelect={onScriptTable}>
           <FileCodeIcon />
