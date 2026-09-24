@@ -51,7 +51,10 @@ export function formatTableDefinition(input: {
       const nulls = column.is_nullable ? "NULL" : "NOT NULL";
       const fallback = column.column_default ? ` DEFAULT ${column.column_default}` : "";
       const key = column.is_primary_key ? " PRIMARY KEY" : "";
-      const width = column.character_maximum_length ? `(${column.character_maximum_length})` : "";
+      const width =
+        column.character_maximum_length && !column.data_type.includes("(")
+          ? `(${column.character_maximum_length})`
+          : "";
       return `  ${column.name} ${column.data_type}${width} ${nulls}${fallback}${key}`;
     }),
   ];
@@ -80,6 +83,50 @@ export function formatTableDefinition(input: {
     }
   }
   return lines.join("\n");
+}
+
+function portableOracleTable(
+  schema: string,
+  table: string,
+  input: Omit<Parameters<typeof formatTableDefinition>[0], "schema" | "table">,
+): string {
+  const escaped = schema.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const own = new RegExp(`"${escaped}"\\.|(?<![\\w$#"])${escaped}\\.`, "gi");
+  const system = /\bSYS_C\d+\b/g;
+  const byDefinition =
+    <T>(key: (item: T) => string) =>
+    (a: T, b: T) =>
+      key(a).localeCompare(key(b));
+  return formatTableDefinition({
+    schema,
+    table,
+    columns: input.columns.map((column) => ({
+      ...column,
+      column_default: /^"[^"]+"\."ISEQ\$\$_\d+"\.nextval$/i.test(column.column_default ?? "")
+        ? "IDENTITY"
+        : column.column_default,
+    })),
+    constraints: input.constraints
+      .filter(
+        (item) =>
+          !(
+            /^SYS_C\d+$/.test(item.name) && /^CHECK \("[^"]+" IS NOT NULL\)$/.test(item.definition)
+          ),
+      )
+      .map((item) => ({ ...item, name: item.name.replace(system, "SYS_C") }))
+      .sort(byDefinition((item) => `${item.constraint_type} ${item.columns} ${item.definition}`)),
+    indexes: input.indexes
+      .map((item) => ({
+        ...item,
+        name: item.name.replace(system, "SYS_C"),
+        definition: item.definition.replace(own, "").replace(system, "SYS_C"),
+      }))
+      .sort(byDefinition((item) => item.definition)),
+    triggers: input.triggers.map((item) => ({
+      ...item,
+      definition: item.definition.replace(own, ""),
+    })),
+  }).replace(/^TABLE [^\n]+/, `TABLE ${table}`);
 }
 
 export function formatSequenceDefinition(sequence: SequenceInfo): string {
@@ -180,6 +227,8 @@ export async function loadCompareDefinition(
     if (columns.length === 0) {
       throw new Error(`Tabelle ${schema}.${table} hat keine Spalten oder existiert nicht.`);
     }
+    if (connection.kind === "oracle")
+      return portableOracleTable(schema, table, { columns, constraints, indexes, triggers });
     return formatTableDefinition({ schema, table, columns, constraints, indexes, triggers });
   }
 

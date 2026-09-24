@@ -11,15 +11,18 @@ import { SEARCH_MIN_ITEMS, SelectClosedValueContext, SelectSearchContext } from 
 export function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  position = "popper",
+  align = "start",
   searchable,
+  onFocusCapture,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content> & { searchable?: boolean }) {
   const [query, setQuery] = React.useState("");
   const [autoSearchable, setAutoSearchable] = React.useState(false);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const initialFocusPendingRef = React.useRef(true);
+  const focusFrameRef = React.useRef<number | null>(null);
   const closedValue = React.useContext(SelectClosedValueContext);
   const shownChildren =
     closedValue === null
@@ -34,6 +37,7 @@ export function SelectContent({
   const contentPosition = showSearch ? "popper" : position;
 
   React.useLayoutEffect(() => {
+    if (closedValue !== null) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
 
@@ -46,13 +50,30 @@ export function SelectContent({
     const observer = new MutationObserver(updateSearchVisibility);
     observer.observe(viewport, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [children]);
+  }, [children, closedValue]);
 
   React.useEffect(() => {
     if (!showSearch) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
+    const timeout = window.setTimeout(() => {
+      if (
+        inputRef.current?.closest('[data-slot="select-content"]')?.getAttribute("data-state") ===
+        "open"
+      ) {
+        inputRef.current.focus();
+      }
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [showSearch]);
+
+  React.useEffect(() => {
+    if (closedValue !== null) {
+      initialFocusPendingRef.current = true;
+      setQuery("");
+    }
+    return () => {
+      if (focusFrameRef.current !== null) cancelAnimationFrame(focusFrameRef.current);
+    };
+  }, [closedValue]);
 
   return (
     <SelectPrimitive.Portal>
@@ -68,15 +89,33 @@ export function SelectContent({
         )}
         position={contentPosition}
         align={align}
+        onFocusCapture={(event) => {
+          if (showSearch && initialFocusPendingRef.current && event.target !== inputRef.current) {
+            if (focusFrameRef.current !== null) cancelAnimationFrame(focusFrameRef.current);
+            focusFrameRef.current = requestAnimationFrame(() => {
+              if (
+                inputRef.current
+                  ?.closest('[data-slot="select-content"]')
+                  ?.getAttribute("data-state") === "open"
+              ) {
+                inputRef.current.focus();
+                initialFocusPendingRef.current = false;
+              }
+              focusFrameRef.current = null;
+            });
+          }
+          onFocusCapture?.(event);
+        }}
         {...props}
       >
         {showSearch ? (
-          <div className="flex shrink-0 items-center gap-2 border-b bg-popover px-2.5 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-b bg-popover px-2.5 py-2 transition-colors focus-within:border-primary">
             <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="Optionen durchsuchen"
               onKeyDown={(event) => {
                 if (!["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key))
                   event.stopPropagation();

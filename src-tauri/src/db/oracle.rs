@@ -217,7 +217,7 @@ fn parse_only(c: &Connection, statement: &str) -> Result<(), String> {
         "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "SET" => return Ok(()),
         _ => {
             return Err(format!(
-                "Oracle kann {word}-Anweisungen nicht prüfen, ohne sie auszuführen. Prüfbar sind Abfragen, DML, PL/SQL-Blöcke sowie CREATE VIEW/FUNCTION/PROCEDURE/PACKAGE."
+                "Oracle kann {word}-Anweisungen nicht prüfen, ohne sie auszuführen. Prüfbar sind Abfragen, DML, PL/SQL-Blöcke, ALTER TABLE ADD/MODIFY/DROP sowie CREATE VIEW/FUNCTION/PROCEDURE/PACKAGE."
             ))
         }
     }
@@ -449,6 +449,152 @@ END;",
         Ok(())
     } else {
         Err(messages.join("\n"))
+    }
+}
+
+fn check_alter_tables(c: &Connection, alters: &[(String, sql::AlterTable)]) -> Result<(), String> {
+    let mut messages = Vec::new();
+    let mut checked: Vec<(Option<String>, String)> = Vec::new();
+    for (_, table) in alters {
+        let key = (table.owner.clone(), table.name.clone());
+        if checked.contains(&key) {
+            continue;
+        }
+        checked.push(key);
+        let temp = quote(&table.temp_name);
+        let drop = format!("DROP TABLE {temp} PURGE");
+        if let Ok(rows) = fetch(c, &format!("SELECT 1 FROM {temp} WHERE ROWNUM = 1")) {
+            if !rows.is_empty() {
+                return Err(format!(
+                    "Prüfen nicht möglich: Die Tabelle {} existiert bereits und enthält Daten.",
+                    table.temp_name
+                ));
+            }
+            c.execute(&drop, &[]).map_err(map_err)?;
+        }
+        let real = match &table.owner {
+            Some(owner) => format!("{}.{}", quote(owner), quote(&table.name)),
+            None => quote(&table.name),
+        };
+        c.execute(
+            &format!("CREATE TABLE {temp} AS SELECT * FROM {real} WHERE 1 = 0"),
+            &[],
+        )
+        .map_err(|e| {
+            format!(
+                "Prüfen nicht möglich: Prüfkopie von {} konnte nicht angelegt werden.\n{e}",
+                table.name
+            )
+        })?;
+        let same = alters
+            .iter()
+            .filter(|(_, a)| a.owner == table.owner && a.name == table.name);
+        let result = check_alter_table(c, table, &real, same);
+        if let Err(e) = c.execute(&drop, &[]) {
+            messages.push(format!(
+                "Temporäres Prüfobjekt {} konnte nicht gelöscht werden, bitte manuell entfernen: {e}",
+                table.temp_name
+            ));
+        }
+        if let Err(e) = result {
+            messages.push(e);
+        }
+    }
+    if messages.is_empty() {
+        Ok(())
+    } else {
+        Err(messages.join("\n"))
+    }
+}
+
+fn check_alter_table<'a>(
+    c: &Connection,
+    table: &sql::AlterTable,
+    real: &str,
+    statements: impl Iterator<Item = &'a (String, sql::AlterTable)>,
+) -> Result<(), String> {
+    for (statement, alter) in statements {
+        c.execute(&alter.on_temp(statement), &[]).map_err(|e| {
+            format!(
+                "Oracle: ALTER TABLE {} enthält Fehler\n{}",
+                table.name,
+                e.to_string().replace(&table.temp_name, &table.name)
+            )
+        })?;
+    }
+    let owner = table.owner.as_ref().map_or_else(
+        || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+        |o| lit(o),
+    );
+    let columns = fetch(
+        c,
+        &format!(
+            "SELECT t.column_name, t.nullable, r.nullable, NVL(t.default_length, 0), r.column_name, \
+             t.data_type, r.data_type, t.char_length, r.char_length, t.char_used, \
+             NVL(t.data_precision, 39), NVL(r.data_precision, 39), NVL(t.data_scale, 130), NVL(r.data_scale, 130) \
+             FROM all_tab_columns t LEFT JOIN all_tab_columns r \
+             ON r.owner = {owner} AND r.table_name = {} AND r.column_name = t.column_name \
+             WHERE t.owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AND t.table_name = {} ORDER BY t.column_id",
+            lit(&table.name),
+            lit(&table.temp_name)
+        ),
+    )?;
+    let exists = |condition: String| -> Result<bool, String> {
+        Ok(!fetch(
+            c,
+            &format!("SELECT 1 FROM {real} WHERE {condition} AND ROWNUM = 1"),
+        )?
+        .is_empty())
+    };
+    let chars = ["CHAR", "VARCHAR2", "NCHAR", "NVARCHAR2"];
+    let mut messages = Vec::new();
+    for r in &columns {
+        let name = s(r, 0);
+        let column = quote(&name);
+        if s(r, 4).is_empty() {
+            if s(r, 1) == "N" && i(r, 3) == 0 && exists("1 = 1".to_string())? {
+                messages.push(format!(
+                    "Neue Spalte {name} ist NOT NULL ohne DEFAULT, die Tabelle enthält aber bereits Zeilen."
+                ));
+            }
+            continue;
+        }
+        if s(r, 1) == "N" && s(r, 2) == "Y" && exists(format!("{column} IS NULL"))? {
+            messages.push(format!(
+                "Spalte {name} enthält NULL-Werte, NOT NULL ist so nicht möglich."
+            ));
+        }
+        let (new_type, old_type) = (s(r, 5), s(r, 6));
+        if chars.contains(&new_type.as_str())
+            && chars.contains(&old_type.as_str())
+            && i(r, 7) < i(r, 8)
+        {
+            let length = if s(r, 9) == "B" { "LENGTHB" } else { "LENGTH" };
+            if exists(format!("{length}({column}) > {}", i(r, 7)))? {
+                messages.push(format!(
+                    "Spalte {name} enthält Werte, die länger als {} sind.",
+                    i(r, 7)
+                ));
+            }
+        }
+        if new_type == "NUMBER"
+            && old_type == "NUMBER"
+            && (i(r, 10) < i(r, 11) || i(r, 12) < i(r, 13))
+            && exists(format!("{column} IS NOT NULL"))?
+        {
+            messages.push(format!(
+                "Spalte {name} enthält Daten; Oracle verringert Genauigkeit oder Nachkommastellen nur bei leerer Spalte."
+            ));
+        }
+    }
+    if messages.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Oracle: ALTER TABLE {} scheitert an vorhandenen Daten\n{}",
+            table.name,
+            messages.join("\n")
+        ))
     }
 }
 
@@ -1338,10 +1484,18 @@ impl DatabaseAdapter for OracleAdapter {
         }
         self.run_meta(move |c| {
             let mut plan = Vec::new();
+            let mut alters = Vec::new();
             statements
                 .iter()
-                .try_for_each(|statement| plan_statement(c, statement, &mut plan))?;
-            run_temps(c, &plan)
+                .try_for_each(|statement| match sql::alter_table(statement) {
+                    Some(alter) => {
+                        alters.push((statement.clone(), alter));
+                        Ok(())
+                    }
+                    None => plan_statement(c, statement, &mut plan),
+                })?;
+            run_temps(c, &plan)?;
+            check_alter_tables(c, &alters)
         })
         .await
     }
@@ -3021,6 +3175,98 @@ mod tests {
         ] {
             a.execute_query(drop).await.unwrap();
         }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_validate_alter_table_on_temp_copy() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "validate-alter".into(),
+        )
+        .unwrap();
+        let count = |sql: &'static str| {
+            let a = &a;
+            async move {
+                let r = a.execute_query(sql).await.unwrap();
+                r.rows[0]["C"].to_string().trim_matches('"').to_string()
+            }
+        };
+        let _ = a.execute_query("DROP TABLE L8DB_VA_T PURGE").await;
+        a.execute_query(
+            "CREATE TABLE L8DB_VA_T (ID NUMBER(10) PRIMARY KEY, NAME VARCHAR2(40), BETRAG NUMBER(12,2))",
+        )
+        .await
+        .unwrap();
+        a.execute_query("INSERT INTO L8DB_VA_T VALUES (1, NULL, 1)")
+            .await
+            .unwrap();
+        a.execute_query("INSERT INTO L8DB_VA_T VALUES (2, 'dieser name ist viel zu lang', 2)")
+            .await
+            .unwrap();
+
+        a.validate_sql(
+            "ALTER TABLE L8DB_VA_T MODIFY (NAME VARCHAR2(80))\n/\nALTER TABLE L8DB_VA_T ADD (NEU NUMBER DEFAULT 0 NOT NULL)\n/\nALTER TABLE L8DB_VA_T DROP (BETRAG)",
+        )
+        .await
+        .expect("valid alter script");
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_tab_columns WHERE table_name = 'L8DB_VA_T'")
+                .await,
+            "3"
+        );
+        assert_eq!(
+            count("SELECT MAX(char_length) AS C FROM user_tab_columns WHERE table_name = 'L8DB_VA_T' AND column_name = 'NAME'").await,
+            "40"
+        );
+
+        let exists = a
+            .validate_sql("ALTER TABLE L8DB_VA_T ADD (ID NUMBER)")
+            .await
+            .unwrap_err();
+        assert!(
+            exists.contains("ORA-01430") && !exists.contains("L8DB_TEMP"),
+            "{exists}"
+        );
+        let data = a
+            .validate_sql("ALTER TABLE L8DB_VA_T MODIFY (NAME VARCHAR2(10) NOT NULL)")
+            .await
+            .unwrap_err();
+        assert!(
+            data.contains("NULL-Werte") && data.contains("länger als 10"),
+            "{data}"
+        );
+        let required = a
+            .validate_sql("ALTER TABLE L8DB_VA_T ADD (PFLICHT NUMBER NOT NULL)")
+            .await
+            .unwrap_err();
+        assert!(required.contains("ohne DEFAULT"), "{required}");
+        let precision = a
+            .validate_sql("ALTER TABLE L8DB_VA_T MODIFY (BETRAG NUMBER(5,1))")
+            .await
+            .unwrap_err();
+        assert!(precision.contains("Genauigkeit"), "{precision}");
+        let rename = a
+            .validate_sql("ALTER TABLE L8DB_VA_T RENAME TO L8DB_VA_X")
+            .await
+            .unwrap_err();
+        assert!(rename.contains("nicht prüfen"), "{rename}");
+
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE '%L8DB\\_TEMP' ESCAPE '\\'").await,
+            "0",
+            "no temp tables left"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) AS C FROM user_recyclebin WHERE original_name = 'L8DB_VA_T_L8DB_TEMP'").await,
+            "0",
+            "temp tables are purged"
+        );
+        a.execute_query("DROP TABLE L8DB_VA_T PURGE").await.unwrap();
     }
 
     #[tokio::test]

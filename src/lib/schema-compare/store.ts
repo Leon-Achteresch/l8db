@@ -86,19 +86,55 @@ export function activeTypes(
   return (state.types ?? defaultCompareTypes(kind)).filter((type) => supported.includes(type));
 }
 
-export async function runSchemaCompare(): Promise<void> {
+export function pickSchema(
+  schemas: string[],
+  current: string | null,
+  preferred: string | null,
+): string | null {
+  if (current && schemas.includes(current)) return current;
+  if (schemas.length === 1) return schemas[0];
+  if (preferred && schemas.includes(preferred)) return preferred;
+  return null;
+}
+
+function sameSide(a: CompareSide, b: CompareSide): boolean {
+  return (
+    a.connectionId === b.connectionId &&
+    (a.database ?? "") === (b.database ?? "") &&
+    a.schema === b.schema
+  );
+}
+
+export function setupProblem(
+  source: CompareSide,
+  target: CompareSide,
+  types: SelectableType[],
+): string | null {
+  const left = connectionFor(source);
+  const right = connectionFor(target);
+  if (!source.connectionId || !left) return "Quelle: Verbindung wählen.";
+  if (!source.schema) return "Quelle: Schema wählen.";
+  if (!target.connectionId || !right) return "Ziel: Verbindung wählen.";
+  if (!target.schema) return "Ziel: Schema wählen.";
+  if (left.kind !== right.kind)
+    return "Quelle und Ziel müssen dieselbe Datenbankart verwenden (z. B. beide Oracle).";
+  if (sameSide(source, target))
+    return "Quelle und Ziel sind identisch. Bitte ein anderes Schema wählen.";
+  if (types.length === 0) return "Mindestens einen Objekttyp wählen.";
+  return null;
+}
+
+export async function runSchemaCompare(sides?: {
+  source: CompareSide;
+  target: CompareSide;
+}): Promise<void> {
   const state = useSchemaCompareStore.getState();
   const set = useSchemaCompareStore.setState;
-  const { source, target } = state;
+  const { source, target } = sides ?? state;
   try {
     if (!source.connectionId || !source.schema || !target.connectionId || !target.schema)
       throw new Error("Bitte Quelle und Ziel vollständig auswählen.");
-    if (
-      source.connectionId === target.connectionId &&
-      (source.database ?? "") === (target.database ?? "") &&
-      source.schema === target.schema
-    )
-      throw new Error("Quelle und Ziel sind identisch.");
+    if (sameSide(source, target)) throw new Error("Quelle und Ziel sind identisch.");
     set({ loading: "Verbindungen werden vorbereitet…", error: null });
     const left = await prepareConnection(source.connectionId);
     const right = await prepareConnection(target.connectionId);
@@ -157,8 +193,11 @@ export async function runSchemaCompare(): Promise<void> {
     };
     const items = compareCatalogs(sourceObjects, targetObjects, context);
     set({
+      source,
+      target,
       result: {
         ...context,
+        source,
         target,
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
@@ -173,4 +212,12 @@ export async function runSchemaCompare(): Promise<void> {
   } catch (error) {
     set({ loading: null, error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+export function reverseSchemaCompare(): Promise<void> {
+  const { result, source, target } = useSchemaCompareStore.getState();
+  return runSchemaCompare({
+    source: result?.target ?? target,
+    target: result?.source ?? source,
+  });
 }

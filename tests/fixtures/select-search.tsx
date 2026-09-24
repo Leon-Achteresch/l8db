@@ -34,8 +34,10 @@ function App() {
             <SelectTrigger className="w-full" aria-label="Zielverbindung">
               <SelectValue placeholder="Verbindung wählen" />
             </SelectTrigger>
-            <SelectContent searchable>
-              {items.map((item) => (
+            <SelectContent
+              searchable={params.has("auto") || params.has("plain") ? undefined : true}
+            >
+              {(params.has("plain") ? items.slice(0, 2) : items).map((item) => (
                 <SelectItem key={item} value={item}>
                   {item}
                 </SelectItem>

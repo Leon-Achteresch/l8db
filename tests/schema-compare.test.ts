@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { CatalogObject } from "../src/lib/db";
 import { compareCatalogs, defaultSelection, requalify } from "../src/lib/schema-compare/diff";
+import { addColumnCheck, columnChecks, keyCheck } from "../src/lib/schema-compare/precheck";
 import { buildSyncScript, renderSyncScript } from "../src/lib/schema-compare/script";
 import {
   type CompareResult,
@@ -348,5 +349,202 @@ describe("postgres sync script", () => {
       `CREATE OR REPLACE VIEW "test"."v2" AS\nSELECT c FROM test.v1`,
       `GRANT SELECT ON TABLE "test"."v1" TO "r"`,
     ]);
+  });
+});
+
+describe("routinen über Schemagrenzen", () => {
+  test("ordnet Funktionen mit schemaqualifizierten Parametertypen zu", () => {
+    const routine = (schema: string, body: string) =>
+      object(
+        "function",
+        `label(c ${schema}.customer)`,
+        `CREATE OR REPLACE FUNCTION ${schema}.label(c ${schema}.customer)\n RETURNS text\nAS $$ ${body} $$`,
+        null,
+        { routine: "label", arguments: `c ${schema}.customer` },
+      );
+    const compared = result("postgres", [routine("a", "x")], [routine("b", "x")], "a", "b");
+    expect(compared.items.map((item) => [item.name, item.status])).toEqual([
+      ["label(c b.customer)", "identical"],
+    ]);
+    const changed = result("postgres", [routine("a", "x")], [routine("b", "y")], "a", "b");
+    expect(changed.items.map((item) => item.status)).toEqual(["different"]);
+  });
+});
+
+describe("berechnete Spalten", () => {
+  const table = (schema: string, type: string, generated: boolean) => [
+    object("table", "t", `CREATE TABLE "${schema}"."t" ()`),
+    object("column", "code", `"code" ${type}`, "t", { type, nullable: "YES" }),
+    ...(generated
+      ? [
+          object("column", "len", `"len" integer GENERATED ALWAYS AS (length(code)) STORED`, "t", {
+            type: "integer",
+            nullable: "YES",
+            generated: "length(code)",
+          }),
+        ]
+      : []),
+  ];
+
+  test("ändert keinen Datentyp, auf dem eine berechnete Spalte aufbaut", () => {
+    const compared = result(
+      "postgres",
+      table("a", "text", true),
+      table("b", "varchar(20)", true),
+      "a",
+      "b",
+    );
+    const script = buildSyncScript(compared, defaultSelection(compared.items));
+    expect(script.statements.some((statement) => statement.sql.includes("TYPE text"))).toBe(false);
+    expect(script.warnings.join("\n")).toContain("berechnete Spalte len");
+  });
+
+  test("ändert den Datentyp, wenn die berechnete Spalte vorher gelöscht wird", () => {
+    const compared = result(
+      "postgres",
+      table("a", "text", false),
+      table("b", "varchar(20)", true),
+      "a",
+      "b",
+    );
+    const selection = Object.fromEntries(compared.items.map((item) => [item.key, true]));
+    const script = buildSyncScript(compared, selection);
+    expect(script.statements.map((statement) => statement.sql)).toEqual([
+      `ALTER TABLE "b"."t" DROP COLUMN "len"`,
+      `ALTER TABLE "b"."t" ALTER COLUMN "code" TYPE text USING "code"::text`,
+    ]);
+    expect(script.warnings).toEqual([]);
+  });
+
+  test("erkennt Oracle-Ausdrücke mit Anführungszeichen", () => {
+    const side = (schema: string, size: number) => [
+      object("table", "T", `CREATE TABLE "${schema}"."T" ()`),
+      object("column", "NAME", `"NAME" VARCHAR2(${size} CHAR)`, "T", {
+        type: `VARCHAR2(${size} CHAR)`,
+        nullable: "YES",
+      }),
+      object(
+        "column",
+        "UP",
+        `"UP" VARCHAR2(400 CHAR) GENERATED ALWAYS AS (UPPER("NAME")) VIRTUAL`,
+        "T",
+        {
+          type: "VARCHAR2(400 CHAR)",
+          nullable: "YES",
+          virtual: `UPPER("NAME")`,
+        },
+      ),
+    ];
+    const compared = result("oracle", side("A", 100), side("B", 80), "A", "B");
+    const script = buildSyncScript(compared, defaultSelection(compared.items));
+    expect(script.statements).toEqual([]);
+    expect(script.warnings.join("\n")).toContain("berechnete Spalte UP");
+  });
+});
+
+describe("Oracle-Datenprüfung", () => {
+  test("erzeugt Prüfabfragen für Schlüssel, Fremdschlüssel und Prüfbedingungen", () => {
+    const exists = (name: string) => name !== `"S"."NEU"`;
+    expect(keyCheck(`PRIMARY KEY ("ID", "NR")`, `"S"."T"`, exists)?.sql).toBe(
+      `SELECT (SELECT COUNT(*) FROM "S"."T" WHERE "ID" IS NULL OR "NR" IS NULL) + (SELECT NVL(SUM(n), 0) FROM (SELECT COUNT(*) n FROM "S"."T" WHERE "ID" IS NOT NULL OR "NR" IS NOT NULL GROUP BY "ID", "NR" HAVING COUNT(*) > 1)) FROM dual`,
+    );
+    expect(keyCheck(`UNIQUE ON "S"."T" ("A" DESC)`, `"S"."T"`, exists)?.sql).toBe(
+      `SELECT NVL(SUM(n), 0) FROM (SELECT COUNT(*) n FROM "S"."T" WHERE "A" IS NOT NULL GROUP BY "A" HAVING COUNT(*) > 1)`,
+    );
+    expect(
+      keyCheck(`FOREIGN KEY ("P") REFERENCES "S"."P" ("ID") ON DELETE CASCADE`, `"S"."T"`, exists)
+        ?.sql,
+    ).toBe(
+      `SELECT COUNT(*) FROM "S"."T" c WHERE c."P" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "S"."P" p WHERE p."ID" = c."P")`,
+    );
+    expect(keyCheck(`FOREIGN KEY ("P") REFERENCES "S"."NEU" ("ID")`, `"S"."T"`, exists)?.sql).toBe(
+      `SELECT COUNT(*) FROM "S"."T" c WHERE c."P" IS NOT NULL`,
+    );
+    expect(
+      keyCheck(
+        `CHECK (AMOUNT >= 0 AND (X IN (1, 2))) DEFERRABLE INITIALLY DEFERRED`,
+        `"S"."T"`,
+        exists,
+      )?.sql,
+    ).toBe(`SELECT COUNT(*) FROM "S"."T" WHERE NOT (AMOUNT >= 0 AND (X IN (1, 2)))`);
+    expect(keyCheck(`CHECK (A > 0) DISABLE`, `"S"."T"`, exists)).toBeNull();
+    expect(keyCheck(`UNIQUE ("A") ENABLE NOVALIDATE`, `"S"."T"`, exists)).toBeNull();
+    expect(keyCheck(`UNIQUE ON "S"."T" (UPPER("A"))`, `"S"."T"`, exists)).toBeNull();
+    expect(keyCheck(`ON "S"."T" ("A")`, `"S"."T"`, exists)).toBeNull();
+  });
+
+  test("prüft NOT NULL, kürzere Texte und kleinere Zahlen", () => {
+    const column = (type: string, nullable: string) =>
+      object("column", "C", `"C" ${type}`, "T", { type, nullable });
+    const sqls = (from: CatalogObject, to: CatalogObject, typeChanged = true) =>
+      columnChecks(to, from, `"S"."T"`, typeChanged).map((check) => check.sql);
+    expect(sqls(column("NUMBER", "YES"), column("NUMBER", "NO"), false)).toEqual([
+      `SELECT COUNT(*) FROM "S"."T" WHERE "C" IS NULL`,
+    ]);
+    expect(sqls(column("VARCHAR2(40 CHAR)", "YES"), column("VARCHAR2(20 CHAR)", "YES"))).toEqual([
+      `SELECT COUNT(*) FROM "S"."T" WHERE LENGTH("C") > 20`,
+    ]);
+    expect(sqls(column("VARCHAR2(40 BYTE)", "YES"), column("VARCHAR2(20 BYTE)", "YES"))).toEqual([
+      `SELECT COUNT(*) FROM "S"."T" WHERE LENGTHB("C") > 20`,
+    ]);
+    expect(sqls(column("NUMBER(12,4)", "YES"), column("NUMBER(10,2)", "YES"))).toEqual([
+      `SELECT COUNT(*) FROM "S"."T" WHERE "C" IS NOT NULL`,
+    ]);
+    expect(sqls(column("NUMBER", "YES"), column("NUMBER(10)", "YES"))).toHaveLength(1);
+    expect(sqls(column("NUMBER(10)", "YES"), column("NUMBER(12,2)", "YES"))).toEqual([]);
+    expect(sqls(column("DATE", "YES"), column("TIMESTAMP(6)", "YES"))).toEqual([]);
+    expect(addColumnCheck(column("NUMBER", "NO"), `"S"."T"`)?.sql).toBe(
+      `SELECT COUNT(*) FROM "S"."T"`,
+    );
+    expect(
+      addColumnCheck(
+        object("column", "C", "", "T", { type: "NUMBER", nullable: "NO", default: "0" }),
+        `"S"."T"`,
+      ),
+    ).toBeNull();
+  });
+
+  test("hängt Prüfungen nur bei Oracle an bestehende Tabellen", () => {
+    const side = (schema: string, withCheck: boolean) => [
+      object("table", "T", `CREATE TABLE "${schema}"."T" ("A" NUMBER)`),
+      object("column", "A", `"A" NUMBER`, "T", { type: "NUMBER", nullable: "YES" }),
+      ...(withCheck
+        ? [
+            object(
+              "constraint",
+              "T_CK",
+              `ALTER TABLE "${schema}"."T" ADD CONSTRAINT "T_CK" CHECK (A > 0)`,
+              "T",
+              {
+                kind: "C",
+                definition: "CHECK (A > 0)",
+              },
+            ),
+            object("table", "N", `CREATE TABLE "${schema}"."N" ("A" NUMBER)`),
+            object(
+              "constraint",
+              "N_CK",
+              `ALTER TABLE "${schema}"."N" ADD CONSTRAINT "N_CK" CHECK (A > 0)`,
+              "N",
+              {
+                kind: "C",
+                definition: "CHECK (A > 0)",
+              },
+            ),
+          ]
+        : []),
+    ];
+    const oracle = result("oracle", side("A", true), side("B", false), "A", "B");
+    const script = buildSyncScript(oracle, defaultSelection(oracle.items));
+    const checked = script.statements.filter((statement) => statement.checks?.length);
+    expect(checked.map((statement) => statement.sql)).toEqual([
+      `ALTER TABLE "B"."T" ADD CONSTRAINT "T_CK" CHECK (A > 0)`,
+    ]);
+    const postgres = result("postgres", side("a", true), side("b", false), "a", "b");
+    expect(
+      buildSyncScript(postgres, defaultSelection(postgres.items)).statements.some(
+        (statement) => statement.checks,
+      ),
+    ).toBe(false);
   });
 });
