@@ -11,6 +11,8 @@ interface Props {
   source: string;
   draft: string;
   onlyDifferences: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onDraftChange: (value: string) => void;
 }
 
@@ -19,6 +21,8 @@ export function MergeReferenceEditor({
   source,
   draft,
   onlyDifferences,
+  selected,
+  onSelect,
   onDraftChange,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -83,9 +87,21 @@ export function MergeReferenceEditor({
   return (
     <div className="flex h-full min-h-0 flex-col border-l">
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1 text-xs">
-        <span className="truncate text-muted-foreground">
-          {label} · {hunks.length === 0 ? "Entspricht dem Entwurf" : `${hunks.length} Abweichungen`}
-        </span>
+        <button
+          type="button"
+          aria-label={`${label} auswählen`}
+          aria-pressed={selected}
+          className={`flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-left hover:bg-muted ${selected ? "font-medium text-primary" : "text-muted-foreground"}`}
+          onClick={onSelect}
+        >
+          <span
+            className={`size-2 shrink-0 rounded-full ${selected ? "bg-primary" : "border border-muted-foreground"}`}
+          />
+          <span className="truncate">
+            {label} ·{" "}
+            {hunks.length === 0 ? "Entspricht dem Entwurf" : `${hunks.length} Abweichungen`}
+          </span>
+        </button>
       </div>
       {hunks.length > 0 && (
         <div className="flex max-h-28 shrink-0 flex-wrap gap-1 overflow-auto border-b p-1.5">
@@ -96,7 +112,10 @@ export function MergeReferenceEditor({
               variant="outline"
               className="h-6 px-1.5 text-[11px]"
               title={`Änderung ${index + 1} aus der ${label} in den Entwurf übernehmen`}
-              onClick={() => onDraftChange(applyDefinitionHunk(source, draft, hunk))}
+              onClick={() => {
+                onSelect();
+                onDraftChange(applyDefinitionHunk(source, draft, hunk));
+              }}
             >
               <ArrowDownIcon className="size-3" />
               Zeile {Math.min(hunk.sourceStart + 1, source.split("\n").length)}
@@ -120,20 +139,6 @@ export function MergeReferenceEditor({
               ))}
         </div>
       )}
-      <div className="flex shrink-0 justify-center border-t bg-muted/30 px-2 py-1.5">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-7 gap-1.5 px-3 text-xs"
-          aria-label={`${label} in Entwurf übernehmen`}
-          title={`Vollständigen Stand aus der ${label} in den gemeinsamen Entwurf übernehmen`}
-          disabled={hunks.length === 0}
-          onClick={() => onDraftChange(source)}
-        >
-          <ArrowDownIcon className="size-3.5" />
-          {label} in Entwurf
-        </Button>
-      </div>
     </div>
   );
 }
