@@ -18,6 +18,7 @@ export type TourStep = {
   id: string;
   title: string;
   body: string;
+  action: string;
   target?: string;
   route?: string;
   tableRoute?: boolean;

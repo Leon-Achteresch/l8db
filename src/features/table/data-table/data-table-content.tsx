@@ -118,7 +118,11 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
   );
   return (
     <EditTargetContext.Provider value={editTarget}>
-      <div ref={rootRef} className={cn("flex min-h-0 flex-1 flex-col relative", className)}>
+      <div
+        ref={rootRef}
+        data-tour="data-grid"
+        className={cn("flex min-h-0 flex-1 flex-col relative", className)}
+      >
         {isFetching && (
           <div className="absolute top-0 left-0 right-0 z-50 h-0.5 w-full bg-primary/20 overflow-hidden">
             <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />

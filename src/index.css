@@ -462,6 +462,16 @@
   display: none;
 }
 
+.l8db-driver-action {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
 .l8db-driver-wait {
   margin-top: 0.6rem;
   font-size: 0.6875rem;
