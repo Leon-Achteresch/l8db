@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { expect, mock, setSystemTime, test } from "bun:test";
 
 let fail = true;
 let calls = 0;
@@ -15,11 +15,15 @@ mock.module("@tauri-apps/api/core", () => ({
 const { allProviders, loadProviders, useProvidersStore } = await import("@/lib/providers");
 
 test("allProviders retries loading after a failed startup load", async () => {
+  setSystemTime(new Date("2100-01-01"));
+  useProvidersStore.setState({ loaded: false });
+  const before = calls;
   await loadProviders();
   expect(useProvidersStore.getState().loaded).toBe(false);
   fail = false;
   allProviders();
   await Bun.sleep(0);
   expect(allProviders().some((p) => p.kind === "oracle")).toBe(true);
-  expect(calls).toBe(2);
+  expect(calls - before).toBe(2);
+  setSystemTime();
 });
