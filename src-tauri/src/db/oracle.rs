@@ -217,7 +217,7 @@ fn parse_only(c: &Connection, statement: &str) -> Result<(), String> {
         "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "SET" => return Ok(()),
         _ => {
             return Err(format!(
-                "Oracle kann {word}-Anweisungen nicht prüfen, ohne sie auszuführen. Prüfbar sind Abfragen, DML, PL/SQL-Blöcke, ALTER TABLE ADD/MODIFY/DROP sowie CREATE VIEW/FUNCTION/PROCEDURE/PACKAGE."
+                "Oracle kann {word}-Anweisungen nicht prüfen, ohne sie auszuführen. Prüfbar sind Abfragen, DML, PL/SQL-Blöcke, DROP, ALTER TABLE ADD/MODIFY/DROP, ALTER SEQUENCE sowie CREATE VIEW/FUNCTION/PROCEDURE/PACKAGE/TYPE/SEQUENCE/TABLE/SYNONYM."
             ))
         }
     }
@@ -247,13 +247,33 @@ fn plan_statement(
     statement: &str,
     plan: &mut Vec<sql::TempObject>,
 ) -> Result<(), String> {
+    if let Some((owner, name, kind)) = sql::drop_target(statement) {
+        let owner = owner.as_ref().map_or_else(
+            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+            |o| lit(o),
+        );
+        let found = fetch(
+            c,
+            &format!(
+                "SELECT 1 FROM all_objects WHERE owner = {owner} AND object_name = {} AND object_type = {}",
+                lit(&name),
+                lit(&kind)
+            ),
+        )?;
+        return if found.is_empty() {
+            Err(format!("Oracle: {kind} {name} existiert nicht."))
+        } else {
+            Ok(())
+        };
+    }
     let Some(temp) = sql::temp_object(statement) else {
         return parse_only(c, statement);
     };
+    let base = temp.kind.trim_end_matches(" BODY").to_string();
     let has_spec = plan
         .iter()
-        .any(|p| p.kind == "PACKAGE" && p.target() == temp.target());
-    if temp.kind == "PACKAGE BODY" && !has_spec {
+        .any(|p| p.kind == base && p.target() == temp.target());
+    if temp.kind.ends_with(" BODY") && !has_spec {
         let owner = temp.owner.as_ref().map_or_else(
             || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
             |o| lit(o),
@@ -261,8 +281,9 @@ fn plan_statement(
         let source: String = fetch(
             c,
             &format!(
-                "SELECT text FROM all_source WHERE owner = {owner} AND name = {} AND type = 'PACKAGE' ORDER BY line",
-                lit(&temp.name)
+                "SELECT text FROM all_source WHERE owner = {owner} AND name = {} AND type = {} ORDER BY line",
+                lit(&temp.name),
+                lit(&base)
             ),
         )?
         .iter()
@@ -270,18 +291,17 @@ fn plan_statement(
         .collect();
         if source.is_empty() {
             return Err(format!(
-                "Prüfen nicht möglich: Spezifikation des Packages {} nicht gefunden.",
+                "Prüfen nicht möglich: Spezifikation von {} nicht gefunden.",
                 temp.name
             ));
         }
         let script = match &temp.owner {
-            Some(o) => create_script(o, &temp.name, "PACKAGE", &source),
+            Some(o) => create_script(o, &temp.name, &base, &source),
             None => format!("CREATE OR REPLACE {source}"),
         };
-        let mut spec = sql::temp_object(&prepare(&script)).ok_or_else(|| {
-            "Prüfen nicht möglich: Package-Spezifikation nicht lesbar".to_string()
-        })?;
-        spec.kind = "PACKAGE (gespeicherte Spezifikation)".to_string();
+        let mut spec = sql::temp_object(&prepare(&script))
+            .ok_or_else(|| "Prüfen nicht möglich: Spezifikation nicht lesbar".to_string())?;
+        spec.kind = format!("{base} (gespeicherte Spezifikation)");
         plan.push(spec);
     }
     plan.push(temp);
@@ -347,12 +367,9 @@ fn run_temps(c: &Connection, plan: &[sql::TempObject]) -> Result<(), String> {
     let mut drops: Vec<String> = Vec::new();
     let mut owners: Vec<String> = vec!["SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string()];
     for temp in plan {
-        let kind = if temp.kind.starts_with("PACKAGE") {
-            "PACKAGE"
-        } else {
-            temp.kind.as_str()
-        };
-        let drop = lit(&format!("DROP {kind} {}", temp.target()));
+        let kind = temp.kind.split([' ', '(']).next().unwrap_or_default();
+        let purge = if kind == "TABLE" { " PURGE" } else { "" };
+        let drop = lit(&format!("DROP {kind} {}{purge}", temp.target()));
         if !drops.contains(&drop) {
             drops.push(drop);
         }
@@ -371,11 +388,7 @@ fn run_temps(c: &Connection, plan: &[sql::TempObject]) -> Result<(), String> {
         .iter()
         .enumerate()
         .map(|(i, temp)| {
-            let kind = if temp.kind.starts_with("PACKAGE (") {
-                "PACKAGE"
-            } else {
-                temp.kind.as_str()
-            };
+            let kind = temp.kind.split(" (").next().unwrap_or_default();
             format!(
                 "    mk({i}, :s{i}, {}, {}, {});\n",
                 temp.owner.as_ref().map_or("NULL".to_string(), |o| lit(o)),
@@ -391,7 +404,7 @@ fn run_temps(c: &Connection, plan: &[sql::TempObject]) -> Result<(), String> {
 BEGIN
   FOR x IN (SELECT owner, object_name, object_type FROM all_objects
             WHERE owner IN ({}) AND object_name LIKE '%\\_L8DB\\_TEMP' ESCAPE '\\'
-              AND object_type IN ('VIEW', 'FUNCTION', 'PROCEDURE', 'PACKAGE')
+              AND object_type IN ('VIEW', 'FUNCTION', 'PROCEDURE', 'PACKAGE', 'TYPE', 'SEQUENCE', 'SYNONYM')
               AND last_ddl_time < SYSDATE - 10 / 1440) LOOP
     rm('DROP ' || x.object_type || ' \"' || x.owner || '\".\"' || x.object_name || '\"', TRUE);
   END LOOP;
@@ -505,6 +518,64 @@ fn check_alter_tables(c: &Connection, alters: &[(String, sql::AlterTable)]) -> R
     } else {
         Err(messages.join("\n"))
     }
+}
+
+fn check_alter_sequences(
+    c: &Connection,
+    alters: &[(String, sql::AlterTable)],
+) -> Result<(), String> {
+    for (statement, seq) in alters {
+        let owner = seq.owner.as_ref().map_or_else(
+            || "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')".to_string(),
+            |o| lit(o),
+        );
+        let rows = fetch(
+            c,
+            &format!(
+                "SELECT TO_CHAR(last_number), TO_CHAR(increment_by), TO_CHAR(min_value), TO_CHAR(max_value), cycle_flag \
+                 FROM all_sequences WHERE sequence_owner = {owner} AND sequence_name = {}",
+                lit(&seq.name)
+            ),
+        )?;
+        let Some(r) = rows.first() else {
+            return Err(format!("Oracle: SEQUENCE {} existiert nicht.", seq.name));
+        };
+        let temp = quote(&seq.temp_name);
+        let drop = format!("DROP SEQUENCE {temp}");
+        let _ = c.execute(&drop, &[]);
+        c.execute(
+            &format!(
+                "CREATE SEQUENCE {temp} START WITH {} INCREMENT BY {} MINVALUE {} MAXVALUE {} {} NOCACHE",
+                s(r, 0),
+                s(r, 1),
+                s(r, 2),
+                s(r, 3),
+                if s(r, 4) == "Y" { "CYCLE" } else { "NOCYCLE" }
+            ),
+            &[],
+        )
+        .map_err(|e| {
+            format!(
+                "Prüfen nicht möglich: Prüfkopie von {} konnte nicht angelegt werden.\n{e}",
+                seq.name
+            )
+        })?;
+        let result = c.execute(&seq.on_temp(statement), &[]).map_err(|e| {
+            format!(
+                "Oracle: ALTER SEQUENCE {} enthält Fehler\n{}",
+                seq.name,
+                e.to_string().replace(&seq.temp_name, &seq.name)
+            )
+        });
+        c.execute(&drop, &[]).map_err(|e| {
+            format!(
+                "Temporäres Prüfobjekt {} konnte nicht gelöscht werden, bitte manuell entfernen: {e}",
+                seq.temp_name
+            )
+        })?;
+        result?;
+    }
+    Ok(())
 }
 
 fn check_alter_table<'a>(
@@ -1497,17 +1568,21 @@ impl DatabaseAdapter for OracleAdapter {
         self.run_meta(move |c| {
             let mut plan = Vec::new();
             let mut alters = Vec::new();
-            statements
-                .iter()
-                .try_for_each(|statement| match sql::alter_table(statement) {
-                    Some(alter) => {
-                        alters.push((statement.clone(), alter));
-                        Ok(())
-                    }
-                    None => plan_statement(c, statement, &mut plan),
-                })?;
+            let mut sequences = Vec::new();
+            statements.iter().try_for_each(|statement| {
+                if let Some(alter) = sql::alter_table(statement) {
+                    alters.push((statement.clone(), alter));
+                    Ok(())
+                } else if let Some(alter) = sql::alter_sequence(statement) {
+                    sequences.push((statement.clone(), alter));
+                    Ok(())
+                } else {
+                    plan_statement(c, statement, &mut plan)
+                }
+            })?;
             run_temps(c, &plan)?;
-            check_alter_tables(c, &alters)
+            check_alter_tables(c, &alters)?;
+            check_alter_sequences(c, &sequences)
         })
         .await
     }
@@ -3086,16 +3161,21 @@ mod tests {
             .await
             .unwrap();
 
-        let ddl = a
-            .validate_sql("CREATE TABLE L8DB_VALIDATE_PROBE (ID NUMBER)")
+        a.validate_sql("CREATE TABLE L8DB_VALIDATE_PROBE (ID NUMBER)")
             .await
-            .unwrap_err();
-        assert!(ddl.contains("nicht prüfen"), "{ddl}");
+            .expect("create table on temp");
         assert!(a
             .execute_query("SELECT COUNT(*) AS C FROM L8DB_VALIDATE_PROBE")
             .await
             .is_err());
-        assert!(a.validate_sql("DROP TABLE L8DB_VP_T").await.is_err());
+        let ddl = a
+            .validate_sql("CREATE INDEX L8DB_VP_I ON L8DB_VP_T (ID)")
+            .await
+            .unwrap_err();
+        assert!(ddl.contains("nicht prüfen"), "{ddl}");
+        a.validate_sql("DROP TABLE L8DB_VP_T")
+            .await
+            .expect("drop existing");
         assert_eq!(count("SELECT COUNT(*) AS C FROM L8DB_VP_T").await, "0");
 
         a.validate_sql("SELECT 1 AS ONE FROM DUAL; SELECT 2 AS TWO FROM DUAL;\nCOMMIT;")
@@ -3291,6 +3371,79 @@ mod tests {
             "DROP PACKAGE L8DB_VP_REAL",
             "DROP TABLE L8DB_VP_F_L8DB_TEMP",
         ] {
+            a.execute_query(drop).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_validate_sequences_types_and_drops_on_temp() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let a = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "validate-more".into(),
+        )
+        .unwrap();
+        for drop in [
+            "DROP SEQUENCE L8DB_VM_S",
+            "DROP TYPE L8DB_VM_T",
+            "DROP TABLE L8DB_VM_X PURGE",
+        ] {
+            let _ = a.execute_query(drop).await;
+        }
+        a.execute_query("CREATE SEQUENCE L8DB_VM_S START WITH 50 MAXVALUE 1000")
+            .await
+            .unwrap();
+        a.execute_query("SELECT L8DB_VM_S.NEXTVAL FROM DUAL")
+            .await
+            .unwrap();
+        a.execute_query(
+            "CREATE TYPE L8DB_VM_T AS OBJECT (n NUMBER, MEMBER FUNCTION f RETURN NUMBER)",
+        )
+        .await
+        .unwrap();
+        a.validate_sql("ALTER SEQUENCE L8DB_VM_S INCREMENT BY 5 MAXVALUE 2000 CYCLE")
+            .await
+            .expect("valid alter sequence");
+        let low = a
+            .validate_sql("ALTER SEQUENCE L8DB_VM_S MAXVALUE 10")
+            .await
+            .unwrap_err();
+        assert!(
+            low.contains("L8DB_VM_S") && !low.contains("L8DB_TEMP"),
+            "{low}"
+        );
+        a.validate_sql("CREATE OR REPLACE TYPE BODY L8DB_VM_T AS MEMBER FUNCTION f RETURN NUMBER IS BEGIN RETURN n; END; END;")
+            .await
+            .expect("type body against stored spec");
+        let bad = a
+            .validate_sql("CREATE OR REPLACE TYPE BODY L8DB_VM_T AS MEMBER FUNCTION g RETURN NUMBER IS BEGIN RETURN n; END; END;")
+            .await
+            .unwrap_err();
+        assert!(bad.contains("PLS-"), "{bad}");
+        a.validate_sql(
+            "CREATE TABLE L8DB_VM_X (ID NUMBER PRIMARY KEY)\n/\nCREATE SEQUENCE L8DB_VM_Y",
+        )
+        .await
+        .expect("create table and sequence");
+        a.validate_sql("DROP SEQUENCE L8DB_VM_S")
+            .await
+            .expect("drop existing");
+        assert!(a.validate_sql("DROP VIEW L8DB_VM_NONE").await.is_err());
+        let left = a
+            .execute_query("SELECT COUNT(*) AS C FROM user_objects WHERE object_name LIKE '%L8DB\\_TEMP' ESCAPE '\\'")
+            .await
+            .unwrap();
+        assert_eq!(left.rows[0]["C"].to_string().trim_matches('"'), "0");
+        let seq = a
+            .execute_query("SELECT TO_CHAR(increment_by) AS C FROM user_sequences WHERE sequence_name = 'L8DB_VM_S'")
+            .await
+            .unwrap();
+        assert_eq!(seq.rows[0]["C"].to_string().trim_matches('"'), "1");
+        for drop in ["DROP SEQUENCE L8DB_VM_S", "DROP TYPE L8DB_VM_T"] {
             a.execute_query(drop).await.unwrap();
         }
     }

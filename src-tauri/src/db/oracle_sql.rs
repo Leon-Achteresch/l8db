@@ -280,6 +280,68 @@ pub(super) fn alter_table(sql: &str) -> Option<AlterTable> {
     })
 }
 
+pub(super) fn alter_sequence(sql: &str) -> Option<AlterTable> {
+    let toks = tokens(sql);
+    let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
+    let is = |i: usize, w: &str| word(i).is_some_and(|t| t.eq_ignore_ascii_case(w));
+    if !is(0, "ALTER") || !is(1, "SEQUENCE") {
+        return None;
+    }
+    let (owner, last) = if word(3) == Some(".") {
+        (Some(ident_name(word(2)?)), 4)
+    } else {
+        (None, 2)
+    };
+    let name = ident_name(word(last)?);
+    Some(AlterTable {
+        owner,
+        temp_name: format!("{}{TEMP_SUFFIX}", temp_stem(&name)),
+        name,
+        table: toks[2].start..toks[last].end,
+    })
+}
+
+pub(super) fn drop_target(sql: &str) -> Option<(Option<String>, String, String)> {
+    let toks = tokens(sql);
+    let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
+    let is = |i: usize, w: &str| word(i).is_some_and(|t| t.eq_ignore_ascii_case(w));
+    if !is(0, "DROP") {
+        return None;
+    }
+    let mut kind = word(1)?.to_ascii_uppercase();
+    let mut i = 2;
+    if (kind == "MATERIALIZED" && is(2, "VIEW"))
+        || (matches!(kind.as_str(), "PACKAGE" | "TYPE") && is(2, "BODY"))
+    {
+        kind = format!("{kind} {}", word(2)?.to_ascii_uppercase());
+        i = 3;
+    }
+    if !matches!(
+        kind.as_str(),
+        "TABLE"
+            | "VIEW"
+            | "MATERIALIZED VIEW"
+            | "INDEX"
+            | "SEQUENCE"
+            | "SYNONYM"
+            | "TRIGGER"
+            | "FUNCTION"
+            | "PROCEDURE"
+            | "PACKAGE"
+            | "PACKAGE BODY"
+            | "TYPE"
+            | "TYPE BODY"
+    ) {
+        return None;
+    }
+    let (owner, name) = if word(i + 1) == Some(".") {
+        (Some(ident_name(word(i)?)), ident_name(word(i + 2)?))
+    } else {
+        (None, ident_name(word(i)?))
+    };
+    Some((owner, name, kind))
+}
+
 pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
     let toks = tokens(sql);
     let word = |i: usize| toks.get(i).map(|r| &sql[r.clone()]);
@@ -304,13 +366,19 @@ pub(super) fn temp_object(sql: &str) -> Option<TempObject> {
         replacements.insert(0, (at..at, " OR REPLACE".to_string()));
     }
     let mut kind = word(i)?.to_ascii_uppercase();
-    if !matches!(kind.as_str(), "VIEW" | "FUNCTION" | "PROCEDURE" | "PACKAGE") {
+    if !matches!(
+        kind.as_str(),
+        "VIEW" | "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TYPE" | "SEQUENCE" | "TABLE" | "SYNONYM"
+    ) {
         return None;
     }
     i += 1;
-    if kind == "PACKAGE" && is(i, "BODY") {
+    if matches!(kind.as_str(), "PACKAGE" | "TYPE") && is(i, "BODY") {
         kind.push_str(" BODY");
         i += 1;
+    }
+    if matches!(kind.as_str(), "SEQUENCE" | "TABLE") {
+        replacements.retain(|(_, text)| text != " OR REPLACE");
     }
     let ident = ident_name;
     let mut owner = None;
@@ -394,6 +462,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_more_temp_kinds_and_drops() {
+        let seq = temp_object("CREATE SEQUENCE hr.s START WITH 1").unwrap();
+        assert_eq!(seq.sql, "CREATE SEQUENCE hr.\"S_L8DB_TEMP\" START WITH 1");
+        let body = temp_object("create type body t as end;").unwrap();
+        assert_eq!(body.kind, "TYPE BODY");
+        assert!(temp_object("CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;").is_none());
+        let alter = alter_sequence("ALTER SEQUENCE hr.s INCREMENT BY 2").unwrap();
+        assert_eq!(
+            alter.on_temp("ALTER SEQUENCE hr.s INCREMENT BY 2"),
+            "ALTER SEQUENCE \"S_L8DB_TEMP\" INCREMENT BY 2"
+        );
+        assert_eq!(
+            drop_target("drop materialized view hr.\"Mv\""),
+            Some((Some("HR".into()), "Mv".into(), "MATERIALIZED VIEW".into()))
+        );
+        assert!(drop_target("DROP USER x").is_none());
+    }
+
+    #[test]
     fn rewrites_alter_table_to_temp_copy() {
         let sql = "ALTER TABLE \"DEV\".\"ABRECHNUNG_LOCK\" MODIFY (\"NAME\" VARCHAR2(80) NOT NULL)";
         let alter = alter_table(sql).unwrap();
@@ -457,7 +544,7 @@ mod tests {
         assert_eq!(long.temp_name, "PKG_CUSTOMER_MANAGEM_L8DB_TEMP");
         assert_eq!(long.temp_name.len(), 30);
         assert!(long.sql.contains("PACKAGE \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\" AS END \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\";") || long.sql.contains("PACKAGE \"PKG_CUSTOMER_MANAGEM_L8DB_TEMP\" AS END;"));
-        assert!(temp_object("CREATE TABLE t (id NUMBER)").is_none());
+        assert!(temp_object("CREATE INDEX i ON t (id)").is_none());
         assert!(temp_object("CREATE TRIGGER t BEFORE INSERT ON x BEGIN NULL; END;").is_none());
         assert!(temp_object("SELECT 1 FROM dual").is_none());
     }

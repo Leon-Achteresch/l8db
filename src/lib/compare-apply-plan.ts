@@ -135,6 +135,29 @@ function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: 
   return sql;
 }
 
+function sequenceFields(definition: string): Map<string, string> {
+  return new Map(
+    [...definition.matchAll(/^\s+(\w+) (.+)$/gm)].map((match) => [match[1], match[2].trim()]),
+  );
+}
+
+function oracleSequencePlan(baseline: string, draft: string, target: string): string[] {
+  const before = sequenceFields(baseline);
+  const after = sequenceFields(draft);
+  const changed = (key: string) => after.has(key) && after.get(key) !== before.get(key);
+  if (changed("data_type") || (changed("start") && after.get("start") !== after.get("min")))
+    throw new Error("Datentyp und Startwert einer Oracle-Sequenz lassen sich nicht ändern.");
+  const parts = [
+    changed("increment") ? `INCREMENT BY ${after.get("increment")}` : "",
+    changed("min") ? `MINVALUE ${after.get("min")}` : "",
+    changed("max") ? `MAXVALUE ${after.get("max")}` : "",
+    changed("cycle") ? (after.get("cycle") === "YES" ? "CYCLE" : "NOCYCLE") : "",
+  ].filter(Boolean);
+  if (parts.some((part) => !/^[A-Z ]+(-?\d+)?$/.test(part)))
+    throw new Error("Die Sequenzwerte müssen ganze Zahlen sein.");
+  return parts.length ? [`ALTER SEQUENCE ${target} ${parts.join(" ")}`] : [];
+}
+
 export function buildCompareApplyPlan(
   kind: DatabaseKind,
   side: CompareSideSelection,
@@ -223,7 +246,9 @@ export function buildCompareApplyPlan(
       }
       return text.trim().replace(DDL_HEADER, `CREATE OR REPLACE ${header[1]} ${targetIdentifier}`);
     });
-  } else
+  } else if (side.objectType === "sequence" && kind === "oracle")
+    statements = oracleSequencePlan(baseline, draft, qualified(side.objectName));
+  else
     throw new Error(
       "Für diesen Objekttyp kann noch kein sicheres Änderungsskript erzeugt werden. Der Entwurf bleibt erhalten.",
     );
