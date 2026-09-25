@@ -18,7 +18,9 @@ import { AddColumnRow } from "@/features/alter-table/alter-table-view/add-column
 import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-type-combobox";
 import { defaultDataType } from "@/features/alter-table/alter-table-view/data-types";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
+import { TableConstraintsEditor } from "@/features/constraints/table-constraints-editor";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
 interface AlterTableViewProps {
@@ -49,6 +51,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     handleAddColumn,
     handleDropColumn,
   } = useAlterTable(schema, table);
+  const capabilities = useActiveCapabilities();
 
   if (!connection) {
     return (
@@ -256,6 +259,20 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
             </motion.div>
           ))}
         </div>
+        {capabilities.constraints && (
+          <TableConstraintsEditor
+            schema={schema}
+            table={table}
+            columns={(columns ?? []).map((col) => ({
+              name: col.name,
+              data_type:
+                col.character_maximum_length !== null && !col.data_type.includes("(")
+                  ? `${col.data_type}(${col.character_maximum_length})`
+                  : col.data_type,
+              is_primary_key: col.is_primary_key,
+            }))}
+          />
+        )}
       </div>
     </div>
   );

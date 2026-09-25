@@ -6,12 +6,14 @@ import { CLICKHOUSE_TYPES, COMMON_TYPES } from "@/features/tables/create-table-v
 import { loadTemplateColumns } from "@/features/tables/create-table-view/load-template-columns";
 import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
+import { constraintDialectInfo, renameConstraintColumn } from "@/lib/constraint-designer";
 import {
   type ColumnDefinition,
   type CreateTableRequest,
   createTable,
   listTables,
   previewCreateTableDdl,
+  type TableConstraintSpec,
 } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -51,6 +53,12 @@ export function useCreateTable() {
   const [templateTable, setTemplateTable] = useState("");
   const [templateNotes, setTemplateNotes] = useState<string[]>([]);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [constraints, setConstraints] = useState<TableConstraintSpec[]>([]);
+  const [primaryKeyName, setPrimaryKeyName] = useState("");
+  const [constraintDialog, setConstraintDialog] = useState<{
+    key: number;
+    index: number | null;
+  } | null>(null);
 
   const incomplete = !tableName.trim() || columns.some((c) => !c.name.trim());
 
@@ -60,13 +68,16 @@ export function useCreateTable() {
       name: tableName.trim(),
       columns: columns.map(({ id: _id, ...rest }) => rest),
       if_not_exists: ifNotExists,
+      primary_key_name: primaryKeyName.trim() || null,
+      constraints,
     }),
-    [schema, tableName, columns, ifNotExists],
+    [schema, tableName, columns, ifNotExists, primaryKeyName, constraints],
   );
 
   const connectionString = connection ? effectiveConnectionString(connection) : null;
   const kind = connection?.kind;
   const typeOptions = kind === "clickhouse" ? CLICKHOUSE_TYPES : COMMON_TYPES;
+  const constraintsSupported = constraintDialectInfo(kind) !== null;
 
   useEffect(() => {
     if (!kind || !connectionString || incomplete) {
@@ -132,6 +143,8 @@ export function useCreateTable() {
       const { mapped, notes } = loaded;
 
       setColumns(mapped);
+      setConstraints([]);
+      setPrimaryKeyName("");
       setTableName("");
       setTemplateNotes(notes);
       toast.success(`Spalten aus "${sourceSchema}.${source}" übernommen. Neuen Namen vergeben.`);
@@ -156,8 +169,31 @@ export function useCreateTable() {
 
   const removeColumn = (id: number) => setColumns((prev) => prev.filter((c) => c.id !== id));
 
-  const updateColumn = (id: number, patch: Partial<ColumnDefinition>) =>
+  const updateColumn = (id: number, patch: Partial<ColumnDefinition>) => {
+    const previous = columns.find((c) => c.id === id);
+    if (previous && patch.name !== undefined && patch.name !== previous.name && previous.name) {
+      const from = previous.name;
+      const to = patch.name;
+      setConstraints((prev) => prev.map((c) => renameConstraintColumn(c, from, to)));
+    }
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+
+  const openConstraintDialog = (index: number | null) =>
+    setConstraintDialog({ key: Date.now(), index });
+
+  const closeConstraintDialog = () => setConstraintDialog(null);
+
+  const saveConstraint = (spec: TableConstraintSpec) => {
+    const index = constraintDialog?.index ?? null;
+    setConstraints((prev) =>
+      index === null ? [...prev, spec] : prev.map((c, i) => (i === index ? spec : c)),
+    );
+    return true;
+  };
+
+  const removeConstraint = (index: number) =>
+    setConstraints((prev) => prev.filter((_, i) => i !== index));
 
   const handleCreate = async () => {
     if (!connection) return;
@@ -212,5 +248,14 @@ export function useCreateTable() {
     removeColumn,
     updateColumn,
     handleCreate,
+    constraints,
+    constraintsSupported,
+    primaryKeyName,
+    setPrimaryKeyName,
+    constraintDialog,
+    openConstraintDialog,
+    closeConstraintDialog,
+    saveConstraint,
+    removeConstraint,
   };
 }

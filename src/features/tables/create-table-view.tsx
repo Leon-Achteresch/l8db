@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConstraintDraftList } from "@/features/constraints/constraint-draft-list";
+import { ConstraintEditorDialog } from "@/features/constraints/constraint-editor-dialog";
 import { useCreateTable } from "@/features/tables/create-table-view/use-create-table";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
@@ -43,6 +45,15 @@ export function CreateTableView() {
     removeColumn,
     updateColumn,
     handleCreate,
+    constraints,
+    constraintsSupported,
+    primaryKeyName,
+    setPrimaryKeyName,
+    constraintDialog,
+    openConstraintDialog,
+    closeConstraintDialog,
+    saveConstraint,
+    removeConstraint,
   } = useCreateTable();
 
   if (!connection) {
@@ -213,7 +224,7 @@ export function CreateTableView() {
               ))}
             </div>
 
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {columns
                 .filter((c) => c.is_primary_key)
                 .map((c) => (
@@ -221,8 +232,52 @@ export function CreateTableView() {
                     PK: {c.name}
                   </Badge>
                 ))}
+              {constraintsSupported && columns.some((c) => c.is_primary_key) && (
+                <Input
+                  value={primaryKeyName}
+                  onChange={(e) => setPrimaryKeyName(e.target.value)}
+                  placeholder={`pk_${tableName.trim() || "tabelle"}`}
+                  aria-label="Name des Primärschlüssels"
+                  className="ml-auto h-7 w-48 font-mono text-xs"
+                />
+              )}
             </div>
           </div>
+
+          {constraintsSupported && connection && (
+            <ConstraintDraftList
+              constraints={constraints}
+              columnNames={columns.map((c) => c.name)}
+              onAdd={() => openConstraintDialog(null)}
+              onEdit={openConstraintDialog}
+              onRemove={removeConstraint}
+            />
+          )}
+
+          {constraintDialog && (
+            <ConstraintEditorDialog
+              key={constraintDialog.key}
+              open
+              onOpenChange={(open) => {
+                if (!open) closeConstraintDialog();
+              }}
+              kind={connection.kind}
+              schema={schema.trim()}
+              table={tableName.trim()}
+              columns={columns
+                .filter((c) => c.name.trim())
+                .map((c) => ({ name: c.name, data_type: c.data_type }))}
+              initial={constraintDialog.index === null ? null : constraints[constraintDialog.index]}
+              allowedKinds={
+                columns.some((c) => c.is_primary_key)
+                  ? ["foreign_key", "check", "unique"]
+                  : ["foreign_key", "check", "unique", "primary_key"]
+              }
+              isNewTable
+              submitLabel={constraintDialog.index === null ? "Hinzufügen" : "Übernehmen"}
+              onSubmit={saveConstraint}
+            />
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
