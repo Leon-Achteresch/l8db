@@ -44,6 +44,7 @@ enum TransactionEntry {
     Pg(Arc<super::execution::PgSession>, super::SslMode),
     Oracle(OracleConn),
     Generic(Generic),
+    Dynamo(Box<super::dynamodb::DynamoTx>),
 }
 
 struct Generic {
@@ -417,6 +418,11 @@ impl TransactionManager {
                     .insert_entry(TransactionEntry::Oracle(Arc::new(conn)))
                     .await);
             }
+            DatabaseKind::Dynamodb => {
+                let key = super::connection::connection_key(connection_string, database);
+                let tx = Box::new(super::dynamodb::DynamoTx::new(connection_string, key)?);
+                return Ok(self.insert_entry(TransactionEntry::Dynamo(tx)).await);
+            }
             kind => {
                 let adapter = super::create_adapter_from_string(
                     kind,
@@ -513,6 +519,7 @@ impl TransactionManager {
                 return ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await;
             }
             TransactionEntry::Generic(g) => return g.execute(sql).await,
+            TransactionEntry::Dynamo(d) => return d.execute(sql).await,
         };
         let conn = session.lock().await?;
         let outcome = super::execution::postgres(&conn, ssl, Some(session), async {
@@ -586,6 +593,7 @@ impl TransactionManager {
             TransactionEntry::Generic(g) => {
                 return g.update_row(schema, table, ctid, updates).await
             }
+            TransactionEntry::Dynamo(d) => return d.update_row(table, ctid, updates).await,
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -666,6 +674,7 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.insert_row(schema, table, values).await,
+            TransactionEntry::Dynamo(d) => return d.insert_row(table, values).await,
         };
         let conn = conn.lock().await?;
 
@@ -748,6 +757,9 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.duplicate_row(schema, table, ctid).await,
+            TransactionEntry::Dynamo(_) => {
+                return Err("DynamoDB-Zeilen lassen sich nur mit neuem Schlüssel duplizieren. Nutze Zeile einfügen.".to_string())
+            }
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -826,6 +838,7 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.delete_row(schema, table, ctid).await,
+            TransactionEntry::Dynamo(d) => return d.delete_row(table, ctid).await,
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -877,6 +890,7 @@ impl TransactionManager {
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, true)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.commit().await,
+            TransactionEntry::Dynamo(d) => d.commit().await,
         };
         if outcome.is_ok() {
             self.transactions.lock().await.remove(tx_id);
@@ -895,6 +909,7 @@ impl TransactionManager {
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, false)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.rollback().await,
+            TransactionEntry::Dynamo(d) => d.rollback().await,
         };
         if outcome.is_ok() {
             self.transactions.lock().await.remove(tx_id);

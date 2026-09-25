@@ -1,3 +1,5 @@
+mod athena;
+mod aws;
 pub mod backup;
 pub mod backup_tools;
 mod cassandra;
@@ -10,6 +12,7 @@ pub mod data_compare;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+mod dynamodb;
 pub mod execution;
 pub mod export;
 pub(crate) mod mongo_shell;
@@ -1805,6 +1808,12 @@ pub fn create_adapter_from_string(
         DatabaseKind::Odbc => Box::new(odbc::OdbcAdapter::new(connection_string, pool_state, key)?),
         #[cfg(not(feature = "odbc"))]
         DatabaseKind::Odbc => return Err(provider::kind_driver_status(kind).detail),
+        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
+            connection_string,
+            database,
+            key,
+        )?),
     })
 }
 
@@ -1984,13 +1993,19 @@ mod tests {
         assert_eq!(super::requalify_schema(sql, "", "neu"), sql);
     }
 
-    fn smoke_query(kind: super::DatabaseKind) -> &'static str {
+    fn smoke_query(kind: super::DatabaseKind, tables: &[super::TableInfo]) -> String {
         match kind {
-            super::DatabaseKind::Redis => "PING",
-            super::DatabaseKind::Mongodb => "{\"ping\": 1}",
-            super::DatabaseKind::Cassandra => "SELECT release_version FROM system.local",
-            super::DatabaseKind::Oracle => "SELECT 1 FROM dual",
-            _ => "SELECT 1",
+            super::DatabaseKind::Redis => "PING".to_string(),
+            super::DatabaseKind::Mongodb => "{\"ping\": 1}".to_string(),
+            super::DatabaseKind::Cassandra => {
+                "SELECT release_version FROM system.local".to_string()
+            }
+            super::DatabaseKind::Oracle => "SELECT 1 FROM dual".to_string(),
+            super::DatabaseKind::Dynamodb => format!(
+                "SELECT * FROM {}",
+                super::quote_ident(&tables.first().map(|t| t.name.clone()).unwrap_or_default())
+            ),
+            _ => "SELECT 1".to_string(),
         }
     }
 
@@ -2053,7 +2068,7 @@ mod tests {
                 );
             }
             let result = adapter
-                .execute_query(smoke_query(kind))
+                .execute_query(&smoke_query(kind, &tables))
                 .await
                 .unwrap_or_else(|e| panic!("{var} query: {e}"));
             assert!(
