@@ -32,7 +32,7 @@ pub fn unsupported(kind: DatabaseKind) -> Availability {
         DatabaseKind::Odbc => "ODBC standardisiert keine Debug-Schnittstelle. Verwenden Sie den nativen Provider der Datenbank.",
         DatabaseKind::Redis => "Redis-Lua-Debugging benötigt einen eigenen LDB-Adapter und ist kein Stored-Routine-Debugging.",
         DatabaseKind::Sqlite | DatabaseKind::Duckdb => "Dieser Provider bietet keine serverseitigen prozeduralen Routinen mit einer Debug-Schnittstelle.",
-        DatabaseKind::Clickhouse | DatabaseKind::Mongodb | DatabaseKind::Cassandra => "Für diesen Provider ist keine unterstützte Stored-Routine-Debug-Schnittstelle verfügbar.",
+        DatabaseKind::Clickhouse | DatabaseKind::Mongodb | DatabaseKind::Cassandra | DatabaseKind::Dynamodb | DatabaseKind::Athena => "Für diesen Provider ist keine unterstützte Stored-Routine-Debug-Schnittstelle verfügbar.",
     };
     Availability {
         available: false,

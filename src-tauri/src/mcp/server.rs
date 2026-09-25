@@ -22,6 +22,8 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Cassandra,
     DatabaseKind::Duckdb,
     DatabaseKind::Odbc,
+    DatabaseKind::Dynamodb,
+    DatabaseKind::Athena,
 ];
 const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 

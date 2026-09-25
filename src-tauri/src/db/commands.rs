@@ -187,7 +187,10 @@ pub async fn fetch_table_rows(
 ) -> Result<TableData, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -292,7 +295,10 @@ pub async fn count_table_rows(
 ) -> Result<i64, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -341,7 +347,10 @@ pub async fn count_table_rows_capped(
     let cap = cap.clamp(1, super::MAX_ROW_COUNT_CAP);
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -590,7 +599,10 @@ pub async fn execute_query(
 ) -> Result<QueryResult, String> {
     super::execution::run_query(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             create_adapter_from_string(
                 kind,
@@ -1541,7 +1553,10 @@ pub async fn execute_script(
 ) -> Result<Vec<ScriptStatementResult>, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             create_adapter_from_string(
                 kind,
