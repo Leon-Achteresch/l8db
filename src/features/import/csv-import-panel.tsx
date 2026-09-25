@@ -15,12 +15,22 @@ import { remapPreset } from "@/lib/csv-mapping-presets";
 import { cancelTask, isTaskActive } from "@/lib/tasks";
 import { CsvConflictOptions } from "./csv-conflict-options";
 import { CsvParseOptions } from "./csv-import-panel/csv-parse-options";
+import { StructuredParseOptions } from "./csv-import-panel/structured-parse-options";
 import { useCsvImport } from "./csv-import-panel/use-csv-import";
 import { CsvMappingTable } from "./csv-mapping-table";
 import { CsvPreviewTable } from "./csv-preview-table";
 
 export function CsvImportPanel() {
   const {
+    format,
+    sheet,
+    setSheet,
+    skipRows,
+    setSkipRows,
+    structured,
+    mappingTargets,
+    inferredTypes,
+    conflictsSupported,
     conflict,
     setConflict,
     blocked,
@@ -29,6 +39,7 @@ export function CsvImportPanel() {
     emptyField,
     fileError,
     fileName,
+    filePath,
     handleImport,
     handleMappingChange,
     handlePickFile,
@@ -59,8 +70,9 @@ export function CsvImportPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
       <p className="text-xs text-muted-foreground">
-        CSV-Dateien: höchstens 1 GiB, einzelne Datensätze höchstens 1 MiB. Der gesamte Import wird
-        gemeinsam übernommen.
+        CSV, JSON, NDJSON, Excel (xlsx, xls, ods) und Parquet. CSV/JSON höchstens 1 GiB,
+        Arbeitsmappen höchstens 256 MiB. Transaktionsfähige Datenbanken übernehmen den gesamten
+        Import gemeinsam.
       </p>
       <p className="text-xs text-muted-foreground">
         Ziel: {connection?.name} · {database} · {schema}
@@ -86,7 +98,7 @@ export function CsvImportPanel() {
       <fieldset disabled={running} className="contents">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => void handlePickFile()}>
-            CSV wählen…
+            Datei wählen…
           </Button>
           {fileName && (
             <span className="truncate font-mono text-xs text-muted-foreground">{fileName}</span>
@@ -99,7 +111,22 @@ export function CsvImportPanel() {
           </p>
         )}
 
-        {parsed && (
+        {filePath && format !== "csv" && (
+          <StructuredParseOptions
+            format={format}
+            structured={structured}
+            sheet={sheet}
+            setSheet={setSheet}
+            skipRows={skipRows}
+            setSkipRows={setSkipRows}
+            parsed={parsed}
+            setHasHeader={setHasHeader}
+            emptyField={emptyField}
+            setEmptyField={setEmptyField}
+          />
+        )}
+
+        {parsed && format === "csv" && (
           <CsvParseOptions
             parsed={parsed}
             quote={quote}
@@ -120,6 +147,13 @@ export function CsvImportPanel() {
                 : `${parsed.totalRows} Zeilen`}
             </Badge>
             <span>Vorschau: erste {Math.min(rowCount, CSV_PREVIEW_ROWS)} Zeilen</span>
+            {structured?.source_types.some(Boolean) && (
+              <span className="font-mono">
+                {structured.columns
+                  .map((column, index) => `${column}: ${structured.source_types[index] ?? "?"}`)
+                  .join(" · ")}
+              </span>
+            )}
             {parsed.raggedRows.length > 0 && (
               <Badge
                 variant="outline"
@@ -157,7 +191,7 @@ export function CsvImportPanel() {
               </Select>
             </div>
 
-            {targetColumns.length > 0 && (
+            {mappingTargets.length > 0 && (
               <>
                 <CsvPresetBar
                   value={{
@@ -171,13 +205,16 @@ export function CsvImportPanel() {
                   }}
                   onLoad={(preset) => {
                     try {
-                      const preview = parseCsv(text ?? "", {
-                        delimiter: preset.delimiter,
-                        quote: preset.quote,
-                        hasHeader: preset.hasHeader,
-                        emptyField: preset.emptyField,
-                        maxRows: CSV_MAX_IMPORT_ROWS,
-                      });
+                      const preview =
+                        format !== "csv" && parsed
+                          ? parsed
+                          : parseCsv(text ?? "", {
+                              delimiter: preset.delimiter,
+                              quote: preset.quote,
+                              hasHeader: preset.hasHeader,
+                              emptyField: preset.emptyField,
+                              maxRows: CSV_MAX_IMPORT_ROWS,
+                            });
                       const next = remapPreset(preset, preview.headers);
                       setDelimiter(preset.delimiter);
                       setQuote(preset.quote);
@@ -194,7 +231,8 @@ export function CsvImportPanel() {
                   headers={parsed.headers}
                   sampleRow={parsed.rows[0]}
                   mappings={mappings}
-                  targets={targetColumns}
+                  targets={mappingTargets}
+                  inferredTypes={inferredTypes}
                   onChange={handleMappingChange}
                 />
               </>
@@ -202,7 +240,7 @@ export function CsvImportPanel() {
           </div>
         )}
 
-        {connection && targetTable && (
+        {connection && targetTable && conflictsSupported && (
           <CsvConflictOptions
             key={`${connection.id}-${database}-${schema}-${targetTable}`}
             connection={connection}

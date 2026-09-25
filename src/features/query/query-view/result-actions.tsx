@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { QueryResult } from "@/lib/db";
+import { DATA_EXPORT_FORMATS } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
 import type { ResultExportState } from "./use-result-export";
@@ -31,7 +32,8 @@ export function ResultActions({
   onToggleOutput,
   exportState,
 }: ResultActionsProps) {
-  const { exporting, setCsvExportOpen, setXlsxExportOpen, handleExportJson } = exportState;
+  const { exporting, setCsvExportOpen, setXlsxExportOpen, setDataExportFormat, handleExportJson } =
+    exportState;
   return (
     <>
       {serverOutput && (
@@ -70,6 +72,14 @@ export function ResultActions({
             <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
               Als XLSX exportieren…
             </DropdownMenuItem>
+            {DATA_EXPORT_FORMATS.map((format) => (
+              <DropdownMenuItem
+                key={format.value}
+                onClick={() => setDataExportFormat(format.value)}
+              >
+                Als {format.label} exportieren…
+              </DropdownMenuItem>
+            ))}
             <DropdownMenuItem onClick={() => void handleExportJson()}>
               Als JSON exportieren
             </DropdownMenuItem>

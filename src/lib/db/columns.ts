@@ -27,15 +27,23 @@ export interface CsvImportConflict {
   update_columns: string[];
 }
 
+export type ImportFormat = "csv" | "json" | "ndjson" | "xlsx" | "parquet";
+
+export interface ImportFileSource {
+  path: string;
+  delimiter: string;
+  quote: string;
+  has_header: boolean;
+  empty_as_null: boolean;
+  indices: number[];
+  format?: ImportFormat;
+  sheet?: string | null;
+  skip_rows?: number;
+  keys?: string[];
+}
+
 export interface CsvImportRequest {
-  file?: {
-    path: string;
-    delimiter: string;
-    quote: string;
-    has_header: boolean;
-    empty_as_null: boolean;
-    indices: number[];
-  };
+  file?: ImportFileSource;
   conflict?: CsvImportConflict;
   schema: string;
   table: string;
@@ -91,7 +99,10 @@ export interface TableExportRequest {
   };
   masks: { column: string; mode: "text" | "null"; text?: string | null }[];
   maxRows?: number | null;
+  format?: FileExportFormat;
 }
+
+export type FileExportFormat = "csv" | "xml" | "html" | "parquet";
 
 export interface TableExportOutcome {
   rows: number;
@@ -280,6 +291,43 @@ export async function compareTableDataRemote(
   options?: QueryExecutionOptions,
 ): Promise<import("@/lib/data-compare").DataCompareResult & { detailsTruncated: boolean }> {
   return invoke("compare_table_data", { request, options });
+}
+
+export interface ImportPreview {
+  columns: string[];
+  rows: (string | null)[][];
+  sheets: string[];
+  sheet: string | null;
+  total_rows: number | null;
+  source_types: (string | null)[];
+}
+
+export async function readImportPreview(
+  path: string,
+  format: Exclude<ImportFormat, "csv">,
+  options: { sheet?: string | null; skipRows?: number; hasHeader?: boolean } = {},
+): Promise<ImportPreview> {
+  return invoke("read_import_preview", {
+    path,
+    format,
+    sheet: options.sheet ?? null,
+    skipRows: options.skipRows ?? 0,
+    hasHeader: options.hasHeader ?? true,
+  });
+}
+
+export interface RowsExportRequest {
+  path: string;
+  format: Exclude<FileExportFormat, "csv">;
+  columns: string[];
+  columnTypes?: string[];
+  rows: Record<string, unknown>[];
+  masks?: { column: string; mode: "text" | "null"; text?: string | null }[];
+  title?: string | null;
+}
+
+export async function exportRowsFile(request: RowsExportRequest): Promise<number> {
+  return invoke("export_rows_file", { request });
 }
 
 export async function readCsvPreview(path: string): Promise<{ text: string; partial: boolean }> {

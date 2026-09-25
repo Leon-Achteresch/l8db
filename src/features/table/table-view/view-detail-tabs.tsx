@@ -23,7 +23,9 @@ type Props = Pick<
   | "csvExportOpen"
   | "setCsvExportOpen"
   | "xlsxExportOpen"
+  | "dataExportFormat"
   | "setXlsxExportOpen"
+  | "setDataExportFormat"
   | "exportColumns"
   | "exportRows"
   | "fullExportSource"
@@ -45,7 +47,9 @@ export function ViewDetailTabs({
   csvExportOpen,
   setCsvExportOpen,
   xlsxExportOpen,
+  dataExportFormat,
   setXlsxExportOpen,
+  setDataExportFormat,
   exportColumns,
   exportRows,
   fullExportSource,
@@ -75,6 +79,7 @@ export function ViewDetailTabs({
               showSql={true}
               onCsv={() => setCsvExportOpen(true)}
               onXlsx={() => setXlsxExportOpen(true)}
+              onFormat={setDataExportFormat}
               onExport={handleExport}
             />
           )}
@@ -130,7 +135,9 @@ export function ViewDetailTabs({
         csvExportOpen={csvExportOpen}
         setCsvExportOpen={setCsvExportOpen}
         xlsxExportOpen={xlsxExportOpen}
+        dataExportFormat={dataExportFormat}
         setXlsxExportOpen={setXlsxExportOpen}
+        setDataExportFormat={setDataExportFormat}
         exportColumns={exportColumns}
         exportRows={exportRows}
         fullExportSource={fullExportSource}

@@ -21,6 +21,7 @@ type Props = Pick<
   | "exporting"
   | "setCsvExportOpen"
   | "setXlsxExportOpen"
+  | "setDataExportFormat"
   | "handleExport"
   | "requestAddRow"
 > & {
@@ -40,6 +41,7 @@ export function TableToolbarActions({
   exporting,
   setCsvExportOpen,
   setXlsxExportOpen,
+  setDataExportFormat,
   handleExport,
   requestAddRow,
   schema,
@@ -91,6 +93,7 @@ export function TableToolbarActions({
           showSql={caps.query_language !== "redis" && caps.query_language !== "json"}
           onCsv={() => setCsvExportOpen(true)}
           onXlsx={() => setXlsxExportOpen(true)}
+          onFormat={setDataExportFormat}
           onExport={handleExport}
         />
       )}
