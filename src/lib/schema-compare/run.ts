@@ -40,8 +40,10 @@ function message(error: unknown): string {
 
 export type DryRunKind = "rollback" | "precheck";
 
+const TRANSACTIONAL_DDL = new Set<SavedConnection["kind"]>(["postgres", "mssql", "sqlite"]);
+
 export function dryRunKind(kind: SavedConnection["kind"]): DryRunKind | null {
-  if (kind === "postgres") return "rollback";
+  if (TRANSACTIONAL_DDL.has(kind)) return "rollback";
   if (kind === "oracle") return "precheck";
   return null;
 }
@@ -66,6 +68,7 @@ export async function supportsDdlRollback(
   database: string | null,
 ): Promise<boolean> {
   if (dryRunKind(connection.kind) !== "rollback") return false;
+  if (connection.kind !== "postgres") return true;
   return rollsBackDdl(
     await serverVersion(connection, effectiveConnectionString(connection), database ?? undefined),
   );
@@ -133,16 +136,21 @@ async function dryRunPostgres(
     for (let index = from; index < statements.length; index++)
       options.onStep(index, { status: "skipped", message });
   };
-  const version = await serverVersion(connection, url, database);
-  if (!rollsBackDdl(version))
-    throw new Error(
-      `Probelauf nicht möglich: Diese Datenbank kann DDL-Anweisungen nicht zuverlässig zurückrollen (${version.slice(0, 80)}). Es wurde nichts ausgeführt.`,
-    );
+  const postgres = connection.kind === "postgres";
+  if (postgres) {
+    const version = await serverVersion(connection, url, database);
+    if (!rollsBackDdl(version))
+      throw new Error(
+        `Probelauf nicht möglich: Diese Datenbank kann DDL-Anweisungen nicht zuverlässig zurückrollen (${version.slice(0, 80)}). Es wurde nichts ausgeführt.`,
+      );
+  }
   const tx = await beginTransaction(connection.kind, url, database);
   let index = 0;
   try {
-    await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
-    await executeInTransaction(tx, "SET LOCAL lock_timeout = '10s'", execute);
+    if (postgres) {
+      await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
+      await executeInTransaction(tx, "SET LOCAL lock_timeout = '10s'", execute);
+    }
     for (; index < statements.length; index++) {
       if (options.stopped()) {
         summary.incomplete = true;
@@ -269,6 +277,10 @@ export async function runSyncStatements(
 
   const scriptError = async (sql: string): Promise<string | null> => {
     try {
+      if (connection.kind === "mysql") {
+        await executeQuery(connection.kind, url, sql, database, execute);
+        return null;
+      }
       const results = await executeScript(connection.kind, url, sql, database, execute);
       if (results.length === 0) return "Die Anweisung wurde nicht ausgeführt.";
       return results.find((item) => !item.success)?.error ?? null;
@@ -277,7 +289,7 @@ export async function runSyncStatements(
     }
   };
 
-  if (connection.kind === "postgres") {
+  if (TRANSACTIONAL_DDL.has(connection.kind)) {
     let index = 0;
     for (; statements[index]?.phase === PRE_TRANSACTION_PHASE; index++) {
       options.onStep(index, { status: "running", message: null });
@@ -294,7 +306,8 @@ export async function runSyncStatements(
     }
     const tx = await beginTransaction(connection.kind, url, database);
     try {
-      await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
+      if (connection.kind === "postgres")
+        await executeInTransaction(tx, "SET LOCAL check_function_bodies = false", execute);
       for (; index < statements.length; index++) {
         if (options.stopped()) throw new Error("Abgebrochen.");
         options.onStep(index, { status: "running", message: null });
