@@ -19,9 +19,31 @@ pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+pub fn configure_system_ini() {
+    static CONFIGURED: OnceLock<()> = OnceLock::new();
+    CONFIGURED.get_or_init(|| {
+        if let Some(dir) = system_ini_dir(
+            std::env::var_os("ODBCSYSINI").is_some() || std::env::var_os("ODBCINSTINI").is_some(),
+            |path| std::path::Path::new(path).exists(),
+        ) {
+            std::env::set_var("ODBCSYSINI", dir);
+        }
+    });
+}
+
+fn system_ini_dir(configured: bool, exists: impl Fn(&str) -> bool) -> Option<&'static str> {
+    if !cfg!(target_os = "macos") || configured || exists("/etc/odbcinst.ini") {
+        return None;
+    }
+    ["/opt/homebrew/etc", "/usr/local/etc", "/Library/ODBC"]
+        .into_iter()
+        .find(|dir| exists(&format!("{dir}/odbcinst.ini")))
+}
+
 fn environment() -> Result<&'static Environment, String> {
     static ENV: OnceLock<Result<Environment, String>> = OnceLock::new();
     ENV.get_or_init(|| {
+        configure_system_ini();
         unsafe {
             Environment::set_connection_pooling(odbc_api::sys::AttrConnectionPooling::DriverAware)
                 .ok();
@@ -469,6 +491,27 @@ impl DatabaseAdapter for OdbcAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_ini_dir_prefers_existing_configuration() {
+        let homebrew = |path: &str| path == "/opt/homebrew/etc/odbcinst.ini";
+        assert_eq!(system_ini_dir(true, homebrew), None);
+        assert_eq!(
+            system_ini_dir(false, |path| path == "/etc/odbcinst.ini"),
+            None
+        );
+        let expected = cfg!(target_os = "macos").then_some("/opt/homebrew/etc");
+        assert_eq!(system_ini_dir(false, homebrew), expected);
+        let apple = |path: &str| path == "/Library/ODBC/odbcinst.ini";
+        let expected = cfg!(target_os = "macos").then_some("/Library/ODBC");
+        assert_eq!(system_ini_dir(false, apple), expected);
+        assert_eq!(system_ini_dir(false, |_| false), None);
+    }
+
+    #[test]
+    fn environment_starts_without_system_driver_manager() {
+        assert!(environment().is_ok());
+    }
 
     #[test]
     fn builds_connection_strings() {

@@ -54,7 +54,7 @@ export function driverTypeLabel(driver: Driver): string {
     case "odbc":
       return "ODBC";
     case "cargo_feature":
-      return "Build-Feature";
+      return "Eingebettet (Build-Feature)";
   }
 }
 

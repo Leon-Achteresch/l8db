@@ -54,15 +54,16 @@ oracle = "0.6"
 scylla = "1"
 futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
-odbc-api = { version = "29", optional = true }
+odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80", "vendored-unix-odbc"], optional = true }
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-single-instance = "2"
 regex = "1"
 parquet = { version = "58", default-features = false, features = ["snap", "zstd", "lz4", "flate2-zlib-rs", "json"] }
 calamine = { version = "0.36", features = ["dates"] }
 toml_edit = "0.25"
 
 [features]
-default = []
+default = ["duckdb", "odbc"]
 duckdb = ["dep:duckdb"]
 odbc = ["dep:odbc-api"]
 
