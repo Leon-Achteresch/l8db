@@ -542,6 +542,137 @@ impl DatabaseAdapter for MongoAdapter {
         Ok(out)
     }
 
+    async fn list_import_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ImportColumnInfo>, String> {
+        Ok(self
+            .sample_columns(schema, table)
+            .await?
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, data_type, _))| super::ImportColumnInfo {
+                has_default: name == "_id",
+                name,
+                data_type,
+                is_nullable: true,
+                is_identity: false,
+                is_generated: false,
+                ordinal_position: i as i32 + 1,
+            })
+            .collect())
+    }
+
+    async fn list_constraints(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ConstraintInfo>, String> {
+        Ok(self
+            .list_indexes(schema, table)
+            .await?
+            .into_iter()
+            .filter(|index| index.is_unique)
+            .map(|index| super::ConstraintInfo {
+                constraint_type: if index.is_primary {
+                    "PRIMARY KEY".into()
+                } else {
+                    "UNIQUE".into()
+                },
+                columns: index
+                    .columns
+                    .iter()
+                    .filter_map(|column| column.rsplit_once(' ').map(|(name, _)| name.to_string()))
+                    .collect(),
+                definition: index.definition,
+                name: index.name,
+            })
+            .collect())
+    }
+
+    async fn csv_import(
+        &self,
+        request: &super::CsvImportRequest,
+    ) -> Result<super::CsvImportOutcome, String> {
+        super::import::validate_request(request)?;
+        let client = self.client().await?;
+        let collection = client
+            .database(&request.schema)
+            .collection::<Document>(&request.table);
+        let conflict = match &request.conflict {
+            Some(conflict) => {
+                let keys = self
+                    .list_constraints(&request.schema, &request.table)
+                    .await?
+                    .into_iter()
+                    .find(|constraint| constraint.name == conflict.constraint)
+                    .map(|constraint| constraint.columns)
+                    .ok_or("Konfliktziel muss ein eindeutiger Index sein.")?;
+                if keys.is_empty() || keys.iter().any(|key| !request.columns.contains(key)) {
+                    return Err("Alle Konfliktschlüssel müssen zugeordnet sein.".into());
+                }
+                Some((keys, conflict.update_columns.clone()))
+            }
+            None => None,
+        };
+        let rows: super::import_source::RowStream = match &request.file {
+            Some(source) => super::import_source::open_rows(source)?,
+            None => Box::new(request.rows.clone().into_iter().map(Ok)),
+        };
+        let mut counts = super::import::Counts::default();
+        let mut batch: Vec<Document> = Vec::new();
+        let mut processed = 0usize;
+        let mut failure: Option<(Option<u32>, String)> = None;
+        let mut iterator = rows.enumerate();
+        loop {
+            let next = iterator.next();
+            if let Some((index, row)) = &next {
+                match row {
+                    Ok(row) => {
+                        batch.push(import_document(&request.columns, row));
+                        processed = index + 1;
+                    }
+                    Err(error) => {
+                        failure = Some((Some(*index as u32 + 1), error.clone()));
+                    }
+                }
+            }
+            let full = batch.len() >= 1000;
+            if failure.is_none() && !batch.is_empty() && (full || next.is_none()) {
+                if super::execution::cancellation_token().is_cancelled() {
+                    failure = Some((None, "Import vom Benutzer abgebrochen.".into()));
+                } else {
+                    let start = processed - batch.len();
+                    let documents = std::mem::take(&mut batch);
+                    if let Err(error) =
+                        write_documents(&collection, documents, conflict.as_ref(), &mut counts)
+                            .await
+                    {
+                        failure = Some((Some(start as u32 + 1), error));
+                    }
+                    super::execution::progress(processed as u64);
+                }
+            }
+            if failure.is_some() || next.is_none() {
+                break;
+            }
+        }
+        Ok(super::CsvImportOutcome {
+            inserted_rows: counts.inserted,
+            updated_rows: counts.updated,
+            skipped_rows: counts.skipped,
+            failed_row: failure.as_ref().and_then(|(row, _)| *row),
+            failed_column: None,
+            error: failure.map(|(_, message)| {
+                format!(
+                    "{message} Keine Transaktion: {} bereits geschriebene Dokument(e) bleiben erhalten.",
+                    counts.inserted + counts.updated
+                )
+            }),
+        })
+    }
+
     async fn create_schema(&self, _name: &str) -> Result<(), String> {
         Err(unsupported(
             "Datenbanken werden bei der ersten Collection automatisch angelegt",
@@ -554,9 +685,132 @@ impl DatabaseAdapter for MongoAdapter {
     }
 }
 
+pub(crate) fn import_value(key: &str, text: &str) -> Bson {
+    let trimmed = text.trim();
+    if key == "_id" && trimmed.len() == 24 {
+        if let Ok(id) = mongodb::bson::oid::ObjectId::parse_str(trimmed) {
+            return Bson::ObjectId(id);
+        }
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if let Ok(bson) = Bson::try_from(value) {
+                return bson;
+            }
+        }
+    }
+    match trimmed {
+        "true" => return Bson::Boolean(true),
+        "false" => return Bson::Boolean(false),
+        _ => {}
+    }
+    let numeric = !trimmed.is_empty()
+        && trimmed == text
+        && serde_json::from_str::<serde_json::Number>(trimmed).is_ok();
+    if numeric {
+        if let Ok(value) = trimmed.parse::<i64>() {
+            return i32::try_from(value)
+                .map(Bson::Int32)
+                .unwrap_or(Bson::Int64(value));
+        }
+        if let Ok(value) = trimmed.parse::<f64>() {
+            return Bson::Double(value);
+        }
+    }
+    Bson::String(text.to_string())
+}
+
+fn import_document(columns: &[String], row: &[Option<String>]) -> Document {
+    let mut document = Document::new();
+    for (column, value) in columns.iter().zip(row) {
+        if let Some(value) = value {
+            document.insert(column.clone(), import_value(column, value));
+        }
+    }
+    document
+}
+
+async fn write_documents(
+    collection: &mongodb::Collection<Document>,
+    documents: Vec<Document>,
+    conflict: Option<&(Vec<String>, Vec<String>)>,
+    counts: &mut super::import::Counts,
+) -> Result<(), String> {
+    let Some((keys, updates)) = conflict else {
+        let total = documents.len() as u64;
+        timed(async { collection.insert_many(documents).await.map_err(map_err) }).await?;
+        counts.inserted += total;
+        return Ok(());
+    };
+    for document in documents {
+        let mut filter = Document::new();
+        for key in keys {
+            filter.insert(
+                key.clone(),
+                document.get(key).cloned().unwrap_or(Bson::Null),
+            );
+        }
+        let mut set = Document::new();
+        let mut on_insert = Document::new();
+        for (key, value) in document {
+            if updates.contains(&key) {
+                set.insert(key, value);
+            } else if !keys.contains(&key) {
+                on_insert.insert(key, value);
+            }
+        }
+        let mut update = doc! {};
+        if !set.is_empty() {
+            update.insert("$set", set);
+        }
+        if !on_insert.is_empty() {
+            update.insert("$setOnInsert", on_insert);
+        }
+        if update.is_empty() {
+            update.insert("$setOnInsert", filter.clone());
+        }
+        let result = timed(async {
+            collection
+                .update_one(filter, update)
+                .upsert(true)
+                .await
+                .map_err(map_err)
+        })
+        .await?;
+        if result.upserted_id.is_some() {
+            counts.inserted += 1;
+        } else if !updates.is_empty() {
+            counts.updated += 1;
+        } else {
+            counts.skipped += 1;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_values_are_typed() {
+        assert_eq!(import_value("n", "42"), Bson::Int32(42));
+        assert_eq!(import_value("n", "9999999999"), Bson::Int64(9_999_999_999));
+        assert_eq!(import_value("n", "1.5"), Bson::Double(1.5));
+        assert_eq!(import_value("n", "01234"), Bson::String("01234".into()));
+        assert_eq!(import_value("n", " 7"), Bson::String(" 7".into()));
+        assert_eq!(import_value("b", "true"), Bson::Boolean(true));
+        assert!(matches!(
+            import_value("_id", "65a1b2c3d4e5f60718293a4b"),
+            Bson::ObjectId(_)
+        ));
+        assert!(matches!(
+            import_value("o", "{\"a\": [1]}"),
+            Bson::Document(_)
+        ));
+        let document = import_document(&["a".into(), "b".into()], &[Some("x".into()), None]);
+        assert_eq!(document, doc! { "a": "x" });
+    }
 
     #[test]
     fn parses_filters() {

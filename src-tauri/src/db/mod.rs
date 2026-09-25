@@ -11,6 +11,9 @@ pub mod debugger;
 mod duckdb;
 pub mod execution;
 pub mod export;
+pub mod export_formats;
+pub mod import;
+pub mod import_source;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;
@@ -29,6 +32,7 @@ pub mod snapshot;
 mod sql_script;
 mod sqlite;
 pub mod ssh;
+pub mod table_copy;
 pub mod transaction;
 
 use async_trait::async_trait;
@@ -2287,3 +2291,6 @@ mod value_viewer_live_tests;
 
 #[cfg(test)]
 mod backup_live_tests;
+
+#[cfg(test)]
+mod import_live_tests;

@@ -57,6 +57,8 @@ duckdb = { version = "1", features = ["bundled"], optional = true }
 odbc-api = { version = "29", optional = true }
 tauri-plugin-clipboard-manager = "2"
 regex = "1"
+parquet = { version = "58", default-features = false, features = ["snap", "zstd", "lz4", "flate2-zlib-rs", "json"] }
+calamine = { version = "0.36", features = ["dates"] }
 toml_edit = "0.25"
 
 [features]
