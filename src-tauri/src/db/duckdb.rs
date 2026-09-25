@@ -26,6 +26,25 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn file_view_sql(path: &str) -> Option<String> {
+    let file = std::path::Path::new(path);
+    let reader = match file.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "parquet" => "read_parquet",
+        "csv" => "read_csv_auto",
+        _ => return None,
+    };
+    let name = file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("data");
+    Some(format!(
+        "CREATE VIEW {} AS SELECT * FROM {reader}({})",
+        quote(name),
+        lit(path)
+    ))
+}
+
 fn map_err(e: duckdb::Error) -> String {
     format!("DuckDB: {e}")
 }
@@ -118,12 +137,17 @@ impl DuckdbAdapter {
         let conn: Arc<Mutex<Connection>> = self
             .pool_state
             .shared(&self.key, || async move {
-                let conn = if path == ":memory:" {
+                let view = file_view_sql(&path);
+                let conn = if path == ":memory:" || view.is_some() {
                     Connection::open_in_memory()
                 } else {
                     Connection::open(&path)
                 }
                 .map_err(|e| format!("DuckDB-Datei konnte nicht geöffnet werden ({path}): {e}"))?;
+                if let Some(sql) = view {
+                    conn.execute_batch(&sql)
+                        .map_err(|e| format!("Datei konnte nicht gelesen werden ({path}): {e}"))?;
+                }
                 Ok(Mutex::new(conn))
             })
             .await?;
@@ -660,5 +684,45 @@ impl DatabaseAdapter for DuckdbAdapter {
                 })
                 .collect(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn file_views_cover_csv_and_parquet() {
+        assert_eq!(
+            file_view_sql("/tmp/o'hara.CSV").unwrap(),
+            "CREATE VIEW \"o'hara\" AS SELECT * FROM read_csv_auto('/tmp/o''hara.CSV')"
+        );
+        assert!(file_view_sql("/tmp/a.parquet")
+            .unwrap()
+            .contains("read_parquet('/tmp/a.parquet')"));
+        assert!(file_view_sql("/tmp/a.duckdb").is_none());
+        assert!(file_view_sql(":memory:").is_none());
+    }
+
+    #[tokio::test]
+    async fn csv_file_opens_as_in_memory_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("people.csv");
+        std::fs::write(&path, "id,name\n1,Ada\n2,Linus\n").unwrap();
+        let db = DuckdbAdapter::new(
+            &format!("duckdb:{}", path.display()),
+            create_pool_state(),
+            "csv-test".to_string(),
+        )
+        .unwrap();
+        let views = db.list_views(None).await.unwrap();
+        assert_eq!(views[0].name, "people");
+        let result = db
+            .execute_query("SELECT name FROM people ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

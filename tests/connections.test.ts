@@ -185,6 +185,41 @@ describe("PostgreSQL URLs", () => {
   });
 });
 
+describe("Temporary connections", () => {
+  const input = {
+    name: "app.db",
+    kind: "sqlite" as const,
+    connectionString: "/tmp/app.db",
+    sslMode: "disable" as const,
+    ssh: null,
+  };
+  const persisted = () =>
+    JSON.parse(storage.get("l8db.connections") ?? "null") as {
+      state: { connections: { id: string }[]; activeId: string | null };
+    };
+
+  test("keeps opened files in memory only and reuses them", () => {
+    const store = useConnectionsStore.getState();
+    const first = store.addTemporaryConnection(input);
+    expect(first.temporary).toBe(true);
+    expect(store.addTemporaryConnection(input).id).toBe(first.id);
+    useConnectionsStore.getState().setActiveId(first.id);
+    expect(useConnectionsStore.getState().connections).toHaveLength(3);
+    expect(persisted().state.connections.map((c) => c.id)).toEqual(["direct", "ssh"]);
+    expect(persisted().state.activeId).toBeNull();
+  });
+
+  test("persists after Verbindung speichern and keeps the flag while editing", () => {
+    const temp = useConnectionsStore.getState().addTemporaryConnection(input);
+    useConnectionsStore.getState().updateConnection(temp.id, { ...input, name: "Umbenannt" });
+    expect(useConnectionsStore.getState().connections.at(-1)?.temporary).toBe(true);
+    useConnectionsStore.getState().saveTemporaryConnection(temp.id);
+    useConnectionsStore.getState().setActiveId(temp.id);
+    expect(persisted().state.connections.map((c) => c.id)).toContain(temp.id);
+    expect(persisted().state.activeId).toBe(temp.id);
+  });
+});
+
 describe("Other providers", () => {
   test("detects the driver family from the URL scheme or a file path", () => {
     expect(kindFromUrl("mysql://root@localhost/db")).toBe("mysql");
@@ -194,6 +229,8 @@ describe("Other providers", () => {
     expect(kindFromUrl("redis://localhost:6379/0")).toBe("redis");
     expect(kindFromUrl("/tmp/app.db")).toBe("sqlite");
     expect(kindFromUrl("C:\\data\\app.sqlite")).toBe("sqlite");
+    expect(kindFromUrl("/tmp/sales.parquet")).toBe("duckdb");
+    expect(kindFromUrl("/tmp/export.CSV")).toBe("duckdb");
     expect(kindFromUrl("nope://x")).toBeUndefined();
   });
   test("validates per family and normalizes file paths", () => {
