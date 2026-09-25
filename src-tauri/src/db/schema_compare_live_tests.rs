@@ -20,6 +20,17 @@ fn lab_url(args: &Value) -> Result<(DatabaseKind, String), String> {
     let kind: DatabaseKind =
         serde_json::from_value(args["kind"].clone()).map_err(|e| e.to_string())?;
     let url = text(args, "connectionString").to_string();
+    if kind == DatabaseKind::Sqlite {
+        let path = crate::db::sqlite::file_path(&url)?;
+        let temp = std::env::temp_dir();
+        let allowed = std::path::Path::new(&path).starts_with(&temp)
+            || path.starts_with("/tmp/")
+            || path.starts_with("/private/tmp/");
+        if !allowed || path.contains("..") {
+            return Err("Nur SQLite-Dateien im temporären Verzeichnis sind erlaubt".into());
+        }
+        return Ok((kind, url));
+    }
     let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
     let redirected = parsed
         .query_pairs()
@@ -168,7 +179,7 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
 }
 
 #[tokio::test]
-#[ignore = "Schema-Vergleich-Lab: lokale PostgreSQL-/Oracle-Container"]
+#[ignore = "Schema-Vergleich-Lab: lokale Datenbank-Container"]
 async fn schema_compare_bridge() {
     let port = std::env::var("L8DB_SCHEMA_COMPARE_BRIDGE_PORT").unwrap_or("27041".into());
     let lab = Arc::new(Lab {

@@ -967,7 +967,18 @@ impl DatabaseAdapter for MysqlAdapter {
             schemas,
         })
     }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "mysql_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,4 @@
-import type { CatalogObject, CatalogObjectType } from "@/lib/db";
+import type { CatalogObject, CatalogObjectType, DatabaseKind } from "@/lib/db";
 import { CONTAINER_TYPES, quoteName } from "./diff";
 import { addColumnCheck, columnChecks, type DataCheck, keyCheck } from "./precheck";
 import type { CompareResult, DiffItem } from "./types";
@@ -82,11 +82,11 @@ function routineHeader(ddl: string): string {
   return ddl.split(/\n(?:AS |BEGIN ATOMIC|RETURN )/)[0];
 }
 
-function referencesColumn(expression: string, column: string): boolean {
+function referencesColumn(expression: string, column: string, kind?: DatabaseKind): boolean {
   const name = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return (
-    expression.includes(quoteName(column)) ||
-    new RegExp(`(^|[^\\w$#"])${name}(?![\\w$#])`, "i").test(expression)
+    expression.includes(quoteName(column, kind)) ||
+    new RegExp(`(^|[^\\w$#"\`[])${name}(?![\\w$#])`, "i").test(expression)
   );
 }
 
@@ -107,16 +107,18 @@ interface Dependency {
   body: string;
 }
 
-function mentions(sql: string, name: string): boolean {
+function mentions(sql: string, name: string, kind?: DatabaseKind): boolean {
   const pattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\.(?:${pattern(quoteName(name))}|${pattern(name)}(?![\\w$#]))`, "i").test(
-    sql,
-  );
+  return new RegExp(
+    `\\.\\s*(?:${pattern(quoteName(name, kind))}|${pattern(name)}(?![\\w$#]))`,
+    "i",
+  ).test(sql);
 }
 
 function sortByDependencies(
   statements: SyncStatement[],
   dependencies: Map<SyncStatement, Dependency>,
+  kind: DatabaseKind,
 ) {
   const pending = [...statements];
   const ordered: SyncStatement[] = [];
@@ -125,7 +127,7 @@ function sortByDependencies(
       pending.every((other) => {
         const name = dependencies.get(other)?.name;
         const body = dependencies.get(statement)?.body ?? statement.sql;
-        return other === statement || !name || !mentions(body, name);
+        return other === statement || !name || !mentions(body, name, kind);
       }),
     );
     ordered.push(...pending.splice(index < 0 ? 0 : index, 1));
@@ -133,13 +135,35 @@ function sortByDependencies(
   return ordered;
 }
 
+function unicodeText(value: string): string {
+  return `N'${value.replace(/'/g, "''")}'`;
+}
+
+function sqliteAddable(column: CatalogObject): boolean {
+  const attributes = column.attributes;
+  const fallback = attributes.default?.trim() ?? "";
+  return (
+    !attributes.generated?.endsWith("STORED") &&
+    !/\b(?:PRIMARY|UNIQUE|REFERENCES|CHECK)\b/i.test(column.ddl) &&
+    (attributes.nullable !== "NO" || (fallback !== "" && fallback.toUpperCase() !== "NULL")) &&
+    !fallback.startsWith("(") &&
+    !/^CURRENT_/i.test(fallback)
+  );
+}
+
 export function buildSyncScript(
   result: CompareResult,
   selected: Readonly<Record<string, boolean>>,
 ): SyncScript {
-  const oracle = result.kind === "oracle";
+  const kind = result.kind;
+  const oracle = kind === "oracle";
+  const postgres = kind === "postgres";
+  const mysql = kind === "mysql";
+  const mssql = kind === "mssql";
+  const sqlite = kind === "sqlite";
+  const q = (name: string) => quoteName(name, kind);
   const schema = result.targetSchema;
-  const qualified = (name: string) => `${quoteName(schema)}.${quoteName(name)}`;
+  const qualified = (name: string) => `${q(schema)}.${q(name)}`;
   const statements: SyncStatement[] = [];
   const dependencies = new Map<SyncStatement, Dependency>();
   const warnings: string[] = [];
@@ -162,7 +186,7 @@ export function buildSyncScript(
       .filter((item) => item.type === "table" && item.target && item.status !== "only_source")
       .map((item) => item.name),
   );
-  const targetPrefix = `${quoteName(schema)}.`;
+  const targetPrefix = `${q(schema)}.`;
   const referenceExists = (name: string) =>
     !name.startsWith(targetPrefix) ||
     existingTables.has(name.slice(targetPrefix.length + 1, -1).replace(/""/g, '"'));
@@ -176,10 +200,11 @@ export function buildSyncScript(
       name?: string;
       body?: string;
       checks?: (DataCheck | null)[];
+      repeat?: boolean;
     } = {},
   ) => {
     const text = options.plsql ? sql.trim() : sql.trim().replace(/;\s*$/, "");
-    if (!text || seen.has(text)) return;
+    if (!text || (!options.repeat && seen.has(text))) return;
     seen.add(text);
     const checks = oracle
       ? (options.checks ?? []).filter((check): check is DataCheck => Boolean(check))
@@ -197,14 +222,29 @@ export function buildSyncScript(
       dependencies.set(statement, { name: options.name, body: options.body ?? text });
   };
 
+  const compound = (type: CatalogObjectType) =>
+    (oracle && PLSQL_TYPES.has(type)) ||
+    (mysql && (type === "function" || type === "procedure" || type === "trigger")) ||
+    (mssql &&
+      (type === "function" || type === "procedure" || type === "trigger" || type === "view"));
+
   const triggerStatus = (object: CatalogObject, enable: boolean) =>
     oracle
       ? `ALTER TRIGGER ${qualified(object.name)} ${enable ? "ENABLE" : "DISABLE"}`
-      : `ALTER TABLE ${qualified(object.parent ?? "")} ${enable ? "ENABLE" : "DISABLE"} TRIGGER ${quoteName(object.name)}`;
+      : `ALTER TABLE ${qualified(object.parent ?? "")} ${enable ? "ENABLE" : "DISABLE"} TRIGGER ${q(object.name)}`;
+
+  const dropDefault = (table: string, column: string, phase: number) => {
+    const target = unicodeText(qualified(table));
+    emit(
+      phase,
+      `DECLARE @l8db_default sysname = (SELECT d.name FROM sys.default_constraints d WHERE d.parent_object_id = OBJECT_ID(${target}) AND d.parent_column_id = COLUMNPROPERTY(OBJECT_ID(${target}), ${unicodeText(column)}, 'ColumnId')); DECLARE @l8db_sql nvarchar(max) = N'ALTER TABLE ${qualified(table).replace(/'/g, "''")} DROP CONSTRAINT ' + QUOTENAME(@l8db_default); IF @l8db_default IS NOT NULL EXEC(@l8db_sql)`,
+      { repeat: true },
+    );
+  };
 
   const create = (object: CatalogObject, children: CatalogObject[] = []) => {
     const type = object.object_type;
-    const plsql = oracle && PLSQL_TYPES.has(type);
+    const plsql = compound(type);
     if (type === "column") {
       const attributes = object.attributes;
       if (
@@ -222,7 +262,9 @@ export function buildSyncScript(
         CREATE_PHASE.column ?? 13,
         oracle
           ? `ALTER TABLE ${table} ADD (${object.ddl})`
-          : `ALTER TABLE ${table} ADD COLUMN ${object.ddl}`,
+          : mssql
+            ? `ALTER TABLE ${table} ADD ${object.ddl}`
+            : `ALTER TABLE ${table} ADD COLUMN ${object.ddl}`,
         {
           checks: [existingTables.has(object.parent ?? "") ? addColumnCheck(object, table) : null],
         },
@@ -232,20 +274,22 @@ export function buildSyncScript(
     let phase = CREATE_PHASE[type] ?? 30;
     if (isForeignKey(object)) phase = FK_CREATE_PHASE;
     if (type === "table" && object.attributes.partition_of) phase += 0.5;
-    if (!oracle && (type === "function" || type === "procedure")) {
+    if (postgres && (type === "function" || type === "procedure")) {
       const header = routineHeader(object.ddl);
       phase = Math.max(
         POSTGRES_ROUTINE_PHASE,
         ...createdRelations
-          .filter((item) => mentions(header, item.name))
+          .filter((item) => mentions(header, item.name, kind))
           .map((item) => (CREATE_PHASE[item.type] ?? 12) + 0.5),
       );
     }
     if (
-      !oracle &&
       type === "index" &&
-      /^CREATE UNIQUE INDEX/i.test(object.ddl) &&
-      !materializedViews.has(object.parent ?? "")
+      ((postgres &&
+        /^CREATE UNIQUE INDEX/i.test(object.ddl) &&
+        !materializedViews.has(object.parent ?? "")) ||
+        mysql ||
+        (mssql && /^CREATE UNIQUE /i.test(object.ddl)))
     )
       phase = FK_CREATE_PHASE - 0.5;
     if (
@@ -279,28 +323,38 @@ export function buildSyncScript(
           ]
         : [],
     });
-    if (!oracle && type === "sequence" && object.parent && object.attributes.owned_column)
+    if (postgres && type === "sequence" && object.parent && object.attributes.owned_column)
       emit(
         SEQUENCE_OWNER_PHASE,
-        `ALTER SEQUENCE ${qualified(object.name)} OWNED BY ${qualified(object.parent)}.${quoteName(object.attributes.owned_column)}`,
+        `ALTER SEQUENCE ${qualified(object.name)} OWNED BY ${qualified(object.parent)}.${q(object.attributes.owned_column)}`,
       );
     if (type === "trigger" && object.attributes.status === "DISABLED")
       emit(phase + 0.1, triggerStatus(object, false));
-    const inlineKey = /ORGANIZATION INDEX/i.test(object.ddl);
+    if (mssql && type === "constraint" && object.attributes.status === "DISABLED")
+      emit(
+        phase + 0.1,
+        `ALTER TABLE ${qualified(object.parent ?? "")} NOCHECK CONSTRAINT ${q(object.name)}`,
+      );
+    const inlineKey =
+      /ORGANIZATION INDEX/i.test(object.ddl) || (mysql && /\bPRIMARY KEY\b/.test(object.ddl));
     for (const child of children)
-      if (child.object_type !== "column" && !(inlineKey && child.attributes.kind === "P"))
+      if (
+        child.object_type !== "column" &&
+        !(inlineKey && child.attributes.kind === "P") &&
+        !(sqlite && type === "table" && child.object_type === "constraint")
+      )
         create(child);
   };
 
   const drop = (object: CatalogObject, children: CatalogObject[] = []) => {
     const type = object.object_type;
     let phase = isForeignKey(object) ? FK_DROP_PHASE : (DROP_PHASE[type] ?? 30);
-    if (!oracle && (type === "function" || type === "procedure")) {
+    if (postgres && (type === "function" || type === "procedure")) {
       const header = routineHeader(object.ddl);
       phase = Math.min(
         POSTGRES_ROUTINE_DROP_PHASE,
         ...droppedRelations
-          .filter((item) => mentions(header, item.name))
+          .filter((item) => mentions(header, item.name, kind))
           .map((item) => (DROP_PHASE[item.type] ?? 6) - 0.1),
       );
     }
@@ -310,12 +364,12 @@ export function buildSyncScript(
     switch (type) {
       case "table": {
         for (const child of children)
-          if (isForeignKey(child) || child.object_type === "trigger") drop(child);
+          if ((isForeignKey(child) && !sqlite) || child.object_type === "trigger") drop(child);
         const partitions = result.items.filter(
           (item) =>
             item.type === "table" &&
             !selected[item.key] &&
-            mentions(item.target?.attributes.partition_of ?? "", object.name),
+            mentions(item.target?.attributes.partition_of ?? "", object.name, kind),
         );
         if (partitions.length > 0)
           warnings.push(
@@ -325,19 +379,31 @@ export function buildSyncScript(
         return;
       }
       case "column":
-        emit(phase, `ALTER TABLE ${parent} DROP COLUMN ${quoteName(object.name)}`, {
+        if (mssql && object.attributes.default)
+          dropDefault(object.parent ?? "", object.name, phase - 0.1);
+        emit(phase, `ALTER TABLE ${parent} DROP COLUMN ${q(object.name)}`, {
           dangerous: true,
         });
         return;
-      case "constraint":
-        emit(phase, `ALTER TABLE ${parent} DROP CONSTRAINT ${quoteName(object.name)}`, {
-          dangerous: true,
-        });
+      case "constraint": {
+        let clause = `DROP CONSTRAINT ${q(object.name)}`;
+        if (mysql && object.attributes.kind === "P") clause = "DROP PRIMARY KEY";
+        if (mysql && object.attributes.kind === "R") clause = `DROP FOREIGN KEY ${q(object.name)}`;
+        if (mysql && object.attributes.kind === "U") clause = `DROP INDEX ${q(object.name)}`;
+        emit(phase, `ALTER TABLE ${parent} ${clause}`, { dangerous: true });
+        return;
+      }
+      case "index":
+        emit(
+          phase,
+          mysql || mssql ? `DROP INDEX ${q(object.name)} ON ${parent}` : `DROP INDEX ${target}`,
+          { dangerous: true },
+        );
         return;
       case "trigger":
         emit(
           phase,
-          oracle ? `DROP TRIGGER ${target}` : `DROP TRIGGER ${quoteName(object.name)} ON ${parent}`,
+          postgres ? `DROP TRIGGER ${q(object.name)} ON ${parent}` : `DROP TRIGGER ${target}`,
           { dangerous: true },
         );
         return;
@@ -345,16 +411,16 @@ export function buildSyncScript(
       case "procedure":
         emit(
           phase,
-          oracle
-            ? `DROP ${type.toUpperCase()} ${target}`
-            : `DROP ${type.toUpperCase()} ${qualified(object.attributes.routine ?? object.name)}(${object.attributes.arguments ?? ""})`,
+          postgres
+            ? `DROP ${type.toUpperCase()} ${qualified(object.attributes.routine ?? object.name)}(${object.attributes.arguments ?? ""})`
+            : `DROP ${type.toUpperCase()} ${target}`,
           { dangerous: true },
         );
         return;
       case "type":
         emit(
           phase,
-          `DROP ${!oracle && object.attributes.kind === "domain" ? "DOMAIN" : "TYPE"} ${target}`,
+          `DROP ${postgres && object.attributes.kind === "domain" ? "DOMAIN" : "TYPE"} ${target}`,
           { dangerous: true, name: object.name, body: object.ddl },
         );
         return;
@@ -372,7 +438,7 @@ export function buildSyncScript(
       default: {
         const keyword =
           type === "materialized_view" ? "MATERIALIZED VIEW" : type.replace("_", " ").toUpperCase();
-        const ifExists = !oracle && type === "sequence" && object.parent ? "IF EXISTS " : "";
+        const ifExists = postgres && type === "sequence" && object.parent ? "IF EXISTS " : "";
         emit(phase, `DROP ${keyword} ${ifExists}${target}`, {
           dangerous: true,
           name: VIEW_TYPES.has(type) ? object.name : undefined,
@@ -394,15 +460,41 @@ export function buildSyncScript(
       )
       .map((item) => item.target as CatalogObject)
       .filter((other) =>
-        referencesColumn(other.attributes.virtual ?? other.attributes.generated ?? "", column.name),
+        referencesColumn(
+          other.attributes.virtual ?? other.attributes.generated ?? "",
+          column.name,
+          kind,
+        ),
       );
+
+  const desired = (item: DiffItem) =>
+    item.status === "identical" || selected[item.key] ? item.source : item.target;
+
+  const rebuiltKeys = new Set<string>();
+  const rebuildDependents = (table: string, column: string) => {
+    for (const item of result.items) {
+      if (
+        item.parent !== table ||
+        (item.type !== "index" && item.type !== "constraint") ||
+        !item.target ||
+        rebuiltKeys.has(item.key)
+      )
+        continue;
+      const definition = item.target.attributes.definition ?? item.target.ddl;
+      if (!referencesColumn(definition, column, kind)) continue;
+      rebuiltKeys.add(item.key);
+      drop(item.target);
+      const wanted = desired(item);
+      if (wanted) create(wanted);
+    }
+  };
 
   const alterColumn = (source: CatalogObject, target: CatalogObject) => {
     const a = source.attributes;
     const b = target.attributes;
     const changed = (name: string) => (a[name] ?? "") !== (b[name] ?? "");
     const table = qualified(source.parent ?? "");
-    const column = quoteName(source.name);
+    const column = q(source.name);
     if (changed("virtual") || changed("identity") || changed("generated")) {
       warnings.push(
         `${label(source)}: Identity-, virtuelle oder generierte Spalten müssen manuell angepasst werden.`,
@@ -430,6 +522,32 @@ export function buildSyncScript(
             dangerous: typeChanged,
             checks: columnChecks(source, target, table, typeChanged),
           },
+        );
+      return;
+    }
+    if (mysql) {
+      if (typeChanged || changed("default") || changed("nullable") || changed("on_update"))
+        emit(CREATE_PHASE.column ?? 13, `ALTER TABLE ${table} MODIFY COLUMN ${source.ddl}`, {
+          dangerous: typeChanged,
+        });
+      return;
+    }
+    if (mssql) {
+      const structural = typeChanged || changed("nullable");
+      if (structural) rebuildDependents(source.parent ?? "", source.name);
+      const resetDefault = changed("default") || (typeChanged && Boolean(b.default));
+      if (resetDefault && b.default)
+        dropDefault(source.parent ?? "", source.name, (CREATE_PHASE.column ?? 13) - 0.1);
+      if (structural)
+        emit(
+          CREATE_PHASE.column ?? 13,
+          `ALTER TABLE ${table} ALTER COLUMN ${column} ${a.type}${a.collation ? ` COLLATE ${a.collation}` : ""} ${a.nullable === "NO" ? "NOT NULL" : "NULL"}`,
+          { dangerous: typeChanged },
+        );
+      if (resetDefault && a.default)
+        emit(
+          (CREATE_PHASE.column ?? 13) + 0.1,
+          `ALTER TABLE ${table} ADD DEFAULT ${a.default} FOR ${column}`,
         );
       return;
     }
@@ -472,7 +590,7 @@ export function buildSyncScript(
     if (!oracle && changed("owned_column") && source.parent && a.owned_column)
       emit(
         SEQUENCE_OWNER_PHASE,
-        `ALTER SEQUENCE ${sequence} OWNED BY ${qualified(source.parent)}.${quoteName(a.owned_column)}`,
+        `ALTER SEQUENCE ${sequence} OWNED BY ${qualified(source.parent)}.${q(a.owned_column)}`,
       );
     if (!result.options.ignoreSequenceValues && a.current && changed("current"))
       emit(
@@ -532,6 +650,8 @@ export function buildSyncScript(
         return;
       case "constraint":
       case "index":
+        if (rebuiltKeys.has(item.key)) return;
+        rebuiltKeys.add(item.key);
         drop(target);
         create(source);
         return;
@@ -560,23 +680,56 @@ export function buildSyncScript(
         drop(target);
         create(source);
         return;
+      case "function":
+      case "procedure":
+        if (mysql) drop(target);
+        create(source);
+        return;
       default:
         create(source);
     }
   };
 
-  const desired = (item: DiffItem) =>
-    item.status === "identical" || selected[item.key] ? item.source : item.target;
+  const tableRebuild = new Map<string, DiffItem>();
+  if (sqlite)
+    for (const table of result.items) {
+      if (table.type !== "table" || !table.source || !table.target) continue;
+      const children = result.items.filter(
+        (item) =>
+          item.parent === table.name &&
+          (item.type === "column" || item.type === "constraint") &&
+          item.status !== "identical",
+      );
+      const chosen = children.filter((item) => selected[item.key]);
+      if (chosen.length === 0) continue;
+      if (
+        chosen.length === children.length &&
+        chosen.every(
+          (item) =>
+            item.type === "column" &&
+            item.status === "only_source" &&
+            item.source &&
+            sqliteAddable(item.source),
+        )
+      )
+        continue;
+      tableRebuild.set(table.name, table);
+      if (chosen.length < children.length)
+        warnings.push(
+          `Tabelle ${table.name}: SQLite baut die Tabelle neu auf; dabei werden alle Spalten- und Constraint-Unterschiede übernommen, auch nicht ausgewählte.`,
+        );
+    }
+
   const rebuild = new Map<string, DiffItem>();
   for (const item of result.items)
     if (
       selected[item.key] &&
       item.status === "different" &&
       VIEW_TYPES.has(item.type) &&
-      (!oracle || item.type === "materialized_view")
+      (postgres || sqlite || (oracle && item.type === "materialized_view"))
     )
       rebuild.set(item.name, item);
-  if (!oracle) {
+  if (postgres) {
     const altered = new Set<string>();
     for (const item of result.items)
       if (
@@ -599,14 +752,16 @@ export function buildSyncScript(
       for (const view of views)
         if (
           !rebuild.has(view.name) &&
-          [...altered, ...rebuild.keys()].some((name) => mentions(view.target?.ddl ?? "", name))
+          [...altered, ...rebuild.keys()].some((name) =>
+            mentions(view.target?.ddl ?? "", name, kind),
+          )
         ) {
           rebuild.set(view.name, view);
           grew = true;
         }
     }
   }
-  if (rebuild.size > 0 && !result.types.includes("grant"))
+  if (rebuild.size > 0 && !result.types.includes("grant") && !sqlite)
     warnings.push(
       `Views werden neu erstellt (${[...rebuild.keys()].join(", ")}); bestehende Berechtigungen gehen verloren, weil Grants nicht verglichen werden.`,
     );
@@ -621,23 +776,72 @@ export function buildSyncScript(
       .map(desired)
       .filter((child): child is CatalogObject => Boolean(child));
     create(object, children);
-    if (!oracle && target.attributes.owner)
+    if (postgres && target.attributes.owner)
       emit(
         (CREATE_PHASE.view ?? 17) + 0.1,
-        `ALTER ${item.type === "materialized_view" ? "MATERIALIZED VIEW" : "VIEW"} ${qualified(item.name)} OWNER TO ${quoteName(target.attributes.owner)}`,
+        `ALTER ${item.type === "materialized_view" ? "MATERIALIZED VIEW" : "VIEW"} ${qualified(item.name)} OWNER TO ${q(target.attributes.owner)}`,
       );
+  }
+
+  for (const table of tableRebuild.values()) {
+    key = table.key;
+    const source = table.source as CatalogObject;
+    const copy = qualified(`_l8db_copy_${table.name}`);
+    const copied = result.items
+      .filter(
+        (item) =>
+          item.type === "column" &&
+          item.parent === table.name &&
+          item.source &&
+          item.target &&
+          !item.source.attributes.generated &&
+          !item.target.attributes.generated,
+      )
+      .map((item) => q(item.name))
+      .join(", ");
+    warnings.push(
+      `Tabelle ${table.name} wird neu aufgebaut: Daten sichern, Tabelle löschen und neu anlegen, Daten zurückkopieren. Indizes und Trigger werden neu angelegt.`,
+    );
+    const phase = (CREATE_PHASE.table ?? 12) + 0.5;
+    if (copied)
+      emit(phase, `CREATE TABLE ${copy} AS SELECT ${copied} FROM ${qualified(table.name)}`, {
+        repeat: true,
+      });
+    emit(phase, `DROP TABLE ${qualified(table.name)}`, { dangerous: true, repeat: true });
+    emit(phase, source.ddl, { repeat: true });
+    if (copied) {
+      emit(
+        phase,
+        `INSERT INTO ${qualified(table.name)} (${copied}) SELECT ${copied} FROM ${copy}`,
+        { repeat: true },
+      );
+      emit(phase, `DROP TABLE ${copy}`, { repeat: true });
+    }
+    for (const child of result.items) {
+      if (child.parent !== table.name || (child.type !== "index" && child.type !== "trigger"))
+        continue;
+      const object = desired(child);
+      key = child.key;
+      if (object) create(object);
+    }
   }
 
   for (const item of result.items) {
     if (!selected[item.key] || item.status === "identical") continue;
     if (rebuild.has(item.parent ?? "") || (VIEW_TYPES.has(item.type) && rebuild.has(item.name)))
       continue;
+    if (tableRebuild.has(item.parent ?? "") && item.type !== "table") continue;
     key = item.key;
     if (item.status === "only_source" && item.source)
       create(item.source, CONTAINER_TYPES.has(item.type) ? item.children : []);
     else if (item.status === "only_target" && item.target)
       drop(item.target, CONTAINER_TYPES.has(item.type) ? item.children : []);
     else if (item.status === "different") alter(item);
+  }
+
+  if (sqlite && statements.length > 0) {
+    key = "";
+    emit(-0.5, "PRAGMA defer_foreign_keys = ON");
   }
 
   const ordered = statements
@@ -654,9 +858,9 @@ export function buildSyncScript(
   for (const [phase, group] of phases)
     final.push(
       ...(phase === CREATE_PHASE.view || phase === CREATE_PHASE.type
-        ? sortByDependencies(group, dependencies)
+        ? sortByDependencies(group, dependencies, kind)
         : phase === DROP_PHASE.view || phase === DROP_PHASE.type
-          ? sortByDependencies(group, dependencies).reverse()
+          ? sortByDependencies(group, dependencies, kind).reverse()
           : group),
     );
   return { statements: final, warnings: [...new Set(warnings)] };
@@ -666,7 +870,7 @@ export function renderSyncScript(
   script: SyncScript,
   meta: { kind: CompareResult["kind"]; sourceLabel: string; targetLabel: string },
 ): string {
-  const oracle = meta.kind === "oracle";
+  const kind = meta.kind;
   const lines = [
     "-- Schema-Synchronisation",
     `-- Quelle: ${meta.sourceLabel}`,
@@ -674,16 +878,56 @@ export function renderSyncScript(
   ];
   for (const warning of script.warnings) lines.push(`-- Hinweis: ${warning}`);
   lines.push("");
-  let open = oracle;
+  const note = (dangerous: boolean) => {
+    if (dangerous) lines.push("-- Achtung: kann Daten verändern oder löschen");
+  };
+  if (kind === "oracle") {
+    for (const statement of script.statements) {
+      note(statement.dangerous);
+      lines.push(statement.plsql ? `${statement.sql}\n/` : `${statement.sql};`, "");
+    }
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+  if (kind === "mysql") {
+    lines.push(
+      "-- MySQL schreibt DDL-Anweisungen sofort fest; ein Rollback ist nicht möglich.",
+      "",
+    );
+    for (const statement of script.statements) {
+      note(statement.dangerous);
+      if (statement.plsql) lines.push("DELIMITER $$", `${statement.sql}$$`, "DELIMITER ;", "");
+      else lines.push(`${statement.sql};`, "");
+    }
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+  if (kind === "mssql") {
+    lines.push("SET XACT_ABORT ON;", "BEGIN TRANSACTION;", "GO", "");
+    for (const statement of script.statements) {
+      note(statement.dangerous);
+      lines.push(statement.plsql ? statement.sql : `${statement.sql};`, "GO", "");
+    }
+    lines.push("COMMIT TRANSACTION;", "GO");
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+  if (kind === "sqlite") {
+    lines.push("PRAGMA foreign_keys = OFF;", "BEGIN;", "");
+    for (const statement of script.statements) {
+      note(statement.dangerous);
+      lines.push(`${statement.sql};`, "");
+    }
+    lines.push("PRAGMA foreign_key_check;", "COMMIT;", "PRAGMA foreign_keys = ON;");
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+  let open = false;
   for (const statement of script.statements) {
     if (!open && statement.phase !== PRE_TRANSACTION_PHASE) {
       lines.push("BEGIN;", "SET LOCAL check_function_bodies = false;", "");
       open = true;
     }
-    if (statement.dangerous) lines.push("-- Achtung: kann Daten verändern oder löschen");
-    lines.push(oracle && statement.plsql ? `${statement.sql}\n/` : `${statement.sql};`, "");
+    note(statement.dangerous);
+    lines.push(`${statement.sql};`, "");
   }
   if (!open) lines.push("BEGIN;", "SET LOCAL check_function_bodies = false;", "");
-  if (!oracle) lines.push("COMMIT;");
+  lines.push("COMMIT;");
   return `${lines.join("\n").trimEnd()}\n`;
 }

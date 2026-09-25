@@ -136,9 +136,23 @@ const POSTGRES_TYPES: SelectableType[] = [
   "grant",
 ];
 
+const SQL_SERVER_TYPES: SelectableType[] = [
+  "table",
+  "constraint",
+  "index",
+  "trigger",
+  "view",
+  "function",
+  "procedure",
+];
+
+const SQLITE_TYPES: SelectableType[] = ["table", "constraint", "index", "trigger", "view"];
+
 export function compareTypesFor(kind: DatabaseKind | null | undefined): SelectableType[] {
   if (kind === "oracle") return ORACLE_TYPES;
   if (kind === "postgres") return POSTGRES_TYPES;
+  if (kind === "mysql" || kind === "mssql") return SQL_SERVER_TYPES;
+  if (kind === "sqlite") return SQLITE_TYPES;
   return [];
 }
 

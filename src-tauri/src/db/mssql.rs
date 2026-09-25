@@ -428,10 +428,29 @@ fn is_tx_control(sql: &str) -> bool {
         || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
 }
 
+fn starts_batch(sql: &str) -> bool {
+    let words: Vec<String> = sql
+        .split_whitespace()
+        .take(4)
+        .map(str::to_uppercase)
+        .collect();
+    let object = match words.first().map(String::as_str) {
+        Some("CREATE") if words.get(1).map(String::as_str) == Some("OR") => words.get(3),
+        Some("CREATE") | Some("ALTER") => words.get(1),
+        _ => None,
+    };
+    object.is_some_and(|word| {
+        matches!(
+            word.as_str(),
+            "SCHEMA" | "VIEW" | "PROC" | "PROCEDURE" | "FUNCTION" | "TRIGGER"
+        )
+    })
+}
+
 async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     timed(async {
-        if is_tx_control(sql) {
+        if is_tx_control(sql) || starts_batch(sql) {
             client
                 .simple_query(sql)
                 .await
@@ -1312,11 +1331,33 @@ impl DatabaseAdapter for MssqlAdapter {
                 .collect(),
         })
     }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "mssql_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_ddl_runs_as_own_batch() {
+        assert!(starts_batch("CREATE SCHEMA app"));
+        assert!(starts_batch(
+            "create or alter procedure [s].[p] AS SELECT 1"
+        ));
+        assert!(starts_batch("ALTER VIEW v AS SELECT 1"));
+        assert!(!starts_batch("CREATE TABLE t (id int)"));
+        assert!(!starts_batch("SELECT 1"));
+    }
 
     #[test]
     fn create_becomes_create_or_alter() {
