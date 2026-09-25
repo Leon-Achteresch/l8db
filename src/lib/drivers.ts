@@ -25,6 +25,9 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
   cassandra: "Cassandra / ScyllaDB",
   duckdb: "DuckDB",
   odbc: "ODBC",
+  elasticsearch: "Elasticsearch / OpenSearch",
+  influxdb: "InfluxDB",
+  sqlite_http: "SQLite über HTTP (D1, libSQL)",
 };
 
 export function platformOs(platform?: string): PlatformOs {

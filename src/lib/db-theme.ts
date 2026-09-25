@@ -20,6 +20,9 @@ const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
   cassandra: { hue: 28, chroma: 0.12, glow: 0.14, shader: ["#4a2c14", "#e08a3c", "#ffe2c4"] },
   duckdb: { hue: 75, chroma: 0.12, glow: 0.14, shader: ["#3a3a14", "#e6d34a", "#fff6c2"] },
   odbc: { hue: 230, chroma: 0.08, glow: 0.1, shader: ["#20243a", "#8ea0d4", "#e4e8f6"] },
+  elasticsearch: { hue: 190, chroma: 0.13, glow: 0.18, shader: ["#0b3a48", "#1fb8d4", "#cff4fb"] },
+  influxdb: { hue: 285, chroma: 0.15, glow: 0.2, shader: ["#2a1250", "#9b6bff", "#eadfff"] },
+  sqlite_http: { hue: 175, chroma: 0.11, glow: 0.16, shader: ["#0c3a36", "#4fd6c4", "#d6fbf5"] },
 };
 
 const PROVIDER_THEMES: Record<string, DbThemeTokens> = {
@@ -27,6 +30,8 @@ const PROVIDER_THEMES: Record<string, DbThemeTokens> = {
   supabase: { hue: 162, chroma: 0.14, glow: 0.2, shader: ["#0d3b2e", "#3ecf8e", "#d4ffe8"] },
   neon: { hue: 155, chroma: 0.16, glow: 0.22, shader: ["#063322", "#12e59a", "#c8ffe8"] },
   planetscale: { hue: 270, chroma: 0.08, glow: 0.12, shader: ["#1c1228", "#b48cff", "#efe6ff"] },
+  opensearch: { hue: 230, chroma: 0.14, glow: 0.18, shader: ["#0f2352", "#3b7bff", "#d6e3ff"] },
+  d1: { hue: 55, chroma: 0.16, glow: 0.2, shader: ["#4a2a06", "#f6821f", "#ffe3c4"] },
 };
 
 export function resolveDbTheme(
