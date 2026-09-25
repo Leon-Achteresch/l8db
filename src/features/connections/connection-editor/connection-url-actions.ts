@@ -99,7 +99,14 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
         kind,
       ).toString();
     }
-    if (!host.trim()) throw new Error("Der Host ist erforderlich.");
+    if (!host.trim())
+      throw new Error(
+        kind === "bigquery"
+          ? "Die Projekt-ID ist erforderlich."
+          : kind === "snowflake"
+            ? "Der Account-Identifier ist erforderlich."
+            : "Der Host ist erforderlich.",
+      );
     if (port) validatePort(port);
     const hostname = host.includes(":") && !host.startsWith("[") ? `[${host.trim()}]` : host.trim();
     const auth =

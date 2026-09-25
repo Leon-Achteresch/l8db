@@ -16,7 +16,9 @@ export type DatabaseKind =
   | "influxdb"
   | "sqlite_http"
   | "dynamodb"
-  | "athena";
+  | "athena"
+  | "bigquery"
+  | "snowflake";
 
 export interface Capabilities {
   databases: boolean;

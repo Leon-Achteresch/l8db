@@ -21,3 +21,4 @@ export {
   sslModeFromUrl,
 } from "./parse";
 export { connectionSummary, detectProvider, providerFor } from "./summary";
+export { joinKeySecret, searchParam, splitKeySecret, withSearchParam } from "./warehouse";

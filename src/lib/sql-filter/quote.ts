@@ -2,6 +2,11 @@ import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import type { FilterKind } from "./operators";
 
 export function quoteIdent(name: string, kind?: FilterKind): string {
+  if (kind === "bigquery")
+    return name
+      .split(".")
+      .map((part) => `\`${part.replace(/\\/g, "\\\\").replace(/`/g, "\\`")}\``)
+      .join(".");
   return quoteIdentifier(
     kind === "clickhouse" ? name.replace(/\\/g, "\\\\") : name,
     identifierStyleForKind(kind),
@@ -50,13 +55,18 @@ export function quoteString(value: string, kind?: FilterKind): string {
       .map((part) => quoteString(part, kind))
       .join(", CHAR(92 USING utf8mb4), ")})`;
   }
+  if (kind === "bigquery")
+    return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n")}'`;
   const postgresEscape = (!kind || kind === "postgres") && value.includes("\\");
-  const escaped = kind === "clickhouse" || postgresEscape ? value.replace(/\\/g, "\\\\") : value;
+  const escaped =
+    kind === "clickhouse" || kind === "snowflake" || postgresEscape
+      ? value.replace(/\\/g, "\\\\")
+      : value;
   return `${kind === "mssql" ? "N" : postgresEscape ? "E" : ""}'${escaped.replace(/'/g, "''")}'`;
 }
 
 export function quoteLike(value: string, kind?: FilterKind): string {
-  const backslash = kind === "clickhouse" || kind === "influxdb";
+  const backslash = kind === "clickhouse" || kind === "influxdb" || kind === "bigquery";
   const escapeCharacter = backslash ? "\\" : "!";
   const special = backslash ? /[%_\\]/g : kind === "mssql" ? /[!%_[]/g : /[!%_]/g;
   return value.replace(special, (character) => `${escapeCharacter}${character}`);
@@ -83,9 +93,12 @@ export function textMatch(columnExpression: string, pattern: string, kind?: Filt
     case "odbc":
       return `UPPER(CAST(${columnExpression} AS VARCHAR(4000))) LIKE UPPER(${literal}) ESCAPE '!'`;
     case "duckdb":
+    case "snowflake":
       return `CAST(${columnExpression} AS VARCHAR) ILIKE ${literal} ESCAPE '!'`;
     case "athena":
       return `LOWER(CAST(${columnExpression} AS VARCHAR)) LIKE LOWER(${literal}) ESCAPE '!'`;
+    case "bigquery":
+      return `LOWER(CAST(${columnExpression} AS STRING)) LIKE LOWER(${literal})`;
     case "cassandra":
     case "mongodb":
     case "redis":

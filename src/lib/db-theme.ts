@@ -25,6 +25,8 @@ const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
   sqlite_http: { hue: 175, chroma: 0.11, glow: 0.16, shader: ["#0c3a36", "#4fd6c4", "#d6fbf5"] },
   dynamodb: { hue: 265, chroma: 0.14, glow: 0.18, shader: ["#241447", "#8c6bf2", "#e6dcff"] },
   athena: { hue: 290, chroma: 0.12, glow: 0.16, shader: ["#2d1440", "#b56bdb", "#f2dcff"] },
+  bigquery: { hue: 255, chroma: 0.14, glow: 0.18, shader: ["#15306b", "#669df6", "#dbe8ff"] },
+  snowflake: { hue: 220, chroma: 0.13, glow: 0.2, shader: ["#0b3354", "#29b5e8", "#d2f1fc"] },
 };
 
 const PROVIDER_THEMES: Record<string, DbThemeTokens> = {

@@ -39,6 +39,8 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | InfluxDB | Influxdb | builtin (HTTP) |
 | Elasticsearch | Elasticsearch | builtin (HTTP) |
 | OpenSearch | Elasticsearch | builtin (HTTP) |
+| Google BigQuery | Bigquery | builtin (REST API v2) |
+| Snowflake | Snowflake | builtin (SQL API v2) |
 | MongoDB | Mongodb | builtin |
 | MongoDB Atlas | Mongodb | builtin |
 | Amazon DocumentDB | Mongodb | builtin |
@@ -61,8 +63,8 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | SAP ASE (Sybase) | Odbc | Adaptive Server Enterprise |
 | SAP HANA | Odbc | HDBODBC |
 | Teradata | Odbc | Teradata Database ODBC Driver |
-| Snowflake | Odbc | SnowflakeDSIIDriver |
-| Google BigQuery | Odbc | Simba ODBC Driver for Google BigQuery |
+| Snowflake (ODBC) | Odbc | SnowflakeDSIIDriver |
+| Google BigQuery (ODBC) | Odbc | Simba ODBC Driver for Google BigQuery |
 | Databricks | Odbc | Simba Spark ODBC Driver |
 | Amazon Athena (ODBC) | Odbc | Simba Athena ODBC Driver |
 | Vertica | Odbc | Vertica |
@@ -94,6 +96,8 @@ All adapters implement connection testing, database/schema/table/column discover
 | Influxdb | Buckets/databases, measurements, tags and fields; SQL (v3), Flux (v2), InfluxQL and line-protocol writes |
 | Dynamodb | PartiQL queries and filters, key/GSI/LSI indexes, row editing staged in a transaction; no DDL, SSH or TLS options |
 | Athena | Trino SQL, catalogs as databases, partition keys, cancellation via StopQueryExecution, scan/cost notices in server output |
+| Bigquery | Datasets as schemas, views, dry-run explain with byte estimate, job-based cancellation |
+| Snowflake | Databases, schemas, views, role quick switch (proxy user), text explain, statement cancellation |
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
@@ -113,6 +117,29 @@ athena://REGION/CATALOG?workgroup=primary&output=s3://bucket/prefix/&schema=defa
 - DynamoDB: tables are listed per region, columns are the key schema plus attributes sampled from 100 items. Browsing uses `Scan` (filters use PartiQL `ExecuteStatement`) with a cursor cache for paging; sorting is not applied. Counts use `Scan` with `Select=COUNT` and fall back to the approximate `ItemCount` above the cap. Row edits are staged and committed together with `ExecuteTransaction` (max. 100 changes, one change per item); key attributes cannot be changed.
 - Athena: `ListDataCatalogs` feed the database picker, Athena databases are schemas. Queries poll `GetQueryExecution`; cancel and query timeout call `StopQueryExecution`. With server output enabled every query reports scanned bytes and an estimated cost (5 USD/TB, 10 MB minimum). The ODBC entry remains available as "Amazon Athena (ODBC)".
 - Tests: `cargo test --lib -- db::aws db::dynamodb db::athena` covers SigV4 test vectors and a mocked Athena API. `dynamodb_local_end_to_end` (ignored) needs `amazon/dynamodb-local` on `127.0.0.1:18000` or `L8DB_E2E_DYNAMODB_URL`. The smoke test uses `L8DB_SMOKE_DYNAMODB_URL` / `L8DB_SMOKE_ATHENA_URL` (DynamoDB queries its first table).
+
+## Cloud warehouses
+
+BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL selector do not apply. Secrets (service-account JSON, access tokens, private keys) occupy the password slot of the URL and therefore live in the OS keychain like every other password. The ODBC entries stay available as alternates.
+
+**BigQuery** (`bigquery.rs`): `bigquery://[auth[:secret]@]project[/default_dataset]?location=EU&endpoint=…&credentials_file=…`
+
+- `auth` empty or `adc`: Application Default Credentials from `GOOGLE_APPLICATION_CREDENTIALS`, otherwise `application_default_credentials.json` in the gcloud config directory (`CLOUDSDK_CONFIG`, `~/.config/gcloud`, `%APPDATA%\gcloud`). Both `service_account` and `authorized_user` (refresh token from `gcloud auth application-default login`) files work; `quota_project_id` becomes `x-goog-user-project`.
+- `service_account`: key JSON as secret or `credentials_file`; signed as an RS256 JWT and exchanged at `token_uri`.
+- `token`: a ready OAuth access token. `none`: no authorization header (emulator).
+- `endpoint` overrides `https://bigquery.googleapis.com`, e.g. for `ghcr.io/goccy/bigquery-emulator`.
+- Datasets are schemas, `tables.list` separates tables and views, columns come from `tables.get` (records flattened as `a.b`, repeated fields as JSON). Unfiltered table reads use the free `tabledata.list`, counts use `numRows`; filters, sorting and views fall back to a query. Queries use `jobs.query` plus `jobs.getQueryResults` paging; cancellation calls `jobs.cancel`. Explain runs a dry run and reports the processed bytes; explain analyze runs the job and maps its query-plan stages.
+- Types: INT64 as numbers within ±2^53, NUMERIC/BIGNUMERIC as strings, TIMESTAMP as `YYYY-MM-DD HH:MM:SS[.ffffff] UTC`, BYTES as `\x…` hex, JSON parsed, GEOGRAPHY as WKT.
+
+**Snowflake** (`snowflake.rs`): `snowflake://user[:secret]@account/DATABASE?schema=…&warehouse=…&role=…&authenticator=…&private_key_file=…`
+
+- `authenticator=snowflake_jwt` (default when the secret is a PEM key or `private_key_file` is set): PKCS#8, PKCS#1 or encrypted PKCS#8 (AES/3DES, PBKDF2) keys; the passphrase follows the PEM block in the secret or is the secret when `private_key_file` is used. The JWT uses `ACCOUNT.USER.SHA256:<fingerprint>`.
+- `programmatic_access_token` (default otherwise) and `oauth` send the secret as bearer token.
+- Statements run asynchronously with polling, result partitions are paged (gzip-aware), multi-statement scripts set `MULTI_STATEMENT_COUNT` and return the last result. Cancellation calls the statement cancel endpoint. The catalog uses `SHOW` commands so browsing works without a running warehouse; row reads and filtered counts need one.
+- The workspace header's proxy-user switch lists `SHOW ROLES` and sends the choice as `proxy_user`, which overrides `role`. The warehouse is chosen in the connection editor.
+- Types: FIXED with scale 0 as numbers within ±2^53 (otherwise strings), DATE/TIME/TIMESTAMP_NTZ/LTZ/TZ converted from epoch values, VARIANT/OBJECT/ARRAY parsed as JSON, BINARY as `\x…` hex.
+
+Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with a `dataset1.table_a` fixture. Snowflake has no emulator; only the mocked tests exist.
 
 ## Optional builds
 

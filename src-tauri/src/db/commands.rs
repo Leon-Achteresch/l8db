@@ -597,24 +597,17 @@ pub async fn execute_query(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(
-        options,
-        matches!(
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
             kind,
-            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
-        ),
-        async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query(&sql)
-            .await
-            .map(truncate_rows)
-        },
-    )
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .execute_query(&sql)
+        .await
+        .map(truncate_rows)
+    })
     .await
 }
 
@@ -628,21 +621,17 @@ pub async fn execute_query_with_params(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(
-        options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
-        async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query_with_params(&sql, &params)
-            .await
-            .map(truncate_rows)
-        },
-    )
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .execute_query_with_params(&sql, &params)
+        .await
+        .map(truncate_rows)
+    })
     .await
 }
 

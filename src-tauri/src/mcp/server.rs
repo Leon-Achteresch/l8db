@@ -27,6 +27,8 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Influxdb,
     DatabaseKind::Dynamodb,
     DatabaseKind::Athena,
+    DatabaseKind::Bigquery,
+    DatabaseKind::Snowflake,
 ];
 const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 

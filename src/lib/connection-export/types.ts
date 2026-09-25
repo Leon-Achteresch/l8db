@@ -22,6 +22,8 @@ export const KINDS: DatabaseKind[] = [
   "sqlite_http",
   "dynamodb",
   "athena",
+  "bigquery",
+  "snowflake",
 ];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];

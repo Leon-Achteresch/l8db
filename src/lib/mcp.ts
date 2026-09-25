@@ -70,6 +70,8 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "odbc",
   "dynamodb",
   "athena",
+  "bigquery",
+  "snowflake",
   "mongodb",
   "redis",
   "sqlite_http",

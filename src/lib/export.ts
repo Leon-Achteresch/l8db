@@ -159,7 +159,7 @@ export function parseCsv(text: string, options: CsvOptions): string[][] {
 export type SqlIdentifierStyle = "double" | "backtick" | "bracket";
 
 export function identifierStyleForKind(kind: DatabaseKind | null | undefined): SqlIdentifierStyle {
-  if (kind === "mysql") return "backtick";
+  if (kind === "mysql" || kind === "bigquery") return "backtick";
   if (kind === "mssql") return "bracket";
   return "double";
 }
