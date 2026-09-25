@@ -36,7 +36,8 @@ export function quoteLiteral(value: string, kind?: FilterKind, dataType?: string
 }
 
 export function literalIsText(value: string, kind?: FilterKind, dataType?: string): boolean {
-  if (kind === "cassandra" || kind === "mongodb" || kind === "redis") return false;
+  if (kind === "cassandra" || kind === "mongodb" || kind === "redis" || kind === "dynamodb")
+    return false;
   if (dataType) return /char|text|string|clob|enum/i.test(dataType);
   const trimmed = value.trim();
   return !/^-?\d+(\.\d+)?$/.test(trimmed) && trimmed !== "true" && trimmed !== "false";
@@ -83,6 +84,8 @@ export function textMatch(columnExpression: string, pattern: string, kind?: Filt
       return `UPPER(CAST(${columnExpression} AS VARCHAR(4000))) LIKE UPPER(${literal}) ESCAPE '!'`;
     case "duckdb":
       return `CAST(${columnExpression} AS VARCHAR) ILIKE ${literal} ESCAPE '!'`;
+    case "athena":
+      return `LOWER(CAST(${columnExpression} AS VARCHAR)) LIKE LOWER(${literal}) ESCAPE '!'`;
     case "cassandra":
     case "mongodb":
     case "redis":

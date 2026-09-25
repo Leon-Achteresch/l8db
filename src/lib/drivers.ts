@@ -28,6 +28,8 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
   elasticsearch: "Elasticsearch / OpenSearch",
   influxdb: "InfluxDB",
   sqlite_http: "SQLite über HTTP (D1, libSQL)",
+  dynamodb: "Amazon DynamoDB",
+  athena: "Amazon Athena",
 };
 
 export function platformOs(platform?: string): PlatformOs {

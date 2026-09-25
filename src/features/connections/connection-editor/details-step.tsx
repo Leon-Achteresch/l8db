@@ -1,9 +1,11 @@
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
+import { isAwsKind } from "@/lib/aws";
 import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
+import { ConnectionAwsFields } from "./aws-fields";
 import { DriverMissingNotice } from "./driver-missing-notice";
 import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
@@ -32,6 +34,7 @@ export function ConnectionDetailsStep({
     maskRules,
     setEnvironment,
     setMaskRules,
+    extraParams,
     file,
     guided,
     host,
@@ -59,6 +62,7 @@ export function ConnectionDetailsStep({
     showSingleSchemaSwitcher,
     setColor,
     setDatabase,
+    setExtraParams,
     setFile,
     setHost,
     setName,
@@ -176,6 +180,21 @@ export function ConnectionDetailsStep({
         />
       ) : info.file_based ? (
         <ConnectionFileInput info={info} file={file} setFile={setFile} pickFile={pickFile} />
+      ) : isAwsKind(kind) ? (
+        <ConnectionAwsFields
+          key={provider}
+          kind={kind}
+          host={host}
+          setHost={setHost}
+          database={database}
+          setDatabase={setDatabase}
+          user={user}
+          setUser={setUser}
+          password={password}
+          setPassword={setPassword}
+          extraParams={extraParams}
+          setExtraParams={setExtraParams}
+        />
       ) : (
         <ConnectionHostFields
           info={info}

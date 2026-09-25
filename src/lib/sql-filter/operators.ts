@@ -47,6 +47,9 @@ export function filterOperatorsForKind(kind?: FilterKind): OperatorDef[] {
   if (kind === "redis") {
     return OPERATORS.filter((op) => ["eq", "contains", "startsWith", "endsWith"].includes(op.key));
   }
+  if (kind === "dynamodb") {
+    return OPERATORS.filter((op) => !["in", "notIn", "endsWith"].includes(op.key));
+  }
   return OPERATORS;
 }
 

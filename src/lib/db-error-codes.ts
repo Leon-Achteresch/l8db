@@ -94,6 +94,20 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/\b401\b|unauthorized/i, "401", "Token ungültig oder fehlt"],
     [/bucket .* not found|database not found/i, "404", "Bucket oder Datenbank nicht gefunden"],
   ],
+  dynamodb: [
+    [/ConditionalCheckFailed/i, "ConditionalCheckFailed", "Bedingung nicht erfüllt"],
+    [/ResourceNotFoundException/i, "ResourceNotFound", "Tabelle nicht gefunden"],
+    [/TransactionCanceledException/i, "TransactionCanceled", "Transaktion abgebrochen"],
+    [/ValidationException/i, "Validation", "Ungültige Anfrage oder PartiQL-Syntax"],
+    [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
+    [/ProvisionedThroughputExceeded|Throttling/i, "Throttling", "Durchsatzgrenze erreicht"],
+  ],
+  athena: [
+    [/TABLE_NOT_FOUND|does not exist/i, "TABLE_NOT_FOUND", "Tabelle nicht gefunden"],
+    [/SYNTAX_ERROR|mismatched input/i, "SYNTAX_ERROR", "Syntaxfehler"],
+    [/AccessDenied|not authorized/i, "AccessDenied", "Berechtigung fehlt"],
+    [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
+  ],
 };
 
 export function dbErrorCode(

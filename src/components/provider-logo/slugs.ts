@@ -57,6 +57,9 @@ export const PROVIDER_SLUG: Record<string, string | null> = {
   bigquery: "google-bigquery",
   databricks: "databricks",
   athena: "aws-amazon-athena",
+  "athena-odbc": "aws-amazon-athena",
+  dynamodb: "aws-amazon-dynamodb",
+  "dynamodb-local": "aws-amazon-dynamodb",
   vertica: null,
   exasol: null,
   trino: "trino",
@@ -80,4 +83,6 @@ export const KIND_SLUG: Record<DatabaseKind, string | null> = {
   elasticsearch: "elasticsearch",
   influxdb: "influxdb",
   sqlite_http: "turso",
+  dynamodb: "aws-amazon-dynamodb",
+  athena: "aws-amazon-athena",
 };
