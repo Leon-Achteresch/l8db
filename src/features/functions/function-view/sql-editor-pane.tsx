@@ -1,6 +1,8 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
+import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
+import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import { themeFor } from "./theme-for";
 
@@ -20,6 +22,7 @@ export function SqlEditorPane({
   error,
 }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const vimStatusRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
   const [externalValueVersion, setExternalValueVersion] = useState(0);
@@ -84,6 +87,8 @@ export function SqlEditorPane({
     };
   }, []);
 
+  const vimEnabled = useEditorKeymap(editorRef, vimStatusRef);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -128,5 +133,10 @@ export function SqlEditorPane({
     };
   }, [revealLine, externalValueVersion]);
 
-  return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
+  return (
+    <div className="flex size-full min-h-0 flex-1 flex-col">
+      <div ref={containerRef} className="min-h-0 flex-1" />
+      {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
+    </div>
+  );
 }

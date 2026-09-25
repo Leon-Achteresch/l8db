@@ -10,6 +10,7 @@ export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | 
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
+export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
   | "system"
   | "sf-mono"
@@ -65,6 +66,7 @@ export interface SettingsState {
   editorFormatDenseOperators: boolean;
   editorFormatNewlineBeforeSemicolon: boolean;
   editorFormatLinesBetweenQueries: number;
+  editorKeymap: EditorKeymap;
   confirmDestructiveQueries: boolean;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
@@ -114,6 +116,7 @@ export interface SettingsState {
   setEditorFormatDenseOperators: (v: boolean) => void;
   setEditorFormatNewlineBeforeSemicolon: (v: boolean) => void;
   setEditorFormatLinesBetweenQueries: (v: number) => void;
+  setEditorKeymap: (v: EditorKeymap) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
@@ -187,6 +190,7 @@ const DEFAULT_SETTINGS = {
   editorFormatDenseOperators: false,
   editorFormatNewlineBeforeSemicolon: false,
   editorFormatLinesBetweenQueries: 2,
+  editorKeymap: "default" as EditorKeymap,
   confirmDestructiveQueries: true,
   highlightNullValues: true,
   translateFilterOperators: true,
@@ -261,6 +265,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorFormatNewlineBeforeSemicolon }),
       setEditorFormatLinesBetweenQueries: (editorFormatLinesBetweenQueries) =>
         set({ editorFormatLinesBetweenQueries }),
+      setEditorKeymap: (editorKeymap) => set({ editorKeymap }),
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
@@ -304,6 +309,7 @@ export const useSettingsStore = create<SettingsState>()(
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells === true,
+          editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
         };
       },
     },

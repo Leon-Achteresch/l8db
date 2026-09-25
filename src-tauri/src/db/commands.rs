@@ -1593,6 +1593,63 @@ pub async fn preview_create_table_ddl(
 }
 
 #[tauri::command]
+pub async fn preview_constraint_change(
+    kind: DatabaseKind,
+    schema: String,
+    table: String,
+    change: super::constraints::ConstraintChange,
+) -> Result<String, String> {
+    super::constraints::preview_change(kind, &schema, &table, &change)
+}
+
+#[tauri::command]
+pub async fn apply_constraint_change(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    change: super::constraints::ConstraintChange,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    if super::connection::connection_string_is_read_only(&connection_string) {
+        return Err(
+            "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden."
+                .to_string(),
+        );
+    }
+    let sql = super::constraints::preview_change(kind, &schema, &table, &change)?;
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_query(&sql)
+    .await?;
+    Ok(sql)
+}
+
+#[tauri::command]
+pub async fn column_value_options(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::constraints::ColumnValueOptions>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .column_value_options(&schema, &table)
+    .await
+}
+
+#[tauri::command]
 pub async fn explain_query(
     kind: DatabaseKind,
     connection_string: String,

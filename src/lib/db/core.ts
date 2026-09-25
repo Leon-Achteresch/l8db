@@ -42,6 +42,7 @@ const WRITE_COMMANDS = new Set([
   "alter_column",
   "alter_role",
   "alter_sequence",
+  "apply_constraint_change",
   "attach_partition",
   "begin_transaction",
   "cancel_session",
