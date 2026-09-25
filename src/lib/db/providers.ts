@@ -11,7 +11,9 @@ export type DatabaseKind =
   | "oracle"
   | "cassandra"
   | "duckdb"
-  | "odbc";
+  | "odbc"
+  | "dynamodb"
+  | "athena";
 
 export interface Capabilities {
   databases: boolean;

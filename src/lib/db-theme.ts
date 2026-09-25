@@ -20,6 +20,8 @@ const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
   cassandra: { hue: 28, chroma: 0.12, glow: 0.14, shader: ["#4a2c14", "#e08a3c", "#ffe2c4"] },
   duckdb: { hue: 75, chroma: 0.12, glow: 0.14, shader: ["#3a3a14", "#e6d34a", "#fff6c2"] },
   odbc: { hue: 230, chroma: 0.08, glow: 0.1, shader: ["#20243a", "#8ea0d4", "#e4e8f6"] },
+  dynamodb: { hue: 265, chroma: 0.14, glow: 0.18, shader: ["#241447", "#8c6bf2", "#e6dcff"] },
+  athena: { hue: 290, chroma: 0.12, glow: 0.16, shader: ["#2d1440", "#b56bdb", "#f2dcff"] },
 };
 
 const PROVIDER_THEMES: Record<string, DbThemeTokens> = {

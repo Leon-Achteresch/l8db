@@ -46,6 +46,9 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | Oracle Database | Oracle | Oracle Instant Client |
 | Apache Cassandra | Cassandra | builtin |
 | ScyllaDB | Cassandra | builtin |
+| Amazon DynamoDB | Dynamodb | builtin |
+| DynamoDB Local / LocalStack | Dynamodb | builtin |
+| Amazon Athena | Athena | builtin |
 | ODBC (generisch) | Odbc | installed ODBC driver |
 | IBM Db2 | Odbc | IBM DB2 ODBC DRIVER |
 | Firebird | Odbc | Firebird/InterBase(r) driver |
@@ -56,7 +59,7 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | Snowflake | Odbc | SnowflakeDSIIDriver |
 | Google BigQuery | Odbc | Simba ODBC Driver for Google BigQuery |
 | Databricks | Odbc | Simba Spark ODBC Driver |
-| Amazon Athena | Odbc | Simba Athena ODBC Driver |
+| Amazon Athena (ODBC) | Odbc | Simba Athena ODBC Driver |
 | Vertica | Odbc | Vertica |
 | Exasol | Odbc | EXASOL Driver |
 | Trino / Presto | Odbc | Trino ODBC Driver |
@@ -81,8 +84,27 @@ All adapters implement connection testing, database/schema/table/column discover
 | Redis | Redis commands and key-pattern filtering |
 | Cassandra | CQL, keyspaces, indexes, DDL and column changes |
 | Odbc | Queries, views and DDL; other capabilities remain disabled |
+| Dynamodb | PartiQL queries and filters, key/GSI/LSI indexes, row editing staged in a transaction; no DDL, SSH or TLS options |
+| Athena | Trino SQL, catalogs as databases, partition keys, cancellation via StopQueryExecution, scan/cost notices in server output |
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
+
+## AWS providers
+
+DynamoDB and Athena talk to the AWS JSON APIs directly (hand-written SigV4 over `reqwest`, see [aws.rs](../src-tauri/src/db/aws.rs)); no AWS SDK is linked. URL layout:
+
+```
+dynamodb://ACCESS_KEY:SECRET[:SESSION_TOKEN]@REGION[?endpoint=http://localhost:8000]
+dynamodb://REGION?profile=NAME
+athena://REGION/CATALOG?workgroup=primary&output=s3://bucket/prefix/&schema=default
+```
+
+- Host is the region; `auto` resolves it from `AWS_REGION`, `AWS_DEFAULT_REGION` or the profile's `region`.
+- Credentials: user/password are the access key and secret (the session token is appended to the secret as `secret:token`, so the whole secret lives in the OS keychain). `?profile=` reads `~/.aws/credentials` and `~/.aws/config` (static keys, `credential_process`, AWS SSO via the `aws sso login` token cache). Without either, environment variables and then `AWS_PROFILE`/`default` are used. `role_arn`/`source_profile` (AssumeRole) are not supported; use `credential_process` or SSO. Apps started from Finder do not see shell environment variables.
+- `?endpoint=` overrides the service endpoint (DynamoDB Local, LocalStack, VPC endpoints).
+- DynamoDB: tables are listed per region, columns are the key schema plus attributes sampled from 100 items. Browsing uses `Scan` (filters use PartiQL `ExecuteStatement`) with a cursor cache for paging; sorting is not applied. Counts use `Scan` with `Select=COUNT` and fall back to the approximate `ItemCount` above the cap. Row edits are staged and committed together with `ExecuteTransaction` (max. 100 changes, one change per item); key attributes cannot be changed.
+- Athena: `ListDataCatalogs` feed the database picker, Athena databases are schemas. Queries poll `GetQueryExecution`; cancel and query timeout call `StopQueryExecution`. With server output enabled every query reports scanned bytes and an estimated cost (5 USD/TB, 10 MB minimum). The ODBC entry remains available as "Amazon Athena (ODBC)".
+- Tests: `cargo test --lib -- db::aws db::dynamodb db::athena` covers SigV4 test vectors and a mocked Athena API. `dynamodb_local_end_to_end` (ignored) needs `amazon/dynamodb-local` on `127.0.0.1:18000` or `L8DB_E2E_DYNAMODB_URL`. The smoke test uses `L8DB_SMOKE_DYNAMODB_URL` / `L8DB_SMOKE_ATHENA_URL` (DynamoDB queries its first table).
 
 ## Optional builds
 

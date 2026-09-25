@@ -4,7 +4,7 @@ import {
   operatorNeedsValue,
   parseFilterList,
 } from "./operators";
-import { literalIsText, quoteLike, quoteLiteral, textMatch } from "./quote";
+import { literalIsText, quoteLike, quoteLiteral, quoteString, textMatch } from "./quote";
 
 export function compileConditionExpression(
   columnExpression: string,
@@ -17,6 +17,8 @@ export function compileConditionExpression(
   if (kind === "mongodb" || kind === "redis") return null;
   if (!filterOperatorsForKind(kind).some((op) => op.key === operator)) return null;
   if (operatorNeedsValue(operator) && value.trim() === "") return null;
+  if (kind === "dynamodb" && (operator === "contains" || operator === "startsWith"))
+    return `${operator === "contains" ? "contains" : "begins_with"}(${columnExpression}, ${quoteString(value, kind)})`;
   const insensitiveMatch = (item: string) =>
     insensitive && literalIsText(item, kind, dataType)
       ? textMatch(columnExpression, quoteLike(item, kind), kind)
