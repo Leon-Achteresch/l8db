@@ -86,6 +86,7 @@ export interface SavedConnection {
   proxyUser?: string | null;
   schemas?: string[] | null;
   showSingleSchemaSwitcher?: boolean;
+  temporary?: boolean;
 }
 
 export function usesTunnel<T extends Pick<SavedConnection, "ssh" | "proxy">>(

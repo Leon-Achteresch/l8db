@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   Pencil,
   Play,
+  Save,
   ShieldCheck,
   Star,
   Terminal,
@@ -34,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
-import { connectionColorLabel, type SavedConnection } from "@/lib/connections";
+import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,7 @@ export function ConnectionPickCard({
   onBackup,
 }: Props) {
   const favorite = Boolean(connection.favorite);
+  const saveTemporary = useConnectionsStore((state) => state.saveTemporaryConnection);
 
   return (
     <ContextMenu>
@@ -70,6 +72,13 @@ export function ConnectionPickCard({
           connection={connection}
           active={active}
           onDoubleClick={onOpen}
+          badges={
+            connection.temporary ? (
+              <span className="inline-flex items-center rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400">
+                Temporär
+              </span>
+            ) : null
+          }
           actions={
             <div className="flex items-center gap-0.5">
               <button
@@ -137,15 +146,27 @@ export function ConnectionPickCard({
           }
           footer={
             <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/40 pt-3">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={onEdit}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Pencil className="size-3" />
-                Bearbeiten
-              </Button>
+              {connection.temporary ? (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => saveTemporary(connection.id)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Save className="size-3" />
+                  Verbindung speichern
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={onEdit}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="size-3" />
+                  Bearbeiten
+                </Button>
+              )}
               <div className="flex items-center gap-1">
                 {active ? (
                   <Button

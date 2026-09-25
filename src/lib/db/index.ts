@@ -12,6 +12,7 @@ export {
   registerReadOnlyResolver,
 } from "./core";
 export * from "./debugger";
+export * from "./file-open";
 export * from "./providers";
 export * from "./replication";
 export * from "./roles";
