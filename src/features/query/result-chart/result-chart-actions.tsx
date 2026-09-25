@@ -70,7 +70,7 @@ export function ResultChartActions({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs">
-          Diagramm
+          Aktionen
           <ChevronDownIcon className="size-3" />
         </Button>
       </DropdownMenuTrigger>
