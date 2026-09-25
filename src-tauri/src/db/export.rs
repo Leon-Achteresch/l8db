@@ -48,6 +48,8 @@ pub struct TableExportRequest {
     pub options: CsvExportOptions,
     pub masks: Vec<ColumnMask>,
     pub max_rows: Option<i64>,
+    #[serde(default)]
+    pub format: super::export_formats::FileFormat,
 }
 
 #[derive(Debug, Clone, Serialize)]

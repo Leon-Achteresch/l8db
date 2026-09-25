@@ -148,6 +148,69 @@ impl DuckdbAdapter {
     }
 }
 
+fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
+    if matches!(
+        first.as_str(),
+        "SELECT"
+            | "WITH"
+            | "SHOW"
+            | "DESCRIBE"
+            | "EXPLAIN"
+            | "PRAGMA"
+            | "FROM"
+            | "SUMMARIZE"
+            | "CALL"
+    ) {
+        let (columns, rows) = query_all(c, sql)?;
+        return Ok(QueryResult {
+            rows: rows_to_objects(&columns, rows),
+            columns,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        });
+    }
+    let affected = c.execute(sql, []).map_err(map_err)?;
+    Ok(QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: Some(affected as u64),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+    })
+}
+
+struct DuckdbTx {
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl DuckdbTx {
+    async fn blocking(&self, sql: String) -> Result<QueryResult, String> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let guard = conn
+                .lock()
+                .map_err(|_| "DuckDB-Verbindung ist blockiert".to_string())?;
+            run_sql(&guard, &sql)
+        })
+        .await
+        .map_err(|e| format!("DuckDB-Task fehlgeschlagen: {e}"))?
+    }
+}
+
+#[async_trait]
+impl super::TxSession for DuckdbTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        self.blocking(sql.trim().to_string()).await
+    }
+    async fn commit(&mut self) -> Result<(), String> {
+        self.blocking("COMMIT".into()).await.map(|_| ())
+    }
+    async fn rollback(&mut self) -> Result<(), String> {
+        self.blocking("ROLLBACK".into()).await.map(|_| ())
+    }
+}
+
 #[async_trait]
 impl DatabaseAdapter for DuckdbAdapter {
     async fn test_connection(&self) -> Result<(), String> {
@@ -313,38 +376,15 @@ impl DatabaseAdapter for DuckdbAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        self.run(move |c| {
-            let start = std::time::Instant::now();
-            let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-            if matches!(
-                first.as_str(),
-                "SELECT"
-                    | "WITH"
-                    | "SHOW"
-                    | "DESCRIBE"
-                    | "EXPLAIN"
-                    | "PRAGMA"
-                    | "FROM"
-                    | "SUMMARIZE"
-                    | "CALL"
-            ) {
-                let (columns, rows) = query_all(c, &sql)?;
-                return Ok(QueryResult {
-                    rows: rows_to_objects(&columns, rows),
-                    columns,
-                    rows_affected: None,
-                    execution_time_ms: start.elapsed().as_millis() as u64,
-                });
-            }
-            let affected = c.execute(&sql, []).map_err(map_err)?;
-            Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: Some(affected as u64),
-                execution_time_ms: start.elapsed().as_millis() as u64,
-            })
-        })
-        .await
+        self.run(move |c| run_sql(c, &sql)).await
+    }
+
+    async fn begin_transaction(&self) -> Result<Box<dyn super::TxSession>, String> {
+        let conn = self.run(|c| c.try_clone().map_err(map_err)).await?;
+        let conn = Arc::new(Mutex::new(conn));
+        let tx = DuckdbTx { conn };
+        tx.blocking("BEGIN TRANSACTION".into()).await?;
+        Ok(Box::new(tx))
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {

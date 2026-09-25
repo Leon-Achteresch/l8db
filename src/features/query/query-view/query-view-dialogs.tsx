@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { DataExportDialog } from "@/features/export/data-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { BindParamsDialog } from "@/features/query/bind-params-dialog";
 import { ExplainPlanView } from "@/features/query/explain-plan-view";
@@ -122,6 +123,14 @@ export function QueryViewDialogs({
         columns={result?.columns ?? []}
         rows={exportState.exportRows}
         defaultFileName="query-result.xlsx"
+      />
+
+      <DataExportDialog
+        format={exportState.dataExportFormat}
+        onClose={() => exportState.setDataExportFormat(null)}
+        columns={result?.columns ?? []}
+        rows={exportState.exportRows}
+        baseFileName="query-result"
       />
 
       <CsvExportDialog

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { useActiveConnection } from "@/lib/connections";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
+import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import type { useTableRowsQuery } from "@/lib/queries";
 
@@ -35,6 +36,7 @@ export function useTableExport({
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
   const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
+  const [dataExportFormat, setDataExportFormat] = useState<DataExportFormat | null>(null);
   const gridExportHotkey = useResolvedHotkey("grid.export");
   useHotkey(
     gridExportHotkey,
@@ -63,8 +65,8 @@ export function useTableExport({
     });
   }, [data, exportColumns]);
   const exportRows = useMemo(
-    () => (csvExportOpen || xlsxExportOpen ? getExportRows() : []),
-    [csvExportOpen, xlsxExportOpen, getExportRows],
+    () => (csvExportOpen || xlsxExportOpen || dataExportFormat ? getExportRows() : []),
+    [csvExportOpen, xlsxExportOpen, dataExportFormat, getExportRows],
   );
 
   const fullExportSource = useMemo(
@@ -122,7 +124,9 @@ export function useTableExport({
     csvExportOpen,
     setCsvExportOpen,
     xlsxExportOpen,
+    dataExportFormat,
     setXlsxExportOpen,
+    setDataExportFormat,
     exportColumns,
     exportRows,
     fullExportSource,

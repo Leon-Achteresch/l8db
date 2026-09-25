@@ -33,6 +33,7 @@ const CONFIGURED_COMMANDS = new Set([
   "open_ssh_tunnel",
   "open_proxy_tunnel",
   "csv_import",
+  "copy_table_to_connection",
 ]);
 
 const WRITE_COMMANDS = new Set([
@@ -69,6 +70,7 @@ const WRITE_COMMANDS = new Set([
   "duplicate_row_in_transaction",
   "execute_in_transaction",
   "copy_schema_table_data",
+  "copy_table_to_connection",
   "execute_object_ddl",
   "execute_schema_object_copy",
   "execute_in_transaction_with_params",
@@ -160,7 +162,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     const { operationContext } = await import("@/lib/operation-context");
     const request = args?.request as TableExportRequest | undefined;
     taskId = startTask(
-      { id: request?.jobId, title: taskTitles[command], ...operationContext(args ?? {}) },
+      {
+        id: request?.jobId,
+        title:
+          command === "export_table_csv" && request?.format && request.format !== "csv"
+            ? `${request.format.toUpperCase()}-Export`
+            : taskTitles[command],
+        ...operationContext(args ?? {}),
+      },
       request?.jobId ? () => cancelTableExport(request.jobId) : undefined,
     );
     if (request?.jobId) {

@@ -6,14 +6,26 @@ use std::iter::Peekable;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CsvFileSource {
     pub path: String,
+    #[serde(default)]
     pub delimiter: String,
+    #[serde(default)]
     pub quote: String,
+    #[serde(default)]
     pub has_header: bool,
+    #[serde(default)]
     pub empty_as_null: bool,
     pub indices: Vec<usize>,
+    #[serde(default)]
+    pub format: super::import_source::ImportFormat,
+    #[serde(default)]
+    pub sheet: Option<String>,
+    #[serde(default)]
+    pub skip_rows: usize,
+    #[serde(default)]
+    pub keys: Vec<String>,
 }
 
 pub fn preview(path: &str) -> Result<serde_json::Value, String> {
@@ -288,6 +300,7 @@ mod tests {
             has_header: true,
             empty_as_null: true,
             indices: vec![0, 1],
+            ..Default::default()
         };
         assert_eq!(
             CsvRows::open(&source)
@@ -309,6 +322,7 @@ mod tests {
             has_header: true,
             empty_as_null: true,
             indices: vec![0],
+            ..Default::default()
         };
         let rows = CsvRows::open(&source)
             .unwrap()
