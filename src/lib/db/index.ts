@@ -11,6 +11,7 @@ export {
   READ_ONLY_MESSAGE,
   registerReadOnlyResolver,
 } from "./core";
+export * from "./datagen";
 export * from "./debugger";
 export * from "./providers";
 export * from "./replication";

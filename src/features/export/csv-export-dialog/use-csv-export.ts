@@ -18,6 +18,7 @@ import {
   serializeCsv,
 } from "@/lib/export";
 import { useExportTemplatesStore } from "@/lib/export-templates";
+import { useActiveMasks } from "@/lib/masking-display";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { CONFIRM_ROWS, type CsvExportDialogProps, DEFAULT_MAX_ROWS, PREVIEW_ROWS } from "./types";
 
@@ -61,10 +62,15 @@ export function useCsvExport({
     return csvPreview(columns, maskedRows, options, PREVIEW_ROWS);
   }, [columns, maskedRows, options, optionError]);
 
+  const { active: ruleMasks } = useActiveMasks(columns);
+
   useEffect(() => {
     if (!open) return;
-    setMasks((prev) => prev.filter((m) => columns.includes(m.column)));
-  }, [open, columns]);
+    setMasks((prev) => {
+      const kept = prev.filter((m) => columns.includes(m.column));
+      return kept.length ? kept : ruleMasks;
+    });
+  }, [open, columns, ruleMasks]);
 
   useEffect(() => {
     if (!busy || !fullMode) return;

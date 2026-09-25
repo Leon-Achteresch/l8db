@@ -1,3 +1,4 @@
+import type { MaskMode } from "@/lib/masking";
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 
@@ -97,7 +98,7 @@ export interface TableExportRequest {
     lineEnding: string;
     bom: boolean;
   };
-  masks: { column: string; mode: "text" | "null"; text?: string | null }[];
+  masks: { column: string; mode: MaskMode; text?: string | null }[];
   maxRows?: number | null;
   format?: FileExportFormat;
 }
@@ -324,7 +325,7 @@ export interface RowsExportRequest {
   columns: string[];
   columnTypes?: string[];
   rows: Record<string, unknown>[];
-  masks?: { column: string; mode: "text" | "null"; text?: string | null }[];
+  masks?: { column: string; mode: MaskMode; text?: string | null }[];
   title?: string | null;
 }
 

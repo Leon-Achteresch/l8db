@@ -3,9 +3,10 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { initialSslMode } from "@/lib/connection-defaults";
 import { detectProvider, kindFromUrl } from "@/lib/connection-url";
-import type { SshAuth } from "@/lib/connections";
+import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
 import { oracleTnsNames, type SslMode } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
+import type { MaskRule } from "@/lib/masking";
 import { useProvidersStore } from "@/lib/providers";
 import { loadSecret, withSslModeParam } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
@@ -74,6 +75,10 @@ export function useConnectionEditor({
   const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");
   const [color, setColor] = useState<string | null>(seed?.color ?? null);
   const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
+  const [environment, setEnvironment] = useState<ConnectionEnvironment | null>(
+    seed?.environment ?? null,
+  );
+  const [maskRules, setMaskRules] = useState<MaskRule[]>(seed?.maskRules ?? []);
   const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
   const [showSingleSchemaSwitcher, setShowSingleSchemaSwitcher] = useState(
     seed?.showSingleSchemaSwitcher ?? true,
@@ -98,6 +103,8 @@ export function useConnectionEditor({
       seed?.readOnly ||
       seed?.schemas?.length ||
       seed?.color ||
+      seed?.environment ||
+      seed?.maskRules?.length ||
       seed?.tags?.length,
   );
 
@@ -186,6 +193,8 @@ export function useConnectionEditor({
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
+    environment,
+    maskRules,
     tags,
     onSaved,
   });
@@ -236,6 +245,10 @@ export function useConnectionEditor({
     color,
     database,
     databaseLabel,
+    environment,
+    maskRules,
+    setEnvironment,
+    setMaskRules,
     elapsed,
     file,
     groups,

@@ -23,6 +23,7 @@ type Props = Pick<
   | "stateKey"
   | "caps"
   | "tableRows"
+  | "masked"
   | "updateRowMutation"
   | "insertRowMutation"
   | "handleFilterChange"
@@ -65,6 +66,7 @@ export function TableDataContent({
   stateKey,
   caps,
   tableRows,
+  masked,
   updateRowMutation,
   insertRowMutation,
   handleFilterChange,
@@ -178,15 +180,17 @@ export function TableDataContent({
           }}
           isFetching={isFetching}
           onSaveRow={
-            caps.query_language === "redis"
-              ? connection?.readOnly
-                ? undefined
-                : saveRedisRow
-              : isView || !caps.row_edit
-                ? undefined
-                : async (ctid, updates, oldValues) => {
-                    await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
-                  }
+            masked
+              ? undefined
+              : caps.query_language === "redis"
+                ? connection?.readOnly
+                  ? undefined
+                  : saveRedisRow
+                : isView || !caps.row_edit
+                  ? undefined
+                  : async (ctid, updates, oldValues) => {
+                      await updateRowMutation.mutateAsync({ ctid, updates, oldValues });
+                    }
           }
           canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
           cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
@@ -214,13 +218,13 @@ export function TableDataContent({
           currentTable={table}
           onNavigateToTable={handleNavigateToTable}
           onInsertRow={
-            isView || !caps.row_edit || connection?.readOnly
+            masked || isView || !caps.row_edit || connection?.readOnly
               ? undefined
               : async (values) => {
                   await insertRowMutation.mutateAsync(values);
                 }
           }
-          onDeleteRow={isView || !caps.row_edit ? undefined : handleDeleteRow}
+          onDeleteRow={masked || isView || !caps.row_edit ? undefined : handleDeleteRow}
           columnDetails={columnDetails}
           onRefresh={handleRefresh}
           searchRequiresFocus={inDrawer}

@@ -68,6 +68,9 @@ export interface SettingsState {
   editorFormatLinesBetweenQueries: number;
   editorKeymap: EditorKeymap;
   confirmDestructiveQueries: boolean;
+  productionReadOnly: boolean;
+  productionConfirmCommit: boolean;
+  productionAutoRollback: boolean;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   searchIncludeColumns: boolean;
@@ -118,6 +121,9 @@ export interface SettingsState {
   setEditorFormatLinesBetweenQueries: (v: number) => void;
   setEditorKeymap: (v: EditorKeymap) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
+  setProductionReadOnly: (v: boolean) => void;
+  setProductionConfirmCommit: (v: boolean) => void;
+  setProductionAutoRollback: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setSearchIncludeColumns: (v: boolean) => void;
@@ -192,6 +198,9 @@ const DEFAULT_SETTINGS = {
   editorFormatLinesBetweenQueries: 2,
   editorKeymap: "default" as EditorKeymap,
   confirmDestructiveQueries: true,
+  productionReadOnly: false,
+  productionConfirmCommit: true,
+  productionAutoRollback: false,
   highlightNullValues: true,
   translateFilterOperators: true,
   searchIncludeColumns: true,
@@ -268,6 +277,9 @@ export const useSettingsStore = create<SettingsState>()(
       setEditorKeymap: (editorKeymap) => set({ editorKeymap }),
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
+      setProductionReadOnly: (productionReadOnly) => set({ productionReadOnly }),
+      setProductionConfirmCommit: (productionConfirmCommit) => set({ productionConfirmCommit }),
+      setProductionAutoRollback: (productionAutoRollback) => set({ productionAutoRollback }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),

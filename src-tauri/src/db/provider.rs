@@ -52,6 +52,7 @@ pub struct Capabilities {
     pub csv_import: bool,
     pub import_conflicts: bool,
     pub table_copy: bool,
+    pub test_data: bool,
     pub column_search: bool,
     pub source_search: bool,
     pub schema_snapshot: bool,
@@ -113,6 +114,7 @@ const NONE: Capabilities = Capabilities {
     csv_import: false,
     import_conflicts: false,
     table_copy: false,
+    test_data: false,
     column_search: false,
     source_search: false,
     schema_snapshot: false,
@@ -155,6 +157,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     csv_import: true,
     import_conflicts: true,
     table_copy: true,
+    test_data: true,
     ..NONE
 };
 
@@ -238,6 +241,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Duckdb => Capabilities {
+                test_data: false,
                 databases: false,
                 ssl: false,
                 ssh: false,
@@ -305,6 +309,7 @@ impl DatabaseKind {
             DatabaseKind::Mongodb => Capabilities {
                 csv_import: true,
                 import_conflicts: true,
+                test_data: true,
                 backup: true,
                 ssl: false,
                 indexes: true,

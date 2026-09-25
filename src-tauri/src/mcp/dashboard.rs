@@ -1005,7 +1005,7 @@ impl Server {
         if sql.chars().count() > MAX_SQL_CHARS {
             return Err(format!("sql ist länger als {MAX_SQL_CHARS} Zeichen."));
         }
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
         server::check_read_sql(&sql, connection, &index)?;
@@ -1205,7 +1205,7 @@ impl Server {
         mapping: &mut Mapping,
         limit: usize,
     ) -> Result<String, String> {
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
         let sql = sql

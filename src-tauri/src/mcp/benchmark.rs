@@ -322,7 +322,7 @@ impl Server {
             file_concurrency.unwrap_or(1),
             MAX_CONCURRENCY,
         );
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
         let adapter = server::adapter(connection, &self.pool)?;
@@ -781,6 +781,9 @@ mod tests {
             read_only: false,
             allow_ddl: false,
             redact_columns: vec![],
+            mask_rules: vec![],
+            environment: None,
+            allow_production_writes: false,
             database: None,
         };
         let config = McpConfig {

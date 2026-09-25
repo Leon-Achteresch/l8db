@@ -8,6 +8,7 @@ export { initConnectionSecrets, isReadOnlyConnection } from "./secrets";
 export { createConnectionId, isMainWindow, useConnectionsStore, windowConnectionId } from "./store";
 export type {
   ConnectionColor,
+  ConnectionEnvironment,
   ConnectionInput,
   ConnectionTag,
   NetworkProxy,

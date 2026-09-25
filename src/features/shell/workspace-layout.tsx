@@ -5,10 +5,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
+import { EnvironmentBanner } from "@/features/shell/environment-banner";
 import { MasterSelectionScope } from "@/features/shell/master-selection-scope";
 import { NewPaneDropZone, SplitWorkspace } from "@/features/shell/split-workspace";
 import { TableTabs } from "@/features/shell/table-tabs";
 import { WorkspacePendingView } from "@/features/shell/workspace-pending-view";
+import { useActiveConnection } from "@/lib/connections";
+import { useConnectionEnvironment } from "@/lib/environments";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { usePaneSourceKey } from "@/lib/master-detail";
@@ -42,6 +45,8 @@ const sensors = [
 
 export function WorkspaceLayout() {
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const environment = useConnectionEnvironment(useActiveConnection());
+  const productionColor = environment?.value === "production" ? environment.color : null;
   const tool = useRouterSelect((state) => toolIdForPath(state.location.pathname));
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
@@ -104,7 +109,11 @@ export function WorkspaceLayout() {
           <SqlIntellisenseSync />
         </Suspense>
       )}
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        style={productionColor ? { boxShadow: `inset 0 0 0 2px ${productionColor}` } : undefined}
+      >
+        <EnvironmentBanner />
         <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5">
           <SidebarTrigger className="size-7 rounded-full" />
           <TableTabs />

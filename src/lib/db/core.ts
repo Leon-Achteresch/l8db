@@ -34,6 +34,7 @@ const CONFIGURED_COMMANDS = new Set([
   "open_proxy_tunnel",
   "csv_import",
   "copy_table_to_connection",
+  "datagen_run",
 ]);
 
 const WRITE_COMMANDS = new Set([
@@ -57,6 +58,7 @@ const WRITE_COMMANDS = new Set([
   "create_subscription",
   "create_table",
   "csv_import",
+  "datagen_run",
   "delete_row_in_transaction",
   "detach_partition",
   "drop_column",
@@ -111,10 +113,33 @@ export function isReadOnlyActive(connectionString?: unknown): boolean {
   }
 }
 
+function needsProductionGuard(command: string): boolean {
+  return (
+    SQL_COMMANDS.has(command) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction")
+  );
+}
+
+async function productionGuard(command: string, args: Record<string, unknown>): Promise<void> {
+  const sqlCommand = SQL_COMMANDS.has(command);
+  const [{ operationContext }, { useConnectionsStore }, { productionWriteBlock }] =
+    await Promise.all([
+      import("@/lib/operation-context"),
+      import("@/lib/connections/store"),
+      import("@/lib/environments"),
+    ]);
+  const { connectionId } = operationContext(args);
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === connectionId);
+  const message = productionWriteBlock(connection, sqlCommand ? String(args.sql ?? "") : null);
+  if (message) throw new Error(message);
+}
+
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString)) {
     throw new Error(READ_ONLY_MESSAGE);
   }
+  if (needsProductionGuard(command)) await productionGuard(command, args ?? {});
   const settings = useSettingsStore.getState();
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
@@ -204,15 +229,26 @@ export async function confirmSqlExecution(
   database?: string,
   connectionName?: string,
 ): Promise<void> {
-  if (!useSettingsStore.getState().confirmDestructiveQueries) return;
-  const findings = destructiveStatements(sql, kind);
-  if (!findings.length) return;
-  const { operationContext } = await import("@/lib/operation-context");
+  const [{ operationContext }, { useConnectionsStore }, environments] = await Promise.all([
+    import("@/lib/operation-context"),
+    import("@/lib/connections/store"),
+    import("@/lib/environments"),
+  ]);
   const context = operationContext({ kind, connectionString, database });
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === context.connectionId);
+  const production = environments.isProduction(connection);
+  if (!production && !useSettingsStore.getState().confirmDestructiveQueries) return;
+  const findings = destructiveStatements(sql, kind, { strict: production });
+  if (!findings.length) return;
   const accepted = await requestSqlConfirmation({
     connection: connectionName ?? context.connectionName,
     database: database ?? context.database,
     statements: findings,
+    confirmTexts: production
+      ? environments.productionConfirmTexts(connection, database ?? context.database)
+      : undefined,
   });
   if (!accepted) throw new Error("Ausführung vom Benutzer abgebrochen.");
 }

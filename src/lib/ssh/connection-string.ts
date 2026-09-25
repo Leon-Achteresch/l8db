@@ -5,6 +5,7 @@ import {
   usesTunnel,
 } from "@/lib/connections";
 import { type DatabaseKind, registerReadOnlyResolver } from "@/lib/db";
+import { isProductionLocked } from "@/lib/environments";
 import { capabilitiesFor } from "@/lib/providers";
 import { extractUrlPassword, injectUrlPassword, peekSecret } from "@/lib/secrets";
 
@@ -95,8 +96,11 @@ export function effectiveConnectionString(connection: SavedConnection): string {
     cached && extractUrlPassword(connection.connectionString) === null
       ? injectUrlPassword(connection.connectionString, cached)
       : connection.connectionString;
+  const serverReadOnly =
+    isReadOnlyConnection(connection) ||
+    (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode);
   const base = proxyUserConnectionString(
-    isReadOnlyConnection(connection) ? readOnlyConnectionString(raw) : raw,
+    serverReadOnly ? readOnlyConnectionString(raw) : raw,
     connection,
   );
   if (!usesTunnel(connection)) return base;
