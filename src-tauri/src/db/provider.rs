@@ -14,6 +14,9 @@ pub enum DatabaseKind {
     Cassandra,
     Duckdb,
     Odbc,
+    Elasticsearch,
+    Influxdb,
+    SqliteHttp,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -153,7 +156,7 @@ const SQL_COMMON: Capabilities = Capabilities {
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 11] = [
+    pub const ALL: [DatabaseKind; 14] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -165,6 +168,9 @@ impl DatabaseKind {
         DatabaseKind::Cassandra,
         DatabaseKind::Duckdb,
         DatabaseKind::Odbc,
+        DatabaseKind::Elasticsearch,
+        DatabaseKind::Influxdb,
+        DatabaseKind::SqliteHttp,
     ];
 
     pub fn capabilities(self) -> Capabilities {
@@ -314,6 +320,27 @@ impl DatabaseKind {
                 ssl: false,
                 ..NONE
             },
+            DatabaseKind::Elasticsearch => Capabilities {
+                databases: false,
+                filter_hint: "SQL-Bedingung, Lucene-Query (status:active AND age:>21) oder Query-DSL als JSON",
+                ..NONE
+            },
+            DatabaseKind::Influxdb => Capabilities {
+                schemas: false,
+                filter_hint: "SQL-Bedingung auf Tags und Felder, z. B. \"host\" = 'a' AND \"usage\" > 50",
+                ..NONE
+            },
+            DatabaseKind::SqliteHttp => Capabilities {
+                ssl: false,
+                ssh: false,
+                view_editor: false,
+                functions: false,
+                alter_columns: false,
+                constraints: false,
+                overview: false,
+                row_edit: true,
+                ..SQL_COMMON
+            },
         }
     }
 
@@ -330,6 +357,9 @@ impl DatabaseKind {
             DatabaseKind::Cassandra => &["cassandra", "scylla"],
             DatabaseKind::Duckdb => &["duckdb"],
             DatabaseKind::Odbc => &["odbc"],
+            DatabaseKind::Elasticsearch => &["elasticsearch", "opensearch", "https", "http"],
+            DatabaseKind::Influxdb => &["influxdb", "https", "http"],
+            DatabaseKind::SqliteHttp => &["libsql", "d1"],
         }
     }
 
@@ -480,9 +510,14 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "sqlite", name: "SQLite", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/app.db", hint: "Pfad zu einer SQLite-Datei oder :memory:. Eingebetteter Treiber, keine Installation nötig.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "libsql", name: "libSQL / Turso (lokal)", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/local.db", hint: "Lokale libSQL-Dateien sind SQLite-kompatibel.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "duckdb", name: "DuckDB", group: "Dateibasiert", kind: DatabaseKind::Duckdb, port: None, placeholder: "/Users/name/daten/analytics.duckdb", hint: "Analytische Datei-Datenbank. Benötigt einen Build mit dem Cargo-Feature duckdb.", hosts: &[], driver: Driver::CargoFeature { feature: "duckdb" } },
+    Provider { id: "turso", name: "libSQL / Turso (remote)", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "libsql://token:AUTH_TOKEN@datenbank-org.turso.io", hint: "HTTP-Pipeline-API von libSQL/sqld. Auth-Token als Passwort; ?tls=false für lokale sqld-Server auf Port 8080.", hosts: &[".turso.io"], driver: Driver::Builtin },
+    Provider { id: "d1", name: "Cloudflare D1", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/datenbank", hint: "Cloudflare-API mit Account-ID als Benutzer und API-Token (D1 Edit) als Passwort. Datenbank per Name oder UUID.", hosts: &["api.cloudflare.com"], driver: Driver::Builtin },
     Provider { id: "mssql", name: "SQL Server", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://sa:Password1@localhost:1433/master?encrypt=false", hint: "TDS-Protokoll. Parameter: encrypt=true|false, trust_server_certificate=true.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "azure-sql", name: "Azure SQL", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://user:password@server.database.windows.net:1433/db?encrypt=true", hint: "Azure erfordert Verschlüsselung. Login im Format user oder user@server.", hosts: &[".database.windows.net"], driver: Driver::Builtin },
     Provider { id: "clickhouse", name: "ClickHouse", group: "Analytisch", kind: DatabaseKind::Clickhouse, port: Some(8123), placeholder: "clickhouse://default:password@localhost:8123/default", hint: "HTTP-Schnittstelle auf Port 8123 (8443 mit ?secure=1).", hosts: &[".clickhouse.cloud"], driver: Driver::Builtin },
+    Provider { id: "influxdb", name: "InfluxDB", group: "Analytisch", kind: DatabaseKind::Influxdb, port: Some(8086), placeholder: "influxdb://token:API_TOKEN@localhost:8086/bucket?org=meine-org", hint: "Token als Passwort. v2 (Flux/InfluxQL, Port 8086) und v3 (SQL/InfluxQL, Port 8181) werden erkannt, ?version=2|3 erzwingt. Zeitraum der Tabellenansicht mit ?range=7d (Standard 1h, all für alles).", hosts: &[".influxdata.com"], driver: Driver::Builtin },
+    Provider { id: "elasticsearch", name: "Elasticsearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "elasticsearch://elastic:password@localhost:9200", hint: "Indizes erscheinen als Tabellen. Basic-Auth, API-Key (Benutzer apikey) oder ohne Anmeldung. Queries als SQL oder Dev-Tools-Request, z. B. GET index/_search {…}.", hosts: &[".elastic-cloud.com", ".found.io", ".elastic.cloud"], driver: Driver::Builtin },
+    Provider { id: "opensearch", name: "OpenSearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "opensearch://admin:password@localhost:9200?sslmode=require", hint: "OpenSearch mit SQL-Plugin oder Dev-Tools-Requests. sslmode=require akzeptiert selbstsignierte Zertifikate.", hosts: &[".es.amazonaws.com", ".aoss.amazonaws.com"], driver: Driver::Builtin },
     Provider { id: "mongodb", name: "MongoDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@localhost:27017/app?authSource=admin", hint: "Collections erscheinen als Tabellen. Filter und Queries sind JSON-Dokumente.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "atlas", name: "MongoDB Atlas", group: "NoSQL", kind: DatabaseKind::Mongodb, port: None, placeholder: "mongodb+srv://user:password@cluster0.abcde.mongodb.net/app", hint: "SRV-URL aus dem Atlas-Connect-Dialog.", hosts: &[".mongodb.net"], driver: Driver::Builtin },
     Provider { id: "documentdb", name: "Amazon DocumentDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@cluster.region.docdb.amazonaws.com:27017/app?tls=true&retryWrites=false", hint: "MongoDB-API. retryWrites=false ist erforderlich.", hosts: &[".docdb.amazonaws.com"], driver: Driver::Builtin },

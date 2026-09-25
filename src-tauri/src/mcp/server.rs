@@ -22,6 +22,9 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Cassandra,
     DatabaseKind::Duckdb,
     DatabaseKind::Odbc,
+    DatabaseKind::SqliteHttp,
+    DatabaseKind::Elasticsearch,
+    DatabaseKind::Influxdb,
 ];
 const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 
@@ -408,7 +411,9 @@ impl Server {
                 if let Some(word) = redact::dangerous_word(sql) {
                     return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
                 }
-                if !connection.allow_ddl && redact::is_ddl(sql) {
+                let index_ddl = connection.kind == DatabaseKind::Elasticsearch
+                    && db::elasticsearch::is_index_ddl(sql);
+                if !connection.allow_ddl && (index_ddl || redact::is_ddl(sql)) {
                     return Err(format!(
                         "DDL ist für '{}' nicht freigegeben.",
                         connection.name
@@ -437,6 +442,20 @@ pub(super) fn check_read_sql(
     connection: &McpConnection,
     index: &redact::SchemaIndex,
 ) -> Result<(), String> {
+    match http_read_only(connection.kind, sql) {
+        Some(true) => return redact::check_references(sql, index),
+        Some(false) => {
+            return Err(format!(
+                "query ist read-only, dieser Request schreibt.{}",
+                if connection.read_only {
+                    ""
+                } else {
+                    " Für Schreibzugriffe execute nutzen."
+                }
+            ))
+        }
+        None => {}
+    }
     if redact::statement_count(sql) > 1 {
         return Err("Nur ein Statement pro Aufruf.".into());
     }
@@ -454,6 +473,14 @@ pub(super) fn check_read_sql(
         return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
     }
     redact::check_references(sql, index)
+}
+
+fn http_read_only(kind: DatabaseKind, sql: &str) -> Option<bool> {
+    match kind {
+        DatabaseKind::Elasticsearch => db::elasticsearch::read_only_request(sql),
+        DatabaseKind::Influxdb => db::influxdb::read_only_statement(sql),
+        _ => None,
+    }
 }
 
 pub(super) fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {

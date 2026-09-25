@@ -224,7 +224,11 @@ export function useConnectionEditor({
         ? "Keyspace"
         : kind === "redis"
           ? "Datenbank-Nummer"
-          : "Datenbank";
+          : kind === "influxdb"
+            ? "Bucket / Datenbank"
+            : kind === "elasticsearch"
+              ? "Pfad-Präfix (optional)"
+              : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
 
   return {

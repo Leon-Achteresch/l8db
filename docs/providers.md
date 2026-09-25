@@ -30,10 +30,15 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | OceanBase | Mysql | builtin |
 | SQLite | Sqlite | builtin |
 | libSQL / Turso (lokal) | Sqlite | builtin |
+| libSQL / Turso (remote) | SqliteHttp | builtin (HTTP) |
+| Cloudflare D1 | SqliteHttp | builtin (HTTP) |
 | DuckDB | Duckdb | Cargo feature `duckdb` |
 | SQL Server | Mssql | builtin |
 | Azure SQL | Mssql | builtin |
 | ClickHouse | Clickhouse | builtin |
+| InfluxDB | Influxdb | builtin (HTTP) |
+| Elasticsearch | Elasticsearch | builtin (HTTP) |
+| OpenSearch | Elasticsearch | builtin (HTTP) |
 | MongoDB | Mongodb | builtin |
 | MongoDB Atlas | Mongodb | builtin |
 | Amazon DocumentDB | Mongodb | builtin |
@@ -81,6 +86,9 @@ All adapters implement connection testing, database/schema/table/column discover
 | Redis | Redis commands and key-pattern filtering |
 | Cassandra | CQL, keyspaces, indexes, DDL and column changes |
 | Odbc | Queries, views and DDL; other capabilities remain disabled |
+| SqliteHttp | Row editing via SQL, views, indexes, foreign keys, triggers, DDL, explain; every statement commits immediately, so rollback is rejected |
+| Elasticsearch | Indices, data streams and aliases as tables, mapping fields as columns, SQL, Dev-Tools requests, Lucene/Query-DSL filters, drop/truncate index; no row editing |
+| Influxdb | Buckets/databases, measurements, tags and fields; SQL (v3), Flux (v2), InfluxQL and line-protocol writes |
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
@@ -95,5 +103,17 @@ Standard builds omit DuckDB and ODBC. Enable them with `bun run tauri build -- -
 3. Mirror serialized Rust types in [the TypeScript bridge](../src/lib/db/index.ts), especially [provider types](../src/lib/db/providers.ts). Keep invocations centralized in that bridge. Update URL detection through the registry and gate UI with capabilities.
 4. Preserve effective SSH URLs, secret handling, read-only protection and validated filters. A failed tunnel must never fall back to a direct connection.
 5. Add registry/URL/bridge regressions and adapter tests. Run `bun run test`, `bun run check`, `bun run build`, `cargo check --locked`, `cargo clippy --all-targets --locked`, and `cargo test --locked` in their respective directories. Test optional builds separately when affected.
+
+## HTTP families
+
+| Family | URL | Notes |
+| --- | --- | --- |
+| Elasticsearch | `elasticsearch://user:pw@host:9200`, `opensearch://host:9200`, `https://…` for known cloud hosts | API key via user `apikey` or `?api_key=` (`id:key` or encoded); `?tls=true`, `?insecure=true`; the flavor is detected via `GET /`. Filters take builder SQL, Lucene or Query-DSL JSON. Offsets beyond 10 000 use PIT + `search_after` (Elasticsearch) or scroll (OpenSearch). Queries accept SQL or `GET index/_search {…}`. |
+| Influxdb | `influxdb://token:TOKEN@host:8086/bucket?org=acme` | `?version=2\|3` forces the API, otherwise `/ping` decides. Table views show the last hour; change with `?range=15m`, `7d` or `all`. Queries accept SQL (v3), Flux (v2), InfluxQL and line protocol. |
+| SqliteHttp | `libsql://[token:TOKEN@]host[?authToken=…&tls=false]`, `d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/<database name or uuid>` | libSQL uses the Hrana `/v2/pipeline`; D1 uses the Cloudflare `/raw` query API. |
+
+Generic `http(s)://` URLs remain ClickHouse unless the host matches a known Elastic, InfluxData or AWS OpenSearch domain. InfluxDB 1.x is not supported.
+
+Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. D1 is covered by a mocked HTTP server in the unit tests.
 
 `smoke_adapters_from_env` is ignored by default and runs configured `L8DB_SMOKE_<KIND>_URL` providers. It is not the mandatory integration suite. The isolated PostgreSQL/SSH suite is described in [integration-tests.md](integration-tests.md).

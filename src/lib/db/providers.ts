@@ -11,7 +11,10 @@ export type DatabaseKind =
   | "oracle"
   | "cassandra"
   | "duckdb"
-  | "odbc";
+  | "odbc"
+  | "elasticsearch"
+  | "influxdb"
+  | "sqlite_http";
 
 export interface Capabilities {
   databases: boolean;

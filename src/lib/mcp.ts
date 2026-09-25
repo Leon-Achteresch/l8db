@@ -69,6 +69,9 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "odbc",
   "mongodb",
   "redis",
+  "sqlite_http",
+  "elasticsearch",
+  "influxdb",
 ];
 
 export function mcpSupported(

@@ -55,8 +55,9 @@ export function quoteString(value: string, kind?: FilterKind): string {
 }
 
 export function quoteLike(value: string, kind?: FilterKind): string {
-  const escapeCharacter = kind === "clickhouse" ? "\\" : "!";
-  const special = kind === "clickhouse" ? /[%_\\]/g : kind === "mssql" ? /[!%_[]/g : /[!%_]/g;
+  const backslash = kind === "clickhouse" || kind === "influxdb";
+  const escapeCharacter = backslash ? "\\" : "!";
+  const special = backslash ? /[%_\\]/g : kind === "mssql" ? /[!%_[]/g : /[!%_]/g;
   return value.replace(special, (character) => `${escapeCharacter}${character}`);
 }
 
@@ -70,7 +71,12 @@ export function textMatch(columnExpression: string, pattern: string, kind?: Filt
     case "mysql":
       return `CAST(${columnExpression} AS CHAR) LIKE ${literal} ESCAPE '!'`;
     case "sqlite":
+    case "sqlite_http":
       return `CAST(${columnExpression} AS TEXT) LIKE ${literal} ESCAPE '!'`;
+    case "elasticsearch":
+      return `${columnExpression} LIKE ${literal} ESCAPE '!'`;
+    case "influxdb":
+      return `CAST(${columnExpression} AS VARCHAR) ILIKE ${literal} ESCAPE '\\'`;
     case "clickhouse":
       return `toString(${columnExpression}) ILIKE ${literal}`;
     case "odbc":

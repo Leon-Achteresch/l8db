@@ -128,8 +128,9 @@ export async function runTableTransaction<T>(
   const scope = { type: "table", schema, table } as const;
   const store = useTransactionStore.getState();
   if (
-    findTransaction(store.transactions, connection.id, database, scope) ||
-    useSettingsStore.getState().transactionsEnabled
+    supports(connection, "transactions") &&
+    (findTransaction(store.transactions, connection.id, database, scope) ||
+      useSettingsStore.getState().transactionsEnabled)
   ) {
     const tx = await ensureManagedTransaction(connection, database, scope);
     return runManagedOperation(tx.txId, async () => {
