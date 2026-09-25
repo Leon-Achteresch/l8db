@@ -65,6 +65,16 @@ impl Lab {
                 return self.transactions.rollback(tx).await.map(|_| Value::Null)
             }
             "list_transactions" => return Ok(json!(self.transactions.list_active_ids().await)),
+            "compare_table_data" => {
+                let request = &args["request"];
+                lab_url(&request["left"])?;
+                lab_url(&request["right"])?;
+                let request: crate::db::data_compare::CompareRequest =
+                    serde_json::from_value(request.clone()).map_err(|e| e.to_string())?;
+                return crate::db::data_compare::compare(&request, &self.pool)
+                    .await
+                    .map(|v| json!(v));
+            }
             _ => {}
         }
         let (kind, url) = lab_url(args)?;

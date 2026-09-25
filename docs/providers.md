@@ -71,9 +71,9 @@ All adapters implement connection testing, database/schema/table/column discover
 | Family | Additional registry capabilities |
 | --- | --- |
 | Postgres | Row editing, transactions, table transactions, DDL, explain, catalog administration, CSV import, full export, data comparison, schema snapshots, migration scripts, cancellation, debugger |
-| Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions |
-| Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation; no SSH/TLS or stored functions |
-| Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user |
+| Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, schema and data comparison |
+| Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation, schema and data comparison; no SSH/TLS or stored functions |
+| Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user, schema and data comparison |
 | Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation, server output, object grants and administration, explain (PLAN_TABLE; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL) |
 | Duckdb | SQL catalog objects, DDL, explain; no row editing or transaction UI |
 | Clickhouse | Views, functions, DDL, column changes, explain and overview |

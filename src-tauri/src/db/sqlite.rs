@@ -832,6 +832,32 @@ impl DatabaseAdapter for SqliteAdapter {
         ))
     }
 
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let object = format!("{}.{}", quote(&request.schema), quote(&request.table));
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut collector = super::snapshot::Collector::new(request.max_rows);
+        self.run(move |c| {
+            let mut stmt = c.prepare(&sql).map_err(map_err)?;
+            let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+            let mut rows = stmt.query([]).map_err(map_err)?;
+            while let Some(row) = rows.next().map_err(map_err)? {
+                let mut object = serde_json::Map::new();
+                for (index, name) in columns.iter().enumerate() {
+                    object.insert(
+                        name.clone(),
+                        value_to_json(row.get_ref(index).map_err(map_err)?),
+                    );
+                }
+                collector.push(object)?;
+            }
+            collector.finish(columns)
+        })
+        .await
+    }
+
     async fn schema_catalog(
         &self,
         schema: &str,

@@ -14,7 +14,20 @@ Data comparison reads each side using its own backend snapshot, independently in
 
 The comparison counts every row but transfers only differences to the frontend. Details are capped at 10,000 rows and 16 MiB serialized data; reaching this cap is visible. Any generated sync script contains only displayed, selected differences. Aborted comparisons produce no completed result or sync script. Identical rows are counted without transferring them. Task progress reports rows read on the current side and allows cancellation. Independent source snapshots do not represent a shared cross-database instant.
 
+MySQL/MariaDB, SQL Server and SQLite use the same limits through `DatabaseAdapter::snapshot_rows`, streaming one result set row by row. MySQL reads inside `START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY`. SQL Server reads one statement with the session's isolation level, which is not a snapshot unless the database enables snapshot isolation. SQLite reads one statement on the shared connection. MySQL decimals keep their exact text. Sync scripts use literals for each dialect:
+
+- MySQL: backslash escaping and `X''` binaries.
+- SQL Server: `N''` strings, `0x` binaries and ISO timestamps.
+- SQLite: `X''` blobs.
+- Booleans become `1`/`0`.
+
+UPDATE staleness checks use NULL-safe comparisons: `IS NOT DISTINCT FROM`, `<=>`, `IS`, or `IS NULL`/`=`. Approximate and non-comparable types are left out of that check: float, SQL Server `text`/`xml`, and MySQL JSON/spatial. SQL Server inserts run as one batch. If the table has an identity column, the batch is wrapped in `IDENTITY_INSERT`. DELETE statements for rows present only in the target are generated only when explicitly enabled. Oracle data comparison is not supported.
+
+Schema comparison for these families reads `information_schema` (MySQL), `sys` catalog views (SQL Server) and `sqlite_master`/`PRAGMA` (SQLite). MySQL DDL auto-commits, so MySQL sync scripts have no dry run and run statement by statement. SQL Server and SQLite run inside a transaction with rollback dry runs. SQLite column changes rebuild the table (copy, drop, create, reinsert) with deferred foreign keys.
+
 ## Reproduction
+
+The multi-family live suites need the Rust bridge (`L8DB_SCHEMA_COMPARE_BRIDGE_PORT=<port> cargo test --lib schema_compare_bridge -- --ignored`). Set `L8DB_SCHEMA_COMPARE_LIVE=http://127.0.0.1:<port>`, `L8DB_SC_MYSQL_URL` and `L8DB_SC_MSSQL_URL`; SQLite uses temporary files. `bun test tests/schema-compare-live-multi.test.ts tests/data-compare-live-multi.test.ts` checks that compare, apply and a second compare converge.
 
 `bun run test:integration` provisions the isolated lab and checks 100,000-row CSV import with multiline values, a late error, cancellation, composite-key conflict strategies, snapshot consistency during concurrent writes, and 100,000 rows per comparison side with filters and cancellation.
 
