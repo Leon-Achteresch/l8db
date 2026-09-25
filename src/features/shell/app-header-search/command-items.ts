@@ -16,6 +16,7 @@ import {
   objectEntryHint,
   objectEntryKeywords,
 } from "@/lib/object-search";
+import { useTableTabs } from "@/lib/table-tabs";
 
 export function buildObjectItems(
   objects: Parameters<typeof buildObjectEntries>[0] | undefined,
@@ -63,6 +64,7 @@ export function buildObjectItems(
         return;
       }
       if (entry.type === "view") {
+        useTableTabs.getState().openViewEditorTab({ schema: entry.schema, view: entry.name });
         void navigate({
           to: "/view-editor/$schema/$view",
           params: { schema: entry.schema, view: entry.name },
