@@ -2441,8 +2441,10 @@ pub async fn read_table_snapshot(
 pub async fn compare_table_data(
     request: super::data_compare::CompareRequest,
     options: Option<super::execution::ExecutionOptions>,
+    pool_state: tauri::State<'_, PoolState>,
     app: tauri::AppHandle,
 ) -> Result<super::data_compare::CompareResult, String> {
+    let pool_state = pool_state.inner().clone();
     use tauri::Emitter;
     let job_id = options.as_ref().and_then(|options| options.job_id.clone());
     super::execution::with_progress(
@@ -2452,7 +2454,11 @@ pub async fn compare_table_data(
                 serde_json::json!({ "jobId": job_id, "rows": rows }),
             );
         },
-        super::execution::run(options, true, super::data_compare::compare(&request)),
+        super::execution::run(
+            options,
+            true,
+            super::data_compare::compare(&request, &pool_state),
+        ),
     )
     .await
 }

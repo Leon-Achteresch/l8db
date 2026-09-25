@@ -39,6 +39,7 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
   unlogged: "Unlogged",
   status: "Status",
   owned_column: "Besitzer-Spalte",
+  on_update: "ON UPDATE",
 };
 
 const SETTING_CONTEXT = /\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)$/i;
@@ -48,24 +49,28 @@ const SQL_TEXT =
   /\b(?:select|from|join|into|update|delete|insert|table|view|truncate|call|execute|alter|drop|create|merge|references)\b/i;
 
 function plainIdentifier(name: string, kind: DatabaseKind): boolean {
-  return kind === "oracle" ? /^[A-Z][A-Z0-9_$#]*$/.test(name) : /^[a-z_][a-z0-9_$]*$/.test(name);
+  if (kind === "oracle") return /^[A-Z][A-Z0-9_$#]*$/.test(name);
+  if (kind === "postgres") return /^[a-z_][a-z0-9_$]*$/.test(name);
+  return /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name);
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function quoteName(name: string): string {
+export function quoteName(name: string, kind?: DatabaseKind | null): string {
+  if (kind === "mysql") return `\`${name.replace(/`/g, "``")}\``;
+  if (kind === "mssql") return `[${name.replace(/]/g, "]]")}]`;
   return `"${name.replace(/"/g, '""')}"`;
 }
 
 function requalifyCode(sql: string, from: string, to: string, kind: DatabaseKind): string {
-  const quotedTo = `${quoteName(to)}.`;
-  let out = sql.split(`${quoteName(from)}.`).join(quotedTo);
+  const quotedTo = `${quoteName(to, kind)}.`;
+  let out = sql.split(`${quoteName(from, kind)}.`).join(quotedTo);
   if (plainIdentifier(from, kind)) {
     const bareTo = plainIdentifier(to, kind) ? `${to}.` : quotedTo;
     out = out.replace(
-      new RegExp(`(^|[^\\w$#."])${escapeRegExp(from)}\\.`, "gi"),
+      new RegExp(`(^|[^\\w$#."\`\\[\\]])${escapeRegExp(from)}\\.`, "gi"),
       (match, before: string, offset: number, text: string) =>
         kind === "postgres" &&
         SETTING_CONTEXT.test(text.slice(Math.max(0, offset - 40), offset + before.length))

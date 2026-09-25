@@ -1,5 +1,9 @@
-use super::{connection, execution, map_pg_err, quote_ident, validate_table_filter, TableData};
+use super::{
+    connection, execution, map_pg_err, quote_ident, validate_table_filter, where_clause, TableData,
+};
 use serde::Deserialize;
+use serde_json::{Map, Value};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,6 +16,80 @@ pub struct SnapshotRequest {
     pub order_desc: bool,
     pub is_view: bool,
     pub max_rows: usize,
+}
+
+const MAX_BYTES: usize = 64 * 1024 * 1024;
+
+pub struct Collector {
+    limit: usize,
+    bytes: usize,
+    rows: Vec<Value>,
+    cancel: CancellationToken,
+}
+
+impl Collector {
+    pub fn new(max_rows: usize) -> Self {
+        Self {
+            limit: max_rows.min(1_048_576),
+            bytes: 0,
+            rows: Vec::new(),
+            cancel: execution::cancellation_token(),
+        }
+    }
+
+    pub fn push(&mut self, row: Map<String, Value>) -> Result<(), String> {
+        if self.cancel.is_cancelled() {
+            return Err("Vergleich abgebrochen; kein vollständiges Ergebnis.".into());
+        }
+        let value = Value::Object(row);
+        self.bytes += serde_json::to_vec(&value)
+            .map_err(|error| error.to_string())?
+            .len();
+        if self.bytes > MAX_BYTES {
+            return Err("Der Lesevorgang überschreitet 64 MiB Rohdaten je Seite. Filter einschränken oder CSV verwenden.".into());
+        }
+        if self.rows.len() >= self.limit {
+            return Err("Die Daten überschreiten das gewählte Zeilenlimit.".into());
+        }
+        self.rows.push(value);
+        if self.rows.len().is_multiple_of(1000) {
+            execution::progress(self.rows.len() as u64);
+        }
+        Ok(())
+    }
+
+    pub fn finish(self, columns: Vec<String>) -> Result<TableData, String> {
+        if columns.is_empty() {
+            return Err("Keine Exportspalten gefunden.".into());
+        }
+        execution::progress(self.rows.len() as u64);
+        Ok(TableData {
+            columns,
+            rows: self.rows,
+        })
+    }
+}
+
+pub fn select_sql(
+    request: &SnapshotRequest,
+    object: &str,
+    quote: fn(&str) -> String,
+) -> Result<String, String> {
+    let order = request
+        .order_by
+        .as_deref()
+        .map(|column| {
+            format!(
+                " ORDER BY {} {}",
+                quote(column),
+                if request.order_desc { "DESC" } else { "ASC" }
+            )
+        })
+        .unwrap_or_default();
+    Ok(format!(
+        "SELECT * FROM {object}{}{order}",
+        where_clause(request.filter.as_deref(), request.allow_raw_filter)?
+    ))
 }
 
 pub async fn read(
@@ -41,7 +119,7 @@ pub async fn read(
             let page = client.query("FETCH FORWARD 1000 FROM l8db_snapshot", &[]).await.map_err(map_pg_err)?;
             if page.is_empty() { break; }
             for row in page {
-                let value: serde_json::Value = row.get(0);
+                let value: Value = row.get(0);
                 bytes += serde_json::to_vec(&value).map_err(|error| error.to_string())?.len();
                 if bytes > 64 * 1024 * 1024 { return Err("Der Lesevorgang überschreitet 64 MiB Rohdaten je Seite. Filter einschränken oder CSV verwenden.".into()); }
                 if rows.len() >= request.max_rows.min(1_048_576) { return Err("Die Daten überschreiten das gewählte Zeilenlimit.".into()); }

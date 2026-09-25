@@ -313,6 +313,34 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
     .await
 }
 
+async fn read_snapshot(conn: &mut Conn, sql: &str, max_rows: usize) -> Result<TableData, String> {
+    let mut result = conn.query_iter(sql).await.map_err(map_err)?;
+    let meta: Vec<Column> = result.columns().map(|c| c.to_vec()).unwrap_or_default();
+    let columns: Vec<String> = meta.iter().map(|c| c.name_str().into_owned()).collect();
+    let mut collector = super::snapshot::Collector::new(max_rows);
+    while let Some(row) = result.next().await.map_err(map_err)? {
+        let values = row.unwrap().into_iter().zip(&meta);
+        collector.push(
+            columns
+                .iter()
+                .cloned()
+                .zip(values.map(|(value, column)| match value {
+                    Value::Bytes(bytes)
+                        if matches!(
+                            column.column_type(),
+                            ColumnType::MYSQL_TYPE_DECIMAL | ColumnType::MYSQL_TYPE_NEWDECIMAL
+                        ) =>
+                    {
+                        serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
+                    }
+                    value => value_to_json(value, column),
+                }))
+                .collect(),
+        )?;
+    }
+    collector.finish(columns)
+}
+
 struct MysqlTx {
     conn: Conn,
 }
@@ -984,7 +1012,33 @@ impl DatabaseAdapter for MysqlAdapter {
             schemas,
         })
     }
+
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let object = format!("{}.{}", quote(&request.schema), quote(&request.table));
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut conn = self.conn().await?;
+        conn.query_drop("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")
+            .await
+            .map_err(map_err)?;
+        let result = read_snapshot(&mut conn, &sql, request.max_rows).await;
+        conn.query_drop("ROLLBACK").await.map_err(map_err)?;
+        result
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "mysql_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {
