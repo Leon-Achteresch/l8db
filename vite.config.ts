@@ -10,13 +10,18 @@ export default defineConfig(async () => ({
   plugins: [tanstackRouter({ target: "react", autoCodeSplitting: true }), react(), tailwindcss()],
 
   resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "./src"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(import.meta.dirname, "./src") },
+      { find: /^monaco-editor\/esm\/vs\/(.*)$/, replacement: "monaco-editor/$1" },
+      {
+        find: /^monaco-vim$/,
+        replacement: path.resolve(import.meta.dirname, "./node_modules/monaco-vim/dist/index.mjs"),
+      },
+    ],
   },
 
   optimizeDeps: {
-    exclude: ["thesvg", "@thesvg/icons"],
+    exclude: ["thesvg", "@thesvg/icons", "monaco-vim"],
     include: [
       "react",
       "react-dom",
