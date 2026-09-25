@@ -17,6 +17,9 @@ export const KINDS: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "elasticsearch",
+  "influxdb",
+  "sqlite_http",
 ];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];

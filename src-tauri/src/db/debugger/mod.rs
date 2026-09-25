@@ -31,8 +31,8 @@ pub fn unsupported(kind: DatabaseKind) -> Availability {
         DatabaseKind::Mssql => "T-SQL-Debugging benötigt einen separaten SQL-Server-Debug-Adapter; SSDT ist keine portable Datenbank-Schnittstelle.",
         DatabaseKind::Odbc => "ODBC standardisiert keine Debug-Schnittstelle. Verwenden Sie den nativen Provider der Datenbank.",
         DatabaseKind::Redis => "Redis-Lua-Debugging benötigt einen eigenen LDB-Adapter und ist kein Stored-Routine-Debugging.",
-        DatabaseKind::Sqlite | DatabaseKind::Duckdb => "Dieser Provider bietet keine serverseitigen prozeduralen Routinen mit einer Debug-Schnittstelle.",
-        DatabaseKind::Clickhouse | DatabaseKind::Mongodb | DatabaseKind::Cassandra => "Für diesen Provider ist keine unterstützte Stored-Routine-Debug-Schnittstelle verfügbar.",
+        DatabaseKind::Sqlite | DatabaseKind::Duckdb | DatabaseKind::SqliteHttp => "Dieser Provider bietet keine serverseitigen prozeduralen Routinen mit einer Debug-Schnittstelle.",
+        DatabaseKind::Clickhouse | DatabaseKind::Mongodb | DatabaseKind::Cassandra | DatabaseKind::Elasticsearch | DatabaseKind::Influxdb => "Für diesen Provider ist keine unterstützte Stored-Routine-Debug-Schnittstelle verfügbar.",
     };
     Availability {
         available: false,

@@ -27,7 +27,9 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
   const cloud = host ? candidates.find((provider) => provider.id === "cloud-postgres") : undefined;
-  return (match ?? cloud ?? candidates[0]).id;
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value.trim())?.[1]?.toLowerCase();
+  const byScheme = candidates.find((provider) => provider.id === scheme);
+  return (match ?? cloud ?? byScheme ?? candidates[0]).id;
 }
 
 export function providerFor(connection: {

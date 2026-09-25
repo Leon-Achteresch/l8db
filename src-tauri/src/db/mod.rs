@@ -12,12 +12,16 @@ mod datagen_data;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+pub(crate) mod elasticsearch;
 pub mod execution;
 pub mod export;
 pub mod export_formats;
 pub mod import;
 pub mod import_source;
 pub mod masking;
+mod filter_expr;
+mod http_api;
+pub(crate) mod influxdb;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;
@@ -35,6 +39,7 @@ pub mod server_output;
 pub mod snapshot;
 mod sql_script;
 mod sqlite;
+mod sqlite_http;
 pub mod ssh;
 pub mod table_copy;
 pub mod transaction;
@@ -1819,6 +1824,16 @@ pub fn create_adapter_from_string(
         DatabaseKind::Odbc => Box::new(odbc::OdbcAdapter::new(connection_string, pool_state, key)?),
         #[cfg(not(feature = "odbc"))]
         DatabaseKind::Odbc => return Err(provider::kind_driver_status(kind).detail),
+        DatabaseKind::Elasticsearch => {
+            Box::new(elasticsearch::ElasticAdapter::new(connection_string)?)
+        }
+        DatabaseKind::Influxdb => {
+            Box::new(influxdb::InfluxAdapter::new(connection_string, database)?)
+        }
+        DatabaseKind::SqliteHttp => Box::new(sqlite_http::SqliteHttpAdapter::new(
+            connection_string,
+            database,
+        )?),
     })
 }
 
@@ -2004,6 +2019,8 @@ mod tests {
             super::DatabaseKind::Mongodb => "{\"ping\": 1}",
             super::DatabaseKind::Cassandra => "SELECT release_version FROM system.local",
             super::DatabaseKind::Oracle => "SELECT 1 FROM dual",
+            super::DatabaseKind::Elasticsearch => "GET _cluster/health",
+            super::DatabaseKind::Influxdb => "SHOW MEASUREMENTS",
             _ => "SELECT 1",
         }
     }
@@ -2359,3 +2376,6 @@ mod backup_live_tests;
 
 #[cfg(test)]
 mod import_live_tests;
+
+#[cfg(test)]
+mod http_live_tests;

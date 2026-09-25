@@ -79,7 +79,7 @@ export function filterOperatorLabel(key: string, translated = true, kind?: Filte
       }[key] ?? key
     );
   }
-  const insensitive = !kind || ["postgres", "duckdb", "clickhouse"].includes(kind);
+  const insensitive = !kind || ["postgres", "duckdb", "clickhouse", "influxdb"].includes(kind);
   return insensitive ? operator.sqlLabel.replace("LIKE", "ILIKE") : operator.sqlLabel;
 }
 
