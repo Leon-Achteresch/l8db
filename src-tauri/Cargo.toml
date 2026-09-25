@@ -56,7 +56,7 @@ oracle = "0.6"
 scylla = "1"
 futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
-odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80", "vendored-unix-odbc"], optional = true }
+odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80"], optional = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
 regex = "1"
@@ -96,3 +96,6 @@ tiberius = { version = "0.12", default-features = false, features = ["tds73", "n
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
+
+[target.'cfg(not(windows))'.dependencies]
+odbc-api = { version = "29", default-features = false, features = ["vendored-unix-odbc"], optional = true }
