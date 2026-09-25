@@ -61,6 +61,8 @@ function fakeCore() {
     writeTextFile: async (path, contents) => { files.set(path, contents) },
     runProcess: async request => { processes.push(request); return { status: 0, stdout: "out", stderr: "" } },
     prompt: (async (request: unknown) => { prompts.push(request); return undefined }) as CoreServices["prompt"],
+    listConnections: async () => [{ id: "c1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "pw", profile: {} }],
+    saveConnections: async items => ({ added: items.length, updated: 0, skipped: [] }),
   };
   return { core, notifications, clipboard, files, processes, prompts };
 }
@@ -246,7 +248,7 @@ test("updateExtension keeps grants and configuration and rejects non-newer versi
   expect(manager.listExtensions()[0].archive.manifest.version).toBe("2.0.0");
 });
 function richArchive(): ExtensionArchive {
-  return validateArchive({ format: 1, manifest: { id: "test.rich", publisher: "test", name: "Rich", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: ["onStartup", "onView:test.view"], permissions: ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute"], capabilities: { network: { hosts: ["example.com", "*.example.org"] }, process: { commands: ["tool"] } }, contributes: { commands: [{ id: "test.run", title: "Run" }], configuration: { "test.mode": { type: "string", default: "a", enum: ["a", "b"] } }, views: [{ id: "test.view", title: "View", location: "sidebar" }], panels: [{ id: "test.panel", title: "Panel" }], statusBar: [{ id: "test.status", alignment: "right", priority: 5 }], menus: [{ command: "test.run", location: "palette" }] } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
+  return validateArchive({ format: 1, manifest: { id: "test.rich", publisher: "test", name: "Rich", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: ["onStartup", "onView:test.view"], permissions: ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write"], capabilities: { network: { hosts: ["example.com", "*.example.org"] }, process: { commands: ["tool"] } }, contributes: { commands: [{ id: "test.run", title: "Run" }], configuration: { "test.mode": { type: "string", default: "a", enum: ["a", "b"] } }, views: [{ id: "test.view", title: "View", location: "sidebar" }], panels: [{ id: "test.panel", title: "Panel" }], statusBar: [{ id: "test.status", alignment: "right", priority: 5 }], menus: [{ command: "test.run", location: "palette" }] } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
 }
 test("manifest validates views, panels, status bar, menus and capabilities", () => {
   expect(() => richArchive()).not.toThrow();
@@ -324,6 +326,25 @@ test("secrets, clipboard, files and processes are permission gated", async () =>
   expect(await allowed("process.run", ["tool", { args: ["--help"] }])).toEqual({ status: 0, stdout: "out", stderr: "" });
   await expect(allowed("process.run", ["other", {}])).rejects.toThrow(ExtensionError);
   expect(processes).toHaveLength(1);
+});
+test("connections list and save are permission gated", async () => {
+  const { manager, runtime } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", []);
+  await manager.activate("test.rich");
+  const denied = runtime.rpc.get("test.rich")!;
+  await expect(denied("connections.list", [])).rejects.toThrow(ExtensionError);
+  await expect(denied("connections.save", [[]])).rejects.toThrow(ExtensionError);
+  await manager.enableExtension("test.rich", ["connections:read"]);
+  await manager.activate("test.rich");
+  const reader = runtime.rpc.get("test.rich")!;
+  expect(await reader("connections.list", [])).toEqual([{ id: "c1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "pw", profile: {} }]);
+  await expect(reader("connections.save", [[]])).rejects.toThrow(ExtensionError);
+  await manager.enableExtension("test.rich", ["connections:read", "connections:write"]);
+  await manager.activate("test.rich");
+  const writer = runtime.rpc.get("test.rich")!;
+  expect(await writer("connections.save", [[{ id: "x" }]])).toEqual({ added: 1, updated: 0, skipped: [] });
+  await expect(writer("connections.save", ["nope"])).rejects.toThrow(ExtensionError);
 });
 test("views, status bar and panels push UI state", async () => {
   const { manager, runtime } = setup();

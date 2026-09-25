@@ -136,6 +136,8 @@ export class PermissionManager {
     "clipboard:read",
     "clipboard:write",
     "process:execute",
+    "connections:read",
+    "connections:write",
   ];
   validate(manifest: ExtensionManifest, grants: Permission[]) {
     for (const grant of grants)

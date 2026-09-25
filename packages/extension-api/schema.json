@@ -75,7 +75,9 @@
           "filesystem",
           "clipboard:read",
           "clipboard:write",
-          "process:execute"
+          "process:execute",
+          "connections:read",
+          "connections:write"
         ]
       }
     },

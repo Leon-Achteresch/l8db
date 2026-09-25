@@ -65,6 +65,11 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
         () => (window as unknown as { result: Promise<Record<string, unknown>> }).result,
       );
       expect(await page.evaluate(() => "untrustedInlineRan" in window)).toBe(false);
+      expect(result.vault).toEqual({
+        stored: ["s3cret"],
+        withoutWrite: 0,
+        loaded: [{ id: "c-1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "s3cret", profile: { id: "c-1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod" } }],
+      });
       expect(result.command).toBe(true);
       expect(result.eventSeen).toBe(true);
       expect(result.disposed).toBe(true);

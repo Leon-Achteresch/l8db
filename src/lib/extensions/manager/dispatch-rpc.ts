@@ -1,5 +1,6 @@
 import type { Disposable, ExtensionDescriptor, Json } from "../contracts";
 import { ExtensionError } from "../contracts";
+import { rpcConnectionsHandlers } from "./rpc-connections";
 import type { RpcDeps, RpcHandler } from "./rpc-context";
 import { rpcCoreHandlers } from "./rpc-core";
 import { rpcIoHandlers } from "./rpc-io";
@@ -9,6 +10,7 @@ import { rpcWindowHandlers } from "./rpc-window";
 
 const RPC_HANDLERS: Record<string, RpcHandler> = {
   ...rpcCoreHandlers,
+  ...rpcConnectionsHandlers,
   ...rpcIoHandlers,
   ...rpcProcessHandlers,
   ...rpcWindowHandlers,
@@ -26,7 +28,14 @@ export async function dispatchRpc(
   if ((!extension.enabled && method !== "logger" && method !== "dispose") || !sessions.has(id))
     throw new ExtensionError("ExtensionDisabledError", id);
   if (!Array.isArray(args)) throw new ExtensionError("ProtocolError", "Invalid RPC arguments");
-  const limit = method === "panels.open" ? 300000 : method === "views.setTree" ? 280000 : 65536;
+  const limit =
+    method === "connections.save"
+      ? 2000000
+      : method === "panels.open"
+        ? 300000
+        : method === "views.setTree"
+          ? 280000
+          : 65536;
   if (JSON.stringify(args).length > limit)
     throw new ExtensionError("ProtocolError", "Invalid RPC arguments");
   const text = (index: number, max = 4096) => {
