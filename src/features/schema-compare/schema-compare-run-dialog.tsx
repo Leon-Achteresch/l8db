@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { cancelExecution } from "@/lib/db";
 import {
+  dryRunKind,
   type RunStep,
   type RunSummary,
   runSyncStatements,
@@ -110,7 +111,11 @@ export function SchemaCompareRunDialog({
   const dryRun = oracle ? "precheck" : rollback ? "rollback" : null;
 
   useEffect(() => {
-    if (!open || result.kind !== "postgres" || !target.connectionId) return;
+    if (!open || !target.connectionId) return;
+    if (dryRunKind(result.kind) !== "rollback") {
+      setRollback(false);
+      return;
+    }
     let active = true;
     setRollback(null);
     prepareConnection(target.connectionId)
@@ -221,8 +226,9 @@ export function SchemaCompareRunDialog({
                   </p>
                   <p>
                     <strong>Ausführen:</strong> alle Anweisungen laufen in einer Transaktion. Bei
-                    einem Fehler wird alles zurückgerollt. Neue Enum-Werte werden vorab
-                    festgeschrieben, weil PostgreSQL sie sonst nicht verwenden kann.
+                    einem Fehler wird alles zurückgerollt.
+                    {result.kind === "postgres" &&
+                      " Neue Enum-Werte werden vorab festgeschrieben, weil PostgreSQL sie sonst nicht verwenden kann."}
                   </p>
                 </>
               ) : (
@@ -250,7 +256,7 @@ export function SchemaCompareRunDialog({
                 </>
               )}
             </div>
-            {oracle && (
+            {(oracle || result.kind === "mysql") && (
               <Label className="flex items-center gap-2 text-xs font-normal">
                 <Checkbox
                   checked={continueOnError}

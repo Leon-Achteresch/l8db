@@ -1,4 +1,6 @@
-use super::{execution, snapshot};
+use super::pool::PoolState;
+use super::provider::DatabaseKind;
+use super::{create_adapter_from_string, execution, snapshot, TableData};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -8,7 +10,32 @@ use std::collections::BTreeMap;
 pub struct CompareSide {
     pub connection_string: String,
     pub database: Option<String>,
+    #[serde(default)]
+    pub kind: Option<DatabaseKind>,
     pub source: snapshot::SnapshotRequest,
+}
+
+async fn read(side: &CompareSide, pool_state: &PoolState) -> Result<TableData, String> {
+    match side.kind {
+        None | Some(DatabaseKind::Postgres) => {
+            snapshot::read(
+                &side.connection_string,
+                side.database.as_deref(),
+                &side.source,
+            )
+            .await
+        }
+        Some(kind) => {
+            create_adapter_from_string(
+                kind,
+                &side.connection_string,
+                side.database.as_deref(),
+                pool_state.clone(),
+            )?
+            .snapshot_rows(&side.source)
+            .await
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -86,22 +113,15 @@ fn index(rows: Vec<Value>, keys: &[String], side: &str) -> Result<BTreeMap<Strin
     Ok(result)
 }
 
-pub async fn compare(request: &CompareRequest) -> Result<CompareResult, String> {
+pub async fn compare(
+    request: &CompareRequest,
+    pool_state: &PoolState,
+) -> Result<CompareResult, String> {
     if request.key_columns.is_empty() {
         return Err("Vergleich benötigt eindeutige Schlüssel.".into());
     }
-    let left = snapshot::read(
-        &request.left.connection_string,
-        request.left.database.as_deref(),
-        &request.left.source,
-    )
-    .await?;
-    let right = snapshot::read(
-        &request.right.connection_string,
-        request.right.database.as_deref(),
-        &request.right.source,
-    )
-    .await?;
+    let left = read(&request.left, pool_state).await?;
+    let right = read(&request.right, pool_state).await?;
     for name in request.key_columns.iter().chain(&request.compare_columns) {
         if !left.columns.contains(name) || !right.columns.contains(name) {
             return Err(format!("Spalte {name} fehlt auf einer Seite."));
@@ -225,6 +245,7 @@ mod tests {
         let side = |table: &str| CompareSide {
             connection_string: url.clone(),
             database: None,
+            kind: None,
             source: snapshot::SnapshotRequest {
                 schema: "public".into(),
                 table: table.into(),
@@ -242,15 +263,16 @@ mod tests {
             key_columns: vec!["a".into(), "b".into()],
             compare_columns: vec!["value".into()],
         };
+        let pool = crate::db::pool::create_pool_state();
         let start = std::time::Instant::now();
-        let result = compare(&request).await.unwrap();
+        let result = compare(&request, &pool).await.unwrap();
         println!("100000 rows per side compared in {:?}", start.elapsed());
         assert_eq!(result.counts.equal, 99999);
         assert_eq!(result.counts.changed, 1);
         assert_eq!(result.rows.len(), 1);
         request.left.source.filter = Some("a < 100".into());
         request.right.source.filter = Some("a < 100".into());
-        assert_eq!(compare(&request).await.unwrap().counts.equal, 99);
+        assert_eq!(compare(&request, &pool).await.unwrap().counts.equal, 99);
         let result = execution::with_progress(
             |_| {
                 execution::cancel("compare-cancel").unwrap();
@@ -261,7 +283,7 @@ mod tests {
                     ..Default::default()
                 }),
                 true,
-                compare(&request),
+                compare(&request, &pool),
             ),
         )
         .await;

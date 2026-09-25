@@ -12,6 +12,7 @@ export interface CompareState {
   result: DataCompareResult & { detailsTruncated?: boolean };
   keyColumns: string[];
   compareColumns: string[];
+  columnTypes: { left: Record<string, string>; right: Record<string, string> };
   left: DataCompareSideSelection;
   right: DataCompareSideSelection;
 }

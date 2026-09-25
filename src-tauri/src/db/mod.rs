@@ -1040,6 +1040,13 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         Err(unsupported("Datenbankübersicht"))
     }
+    async fn snapshot_rows(
+        &self,
+        request: &snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let _ = request;
+        Err(unsupported("Datenvergleich"))
+    }
     async fn schema_catalog(
         &self,
         schema: &str,
