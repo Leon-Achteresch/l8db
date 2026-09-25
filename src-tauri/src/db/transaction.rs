@@ -83,7 +83,9 @@ fn json_lit(kind: DatabaseKind, value: &serde_json::Value) -> String {
 fn binary_lit(kind: DatabaseKind, value: &str) -> Option<String> {
     let hex = super::hex_blob_body(value)?;
     match kind {
-        DatabaseKind::Mysql | DatabaseKind::Sqlite => Some(format!("X'{hex}'")),
+        DatabaseKind::Mysql | DatabaseKind::Sqlite | DatabaseKind::SqliteHttp => {
+            Some(format!("X'{hex}'"))
+        }
         DatabaseKind::Mssql => Some(format!("0x{hex}")),
         _ => None,
     }
@@ -256,6 +258,10 @@ impl Generic {
         let mut row = match self.kind {
             DatabaseKind::Mssql => {
                 let sql = format!("INSERT INTO {target} {col_sql} OUTPUT INSERTED.* {val_sql}");
+                self.execute(&sql).await?.rows.into_iter().next()
+            }
+            DatabaseKind::SqliteHttp => {
+                let sql = format!("INSERT INTO {target} {col_sql} {val_sql} RETURNING *");
                 self.execute(&sql).await?.rows.into_iter().next()
             }
             _ => {

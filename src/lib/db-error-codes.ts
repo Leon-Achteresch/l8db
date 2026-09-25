@@ -1,5 +1,19 @@
 import type { DatabaseKind } from "@/lib/db";
 
+const SQLITE_PATTERNS: Array<[RegExp, string, string]> = [
+  [
+    /\bSQLITE_CONSTRAINT_UNIQUE\b|UNIQUE constraint failed/i,
+    "SQLITE_CONSTRAINT_UNIQUE",
+    "Eindeutigkeitsverletzung",
+  ],
+  [
+    /\bSQLITE_CONSTRAINT_FOREIGNKEY\b|FOREIGN KEY constraint failed/i,
+    "SQLITE_CONSTRAINT_FOREIGNKEY",
+    "Fremdschlüsselverletzung",
+  ],
+  [/\bSQLITE_ERROR\b|near ".*": syntax error/i, "SQLITE_ERROR", "SQL-Fehler oder Syntaxfehler"],
+];
+
 const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
   postgres: [
     [/\b28P01\b/i, "28P01", "Authentifizierung fehlgeschlagen"],
@@ -17,19 +31,8 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/\b1142\b|ER_TABLEACCESS_DENIED_ERROR/i, "1142", "Berechtigung fehlt"],
     [/\b1146\b|ER_NO_SUCH_TABLE/i, "1146", "Tabelle nicht gefunden"],
   ],
-  sqlite: [
-    [
-      /\bSQLITE_CONSTRAINT_UNIQUE\b|UNIQUE constraint failed/i,
-      "SQLITE_CONSTRAINT_UNIQUE",
-      "Eindeutigkeitsverletzung",
-    ],
-    [
-      /\bSQLITE_CONSTRAINT_FOREIGNKEY\b|FOREIGN KEY constraint failed/i,
-      "SQLITE_CONSTRAINT_FOREIGNKEY",
-      "Fremdschlüsselverletzung",
-    ],
-    [/\bSQLITE_ERROR\b|near ".*": syntax error/i, "SQLITE_ERROR", "SQL-Fehler oder Syntaxfehler"],
-  ],
+  sqlite: SQLITE_PATTERNS,
+  sqlite_http: SQLITE_PATTERNS,
   mssql: [
     [/\b18456\b/i, "18456", "Authentifizierung fehlgeschlagen"],
     [/\b2627\b|\b2601\b/i, "2627/2601", "Eindeutigkeitsverletzung"],
@@ -81,6 +84,15 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/\b23000\b/i, "23000", "Integritäts- oder Eindeutigkeitsverletzung"],
     [/\b42000\b/i, "42000", "Syntaxfehler oder Berechtigung fehlt"],
     [/\b42S02\b/i, "42S02", "Tabelle oder View nicht gefunden"],
+  ],
+  elasticsearch: [
+    [/index_not_found_exception|no such index/i, "404", "Index nicht gefunden"],
+    [/security_exception|\b401\b/i, "401", "Authentifizierung fehlgeschlagen"],
+    [/parsing_exception|x_content_parse_exception/i, "400", "Query-DSL ungültig"],
+  ],
+  influxdb: [
+    [/\b401\b|unauthorized/i, "401", "Token ungültig oder fehlt"],
+    [/bucket .* not found|database not found/i, "404", "Bucket oder Datenbank nicht gefunden"],
   ],
 };
 

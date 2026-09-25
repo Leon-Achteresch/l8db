@@ -11,7 +11,21 @@ export function kindFromUrl(value: string): DatabaseKind | undefined {
   const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
   if (!match) return undefined;
   const scheme = match[1].toLowerCase();
-  return allProviders().find((provider) => provider.url_schemes.includes(scheme))?.kind;
+  const candidates = allProviders().filter((provider) => provider.url_schemes.includes(scheme));
+  let host = "";
+  try {
+    host = new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  const byHost = host
+    ? candidates.find((provider) =>
+        provider.hosts.some((entry) =>
+          entry.startsWith(".") ? host.endsWith(entry) : host === entry,
+        ),
+      )
+    : undefined;
+  return (byHost ?? candidates[0])?.kind;
 }
 
 export function filePath(value: string): string {

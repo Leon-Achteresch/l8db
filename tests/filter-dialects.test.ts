@@ -31,6 +31,9 @@ const kinds: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "elasticsearch",
+  "influxdb",
+  "sqlite_http",
 ];
 
 for (const kind of kinds) {

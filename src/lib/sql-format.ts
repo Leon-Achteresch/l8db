@@ -19,6 +19,7 @@ const DIALECT_BY_KIND: Partial<Record<DatabaseKind, SqlDialect>> = {
   postgres: "postgresql",
   mysql: "mysql",
   sqlite: "sqlite",
+  sqlite_http: "sqlite",
   mssql: "transactsql",
   clickhouse: "clickhouse",
   oracle: "plsql",
