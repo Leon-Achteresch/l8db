@@ -13,6 +13,7 @@ export {
 } from "./core";
 export * from "./datagen";
 export * from "./debugger";
+export * from "./file-open";
 export * from "./providers";
 export * from "./replication";
 export * from "./roles";

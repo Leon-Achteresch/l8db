@@ -569,7 +569,7 @@ const PROVIDERS: &[Provider] = &[
     my("oceanbase", "OceanBase", 2881, "mysql://root@localhost:2881/test", "OceanBase im MySQL-Modus.", &[]),
     Provider { id: "sqlite", name: "SQLite", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/app.db", hint: "Pfad zu einer SQLite-Datei oder :memory:. Eingebetteter Treiber, keine Installation nötig.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "libsql", name: "libSQL / Turso (lokal)", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/local.db", hint: "Lokale libSQL-Dateien sind SQLite-kompatibel.", hosts: &[], driver: Driver::Builtin },
-    Provider { id: "duckdb", name: "DuckDB", group: "Dateibasiert", kind: DatabaseKind::Duckdb, port: None, placeholder: "/Users/name/daten/analytics.duckdb", hint: "Analytische Datei-Datenbank. Benötigt einen Build mit dem Cargo-Feature duckdb.", hosts: &[], driver: Driver::CargoFeature { feature: "duckdb" } },
+    Provider { id: "duckdb", name: "DuckDB", group: "Dateibasiert", kind: DatabaseKind::Duckdb, port: None, placeholder: "/Users/name/daten/analytics.duckdb", hint: "Analytische Datei-Datenbank, eingebettet. Öffnet auch CSV- und Parquet-Dateien.", hosts: &[], driver: Driver::CargoFeature { feature: "duckdb" } },
     Provider { id: "turso", name: "libSQL / Turso (remote)", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "libsql://token:AUTH_TOKEN@datenbank-org.turso.io", hint: "HTTP-Pipeline-API von libSQL/sqld. Auth-Token als Passwort; ?tls=false für lokale sqld-Server auf Port 8080.", hosts: &[".turso.io"], driver: Driver::Builtin },
     Provider { id: "d1", name: "Cloudflare D1", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/datenbank", hint: "Cloudflare-API mit Account-ID als Benutzer und API-Token (D1 Edit) als Passwort. Datenbank per Name oder UUID.", hosts: &["api.cloudflare.com"], driver: Driver::Builtin },
     Provider { id: "mssql", name: "SQL Server", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://sa:Password1@localhost:1433/master?encrypt=false", hint: "TDS-Protokoll. Parameter: encrypt=true|false, trust_server_certificate=true.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
@@ -758,10 +758,7 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             }
         }
         Driver::CargoFeature { feature } => {
-            let compiled = match feature {
-                "duckdb" => cfg!(feature = "duckdb"),
-                _ => false,
-            };
+            let compiled = feature == "duckdb" && cfg!(feature = "duckdb");
             DriverStatus {
                 available: compiled,
                 detail: if compiled {
@@ -786,6 +783,7 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
 
 #[cfg(feature = "odbc")]
 fn odbc_environment_status() -> Result<Vec<String>, String> {
+    super::odbc::configure_system_ini();
     let env = odbc_api::Environment::new()
         .map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))?;
     Ok(env
@@ -798,7 +796,7 @@ fn odbc_environment_status() -> Result<Vec<String>, String> {
 
 #[cfg(not(feature = "odbc"))]
 fn odbc_environment_status() -> Result<Vec<String>, String> {
-    Err("ODBC ist in diesem Build nicht enthalten. Build mit: cargo tauri build --features odbc (benötigt unixODBC)".to_string())
+    Err("ODBC ist in diesem Build nicht enthalten (mit --no-default-features gebaut). Build mit: cargo tauri build --features odbc".to_string())
 }
 
 pub fn list_providers() -> Vec<ProviderInfo> {
@@ -841,14 +839,17 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
         },
         DatabaseKind::Odbc => {
             if !cfg!(feature = "odbc") {
-                return Err("ODBC ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features odbc (benötigt unixODBC)".to_string());
+                return Err("ODBC ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features odbc".to_string());
             }
             match std::env::consts::OS {
                 "macos" => Ok("brew install unixodbc"),
-                "linux" => Ok("sudo -n apt-get install -y unixodbc unixodbc-dev"),
+                "linux" => Ok("sudo -n apt-get install -y unixodbc"),
                 "windows" => Err("Der ODBC-Datenquellen-Administrator ist Teil von Windows. Hersteller-Treiber zusätzlich installieren, siehe https://learn.microsoft.com/sql/odbc/admin/odbc-data-source-administrator".to_string()),
                 os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.unixodbc.org")),
             }
+        }
+        DatabaseKind::Duckdb if cfg!(feature = "duckdb") => {
+            Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string())
         }
         DatabaseKind::Duckdb => Err("DuckDB ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features duckdb".to_string()),
         _ => Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string()),
@@ -913,11 +914,8 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     if output.status.success() {
         let mut result = short;
         let still_missing = !kind_driver_status(kind).available
-            && match kind {
-                DatabaseKind::Oracle => true,
-                DatabaseKind::Odbc => cfg!(feature = "odbc"),
-                _ => false,
-            };
+            && (kind == DatabaseKind::Oracle
+                || (kind == DatabaseKind::Odbc && cfg!(feature = "odbc")));
         if still_missing {
             result.push_str(
                 "\n\nHinweis: Die Installation war erfolgreich, der Treiber wird aber noch nicht erkannt. Starte l8db neu und prüfe den Status danach erneut.",
@@ -982,9 +980,21 @@ mod tests {
     }
 
     #[test]
-    fn duckdb_reports_rebuild() {
+    fn duckdb_is_embedded_by_default() {
         let err = install_command(DatabaseKind::Duckdb).unwrap_err();
-        assert!(err.contains("duckdb"), "{err}");
+        if cfg!(feature = "duckdb") {
+            assert!(err.contains("eingebettet"), "{err}");
+            assert!(kind_driver_status(DatabaseKind::Duckdb).available);
+        } else {
+            assert!(err.contains("duckdb"), "{err}");
+        }
+    }
+
+    #[cfg(feature = "odbc")]
+    #[test]
+    fn odbc_driver_manager_is_bundled() {
+        let status = kind_driver_status(DatabaseKind::Odbc);
+        assert!(status.available, "{}", status.detail);
     }
 
     #[test]

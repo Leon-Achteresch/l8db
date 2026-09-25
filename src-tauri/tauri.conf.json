@@ -90,6 +90,68 @@
     ],
     "homepage": "https://github.com/Leon-Achteresch/l8db",
     "license": "Elastic-2.0",
+    "fileAssociations": [
+      {
+        "ext": ["sqlite", "sqlite3", "db", "db3"],
+        "name": "SQLite-Datenbank",
+        "description": "SQLite-Datenbank",
+        "mimeType": "application/vnd.sqlite3",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["duckdb", "ddb"],
+        "name": "DuckDB-Datenbank",
+        "description": "DuckDB-Datenbank",
+        "mimeType": "application/x-duckdb",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "ext": ["parquet"],
+        "name": "Parquet-Datei",
+        "description": "Parquet-Datei",
+        "mimeType": "application/vnd.apache.parquet",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["csv"],
+        "name": "CSV-Datei",
+        "description": "CSV-Datei",
+        "mimeType": "text/csv",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["sql"],
+        "name": "SQL-Skript",
+        "description": "SQL-Skript",
+        "mimeType": "application/sql",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["l8nb"],
+        "name": "l8db-Notebook",
+        "description": "l8db-Notebook",
+        "mimeType": "application/x-l8db-notebook",
+        "role": "Editor",
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "com.leon.l8db.notebook",
+          "conformsTo": ["public.json"]
+        }
+      }
+    ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/l8db.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/l8db.desktop"
+      }
+    },
     "macOS": {
       "minimumSystemVersion": "12.0",
       "hardenedRuntime": true,
