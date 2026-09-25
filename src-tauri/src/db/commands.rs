@@ -1270,14 +1270,18 @@ pub async fn list_import_columns(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<crate::db::ImportColumnInfo>, String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .list_import_columns(&schema, &table)
-    .await
+    )?;
+    match super::import::Dialect::from_kind(kind) {
+        Some(dialect) => {
+            super::import::list_import_columns(dialect, adapter.as_ref(), &schema, &table).await
+        }
+        None => adapter.list_import_columns(&schema, &table).await,
+    }
 }
 
 #[tauri::command]
@@ -1308,14 +1312,31 @@ pub async fn csv_import(
             );
         },
         super::execution::run(options, true, async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .csv_import(&request)
-            .await
+            if !kind.capabilities().csv_import {
+                return Err("Dateiimport wird für diesen Datenbanktyp nicht unterstützt.".into());
+            }
+            match super::import::Dialect::from_kind(kind) {
+                Some(super::import::Dialect::Postgres) | None => {
+                    create_adapter_from_string(
+                        kind,
+                        &connection_string,
+                        database.as_deref(),
+                        pool_state.inner().clone(),
+                    )?
+                    .csv_import(&request)
+                    .await
+                }
+                Some(_) => {
+                    super::import::import(
+                        kind,
+                        &connection_string,
+                        database.as_deref(),
+                        pool_state.inner().clone(),
+                        &request,
+                    )
+                    .await
+                }
+            }
         }),
     )
     .await
@@ -2386,4 +2407,72 @@ pub fn read_csv_preview(path: String, app: tauri::AppHandle) -> Result<serde_jso
         return Err("CSV-Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
     }
     super::csv_stream::preview(&path)
+}
+
+#[tauri::command(async)]
+pub fn read_import_preview(
+    path: String,
+    format: super::import_source::ImportFormat,
+    sheet: Option<String>,
+    skip_rows: Option<usize>,
+    has_header: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<super::import_source::ImportPreview, String> {
+    use tauri_plugin_fs::FsExt;
+    if !app.fs_scope().is_allowed(&path) {
+        return Err("Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
+    }
+    super::import_source::preview(
+        &path,
+        format,
+        sheet.as_deref(),
+        skip_rows.unwrap_or(0),
+        has_header.unwrap_or(true),
+    )
+}
+
+#[tauri::command(async)]
+pub fn export_rows_file(
+    request: super::export_formats::RowsExportRequest,
+    app: tauri::AppHandle,
+) -> Result<u64, String> {
+    use tauri_plugin_fs::FsExt;
+    if !app.fs_scope().is_allowed(&request.path) {
+        return Err("Zieldatei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
+    }
+    super::export_formats::write_rows_file(&request)
+}
+
+#[tauri::command]
+pub async fn copy_table_to_connection(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::table_copy::TableCopyRequest,
+    app: tauri::AppHandle,
+    options: Option<super::execution::ExecutionOptions>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::table_copy::TableCopyOutcome, String> {
+    use tauri::Emitter;
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    super::execution::with_progress(
+        move |rows| {
+            let _ = app.emit(
+                "table-copy-progress",
+                serde_json::json!({ "jobId": job_id, "rows": rows }),
+            );
+        },
+        super::execution::run(
+            options,
+            true,
+            super::table_copy::copy_table(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+                &request,
+            ),
+        ),
+    )
+    .await
 }
