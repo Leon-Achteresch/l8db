@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { Menu } from "lucide-react";
+import { ChevronRight, Menu } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
   DropdownMenu,
@@ -13,6 +15,14 @@ import { isEasyModeRouteVisible } from "@/lib/easy-mode";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+
+const COLLAPSIBLE_URLS = new Set([
+  "/notebook",
+  "/monitor",
+  "/er-diagram",
+  "/saved-plan",
+  "/query-builder",
+]);
 
 function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
@@ -30,6 +40,30 @@ export function AppHeaderNavigation() {
       appSidebarData.navMain.find((item) => isNavActive(item.url, state.location.pathname))?.url,
   );
 
+  const [expanded, setExpanded] = useState(false);
+  const primaryItems = navItems.filter((item) => !COLLAPSIBLE_URLS.has(item.url));
+  const extraItems = navItems.filter((item) => COLLAPSIBLE_URLS.has(item.url));
+
+  const renderItem = (item: (typeof navItems)[number]) => {
+    const active = item.url === activeUrl;
+    return (
+      <Tooltip key={item.title} content={item.title} side="bottom">
+        <Link
+          to={item.url}
+          aria-label={item.title}
+          aria-current={active ? "page" : undefined}
+          className={cn(
+            "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+            "hover:bg-muted hover:text-foreground",
+            active && "bg-primary/12 text-foreground hover:bg-primary/12",
+          )}
+        >
+          <item.icon className="size-4" strokeWidth={2} />
+        </Link>
+      </Tooltip>
+    );
+  };
+
   return (
     <nav
       data-tour="header-nav"
@@ -43,25 +77,40 @@ export function AppHeaderNavigation() {
         l8db
       </Link>
       <div className="hidden items-center gap-1 @min-[54rem]:flex">
-        {navItems.map((item) => {
-          const active = item.url === activeUrl;
-          return (
-            <Tooltip key={item.title} content={item.title} side="bottom">
-              <Link
-                to={item.url}
-                aria-label={item.title}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-                  "hover:bg-muted hover:text-foreground",
-                  active && "bg-primary/12 text-foreground hover:bg-primary/12",
-                )}
+        {primaryItems.map(renderItem)}
+        <AnimatePresence initial={false}>
+          {expanded && extraItems.length > 0 && (
+            <motion.div
+              key="extra"
+              className="flex items-center gap-1 overflow-hidden"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "auto", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {extraItems.map(renderItem)}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {extraItems.length > 0 && (
+          <Tooltip content={expanded ? "Weniger anzeigen" : "Mehr anzeigen"} side="bottom">
+            <button
+              type="button"
+              aria-label={expanded ? "Weniger anzeigen" : "Mehr anzeigen"}
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+              className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <motion.span
+                className="inline-flex"
+                animate={{ rotate: expanded ? 180 : 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
-                <item.icon className="size-4" strokeWidth={2} />
-              </Link>
-            </Tooltip>
-          );
-        })}
+                <ChevronRight className="size-4" strokeWidth={2} />
+              </motion.span>
+            </button>
+          </Tooltip>
+        )}
       </div>
       <div className="@min-[54rem]:hidden">
         <DropdownMenu>

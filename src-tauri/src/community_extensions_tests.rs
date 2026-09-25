@@ -117,6 +117,25 @@ fn hostile_paths_and_permissions_are_rejected() {
         json!({"enabled":true,"grants":["network"],"configuration":{}}),
     )
     .unwrap();
+    let mut vault_archive = archive();
+    vault_archive["manifest"]["id"] = json!("test.vault");
+    vault_archive["manifest"]["permissions"] =
+        json!(["process:execute", "connections:read", "connections:write"]);
+    operate(&root.0, "install", "", json!({"archive":vault_archive})).unwrap();
+    operate(
+        &root.0,
+        "update",
+        "test.vault",
+        json!({"enabled":true,"grants":["process:execute","connections:read","connections:write"],"configuration":{}}),
+    )
+    .unwrap();
+    assert!(operate(
+        &root.0,
+        "update",
+        "test.vault",
+        json!({"enabled":true,"grants":["connections:admin"],"configuration":{}})
+    )
+    .is_err());
 }
 #[test]
 fn discovery_isolates_corrupt_entries() {

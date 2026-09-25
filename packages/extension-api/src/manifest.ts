@@ -7,7 +7,7 @@ export class ExtensionError extends Error {
     this.name = code;
   }
 }
-export const permissions: Permission[] = ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute"];
+export const permissions: Permission[] = ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write"];
 export const extensionIdPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 export const apiVersions = ["^1.0.0", "^1.1.0"];
 const commandPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;

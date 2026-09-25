@@ -33,7 +33,7 @@ async function handleProcessRun(ctx: RpcContext): Promise<Json | void> {
     throw new ExtensionError("ProtocolError", "Invalid process env");
   if (
     options.timeoutMs !== undefined &&
-    (typeof options.timeoutMs !== "number" || options.timeoutMs < 1 || options.timeoutMs > 120000)
+    (typeof options.timeoutMs !== "number" || options.timeoutMs < 1 || options.timeoutMs > 600000)
   )
     throw new ExtensionError("ProtocolError", "Invalid process timeout");
   return (await ctx.core.runProcess({ command, options })) as unknown as Json;
