@@ -52,6 +52,8 @@ const PROVIDERS = [
   provider("sqlite", "sqlite", ["sqlite", "file"], [], { default_port: null, file_based: true }),
   provider("redis", "redis", ["redis", "rediss"], ["localhost"], { default_port: 6379 }),
   provider("oracle", "oracle", ["oracle"], ["localhost"], { default_port: 1521 }),
+  provider("dynamodb", "dynamodb", ["dynamodb"], [], { default_port: null }),
+  provider("athena", "athena", ["athena"], [], { default_port: null }),
 ];
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -182,6 +184,46 @@ describe("PostgreSQL URLs", () => {
     expect(result).toContain("hostaddr=127.0.0.1");
     expect(result).toContain("options=-c%20search_path%3Dpublic");
     expect(() => effectiveConnectionString(tunneled)).toThrow("SSH-Tunnel");
+  });
+});
+
+describe("AWS providers", () => {
+  test("parses region hosts, catalogs and keychain secrets", () => {
+    const dynamo =
+      "dynamodb://AKID:se%2Fcret%3Atoken@eu-central-1?endpoint=http%3A%2F%2Flocalhost%3A8000";
+    expect(kindFromUrl(dynamo)).toBe("dynamodb");
+    expect(parseConnectionUrl(dynamo).hostname).toBe("eu-central-1");
+    expect(extractUrlPassword(dynamo)).toBe("se/cret:token");
+    expect(scrubUrlPassword(dynamo)).toBe(
+      "dynamodb://AKID@eu-central-1?endpoint=http%3A%2F%2Flocalhost%3A8000",
+    );
+    expect(extractUrlPassword(injectUrlPassword(scrubUrlPassword(dynamo), "se/cret:token"))).toBe(
+      "se/cret:token",
+    );
+    const athena = "athena://auto/AwsDataCatalog?profile=dev&workgroup=primary";
+    expect(kindFromUrl(athena)).toBe("athena");
+    expect(connectionSummary(athena)).toEqual({
+      host: "auto",
+      port: "",
+      database: "AwsDataCatalog",
+      user: "",
+    });
+    expect(() => parseConnectionUrl("athena:///AwsDataCatalog")).toThrow();
+  });
+
+  test("keeps AWS auth mode and secrets in URL parameters", async () => {
+    const { awsAuthMode, joinAwsSecret, splitAwsSecret, withAwsParam, awsParam } = await import(
+      "../src/lib/aws"
+    );
+    expect(awsAuthMode("AKID", "")).toBe("keys");
+    expect(awsAuthMode("", "?profile=")).toBe("profile");
+    expect(awsAuthMode("", "?endpoint=x")).toBe("env");
+    expect(splitAwsSecret("a/b:tok")).toEqual({ secret: "a/b", token: "tok" });
+    expect(joinAwsSecret("a/b", " ")).toBe("a/b");
+    const search = withAwsParam("?workgroup=wg", "output", "s3://bucket/out/");
+    expect(awsParam(search, "output")).toBe("s3://bucket/out/");
+    expect(withAwsParam(search, "output", "")).toBe("?workgroup=wg");
+    expect(withAwsParam("", "profile", "", true)).toBe("?profile=");
   });
 });
 

@@ -3,6 +3,7 @@ import apacheDoris from "thesvg/apache-doris";
 import apacheHive from "thesvg/apache-hive";
 import athena from "thesvg/aws-amazon-athena";
 import documentdb from "thesvg/aws-amazon-documentdb";
+import dynamodb from "thesvg/aws-amazon-dynamodb";
 import redshift from "thesvg/aws-amazon-redshift";
 import cosmosdb from "thesvg/azure-azure-cosmos-db";
 import clickhouse from "thesvg/clickhouse";
@@ -47,6 +48,7 @@ const ICONS: Record<string, IconModule> = {
   "apache-hive": apacheHive,
   "aws-amazon-athena": athena,
   "aws-amazon-documentdb": documentdb,
+  "aws-amazon-dynamodb": dynamodb,
   "aws-amazon-redshift": redshift,
   "azure-azure-cosmos-db": cosmosdb,
   clickhouse,

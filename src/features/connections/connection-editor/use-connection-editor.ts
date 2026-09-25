@@ -220,11 +220,13 @@ export function useConnectionEditor({
   const databaseLabel =
     kind === "oracle"
       ? "Service-Name"
-      : kind === "cassandra"
-        ? "Keyspace"
-        : kind === "redis"
-          ? "Datenbank-Nummer"
-          : "Datenbank";
+      : kind === "athena"
+        ? "Katalog"
+        : kind === "cassandra"
+          ? "Keyspace"
+          : kind === "redis"
+            ? "Datenbank-Nummer"
+            : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
 
   return {
@@ -237,6 +239,7 @@ export function useConnectionEditor({
     database,
     databaseLabel,
     elapsed,
+    extraParams,
     file,
     groups,
     guided,
@@ -271,6 +274,7 @@ export function useConnectionEditor({
     selectProvider,
     setColor,
     setDatabase,
+    setExtraParams,
     setFile,
     setHost,
     setName,

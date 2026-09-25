@@ -17,6 +17,8 @@ export const KINDS: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "dynamodb",
+  "athena",
 ];
 
 export const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-ca", "verify-full"];

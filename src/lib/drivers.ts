@@ -25,6 +25,8 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
   cassandra: "Cassandra / ScyllaDB",
   duckdb: "DuckDB",
   odbc: "ODBC",
+  dynamodb: "Amazon DynamoDB",
+  athena: "Amazon Athena",
 };
 
 export function platformOs(platform?: string): PlatformOs {

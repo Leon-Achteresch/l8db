@@ -31,6 +31,8 @@ const kinds: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "dynamodb",
+  "athena",
 ];
 
 for (const kind of kinds) {
@@ -70,6 +72,23 @@ test("Cassandra excludes unsupported SQL operators and OR", () => {
   expect(filterSupportsOr("cassandra")).toBe(false);
   expect(combineFilterConditions(['"id" > 1', '"id" < 5'], "AND", "cassandra")).toBe(
     '"id" > 1 AND "id" < 5',
+  );
+});
+
+test("DynamoDB compiles PartiQL functions and Athena casts text matches", () => {
+  expect(compileSingleCondition("name", "contains", "a'b", "dynamodb")).toBe(
+    `contains("name", 'a''b')`,
+  );
+  expect(compileSingleCondition("name", "startsWith", "x", "dynamodb")).toBe(
+    `begins_with("name", 'x')`,
+  );
+  expect(compileSingleCondition("total", "gte", "10", "dynamodb", "Number")).toBe(`"total" >= 10`);
+  expect(compileSingleCondition("name", "eq", "x", "dynamodb", "String")).toBe(`"name" = 'x'`);
+  for (const operator of ["endsWith", "in", "notIn"]) {
+    expect(filterOperatorsForKind("dynamodb").some((op) => op.key === operator)).toBe(false);
+  }
+  expect(compileSingleCondition("name", "contains", "50%", "athena")).toBe(
+    `LOWER(CAST("name" AS VARCHAR)) LIKE LOWER('%50!%%') ESCAPE '!'`,
   );
 });
 
