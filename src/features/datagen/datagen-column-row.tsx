@@ -17,7 +17,7 @@ interface Props {
 
 export function DatagenColumnRow({ column, onChange }: Props) {
   return (
-    <div className="grid grid-cols-[minmax(0,10rem)_11rem_minmax(0,1fr)_4.5rem] items-center gap-2 py-1">
+    <div className="grid grid-cols-[minmax(0,10rem)_11rem_minmax(0,1fr)_5.5rem] items-center gap-2 py-1">
       <div className="min-w-0">
         <p className="truncate font-mono text-xs font-medium" title={column.name}>
           {column.name}
@@ -54,21 +54,24 @@ export function DatagenColumnRow({ column, onChange }: Props) {
           onChange={(generator) => onChange({ generator })}
         />
       </div>
-      <Input
-        className="h-7 text-xs"
-        type="number"
-        min={0}
-        max={100}
-        disabled={!column.nullable || column.generator.kind === "skip"}
-        aria-label={`NULL-Anteil ${column.name}`}
-        title="NULL-Anteil in %"
-        value={Math.round(column.nullRatio * 100)}
-        onChange={(event) =>
-          onChange({
-            nullRatio: Math.min(100, Math.max(0, Number(event.target.value) || 0)) / 100,
-          })
-        }
-      />
+      <div className="flex items-center gap-1" title="Anteil der Zeilen, die NULL erhalten">
+        <Input
+          className="h-7 text-xs"
+          type="number"
+          min={0}
+          max={100}
+          disabled={!column.nullable || column.generator.kind === "skip"}
+          aria-label={`NULL-Anteil ${column.name}`}
+          title="NULL-Anteil in %"
+          value={Math.round(column.nullRatio * 100)}
+          onChange={(event) =>
+            onChange({
+              nullRatio: Math.min(100, Math.max(0, Number(event.target.value) || 0)) / 100,
+            })
+          }
+        />
+        <span className="text-[10px] text-muted-foreground">%</span>
+      </div>
     </div>
   );
 }

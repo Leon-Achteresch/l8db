@@ -78,8 +78,9 @@ export function TestDataDialog({
           <DialogHeader>
             <DialogTitle>Testdaten · {[schema, table].filter(Boolean).join(".")}</DialogTitle>
             <DialogDescription>
-              Generatoren werden aus Spaltenname und Typ vorgeschlagen. Fremdschlüssel nutzen
-              vorhandene Elternschlüssel, eindeutige Spalten werden dedupliziert.
+              {state.mode === "copy"
+                ? "Kopiert vorhandene Zeilen in eine Zieltabelle und ersetzt sensible Spalten durch Maskierungswerte."
+                : "Füllt die Tabelle mit erfundenen Daten. Für jede Spalte ist ein passender Generator vorgeschlagen – nur anpassen, was nicht passt. Fremdschlüssel verwenden vorhandene Werte der Elterntabelle."}
             </DialogDescription>
           </DialogHeader>
           <Tabs value={state.mode} onValueChange={(value) => state.setMode(value as DatagenMode)}>
@@ -131,7 +132,7 @@ export function TestDataDialog({
             </div>
             <div className="grid gap-1">
               <Label htmlFor="datagen-batch" className="text-xs">
-                Batchgröße
+                Zeilen pro INSERT
               </Label>
               <Input
                 id="datagen-batch"
@@ -145,7 +146,7 @@ export function TestDataDialog({
             </div>
             <div className="grid gap-1">
               <Label htmlFor="datagen-seed" className="text-xs">
-                Seed
+                Zufalls-Seed
               </Label>
               <Input
                 id="datagen-seed"
@@ -157,7 +158,7 @@ export function TestDataDialog({
             </div>
             <div className="grid gap-1">
               <Label htmlFor="datagen-locale" className="text-xs">
-                Sprache
+                Sprache der Werte
               </Label>
               <Select
                 value={state.locale}
@@ -173,8 +174,12 @@ export function TestDataDialog({
               </Select>
             </div>
             <div className="flex items-end justify-between gap-2 pb-2 text-xs font-medium">
-              <Label htmlFor="datagen-transaction" className="text-xs">
-                Eine Transaktion
+              <Label
+                htmlFor="datagen-transaction"
+                className="text-xs"
+                title="Bei einem Fehler wird alles zurückgerollt"
+              >
+                Alles oder nichts
               </Label>
               <Switch
                 id="datagen-transaction"
@@ -184,7 +189,18 @@ export function TestDataDialog({
               />
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border px-3 py-1">
+          <p className="-mt-1 text-[11px] text-muted-foreground">
+            Gleicher Seed erzeugt bei jedem Lauf dieselben Werte.
+          </p>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border px-3 pb-1">
+            {state.mode === "generate" && !state.loading && (
+              <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,10rem)_11rem_minmax(0,1fr)_5.5rem] gap-2 border-b bg-background py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span>Spalte</span>
+                <span>Inhalt</span>
+                <span>Einstellungen</span>
+                <span title="Anteil der Zeilen, die NULL erhalten">Leer (NULL)</span>
+              </div>
+            )}
             {state.loading && (
               <p className="py-6 text-center text-xs text-muted-foreground">Lade Spalten…</p>
             )}

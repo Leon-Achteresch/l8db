@@ -13,20 +13,27 @@ function numberValue(text: string, fallback: number): number {
 }
 
 export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
-  const field = (label: string, value: string | number, apply: (text: string) => void) => (
-    <Input
-      className="h-7 min-w-0 flex-1 font-mono text-xs"
-      aria-label={`${label} ${name}`}
-      placeholder={label}
-      value={value}
-      onChange={(event) => apply(event.target.value)}
-    />
+  const field = (
+    label: string,
+    value: string | number,
+    apply: (text: string) => void,
+    hint?: string,
+  ) => (
+    <div className="flex min-w-0 flex-1 items-center gap-1.5" title={hint}>
+      <span className="shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <Input
+        className="h-7 min-w-0 flex-1 font-mono text-xs"
+        aria-label={`${label} ${name}`}
+        value={value}
+        onChange={(event) => apply(event.target.value)}
+      />
+    </div>
   );
   switch (generator.kind) {
     case "fixed":
       return field("Wert", generator.value, (value) => onChange({ ...generator, value }));
     case "list":
-      return field("Werte, kommagetrennt", generator.values.join(", "), (text) =>
+      return field("Werte (kommagetrennt)", generator.values.join(", "), (text) =>
         onChange({
           ...generator,
           values: text
@@ -36,8 +43,11 @@ export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
         }),
       );
     case "pattern":
-      return field("Muster # ? @ * %", generator.pattern, (pattern) =>
-        onChange({ ...generator, pattern }),
+      return field(
+        "Muster",
+        generator.pattern,
+        (pattern) => onChange({ ...generator, pattern }),
+        "# Ziffer · ? Großbuchstabe · @ Kleinbuchstabe · * Buchstabe/Ziffer · % Zeilennummer",
       );
     case "sql":
       return field("SQL-Ausdruck", generator.expression, (expression) =>
@@ -58,10 +68,10 @@ export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
     case "lorem":
       return (
         <>
-          {field(generator.kind === "lorem" ? "Min. Zeichen" : "Min", generator.min, (text) =>
+          {field(generator.kind === "lorem" ? "Länge von" : "von", generator.min, (text) =>
             onChange({ ...generator, min: numberValue(text, generator.min) }),
           )}
-          {field(generator.kind === "lorem" ? "Max. Zeichen" : "Max", generator.max, (text) =>
+          {field("bis", generator.max, (text) =>
             onChange({ ...generator, max: numberValue(text, generator.max) }),
           )}
         </>
@@ -69,13 +79,13 @@ export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
     case "decimal":
       return (
         <>
-          {field("Min", generator.min, (text) =>
+          {field("von", generator.min, (text) =>
             onChange({ ...generator, min: numberValue(text, generator.min) }),
           )}
-          {field("Max", generator.max, (text) =>
+          {field("bis", generator.max, (text) =>
             onChange({ ...generator, max: numberValue(text, generator.max) }),
           )}
-          {field("Stellen", generator.scale, (text) =>
+          {field("Nachkommastellen", generator.scale, (text) =>
             onChange({ ...generator, scale: Math.max(0, Math.round(numberValue(text, 2))) }),
           )}
         </>
@@ -84,14 +94,17 @@ export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
     case "timestamp":
       return (
         <>
-          {field("Von", generator.from, (from) => onChange({ ...generator, from }))}
-          {field("Bis", generator.to, (to) => onChange({ ...generator, to }))}
+          {field("von", generator.from, (from) => onChange({ ...generator, from }))}
+          {field("bis", generator.to, (to) => onChange({ ...generator, to }))}
         </>
       );
     case "reference":
       return (
-        <span className="truncate font-mono text-xs text-muted-foreground">
-          {[generator.schema, generator.table, generator.column].filter(Boolean).join(".")}
+        <span className="truncate text-xs text-muted-foreground">
+          Werte aus{" "}
+          <span className="font-mono">
+            {[generator.schema, generator.table, generator.column].filter(Boolean).join(".")}
+          </span>
         </span>
       );
     default:
