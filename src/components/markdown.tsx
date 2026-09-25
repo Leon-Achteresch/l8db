@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { type MdInline, parseMarkdown } from "@/lib/markdown";
+import { type MdInline, parseMarkdown, safeHref } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 function renderInline(nodes: MdInline[]): ReactNode {
@@ -25,10 +25,12 @@ function renderInline(nodes: MdInline[]): ReactNode {
         </code>
       );
     }
+    const href = safeHref(node.href);
+    if (!href) return <span key={index}>{renderInline(node.children)}</span>;
     return (
       <a
         key={index}
-        href={node.href}
+        href={href}
         target="_blank"
         rel="noreferrer"
         className="text-foreground underline underline-offset-3 hover:text-primary"

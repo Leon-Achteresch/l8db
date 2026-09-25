@@ -47,6 +47,9 @@ export function filterOperatorsForKind(kind?: FilterKind): OperatorDef[] {
   if (kind === "redis") {
     return OPERATORS.filter((op) => ["eq", "contains", "startsWith", "endsWith"].includes(op.key));
   }
+  if (kind === "dynamodb") {
+    return OPERATORS.filter((op) => !["in", "notIn", "endsWith"].includes(op.key));
+  }
   return OPERATORS;
 }
 
@@ -79,7 +82,9 @@ export function filterOperatorLabel(key: string, translated = true, kind?: Filte
       }[key] ?? key
     );
   }
-  const insensitive = !kind || ["postgres", "duckdb", "clickhouse"].includes(kind);
+  const insensitive =
+    !kind ||
+    ["postgres", "duckdb", "clickhouse", "influxdb", "snowflake", "bigquery"].includes(kind);
   return insensitive ? operator.sqlLabel.replace("LIKE", "ILIKE") : operator.sqlLabel;
 }
 

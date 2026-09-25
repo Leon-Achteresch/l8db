@@ -7,14 +7,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ValueViewerPanel } from "@/features/table/value-viewers/value-viewer-panel";
 import { copyText } from "@/lib/clipboard";
 
 export function QueryCellInspector({
   cell,
   onClose,
+  getColumnValues,
 }: {
   cell: { column: string; value: unknown; row: number } | null;
   onClose: () => void;
+  getColumnValues?: (column: string) => unknown[];
 }) {
   const value =
     cell?.value == null
@@ -29,14 +32,26 @@ export function QueryCellInspector({
         if (!open) onClose();
       }}
     >
-      <SheetContent className="data-[side=right]:sm:max-w-xl">
+      <SheetContent className="data-[side=right]:sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>{cell?.column}</SheetTitle>
           <SheetDescription>Zeile {cell?.row} · Vollständiger Zellwert</SheetDescription>
         </SheetHeader>
-        <pre className="mx-4 min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 p-4 font-mono text-xs whitespace-pre-wrap break-words">
-          {value}
-        </pre>
+        <div className="mx-4 flex min-h-0 flex-1 flex-col overflow-auto">
+          {cell && (
+            <ValueViewerPanel
+              key={`${cell.column}:${cell.row}`}
+              value={cell.value}
+              columnName={cell.column}
+              getColumnValues={getColumnValues ? () => getColumnValues(cell.column) : undefined}
+              textView={
+                <pre className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 p-4 font-mono text-xs whitespace-pre-wrap break-words">
+                  {value}
+                </pre>
+              }
+            />
+          )}
+        </div>
         <Button
           className="m-4"
           onClick={async () => {

@@ -118,7 +118,7 @@ describe("drivers", () => {
     expect(driverTypeLabel({ type: "builtin" })).toBe("Eingebettet");
     expect(driverTypeLabel({ type: "runtime_library", library: "x" })).toBe("System-Bibliothek");
     expect(driverTypeLabel({ type: "odbc", driver: "" })).toBe("ODBC");
-    expect(driverTypeLabel({ type: "cargo_feature", feature: "duckdb" })).toBe("Build-Feature");
+    expect(driverTypeLabel({ type: "cargo_feature", feature: "duckdb" })).toBe("Eingebettet (Build-Feature)");
     expect(platformOs("MacIntel")).toBe("macos");
     expect(platformOs("Win32")).toBe("windows");
     expect(platformOs("Linux x86_64")).toBe("linux");

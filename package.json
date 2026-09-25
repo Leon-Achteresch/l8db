@@ -1,7 +1,7 @@
 {
   "name": "l8db",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Fast, native desktop client for PostgreSQL and other databases.",
   "author": "Leon Achteresch",
@@ -71,6 +71,7 @@
     "lucide": "1.43.0",
     "lucide-react": "^1.43.0",
     "monaco-editor": "^0.56.0",
+    "monaco-vim": "0.4.4",
     "morphicons": "^1.7.1",
     "motion": "^13.2.0",
     "next-themes": "^0.4.6",

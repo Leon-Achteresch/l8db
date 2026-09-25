@@ -187,7 +187,10 @@ pub async fn fetch_table_rows(
 ) -> Result<TableData, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -292,7 +295,10 @@ pub async fn count_table_rows(
 ) -> Result<i64, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -341,7 +347,10 @@ pub async fn count_table_rows_capped(
     let cap = cap.clamp(1, super::MAX_ROW_COUNT_CAP);
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             if let Some(tx_id) = tx_id {
                 return tx_state
@@ -588,21 +597,17 @@ pub async fn execute_query(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(
-        options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
-        async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query(&sql)
-            .await
-            .map(truncate_rows)
-        },
-    )
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .execute_query(&sql)
+        .await
+        .map(truncate_rows)
+    })
     .await
 }
 
@@ -616,21 +621,17 @@ pub async fn execute_query_with_params(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(
-        options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
-        async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query_with_params(&sql, &params)
-            .await
-            .map(truncate_rows)
-        },
-    )
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .execute_query_with_params(&sql, &params)
+        .await
+        .map(truncate_rows)
+    })
     .await
 }
 
@@ -1270,14 +1271,18 @@ pub async fn list_import_columns(
     table: String,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<crate::db::ImportColumnInfo>, String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .list_import_columns(&schema, &table)
-    .await
+    )?;
+    match super::import::Dialect::from_kind(kind) {
+        Some(dialect) => {
+            super::import::list_import_columns(dialect, adapter.as_ref(), &schema, &table).await
+        }
+        None => adapter.list_import_columns(&schema, &table).await,
+    }
 }
 
 #[tauri::command]
@@ -1308,14 +1313,31 @@ pub async fn csv_import(
             );
         },
         super::execution::run(options, true, async {
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .csv_import(&request)
-            .await
+            if !kind.capabilities().csv_import {
+                return Err("Dateiimport wird für diesen Datenbanktyp nicht unterstützt.".into());
+            }
+            match super::import::Dialect::from_kind(kind) {
+                Some(super::import::Dialect::Postgres) | None => {
+                    create_adapter_from_string(
+                        kind,
+                        &connection_string,
+                        database.as_deref(),
+                        pool_state.inner().clone(),
+                    )?
+                    .csv_import(&request)
+                    .await
+                }
+                Some(_) => {
+                    super::import::import(
+                        kind,
+                        &connection_string,
+                        database.as_deref(),
+                        pool_state.inner().clone(),
+                        &request,
+                    )
+                    .await
+                }
+            }
         }),
     )
     .await
@@ -1541,7 +1563,10 @@ pub async fn execute_script(
 ) -> Result<Vec<ScriptStatementResult>, String> {
     super::execution::run(
         options,
-        matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
+        matches!(
+            kind,
+            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+        ),
         async {
             create_adapter_from_string(
                 kind,
@@ -1589,6 +1614,63 @@ pub async fn preview_create_table_ddl(
         pool_state.inner().clone(),
     )?
     .preview_create_table_ddl(&request)
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_constraint_change(
+    kind: DatabaseKind,
+    schema: String,
+    table: String,
+    change: super::constraints::ConstraintChange,
+) -> Result<String, String> {
+    super::constraints::preview_change(kind, &schema, &table, &change)
+}
+
+#[tauri::command]
+pub async fn apply_constraint_change(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    change: super::constraints::ConstraintChange,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    if super::connection::connection_string_is_read_only(&connection_string) {
+        return Err(
+            "Lesemodus: Diese Verbindung ist schreibgeschützt. Modus in den Verbindungseinstellungen ändern und neu verbinden."
+                .to_string(),
+        );
+    }
+    let sql = super::constraints::preview_change(kind, &schema, &table, &change)?;
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .execute_query(&sql)
+    .await?;
+    Ok(sql)
+}
+
+#[tauri::command]
+pub async fn column_value_options(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::constraints::ColumnValueOptions>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .column_value_options(&schema, &table)
     .await
 }
 
@@ -2257,6 +2339,85 @@ pub async fn copy_schema_table_data(
 }
 
 #[tauri::command]
+pub async fn backup_probe(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    tool_paths: Option<std::collections::HashMap<String, String>>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupProbe, String> {
+    Ok(super::backup::probe(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        &tool_paths.unwrap_or_default(),
+        pool_state.inner().clone(),
+    )
+    .await)
+}
+
+fn backup_emitter(app: tauri::AppHandle) -> super::backup::Emit {
+    use tauri::Emitter;
+    std::sync::Arc::new(move |event: &str, payload: serde_json::Value| {
+        let _ = app.emit(event, payload);
+    })
+}
+
+#[tauri::command]
+pub async fn run_backup(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::backup::BackupRequest,
+    options: Option<super::execution::ExecutionOptions>,
+    app: tauri::AppHandle,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupOutcome, String> {
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    let pool = pool_state.inner().clone();
+    super::execution::run(options, true, async {
+        super::backup::backup(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            &request,
+            backup_emitter(app),
+            job_id,
+            pool,
+        )
+        .await
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn run_restore(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::backup::BackupRequest,
+    options: Option<super::execution::ExecutionOptions>,
+    app: tauri::AppHandle,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::backup::BackupOutcome, String> {
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    let pool = pool_state.inner().clone();
+    super::execution::run(options, true, async {
+        super::backup::restore(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            &request,
+            backup_emitter(app),
+            job_id,
+            pool,
+        )
+        .await
+    })
+    .await
+}
+
+#[tauri::command]
 pub fn cancel_execution(job_id: String) -> Result<bool, String> {
     super::execution::cancel(&job_id)
 }
@@ -2284,8 +2445,10 @@ pub async fn read_table_snapshot(
 pub async fn compare_table_data(
     request: super::data_compare::CompareRequest,
     options: Option<super::execution::ExecutionOptions>,
+    pool_state: tauri::State<'_, PoolState>,
     app: tauri::AppHandle,
 ) -> Result<super::data_compare::CompareResult, String> {
+    let pool_state = pool_state.inner().clone();
     use tauri::Emitter;
     let job_id = options.as_ref().and_then(|options| options.job_id.clone());
     super::execution::with_progress(
@@ -2295,7 +2458,11 @@ pub async fn compare_table_data(
                 serde_json::json!({ "jobId": job_id, "rows": rows }),
             );
         },
-        super::execution::run(options, true, super::data_compare::compare(&request)),
+        super::execution::run(
+            options,
+            true,
+            super::data_compare::compare(&request, &pool_state),
+        ),
     )
     .await
 }
@@ -2307,4 +2474,72 @@ pub fn read_csv_preview(path: String, app: tauri::AppHandle) -> Result<serde_jso
         return Err("CSV-Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
     }
     super::csv_stream::preview(&path)
+}
+
+#[tauri::command(async)]
+pub fn read_import_preview(
+    path: String,
+    format: super::import_source::ImportFormat,
+    sheet: Option<String>,
+    skip_rows: Option<usize>,
+    has_header: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<super::import_source::ImportPreview, String> {
+    use tauri_plugin_fs::FsExt;
+    if !app.fs_scope().is_allowed(&path) {
+        return Err("Datei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
+    }
+    super::import_source::preview(
+        &path,
+        format,
+        sheet.as_deref(),
+        skip_rows.unwrap_or(0),
+        has_header.unwrap_or(true),
+    )
+}
+
+#[tauri::command(async)]
+pub fn export_rows_file(
+    request: super::export_formats::RowsExportRequest,
+    app: tauri::AppHandle,
+) -> Result<u64, String> {
+    use tauri_plugin_fs::FsExt;
+    if !app.fs_scope().is_allowed(&request.path) {
+        return Err("Zieldatei wurde nicht zum Zugriff freigegeben. Bitte erneut wählen.".into());
+    }
+    super::export_formats::write_rows_file(&request)
+}
+
+#[tauri::command]
+pub async fn copy_table_to_connection(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: super::table_copy::TableCopyRequest,
+    app: tauri::AppHandle,
+    options: Option<super::execution::ExecutionOptions>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::table_copy::TableCopyOutcome, String> {
+    use tauri::Emitter;
+    let job_id = options.as_ref().and_then(|options| options.job_id.clone());
+    super::execution::with_progress(
+        move |rows| {
+            let _ = app.emit(
+                "table-copy-progress",
+                serde_json::json!({ "jobId": job_id, "rows": rows }),
+            );
+        },
+        super::execution::run(
+            options,
+            true,
+            super::table_copy::copy_table(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+                &request,
+            ),
+        ),
+    )
+    .await
 }

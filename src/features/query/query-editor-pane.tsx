@@ -1,8 +1,11 @@
 import { useTheme } from "next-themes";
 import { useEffect, useImperativeHandle, useRef } from "react";
 
+import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { buildEditorOptions } from "@/lib/editor-options";
+import { emitHotkeyAction } from "@/lib/hotkeys";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
+import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
@@ -49,6 +52,7 @@ export function QueryEditorPane({
   ref,
 }: QueryEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const vimStatusRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const onSearchTabsRef = useRef(onSearchTabs);
@@ -190,6 +194,11 @@ export function QueryEditorPane({
     };
   }, []);
 
+  const vimEnabled = useEditorKeymap(editorRef, vimStatusRef, {
+    save: () => onSaveRef.current?.(),
+    close: () => emitHotkeyAction("tab.close"),
+  });
+
   useEffect(() => {
     const editor = editorRef.current;
     if (editor) showSqlError(editor, error ?? null);
@@ -265,5 +274,10 @@ export function QueryEditorPane({
 
   useEditorOptionsSync(editorRef, editorSettings);
 
-  return <div ref={containerRef} className={cn("relative", className ?? "size-full")} />;
+  return (
+    <div className={cn("relative flex flex-col", className ?? "size-full")}>
+      <div ref={containerRef} className="relative min-h-0 flex-1" />
+      {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
+    </div>
+  );
 }

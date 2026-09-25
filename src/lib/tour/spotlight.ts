@@ -55,10 +55,11 @@ export function showSpotlight(step: TourStep, waiting: boolean) {
     return;
   }
   if (waiting) target.setAttribute("data-tour-wait", "true");
+  const action = `<p class="l8db-driver-action">👉 ${step.action}</p>`;
   const description =
     waiting && step.waitHint
-      ? `${step.body}<p class="l8db-driver-wait">${step.waitHint}</p>`
-      : step.body;
+      ? `${step.body}${action}<p class="l8db-driver-wait">${step.waitHint}</p>`
+      : `${step.body}${action}`;
   instance.highlight({
     element: target,
     popover: {

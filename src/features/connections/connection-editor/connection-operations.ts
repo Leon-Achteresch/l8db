@@ -2,10 +2,23 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import { connectionError } from "@/lib/connection-url";
-import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  type ConnectionEnvironment,
+  type SavedConnection,
+  useConnectionsStore,
+  usesTunnel,
+} from "@/lib/connections";
 import { listSchemas, type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import type { MaskRule } from "@/lib/masking";
 import { deleteSecret, extractUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
-import { activateConnection, closeSshTunnel, sshSecretAccount } from "@/lib/ssh";
+import {
+  activateConnection,
+  closeSshTunnel,
+  proxySecretAccount,
+  serializeJumpSecrets,
+  sshJumpSecretAccount,
+  sshSecretAccount,
+} from "@/lib/ssh";
 import type { createConnectionUrlActions } from "./connection-url-actions";
 import type { TestResult } from "./types";
 
@@ -31,6 +44,8 @@ export interface ConnectionOperationsContext {
   schemaFilter: string[];
   showSingleSchemaSwitcher: boolean;
   color: string | null;
+  environment: ConnectionEnvironment | null;
+  maskRules: MaskRule[];
   tags: string;
   onSaved: () => void;
 }
@@ -56,6 +71,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
+    environment,
+    maskRules,
     tags,
     onSaved,
   } = ctx;
@@ -127,7 +144,23 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
       } else if (connection) {
         await deleteSecret(sshSecretAccount(id));
       }
-      if (connection?.ssh) await closeSshTunnel(id).catch(() => undefined);
+      const jumpSecrets = config.ssh ? serializeJumpSecrets(config.secrets.jumps) : null;
+      const networkSecrets: [string, string | null][] = [
+        [sshJumpSecretAccount(id), jumpSecrets],
+        [proxySecretAccount(id), config.proxy ? config.secrets.proxy : null],
+      ];
+      for (const [account, value] of networkSecrets) {
+        if (value) {
+          await storeSecret(account, value).catch(() =>
+            toast.warning(
+              "Netzwerk-Zugangsdaten gelten nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
+            ),
+          );
+        } else if (connection) {
+          await deleteSecret(account).catch(() => undefined);
+        }
+      }
+      if (usesTunnel(connection)) await closeSshTunnel(id).catch(() => undefined);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
       const input = {
         name: name.trim(),
@@ -135,12 +168,15 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         connectionString: config.connectionString,
         sslMode: ssl,
         ssh: config.ssh,
+        proxy: config.proxy,
         tunnelPort: null,
         favorite: connection?.favorite ?? false,
         readOnly: readOnly && configInfo.capabilities.read_only_mode,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
         color,
+        environment,
+        maskRules: maskRules.filter((rule) => rule.pattern.trim()),
         tags: [
           ...new Set(
             tags

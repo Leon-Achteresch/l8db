@@ -31,7 +31,10 @@ const CONFIGURED_COMMANDS = new Set([
   "count_table_rows_capped",
   "begin_transaction",
   "open_ssh_tunnel",
+  "open_proxy_tunnel",
   "csv_import",
+  "copy_table_to_connection",
+  "datagen_run",
 ]);
 
 const WRITE_COMMANDS = new Set([
@@ -41,6 +44,7 @@ const WRITE_COMMANDS = new Set([
   "alter_column",
   "alter_role",
   "alter_sequence",
+  "apply_constraint_change",
   "attach_partition",
   "begin_transaction",
   "cancel_session",
@@ -54,6 +58,7 @@ const WRITE_COMMANDS = new Set([
   "create_subscription",
   "create_table",
   "csv_import",
+  "datagen_run",
   "delete_row_in_transaction",
   "detach_partition",
   "drop_column",
@@ -67,6 +72,7 @@ const WRITE_COMMANDS = new Set([
   "duplicate_row_in_transaction",
   "execute_in_transaction",
   "copy_schema_table_data",
+  "copy_table_to_connection",
   "execute_object_ddl",
   "execute_schema_object_copy",
   "execute_in_transaction_with_params",
@@ -74,6 +80,7 @@ const WRITE_COMMANDS = new Set([
   "install_extension",
   "modify_privilege",
   "refresh_materialized_view",
+  "run_restore",
   "run_scheduler_job",
   "set_scheduler_job_enabled",
   "set_table_rls",
@@ -106,10 +113,33 @@ export function isReadOnlyActive(connectionString?: unknown): boolean {
   }
 }
 
+function needsProductionGuard(command: string): boolean {
+  return (
+    SQL_COMMANDS.has(command) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction")
+  );
+}
+
+async function productionGuard(command: string, args: Record<string, unknown>): Promise<void> {
+  const sqlCommand = SQL_COMMANDS.has(command);
+  const [{ operationContext }, { useConnectionsStore }, { productionWriteBlock }] =
+    await Promise.all([
+      import("@/lib/operation-context"),
+      import("@/lib/connections/store"),
+      import("@/lib/environments"),
+    ]);
+  const { connectionId } = operationContext(args);
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === connectionId);
+  const message = productionWriteBlock(connection, sqlCommand ? String(args.sql ?? "") : null);
+  if (message) throw new Error(message);
+}
+
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString)) {
     throw new Error(READ_ONLY_MESSAGE);
   }
+  if (needsProductionGuard(command)) await productionGuard(command, args ?? {});
   const settings = useSettingsStore.getState();
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
@@ -157,7 +187,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     const { operationContext } = await import("@/lib/operation-context");
     const request = args?.request as TableExportRequest | undefined;
     taskId = startTask(
-      { id: request?.jobId, title: taskTitles[command], ...operationContext(args ?? {}) },
+      {
+        id: request?.jobId,
+        title:
+          command === "export_table_csv" && request?.format && request.format !== "csv"
+            ? `${request.format.toUpperCase()}-Export`
+            : taskTitles[command],
+        ...operationContext(args ?? {}),
+      },
       request?.jobId ? () => cancelTableExport(request.jobId) : undefined,
     );
     if (request?.jobId) {
@@ -192,15 +229,26 @@ export async function confirmSqlExecution(
   database?: string,
   connectionName?: string,
 ): Promise<void> {
-  if (!useSettingsStore.getState().confirmDestructiveQueries) return;
-  const findings = destructiveStatements(sql, kind);
-  if (!findings.length) return;
-  const { operationContext } = await import("@/lib/operation-context");
+  const [{ operationContext }, { useConnectionsStore }, environments] = await Promise.all([
+    import("@/lib/operation-context"),
+    import("@/lib/connections/store"),
+    import("@/lib/environments"),
+  ]);
   const context = operationContext({ kind, connectionString, database });
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === context.connectionId);
+  const production = environments.isProduction(connection);
+  if (!production && !useSettingsStore.getState().confirmDestructiveQueries) return;
+  const findings = destructiveStatements(sql, kind, { strict: production });
+  if (!findings.length) return;
   const accepted = await requestSqlConfirmation({
     connection: connectionName ?? context.connectionName,
     database: database ?? context.database,
     statements: findings,
+    confirmTexts: production
+      ? environments.productionConfirmTexts(connection, database ?? context.database)
+      : undefined,
   });
   if (!accepted) throw new Error("Ausführung vom Benutzer abgebrochen.");
 }

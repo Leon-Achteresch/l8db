@@ -1,6 +1,7 @@
 import { Star, StarOff } from "lucide";
 import {
   CopyIcon,
+  DatabaseIcon,
   FileCodeIcon,
   NetworkIcon,
   SquareTerminalIcon,
@@ -22,6 +23,7 @@ interface TableEntityMenuItemsProps {
   onOpenInEditor: () => void;
   onScriptTable: () => void;
   onCopy: () => void;
+  onCopyToConnection: () => void;
   onAlterTable: () => void;
   onFocusInErDiagram: () => void;
   onConfirm: (action: EntityConfirmAction) => void;
@@ -36,6 +38,7 @@ export function TableEntityMenuItems({
   onOpenInEditor,
   onScriptTable,
   onCopy,
+  onCopyToConnection,
   onAlterTable,
   onFocusInErDiagram,
   onConfirm,
@@ -62,6 +65,12 @@ export function TableEntityMenuItems({
         <ContextMenuItem onSelect={onCopy}>
           <CopyIcon />
           In anderem Schema erstellen
+        </ContextMenuItem>
+      )}
+      {caps.table_copy && (
+        <ContextMenuItem onSelect={onCopyToConnection}>
+          <DatabaseIcon />
+          In andere Verbindung kopieren…
         </ContextMenuItem>
       )}
       {caps.alter_columns && (

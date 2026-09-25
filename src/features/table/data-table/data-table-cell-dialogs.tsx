@@ -1,8 +1,9 @@
+import { useCallback } from "react";
 import { CellValueDialog } from "@/features/table/cell-value-dialog";
 import { FkValuePickerDialog } from "@/features/table/fk-value-picker-dialog";
 import type { DetailedColumnInfo, ForeignKeyInfo } from "@/lib/db";
 import { isNullableColumn, outgoingForeignKey, resolveFkTarget } from "@/lib/fk-lookup";
-import type { DataTableProps, FkPickerCell, InspectCell } from "../data-table-types";
+import type { DataTableProps, FkPickerCell, InspectCell, TableRow } from "../data-table-types";
 
 type Props = {
   inspectCell: InspectCell | null;
@@ -24,6 +25,7 @@ type Props = {
   currentSchema: string | undefined;
   currentTable: string | undefined;
   columnDetails: DetailedColumnInfo[] | undefined;
+  data: TableRow[];
 };
 
 export function DataTableCellDialogs({
@@ -41,7 +43,13 @@ export function DataTableCellDialogs({
   currentSchema,
   currentTable,
   columnDetails,
+  data,
 }: Props) {
+  const inspectColumn = inspectCell?.columnName;
+  const getColumnValues = useCallback(
+    () => (inspectColumn ? data.map((row) => row[inspectColumn]) : []),
+    [data, inspectColumn],
+  );
   return (
     <>
       {inspectCell && (
@@ -50,6 +58,7 @@ export function DataTableCellDialogs({
           value={inspectCell.value}
           dataType={columnTypeByName.get(inspectCell.columnName) ?? null}
           editorKind={cellEditorKind}
+          getColumnValues={getColumnValues}
           canEdit={
             !!onSaveRow &&
             !!inspectCell.ctid &&

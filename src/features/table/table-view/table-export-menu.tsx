@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DATA_EXPORT_FORMATS, type DataExportFormat } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
 export function TableExportMenu({
@@ -15,12 +16,14 @@ export function TableExportMenu({
   showSql,
   onCsv,
   onXlsx,
+  onFormat,
   onExport,
 }: {
   exporting: boolean;
   showSql: boolean;
   onCsv: () => void;
   onXlsx: () => void;
+  onFormat: (format: DataExportFormat) => void;
   onExport: (format: "json" | "sql") => void;
 }) {
   return (
@@ -47,6 +50,11 @@ export function TableExportMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onCsv}>Als CSV exportieren…</DropdownMenuItem>
         <DropdownMenuItem onClick={onXlsx}>Als XLSX exportieren…</DropdownMenuItem>
+        {DATA_EXPORT_FORMATS.map((format) => (
+          <DropdownMenuItem key={format.value} onClick={() => onFormat(format.value)}>
+            Als {format.label} exportieren…
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuItem onClick={() => void onExport("json")}>
           Als JSON exportieren
         </DropdownMenuItem>

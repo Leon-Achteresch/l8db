@@ -13,6 +13,8 @@ import type {
   PromptRequest,
   PromptResult,
   QueryResult,
+  SaveConnectionsResult,
+  VaultConnection,
 } from "../../../packages/extension-api/src";
 
 export type {
@@ -37,10 +39,12 @@ export type {
   QueryResult,
   QuickPickItem,
   QuickPickOptions,
+  SaveConnectionsResult,
   StatusBarContribution,
   StatusBarSnapshot,
   StatusBarUpdate,
   TreeItem,
+  VaultConnection,
   ViewContribution,
   ViewLocation,
   ViewSnapshot,
@@ -92,6 +96,8 @@ export interface CoreServices {
   writeTextFile(path: string, contents: string): Promise<void>;
   runProcess(request: { command: string; options: ProcessOptions }): Promise<ProcessResult>;
   prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>>;
+  listConnections(): Promise<VaultConnection[]>;
+  saveConnections(items: VaultConnection[]): Promise<SaveConnectionsResult>;
 }
 export type RpcHandler = (method: string, args: Json[]) => Promise<Json | void>;
 export interface ExtensionRuntime {

@@ -3,17 +3,20 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { initialSslMode } from "@/lib/connection-defaults";
 import { detectProvider, kindFromUrl } from "@/lib/connection-url";
-import type { SshAuth } from "@/lib/connections";
+import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
 import { oracleTnsNames, type SslMode } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
+import type { MaskRule } from "@/lib/masking";
 import { useProvidersStore } from "@/lib/providers";
 import { loadSecret, withSslModeParam } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
+import type { SshConfigDraft } from "@/lib/ssh";
 import { createConnectionInputActions } from "./connection-input-actions";
 import { createConnectionOperations } from "./connection-operations";
 import { createConnectionUrlActions } from "./connection-url-actions";
 import { seedFields, seedMode } from "./seed";
 import type { ConnectionEditorProps, Mode, TestResult } from "./types";
+import { jumpHostDraft, useNetworkDraft } from "./use-network-draft";
 
 export function useConnectionEditor({
   connection,
@@ -61,6 +64,7 @@ export function useConnectionEditor({
   const [sshAuth, setSshAuth] = useState<SshAuth>(seed?.ssh?.auth ?? "key");
   const [sshKey, setSshKey] = useState(seed?.ssh?.keyFile ?? "");
   const [sshPassword, setSshPassword] = useState("");
+  const network = useNetworkDraft(seed, connection?.id);
   const [result, setResult] = useState<TestResult>({ status: "idle" });
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -71,6 +75,10 @@ export function useConnectionEditor({
   const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");
   const [color, setColor] = useState<string | null>(seed?.color ?? null);
   const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
+  const [environment, setEnvironment] = useState<ConnectionEnvironment | null>(
+    seed?.environment ?? null,
+  );
+  const [maskRules, setMaskRules] = useState<MaskRule[]>(seed?.maskRules ?? []);
   const [schemaFilter, setSchemaFilter] = useState<string[]>(seed?.schemas ?? []);
   const [showSingleSchemaSwitcher, setShowSingleSchemaSwitcher] = useState(
     seed?.showSingleSchemaSwitcher ?? true,
@@ -90,8 +98,26 @@ export function useConnectionEditor({
     (mode === "string" ? quickProviderId : provider) === "supabase" &&
     (port === "6543" || /:6543(?:\/|$)/.test(value));
   const advancedOpen = Boolean(
-    seed?.ssh?.host || seed?.readOnly || seed?.schemas?.length || seed?.color || seed?.tags?.length,
+    seed?.ssh?.host ||
+      seed?.proxy?.host ||
+      seed?.readOnly ||
+      seed?.schemas?.length ||
+      seed?.color ||
+      seed?.environment ||
+      seed?.maskRules?.length ||
+      seed?.tags?.length,
   );
+
+  function applySshConfig(draft: SshConfigDraft) {
+    setSshEnabled(true);
+    setSshHost(draft.host);
+    setSshPort(String(draft.port));
+    setSshUser(draft.user);
+    setSshAuth(draft.auth);
+    setSshKey(draft.keyFile);
+    network.setSshAgentSocket(draft.agentSocket);
+    network.setJumpHosts(draft.jumpHosts.map(jumpHostDraft));
+  }
 
   useEffect(() => {
     if (mode === "string") setPreview(quickKind, quickProviderId);
@@ -143,6 +169,7 @@ export function useConnectionEditor({
     sshAuth,
     sshKey,
     sshPassword,
+    network,
     connection,
   });
 
@@ -166,6 +193,8 @@ export function useConnectionEditor({
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
+    environment,
+    maskRules,
     tags,
     onSaved,
   });
@@ -200,22 +229,34 @@ export function useConnectionEditor({
   const databaseLabel =
     kind === "oracle"
       ? "Service-Name"
-      : kind === "cassandra"
-        ? "Keyspace"
-        : kind === "redis"
-          ? "Datenbank-Nummer"
-          : "Datenbank";
+      : kind === "athena"
+        ? "Katalog"
+        : kind === "cassandra"
+          ? "Keyspace"
+          : kind === "redis"
+            ? "Datenbank-Nummer"
+            : kind === "influxdb"
+              ? "Bucket / Datenbank"
+              : kind === "elasticsearch"
+                ? "Pfad-Präfix (optional)"
+                : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
 
   return {
     activeInfo,
     advancedOpen,
+    applySshConfig,
     busy,
     caps,
     color,
     database,
     databaseLabel,
+    environment,
+    maskRules,
+    setEnvironment,
+    setMaskRules,
     elapsed,
+    extraParams,
     file,
     groups,
     guided,
@@ -225,6 +266,7 @@ export function useConnectionEditor({
     kind,
     mode,
     name,
+    network,
     password,
     pasteConnectionString,
     pickFile,
@@ -249,6 +291,7 @@ export function useConnectionEditor({
     selectProvider,
     setColor,
     setDatabase,
+    setExtraParams,
     setFile,
     setHost,
     setName,

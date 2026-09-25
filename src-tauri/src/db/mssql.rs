@@ -9,7 +9,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, unsupported, where_clause,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     ProxyUserInfo, QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData,
@@ -95,6 +95,18 @@ fn map_err(e: tiberius::error::Error) -> String {
     }
 }
 
+fn numeric_text(value: i128, scale: u8) -> String {
+    let sign = if value < 0 { "-" } else { "" };
+    let digits = value.unsigned_abs().to_string();
+    let scale = usize::from(scale);
+    if scale == 0 {
+        return format!("{sign}{digits}");
+    }
+    let padded = format!("{digits:0>width$}", width = scale + 1);
+    let (whole, fraction) = padded.split_at(padded.len() - scale);
+    format!("{sign}{whole}.{fraction}")
+}
+
 fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
     fn num(f: f64) -> serde_json::Value {
         serde_json::Number::from_f64(f)
@@ -131,7 +143,7 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             .map(|b| serde_json::Value::String(hex_blob(b)))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Numeric(v) => v
-            .map(|n| serde_json::Value::String(n.to_string()))
+            .map(|n| serde_json::Value::String(numeric_text(n.value(), n.scale())))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Xml(v) => v
             .as_ref()
@@ -395,6 +407,24 @@ impl MssqlAdapter {
     fn object(schema: &str, name: &str) -> String {
         format!("{}.{}", quote(schema), quote(name))
     }
+
+    fn create_table_statement(req: &CreateTableRequest) -> Result<String, String> {
+        let sql = create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mssql),
+        )?;
+        Ok(if req.if_not_exists {
+            format!(
+                "IF OBJECT_ID({}) IS NULL {}",
+                lit(&Self::object(&req.schema, &req.name)),
+                sql.replacen("IF NOT EXISTS ", "", 1)
+            )
+        } else {
+            sql
+        })
+    }
 }
 
 async fn impersonate(client: &mut MsClient, user: &str) -> Result<(), String> {
@@ -428,10 +458,29 @@ fn is_tx_control(sql: &str) -> bool {
         || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
 }
 
+fn starts_batch(sql: &str) -> bool {
+    let words: Vec<String> = sql
+        .split_whitespace()
+        .take(4)
+        .map(str::to_uppercase)
+        .collect();
+    let object = match words.first().map(String::as_str) {
+        Some("CREATE") if words.get(1).map(String::as_str) == Some("OR") => words.get(3),
+        Some("CREATE") | Some("ALTER") => words.get(1),
+        _ => None,
+    };
+    object.is_some_and(|word| {
+        matches!(
+            word.as_str(),
+            "SCHEMA" | "VIEW" | "PROC" | "PROCEDURE" | "FUNCTION" | "TRIGGER"
+        )
+    })
+}
+
 async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     timed(async {
-        if is_tx_control(sql) {
+        if is_tx_control(sql) || starts_batch(sql) {
             client
                 .simple_query(sql)
                 .await
@@ -1193,17 +1242,12 @@ impl DatabaseAdapter for MssqlAdapter {
             .collect())
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        Self::create_table_statement(req)
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        let sql = create_table_sql(req, quote, true);
-        let sql = if req.if_not_exists {
-            format!(
-                "IF OBJECT_ID({}) IS NULL {}",
-                lit(&Self::object(&req.schema, &req.name)),
-                sql.replacen("IF NOT EXISTS ", "", 1)
-            )
-        } else {
-            sql
-        };
+        let sql = Self::create_table_statement(req)?;
         self.exec(&sql).await.map(|_| ())
     }
 
@@ -1312,11 +1356,80 @@ impl DatabaseAdapter for MssqlAdapter {
                 .collect(),
         })
     }
+
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        use futures_util::TryStreamExt;
+        let object = Self::object(&request.schema, &request.table);
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut client = self.connect().await?;
+        let result = async {
+            let mut stream = client.simple_query(sql).await.map_err(map_err)?;
+            let columns: Vec<String> = stream
+                .columns()
+                .await
+                .map_err(map_err)?
+                .map(|c| c.iter().map(|c| c.name().to_string()).collect())
+                .unwrap_or_default();
+            let mut rows = stream.into_row_stream();
+            let mut collector = super::snapshot::Collector::new(request.max_rows);
+            while let Some(row) = rows.try_next().await.map_err(map_err)? {
+                collector.push(
+                    columns
+                        .iter()
+                        .cloned()
+                        .zip(row.cells().map(|(_, data)| value_to_json(data)))
+                        .collect(),
+                )?;
+            }
+            collector.finish(columns)
+        }
+        .await;
+        if result.is_err() {
+            client.discard();
+        }
+        result
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "mssql_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_text_keeps_sign_and_scale() {
+        assert_eq!(numeric_text(-1, 6), "-0.000001");
+        assert_eq!(
+            numeric_text(12345678901234123456, 6),
+            "12345678901234.123456"
+        );
+        assert_eq!(numeric_text(150, 2), "1.50");
+        assert_eq!(numeric_text(-7, 0), "-7");
+    }
+
+    #[test]
+    fn module_ddl_runs_as_own_batch() {
+        assert!(starts_batch("CREATE SCHEMA app"));
+        assert!(starts_batch(
+            "create or alter procedure [s].[p] AS SELECT 1"
+        ));
+        assert!(starts_batch("ALTER VIEW v AS SELECT 1"));
+        assert!(!starts_batch("CREATE TABLE t (id int)"));
+        assert!(!starts_batch("SELECT 1"));
+    }
 
     #[test]
     fn create_becomes_create_or_alter() {

@@ -55,8 +55,33 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
         user: connection.ssh.user,
         auth: connection.ssh.auth,
         keyFile: connection.ssh.auth === "key" ? connection.ssh.keyFile : "",
+        ...(connection.ssh.auth === "agent" && connection.ssh.agentSocket
+          ? { agentSocket: connection.ssh.agentSocket }
+          : {}),
+        ...(connection.ssh.jumpHosts?.length
+          ? {
+              jumpHosts: connection.ssh.jumpHosts.map((jump) => ({
+                host: jump.host,
+                port: jump.port,
+                user: jump.user,
+                auth: jump.auth,
+                keyFile: jump.auth === "key" ? jump.keyFile : "",
+                ...(jump.auth === "agent" && jump.agentSocket
+                  ? { agentSocket: jump.agentSocket }
+                  : {}),
+              })),
+            }
+          : {}),
         remoteHost: connection.ssh.remoteHost,
         remotePort: connection.ssh.remotePort,
+      }
+    : null;
+  const proxy = connection.proxy?.host
+    ? {
+        type: connection.proxy.type,
+        host: connection.proxy.host,
+        port: connection.proxy.port,
+        ...(connection.proxy.username ? { username: connection.proxy.username } : {}),
       }
     : null;
   return {
@@ -66,6 +91,7 @@ export function toExportedConnection(connection: SavedConnection): ExportedConne
     connectionString: stripConnectionSecrets(connection.connectionString),
     sslMode: connection.sslMode,
     ssh,
+    ...(proxy ? { proxy } : {}),
     tags: (connection.tags ?? []).map((tag) => ({ name: tag.name, color: tag.color })),
     favorite: Boolean(connection.favorite),
     color: connection.color ?? null,

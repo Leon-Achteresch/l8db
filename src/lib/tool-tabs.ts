@@ -1,5 +1,6 @@
 import {
   ActivityIcon,
+  ArchiveIcon,
   BlocksIcon,
   DownloadIcon,
   FilePlusIcon,
@@ -9,6 +10,7 @@ import {
   HashIcon,
   type LucideIcon,
   NetworkIcon,
+  NotebookPenIcon,
   PlugIcon,
   RefreshCwIcon,
   TriangleAlertIcon,
@@ -29,6 +31,8 @@ export type ToolId =
   | "replication"
   | "query-builder"
   | "import"
+  | "backup"
+  | "notebook"
   | "create-table"
   | "saved-plan";
 
@@ -157,6 +161,24 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     iconColor: "text-emerald-500",
     Component: lazy(() =>
       import("@/features/import/import-view").then((m) => ({ default: m.ImportView })),
+    ),
+  },
+  backup: {
+    path: "/backup",
+    label: "Sicherung",
+    Icon: ArchiveIcon,
+    iconColor: "text-emerald-500",
+    Component: lazy(() =>
+      import("@/features/backup/backup-view").then((m) => ({ default: m.BackupView })),
+    ),
+  },
+  notebook: {
+    path: "/notebook",
+    label: "SQL-Notebook",
+    Icon: NotebookPenIcon,
+    iconColor: "text-orange-500",
+    Component: lazy(() =>
+      import("@/features/notebook/notebook-view").then((m) => ({ default: m.NotebookView })),
     ),
   },
   "create-table": {

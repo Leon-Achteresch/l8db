@@ -43,6 +43,7 @@ export function TableView(props: TableViewProps) {
     viewTab,
     tableTab,
     tableRows,
+    masked,
     updateRowMutation,
     insertRowMutation,
     handleFilterChange,
@@ -65,7 +66,9 @@ export function TableView(props: TableViewProps) {
     csvExportOpen,
     setCsvExportOpen,
     xlsxExportOpen,
+    dataExportFormat,
     setXlsxExportOpen,
+    setDataExportFormat,
     exportColumns,
     exportRows,
     fullExportSource,
@@ -103,6 +106,7 @@ export function TableView(props: TableViewProps) {
       stateKey={stateKey}
       caps={caps}
       tableRows={tableRows}
+      masked={masked}
       updateRowMutation={updateRowMutation}
       insertRowMutation={insertRowMutation}
       handleFilterChange={handleFilterChange}
@@ -146,7 +150,9 @@ export function TableView(props: TableViewProps) {
         csvExportOpen={csvExportOpen}
         setCsvExportOpen={setCsvExportOpen}
         xlsxExportOpen={xlsxExportOpen}
+        dataExportFormat={dataExportFormat}
         setXlsxExportOpen={setXlsxExportOpen}
+        setDataExportFormat={setDataExportFormat}
         exportColumns={exportColumns}
         exportRows={exportRows}
         fullExportSource={fullExportSource}
@@ -183,6 +189,7 @@ export function TableView(props: TableViewProps) {
           exporting={exporting}
           setCsvExportOpen={setCsvExportOpen}
           setXlsxExportOpen={setXlsxExportOpen}
+          setDataExportFormat={setDataExportFormat}
           handleExport={handleExport}
           requestAddRow={requestAddRow}
           schema={schema}
@@ -254,7 +261,9 @@ export function TableView(props: TableViewProps) {
         csvExportOpen={csvExportOpen}
         setCsvExportOpen={setCsvExportOpen}
         xlsxExportOpen={xlsxExportOpen}
+        dataExportFormat={dataExportFormat}
         setXlsxExportOpen={setXlsxExportOpen}
+        setDataExportFormat={setDataExportFormat}
         exportColumns={exportColumns}
         exportRows={exportRows}
         fullExportSource={fullExportSource}

@@ -1,5 +1,6 @@
 import "./setup";
 import "./languages";
+import "./folding";
 import "./themes";
 
 export * as monaco from "monaco-editor/editor/editor.api";

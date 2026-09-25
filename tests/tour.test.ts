@@ -70,6 +70,7 @@ describe("tour script vollständig", () => {
     for (const entry of flattenTour()) {
       expect(entry.step.title.trim().length).toBeGreaterThan(0);
       expect(entry.step.body.trim().length).toBeGreaterThan(0);
+      expect(entry.step.action.trim().length).toBeGreaterThan(0);
     }
   });
 

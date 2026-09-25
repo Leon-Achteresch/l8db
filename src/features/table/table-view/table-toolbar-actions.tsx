@@ -1,9 +1,12 @@
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TestDataDialog } from "@/features/datagen/test-data-dialog";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { MaskingToggle } from "@/features/table/masking-toggle";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
+import { useReadOnlyConnection } from "@/lib/connections";
 import { TableExportMenu } from "./table-export-menu";
 
 import type { useTableViewModel } from "./use-table-view-model";
@@ -21,6 +24,7 @@ type Props = Pick<
   | "exporting"
   | "setCsvExportOpen"
   | "setXlsxExportOpen"
+  | "setDataExportFormat"
   | "handleExport"
   | "requestAddRow"
 > & {
@@ -40,14 +44,29 @@ export function TableToolbarActions({
   exporting,
   setCsvExportOpen,
   setXlsxExportOpen,
+  setDataExportFormat,
   handleExport,
   requestAddRow,
   schema,
   table,
 }: Props) {
+  const readOnly = useReadOnlyConnection();
   return (
     <div className="ml-auto flex items-center gap-1">
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
+      {tableTab === "data" && caps.query_language !== "redis" && <MaskingToggle />}
+      {tableTab === "data" && connection && caps.test_data && (
+        <TestDataDialog
+          connection={connection}
+          database={database}
+          schema={schema}
+          table={table}
+          readOnly={readOnly || Boolean(connection.readOnly)}
+          onComplete={() => {
+            void refetch();
+          }}
+        />
+      )}
       {tableTab === "data" &&
         connection &&
         !connection.readOnly &&
@@ -91,6 +110,7 @@ export function TableToolbarActions({
           showSql={caps.query_language !== "redis" && caps.query_language !== "json"}
           onCsv={() => setCsvExportOpen(true)}
           onXlsx={() => setXlsxExportOpen(true)}
+          onFormat={setDataExportFormat}
           onExport={handleExport}
         />
       )}

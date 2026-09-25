@@ -1,20 +1,41 @@
+mod athena;
+mod aws;
+pub mod backup;
+pub mod backup_tools;
+mod bigquery;
 mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub mod constraints;
 pub mod csv_stream;
 pub mod data_compare;
+pub mod datagen;
+mod datagen_data;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+mod dynamodb;
+pub(crate) mod elasticsearch;
 pub mod execution;
 pub mod export;
+pub mod export_formats;
+mod filter_expr;
+mod http_api;
+#[cfg(test)]
+mod http_mock;
+pub mod import;
+pub mod import_source;
+pub(crate) mod influxdb;
+pub mod masking;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;
 mod mysql;
 #[cfg(feature = "odbc")]
 mod odbc;
+#[cfg(feature = "odbc")]
+pub use odbc::configure_system_ini as configure_odbc;
 mod oracle;
 pub mod pool;
 mod postgres;
@@ -24,10 +45,14 @@ pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
+mod snowflake;
 mod sql_script;
 mod sqlite;
+mod sqlite_http;
 pub mod ssh;
+pub mod table_copy;
 pub mod transaction;
+mod warehouse_auth;
 
 use async_trait::async_trait;
 use pool::PoolState;
@@ -853,6 +878,15 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = req;
         Err(unsupported("CREATE TABLE Vorschau"))
     }
+    async fn column_value_options(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<constraints::ColumnValueOptions>, String> {
+        let _ = schema;
+        let _ = table;
+        Ok(Vec::new())
+    }
     async fn preview_object_ddl(&self, req: &ObjectDdlRequest) -> Result<String, String> {
         let _ = req;
         Err(unsupported("Objekt-DDL-Vorschau"))
@@ -1023,6 +1057,13 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         Err(unsupported("Datenbankübersicht"))
+    }
+    async fn snapshot_rows(
+        &self,
+        request: &snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let _ = request;
+        Err(unsupported("Datenvergleich"))
     }
     async fn schema_catalog(
         &self,
@@ -1222,12 +1263,16 @@ pub struct ObjectAuditInfo {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CreateTableRequest {
     pub schema: String,
     pub name: String,
     pub columns: Vec<ColumnDefinition>,
     pub if_not_exists: bool,
+    #[serde(default)]
+    pub primary_key_name: Option<String>,
+    #[serde(default)]
+    pub constraints: Vec<constraints::TableConstraint>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1511,8 +1556,53 @@ pub(crate) fn create_table_sql(
     quote: fn(&str) -> String,
     qualify_schema: bool,
 ) -> String {
+    render_create_table(req, quote, qualify_schema, &[])
+}
+
+pub(crate) fn create_table_ddl(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+    qualify_schema: bool,
+    dialect: Option<constraints::ConstraintDialect>,
+) -> Result<String, String> {
+    let extra = match dialect {
+        Some(dialect) => constraints::table_clauses(dialect, req)?,
+        None if req.constraints.is_empty() => Vec::new(),
+        None => return Err(unsupported("Tabellen-Constraints")),
+    };
+    Ok(render_create_table(req, quote, qualify_schema, &extra))
+}
+
+pub(crate) fn primary_key_clause(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+) -> Option<String> {
+    let pk_cols: Vec<String> = req
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| quote(&c.name))
+        .collect();
+    if pk_cols.is_empty() {
+        return None;
+    }
+    let name = req
+        .primary_key_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| format!("CONSTRAINT {} ", quote(n)))
+        .unwrap_or_default();
+    Some(format!("{name}PRIMARY KEY ({})", pk_cols.join(", ")))
+}
+
+fn render_create_table(
+    req: &CreateTableRequest,
+    quote: fn(&str) -> String,
+    qualify_schema: bool,
+    extra: &[String],
+) -> String {
     let mut parts: Vec<String> = Vec::new();
-    let mut pk_cols: Vec<String> = Vec::new();
     for col in &req.columns {
         let mut def = format!("{} {}", quote(&col.name), col.data_type);
         if let Some(d) = col.default_value.as_deref().filter(|d| !d.is_empty()) {
@@ -1525,13 +1615,9 @@ pub(crate) fn create_table_sql(
             def.push_str(" UNIQUE");
         }
         parts.push(def);
-        if col.is_primary_key {
-            pk_cols.push(quote(&col.name));
-        }
     }
-    if !pk_cols.is_empty() {
-        parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
-    }
+    parts.extend(primary_key_clause(req, quote));
+    parts.extend(extra.iter().cloned());
     let target = if qualify_schema && !req.schema.is_empty() {
         format!("{}.{}", quote(&req.schema), quote(&req.name))
     } else {
@@ -1609,6 +1695,38 @@ pub(crate) fn hex_blob(bytes: &[u8]) -> String {
         out.push(HEX[(b & 0x0f) as usize] as char);
     }
     out
+}
+
+pub(crate) fn hex_blob_body(value: &str) -> Option<&str> {
+    let hex = value.strip_prefix("\\x")?;
+    (hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
+}
+
+pub(crate) fn is_binary_column_type(data_type: &str) -> bool {
+    let lower = data_type.trim().to_ascii_lowercase();
+    let base = lower.split('(').next().unwrap_or("").trim();
+    if base.starts_with("binary_") || base.contains("char") || base.contains("text") {
+        return false;
+    }
+    base.contains("blob")
+        || base.contains("binary")
+        || base == "bytea"
+        || base == "image"
+        || base == "raw"
+        || base == "long raw"
+        || matches!(
+            base,
+            "geometry"
+                | "geography"
+                | "point"
+                | "linestring"
+                | "polygon"
+                | "multipoint"
+                | "multilinestring"
+                | "multipolygon"
+                | "geometrycollection"
+                | "geomcollection"
+        )
 }
 
 pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<String, String> {
@@ -1704,6 +1822,11 @@ pub fn create_adapter_from_string(
             pool_state,
             key,
         )?),
+        DatabaseKind::Bigquery => Box::new(bigquery::BigqueryAdapter::new(connection_string)?),
+        DatabaseKind::Snowflake => Box::new(snowflake::SnowflakeAdapter::new(
+            connection_string,
+            database,
+        )?),
         #[cfg(feature = "duckdb")]
         DatabaseKind::Duckdb => Box::new(duckdb::DuckdbAdapter::new(
             connection_string,
@@ -1716,6 +1839,22 @@ pub fn create_adapter_from_string(
         DatabaseKind::Odbc => Box::new(odbc::OdbcAdapter::new(connection_string, pool_state, key)?),
         #[cfg(not(feature = "odbc"))]
         DatabaseKind::Odbc => return Err(provider::kind_driver_status(kind).detail),
+        DatabaseKind::Elasticsearch => {
+            Box::new(elasticsearch::ElasticAdapter::new(connection_string)?)
+        }
+        DatabaseKind::Influxdb => {
+            Box::new(influxdb::InfluxAdapter::new(connection_string, database)?)
+        }
+        DatabaseKind::SqliteHttp => Box::new(sqlite_http::SqliteHttpAdapter::new(
+            connection_string,
+            database,
+        )?),
+        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
+            connection_string,
+            database,
+            key,
+        )?),
     })
 }
 
@@ -1785,6 +1924,31 @@ mod tests {
     use super::{redact_connection_string, split_statements, validate_table_filter};
 
     use super::{build_object_ddl, hex_blob, validate_object_name, ObjectDdlRequest};
+
+    #[test]
+    fn hex_blob_body_and_binary_types() {
+        assert_eq!(super::hex_blob_body("\\x00ff"), Some("00ff"));
+        assert_eq!(super::hex_blob_body("\\x"), Some(""));
+        assert_eq!(super::hex_blob_body("\\x0"), None);
+        assert_eq!(super::hex_blob_body("\\xzz"), None);
+        assert_eq!(super::hex_blob_body("00ff"), None);
+        for t in [
+            "BLOB",
+            "longblob",
+            "varbinary(16)",
+            "BINARY(4)",
+            "RAW(16)",
+            "LONG RAW",
+            "image",
+            "geometry",
+            "POINT",
+        ] {
+            assert!(super::is_binary_column_type(t), "{t}");
+        }
+        for t in ["BINARY_DOUBLE", "varchar(10)", "text", "CLOB", "int"] {
+            assert!(!super::is_binary_column_type(t), "{t}");
+        }
+    }
 
     #[test]
     fn hex_blob_encodes_bytes() {
@@ -1870,13 +2034,21 @@ mod tests {
         assert_eq!(super::requalify_schema(sql, "", "neu"), sql);
     }
 
-    fn smoke_query(kind: super::DatabaseKind) -> &'static str {
+    fn smoke_query(kind: super::DatabaseKind, tables: &[super::TableInfo]) -> String {
         match kind {
-            super::DatabaseKind::Redis => "PING",
-            super::DatabaseKind::Mongodb => "{\"ping\": 1}",
-            super::DatabaseKind::Cassandra => "SELECT release_version FROM system.local",
-            super::DatabaseKind::Oracle => "SELECT 1 FROM dual",
-            _ => "SELECT 1",
+            super::DatabaseKind::Redis => "PING".to_string(),
+            super::DatabaseKind::Mongodb => "{\"ping\": 1}".to_string(),
+            super::DatabaseKind::Cassandra => {
+                "SELECT release_version FROM system.local".to_string()
+            }
+            super::DatabaseKind::Oracle => "SELECT 1 FROM dual".to_string(),
+            super::DatabaseKind::Dynamodb => format!(
+                "SELECT * FROM {}",
+                super::quote_ident(&tables.first().map(|t| t.name.clone()).unwrap_or_default())
+            ),
+            super::DatabaseKind::Elasticsearch => "GET _cluster/health".to_string(),
+            super::DatabaseKind::Influxdb => "SHOW MEASUREMENTS".to_string(),
+            _ => "SELECT 1".to_string(),
         }
     }
 
@@ -1939,7 +2111,7 @@ mod tests {
                 );
             }
             let result = adapter
-                .execute_query(smoke_query(kind))
+                .execute_query(&smoke_query(kind, &tables))
                 .await
                 .unwrap_or_else(|e| panic!("{var} query: {e}"));
             assert!(
@@ -2222,3 +2394,15 @@ mod load_perf_tests;
 
 #[cfg(test)]
 mod live_plan_tests;
+
+#[cfg(test)]
+mod value_viewer_live_tests;
+
+#[cfg(test)]
+mod backup_live_tests;
+
+#[cfg(test)]
+mod import_live_tests;
+
+#[cfg(test)]
+mod http_live_tests;

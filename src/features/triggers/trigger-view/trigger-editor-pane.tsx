@@ -1,6 +1,8 @@
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
+import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
+import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { themeFor } from "./theme-for";
 
 export interface TriggerEditorPaneProps {
@@ -12,6 +14,7 @@ export interface TriggerEditorPaneProps {
 
 export function TriggerEditorPane({ value, onChange, error, errorPrefix }: TriggerEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const vimStatusRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const onChangeRef = useRef(onChange);
   const { resolvedTheme } = useTheme();
@@ -71,6 +74,8 @@ export function TriggerEditorPane({ value, onChange, error, errorPrefix }: Trigg
     };
   }, []);
 
+  const vimEnabled = useEditorKeymap(editorRef, vimStatusRef);
+
   useEffect(() => {
     const editor = editorRef.current;
     if (editor && editor.getValue() !== value) {
@@ -93,5 +98,10 @@ export function TriggerEditorPane({ value, onChange, error, errorPrefix }: Trigg
     );
   }, [error]);
 
-  return <div ref={containerRef} className="size-full min-h-0 flex-1" />;
+  return (
+    <div className="flex size-full min-h-0 flex-1 flex-col">
+      <div ref={containerRef} className="min-h-0 flex-1" />
+      {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
+    </div>
+  );
 }

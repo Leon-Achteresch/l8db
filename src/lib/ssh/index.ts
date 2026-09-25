@@ -1,4 +1,10 @@
-export { closeSshTunnel, listSshTunnels, openSshTunnel } from "@/lib/db";
+export {
+  closeSshTunnel,
+  listSshConfigHosts,
+  listSshTunnels,
+  openProxyTunnel,
+  openSshTunnel,
+} from "@/lib/db";
 export {
   activateConnection,
   activateConnectionWithToast,
@@ -13,5 +19,31 @@ export {
   sshSecretAccount,
   tunneledConnectionString,
 } from "./connection-string";
+export {
+  buildProxyTunnelRequest,
+  buildSshTunnelRequest,
+  loadNetworkSecrets,
+  type NetworkSecrets,
+  ONEPASSWORD_AGENT_SOCKET_LINUX,
+  ONEPASSWORD_AGENT_SOCKET_MAC,
+  onePasswordAgentSocket,
+  openNetworkTunnel,
+  parseJumpSecrets,
+  proxySecretAccount,
+  proxyTarget,
+  type SshConfigDraft,
+  serializeJumpSecrets,
+  sshConfigDraft,
+  sshJumpSecretAccount,
+} from "./network";
 export { ensureSshTunnel } from "./tunnel";
-export type { SshAuthRequest, SshTunnelInfo, SshTunnelRequest } from "./types";
+export type {
+  ProxyRequest,
+  ProxyTunnelRequest,
+  SshAuthRequest,
+  SshConfigHost,
+  SshConfigJump,
+  SshHopRequest,
+  SshTunnelInfo,
+  SshTunnelRequest,
+} from "./types";

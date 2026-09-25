@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Network,
+  NotebookPenIcon,
   Route as RouteIcon,
   SquareTerminalIcon,
   Table2,
@@ -27,6 +28,12 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },
+    {
+      title: "SQL-Notebooks",
+      url: "/notebook",
+      icon: NotebookPenIcon,
+      available: (caps) => caps.query_language === "sql",
+    },
     {
       title: "Invalid Objects",
       url: "/invalid-objects",

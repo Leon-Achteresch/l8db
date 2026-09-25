@@ -11,7 +11,14 @@ export type DatabaseKind =
   | "oracle"
   | "cassandra"
   | "duckdb"
-  | "odbc";
+  | "odbc"
+  | "elasticsearch"
+  | "influxdb"
+  | "sqlite_http"
+  | "dynamodb"
+  | "athena"
+  | "bigquery"
+  | "snowflake";
 
 export interface Capabilities {
   databases: boolean;
@@ -46,6 +53,9 @@ export interface Capabilities {
   sql_filter: boolean;
   read_only_mode: boolean;
   csv_import: boolean;
+  import_conflicts: boolean;
+  table_copy: boolean;
+  test_data: boolean;
   column_search: boolean;
   source_search: boolean;
   schema_snapshot: boolean;
@@ -67,6 +77,7 @@ export interface Capabilities {
   query_cancel: boolean;
   ssl: boolean;
   ssh: boolean;
+  backup: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

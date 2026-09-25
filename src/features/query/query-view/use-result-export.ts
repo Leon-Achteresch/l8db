@@ -4,11 +4,13 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { QueryResult } from "@/lib/db";
+import type { DataExportFormat } from "@/lib/export-formats";
 
 export function useResultExport(result: QueryResult | null) {
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
   const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
+  const [dataExportFormat, setDataExportFormat] = useState<DataExportFormat | null>(null);
   const openCsvExport = useCallback(() => setCsvExportOpen(true), []);
 
   const exportRows = useMemo(() => {
@@ -44,6 +46,8 @@ export function useResultExport(result: QueryResult | null) {
     openCsvExport,
     xlsxExportOpen,
     setXlsxExportOpen,
+    dataExportFormat,
+    setDataExportFormat,
     exportRows,
     handleExportJson,
   };

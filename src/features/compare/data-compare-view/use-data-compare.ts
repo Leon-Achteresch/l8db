@@ -31,6 +31,7 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
   const [filter, setFilter] = useState<CategoryFilter>("all");
   const [direction, setDirection] = useState<SyncDirection>("left_to_right");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [includeDeletes, setIncludeDeletes] = useState(false);
 
   const leftConnection = connections.find((item) => item.id === left.connectionId) ?? null;
   const rightConnection = connections.find((item) => item.id === right.connectionId) ?? null;
@@ -100,11 +101,13 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
           left: {
             connectionString: effectiveConnectionString(leftConnection),
             database: left.database,
+            kind: leftConnection.kind,
             source: source(left),
           },
           right: {
             connectionString: effectiveConnectionString(rightConnection),
             database: right.database,
+            kind: rightConnection.kind,
             source: source(right),
           },
           keyColumns: plan.keyColumns,
@@ -118,6 +121,14 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
         result,
         keyColumns: plan.keyColumns,
         compareColumns: plan.compareColumns,
+        columnTypes: {
+          left: Object.fromEntries(
+            leftSide.columns.map((column) => [column.name, column.data_type]),
+          ),
+          right: Object.fromEntries(
+            rightSide.columns.map((column) => [column.name, column.data_type]),
+          ),
+        },
         left,
         right,
       });
@@ -162,6 +173,9 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
           keyColumns: state.keyColumns,
           compareColumns: state.compareColumns,
           kind: connection?.kind ?? null,
+          columnTypes:
+            direction === "left_to_right" ? state.columnTypes.right : state.columnTypes.left,
+          includeDeletes,
         }),
         error: null as string | null,
       };
@@ -171,11 +185,12 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
         sql: "",
         insertCount: 0,
         updateCount: 0,
+        deleteCount: 0,
         keys: [] as string[],
         error: errorMessage(scriptError),
       };
     }
-  }, [state, scriptRows, direction, connections]);
+  }, [state, scriptRows, direction, connections, includeDeletes]);
 
   const toggleRow = (keyText: string) => {
     setSelected((current) => {
@@ -215,6 +230,8 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
     setFilter,
     direction,
     setDirection,
+    includeDeletes,
+    setIncludeDeletes,
     selected,
     leftConnection,
     rightConnection,

@@ -2,7 +2,7 @@ import { FileJsonIcon, XIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExplainNodeCard } from "@/features/query/explain-node-card";
+import { PlanVisualizer } from "@/features/explain/plan-visualizer";
 import { formatCapturedAt, type SavedExplainPlan } from "@/lib/explain-file";
 
 export interface LoadedPlan {
@@ -90,7 +90,7 @@ export function SavedPlanPanel({
             {loaded.data.sql}
           </pre>
           <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-            <ExplainNodeCard node={loaded.data.plan} depth={0} />
+            <PlanVisualizer plan={loaded.data.plan} />
           </div>
         </div>
       )}

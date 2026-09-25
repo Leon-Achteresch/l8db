@@ -35,7 +35,7 @@ export function ImportView() {
             </TabsTrigger>
             {csvEnabled && (
               <TabsTrigger value="csv" className="text-xs">
-                CSV
+                Dateien
               </TabsTrigger>
             )}
           </TabsList>

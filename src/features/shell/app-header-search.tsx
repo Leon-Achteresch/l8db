@@ -7,6 +7,7 @@ import { type CommandItem, CommandPalette } from "@/components/motion/command-pa
 import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import {
   buildHotkeyItems,
+  buildNotebookItems,
   buildObjectItems,
 } from "@/features/shell/app-header-search/command-items";
 import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
@@ -19,6 +20,7 @@ import {
   useHotkeysStore,
   useResolvedHotkey,
 } from "@/lib/hotkeys";
+import { useNotebookStore } from "@/lib/notebook/store";
 import { supports } from "@/lib/providers";
 import { useAllSchemaObjectsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -35,6 +37,7 @@ export function AppHeaderSearch() {
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
   const connections = useConnectionsStore((state) => state.connections);
+  const recentNotebooks = useNotebookStore((state) => state.recent);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
@@ -185,6 +188,9 @@ export function AppHeaderSearch() {
         setShortcutsOpen(true);
       },
     };
+    const notebookItems = activeConnection
+      ? buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
+      : [];
     const hotkeyItems = buildHotkeyItems(
       pathname,
       activeConnection !== null,
@@ -197,6 +203,7 @@ export function AppHeaderSearch() {
       connectionManagerItem,
       ...deepSearchItem,
       ...objectItems,
+      ...notebookItems,
       ...extensionItems,
       ...hotkeyItems,
       tourItem,
@@ -210,6 +217,7 @@ export function AppHeaderSearch() {
     connections,
     extensionItems,
     navigate,
+    recentNotebooks,
     objects,
     onSelectConnection,
     isSwitching,

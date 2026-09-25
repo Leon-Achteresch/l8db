@@ -1,12 +1,16 @@
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
+import { isAwsKind } from "@/lib/aws";
 import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
+import { ConnectionAwsFields } from "./aws-fields";
+import { ConnectionBigqueryFields } from "./bigquery-fields";
 import { DriverMissingNotice } from "./driver-missing-notice";
 import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
+import { ConnectionSnowflakeFields } from "./snowflake-fields";
 import { ConnectionTestResultStatus } from "./test-result-status";
 import { ConnectionTnsInputs } from "./tns-inputs";
 import { ConnectionUrlInput } from "./url-input";
@@ -22,11 +26,17 @@ export function ConnectionDetailsStep({
   const {
     activeInfo,
     advancedOpen,
+    applySshConfig,
     caps,
     color,
     database,
     databaseLabel,
     elapsed,
+    environment,
+    maskRules,
+    setEnvironment,
+    setMaskRules,
+    extraParams,
     file,
     guided,
     host,
@@ -34,6 +44,7 @@ export function ConnectionDetailsStep({
     kind,
     mode,
     name,
+    network,
     password,
     pickFile,
     poolerWarning,
@@ -53,6 +64,7 @@ export function ConnectionDetailsStep({
     showSingleSchemaSwitcher,
     setColor,
     setDatabase,
+    setExtraParams,
     setFile,
     setHost,
     setName,
@@ -96,6 +108,12 @@ export function ConnectionDetailsStep({
     value,
     windowsAuth,
   } = editor;
+  const WarehouseFields =
+    kind === "bigquery"
+      ? ConnectionBigqueryFields
+      : kind === "snowflake"
+        ? ConnectionSnowflakeFields
+        : null;
   return (
     <div className="flex flex-col gap-3 pr-1">
       {!activeInfo.driver_status.available && (
@@ -170,6 +188,34 @@ export function ConnectionDetailsStep({
         />
       ) : info.file_based ? (
         <ConnectionFileInput info={info} file={file} setFile={setFile} pickFile={pickFile} />
+      ) : isAwsKind(kind) ? (
+        <ConnectionAwsFields
+          key={provider}
+          kind={kind}
+          host={host}
+          setHost={setHost}
+          database={database}
+          setDatabase={setDatabase}
+          user={user}
+          setUser={setUser}
+          password={password}
+          setPassword={setPassword}
+          extraParams={extraParams}
+          setExtraParams={setExtraParams}
+        />
+      ) : WarehouseFields ? (
+        <WarehouseFields
+          host={host}
+          setHost={setHost}
+          database={database}
+          setDatabase={setDatabase}
+          user={user}
+          setUser={setUser}
+          password={password}
+          setPassword={setPassword}
+          extraParams={extraParams}
+          setExtraParams={setExtraParams}
+        />
       ) : (
         <ConnectionHostFields
           info={info}
@@ -228,10 +274,16 @@ export function ConnectionDetailsStep({
         onSshKey={setSshKey}
         sshPassword={sshPassword}
         onSshPassword={setSshPassword}
+        network={network}
+        onApplySshConfig={applySshConfig}
         tags={tags}
         onTags={setTags}
         color={color}
         onColor={setColor}
+        environment={environment}
+        onEnvironment={setEnvironment}
+        maskRules={maskRules}
+        onMaskRules={setMaskRules}
         schemaFilter={schemaFilter}
         onSchemaFilter={setSchemaFilter}
         showSingleSchemaSwitcher={showSingleSchemaSwitcher}

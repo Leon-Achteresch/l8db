@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ActivityIcon, ListIcon, PlusIcon, RadioIcon, UploadIcon } from "lucide-react";
+import { ActivityIcon, ArchiveIcon, ListIcon, PlusIcon, RadioIcon, UploadIcon } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -26,6 +26,16 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
                 <Link to="/import">
                   <UploadIcon className="text-muted-foreground" />
                   <span>SQL importieren</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+          {caps.backup && (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                <Link to="/backup">
+                  <ArchiveIcon className="text-muted-foreground" />
+                  <span>Sichern & Wiederherstellen</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

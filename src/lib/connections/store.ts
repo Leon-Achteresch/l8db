@@ -14,6 +14,8 @@ interface ConnectionsState {
   hostGroupRules: HostGroupRule[];
   setHostGroupRules: (rules: HostGroupRule[]) => void;
   addConnection: (input: ConnectionInput) => SavedConnection;
+  addTemporaryConnection: (input: ConnectionInput) => SavedConnection;
+  saveTemporaryConnection: (id: string) => void;
   updateConnection: (id: string, input: ConnectionInput) => void;
   removeConnection: (id: string) => void;
   duplicateConnection: (id: string) => SavedConnection | null;
@@ -36,6 +38,8 @@ export const windowConnectionId: string | null =
 
 export const isMainWindow = windowConnectionId === null;
 
+export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy"];
+
 function readStoredActiveId(): string | null {
   try {
     const raw = window.localStorage.getItem("l8db.connections");
@@ -44,6 +48,11 @@ function readStoredActiveId(): string | null {
   } catch {
     return null;
   }
+}
+
+function persistableActiveId(state: Pick<ConnectionsState, "activeId" | "connections">) {
+  const active = state.connections.find((connection) => connection.id === state.activeId);
+  return active?.temporary ? null : state.activeId;
 }
 
 function createId(): string {
@@ -96,15 +105,38 @@ export const useConnectionsStore = create<ConnectionsState>()(
         }));
         return connection;
       },
+      addTemporaryConnection: (input) => {
+        const existing = get().connections.find(
+          (connection) =>
+            connection.kind === input.kind &&
+            connection.connectionString === input.connectionString,
+        );
+        if (existing) return existing;
+        const connection: SavedConnection = { ...input, id: createId(), temporary: true };
+        set((state) => ({ connections: [...state.connections, connection] }));
+        return connection;
+      },
+      saveTemporaryConnection: (id) =>
+        set((state) => ({
+          connections: state.connections.map((connection) =>
+            connection.id === id ? { ...connection, temporary: false } : connection,
+          ),
+        })),
       updateConnection: (id, input) =>
         set((state) => ({
           connections: state.connections.map((connection) =>
-            connection.id === id ? { ...input, id } : connection,
+            connection.id !== id
+              ? connection
+              : connection.temporary
+                ? { temporary: true, ...input, id }
+                : { ...input, id },
           ),
         })),
       removeConnection: (id) => {
         void deleteSecret(id).catch(() => undefined);
-        void deleteSecret(`${id}:ssh`).catch(() => undefined);
+        for (const suffix of NETWORK_SECRET_SUFFIXES) {
+          void deleteSecret(`${id}${suffix}`).catch(() => undefined);
+        }
         void closeSshTunnel(id).catch(() => undefined);
         set((state) => ({
           connections: state.connections.filter((connection) => connection.id !== id),
@@ -120,7 +152,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
           name: `${source.name} (Kopie)`,
           favorite: false,
         };
-        for (const suffix of ["", ":ssh"]) {
+        for (const suffix of ["", ...NETWORK_SECRET_SUFFIXES]) {
           void loadSecret(`${id}${suffix}`)
             .then((secret) => (secret ? storeSecret(`${copy.id}${suffix}`, secret) : undefined))
             .catch(() => undefined);
@@ -159,8 +191,8 @@ export const useConnectionsStore = create<ConnectionsState>()(
       name: "l8db.connections",
       storage: createJSONStorage(() => scrubbingStorage),
       partialize: (state) => ({
-        connections: state.connections,
-        activeId: isMainWindow ? state.activeId : readStoredActiveId(),
+        connections: state.connections.filter((connection) => !connection.temporary),
+        activeId: isMainWindow ? persistableActiveId(state) : readStoredActiveId(),
         favoriteServerKeys: state.favoriteServerKeys,
         serverOrder: state.serverOrder,
         collapsedServerKeys: state.collapsedServerKeys,

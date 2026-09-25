@@ -1,5 +1,5 @@
 import type { useNavigate } from "@tanstack/react-router";
-import { Braces, Eye, Keyboard, Package, Table } from "lucide-react";
+import { Braces, Eye, Keyboard, NotebookPen, Package, Table } from "lucide-react";
 import type { CommandItem } from "@/components/motion/command-palette";
 import {
   emitHotkeyAction,
@@ -9,12 +9,14 @@ import {
   isHotkeyAvailable,
   resolveHotkey,
 } from "@/lib/hotkeys";
+import type { RecentNotebook } from "@/lib/notebook/store";
 import {
   buildObjectEntries,
   OBJECT_TYPE_PLURAL,
   objectEntryHint,
   objectEntryKeywords,
 } from "@/lib/object-search";
+import { useTableTabs } from "@/lib/table-tabs";
 
 export function buildObjectItems(
   objects: Parameters<typeof buildObjectEntries>[0] | undefined,
@@ -62,6 +64,7 @@ export function buildObjectItems(
         return;
       }
       if (entry.type === "view") {
+        useTableTabs.getState().openViewEditorTab({ schema: entry.schema, view: entry.name });
         void navigate({
           to: "/view-editor/$schema/$view",
           params: { schema: entry.schema, view: entry.name },
@@ -108,4 +111,55 @@ export function buildHotkeyItems(
       emitHotkeyAction(command.id);
     },
   }));
+}
+
+export function buildNotebookItems(
+  recent: RecentNotebook[],
+  activeConnectionId: string | null,
+  setOpen: (open: boolean) => void,
+  navigate: ReturnType<typeof useNavigate>,
+): CommandItem[] {
+  const go = (action?: () => Promise<unknown>) => async () => {
+    setOpen(false);
+    if (action) await action();
+    void navigate({ to: "/notebook" });
+  };
+  const keywords = ["notebook", "sql", "analyse", "l8nb"];
+  return [
+    {
+      id: "notebook:show",
+      label: "SQL-Notebook anzeigen",
+      group: "Notebooks",
+      icon: NotebookPen,
+      keywords,
+      onSelect: go(),
+    },
+    {
+      id: "notebook:new",
+      label: "Neues SQL-Notebook",
+      group: "Notebooks",
+      icon: NotebookPen,
+      keywords,
+      onSelect: go(async () =>
+        (await import("@/lib/notebook/actions")).newNotebookDraft(activeConnectionId),
+      ),
+    },
+    {
+      id: "notebook:open",
+      label: "SQL-Notebook aus Datei öffnen…",
+      group: "Notebooks",
+      icon: NotebookPen,
+      keywords,
+      onSelect: go(async () => (await import("@/lib/notebook/actions")).openNotebook()),
+    },
+    ...recent.map((entry) => ({
+      id: `notebook:recent:${entry.path}`,
+      label: entry.name,
+      group: "Notebooks",
+      icon: NotebookPen,
+      hint: entry.path.split(/[\\/]/).pop(),
+      keywords: [...keywords, entry.path],
+      onSelect: go(async () => (await import("@/lib/notebook/actions")).openNotebook(entry.path)),
+    })),
+  ];
 }

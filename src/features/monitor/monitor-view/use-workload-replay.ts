@@ -3,7 +3,12 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { type SavedConnection, useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  type SavedConnection,
+  useActiveConnection,
+  useConnectionsStore,
+  usesTunnel,
+} from "@/lib/connections";
 import { executeQuery, executeQueryWithParams } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { ensurePassword } from "@/lib/password-prompt";
@@ -40,7 +45,7 @@ async function prepareConnection(id: string): Promise<SavedConnection> {
   if (!initial) throw new Error("Die Zielverbindung existiert nicht mehr.");
   if (!(await ensurePassword(id))) throw new Error("Ohne Passwort kann nicht verbunden werden.");
   const fresh = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
-  if (fresh?.ssh?.host && !fresh.tunnelPort) {
+  if (usesTunnel(fresh) && !fresh.tunnelPort) {
     const outcome = await ensureSshTunnel(fresh);
     if (!outcome.ok) throw new Error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
   }

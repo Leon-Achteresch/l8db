@@ -5,7 +5,7 @@ use mysql_async::{Column, Conn, Opts, OptsBuilder, Pool, Row, SslOpts, Value};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, timed, where_clause,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
@@ -311,6 +311,34 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
         })
     })
     .await
+}
+
+async fn read_snapshot(conn: &mut Conn, sql: &str, max_rows: usize) -> Result<TableData, String> {
+    let mut result = conn.query_iter(sql).await.map_err(map_err)?;
+    let meta: Vec<Column> = result.columns().map(|c| c.to_vec()).unwrap_or_default();
+    let columns: Vec<String> = meta.iter().map(|c| c.name_str().into_owned()).collect();
+    let mut collector = super::snapshot::Collector::new(max_rows);
+    while let Some(row) = result.next().await.map_err(map_err)? {
+        let values = row.unwrap().into_iter().zip(&meta);
+        collector.push(
+            columns
+                .iter()
+                .cloned()
+                .zip(values.map(|(value, column)| match value {
+                    Value::Bytes(bytes)
+                        if matches!(
+                            column.column_type(),
+                            ColumnType::MYSQL_TYPE_DECIMAL | ColumnType::MYSQL_TYPE_NEWDECIMAL
+                        ) =>
+                    {
+                        serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
+                    }
+                    value => value_to_json(value, column),
+                }))
+                .collect(),
+        )?;
+    }
+    collector.finish(columns)
 }
 
 struct MysqlTx {
@@ -849,7 +877,7 @@ impl DatabaseAdapter for MysqlAdapter {
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
         let sql = format!(
-            "SELECT tc.constraint_name, tc.constraint_type, GROUP_CONCAT(kcu.column_name ORDER BY kcu.ordinal_position SEPARATOR ',') FROM information_schema.table_constraints tc LEFT JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name WHERE tc.table_schema = {} AND tc.table_name = {} GROUP BY tc.constraint_name, tc.constraint_type ORDER BY tc.constraint_type, tc.constraint_name",
+            "SELECT tc.constraint_name, tc.constraint_type, GROUP_CONCAT(kcu.column_name ORDER BY kcu.ordinal_position SEPARATOR ','), MAX(cc.check_clause) FROM information_schema.table_constraints tc LEFT JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name LEFT JOIN information_schema.check_constraints cc ON tc.constraint_type = 'CHECK' AND cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name WHERE tc.table_schema = {} AND tc.table_name = {} GROUP BY tc.constraint_name, tc.constraint_type ORDER BY tc.constraint_type, tc.constraint_name",
             lit(schema),
             lit(table)
         );
@@ -863,7 +891,9 @@ impl DatabaseAdapter for MysqlAdapter {
                     .unwrap_or_default();
                 ConstraintInfo {
                     name: cell(r, 0),
-                    definition: format!("{} ({})", cell(r, 1), columns.join(", ")),
+                    definition: cell_opt(r, 3)
+                        .map(|clause| format!("CHECK {clause}"))
+                        .unwrap_or_else(|| format!("{} ({})", cell(r, 1), columns.join(", "))),
                     constraint_type: cell(r, 1),
                     columns,
                 }
@@ -872,7 +902,22 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        self.exec(&create_table_sql(req, quote, true)).await
+        self.exec(&create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mysql),
+        )?)
+        .await
+    }
+
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Mysql),
+        )
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
@@ -967,7 +1012,33 @@ impl DatabaseAdapter for MysqlAdapter {
             schemas,
         })
     }
+
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let object = format!("{}.{}", quote(&request.schema), quote(&request.table));
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut conn = self.conn().await?;
+        conn.query_drop("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")
+            .await
+            .map_err(map_err)?;
+        let result = read_snapshot(&mut conn, &sql, request.max_rows).await;
+        conn.query_drop("ROLLBACK").await.map_err(map_err)?;
+        result
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "mysql_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {

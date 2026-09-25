@@ -1,6 +1,6 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export interface Disposable { dispose(): void }
-export type Permission = "database:read" | "database:write" | "network" | "filesystem:extension-storage" | "filesystem" | "clipboard:read" | "clipboard:write" | "process:execute";
+export type Permission = "database:read" | "database:write" | "network" | "filesystem:extension-storage" | "filesystem" | "clipboard:read" | "clipboard:write" | "process:execute" | "connections:read" | "connections:write";
 export interface ConfigurationProperty {
   type: "boolean" | "string" | "number";
   default: boolean | string | number;
@@ -179,6 +179,15 @@ export interface ProcessResult {
   stdout: string;
   stderr: string;
 }
+export interface VaultConnection {
+  id: string;
+  name: string;
+  kind: string;
+  connectionString: string;
+  password: string | null;
+  profile: Json;
+}
+export interface SaveConnectionsResult { added: number; updated: number; skipped: string[] }
 export interface L8dbApi {
   readonly version: "1.1.0";
   commands: {
@@ -221,6 +230,10 @@ export interface L8dbApi {
     showSaveDialog(filename?: string): Promise<string | null>;
     readTextFile(path: string): Promise<string>;
     writeTextFile(path: string, contents: string): Promise<void>;
+  };
+  connections: {
+    list(): Promise<VaultConnection[]>;
+    save(connections: VaultConnection[]): Promise<SaveConnectionsResult>;
   };
   process: {
     run(command: string, options?: ProcessOptions): Promise<ProcessResult>;

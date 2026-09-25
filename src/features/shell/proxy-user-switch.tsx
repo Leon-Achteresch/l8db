@@ -27,12 +27,15 @@ const HINTS: Partial<Record<string, string>> = {
     "Wechselt den Sicherheitskontext per EXECUTE AS LOGIN (Fallback EXECUTE AS USER). Erfordert IMPERSONATE-Recht; Security Policies greifen.",
   oracle:
     "Proxy-Anmeldung als benutzer[ziel]. Erfordert ALTER USER ziel GRANT CONNECT THROUGH benutzer; VPD-Policies greifen.",
+  snowflake:
+    "Wechselt die aktive Rolle für alle Abfragen dieser Verbindung. Die Rolle muss dem Benutzer gewährt sein.",
 };
 
 const GROUP_LABELS: Record<string, Record<ProxyUserInfo["category"], string>> = {
   postgres: { login: "Logins", user: "Benutzer", role: "Rollen" },
   mssql: { login: "Logins", user: "Datenbank-Benutzer", role: "Rollen" },
   oracle: { login: "Logins", user: "Freigegebene Benutzer", role: "Rollen" },
+  snowflake: { login: "Logins", user: "Benutzer", role: "Rollen" },
 };
 
 const CATEGORIES: ProxyUserInfo["category"][] = ["login", "user", "role"];
@@ -62,6 +65,14 @@ export function ProxyUserSwitch() {
   const typed = search.trim();
   const users = candidates.data ?? [];
   const labels = GROUP_LABELS[connection.kind] ?? GROUP_LABELS.postgres;
+  const roleSwitch = connection.kind === "snowflake";
+  const title = active
+    ? roleSwitch
+      ? `Rolle ${active}`
+      : `Ansicht als ${active}`
+    : roleSwitch
+      ? "Rolle wechseln"
+      : "Als Benutzer ansehen";
 
   async function apply(proxyUser: string | null) {
     if (!connection || busy) return;
@@ -80,7 +91,15 @@ export function ProxyUserSwitch() {
       }));
       queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === next.id });
       setOpen(false);
-      toast.success(proxyUser ? `Ansicht als ${proxyUser}` : "Wieder mit eigenem Benutzer");
+      toast.success(
+        proxyUser
+          ? roleSwitch
+            ? `Rolle ${proxyUser} aktiv`
+            : `Ansicht als ${proxyUser}`
+          : roleSwitch
+            ? "Wieder mit Standardrolle"
+            : "Wieder mit eigenem Benutzer",
+      );
     } catch (error) {
       toast.error(connectionError(error));
     } finally {
@@ -99,8 +118,8 @@ export function ProxyUserSwitch() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={active ? `Ansicht als ${active}` : "Als Benutzer ansehen"}
-          title={active ? `Ansicht als ${active}` : "Als Benutzer ansehen"}
+          aria-label={title}
+          title={title}
           className={cn(
             "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full text-xs font-medium transition-colors",
             active
@@ -116,7 +135,7 @@ export function ProxyUserSwitch() {
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 gap-0 p-0">
         <div className="space-y-1 border-b p-3">
-          <p className="font-medium">Als Benutzer ansehen</p>
+          <p className="font-medium">{roleSwitch ? "Rolle wechseln" : "Als Benutzer ansehen"}</p>
           <p className="text-xs text-muted-foreground">{HINTS[connection.kind]}</p>
         </div>
         <Command>
@@ -137,7 +156,7 @@ export function ProxyUserSwitch() {
                   onSelect={() => void apply(null)}
                 >
                   <X />
-                  Als {active} beenden
+                  {roleSwitch ? `Rolle ${active} verlassen` : `Als ${active} beenden`}
                 </CommandItem>
               </CommandGroup>
             )}

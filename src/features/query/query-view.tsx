@@ -31,6 +31,7 @@ import { useQueryRegistry } from "./query-view/use-query-registry";
 import { useQueryTabBookmarks, useQueryTabSql } from "./query-view/use-query-tab-state";
 import { useQueryViewHotkeys } from "./query-view/use-query-view-hotkeys";
 import { useResetOnTabChange } from "./query-view/use-reset-on-tab-change";
+import { useResultChartBinding } from "./query-view/use-result-chart-binding";
 import { useResultExport } from "./query-view/use-result-export";
 import { useRevealRequest } from "./query-view/use-reveal-request";
 import { useRunActions } from "./query-view/use-run-actions";
@@ -139,6 +140,7 @@ export function QueryView({ tabId }: QueryViewProps) {
 
   const runLabel = runLabelFor(workspace.runTarget, hasSelection);
   const statusText = buildStatusText(exec.result);
+  const chart = useResultChartBinding(tabId, exec.executedSql, connection, database, caps);
   const isSql = caps.query_language === "sql";
 
   const resultActions = (
@@ -268,6 +270,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               kind={connection?.kind}
               statusText={statusText}
               actions={resultActions}
+              chart={chart}
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;

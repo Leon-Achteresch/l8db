@@ -17,6 +17,9 @@ services:
   ssh:
     build: .
     ports: ["127.0.0.1::22"]
+    networks:
+      default:
+        aliases: [l8db-ssh]
     volumes:
       - ${L8DB_LAB_DIR:?}/client.pub:/keys/client.pub:ro
     command:
@@ -26,3 +29,31 @@ services:
       interval: 1s
       timeout: 3s
       retries: 60
+  jump:
+    build: .
+    ports: ["127.0.0.1::22"]
+    volumes:
+      - ${L8DB_LAB_DIR:?}/client.pub:/keys/client.pub:ro
+    command:
+      ["/bin/sh", "-c", "install -m 600 -o root -g root /keys/client.pub /root/.ssh/authorized_keys && exec /usr/sbin/sshd -D -e"]
+    healthcheck:
+      test: [CMD-SHELL, "test -s /run/sshd.pid"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  socks:
+    image: serjs/go-socks5-proxy:v0.0.4
+    environment:
+      PROXY_USER: proxyuser
+      PROXY_PASSWORD: proxypw
+    ports: ["127.0.0.1::1080"]
+  http-proxy:
+    image: alpine:3.23
+    ports: ["127.0.0.1::8888"]
+    command:
+      ["/bin/sh", "-c", "apk add --no-cache tinyproxy >/dev/null && printf 'Port 8888\\nListen 0.0.0.0\\nTimeout 600\\nAllow 0.0.0.0/0\\nBasicAuth proxyuser proxypw\\n' > /tmp/tinyproxy.conf && exec tinyproxy -d -c /tmp/tinyproxy.conf"]
+    healthcheck:
+      test: [CMD-SHELL, "nc -z 127.0.0.1 8888"]
+      interval: 1s
+      timeout: 3s
+      retries: 120

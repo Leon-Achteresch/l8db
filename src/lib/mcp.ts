@@ -1,14 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { SavedConnection } from "@/lib/connections";
-import { useConnectionsStore } from "@/lib/connections";
+import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
+import { connectionEnvironment } from "@/lib/environments";
+import type { MaskRule } from "@/lib/masking";
 import { scrubUrlPassword } from "@/lib/secrets";
 
-export interface RedactRule {
-  name: string;
-  pattern: string;
-  enabled: boolean;
-}
+export type RedactRule = MaskRule;
 
 export interface Redaction {
   columns: RedactRule[];
@@ -27,6 +25,9 @@ export interface McpConnection {
   readOnly: boolean;
   allowDdl: boolean;
   redactColumns: string[];
+  maskRules: MaskRule[];
+  environment: string | null;
+  allowProductionWrites: boolean;
 }
 
 export interface McpConfig {
@@ -67,12 +68,22 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "dynamodb",
+  "athena",
+  "bigquery",
+  "snowflake",
   "mongodb",
   "redis",
+  "sqlite_http",
+  "elasticsearch",
+  "influxdb",
 ];
 
-export function mcpSupported(connection: Pick<SavedConnection, "kind" | "ssh">): string | null {
+export function mcpSupported(
+  connection: Pick<SavedConnection, "kind" | "ssh" | "proxy">,
+): string | null {
   if (connection.ssh?.host) return "SSH-Tunnel werden vom MCP nicht unterstützt";
+  if (connection.proxy?.host) return "Proxy-Verbindungen werden vom MCP nicht unterstützt";
   if (!MCP_SQL_KINDS.includes(connection.kind))
     return "Datenbanktyp wird vom MCP nicht unterstützt";
   return null;
@@ -98,11 +109,14 @@ export function mergeMcpConnections(
       kind: connection.kind,
       connectionString: scrubUrlPassword(connection.connectionString),
       schemas: connection.schemas ?? [],
-      ssh: Boolean(connection.ssh?.host),
+      ssh: usesTunnel(connection),
       exposed: previous?.exposed ?? false,
       readOnly: previous?.readOnly ?? true,
       allowDdl: previous?.allowDdl ?? false,
       redactColumns: previous?.redactColumns ?? [],
+      maskRules: connection.maskRules ?? [],
+      environment: connectionEnvironment(connection),
+      allowProductionWrites: previous?.allowProductionWrites ?? false,
     };
   });
 }
