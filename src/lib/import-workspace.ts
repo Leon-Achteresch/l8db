@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import type { CsvColumnMapping, CsvEmptyFieldMode, ImportTargetColumn } from "@/lib/csv-import";
-import type { CsvImportOutcome } from "@/lib/db";
+import type { CsvImportOutcome, ImportFormat, ImportPreview } from "@/lib/db";
 
 export interface SqlImportDraft {
   fileName: string | null;
@@ -16,6 +16,10 @@ export interface SqlImportDraft {
 }
 
 export interface CsvImportDraft {
+  format: ImportFormat;
+  sheet: string | null;
+  skipRows: number;
+  structured: ImportPreview | null;
   partial?: boolean;
   conflict?: import("@/lib/db").CsvImportConflict;
   fileName: string | null;
@@ -42,6 +46,10 @@ export const EMPTY_SQL_IMPORT: SqlImportDraft = {
   entries: null,
 };
 export const EMPTY_CSV_IMPORT: CsvImportDraft = {
+  format: "csv",
+  sheet: null,
+  skipRows: 0,
+  structured: null,
   fileName: null,
   filePath: null,
   text: null,
@@ -89,7 +97,7 @@ export const useImportWorkspace = create<ImportWorkspace>()(
         csv: Object.fromEntries(
           Object.entries(state.csv).map(([key, draft]) => [
             key,
-            { ...draft, text: null, outcome: null },
+            { ...draft, text: null, structured: null, outcome: null },
           ]),
         ),
       }),
