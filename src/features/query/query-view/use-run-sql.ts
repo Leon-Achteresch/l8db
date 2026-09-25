@@ -62,6 +62,7 @@ export function useRunSql({
     setError,
     setErrorSource,
     setResultState,
+    setExecutedSql,
   } = exec;
   const { editorSqlRef, cursorOffsetRef } = cursor;
 
@@ -131,6 +132,7 @@ export function useRunSql({
           transactionsCapable: caps.transactions,
           onJob: setActiveJobId,
         });
+        setExecutedSql(sql);
         setResult(res);
         finishHistory({ rowCount: rowCountOf(res), error: null });
       } catch (err) {
@@ -165,6 +167,7 @@ export function useRunSql({
       setError,
       setErrorSource,
       setResultState,
+      setExecutedSql,
       editorSqlRef,
       cursorOffsetRef,
       setEditorFocus,
