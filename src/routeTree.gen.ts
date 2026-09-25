@@ -31,6 +31,7 @@ import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._worksp
 import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
 import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
 import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
+import { Route as AppWorkspaceNotebookRouteImport } from './routes/_app._workspace.notebook'
 import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
@@ -160,6 +161,11 @@ const AppWorkspaceInvalidObjectsRoute =
 const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
   id: '/monitor',
   path: '/monitor',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceNotebookRoute = AppWorkspaceNotebookRouteImport.update({
+  id: '/notebook',
+  path: '/notebook',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceQueryRoute = AppWorkspaceQueryRouteImport.update({
@@ -300,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
+  '/notebook': typeof AppWorkspaceNotebookRoute
   '/query': typeof AppWorkspaceQueryRouteWithChildren
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
@@ -342,6 +349,7 @@ export interface FileRoutesByTo {
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
+  '/notebook': typeof AppWorkspaceNotebookRoute
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
   '/saved-plan': typeof AppWorkspaceSavedPlanRoute
@@ -386,6 +394,7 @@ export interface FileRoutesById {
   '/_app/_workspace/import': typeof AppWorkspaceImportRoute
   '/_app/_workspace/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/_app/_workspace/monitor': typeof AppWorkspaceMonitorRoute
+  '/_app/_workspace/notebook': typeof AppWorkspaceNotebookRoute
   '/_app/_workspace/query': typeof AppWorkspaceQueryRouteWithChildren
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/_app/_workspace/replication': typeof AppWorkspaceReplicationRoute
@@ -431,6 +440,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/invalid-objects'
     | '/monitor'
+    | '/notebook'
     | '/query'
     | '/query-builder'
     | '/replication'
@@ -473,6 +483,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/invalid-objects'
     | '/monitor'
+    | '/notebook'
     | '/query-builder'
     | '/replication'
     | '/saved-plan'
@@ -516,6 +527,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/import'
     | '/_app/_workspace/invalid-objects'
     | '/_app/_workspace/monitor'
+    | '/_app/_workspace/notebook'
     | '/_app/_workspace/query'
     | '/_app/_workspace/query-builder'
     | '/_app/_workspace/replication'
@@ -709,6 +721,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/notebook': {
+      id: '/_app/_workspace/notebook'
+      path: '/notebook'
+      fullPath: '/notebook'
+      preLoaderRoute: typeof AppWorkspaceNotebookRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/query': {
       id: '/_app/_workspace/query'
       path: '/query'
@@ -893,6 +912,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceImportRoute: typeof AppWorkspaceImportRoute
   AppWorkspaceInvalidObjectsRoute: typeof AppWorkspaceInvalidObjectsRoute
   AppWorkspaceMonitorRoute: typeof AppWorkspaceMonitorRoute
+  AppWorkspaceNotebookRoute: typeof AppWorkspaceNotebookRoute
   AppWorkspaceQueryRoute: typeof AppWorkspaceQueryRouteWithChildren
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
   AppWorkspaceReplicationRoute: typeof AppWorkspaceReplicationRoute
@@ -924,6 +944,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceImportRoute: AppWorkspaceImportRoute,
   AppWorkspaceInvalidObjectsRoute: AppWorkspaceInvalidObjectsRoute,
   AppWorkspaceMonitorRoute: AppWorkspaceMonitorRoute,
+  AppWorkspaceNotebookRoute: AppWorkspaceNotebookRoute,
   AppWorkspaceQueryRoute: AppWorkspaceQueryRouteWithChildren,
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,
   AppWorkspaceReplicationRoute: AppWorkspaceReplicationRoute,

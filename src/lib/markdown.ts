@@ -12,6 +12,11 @@ export type MdBlock =
   | { t: "hr" }
   | { t: "pre"; v: string };
 
+export function safeHref(href: string): string | null {
+  const trimmed = href.trim();
+  return /^(https?:|mailto:|#)/i.test(trimmed) ? trimmed : null;
+}
+
 const INLINE_RE = /(\*\*[^*]+?\*\*|\*[^*]+?\*|`[^`]+?`|\[[^\]]+?\]\([^)]+?\))/g;
 
 export function parseInline(source: string): MdInline[] {
