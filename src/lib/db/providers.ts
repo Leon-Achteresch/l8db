@@ -48,6 +48,7 @@ export interface Capabilities {
   csv_import: boolean;
   import_conflicts: boolean;
   table_copy: boolean;
+  test_data: boolean;
   column_search: boolean;
   source_search: boolean;
   schema_snapshot: boolean;

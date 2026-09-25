@@ -1119,10 +1119,21 @@ impl DatabaseAdapter for PostgresAdapter {
                     }
                 };
             let fetched = data_rows.len() as i64;
-            for row in data_rows.iter().take(remaining as usize) {
-                let value: serde_json::Value = row.get(0);
+            let mut values: Vec<serde_json::Value> = data_rows
+                .iter()
+                .take(remaining as usize)
+                .map(|row| row.get(0))
+                .collect();
+            for mask in request
+                .masks
+                .iter()
+                .filter(|mask| mask.mode == super::masking::MaskMode::Shuffle)
+            {
+                super::masking::shuffle_column(&mut values, &mask.column, total as u64);
+            }
+            for value in &values {
                 if let Err(e) =
-                    writer.write_row(&columns, &value, &request.masks, Some(&request.options))
+                    writer.write_row(&columns, value, &request.masks, Some(&request.options))
                 {
                     failure = Some(e);
                     break;

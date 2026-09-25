@@ -343,7 +343,7 @@ impl Server {
         if sql.is_empty() {
             return Err("sql fehlt".into());
         }
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let columns = self.columns_for(config, connection).await?;
         let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
         match connection.kind {
@@ -376,6 +376,12 @@ impl Server {
         if connection.read_only {
             return Err(format!("Verbindung '{}' ist read-only.", connection.name));
         }
+        if connection.writes_blocked() {
+            return Err(format!(
+                "Verbindung '{}' ist als Produktion markiert; Schreibzugriffe sind über den MCP gesperrt. In l8db unter MCP explizit freigeben.",
+                connection.name
+            ));
+        }
         if !args
             .get("confirm")
             .and_then(Value::as_bool)
@@ -389,7 +395,7 @@ impl Server {
         }
         match connection.kind {
             DatabaseKind::Mongodb => {
-                let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+                let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
                 let columns = self.columns_for(config, connection).await?;
                 let index = redact::SchemaIndex::new(&columns, &redactor, &connection.schemas);
                 nosql::mongo_check(
@@ -422,7 +428,7 @@ impl Server {
         })
         .await?;
         self.columns.remove(&cache_key(connection));
-        let redactor = Redactor::new(&config.redaction, &connection.redact_columns);
+        let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let mut text = format!("ok, {} rows affected", result.rows_affected.unwrap_or(0));
         if !result.rows.is_empty() {
             text.push('\n');
@@ -443,7 +449,7 @@ pub(super) fn check_read_sql(
     if let Some(word) = redact::write_word(sql) {
         return Err(format!(
             "query ist read-only, '{word}' ist nicht erlaubt.{}",
-            if connection.read_only {
+            if connection.writes_blocked() {
                 ""
             } else {
                 " Für Schreibzugriffe execute nutzen."
@@ -496,13 +502,14 @@ fn list_connections(config: &McpConfig) -> String {
     let lines: Vec<String> = exposed(config)
         .map(|connection| {
             format!(
-                "{}\t{}\t{}",
+                "{}\t{}\t{}\t{}",
                 connection.name,
                 serde_json::to_value(connection.kind)
                     .ok()
                     .and_then(|value| value.as_str().map(str::to_string))
                     .unwrap_or_default(),
-                if connection.read_only {
+                connection.environment.as_deref().unwrap_or("-"),
+                if connection.writes_blocked() {
                     "read-only"
                 } else {
                     "read-write"
@@ -513,7 +520,7 @@ fn list_connections(config: &McpConfig) -> String {
     if lines.is_empty() {
         return "No connections exposed. Enable them in l8db under MCP.".into();
     }
-    format!("name\tkind\taccess\n{}", lines.join("\n"))
+    format!("name\tkind\tenvironment\taccess\n{}", lines.join("\n"))
 }
 
 fn cache_key(connection: &McpConnection) -> String {
@@ -586,7 +593,7 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
     if let Some(password) = password {
         let _ = url.set_password(Some(password));
     }
-    if connection.read_only && connection.kind == DatabaseKind::Postgres {
+    if connection.writes_blocked() && connection.kind == DatabaseKind::Postgres {
         let mut params: Vec<String> = url
             .query()
             .unwrap_or_default()
@@ -768,6 +775,9 @@ mod tests {
             read_only,
             allow_ddl: false,
             redact_columns: vec![],
+            mask_rules: vec![],
+            environment: None,
+            allow_production_writes: false,
             database: None,
         }
     }
@@ -858,7 +868,43 @@ mod tests {
         assert!(find_connection(&config, "c1").is_ok());
         assert!(find_connection(&config, "Hidden").is_err());
         assert!(find_connection(&config, "Tunnel").is_err());
-        assert!(list_connections(&config).contains("Prod\tpostgres\tread-only"));
+        assert!(list_connections(&config).contains("Prod\tpostgres\t-\tread-only"));
+    }
+
+    #[test]
+    fn production_blocks_writes_unless_allowed() {
+        let mut prod = connection(false);
+        prod.environment = Some("production".into());
+        assert!(prod.writes_blocked());
+        assert!(with_password(&prod, None).contains("default_transaction_read_only%3Don"));
+        let mut config = McpConfig::default();
+        config.connections.push(prod.clone());
+        assert!(list_connections(&config).contains("Prod\tpostgres\tproduction\tread-only"));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut server = Server {
+            pool: db::pool::create_pool_state(),
+            columns: HashMap::new(),
+        };
+        let error = runtime
+            .block_on(server.execute(
+                &config,
+                &prod,
+                &json!({"sql": "DELETE FROM t", "confirm": true}),
+            ))
+            .unwrap_err();
+        assert!(error.contains("Produktion"));
+        prod.allow_production_writes = true;
+        assert!(!prod.writes_blocked());
+        prod.mask_rules.push(crate::mcp::config::RedactRule {
+            name: "Kunde".into(),
+            pattern: "kunde".into(),
+            enabled: true,
+            mask: Some(crate::db::masking::MaskMode::Partial),
+        });
+        assert_eq!(prod.sensitive_columns(), vec!["kunde".to_string()]);
     }
 
     #[test]

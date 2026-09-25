@@ -2,13 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SavedConnection } from "@/lib/connections";
 import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
+import { connectionEnvironment } from "@/lib/environments";
+import type { MaskRule } from "@/lib/masking";
 import { scrubUrlPassword } from "@/lib/secrets";
 
-export interface RedactRule {
-  name: string;
-  pattern: string;
-  enabled: boolean;
-}
+export type RedactRule = MaskRule;
 
 export interface Redaction {
   columns: RedactRule[];
@@ -27,6 +25,9 @@ export interface McpConnection {
   readOnly: boolean;
   allowDdl: boolean;
   redactColumns: string[];
+  maskRules: MaskRule[];
+  environment: string | null;
+  allowProductionWrites: boolean;
 }
 
 export interface McpConfig {
@@ -106,6 +107,9 @@ export function mergeMcpConnections(
       readOnly: previous?.readOnly ?? true,
       allowDdl: previous?.allowDdl ?? false,
       redactColumns: previous?.redactColumns ?? [],
+      maskRules: connection.maskRules ?? [],
+      environment: connectionEnvironment(connection),
+      allowProductionWrites: previous?.allowProductionWrites ?? false,
     };
   });
 }

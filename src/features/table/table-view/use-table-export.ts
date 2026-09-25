@@ -8,6 +8,7 @@ import type { useActiveConnection } from "@/lib/connections";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
+import { applyMasks, type ColumnMask } from "@/lib/masking";
 import type { useTableRowsQuery } from "@/lib/queries";
 
 type Options = {
@@ -20,6 +21,7 @@ type Options = {
   totalCount: number | null | undefined;
   data: ReturnType<typeof useTableRowsQuery>["data"];
   connection: ReturnType<typeof useActiveConnection>;
+  masks?: ColumnMask[];
 };
 
 export function useTableExport({
@@ -32,6 +34,7 @@ export function useTableExport({
   totalCount,
   data,
   connection,
+  masks = [],
 }: Options) {
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
@@ -87,7 +90,7 @@ export function useTableExport({
     if (!data) return;
     setExporting(true);
     try {
-      const exportRows = getExportRows();
+      const exportRows = applyMasks(exportColumns, getExportRows(), masks);
       const ext = format === "json" ? "json" : "sql";
       let content: string;
       if (format === "json") {

@@ -43,6 +43,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   csv_import: true,
   import_conflicts: true,
   table_copy: true,
+  test_data: true,
   column_search: true,
   source_search: true,
   schema_snapshot: true,

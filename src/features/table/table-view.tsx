@@ -43,6 +43,7 @@ export function TableView(props: TableViewProps) {
     viewTab,
     tableTab,
     tableRows,
+    masked,
     updateRowMutation,
     insertRowMutation,
     handleFilterChange,
@@ -105,6 +106,7 @@ export function TableView(props: TableViewProps) {
       stateKey={stateKey}
       caps={caps}
       tableRows={tableRows}
+      masked={masked}
       updateRowMutation={updateRowMutation}
       insertRowMutation={insertRowMutation}
       handleFilterChange={handleFilterChange}

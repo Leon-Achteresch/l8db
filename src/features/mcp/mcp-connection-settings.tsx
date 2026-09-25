@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock, Shield } from "lucide-react";
+import { AlertTriangle, Lock, Shield, ShieldAlert } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { McpConnection } from "@/lib/mcp";
@@ -32,6 +32,26 @@ export function McpConnectionSettings({
           aria-label={`${connection.name} nur lesen`}
         />
       </div>
+
+      {connection.environment === "production" && (
+        <div className="flex items-center justify-between rounded-xl border border-red-500/40 bg-red-500/5 p-2.5">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="size-4 text-red-500" />
+            <div>
+              <p className="text-xs font-medium text-foreground">Produktion beschreiben</p>
+              <p className="text-[10px] text-muted-foreground">
+                Ohne Freigabe verweigert der MCP Schreibzugriffe
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={connection.allowProductionWrites}
+            disabled={connection.readOnly}
+            onCheckedChange={(allowProductionWrites) => onUpdate({ allowProductionWrites })}
+            aria-label={`${connection.name} Produktion beschreiben`}
+          />
+        </div>
+      )}
 
       <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 p-2.5">
         <div className="flex items-center gap-2">
