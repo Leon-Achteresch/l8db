@@ -29,14 +29,8 @@ export function NotebookCellFrame({
   children: ReactNode;
 }) {
   return (
-    <section className="group/cell">
-      <div
-        className={cn(
-          "rounded-xl border bg-card p-3 shadow-xs transition-colors focus-within:border-primary/40",
-          type === "markdown" &&
-            "border-transparent bg-transparent shadow-none hover:border-border",
-        )}
-      >
+    <section className="group/cell flex flex-col gap-2">
+      <div>
         <div className="mb-1 flex items-center gap-1 opacity-60 transition-opacity group-hover/cell:opacity-100">
           <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             {TYPE_LABEL[type]}
@@ -70,7 +64,9 @@ export function NotebookCellFrame({
             </IconButton>
           </div>
         </div>
-        {children}
+        <div className={cn(type !== "markdown" && "rounded-md border bg-card/90 p-3 shadow-xs")}>
+          {children}
+        </div>
       </div>
       <NotebookAddCell onAdd={onAdd} compact />
     </section>
