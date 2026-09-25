@@ -28,6 +28,10 @@ export function ConnectionDetailsStep({
     database,
     databaseLabel,
     elapsed,
+    environment,
+    maskRules,
+    setEnvironment,
+    setMaskRules,
     file,
     guided,
     host,
@@ -236,6 +240,10 @@ export function ConnectionDetailsStep({
         onTags={setTags}
         color={color}
         onColor={setColor}
+        environment={environment}
+        onEnvironment={setEnvironment}
+        maskRules={maskRules}
+        onMaskRules={setMaskRules}
         schemaFilter={schemaFilter}
         onSchemaFilter={setSchemaFilter}
         showSingleSchemaSwitcher={showSingleSchemaSwitcher}

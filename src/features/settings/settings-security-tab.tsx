@@ -10,6 +10,12 @@ export function SettingsSecurityTab() {
     sshTrustNewHosts,
     connectionTimeout,
     sslDefaultMode,
+    productionReadOnly,
+    productionConfirmCommit,
+    productionAutoRollback,
+    setProductionReadOnly,
+    setProductionConfirmCommit,
+    setProductionAutoRollback,
     setSshTrustNewHosts,
     setConnectionTimeout,
     setSslDefaultMode,
@@ -33,6 +39,39 @@ export function SettingsSecurityTab() {
             checked={sshTrustNewHosts}
             onCheckedChange={setSshTrustNewHosts}
             aria-label="Neue SSH-Host-Keys akzeptieren"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Produktion standardmäßig schreibgeschützt öffnen"
+          description="Verbindungen mit Umgebung Produktion sind schreibgeschützt, bis im Banner der Schreibmodus für 15 Minuten aktiviert wird."
+        >
+          <Switch
+            checked={productionReadOnly}
+            onCheckedChange={setProductionReadOnly}
+            aria-label="Produktion standardmäßig schreibgeschützt öffnen"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Commits auf Produktion bestätigen"
+          description="Jeder Commit auf Produktion braucht eine Bestätigung. Löschungen und destruktive Anweisungen verlangen immer die Eingabe des Verbindungsnamens."
+        >
+          <Switch
+            checked={productionConfirmCommit}
+            onCheckedChange={setProductionConfirmCommit}
+            aria-label="Commits auf Produktion bestätigen"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Offene Produktions-Transaktionen automatisch zurückrollen"
+          description="Beim Ablauf oder Beenden des Schreibmodus werden offene Transaktionen der Verbindung zurückgerollt."
+        >
+          <Switch
+            checked={productionAutoRollback}
+            onCheckedChange={setProductionAutoRollback}
+            aria-label="Offene Produktions-Transaktionen automatisch zurückrollen"
           />
         </SettingsRow>
 

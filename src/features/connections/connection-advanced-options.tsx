@@ -10,8 +10,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CONNECTION_COLORS, type SavedConnection, type SshAuth } from "@/lib/connections";
+import {
+  CONNECTION_COLORS,
+  type ConnectionEnvironment,
+  type SavedConnection,
+  type SshAuth,
+} from "@/lib/connections";
 import type { Capabilities, SslMode } from "@/lib/db";
+import { ENVIRONMENTS } from "@/lib/environments";
+import type { MaskRule } from "@/lib/masking";
 import type { SshConfigDraft } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { ProxyFields } from "./connection-editor/proxy-fields";
@@ -20,6 +27,7 @@ import { SshConfigImport } from "./connection-editor/ssh-config-import";
 import { SshJumpHosts } from "./connection-editor/ssh-jump-hosts";
 import type { NetworkDraft } from "./connection-editor/use-network-draft";
 import { ConnectionField } from "./connection-field";
+import { MaskRulesEditor } from "./mask-rules-editor";
 import { SchemaPicker } from "./schema-picker";
 
 interface Props {
@@ -49,6 +57,10 @@ interface Props {
   onTags: (value: string) => void;
   color: string | null;
   onColor: (value: string | null) => void;
+  environment: ConnectionEnvironment | null;
+  onEnvironment: (value: ConnectionEnvironment | null) => void;
+  maskRules: MaskRule[];
+  onMaskRules: (value: MaskRule[]) => void;
   schemaFilter: string[];
   onSchemaFilter: (value: string[]) => void;
   showSingleSchemaSwitcher: boolean;
@@ -88,6 +100,10 @@ export function ConnectionAdvancedOptions({
   onTags,
   color,
   onColor,
+  environment,
+  onEnvironment,
+  maskRules,
+  onMaskRules,
   schemaFilter,
   onSchemaFilter,
   showSingleSchemaSwitcher,
@@ -113,7 +129,7 @@ export function ConnectionAdvancedOptions({
         />
         <span className="flex-1">Erweitert</span>
         <span className="text-[11px] font-normal text-muted-foreground">
-          SSL, SSH, Proxy, Farbe
+          SSL, SSH, Proxy, Umgebung, Farbe
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-4 border-t px-3 py-3">
@@ -236,6 +252,39 @@ export function ConnectionAdvancedOptions({
           value={tags}
           onChange={(event) => onTags(event.target.value)}
         />
+        <div className="grid gap-1">
+          <Label htmlFor="connection-environment" className="text-xs text-muted-foreground">
+            Umgebung
+          </Label>
+          <Select
+            value={environment ?? "auto"}
+            onValueChange={(value) =>
+              onEnvironment(value === "auto" ? null : (value as ConnectionEnvironment))
+            }
+          >
+            <SelectTrigger id="connection-environment" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem value="auto">Automatisch (Hostregeln)</SelectItem>
+              {ENVIRONMENTS.map((entry) => (
+                <SelectItem key={entry.value} value={entry.value}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    {entry.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Produktion zeigt ein Warnbanner und verlangt bei destruktiven Anweisungen die Eingabe
+            des Verbindungsnamens.
+          </p>
+        </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">Profilfarbe</legend>
           <p className="text-xs text-muted-foreground">
@@ -266,6 +315,7 @@ export function ConnectionAdvancedOptions({
             ))}
           </div>
         </fieldset>
+        <MaskRulesEditor rules={maskRules} onChange={onMaskRules} />
         {caps.schemas && (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3 text-xs font-medium">

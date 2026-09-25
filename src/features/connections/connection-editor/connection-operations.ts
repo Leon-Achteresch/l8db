@@ -2,8 +2,14 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import { connectionError } from "@/lib/connection-url";
-import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/connections";
+import {
+  type ConnectionEnvironment,
+  type SavedConnection,
+  useConnectionsStore,
+  usesTunnel,
+} from "@/lib/connections";
 import { listSchemas, type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import type { MaskRule } from "@/lib/masking";
 import { deleteSecret, extractUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
 import {
   activateConnection,
@@ -38,6 +44,8 @@ export interface ConnectionOperationsContext {
   schemaFilter: string[];
   showSingleSchemaSwitcher: boolean;
   color: string | null;
+  environment: ConnectionEnvironment | null;
+  maskRules: MaskRule[];
   tags: string;
   onSaved: () => void;
 }
@@ -63,6 +71,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
+    environment,
+    maskRules,
     tags,
     onSaved,
   } = ctx;
@@ -165,6 +175,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
         color,
+        environment,
+        maskRules: maskRules.filter((rule) => rule.pattern.trim()),
         tags: [
           ...new Set(
             tags

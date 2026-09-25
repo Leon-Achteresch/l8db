@@ -10,8 +10,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
-import { createConnectionId, useConnectionsStore } from "@/lib/connections";
+import {
+  type ConnectionEnvironment,
+  createConnectionId,
+  useConnectionsStore,
+} from "@/lib/connections";
+import { ENVIRONMENTS } from "@/lib/environments";
 
 interface Props {
   open: boolean;
@@ -48,7 +60,8 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
           <DialogDescription>
             Fasse ähnliche Hosts per Muster zusammen, z. B. <code>db-prod*</code>. Mehrere Muster
             mit Komma trennen. Die erste passende Regel gewinnt; Verbindungen ohne Treffer bleiben
-            nach Server gruppiert.
+            nach Server gruppiert. Eine Umgebung an der Regel gilt für alle passenden Verbindungen
+            ohne eigene Umgebung.
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
@@ -78,6 +91,26 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
                   onChange={(event) => update(rule.id, { pattern: event.target.value })}
                   className="flex-1 font-mono"
                 />
+                <Select
+                  value={rule.environment ?? "none"}
+                  onValueChange={(value) =>
+                    update(rule.id, {
+                      environment: value === "none" ? null : (value as ConnectionEnvironment),
+                    })
+                  }
+                >
+                  <SelectTrigger size="sm" className="w-32" aria-label="Umgebung">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="none">Keine Umgebung</SelectItem>
+                    {ENVIRONMENTS.map((entry) => (
+                      <SelectItem key={entry.value} value={entry.value}>
+                        {entry.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <span className="w-24 shrink-0 text-right text-[11px] text-muted-foreground">
                   {count} {count === 1 ? "Verbindung" : "Verbindungen"}
                 </span>

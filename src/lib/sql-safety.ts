@@ -77,7 +77,29 @@ export interface DestructiveStatement {
   reason: string;
 }
 
-export function destructiveStatements(sql: string, dialect?: string): DestructiveStatement[] {
+function withoutWhere(words: Token[], index: number): boolean {
+  const token = words[index];
+  for (let j = index + 1; j < words.length; j++) {
+    const next = words[j];
+    if (
+      next.depth < token.depth ||
+      (next.depth === token.depth && [";", "RETURNING"].includes(next.word))
+    )
+      break;
+    if (next.depth === token.depth && next.word === "WHERE") return false;
+  }
+  return true;
+}
+
+export interface SafetyOptions {
+  strict?: boolean;
+}
+
+export function destructiveStatements(
+  sql: string,
+  dialect?: string,
+  options: SafetyOptions = {},
+): DestructiveStatement[] {
   if (dialect === "redis" || dialect === "mongodb") return [];
   return splitSqlStatements(sql, dialect).statements.flatMap((statement) => {
     const words = tokens(statement.text, dialect);
@@ -86,22 +108,89 @@ export function destructiveStatements(sql: string, dialect?: string): Destructiv
     for (let i = 0; i < words.length; i++) {
       const token = words[i];
       if (token.word === "DROP" && words[i + 1]?.word === "TABLE") reason = "Tabelle löschen";
+      else if (options.strict && token.word === "DROP" && i === 0) reason = "Objekt löschen";
       if (token.word === "TRUNCATE") reason = "Tabelle leeren";
-      if (token.word === "DELETE") {
-        let hasWhere = false;
-        for (let j = i + 1; j < words.length; j++) {
-          const next = words[j];
-          if (
-            next.depth < token.depth ||
-            (next.depth === token.depth && [";", "RETURNING"].includes(next.word))
-          )
-            break;
-          if (next.depth === token.depth && next.word === "WHERE") hasWhere = true;
-        }
-        if (!hasWhere) reason = "DELETE ohne WHERE";
-      }
+      if (token.word === "DELETE" && withoutWhere(words, i)) reason = "DELETE ohne WHERE";
+      if (options.strict && token.word === "UPDATE" && withoutWhere(words, i))
+        reason = "UPDATE ohne WHERE";
+      if (options.strict && token.word === "ALTER" && i === 0) reason = "Struktur ändern";
     }
     return reason ? [{ sql: statement.text, reason }] : [];
+  });
+}
+
+const READ_WORDS = new Set([
+  "SELECT",
+  "SHOW",
+  "EXPLAIN",
+  "DESCRIBE",
+  "DESC",
+  "VALUES",
+  "TABLE",
+  "USE",
+  "PRAGMA",
+]);
+const MODIFYING_WORDS = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "INTO"]);
+const MONGO_WRITE =
+  /\.(insert|insertOne|insertMany|update|updateOne|updateMany|replaceOne|delete|deleteOne|deleteMany|remove|drop|dropDatabase|findOneAndUpdate|findOneAndReplace|findOneAndDelete|findAndModify|bulkWrite|createCollection|createIndex|createIndexes|dropIndex|dropIndexes|renameCollection)\s*\(|"(insert|update|delete|drop|create|createIndexes|findAndModify|renameCollection|dropDatabase)"\s*:/;
+const REDIS_READ = new Set([
+  "GET",
+  "MGET",
+  "HGET",
+  "HMGET",
+  "HGETALL",
+  "HKEYS",
+  "HVALS",
+  "HLEN",
+  "HEXISTS",
+  "SCAN",
+  "HSCAN",
+  "SSCAN",
+  "ZSCAN",
+  "KEYS",
+  "TYPE",
+  "TTL",
+  "PTTL",
+  "EXISTS",
+  "STRLEN",
+  "LRANGE",
+  "LLEN",
+  "LINDEX",
+  "SMEMBERS",
+  "SCARD",
+  "SISMEMBER",
+  "ZRANGE",
+  "ZRANGEBYSCORE",
+  "ZREVRANGE",
+  "ZCARD",
+  "ZSCORE",
+  "XRANGE",
+  "XREVRANGE",
+  "XLEN",
+  "INFO",
+  "PING",
+  "DBSIZE",
+  "MEMORY",
+  "OBJECT",
+  "GETRANGE",
+]);
+
+export function writesData(sql: string, dialect?: string): boolean {
+  const text = sql.trim();
+  if (!text) return false;
+  if (dialect === "mongodb") return MONGO_WRITE.test(text);
+  if (dialect === "redis")
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "")
+      .some((word) => word && !REDIS_READ.has(word));
+  return splitSqlStatements(text, dialect).statements.some((statement) => {
+    const words = tokens(statement.text, dialect);
+    const first = words[0]?.word;
+    if (!first) return false;
+    if (first === "WITH" || first === "SELECT")
+      return words.some((token) => MODIFYING_WORDS.has(token.word));
+    return !READ_WORDS.has(first);
   });
 }
 

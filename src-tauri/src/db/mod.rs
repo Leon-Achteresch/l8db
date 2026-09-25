@@ -6,11 +6,14 @@ pub mod commands;
 mod connection;
 pub mod csv_stream;
 pub mod data_compare;
+pub mod datagen;
+mod datagen_data;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 pub mod execution;
 pub mod export;
+pub mod masking;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;

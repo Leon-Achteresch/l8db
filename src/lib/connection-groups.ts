@@ -1,5 +1,5 @@
 import { connectionSummary } from "@/lib/connection-url";
-import type { SavedConnection } from "@/lib/connections";
+import type { ConnectionEnvironment, SavedConnection } from "@/lib/connections";
 import type { DatabaseKind } from "@/lib/db";
 
 export type Groupable = Pick<SavedConnection, "connectionString" | "kind">;
@@ -16,6 +16,7 @@ export interface HostGroupRule {
   id: string;
   name: string;
   pattern: string;
+  environment?: ConnectionEnvironment | null;
 }
 
 function hostPatternRegexes(pattern: string): RegExp[] {

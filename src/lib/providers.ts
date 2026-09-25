@@ -41,6 +41,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   sql_filter: true,
   read_only_mode: true,
   csv_import: true,
+  test_data: true,
   column_search: true,
   source_search: true,
   schema_snapshot: true,

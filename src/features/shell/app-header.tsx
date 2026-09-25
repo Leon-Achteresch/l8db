@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { AppHeaderNavigation } from "@/features/shell/app-header-navigation";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
+import { EnvironmentBadge } from "@/features/shell/environment-badge";
 import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { WindowControls } from "@/features/shell/window-controls";
@@ -64,6 +65,7 @@ export function AppHeader() {
 
       <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
         <div className="flex w-full max-w-[640px] items-center gap-2">
+          <EnvironmentBadge />
           <ReadOnlyBadge />
           <ProxyUserSwitch />
           <div className="min-w-0 flex-1">

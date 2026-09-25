@@ -25,6 +25,8 @@ import type { FullTableExportSource } from "@/features/export/csv-export-dialog"
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { applyMasks, type ColumnMask, DEFAULT_MASK_TEXT, type MaskMode } from "@/lib/export";
+import { MASK_MODES } from "@/lib/masking";
+import { useActiveMasks } from "@/lib/masking-display";
 import { cancelTask } from "@/lib/tasks";
 import { DEFAULT_SHEET_NAME, xlsxInputError } from "@/lib/xlsx";
 import { runXlsxExport } from "@/lib/xlsx-export-runner";
@@ -59,12 +61,17 @@ export function XlsxExportDialog({
   const [masks, setMasks] = useState<ColumnMask[]>([]);
   const [busy, setBusy] = useState(false);
 
+  const { active: ruleMasks } = useActiveMasks(columns);
+
   useEffect(() => {
     if (!open) return;
     setSelected(columns);
-    setMasks((prev) => prev.filter((m) => columns.includes(m.column)));
+    setMasks((prev) => {
+      const kept = prev.filter((m) => columns.includes(m.column));
+      return kept.length ? kept : ruleMasks;
+    });
     setSheetName(defaultSheetName ?? DEFAULT_SHEET_NAME);
-  }, [open, columns, defaultSheetName]);
+  }, [open, columns, defaultSheetName, ruleMasks]);
 
   const exportColumns = useMemo(
     () => columns.filter((c) => selected.includes(c)),
@@ -213,8 +220,11 @@ export function XlsxExportDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Original</SelectItem>
-                        <SelectItem value="text">Fester Text</SelectItem>
-                        <SelectItem value="null">NULL</SelectItem>
+                        {MASK_MODES.map((mode) => (
+                          <SelectItem key={mode.value} value={mode.value}>
+                            {mode.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Input

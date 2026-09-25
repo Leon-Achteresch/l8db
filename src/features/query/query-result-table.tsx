@@ -3,6 +3,8 @@ import { memo, useContext, useDeferredValue, useEffect, useMemo, useRef, useStat
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { applyMasks } from "@/lib/masking";
+import { useActiveMasks } from "@/lib/masking-display";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import {
@@ -33,12 +35,20 @@ interface QueryResultTableProps {
 }
 
 export const QueryResultTable = memo(function QueryResultTable({
-  result,
+  result: rawResult,
   isLoading,
   error,
   kind,
   onInspect,
 }: QueryResultTableProps) {
+  const { active: resultMasks } = useActiveMasks(rawResult?.columns ?? []);
+  const result = useMemo(
+    () =>
+      rawResult && resultMasks.length
+        ? { ...rawResult, rows: applyMasks(rawResult.columns, rawResult.rows, resultMasks) }
+        : rawResult,
+    [rawResult, resultMasks],
+  );
   const workspace = useQueryWorkspace();
   const selectionKey = useContext(MasterSelectionContext);
   const masterCell = useMasterDetail((state) =>

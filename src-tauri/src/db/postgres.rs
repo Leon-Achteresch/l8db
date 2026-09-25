@@ -1109,9 +1109,18 @@ impl DatabaseAdapter for PostgresAdapter {
                     }
                 };
             let fetched = data_rows.len() as i64;
-            for row in data_rows.iter().take(remaining as usize) {
-                let value: serde_json::Value = row.get(0);
-                let line = export::csv_row_line(&columns, &value, &request.masks, &request.options);
+            let values: Vec<serde_json::Value> = data_rows
+                .iter()
+                .take(remaining as usize)
+                .map(|row| row.get(0))
+                .collect();
+            for line in export::csv_batch_lines(
+                &columns,
+                values,
+                &request.masks,
+                &request.options,
+                total as u64,
+            ) {
                 if let Err(e) = writer.write_line(&line) {
                     failure = Some(e);
                     break;
