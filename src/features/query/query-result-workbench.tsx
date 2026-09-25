@@ -1,4 +1,4 @@
-import { type ReactNode, useDeferredValue, useMemo, useState } from "react";
+import { lazy, type ReactNode, Suspense, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,11 @@ import { useQueryWorkspace } from "@/lib/query-workspace";
 import { cn } from "@/lib/utils";
 import { QueryCellInspector } from "./query-cell-inspector";
 import { QueryResultTable } from "./query-result-table";
+import type { ResultChartBinding } from "./result-chart/types";
+
+const ResultChartView = lazy(() =>
+  import("./result-chart/result-chart-view").then((m) => ({ default: m.ResultChartView })),
+);
 
 export function QueryResultWorkbench({
   result,
@@ -24,6 +29,7 @@ export function QueryResultWorkbench({
   kind,
   statusText,
   actions,
+  chart,
 }: {
   result: QueryResult | null;
   isLoading: boolean;
@@ -31,6 +37,7 @@ export function QueryResultWorkbench({
   kind?: DatabaseKind;
   statusText?: string | null;
   actions?: ReactNode;
+  chart?: ResultChartBinding;
 }) {
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
@@ -97,6 +104,11 @@ export function QueryResultWorkbench({
     );
   if (!result.columns.length)
     return <QueryResultTable result={result} isLoading={false} error={null} />;
+  const chartView = chart?.state.view === "chart";
+  const showGrid = (view: "table" | "json") => {
+    workspace.update({ resultView: view });
+    if (chart && chartView) chart.onChange({ ...chart.state, view: "grid" });
+  };
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5">
@@ -127,7 +139,7 @@ export function QueryResultWorkbench({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {workspace.resultView === "json" && (
+        {!chartView && workspace.resultView === "json" && (
           <span className="text-[10px] tabular-nums text-muted-foreground">
             {filtered?.rows.length} / {result.rows.length} Zeilen
           </span>
@@ -136,21 +148,32 @@ export function QueryResultWorkbench({
           <Button
             size="sm"
             className="h-7 text-xs"
-            variant={workspace.resultView === "table" ? "secondary" : "ghost"}
-            aria-pressed={workspace.resultView === "table"}
-            onClick={() => workspace.update({ resultView: "table" })}
+            variant={!chartView && workspace.resultView === "table" ? "secondary" : "ghost"}
+            aria-pressed={!chartView && workspace.resultView === "table"}
+            onClick={() => showGrid("table")}
           >
             Tabelle
           </Button>
           <Button
             size="sm"
             className="h-7 text-xs"
-            variant={workspace.resultView === "json" ? "secondary" : "ghost"}
-            aria-pressed={workspace.resultView === "json"}
-            onClick={() => workspace.update({ resultView: "json" })}
+            variant={!chartView && workspace.resultView === "json" ? "secondary" : "ghost"}
+            aria-pressed={!chartView && workspace.resultView === "json"}
+            onClick={() => showGrid("json")}
           >
             JSON
           </Button>
+          {chart && (
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              variant={chartView ? "secondary" : "ghost"}
+              aria-pressed={chartView}
+              onClick={() => chart.onChange({ ...chart.state, view: "chart" })}
+            >
+              Diagramm
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -173,7 +196,13 @@ export function QueryResultWorkbench({
           {actions}
         </div>
       </div>
-      {workspace.resultView === "json" ? (
+      {chart && chartView ? (
+        <div className="min-h-0 flex-1">
+          <Suspense fallback={null}>
+            <ResultChartView columns={result.columns} rows={result.rows} binding={chart} />
+          </Suspense>
+        </div>
+      ) : workspace.resultView === "json" ? (
         <pre
           className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
           style={{ fontSize: `${workspace.resultFontSize / 16}rem`, contain: "strict" }}
