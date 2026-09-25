@@ -66,6 +66,9 @@ export interface SettingsState {
   editorFormatNewlineBeforeSemicolon: boolean;
   editorFormatLinesBetweenQueries: number;
   confirmDestructiveQueries: boolean;
+  productionReadOnly: boolean;
+  productionConfirmCommit: boolean;
+  productionAutoRollback: boolean;
   highlightNullValues: boolean;
   translateFilterOperators: boolean;
   searchIncludeColumns: boolean;
@@ -115,6 +118,9 @@ export interface SettingsState {
   setEditorFormatNewlineBeforeSemicolon: (v: boolean) => void;
   setEditorFormatLinesBetweenQueries: (v: number) => void;
   setConfirmDestructiveQueries: (v: boolean) => void;
+  setProductionReadOnly: (v: boolean) => void;
+  setProductionConfirmCommit: (v: boolean) => void;
+  setProductionAutoRollback: (v: boolean) => void;
   setHighlightNullValues: (v: boolean) => void;
   setTranslateFilterOperators: (value: boolean) => void;
   setSearchIncludeColumns: (v: boolean) => void;
@@ -188,6 +194,9 @@ const DEFAULT_SETTINGS = {
   editorFormatNewlineBeforeSemicolon: false,
   editorFormatLinesBetweenQueries: 2,
   confirmDestructiveQueries: true,
+  productionReadOnly: false,
+  productionConfirmCommit: true,
+  productionAutoRollback: false,
   highlightNullValues: true,
   translateFilterOperators: true,
   searchIncludeColumns: true,
@@ -263,6 +272,9 @@ export const useSettingsStore = create<SettingsState>()(
         set({ editorFormatLinesBetweenQueries }),
       setConfirmDestructiveQueries: (confirmDestructiveQueries) =>
         set({ confirmDestructiveQueries }),
+      setProductionReadOnly: (productionReadOnly) => set({ productionReadOnly }),
+      setProductionConfirmCommit: (productionConfirmCommit) => set({ productionConfirmCommit }),
+      setProductionAutoRollback: (productionAutoRollback) => set({ productionAutoRollback }),
       setHighlightNullValues: (highlightNullValues) => set({ highlightNullValues }),
       setTranslateFilterOperators: (translateFilterOperators) => set({ translateFilterOperators }),
       setSearchIncludeColumns: (searchIncludeColumns) => set({ searchIncludeColumns }),

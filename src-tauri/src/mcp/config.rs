@@ -12,6 +12,8 @@ pub struct RedactRule {
     pub name: String,
     pub pattern: String,
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask: Option<crate::db::masking::MaskMode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -41,8 +43,39 @@ pub struct McpConnection {
     pub allow_ddl: bool,
     #[serde(default)]
     pub redact_columns: Vec<String>,
+    #[serde(default)]
+    pub mask_rules: Vec<RedactRule>,
+    #[serde(default)]
+    pub environment: Option<String>,
+    #[serde(default)]
+    pub allow_production_writes: bool,
     #[serde(skip)]
     pub database: Option<String>,
+}
+
+pub const PRODUCTION: &str = "production";
+
+impl McpConnection {
+    pub fn sensitive_columns(&self) -> Vec<String> {
+        self.redact_columns
+            .iter()
+            .cloned()
+            .chain(
+                self.mask_rules
+                    .iter()
+                    .filter(|rule| rule.enabled && !rule.pattern.trim().is_empty())
+                    .map(|rule| rule.pattern.clone()),
+            )
+            .collect()
+    }
+
+    pub fn is_production(&self) -> bool {
+        self.environment.as_deref() == Some(PRODUCTION)
+    }
+
+    pub fn writes_blocked(&self) -> bool {
+        self.read_only || (self.is_production() && !self.allow_production_writes)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -153,6 +186,7 @@ fn rules(list: &[(&str, &str)]) -> Vec<RedactRule> {
             name: (*name).into(),
             pattern: (*pattern).into(),
             enabled: true,
+            mask: None,
         })
         .collect()
 }
@@ -250,6 +284,7 @@ pub fn mcp_save_config(config: McpConfig) -> Result<(), String> {
         .columns
         .iter()
         .chain(&config.redaction.values)
+        .chain(config.connections.iter().flat_map(|c| c.mask_rules.iter()))
     {
         regex::Regex::new(&rule.pattern)
             .map_err(|e| format!("Ungültiges Muster „{}“: {e}", rule.name))?;

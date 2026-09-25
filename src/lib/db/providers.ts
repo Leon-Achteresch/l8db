@@ -46,6 +46,7 @@ export interface Capabilities {
   sql_filter: boolean;
   read_only_mode: boolean;
   csv_import: boolean;
+  test_data: boolean;
   column_search: boolean;
   source_search: boolean;
   schema_snapshot: boolean;

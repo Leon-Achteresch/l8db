@@ -19,12 +19,7 @@ pub struct CsvExportOptions {
     pub bom: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MaskMode {
-    Text,
-    Null,
-}
+pub use super::masking::MaskMode;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,12 +100,24 @@ pub fn masked_text(
     masks: &[ColumnMask],
 ) -> Option<String> {
     match masks.iter().find(|mask| mask.column == column) {
-        Some(mask) => match mask.mode {
-            MaskMode::Null => None,
-            MaskMode::Text => Some(mask.text.clone().unwrap_or_default()),
-        },
+        Some(mask) => super::masking::mask_value(column, value, mask.mode, mask.text.as_deref()),
         None => value_text(value),
     }
+}
+
+pub fn csv_batch_lines(
+    columns: &[String],
+    mut rows: Vec<serde_json::Value>,
+    masks: &[ColumnMask],
+    options: &CsvExportOptions,
+    batch: u64,
+) -> Vec<String> {
+    for mask in masks.iter().filter(|mask| mask.mode == MaskMode::Shuffle) {
+        super::masking::shuffle_column(&mut rows, &mask.column, batch);
+    }
+    rows.iter()
+        .map(|row| csv_row_line(columns, row, masks, options))
+        .collect()
 }
 
 pub fn csv_field(text: Option<&str>, options: &CsvExportOptions) -> String {

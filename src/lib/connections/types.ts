@@ -1,4 +1,7 @@
 import type { DatabaseKind, SslMode } from "@/lib/db";
+import type { MaskRule } from "@/lib/masking";
+
+export type ConnectionEnvironment = "development" | "test" | "staging" | "production";
 
 export interface ConnectionTag {
   name: string;
@@ -86,6 +89,8 @@ export interface SavedConnection {
   proxyUser?: string | null;
   schemas?: string[] | null;
   showSingleSchemaSwitcher?: boolean;
+  environment?: ConnectionEnvironment | null;
+  maskRules?: MaskRule[];
 }
 
 export function usesTunnel<T extends Pick<SavedConnection, "ssh" | "proxy">>(

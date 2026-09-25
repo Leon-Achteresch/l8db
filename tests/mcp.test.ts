@@ -88,3 +88,17 @@ test("support rules", () => {
   expect(mcpSupported(saved({ kind: "redis" }))).toBeNull();
   expect(mcpSupported(saved({ ssh: { host: "x" } as never }))).toContain("SSH");
 });
+
+test("merge überträgt Umgebung, Maskierungsregeln und Produktionsfreigabe", () => {
+  const rule = { name: "mail", pattern: "email", enabled: true, mask: "partial" as const };
+  const [first] = mergeMcpConnections(
+    [saved({ environment: "production", maskRules: [rule] })],
+    [{ ...mergeMcpConnections([saved({})], [])[0], allowProductionWrites: true }],
+  );
+  expect(first.environment).toBe("production");
+  expect(first.maskRules).toEqual([rule]);
+  expect(first.allowProductionWrites).toBe(true);
+  const [plain] = mergeMcpConnections([saved({})], []);
+  expect(plain.environment).toBeNull();
+  expect(plain.allowProductionWrites).toBe(false);
+});

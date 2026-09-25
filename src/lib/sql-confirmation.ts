@@ -6,6 +6,10 @@ export interface SqlConfirmation {
   connection: string;
   database: string | null;
   statements: DestructiveStatement[];
+  confirmTexts?: string[];
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
 }
 
 interface ConfirmationState {
