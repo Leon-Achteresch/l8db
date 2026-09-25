@@ -23,6 +23,8 @@ const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
   elasticsearch: { hue: 190, chroma: 0.13, glow: 0.18, shader: ["#0b3a48", "#1fb8d4", "#cff4fb"] },
   influxdb: { hue: 285, chroma: 0.15, glow: 0.2, shader: ["#2a1250", "#9b6bff", "#eadfff"] },
   sqlite_http: { hue: 175, chroma: 0.11, glow: 0.16, shader: ["#0c3a36", "#4fd6c4", "#d6fbf5"] },
+  dynamodb: { hue: 265, chroma: 0.14, glow: 0.18, shader: ["#241447", "#8c6bf2", "#e6dcff"] },
+  athena: { hue: 290, chroma: 0.12, glow: 0.16, shader: ["#2d1440", "#b56bdb", "#f2dcff"] },
 };
 
 const PROVIDER_THEMES: Record<string, DbThemeTokens> = {

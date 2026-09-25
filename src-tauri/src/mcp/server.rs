@@ -25,6 +25,8 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::SqliteHttp,
     DatabaseKind::Elasticsearch,
     DatabaseKind::Influxdb,
+    DatabaseKind::Dynamodb,
+    DatabaseKind::Athena,
 ];
 const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
 

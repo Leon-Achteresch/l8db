@@ -17,6 +17,8 @@ pub enum DatabaseKind {
     Elasticsearch,
     Influxdb,
     SqliteHttp,
+    Dynamodb,
+    Athena,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -166,7 +168,7 @@ const SQL_COMMON: Capabilities = Capabilities {
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 14] = [
+    pub const ALL: [DatabaseKind; 16] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -181,6 +183,8 @@ impl DatabaseKind {
         DatabaseKind::Elasticsearch,
         DatabaseKind::Influxdb,
         DatabaseKind::SqliteHttp,
+        DatabaseKind::Dynamodb,
+        DatabaseKind::Athena,
     ];
 
     pub fn capabilities(self) -> Capabilities {
@@ -360,6 +364,25 @@ impl DatabaseKind {
                 row_edit: true,
                 ..SQL_COMMON
             },
+            DatabaseKind::Dynamodb => Capabilities {
+                databases: false,
+                schemas: false,
+                ssl: false,
+                ssh: false,
+                indexes: true,
+                transactions: true,
+                row_edit: true,
+                filter_hint: "PartiQL-WHERE-Ausdruck, z. B. \"status\" = 'aktiv'",
+                ..NONE
+            },
+            DatabaseKind::Athena => Capabilities {
+                ssl: false,
+                ssh: false,
+                query_cancel: true,
+                server_output: true,
+                filter_hint: "SQL-WHERE-Ausdruck (Trino), z. B. \"dt\" = '2026-01-01'",
+                ..NONE
+            },
         }
     }
 
@@ -379,6 +402,8 @@ impl DatabaseKind {
             DatabaseKind::Elasticsearch => &["elasticsearch", "opensearch", "https", "http"],
             DatabaseKind::Influxdb => &["influxdb", "https", "http"],
             DatabaseKind::SqliteHttp => &["libsql", "d1"],
+            DatabaseKind::Dynamodb => &["dynamodb"],
+            DatabaseKind::Athena => &["athena"],
         }
     }
 
@@ -549,6 +574,9 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "oracle", name: "Oracle Database", group: "Enterprise", kind: DatabaseKind::Oracle, port: Some(1521), placeholder: "oracle://system:password@localhost:1521/FREEPDB1", hint: "Benötigt den Oracle Instant Client (wird zur Laufzeit geladen). Schemas entsprechen Benutzern.", hosts: &["localhost", "127.0.0.1"], driver: Driver::RuntimeLibrary { library: "Oracle Instant Client" } },
     Provider { id: "cassandra", name: "Apache Cassandra", group: "Wide-Column", kind: DatabaseKind::Cassandra, port: Some(9042), placeholder: "cassandra://cassandra:cassandra@localhost:9042/keyspace", hint: "CQL über das native Protokoll. Keyspaces erscheinen als Schemas.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "scylladb", name: "ScyllaDB", group: "Wide-Column", kind: DatabaseKind::Cassandra, port: Some(9042), placeholder: "cassandra://scylla:password@node.clusters.scylla.cloud:9042/keyspace", hint: "Cassandra-kompatibel.", hosts: &[".scylla.cloud"], driver: Driver::Builtin },
+    Provider { id: "dynamodb", name: "Amazon DynamoDB", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key (Benutzer/Passwort), AWS-Profil (?profile=) oder Umgebung. Tabellen per Scan, Queries in PartiQL.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "dynamodb-local", name: "DynamoDB Local / LocalStack", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000", hint: "Eigener Endpunkt über ?endpoint=. Beliebige Schlüssel genügen.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "athena", name: "Amazon Athena", group: "AWS", kind: DatabaseKind::Athena, port: None, placeholder: "athena://eu-central-1/AwsDataCatalog?profile=default&workgroup=primary", hint: "Nativ über die Athena-API. Host ist die Region, Pfad der Katalog. Optional ?output=s3://bucket/pfad/ und ?schema=default.", hosts: &[], driver: Driver::Builtin },
     odbc("odbc", "ODBC (generisch)", None, "", "odbc://?Driver=Name&Server=host&Database=db&UID=user&PWD=pass", "Beliebiger installierter ODBC-Treiber. Die Query-Parameter bilden den Connection String."),
     odbc("db2", "IBM Db2", Some(50000), "IBM DB2 ODBC DRIVER", "odbc://db2inst1:password@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER", "Benötigt den IBM Data Server Driver (ODBC)."),
     odbc("firebird", "Firebird", Some(3050), "Firebird/InterBase(r) driver", "odbc://SYSDBA:masterkey@localhost:3050/%2Fdata%2Fdb.fdb?Driver=Firebird%2FInterBase(r)%20driver", "Benötigt den Firebird ODBC-Treiber."),
@@ -559,7 +587,7 @@ const PROVIDERS: &[Provider] = &[
     odbc("snowflake", "Snowflake", Some(443), "SnowflakeDSIIDriver", "odbc://user:password@account.snowflakecomputing.com:443/DB?Driver=SnowflakeDSIIDriver&Warehouse=WH&Schema=PUBLIC", "Benötigt den Snowflake ODBC-Treiber."),
     odbc("bigquery", "Google BigQuery", None, "Simba ODBC Driver for Google BigQuery", "odbc://?Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery&Catalog=project&OAuthMechanism=0&KeyFilePath=%2Fpath%2Fkey.json&Email=sa%40project.iam.gserviceaccount.com", "Benötigt den Simba BigQuery ODBC-Treiber."),
     odbc("databricks", "Databricks", Some(443), "Simba Spark ODBC Driver", "odbc://token:dapi...@adb-123.azuredatabricks.net:443/?Driver=Simba%20Spark%20ODBC%20Driver&HTTPPath=%2Fsql%2F1.0%2Fwarehouses%2Fabc&SSL=1&ThriftTransport=2&AuthMech=3", "Benötigt den Databricks (Simba Spark) ODBC-Treiber."),
-    odbc("athena", "Amazon Athena", Some(443), "Simba Athena ODBC Driver", "odbc://?Driver=Simba%20Athena%20ODBC%20Driver&AwsRegion=eu-central-1&S3OutputLocation=s3%3A%2F%2Fbucket%2F&AuthenticationType=IAM%20Credentials&UID=key&PWD=secret", "Benötigt den Athena ODBC-Treiber."),
+    odbc("athena-odbc", "Amazon Athena (ODBC)", Some(443), "Simba Athena ODBC Driver", "odbc://?Driver=Simba%20Athena%20ODBC%20Driver&AwsRegion=eu-central-1&S3OutputLocation=s3%3A%2F%2Fbucket%2F&AuthenticationType=IAM%20Credentials&UID=key&PWD=secret", "Benötigt den Athena ODBC-Treiber."),
     odbc("vertica", "Vertica", Some(5433), "Vertica", "odbc://dbadmin:password@localhost:5433/VMart?Driver=Vertica", "Benötigt den Vertica ODBC-Treiber."),
     odbc("exasol", "Exasol", Some(8563), "EXASOL Driver", "odbc://sys:exasol@localhost:8563/?Driver=EXASOL%20Driver&EXAHOST=localhost%3A8563", "Benötigt den Exasol ODBC-Treiber."),
     odbc("trino", "Trino / Presto", Some(8080), "Trino ODBC Driver", "odbc://user@localhost:8080/hive?Driver=Trino%20ODBC%20Driver", "Benötigt den Starburst/Trino ODBC-Treiber."),

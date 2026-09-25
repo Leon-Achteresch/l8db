@@ -1,3 +1,5 @@
+mod athena;
+mod aws;
 pub mod backup;
 pub mod backup_tools;
 mod cassandra;
@@ -12,16 +14,17 @@ mod datagen_data;
 pub mod debugger;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+mod dynamodb;
 pub(crate) mod elasticsearch;
 pub mod execution;
 pub mod export;
 pub mod export_formats;
-pub mod import;
-pub mod import_source;
-pub mod masking;
 mod filter_expr;
 mod http_api;
+pub mod import;
+pub mod import_source;
 pub(crate) mod influxdb;
+pub mod masking;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;
@@ -1834,6 +1837,12 @@ pub fn create_adapter_from_string(
             connection_string,
             database,
         )?),
+        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
+            connection_string,
+            database,
+            key,
+        )?),
     })
 }
 
@@ -2013,15 +2022,21 @@ mod tests {
         assert_eq!(super::requalify_schema(sql, "", "neu"), sql);
     }
 
-    fn smoke_query(kind: super::DatabaseKind) -> &'static str {
+    fn smoke_query(kind: super::DatabaseKind, tables: &[super::TableInfo]) -> String {
         match kind {
-            super::DatabaseKind::Redis => "PING",
-            super::DatabaseKind::Mongodb => "{\"ping\": 1}",
-            super::DatabaseKind::Cassandra => "SELECT release_version FROM system.local",
-            super::DatabaseKind::Oracle => "SELECT 1 FROM dual",
-            super::DatabaseKind::Elasticsearch => "GET _cluster/health",
-            super::DatabaseKind::Influxdb => "SHOW MEASUREMENTS",
-            _ => "SELECT 1",
+            super::DatabaseKind::Redis => "PING".to_string(),
+            super::DatabaseKind::Mongodb => "{\"ping\": 1}".to_string(),
+            super::DatabaseKind::Cassandra => {
+                "SELECT release_version FROM system.local".to_string()
+            }
+            super::DatabaseKind::Oracle => "SELECT 1 FROM dual".to_string(),
+            super::DatabaseKind::Dynamodb => format!(
+                "SELECT * FROM {}",
+                super::quote_ident(&tables.first().map(|t| t.name.clone()).unwrap_or_default())
+            ),
+            super::DatabaseKind::Elasticsearch => "GET _cluster/health".to_string(),
+            super::DatabaseKind::Influxdb => "SHOW MEASUREMENTS".to_string(),
+            _ => "SELECT 1".to_string(),
         }
     }
 
@@ -2084,7 +2099,7 @@ mod tests {
                 );
             }
             let result = adapter
-                .execute_query(smoke_query(kind))
+                .execute_query(&smoke_query(kind, &tables))
                 .await
                 .unwrap_or_else(|e| panic!("{var} query: {e}"));
             assert!(

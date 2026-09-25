@@ -14,7 +14,9 @@ export type DatabaseKind =
   | "odbc"
   | "elasticsearch"
   | "influxdb"
-  | "sqlite_http";
+  | "sqlite_http"
+  | "dynamodb"
+  | "athena";
 
 export interface Capabilities {
   databases: boolean;

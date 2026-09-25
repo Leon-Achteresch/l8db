@@ -229,15 +229,17 @@ export function useConnectionEditor({
   const databaseLabel =
     kind === "oracle"
       ? "Service-Name"
-      : kind === "cassandra"
-        ? "Keyspace"
-        : kind === "redis"
-          ? "Datenbank-Nummer"
-          : kind === "influxdb"
-            ? "Bucket / Datenbank"
-            : kind === "elasticsearch"
-              ? "Pfad-Präfix (optional)"
-              : "Datenbank";
+      : kind === "athena"
+        ? "Katalog"
+        : kind === "cassandra"
+          ? "Keyspace"
+          : kind === "redis"
+            ? "Datenbank-Nummer"
+            : kind === "influxdb"
+              ? "Bucket / Datenbank"
+              : kind === "elasticsearch"
+                ? "Pfad-Präfix (optional)"
+                : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
 
   return {
@@ -254,6 +256,7 @@ export function useConnectionEditor({
     setEnvironment,
     setMaskRules,
     elapsed,
+    extraParams,
     file,
     groups,
     guided,
@@ -288,6 +291,7 @@ export function useConnectionEditor({
     selectProvider,
     setColor,
     setDatabase,
+    setExtraParams,
     setFile,
     setHost,
     setName,
