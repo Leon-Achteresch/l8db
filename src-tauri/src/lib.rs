@@ -1,6 +1,7 @@
 mod community_extensions;
 mod db;
 mod extension_process;
+mod file_open;
 mod mcp;
 mod versioning;
 
@@ -31,6 +32,8 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(feature = "odbc")]
+    db::configure_odbc();
     if std::env::args().any(|arg| arg == "--mcp") {
         mcp::serve();
         return;
@@ -39,7 +42,20 @@ pub fn run() {
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
-    tauri::Builder::default()
+    let initial_files = std::env::current_dir()
+        .map(|cwd| file_open::actions_from_args(&args, &cwd))
+        .unwrap_or_default();
+    let mut builder = tauri::Builder::default();
+    if !cfg!(debug_assertions) {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let actions = file_open::actions_from_args(
+                argv.get(1..).unwrap_or_default(),
+                std::path::Path::new(&cwd),
+            );
+            file_open::enqueue(app, actions);
+        }));
+    }
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -53,6 +69,7 @@ pub fn run() {
             }
         })
         .manage(community_extensions::ExtensionStoreLock::default())
+        .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
@@ -67,6 +84,8 @@ pub fn run() {
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,
+            file_open::take_pending_open_files,
+            file_open::resolve_open_files,
             mcp::config::mcp_config,
             mcp::config::mcp_save_config,
             mcp::config::mcp_default_redaction,
@@ -227,6 +246,17 @@ pub fn run() {
             db::commands::drop_schema,
             db::commands::get_database_overview,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let actions = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .map(|path| file_open::action_for_path(&path))
+                    .collect();
+                file_open::enqueue(_app, actions);
+            }
+        });
 }

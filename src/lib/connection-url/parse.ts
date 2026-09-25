@@ -6,7 +6,8 @@ import { isOracleKeyValue } from "./oracle-key-value";
 
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
-  if (PATH_LIKE.test(trimmed)) return /\.(duckdb|ddb)$/i.test(trimmed) ? "duckdb" : "sqlite";
+  if (PATH_LIKE.test(trimmed))
+    return /\.(duckdb|ddb|parquet|csv)$/i.test(trimmed) ? "duckdb" : "sqlite";
   if (isOracleKeyValue(trimmed)) return "oracle";
   const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
   if (!match) return undefined;

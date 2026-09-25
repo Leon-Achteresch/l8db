@@ -1,10 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
-import { openDroppedSqlPaths } from "@/lib/hooks/use-query-file";
+import { isMainWindow } from "@/lib/connections";
+import { OPEN_FILES_EVENT, resolveOpenFiles, takePendingOpenFiles } from "@/lib/db";
+import { type OpenFileTarget, runOpenFileActions } from "@/lib/file-open";
 import { isSqlDropName } from "@/lib/sql-file";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -18,6 +21,18 @@ export function SqlFileDrop() {
   useEffect(() => {
     const go = (id: string | null) => {
       if (id) void navigate({ to: "/query/$id", params: { id } });
+    };
+    const open = (target: OpenFileTarget) => {
+      if (target?.to === "/query/$id") go(target.id);
+      else if (target) void navigate({ to: target.to });
+    };
+    let draining = Promise.resolve();
+    const drainPending = () => {
+      draining = draining
+        .then(takePendingOpenFiles)
+        .then(runOpenFileActions)
+        .then(open)
+        .catch(() => undefined);
     };
 
     const onDragOver = (event: DragEvent) => {
@@ -49,24 +64,31 @@ export function SqlFileDrop() {
     window.addEventListener("drop", onDrop, true);
 
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    const unlisteners: (() => void)[] = [];
+    const keep = (fn: () => void) => {
+      if (disposed) fn();
+      else unlisteners.push(fn);
+    };
     if (isTauri()) {
       void getCurrentWindow()
         .onDragDropEvent((event) => {
           if (event.payload.type !== "drop") return;
-          void openDroppedSqlPaths(event.payload.paths).then(go);
+          void resolveOpenFiles(event.payload.paths)
+            .then(runOpenFileActions)
+            .then(open)
+            .catch(() => undefined);
         })
-        .then((fn) => {
-          if (disposed) fn();
-          else unlisten = fn;
-        });
+        .then(keep);
+      if (isMainWindow) {
+        void listen(OPEN_FILES_EVENT, drainPending).then(keep).finally(drainPending);
+      }
     }
 
     return () => {
       disposed = true;
       window.removeEventListener("dragover", onDragOver, true);
       window.removeEventListener("drop", onDrop, true);
-      unlisten?.();
+      for (const fn of unlisteners) fn();
     };
   }, [navigate]);
 

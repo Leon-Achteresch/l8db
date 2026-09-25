@@ -91,6 +91,7 @@ export interface SavedConnection {
   showSingleSchemaSwitcher?: boolean;
   environment?: ConnectionEnvironment | null;
   maskRules?: MaskRule[];
+  temporary?: boolean;
 }
 
 export function usesTunnel<T extends Pick<SavedConnection, "ssh" | "proxy">>(

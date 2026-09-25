@@ -32,7 +32,7 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | libSQL / Turso (lokal) | Sqlite | builtin |
 | libSQL / Turso (remote) | SqliteHttp | builtin (HTTP) |
 | Cloudflare D1 | SqliteHttp | builtin (HTTP) |
-| DuckDB | Duckdb | Cargo feature `duckdb` |
+| DuckDB | Duckdb | builtin (Cargo feature `duckdb`, default) |
 | SQL Server | Mssql | builtin |
 | Azure SQL | Mssql | builtin |
 | ClickHouse | Clickhouse | builtin |
@@ -141,9 +141,13 @@ BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL se
 
 Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with a `dataset1.table_a` fixture. Snowflake has no emulator; only the mocked tests exist.
 
-## Optional builds
+## Default and optional builds
 
-Standard builds omit DuckDB and ODBC. Enable them with `bun run tauri build -- --features duckdb`, `--features odbc`, or `--features duckdb,odbc`. DuckDB is bundled when enabled. ODBC additionally needs a platform driver manager and the vendor driver from the table above, matching the app architecture. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
+Standard builds include DuckDB and ODBC (Cargo default features `duckdb` and `odbc`). DuckDB is compiled from the bundled sources. ODBC uses odbc-api's `vendored-unix-odbc`: the unixODBC driver manager is compiled from source and linked statically on macOS and Linux, so the binary has no dynamic dependency on `libodbc` and starts on machines without unixODBC (`otool -L` / `ldd` show no ODBC library). Windows links the system `odbc32.dll`, which is always present. Only the vendor driver from the table above is still needed, registered in `odbcinst.ini` and matching the app architecture. The static driver manager reads `/etc/odbcinst.ini`; on macOS l8db sets `ODBCSYSINI` to `/opt/homebrew/etc`, `/usr/local/etc` or `/Library/ODBC` when `/etc/odbcinst.ini` is missing and `ODBCSYSINI`/`ODBCINSTINI` are not set. The vendored unixODBC is LGPL-2.1.
+
+`bun run tauri build -- --no-default-features` builds without both; add `--features duckdb` or `--features odbc` to re-enable one. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
+
+DuckDB also opens CSV and Parquet files: a DuckDB connection whose path ends in `.csv` or `.parquet` opens an in-memory database with a view named after the file (`read_csv_auto` / `read_parquet`).
 
 ## Adding a product or family
 
