@@ -24,7 +24,8 @@ license=('custom:Elastic-2.0')
 depends=('webkit2gtk-4.1' 'gtk3' 'openssl' 'libsecret' 'hicolor-icon-theme')
 optdepends=('gnome-keyring: Secret-Service-Backend fuer gespeicherte Datenbank-Credentials'
             'kwallet: alternatives Secret-Service-Backend'
-            'xdg-utils: Links und Ordner im Dateimanager oeffnen')
+            'xdg-utils: Links und Ordner im Dateimanager oeffnen'
+            'unixodbc: odbcinst zum Registrieren von ODBC-Herstellertreibern (Treibermanager ist eingebaut)')
 provides=("${_pkgname}=${pkgver}")
 conflicts=("${_pkgname}")
 options=('!strip' '!emptydirs' '!debug')

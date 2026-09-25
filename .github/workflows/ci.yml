@@ -95,6 +95,8 @@ jobs:
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
+      - run: cargo clippy --all-targets --locked --no-default-features
+        working-directory: src-tauri
       - run: cargo test --locked
         working-directory: src-tauri
       - name: PostgreSQL and SSH integration

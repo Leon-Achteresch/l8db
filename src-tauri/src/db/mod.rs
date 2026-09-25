@@ -21,6 +21,8 @@ mod mssql;
 mod mysql;
 #[cfg(feature = "odbc")]
 mod odbc;
+#[cfg(feature = "odbc")]
+pub use odbc::configure_system_ini as configure_odbc;
 mod oracle;
 pub mod pool;
 mod postgres;
