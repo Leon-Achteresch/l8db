@@ -1,4 +1,5 @@
 import { CsvExportDialog } from "@/features/export/csv-export-dialog";
+import { DataExportDialog } from "@/features/export/data-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import type { useTableExport } from "./use-table-export";
 
@@ -9,7 +10,9 @@ export function TableExportDialogs({
   csvExportOpen,
   setCsvExportOpen,
   xlsxExportOpen,
+  dataExportFormat,
   setXlsxExportOpen,
+  setDataExportFormat,
   exportColumns,
   exportRows,
   fullExportSource,
@@ -18,7 +21,9 @@ export function TableExportDialogs({
   | "csvExportOpen"
   | "setCsvExportOpen"
   | "xlsxExportOpen"
+  | "dataExportFormat"
   | "setXlsxExportOpen"
+  | "setDataExportFormat"
   | "exportColumns"
   | "exportRows"
   | "fullExportSource"
@@ -31,6 +36,14 @@ export function TableExportDialogs({
         columns={exportColumns}
         rows={exportRows}
         defaultFileName={`${table}.csv`}
+        fullExport={fullExportSource}
+      />
+      <DataExportDialog
+        format={dataExportFormat}
+        onClose={() => setDataExportFormat(null)}
+        columns={exportColumns}
+        rows={exportRows}
+        baseFileName={table}
         fullExport={fullExportSource}
       />
       <XlsxExportDialog

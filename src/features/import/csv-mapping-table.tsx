@@ -6,7 +6,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type CsvColumnMapping, type ImportTargetColumn, isRequiredColumn } from "@/lib/csv-import";
+import {
+  type CsvColumnMapping,
+  type ImportTargetColumn,
+  INFERRED_TYPE_LABELS,
+  type InferredType,
+  isRequiredColumn,
+  typeMismatch,
+} from "@/lib/csv-import";
 
 const NO_TARGET = "__skip__";
 
@@ -15,6 +22,7 @@ interface CsvMappingTableProps {
   sampleRow: (string | null)[] | undefined;
   mappings: CsvColumnMapping[];
   targets: ImportTargetColumn[];
+  inferredTypes?: InferredType[];
   onChange: (csvIndex: number, target: string | null) => void;
 }
 
@@ -32,6 +40,7 @@ export function CsvMappingTable({
   sampleRow,
   mappings,
   targets,
+  inferredTypes = [],
   onChange,
 }: CsvMappingTableProps) {
   const usedTargets = new Set(mappings.map((m) => m.target).filter(Boolean) as string[]);
@@ -41,8 +50,9 @@ export function CsvMappingTable({
       <table className="w-full border-collapse text-xs">
         <thead className="bg-muted/60">
           <tr>
-            <th className="border-b px-2 py-1 text-left font-medium">CSV-Spalte</th>
+            <th className="border-b px-2 py-1 text-left font-medium">Quellspalte</th>
             <th className="border-b px-2 py-1 text-left font-medium">Beispielwert</th>
+            <th className="border-b px-2 py-1 text-left font-medium">Erkannter Typ</th>
             <th className="border-b px-2 py-1 text-left font-medium">Zielspalte</th>
           </tr>
         </thead>
@@ -51,11 +61,35 @@ export function CsvMappingTable({
             const mapping = mappings.find((m) => m.csvIndex === index);
             const value = mapping?.target ?? NO_TARGET;
             const sample = sampleRow?.[index] ?? null;
+            const inferred = inferredTypes[index];
+            const target = targets.find((column) => column.name === mapping?.target);
+            const mismatch = Boolean(
+              inferred && target && typeMismatch(inferred, target.data_type),
+            );
             return (
               <tr key={index} className="odd:bg-muted/20">
                 <td className="px-2 py-1 font-mono whitespace-nowrap">{header}</td>
                 <td className="max-w-48 truncate px-2 py-1 font-mono text-muted-foreground">
                   {sample === null ? "NULL" : sample === "" ? '""' : sample}
+                </td>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  {inferred && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        mismatch
+                          ? "border-amber-500/30 bg-amber-500/5 text-[10px] text-amber-600"
+                          : "text-[10px]"
+                      }
+                      title={
+                        mismatch
+                          ? `Erkannter Typ passt eventuell nicht zu ${target?.data_type}`
+                          : undefined
+                      }
+                    >
+                      {INFERRED_TYPE_LABELS[inferred]}
+                    </Badge>
+                  )}
                 </td>
                 <td className="px-2 py-1">
                   <Select
