@@ -67,6 +67,8 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "cassandra",
   "duckdb",
   "odbc",
+  "bigquery",
+  "snowflake",
   "mongodb",
   "redis",
 ];

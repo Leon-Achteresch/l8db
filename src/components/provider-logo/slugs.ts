@@ -50,6 +50,8 @@ export const PROVIDER_SLUG: Record<string, string | null> = {
   teradata: "teradata",
   snowflake: "snowflake",
   bigquery: "google-bigquery",
+  "snowflake-odbc": "snowflake",
+  "bigquery-odbc": "google-bigquery",
   databricks: "databricks",
   athena: "aws-amazon-athena",
   vertica: null,
@@ -72,4 +74,6 @@ export const KIND_SLUG: Record<DatabaseKind, string | null> = {
   cassandra: "apache-cassandra",
   duckdb: "duckdb",
   odbc: null,
+  bigquery: "google-bigquery",
+  snowflake: "snowflake",
 };
