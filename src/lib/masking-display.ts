@@ -23,7 +23,7 @@ export function connectionMaskRules(
   config: McpConfig | null | undefined,
 ): { rules: MaskRule[]; replacement: string } {
   if (!connection) return { rules: [], replacement: DEFAULT_MASK_TEXT };
-  const mcp = config?.connections.find((entry) => entry.id === connection.id);
+  const mcp = config?.connections?.find((entry) => entry.id === connection.id);
   return {
     rules: [
       ...(connection.maskRules ?? []),
@@ -33,9 +33,9 @@ export function connectionMaskRules(
         enabled: true,
         mask: "text" as const,
       })),
-      ...(config?.redaction.columns ?? []),
+      ...(config?.redaction?.columns ?? []),
     ],
-    replacement: config?.redaction.replacement || DEFAULT_MASK_TEXT,
+    replacement: config?.redaction?.replacement || DEFAULT_MASK_TEXT,
   };
 }
 
