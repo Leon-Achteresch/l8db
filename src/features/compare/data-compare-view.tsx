@@ -35,6 +35,8 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
     setFilter,
     direction,
     setDirection,
+    includeDeletes,
+    setIncludeDeletes,
     selected,
     leftConnection,
     rightConnection,
@@ -206,9 +208,16 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
                 </SelectItem>
               </SelectContent>
             </Select>
+            <Label className="flex items-center gap-1.5 text-xs">
+              <Checkbox
+                checked={includeDeletes}
+                onCheckedChange={(value) => setIncludeDeletes(value === true)}
+              />
+              Nur im Ziel vorhandene Zeilen löschen
+            </Label>
             <span className="text-xs text-muted-foreground">
               Ziel: {script?.target ?? "–"} · {script?.insertCount ?? 0} INSERT ·{" "}
-              {script?.updateCount ?? 0} UPDATE · Schlüssel:{" "}
+              {script?.updateCount ?? 0} UPDATE · {script?.deleteCount ?? 0} DELETE · Schlüssel:{" "}
               {script?.keys.slice(0, 5).join("; ") || "–"}
               {script && script.keys.length > 5 ? " …" : ""}
             </span>
@@ -240,7 +249,7 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
           </pre>
           <span className="text-xs text-muted-foreground">
             Das Skript wird nur erzeugt und nie automatisch ausgeführt; UPDATE prüft den erwarteten
-            Altstand.
+            Altstand, DELETE nur bei aktivierter Option.
           </span>
         </>
       )}

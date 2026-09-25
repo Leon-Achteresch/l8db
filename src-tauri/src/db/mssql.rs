@@ -95,6 +95,18 @@ fn map_err(e: tiberius::error::Error) -> String {
     }
 }
 
+fn numeric_text(value: i128, scale: u8) -> String {
+    let sign = if value < 0 { "-" } else { "" };
+    let digits = value.unsigned_abs().to_string();
+    let scale = usize::from(scale);
+    if scale == 0 {
+        return format!("{sign}{digits}");
+    }
+    let padded = format!("{digits:0>width$}", width = scale + 1);
+    let (whole, fraction) = padded.split_at(padded.len() - scale);
+    format!("{sign}{whole}.{fraction}")
+}
+
 fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
     fn num(f: f64) -> serde_json::Value {
         serde_json::Number::from_f64(f)
@@ -131,7 +143,7 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             .map(|b| serde_json::Value::String(hex_blob(b)))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Numeric(v) => v
-            .map(|n| serde_json::Value::String(n.to_string()))
+            .map(|n| serde_json::Value::String(numeric_text(n.value(), n.scale())))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Xml(v) => v
             .as_ref()
@@ -1332,6 +1344,42 @@ impl DatabaseAdapter for MssqlAdapter {
         })
     }
 
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        use futures_util::TryStreamExt;
+        let object = Self::object(&request.schema, &request.table);
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut client = self.connect().await?;
+        let result = async {
+            let mut stream = client.simple_query(sql).await.map_err(map_err)?;
+            let columns: Vec<String> = stream
+                .columns()
+                .await
+                .map_err(map_err)?
+                .map(|c| c.iter().map(|c| c.name().to_string()).collect())
+                .unwrap_or_default();
+            let mut rows = stream.into_row_stream();
+            let mut collector = super::snapshot::Collector::new(request.max_rows);
+            while let Some(row) = rows.try_next().await.map_err(map_err)? {
+                collector.push(
+                    columns
+                        .iter()
+                        .cloned()
+                        .zip(row.cells().map(|(_, data)| value_to_json(data)))
+                        .collect(),
+                )?;
+            }
+            collector.finish(columns)
+        }
+        .await;
+        if result.is_err() {
+            client.discard();
+        }
+        result
+    }
+
     async fn schema_catalog(
         &self,
         schema: &str,
@@ -1347,6 +1395,17 @@ mod catalog;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_text_keeps_sign_and_scale() {
+        assert_eq!(numeric_text(-1, 6), "-0.000001");
+        assert_eq!(
+            numeric_text(12345678901234123456, 6),
+            "12345678901234.123456"
+        );
+        assert_eq!(numeric_text(150, 2), "1.50");
+        assert_eq!(numeric_text(-7, 0), "-7");
+    }
 
     #[test]
     fn module_ddl_runs_as_own_batch() {

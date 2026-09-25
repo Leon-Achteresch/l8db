@@ -267,11 +267,13 @@ export async function compareTableDataRemote(
     left: {
       connectionString: string;
       database: string | null;
+      kind: DatabaseKind;
       source: Parameters<typeof readTableSnapshot>[3];
     };
     right: {
       connectionString: string;
       database: string | null;
+      kind: DatabaseKind;
       source: Parameters<typeof readTableSnapshot>[3];
     };
     keyColumns: string[];
