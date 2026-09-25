@@ -1,4 +1,5 @@
 import type { DatabaseKind } from "@/lib/db";
+import { type ColumnMask, maskValue } from "@/lib/masking";
 
 export type CsvLineEnding = "\n" | "\r\n";
 
@@ -87,36 +88,12 @@ export function csvPreview(
   return serializeCsv(columns, rows.slice(0, limit), { ...options, bom: false });
 }
 
-export type MaskMode = "text" | "null";
-
-export interface ColumnMask {
-  column: string;
-  mode: MaskMode;
-  text?: string | null;
-}
-
-export const DEFAULT_MASK_TEXT = "***";
+export type { ColumnMask, MaskMode } from "@/lib/masking";
+export { applyMasks, DEFAULT_MASK_TEXT } from "@/lib/masking";
 
 export function maskedValue(column: string, value: unknown, masks: ColumnMask[]): unknown {
-  const mask = masks.find((m) => m.column === column);
-  if (!mask) return value;
-  if (mask.mode === "null") return null;
-  return mask.text ?? "";
-}
-
-export function applyMasks(
-  columns: string[],
-  rows: Record<string, unknown>[],
-  masks: ColumnMask[],
-): Record<string, unknown>[] {
-  if (masks.length === 0) return rows;
-  return rows.map((row) => {
-    const out: Record<string, unknown> = { ...row };
-    for (const column of columns) {
-      out[column] = maskedValue(column, row[column], masks);
-    }
-    return out;
-  });
+  const mask = masks.find((entry) => entry.column === column);
+  return mask ? maskValue(column, value, mask) : value;
 }
 
 export function parseCsv(text: string, options: CsvOptions): string[][] {
@@ -182,7 +159,7 @@ export function parseCsv(text: string, options: CsvOptions): string[][] {
 export type SqlIdentifierStyle = "double" | "backtick" | "bracket";
 
 export function identifierStyleForKind(kind: DatabaseKind | null | undefined): SqlIdentifierStyle {
-  if (kind === "mysql") return "backtick";
+  if (kind === "mysql" || kind === "bigquery") return "backtick";
   if (kind === "mssql") return "bracket";
   return "double";
 }

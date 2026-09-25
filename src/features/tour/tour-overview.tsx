@@ -165,6 +165,14 @@ export function TourOverview() {
         <p className="mt-1 text-[11px] leading-snug text-muted-foreground" data-tour-ui="step-body">
           {step?.body}
         </p>
+        {step?.action ? (
+          <p
+            className="mt-2 rounded-lg bg-primary/12 px-2.5 py-2 text-xs font-semibold text-foreground"
+            data-tour-ui="step-action"
+          >
+            👉 {step.action}
+          </p>
+        ) : null}
         {waiting && waitHint ? (
           <p className="mt-1.5 text-[11px] font-medium text-primary" data-tour-ui="wait-hint">
             {waitHint}
@@ -204,7 +212,7 @@ export function TourOverview() {
           </div>
         ) : null}
         <label className="mt-2.5 flex items-center justify-between gap-3 text-[11px]">
-          <span className="text-muted-foreground">Autopilot klickt und wechselt Seiten</span>
+          <span className="text-muted-foreground">Autopilot: Die Tour klickt für dich</span>
           <Switch checked={autoPilot} onCheckedChange={setAutoPilot} aria-label="Autopilot" />
         </label>
         <div className="mt-2.5 flex items-center gap-1.5">

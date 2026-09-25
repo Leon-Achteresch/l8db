@@ -1,0 +1,101 @@
+.nb-book {
+  --nb-paper: oklch(0.985 0.004 90);
+  --nb-line: oklch(0.86 0.01 250);
+  --nb-cover: oklch(0.22 0.005 260);
+  --nb-flip: 700ms;
+  perspective: 2600px;
+}
+.dark .nb-book {
+  --nb-paper: oklch(0.27 0.006 260);
+  --nb-line: oklch(0.36 0.01 260);
+  --nb-cover: oklch(0.13 0.004 260);
+}
+.nb-cover {
+  background: var(--nb-cover);
+  box-shadow:
+    0 30px 60px -20px rgb(0 0 0 / 0.55),
+    0 12px 24px -12px rgb(0 0 0 / 0.4),
+    inset 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+.nb-paper {
+  background-color: var(--nb-paper);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    var(--nb-line) 27px,
+    var(--nb-line) 28px
+  );
+  background-position: 0 44px;
+  background-attachment: local;
+}
+.nb-page-left {
+  border-radius: 6px 0 0 6px;
+  box-shadow: inset -28px 0 32px -24px rgb(0 0 0 / 0.28);
+}
+.nb-page-right {
+  border-radius: 0 6px 6px 0;
+  box-shadow: inset 28px 0 32px -24px rgb(0 0 0 / 0.28);
+}
+.nb-leaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  transform-style: preserve-3d;
+  z-index: 20;
+  pointer-events: none;
+}
+.nb-leaf[data-dir="next"] {
+  left: 50%;
+  transform-origin: left center;
+  animation: nb-flip-next var(--nb-flip) cubic-bezier(0.45, 0.05, 0.3, 1) forwards;
+}
+.nb-leaf[data-dir="prev"] {
+  left: 0;
+  transform-origin: right center;
+  animation: nb-flip-prev var(--nb-flip) cubic-bezier(0.45, 0.05, 0.3, 1) forwards;
+}
+.nb-leaf-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+.nb-leaf-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  animation: nb-shade var(--nb-flip) ease-in-out forwards;
+  pointer-events: none;
+}
+.nb-leaf-back {
+  transform: rotateY(180deg);
+}
+@keyframes nb-flip-next {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(-180deg); }
+}
+@keyframes nb-flip-prev {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(180deg); }
+}
+@keyframes nb-shade {
+  0% { background: rgb(0 0 0 / 0); }
+  50% { background: rgb(0 0 0 / 0.22); }
+  100% { background: rgb(0 0 0 / 0); }
+}
+.nb-corner {
+  background: linear-gradient(225deg, transparent 50%, rgb(0 0 0 / 0.12) 50%, var(--nb-paper) 62%);
+  transition: width 180ms ease, height 180ms ease;
+}
+.nb-corner:hover {
+  width: 44px;
+  height: 44px;
+}
+.nb-corner-left {
+  background: linear-gradient(135deg, transparent 50%, rgb(0 0 0 / 0.12) 50%, var(--nb-paper) 62%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nb-book { --nb-flip: 1ms; }
+}

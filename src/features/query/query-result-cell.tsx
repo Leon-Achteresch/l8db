@@ -1,8 +1,10 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
+import { DataTableCellBadge } from "@/features/table/data-table-cell/data-table-cell-badge";
 import { useMasterDetail } from "@/lib/master-detail";
 import { resultCellText } from "@/lib/result-grid";
 import { cellPreviewLimit, truncateCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
+import { cellValueBadge } from "@/lib/value-viewers/detect";
 
 type QueryResultCellProps = {
   column: string;
@@ -31,7 +33,10 @@ export const QueryResultCell = memo(function QueryResultCell({
 }: QueryResultCellProps) {
   const isNull = value === null || value === undefined;
   const text = resultCellText(value);
-  const display = isNull ? "NULL" : truncateCellPreview(text, cellPreviewLimit(width, fontSize));
+  const badge = useMemo(() => cellValueBadge(value), [value]);
+  const display = isNull
+    ? "NULL"
+    : truncateCellPreview(badge?.text ?? text, cellPreviewLimit(width, fontSize));
   const selectMaster = () => {
     if (selectionKey)
       useMasterDetail.getState().selectCell(selectionKey, {
@@ -68,10 +73,14 @@ export const QueryResultCell = memo(function QueryResultCell({
           title="Vollständigen Zellwert anzeigen"
           onClick={() => onInspect(column, value, rowIndex + 1)}
         >
+          {badge && <DataTableCellBadge badge={badge} />}
           {display}
         </button>
       ) : (
-        display
+        <>
+          {badge && <DataTableCellBadge badge={badge} />}
+          {display}
+        </>
       )}
     </td>
   );

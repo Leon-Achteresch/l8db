@@ -1,6 +1,7 @@
 mod community_extensions;
 mod db;
 mod extension_process;
+mod file_open;
 mod mcp;
 mod versioning;
 
@@ -31,6 +32,8 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(feature = "odbc")]
+    db::configure_odbc();
     if std::env::args().any(|arg| arg == "--mcp") {
         mcp::serve();
         return;
@@ -39,7 +42,20 @@ pub fn run() {
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
-    tauri::Builder::default()
+    let initial_files = std::env::current_dir()
+        .map(|cwd| file_open::actions_from_args(&args, &cwd))
+        .unwrap_or_default();
+    let mut builder = tauri::Builder::default();
+    if !cfg!(debug_assertions) {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let actions = file_open::actions_from_args(
+                argv.get(1..).unwrap_or_default(),
+                std::path::Path::new(&cwd),
+            );
+            file_open::enqueue(app, actions);
+        }));
+    }
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -53,6 +69,7 @@ pub fn run() {
             }
         })
         .manage(community_extensions::ExtensionStoreLock::default())
+        .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
@@ -67,6 +84,8 @@ pub fn run() {
             community_extensions::community_extension_store,
             community_extensions::read_community_extension,
             extension_process::extension_process_run,
+            file_open::take_pending_open_files,
+            file_open::resolve_open_files,
             mcp::config::mcp_config,
             mcp::config::mcp_save_config,
             mcp::config::mcp_default_redaction,
@@ -81,6 +100,9 @@ pub fn run() {
             mcp::clients::mcp_server_command,
             db::commands::list_providers,
             db::commands::driver_status,
+            db::commands::backup_probe,
+            db::commands::run_backup,
+            db::commands::run_restore,
             db::commands::install_driver,
             db::commands::oracle_tns_names,
             db::commands::oracle_open_tnsnames,
@@ -151,6 +173,12 @@ pub fn run() {
             db::commands::list_table_columns_detailed,
             db::commands::list_import_columns,
             db::commands::csv_import,
+            db::commands::read_import_preview,
+            db::commands::export_rows_file,
+            db::commands::copy_table_to_connection,
+            db::datagen::datagen_plan,
+            db::datagen::datagen_preview,
+            db::datagen::datagen_run,
             db::commands::read_csv_preview,
             db::commands::export_table_csv,
             db::commands::read_table_snapshot,
@@ -171,6 +199,9 @@ pub fn run() {
             db::commands::take_server_output,
             db::commands::create_table,
             db::commands::preview_create_table_ddl,
+            db::commands::preview_constraint_change,
+            db::commands::apply_constraint_change,
+            db::commands::column_value_options,
             db::commands::list_schema_copy_objects,
             db::commands::preview_schema_object_copy,
             db::commands::execute_schema_object_copy,
@@ -184,6 +215,8 @@ pub fn run() {
             db::secrets::load_secret,
             db::secrets::delete_secret,
             db::ssh::open_ssh_tunnel,
+            db::ssh::open_proxy_tunnel,
+            db::ssh::config::list_ssh_config_hosts,
             db::ssh::close_ssh_tunnel,
             db::ssh::list_ssh_tunnels,
             db::commands::explain_query,
@@ -213,6 +246,17 @@ pub fn run() {
             db::commands::drop_schema,
             db::commands::get_database_overview,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let actions = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .map(|path| file_open::action_for_path(&path))
+                    .collect();
+                file_open::enqueue(_app, actions);
+            }
+        });
 }

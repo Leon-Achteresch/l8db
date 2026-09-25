@@ -3,10 +3,12 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 import { copyText, pasteText } from "@/lib/clipboard";
+import { mergeVaultConnections, toVaultConnection } from "@/lib/connection-export/vault";
 import { useConnectionsStore } from "@/lib/connections";
 import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { gridCellText } from "@/lib/grid-search";
+import { loadSecret, storeSecret } from "@/lib/secrets";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
@@ -164,6 +166,27 @@ export function createExtensionHost() {
     },
     prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>> {
       return useExtensionPrompts.getState().request(request);
+    },
+    async listConnections() {
+      const saved = useConnectionsStore.getState().connections.filter((c) => !c.temporary);
+      return Promise.all(
+        saved.map(async (connection) =>
+          toVaultConnection(connection, await loadSecret(connection.id).catch(() => null)),
+        ),
+      );
+    },
+    async saveConnections(items) {
+      const store = useConnectionsStore.getState();
+      const merge = mergeVaultConnections(items, store.connections);
+      for (const [id, password] of merge.passwords) await storeSecret(id, password);
+      const updated = new Map(merge.updated.map((connection) => [connection.id, connection]));
+      useConnectionsStore.setState((state) => ({
+        connections: state.connections.map(
+          (connection) => updated.get(connection.id) ?? connection,
+        ),
+      }));
+      store.addImported(merge.added);
+      return { added: merge.added.length, updated: merge.updated.length, skipped: merge.skipped };
     },
   };
   const manager = new ExtensionManager(

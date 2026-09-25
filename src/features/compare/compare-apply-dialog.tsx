@@ -131,16 +131,6 @@ export function CompareApplyDialog({
               {targetLabel}: {connection?.name} · {side.database} · {side.schema}.{side.objectName}
             </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Diese Anweisungen werden erst nach erfolgreicher Prüfung und deiner Bestätigung in der{" "}
-            {targetLabel} gespeichert.
-          </p>
-          {connection?.kind === "oracle" && (
-            <p className="text-xs text-muted-foreground">
-              Oracle speichert DDL-Anweisungen einzeln. Bei einem Ausführungsfehler können vorherige
-              Anweisungen bereits gespeichert sein.
-            </p>
-          )}
           {statements.length > 0 && (
             <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 text-xs">
               {statements.join("\n\n")}

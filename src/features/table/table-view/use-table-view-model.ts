@@ -6,6 +6,8 @@ import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { applyMasks } from "@/lib/masking";
+import { useActiveMasks } from "@/lib/masking-display";
 import {
   useDeleteRowMutation,
   useDetailedColumnsQuery,
@@ -93,13 +95,15 @@ export function useTableViewModel({
     page,
     filterRaw,
   );
-  const tableRows = useMemo(
-    () =>
+  const { active: activeMasks } = useActiveMasks(data?.columns ?? []);
+  const masked = activeMasks.length > 0;
+  const tableRows = useMemo(() => {
+    const rows =
       caps.query_language === "redis"
         ? (data?.rows ?? []).map((row) => ({ ...row, __ctid__: JSON.stringify(row.key) }))
-        : (data?.rows ?? []),
-    [data?.rows, caps.query_language],
-  );
+        : (data?.rows ?? []);
+    return masked ? applyMasks(data?.columns ?? [], rows, activeMasks, page) : rows;
+  }, [data?.rows, data?.columns, caps.query_language, masked, activeMasks, page]);
   const { data: rowCount } = useTableRowCountQuery(
     schema,
     table,
@@ -129,7 +133,9 @@ export function useTableViewModel({
     csvExportOpen,
     setCsvExportOpen,
     xlsxExportOpen,
+    dataExportFormat,
     setXlsxExportOpen,
+    setDataExportFormat,
     exportColumns,
     exportRows,
     fullExportSource,
@@ -144,6 +150,7 @@ export function useTableViewModel({
     totalCount,
     data,
     connection,
+    masks: activeMasks,
   });
   const updateRowMutation = useUpdateRowMutation(schema, table);
   const insertRowMutation = useInsertRowMutation(schema, table);
@@ -246,6 +253,7 @@ export function useTableViewModel({
     viewTab,
     tableTab,
     tableRows,
+    masked,
     updateRowMutation,
     insertRowMutation,
     handleFilterChange,
@@ -268,7 +276,9 @@ export function useTableViewModel({
     csvExportOpen,
     setCsvExportOpen,
     xlsxExportOpen,
+    dataExportFormat,
     setXlsxExportOpen,
+    setDataExportFormat,
     exportColumns,
     exportRows,
     fullExportSource,

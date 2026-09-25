@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, LockKeyhole } from "lucide-react";
+import { ChevronDown, Eye, LockKeyhole, Network } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CONNECTION_COLORS, type SavedConnection, type SshAuth } from "@/lib/connections";
+import {
+  CONNECTION_COLORS,
+  type ConnectionEnvironment,
+  type SavedConnection,
+  type SshAuth,
+} from "@/lib/connections";
 import type { Capabilities, SslMode } from "@/lib/db";
+import { ENVIRONMENTS } from "@/lib/environments";
+import type { MaskRule } from "@/lib/masking";
+import type { SshConfigDraft } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
+import { ProxyFields } from "./connection-editor/proxy-fields";
+import { SshAuthFields } from "./connection-editor/ssh-auth-fields";
+import { SshConfigImport } from "./connection-editor/ssh-config-import";
+import { SshJumpHosts } from "./connection-editor/ssh-jump-hosts";
+import type { NetworkDraft } from "./connection-editor/use-network-draft";
 import { ConnectionField } from "./connection-field";
+import { MaskRulesEditor } from "./mask-rules-editor";
 import { SchemaPicker } from "./schema-picker";
 
 interface Props {
@@ -37,10 +51,16 @@ interface Props {
   onSshKey: (value: string) => void;
   sshPassword: string;
   onSshPassword: (value: string) => void;
+  network: NetworkDraft;
+  onApplySshConfig: (draft: SshConfigDraft) => void;
   tags: string;
   onTags: (value: string) => void;
   color: string | null;
   onColor: (value: string | null) => void;
+  environment: ConnectionEnvironment | null;
+  onEnvironment: (value: ConnectionEnvironment | null) => void;
+  maskRules: MaskRule[];
+  onMaskRules: (value: MaskRule[]) => void;
   schemaFilter: string[];
   onSchemaFilter: (value: string[]) => void;
   showSingleSchemaSwitcher: boolean;
@@ -74,10 +94,16 @@ export function ConnectionAdvancedOptions({
   onSshKey,
   sshPassword,
   onSshPassword,
+  network,
+  onApplySshConfig,
   tags,
   onTags,
   color,
   onColor,
+  environment,
+  onEnvironment,
+  maskRules,
+  onMaskRules,
   schemaFilter,
   onSchemaFilter,
   showSingleSchemaSwitcher,
@@ -102,7 +128,9 @@ export function ConnectionAdvancedOptions({
           )}
         />
         <span className="flex-1">Erweitert</span>
-        <span className="text-[11px] font-normal text-muted-foreground">SSL, SSH, Farbe</span>
+        <span className="text-[11px] font-normal text-muted-foreground">
+          SSL, SSH, Proxy, Umgebung, Farbe
+        </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-4 border-t px-3 py-3">
         {showSecurity && (
@@ -140,6 +168,22 @@ export function ConnectionAdvancedOptions({
                 />
               </label>
             )}
+            {caps.ssh && (
+              <label
+                htmlFor="connection-proxy"
+                className="flex h-9 items-end justify-between gap-3 pb-0.5 text-xs font-medium sm:h-auto sm:items-center sm:self-end sm:pb-2"
+              >
+                <span className="flex items-center gap-2">
+                  <Network className="size-4 text-muted-foreground" /> Proxy
+                </span>
+                <Switch
+                  id="connection-proxy"
+                  checked={network.proxyEnabled}
+                  onCheckedChange={network.setProxyEnabled}
+                  aria-label="Proxy"
+                />
+              </label>
+            )}
             {caps.read_only_mode && (
               <label className="flex items-center justify-between gap-3 text-xs font-medium sm:col-span-2">
                 <span className="flex flex-col gap-0.5">
@@ -160,6 +204,7 @@ export function ConnectionAdvancedOptions({
             <p className="text-xs text-muted-foreground">
               Der Datenbank-Host oben wird vom SSH-Server aus erreicht.
             </p>
+            <SshConfigImport onApply={onApplySshConfig} />
             <div className="grid grid-cols-[1fr_80px] gap-3">
               <ConnectionField
                 id="ssh-host"
@@ -180,36 +225,25 @@ export function ConnectionAdvancedOptions({
               value={sshUser}
               onChange={(event) => onSshUser(event.target.value)}
             />
-            <div className="grid gap-2">
-              <Label htmlFor="ssh-auth">Authentifizierung</Label>
-              <Select value={sshAuth} onValueChange={(value) => onSshAuth(value as SshAuth)}>
-                <SelectTrigger id="ssh-auth" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="key">SSH-Key</SelectItem>
-                  <SelectItem value="password">Passwort</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {sshAuth === "key" && (
-              <ConnectionField
-                id="ssh-key"
-                label="Absoluter Pfad zur Key-Datei"
-                placeholder="/Users/name/.ssh/id_ed25519"
-                value={sshKey}
-                onChange={(event) => onSshKey(event.target.value)}
-              />
-            )}
-            <ConnectionField
-              id="ssh-password"
-              label={sshAuth === "key" ? "Passphrase (optional)" : "SSH-Passwort"}
-              type="password"
-              value={sshPassword}
-              placeholder={connection ? "Leer lassen, um gespeicherten Wert zu verwenden" : ""}
-              onChange={(event) => onSshPassword(event.target.value)}
+            <SshAuthFields
+              idPrefix="ssh"
+              auth={sshAuth}
+              onAuth={onSshAuth}
+              keyFile={sshKey}
+              onKeyFile={onSshKey}
+              agentSocket={network.sshAgentSocket}
+              onAgentSocket={network.setSshAgentSocket}
+              secret={sshPassword}
+              onSecret={onSshPassword}
+              secretPlaceholder={
+                connection ? "Leer lassen, um gespeicherten Wert zu verwenden" : ""
+              }
             />
+            <SshJumpHosts network={network} />
           </div>
+        )}
+        {caps.ssh && network.proxyEnabled && (
+          <ProxyFields network={network} sshEnabled={sshEnabled} connection={connection} />
         )}
         <ConnectionField
           id="connection-tags"
@@ -218,6 +252,39 @@ export function ConnectionAdvancedOptions({
           value={tags}
           onChange={(event) => onTags(event.target.value)}
         />
+        <div className="grid gap-1">
+          <Label htmlFor="connection-environment" className="text-xs text-muted-foreground">
+            Umgebung
+          </Label>
+          <Select
+            value={environment ?? "auto"}
+            onValueChange={(value) =>
+              onEnvironment(value === "auto" ? null : (value as ConnectionEnvironment))
+            }
+          >
+            <SelectTrigger id="connection-environment" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem value="auto">Automatisch (Hostregeln)</SelectItem>
+              {ENVIRONMENTS.map((entry) => (
+                <SelectItem key={entry.value} value={entry.value}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    {entry.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Produktion zeigt ein Warnbanner und verlangt bei destruktiven Anweisungen die Eingabe
+            des Verbindungsnamens.
+          </p>
+        </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium">Profilfarbe</legend>
           <p className="text-xs text-muted-foreground">
@@ -248,6 +315,7 @@ export function ConnectionAdvancedOptions({
             ))}
           </div>
         </fieldset>
+        <MaskRulesEditor rules={maskRules} onChange={onMaskRules} />
         {caps.schemas && (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3 text-xs font-medium">

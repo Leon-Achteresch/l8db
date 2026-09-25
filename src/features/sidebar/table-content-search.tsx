@@ -208,7 +208,7 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
             : `${candidates.length} Tabellen & Views mit passender Spalte`}
         </span>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="py-1">
           {list.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">Keine Treffer</p>
@@ -233,7 +233,7 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
                   {hit.schema}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium">{hit.name}</span>
-                <span className="truncate text-[10px] text-muted-foreground">
+                <span className="min-w-0 max-w-[45%] truncate text-[10px] text-muted-foreground">
                   {hit.columns.slice(0, 3).join(", ")}
                   {hit.columns.length > 3 ? ` +${hit.columns.length - 3}` : ""}
                 </span>

@@ -107,11 +107,76 @@ export interface ColumnDefinition {
   is_unique: boolean;
 }
 
+export type TableConstraintSpec =
+  | { kind: "primary_key"; name: string | null; columns: string[] }
+  | { kind: "unique"; name: string | null; columns: string[] }
+  | { kind: "check"; name: string | null; expression: string }
+  | {
+      kind: "foreign_key";
+      name: string | null;
+      columns: string[];
+      ref_schema: string | null;
+      ref_table: string;
+      ref_columns: string[];
+      on_delete: string | null;
+      on_update: string | null;
+      deferrable: boolean;
+      initially_deferred: boolean;
+    };
+
+export type ConstraintChange =
+  | { action: "add"; constraint: TableConstraintSpec }
+  | { action: "drop"; name: string; constraint_type: string };
+
+export interface ColumnValueOptions {
+  column: string;
+  values: string[];
+}
+
 export interface CreateTableRequest {
   schema: string;
   name: string;
   columns: ColumnDefinition[];
   if_not_exists: boolean;
+  primary_key_name?: string | null;
+  constraints?: TableConstraintSpec[];
+}
+
+export async function previewConstraintChange(
+  kind: DatabaseKind,
+  schema: string,
+  table: string,
+  change: ConstraintChange,
+): Promise<string> {
+  return invoke("preview_constraint_change", { kind, schema, table, change });
+}
+
+export async function applyConstraintChange(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  change: ConstraintChange,
+  database?: string,
+): Promise<string> {
+  return invoke("apply_constraint_change", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    change,
+  });
+}
+
+export async function columnValueOptions(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<ColumnValueOptions[]> {
+  return invoke("column_value_options", { kind, connectionString, database, schema, table });
 }
 
 export async function createTable(

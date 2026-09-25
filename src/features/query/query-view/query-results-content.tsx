@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Collapse } from "@/components/motion/collapse";
 import { ResultError } from "@/features/query/query-result-table/result-error";
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
+import type { ResultChartBinding } from "@/features/query/result-chart/types";
 import type { DatabaseKind } from "@/lib/db";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
 
@@ -15,6 +16,7 @@ interface QueryResultsContentProps {
   statusText: string | null;
   actions: ReactNode;
   onRevealError: (marker: SqlMarker) => void;
+  chart?: ResultChartBinding;
 }
 
 export function QueryResultsContent({
@@ -23,6 +25,7 @@ export function QueryResultsContent({
   statusText,
   actions,
   onRevealError,
+  chart,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError } = exec;
   const showResultHeader = !result || isRunning || Boolean(error) || result.columns.length === 0;
@@ -62,6 +65,7 @@ export function QueryResultsContent({
             kind={kind}
             statusText={statusText}
             actions={actions}
+            chart={chart}
           />
         )}
       </div>

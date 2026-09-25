@@ -5,8 +5,10 @@ export L8DB_LAB_DIR
 L8DB_LAB_DIR=$(mktemp -d "${TMPDIR:-/tmp}/l8db-lab.XXXXXX")
 project="l8db-test-$(basename "$L8DB_LAB_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
 compose=(docker compose -p "$project" -f tests/lab/compose.yml)
+agents=()
 cleanup() {
   result=$?
+  for agent in ${agents[@]+"${agents[@]}"}; do kill "$agent" 2>/dev/null || true; done
   if [ "$result" -ne 0 ]; then "${compose[@]}" logs --no-color || true; fi
   "${compose[@]}" down --volumes --remove-orphans || true
   rm -rf "$L8DB_LAB_DIR"
@@ -27,6 +29,17 @@ export L8DB_E2E_SSH_HOST=127.0.0.1
 export L8DB_E2E_SSH_PORT="${ssh_address##*:}"
 export L8DB_E2E_KEY_FILE="$L8DB_LAB_DIR/client"
 export L8DB_KNOWN_HOSTS="$L8DB_LAB_DIR/known_hosts"
+jump_address=$("${compose[@]}" port jump 22)
+export L8DB_E2E_JUMP_PORT="${jump_address##*:}"
+export L8DB_E2E_SOCKS_ADDR=$("${compose[@]}" port socks 1080)
+export L8DB_E2E_HTTP_PROXY_ADDR=$("${compose[@]}" port http-proxy 8888)
+ssh-keygen -q -t ed25519 -N '' -f "$L8DB_LAB_DIR/foreign"
+export L8DB_E2E_AGENT_SOCK="$L8DB_LAB_DIR/agent.sock"
+export L8DB_E2E_FOREIGN_AGENT_SOCK="$L8DB_LAB_DIR/foreign-agent.sock"
+agents+=("$(SSH_AUTH_SOCK='' ssh-agent -a "$L8DB_E2E_AGENT_SOCK" -s | sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p')")
+agents+=("$(SSH_AUTH_SOCK='' ssh-agent -a "$L8DB_E2E_FOREIGN_AGENT_SOCK" -s | sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p')")
+SSH_AUTH_SOCK="$L8DB_E2E_AGENT_SOCK" ssh-add -q "$L8DB_E2E_KEY_FILE"
+SSH_AUTH_SOCK="$L8DB_E2E_FOREIGN_AGENT_SOCK" ssh-add -q "$L8DB_LAB_DIR/foreign"
 timing=(env)
 if [ "${L8DB_MEASURE:-0}" = 1 ]; then
   if [ "$(uname)" = Darwin ]; then timing=(/usr/bin/time -l); else timing=(/usr/bin/time -v); fi

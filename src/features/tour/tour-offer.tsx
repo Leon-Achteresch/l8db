@@ -1,5 +1,6 @@
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TOUR_CHAPTERS } from "@/lib/tour/chapters";
 import { useTourStore } from "@/lib/tour/store";
 
 export function TourOffer() {
@@ -16,8 +17,8 @@ export function TourOffer() {
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold">Neu hier? Produkttour</p>
           <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-            In 9 kurzen Kapiteln durch Verbindungen, Explorer, SQL und Einstellungen. Startet nur,
-            wenn du willst — und blockiert nichts.
+            Wir zeigen dir Schritt für Schritt, wie alles funktioniert — in {TOUR_CHAPTERS.length}{" "}
+            kurzen Kapiteln. Du musst nichts wissen. Klicke einfach auf „Tour starten“.
           </p>
         </div>
         <button

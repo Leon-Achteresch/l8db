@@ -206,7 +206,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.locator('[data-tour-ui="chapter-toggle"]').click();
       await page
         .locator('[data-tour-ui="overview"]')
-        .getByRole("button", { name: /SQL-Arbeitsplatz/ })
+        .getByRole("button", { name: /Fragen stellen/ })
         .first()
         .click();
       await page.waitForTimeout(1200);
@@ -217,7 +217,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.locator('[data-tour-ui="chapter-toggle"]').click();
       await page
         .locator('[data-tour-ui="overview"]')
-        .getByRole("button", { name: /Verbindungen/ })
+        .getByRole("button", { name: /Verbindung anlegen/ })
         .first()
         .click();
       await page.waitForTimeout(1200);
@@ -323,7 +323,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.getByRole("button", { name: "Tour starten", exact: true }).click();
       await page.locator('[data-tour-ui="overview"]').waitFor({ timeout: 8000 });
       const seen: string[] = [];
-      for (let step = 0; step < 45; step++) {
+      for (let step = 0; step < 90; step++) {
         const overview = page.locator('[data-tour-ui="overview"]');
         if ((await overview.count()) === 0) break;
         const title = await page.locator('[data-tour-ui="step-title"]').first().innerText();

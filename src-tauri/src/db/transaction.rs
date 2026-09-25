@@ -1,5 +1,5 @@
 use futures_util::TryStreamExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -44,6 +44,7 @@ enum TransactionEntry {
     Pg(Arc<super::execution::PgSession>, super::SslMode),
     Oracle(OracleConn),
     Generic(Generic),
+    Dynamo(Box<super::dynamodb::DynamoTx>),
 }
 
 struct Generic {
@@ -77,6 +78,29 @@ fn json_lit(kind: DatabaseKind, value: &serde_json::Value) -> String {
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(t) => lit(kind, t),
         other => lit(kind, &other.to_string()),
+    }
+}
+
+fn binary_lit(kind: DatabaseKind, value: &str) -> Option<String> {
+    let hex = super::hex_blob_body(value)?;
+    match kind {
+        DatabaseKind::Mysql | DatabaseKind::Sqlite | DatabaseKind::SqliteHttp => {
+            Some(format!("X'{hex}'"))
+        }
+        DatabaseKind::Mssql => Some(format!("0x{hex}")),
+        _ => None,
+    }
+}
+
+fn value_lit(
+    kind: DatabaseKind,
+    binary: &HashSet<String>,
+    col: &str,
+    value: &Option<String>,
+) -> String {
+    match value.as_deref() {
+        Some(v) if binary.contains(col) => binary_lit(kind, v).unwrap_or_else(|| lit(kind, v)),
+        _ => opt_lit(kind, value),
     }
 }
 
@@ -145,6 +169,29 @@ impl Generic {
         self.session.lock().await.execute(sql).await
     }
 
+    async fn binary_columns(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, Option<String>>,
+    ) -> Result<HashSet<String>, String> {
+        let needed = values.values().any(|v| {
+            v.as_deref()
+                .is_some_and(|v| binary_lit(self.kind, v).is_some())
+        });
+        if !needed {
+            return Ok(HashSet::new());
+        }
+        Ok(self
+            .adapter
+            .list_table_columns_detailed(schema, table)
+            .await?
+            .into_iter()
+            .filter(|c| super::is_binary_column_type(&c.data_type))
+            .map(|c| c.name)
+            .collect())
+    }
+
     async fn update_row(
         &self,
         schema: &str,
@@ -156,9 +203,16 @@ impl Generic {
         if updates.is_empty() {
             return Ok(ctid.to_string());
         }
+        let binary = self.binary_columns(schema, table, updates).await?;
         let set_parts: Vec<String> = updates
             .iter()
-            .map(|(col, val)| format!("{} = {}", quote(self.kind, col), opt_lit(self.kind, val)))
+            .map(|(col, val)| {
+                format!(
+                    "{} = {}",
+                    quote(self.kind, col),
+                    value_lit(self.kind, &binary, col, val)
+                )
+            })
             .collect();
         let sql = format!(
             "UPDATE {} SET {} WHERE {}",
@@ -186,7 +240,11 @@ impl Generic {
         let target = self.target(schema, table);
         let pk = self.primary_key(schema, table).await?;
         let cols: Vec<String> = values.keys().map(|c| quote(self.kind, c)).collect();
-        let vals: Vec<String> = values.values().map(|v| opt_lit(self.kind, v)).collect();
+        let binary = self.binary_columns(schema, table, values).await?;
+        let vals: Vec<String> = values
+            .iter()
+            .map(|(col, v)| value_lit(self.kind, &binary, col, v))
+            .collect();
         let (col_sql, val_sql) = if values.is_empty() {
             match self.kind {
                 DatabaseKind::Mysql => ("()".to_string(), "VALUES ()".to_string()),
@@ -201,6 +259,10 @@ impl Generic {
         let mut row = match self.kind {
             DatabaseKind::Mssql => {
                 let sql = format!("INSERT INTO {target} {col_sql} OUTPUT INSERTED.* {val_sql}");
+                self.execute(&sql).await?.rows.into_iter().next()
+            }
+            DatabaseKind::SqliteHttp => {
+                let sql = format!("INSERT INTO {target} {col_sql} {val_sql} RETURNING *");
                 self.execute(&sql).await?.rows.into_iter().next()
             }
             _ => {
@@ -362,6 +424,11 @@ impl TransactionManager {
                     .insert_entry(TransactionEntry::Oracle(Arc::new(conn)))
                     .await);
             }
+            DatabaseKind::Dynamodb => {
+                let key = super::connection::connection_key(connection_string, database);
+                let tx = Box::new(super::dynamodb::DynamoTx::new(connection_string, key)?);
+                return Ok(self.insert_entry(TransactionEntry::Dynamo(tx)).await);
+            }
             kind => {
                 let adapter = super::create_adapter_from_string(
                     kind,
@@ -458,6 +525,7 @@ impl TransactionManager {
                 return ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await;
             }
             TransactionEntry::Generic(g) => return g.execute(sql).await,
+            TransactionEntry::Dynamo(d) => return d.execute(sql).await,
         };
         let conn = session.lock().await?;
         let outcome = super::execution::postgres(&conn, ssl, Some(session), async {
@@ -531,6 +599,7 @@ impl TransactionManager {
             TransactionEntry::Generic(g) => {
                 return g.update_row(schema, table, ctid, updates).await
             }
+            TransactionEntry::Dynamo(d) => return d.update_row(table, ctid, updates).await,
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -611,6 +680,7 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.insert_row(schema, table, values).await,
+            TransactionEntry::Dynamo(d) => return d.insert_row(table, values).await,
         };
         let conn = conn.lock().await?;
 
@@ -693,6 +763,9 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.duplicate_row(schema, table, ctid).await,
+            TransactionEntry::Dynamo(_) => {
+                return Err("DynamoDB-Zeilen lassen sich nur mit neuem Schlüssel duplizieren. Nutze Zeile einfügen.".to_string())
+            }
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -771,6 +844,7 @@ impl TransactionManager {
                 .await;
             }
             TransactionEntry::Generic(g) => return g.delete_row(schema, table, ctid).await,
+            TransactionEntry::Dynamo(d) => return d.delete_row(table, ctid).await,
         };
 
         let ctid = validate_ctid(ctid)?;
@@ -822,6 +896,7 @@ impl TransactionManager {
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, true)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.commit().await,
+            TransactionEntry::Dynamo(d) => d.commit().await,
         };
         if outcome.is_ok() {
             self.transactions.lock().await.remove(tx_id);
@@ -840,6 +915,7 @@ impl TransactionManager {
             }
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_finish(c, false)).await,
             TransactionEntry::Generic(g) => g.session.lock().await.rollback().await,
+            TransactionEntry::Dynamo(d) => d.rollback().await,
         };
         if outcome.is_ok() {
             self.transactions.lock().await.remove(tx_id);
@@ -868,6 +944,85 @@ mod tests {
         );
         assert_eq!(quote(DatabaseKind::Mysql, "a`b"), "`a``b`");
         assert_eq!(lit(DatabaseKind::Mssql, "x"), "N'x'");
+    }
+
+    #[test]
+    fn binary_literals_per_dialect() {
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mysql, "\\x00ff").as_deref(),
+            Some("X'00ff'")
+        );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Sqlite, "\\x").as_deref(),
+            Some("X''")
+        );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mssql, "\\xab").as_deref(),
+            Some("0xab")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Mysql, "\\x0g"), None);
+        assert_eq!(super::binary_lit(DatabaseKind::Duckdb, "\\x00"), None);
+        let binary = std::collections::HashSet::from(["b".to_string()]);
+        let value = Some("\\x0102".to_string());
+        assert_eq!(
+            super::value_lit(DatabaseKind::Mysql, &binary, "b", &value),
+            "X'0102'"
+        );
+        assert_eq!(
+            super::value_lit(DatabaseKind::Mysql, &binary, "t", &value),
+            "'\\\\x0102'"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_binary_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("l8db-bin-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let url = format!("sqlite://{}", dir.display());
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Sqlite,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
+        adapter
+            .execute_query("CREATE TABLE t (id INTEGER PRIMARY KEY, data BLOB, note TEXT)")
+            .await
+            .unwrap();
+        let tx = TransactionManager {
+            transactions: Mutex::new(HashMap::new()),
+        };
+        let id = tx
+            .begin(DatabaseKind::Sqlite, &url, None, &pool)
+            .await
+            .unwrap();
+        let values = HashMap::from([
+            ("data".to_string(), Some("\\x89504e47".to_string())),
+            ("note".to_string(), Some("\\x41".to_string())),
+        ]);
+        let row = tx.insert_row(&id, "main", "t", &values).await.unwrap();
+        assert_eq!(row["data"], "\\x89504e47");
+        assert_eq!(row["note"], "\\x41");
+        let ctid = row["__ctid__"].as_str().unwrap().to_string();
+        let updates = HashMap::from([("data".to_string(), Some("\\x00ff10".to_string()))]);
+        tx.update_row(&id, "main", "t", &ctid, &updates)
+            .await
+            .unwrap();
+        let res = tx
+            .execute(
+                &id,
+                "SELECT typeof(data) AS kind, length(data) AS n, data, note FROM t",
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.rows[0]["kind"], "blob");
+        assert_eq!(res.rows[0]["n"], 3);
+        assert_eq!(res.rows[0]["data"], "\\x00ff10");
+        assert_eq!(res.rows[0]["note"], "\\x41");
+        tx.rollback(&id).await.unwrap();
+        let _ = std::fs::remove_file(&dir);
     }
 
     #[tokio::test]

@@ -6,12 +6,27 @@ import { isOracleKeyValue } from "./oracle-key-value";
 
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
-  if (PATH_LIKE.test(trimmed)) return /\.(duckdb|ddb)$/i.test(trimmed) ? "duckdb" : "sqlite";
+  if (PATH_LIKE.test(trimmed))
+    return /\.(duckdb|ddb|parquet|csv)$/i.test(trimmed) ? "duckdb" : "sqlite";
   if (isOracleKeyValue(trimmed)) return "oracle";
   const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
   if (!match) return undefined;
   const scheme = match[1].toLowerCase();
-  return allProviders().find((provider) => provider.url_schemes.includes(scheme))?.kind;
+  const candidates = allProviders().filter((provider) => provider.url_schemes.includes(scheme));
+  let host = "";
+  try {
+    host = new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  const byHost = host
+    ? candidates.find((provider) =>
+        provider.hosts.some((entry) =>
+          entry.startsWith(".") ? host.endsWith(entry) : host === entry,
+        ),
+      )
+    : undefined;
+  return (byHost ?? candidates[0])?.kind;
 }
 
 export function filePath(value: string): string {

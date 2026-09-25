@@ -191,6 +191,10 @@
             readTextFile: (path) => rpc("workspace.readFile", path),
             writeTextFile: (path, contents) => rpc("workspace.writeFile", path, contents),
           },
+          connections: {
+            list: () => rpc("connections.list"),
+            save: (items) => rpc("connections.save", items),
+          },
           process: { run: (command, options) => rpc("process.run", command, options ?? null) },
           window: {
             showQuickPick: (items, options) => rpc("window.showQuickPick", items, options ?? null),

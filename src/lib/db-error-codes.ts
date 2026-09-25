@@ -1,5 +1,19 @@
 import type { DatabaseKind } from "@/lib/db";
 
+const SQLITE_PATTERNS: Array<[RegExp, string, string]> = [
+  [
+    /\bSQLITE_CONSTRAINT_UNIQUE\b|UNIQUE constraint failed/i,
+    "SQLITE_CONSTRAINT_UNIQUE",
+    "Eindeutigkeitsverletzung",
+  ],
+  [
+    /\bSQLITE_CONSTRAINT_FOREIGNKEY\b|FOREIGN KEY constraint failed/i,
+    "SQLITE_CONSTRAINT_FOREIGNKEY",
+    "Fremdschlüsselverletzung",
+  ],
+  [/\bSQLITE_ERROR\b|near ".*": syntax error/i, "SQLITE_ERROR", "SQL-Fehler oder Syntaxfehler"],
+];
+
 const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
   postgres: [
     [/\b28P01\b/i, "28P01", "Authentifizierung fehlgeschlagen"],
@@ -17,19 +31,8 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/\b1142\b|ER_TABLEACCESS_DENIED_ERROR/i, "1142", "Berechtigung fehlt"],
     [/\b1146\b|ER_NO_SUCH_TABLE/i, "1146", "Tabelle nicht gefunden"],
   ],
-  sqlite: [
-    [
-      /\bSQLITE_CONSTRAINT_UNIQUE\b|UNIQUE constraint failed/i,
-      "SQLITE_CONSTRAINT_UNIQUE",
-      "Eindeutigkeitsverletzung",
-    ],
-    [
-      /\bSQLITE_CONSTRAINT_FOREIGNKEY\b|FOREIGN KEY constraint failed/i,
-      "SQLITE_CONSTRAINT_FOREIGNKEY",
-      "Fremdschlüsselverletzung",
-    ],
-    [/\bSQLITE_ERROR\b|near ".*": syntax error/i, "SQLITE_ERROR", "SQL-Fehler oder Syntaxfehler"],
-  ],
+  sqlite: SQLITE_PATTERNS,
+  sqlite_http: SQLITE_PATTERNS,
   mssql: [
     [/\b18456\b/i, "18456", "Authentifizierung fehlgeschlagen"],
     [/\b2627\b|\b2601\b/i, "2627/2601", "Eindeutigkeitsverletzung"],
@@ -81,6 +84,45 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/\b23000\b/i, "23000", "Integritäts- oder Eindeutigkeitsverletzung"],
     [/\b42000\b/i, "42000", "Syntaxfehler oder Berechtigung fehlt"],
     [/\b42S02\b/i, "42S02", "Tabelle oder View nicht gefunden"],
+  ],
+  elasticsearch: [
+    [/index_not_found_exception|no such index/i, "404", "Index nicht gefunden"],
+    [/security_exception|\b401\b/i, "401", "Authentifizierung fehlgeschlagen"],
+    [/parsing_exception|x_content_parse_exception/i, "400", "Query-DSL ungültig"],
+  ],
+  influxdb: [
+    [/\b401\b|unauthorized/i, "401", "Token ungültig oder fehlt"],
+    [/bucket .* not found|database not found/i, "404", "Bucket oder Datenbank nicht gefunden"],
+  ],
+  dynamodb: [
+    [/ConditionalCheckFailed/i, "ConditionalCheckFailed", "Bedingung nicht erfüllt"],
+    [/ResourceNotFoundException/i, "ResourceNotFound", "Tabelle nicht gefunden"],
+    [/TransactionCanceledException/i, "TransactionCanceled", "Transaktion abgebrochen"],
+    [/ValidationException/i, "Validation", "Ungültige Anfrage oder PartiQL-Syntax"],
+    [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
+    [/ProvisionedThroughputExceeded|Throttling/i, "Throttling", "Durchsatzgrenze erreicht"],
+  ],
+  athena: [
+    [/TABLE_NOT_FOUND|does not exist/i, "TABLE_NOT_FOUND", "Tabelle nicht gefunden"],
+    [/SYNTAX_ERROR|mismatched input/i, "SYNTAX_ERROR", "Syntaxfehler"],
+    [/AccessDenied|not authorized/i, "AccessDenied", "Berechtigung fehlt"],
+    [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
+  ],
+  bigquery: [
+    [/BigQuery 40[13]\b/i, "403", "Berechtigung fehlt oder Anmeldung ungültig"],
+    [/BigQuery 404\b|Not found: /i, "404", "Objekt nicht gefunden"],
+    [/Syntax error/i, "SYNTAX", "Syntaxfehler"],
+    [/quota|rate ?limit/i, "QUOTA", "Kontingent oder Ratenlimit überschritten"],
+  ],
+  snowflake: [
+    [/\b390144\b|\b390318\b|JWT token is invalid/i, "390144", "Authentifizierung fehlgeschlagen"],
+    [
+      /\(42S02\)|does not exist or not authorized/i,
+      "42S02",
+      "Objekt nicht gefunden oder keine Berechtigung",
+    ],
+    [/\(42000\)|syntax error/i, "42000", "Syntaxfehler"],
+    [/No active warehouse/i, "000606", "Kein aktives Warehouse ausgewählt"],
   ],
 };
 

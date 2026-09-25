@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type ColumnMask, DEFAULT_MASK_TEXT, type MaskMode } from "@/lib/export";
+import { MASK_MODES } from "@/lib/masking";
 
 interface ColumnMaskListProps {
   columns: string[];
@@ -40,8 +41,11 @@ export function ColumnMaskList({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Original</SelectItem>
-                  <SelectItem value="text">Fester Text</SelectItem>
-                  <SelectItem value="null">NULL</SelectItem>
+                  {MASK_MODES.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Input

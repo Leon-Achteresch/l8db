@@ -1,7 +1,11 @@
 import type { SavedConnection } from "@/lib/connections";
+import { useConnectionsStore } from "@/lib/connections/store";
 import { beginTransaction, commitTransaction, rollbackTransaction } from "@/lib/db";
+import { isProduction, productionConfirmTexts } from "@/lib/environments";
 import { supports } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
+import { requestSqlConfirmation } from "@/lib/sql-confirmation";
+import { type DestructiveStatement, destructiveStatements } from "@/lib/sql-safety";
 import { effectiveConnectionString } from "@/lib/ssh";
 import {
   type ActiveTransaction,
@@ -98,8 +102,50 @@ export async function runManagedOperation<T>(txId: string, op: () => Promise<T>)
   }
 }
 
+function changeLabel(change: Omit<TransactionChange, "id" | "timestamp">): string {
+  const target = [change.schema, change.table].filter(Boolean).join(".");
+  const values = JSON.stringify(change.rowValues ?? change.oldValues ?? {});
+  return `${target} ${values.length > 240 ? `${values.slice(0, 240)}…` : values}`.trim();
+}
+
+export async function confirmProductionCommit(
+  connectionId: string,
+  database: string | null | undefined,
+  changes: Omit<TransactionChange, "id" | "timestamp">[],
+): Promise<void> {
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === connectionId);
+  if (!connection || !isProduction(connection)) return;
+  const risky: DestructiveStatement[] = [
+    ...changes
+      .filter((change) => change.type === "delete")
+      .map((change) => ({ sql: changeLabel(change), reason: "Zeile löschen" })),
+    ...changes.flatMap((change) =>
+      change.type === "query" && change.sql
+        ? destructiveStatements(change.sql, connection.kind, { strict: true })
+        : [],
+    ),
+  ];
+  if (!risky.length && !useSettingsStore.getState().productionConfirmCommit) return;
+  const accepted = await requestSqlConfirmation({
+    connection: connection.name,
+    database: database ?? null,
+    statements: risky.length
+      ? risky
+      : [{ sql: `${changes.length} Änderung(en)`, reason: "Commit auf Produktion" }],
+    confirmTexts: risky.length ? productionConfirmTexts(connection, database) : undefined,
+    title: "Auf Produktion committen?",
+    description: "Die Änderungen werden dauerhaft in die Produktionsdatenbank geschrieben.",
+    confirmLabel: "Committen",
+  });
+  if (!accepted) throw new Error("Commit vom Benutzer abgebrochen.");
+}
+
 export async function finishManagedTransaction(txId: string, commit: boolean): Promise<void> {
   const state = useTransactionStore.getState();
+  const tx = state.transactions.find((entry) => entry.txId === txId);
+  if (commit && tx) await confirmProductionCommit(tx.connectionId, tx.database, tx.changes);
   if (state.busyTransactions[txId] || state.finalizingTransactions.includes(txId)) {
     throw new Error("Bitte die laufende Operation dieser Transaktion abwarten.");
   }
@@ -128,8 +174,9 @@ export async function runTableTransaction<T>(
   const scope = { type: "table", schema, table } as const;
   const store = useTransactionStore.getState();
   if (
-    findTransaction(store.transactions, connection.id, database, scope) ||
-    useSettingsStore.getState().transactionsEnabled
+    supports(connection, "transactions") &&
+    (findTransaction(store.transactions, connection.id, database, scope) ||
+      useSettingsStore.getState().transactionsEnabled)
   ) {
     const tx = await ensureManagedTransaction(connection, database, scope);
     return runManagedOperation(tx.txId, async () => {
@@ -150,6 +197,7 @@ export async function runTableTransaction<T>(
   );
   try {
     const result = await op(txId);
+    await confirmProductionCommit(connection.id, database, [change(result)]);
     await commitTransaction(txId);
     return result;
   } catch (err) {

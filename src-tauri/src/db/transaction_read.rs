@@ -1,7 +1,7 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
 use crate::db::postgres::{capped_count, capped_count_sql, relation_name, table_page_sql};
-use crate::db::{attach_row_keys, quote_ident, where_clause, RowCount, TableData};
+use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
 #[derive(Clone)]
 pub struct TransactionTableRead {
@@ -41,6 +41,21 @@ impl TransactionManager {
         match &*entry {
             TransactionEntry::Oracle(c) => {
                 ora(c.clone(), move |c| oracle::tx_fetch_rows(c, &request)).await
+            }
+            TransactionEntry::Dynamo(d) => {
+                d.adapter()
+                    .fetch_rows(
+                        &request.schema,
+                        &request.table,
+                        request.filter.as_deref(),
+                        request.limit,
+                        request.offset,
+                        request.order_by.as_deref(),
+                        request.order_desc,
+                        request.is_view,
+                        request.allow_raw,
+                    )
+                    .await
             }
             TransactionEntry::Generic(g) => {
                 let detailed = g
@@ -137,6 +152,11 @@ impl TransactionManager {
                 let result = ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await?;
                 count_value(&result.rows)
             }
+            TransactionEntry::Dynamo(d) => {
+                d.adapter()
+                    .count_rows(schema, table, filter, allow_raw)
+                    .await
+            }
             TransactionEntry::Generic(g) => {
                 let aggregate = if g.kind == DatabaseKind::Mssql {
                     "COUNT_BIG(*)"
@@ -180,6 +200,12 @@ impl TransactionManager {
         cap: i64,
     ) -> Result<RowCount, String> {
         let entry = self.entry(tx_id).await?;
+        if let TransactionEntry::Dynamo(d) = &*entry {
+            return d
+                .adapter()
+                .count_rows_capped(schema, table, filter, allow_raw, cap)
+                .await;
+        }
         let TransactionEntry::Pg(c, ssl) = &*entry else {
             return self
                 .count_rows(tx_id, schema, table, filter, allow_raw)

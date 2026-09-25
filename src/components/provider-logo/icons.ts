@@ -3,23 +3,28 @@ import apacheDoris from "thesvg/apache-doris";
 import apacheHive from "thesvg/apache-hive";
 import athena from "thesvg/aws-amazon-athena";
 import documentdb from "thesvg/aws-amazon-documentdb";
+import dynamodb from "thesvg/aws-amazon-dynamodb";
 import redshift from "thesvg/aws-amazon-redshift";
 import cosmosdb from "thesvg/azure-azure-cosmos-db";
 import clickhouse from "thesvg/clickhouse";
+import cloudflare from "thesvg/cloudflare";
 import cockroach from "thesvg/cockroach-labs";
 import cratedb from "thesvg/cratedb";
 import databricks from "thesvg/databricks";
 import duckdb from "thesvg/duckdb";
+import elasticsearch from "thesvg/elasticsearch";
 import ferretdb from "thesvg/ferretdb";
 import firebird from "thesvg/firebird";
 import bigquery from "thesvg/google-bigquery";
 import ibm from "thesvg/ibm";
+import influxdb from "thesvg/influxdb";
 import mariadb from "thesvg/mariadb";
 import access from "thesvg/microsoft-access";
 import mssql from "thesvg/microsoft-sql-server";
 import mongodb from "thesvg/mongodb";
 import mysql from "thesvg/mysql";
 import neon from "thesvg/neon";
+import opensearch from "thesvg/opensearch";
 import oracle from "thesvg/oracle";
 import planetscale from "thesvg/planetscale";
 import postgresql from "thesvg/postgresql";
@@ -47,23 +52,28 @@ const ICONS: Record<string, IconModule> = {
   "apache-hive": apacheHive,
   "aws-amazon-athena": athena,
   "aws-amazon-documentdb": documentdb,
+  "aws-amazon-dynamodb": dynamodb,
   "aws-amazon-redshift": redshift,
   "azure-azure-cosmos-db": cosmosdb,
   clickhouse,
+  cloudflare,
   "cockroach-labs": cockroach,
   cratedb,
   databricks,
   duckdb,
+  elasticsearch,
   ferretdb,
   firebird,
   "google-bigquery": bigquery,
   ibm,
+  influxdb,
   mariadb,
   "microsoft-access": access,
   "microsoft-sql-server": mssql,
   mongodb,
   mysql,
   neon,
+  opensearch,
   oracle,
   planetscale,
   postgresql,

@@ -7,7 +7,7 @@ use duckdb::Connection;
 use super::pool::PoolState;
 use super::sqlite::file_path;
 use super::{
-    create_table_sql, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
+    create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
     DatabaseOverview, DetailedColumnInfo, IndexInfo, QueryResult, SchemaSize, TableData, TableInfo,
 };
@@ -24,6 +24,25 @@ pub fn quote(ident: &str) -> String {
 
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn file_view_sql(path: &str) -> Option<String> {
+    let file = std::path::Path::new(path);
+    let reader = match file.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "parquet" => "read_parquet",
+        "csv" => "read_csv_auto",
+        _ => return None,
+    };
+    let name = file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("data");
+    Some(format!(
+        "CREATE VIEW {} AS SELECT * FROM {reader}({})",
+        quote(name),
+        lit(path)
+    ))
 }
 
 fn map_err(e: duckdb::Error) -> String {
@@ -118,12 +137,17 @@ impl DuckdbAdapter {
         let conn: Arc<Mutex<Connection>> = self
             .pool_state
             .shared(&self.key, || async move {
-                let conn = if path == ":memory:" {
+                let view = file_view_sql(&path);
+                let conn = if path == ":memory:" || view.is_some() {
                     Connection::open_in_memory()
                 } else {
                     Connection::open(&path)
                 }
                 .map_err(|e| format!("DuckDB-Datei konnte nicht geöffnet werden ({path}): {e}"))?;
+                if let Some(sql) = view {
+                    conn.execute_batch(&sql)
+                        .map_err(|e| format!("Datei konnte nicht gelesen werden ({path}): {e}"))?;
+                }
                 Ok(Mutex::new(conn))
             })
             .await?;
@@ -145,6 +169,69 @@ impl DuckdbAdapter {
     async fn exec(&self, sql: String) -> Result<(), String> {
         self.run(move |c| c.execute_batch(&sql).map_err(map_err))
             .await
+    }
+}
+
+fn run_sql(c: &Connection, sql: &str) -> Result<QueryResult, String> {
+    let start = std::time::Instant::now();
+    let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
+    if matches!(
+        first.as_str(),
+        "SELECT"
+            | "WITH"
+            | "SHOW"
+            | "DESCRIBE"
+            | "EXPLAIN"
+            | "PRAGMA"
+            | "FROM"
+            | "SUMMARIZE"
+            | "CALL"
+    ) {
+        let (columns, rows) = query_all(c, sql)?;
+        return Ok(QueryResult {
+            rows: rows_to_objects(&columns, rows),
+            columns,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        });
+    }
+    let affected = c.execute(sql, []).map_err(map_err)?;
+    Ok(QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: Some(affected as u64),
+        execution_time_ms: start.elapsed().as_millis() as u64,
+    })
+}
+
+struct DuckdbTx {
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl DuckdbTx {
+    async fn blocking(&self, sql: String) -> Result<QueryResult, String> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let guard = conn
+                .lock()
+                .map_err(|_| "DuckDB-Verbindung ist blockiert".to_string())?;
+            run_sql(&guard, &sql)
+        })
+        .await
+        .map_err(|e| format!("DuckDB-Task fehlgeschlagen: {e}"))?
+    }
+}
+
+#[async_trait]
+impl super::TxSession for DuckdbTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        self.blocking(sql.trim().to_string()).await
+    }
+    async fn commit(&mut self) -> Result<(), String> {
+        self.blocking("COMMIT".into()).await.map(|_| ())
+    }
+    async fn rollback(&mut self) -> Result<(), String> {
+        self.blocking("ROLLBACK".into()).await.map(|_| ())
     }
 }
 
@@ -313,38 +400,15 @@ impl DatabaseAdapter for DuckdbAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let sql = sql.trim().to_string();
-        self.run(move |c| {
-            let start = std::time::Instant::now();
-            let first = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-            if matches!(
-                first.as_str(),
-                "SELECT"
-                    | "WITH"
-                    | "SHOW"
-                    | "DESCRIBE"
-                    | "EXPLAIN"
-                    | "PRAGMA"
-                    | "FROM"
-                    | "SUMMARIZE"
-                    | "CALL"
-            ) {
-                let (columns, rows) = query_all(c, &sql)?;
-                return Ok(QueryResult {
-                    rows: rows_to_objects(&columns, rows),
-                    columns,
-                    rows_affected: None,
-                    execution_time_ms: start.elapsed().as_millis() as u64,
-                });
-            }
-            let affected = c.execute(&sql, []).map_err(map_err)?;
-            Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: Some(affected as u64),
-                execution_time_ms: start.elapsed().as_millis() as u64,
-            })
-        })
-        .await
+        self.run(move |c| run_sql(c, &sql)).await
+    }
+
+    async fn begin_transaction(&self) -> Result<Box<dyn super::TxSession>, String> {
+        let conn = self.run(|c| c.try_clone().map_err(map_err)).await?;
+        let conn = Arc::new(Mutex::new(conn));
+        let tx = DuckdbTx { conn };
+        tx.blocking("BEGIN TRANSACTION".into()).await?;
+        Ok(Box::new(tx))
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -551,8 +615,23 @@ impl DatabaseAdapter for DuckdbAdapter {
             .collect())
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Duckdb),
+        )
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        self.exec(create_table_sql(req, quote, true)).await
+        self.exec(create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Duckdb),
+        )?)
+        .await
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
@@ -605,5 +684,45 @@ impl DatabaseAdapter for DuckdbAdapter {
                 })
                 .collect(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn file_views_cover_csv_and_parquet() {
+        assert_eq!(
+            file_view_sql("/tmp/o'hara.CSV").unwrap(),
+            "CREATE VIEW \"o'hara\" AS SELECT * FROM read_csv_auto('/tmp/o''hara.CSV')"
+        );
+        assert!(file_view_sql("/tmp/a.parquet")
+            .unwrap()
+            .contains("read_parquet('/tmp/a.parquet')"));
+        assert!(file_view_sql("/tmp/a.duckdb").is_none());
+        assert!(file_view_sql(":memory:").is_none());
+    }
+
+    #[tokio::test]
+    async fn csv_file_opens_as_in_memory_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("people.csv");
+        std::fs::write(&path, "id,name\n1,Ada\n2,Linus\n").unwrap();
+        let db = DuckdbAdapter::new(
+            &format!("duckdb:{}", path.display()),
+            create_pool_state(),
+            "csv-test".to_string(),
+        )
+        .unwrap();
+        let views = db.list_views(None).await.unwrap();
+        assert_eq!(views[0].name, "people");
+        let result = db
+            .execute_query("SELECT name FROM people ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

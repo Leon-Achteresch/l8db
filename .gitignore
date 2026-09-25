@@ -56,6 +56,7 @@ chat/
 !/docs/data-transfer.md
 !/docs/performance.md
 !/docs/feature-videos-plan.md
+!/docs/ssh-network.md
 
 # Nested website repo (separates Projekt)
 l8db-website/

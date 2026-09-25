@@ -76,7 +76,8 @@ export function DriversView() {
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
         {ready} von {summaries.length} Treiberfamilien bereit. Fehlende Treiber lassen sich direkt
-        installieren oder manuell nach Anleitung einrichten.
+        installieren oder manuell nach Anleitung einrichten. DuckDB und der ODBC-Treibermanager sind
+        in l8db enthalten; für ODBC-Datenquellen wird nur noch der Treiber des Herstellers benötigt.
       </p>
 
       {refreshing && summaries.length === 0 ? (

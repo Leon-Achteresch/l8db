@@ -1,0 +1,80 @@
+{
+  "id": "l8db.password-manager",
+  "name": "Passwortmanager-Sync",
+  "version": "1.0.0",
+  "description": "Lädt und speichert Verbindungen samt Passwort in Keeper, Bitwarden oder 1Password über deren offizielle CLI.",
+  "publisher": "l8db",
+  "engines": {
+    "l8db": ">=0.6.0 <1.0.0",
+    "api": "^1.1.0"
+  },
+  "main": "dist/extension.js",
+  "activationEvents": [
+    "onView:vault.clis",
+    "onCommand:vault.import",
+    "onCommand:vault.export",
+    "onCommand:vault.install"
+  ],
+  "permissions": ["process:execute", "connections:read", "connections:write"],
+  "capabilities": {
+    "process": {
+      "commands": ["keeper", "bw", "op", "pipx", "python3", "py", "npm", "brew", "winget", "sh"]
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "vault.import",
+        "title": "Passwortmanager: Verbindungen laden"
+      },
+      {
+        "id": "vault.export",
+        "title": "Passwortmanager: Verbindungen speichern"
+      },
+      {
+        "id": "vault.install",
+        "title": "Passwortmanager: CLI installieren"
+      },
+      {
+        "id": "vault.refresh",
+        "title": "Passwortmanager: Status aktualisieren",
+        "icon": "refresh-cw"
+      }
+    ],
+    "configuration": {
+      "vault.provider": {
+        "type": "string",
+        "default": "keeper",
+        "enum": ["keeper", "bitwarden", "1password"],
+        "description": "Passwortmanager, dessen CLI verwendet wird (keeper, bw oder op)."
+      }
+    },
+    "menus": [
+      {
+        "command": "vault.import",
+        "location": "palette"
+      },
+      {
+        "command": "vault.export",
+        "location": "palette"
+      },
+      {
+        "command": "vault.install",
+        "location": "palette"
+      },
+      {
+        "command": "vault.refresh",
+        "location": "view/title",
+        "view": "vault.clis"
+      }
+    ],
+    "views": [
+      {
+        "id": "vault.clis",
+        "title": "Passwortmanager",
+        "location": "sidebar",
+        "icon": "package"
+      }
+    ]
+  }
+}

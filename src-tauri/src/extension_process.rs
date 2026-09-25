@@ -65,7 +65,7 @@ pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> 
         }
     }
     let timeout = options.timeout_ms.unwrap_or(30_000);
-    if !(1..=120_000).contains(&timeout) {
+    if !(1..=600_000).contains(&timeout) {
         return Err("Invalid process timeout".into());
     }
     Ok(timeout)
@@ -78,13 +78,42 @@ fn truncate(mut text: String) -> String {
     text
 }
 
+fn resolve(command: &str) -> std::path::PathBuf {
+    let mut dirs = crate::db::backup_tools::search_dirs();
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        dirs.push(std::path::PathBuf::from(home).join(".local/bin"));
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA").map(std::path::PathBuf::from) {
+        dirs.push(appdata.join("npm"));
+        if let Ok(entries) = std::fs::read_dir(appdata.join("Python")) {
+            dirs.extend(entries.flatten().map(|entry| entry.path().join("Scripts")));
+        }
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) {
+        dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
+    }
+    let names = if cfg!(windows) {
+        vec![
+            format!("{command}.exe"),
+            format!("{command}.cmd"),
+            command.to_string(),
+        ]
+    } else {
+        vec![command.to_string()]
+    };
+    dirs.iter()
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| command.into())
+}
+
 #[tauri::command(async)]
 pub async fn extension_process_run(
     command: String,
     options: ProcessOptions,
 ) -> Result<ProcessResult, String> {
     let timeout = validate(&command, &options)?;
-    let mut child = tokio::process::Command::new(&command);
+    let mut child = tokio::process::Command::new(resolve(&command));
     child
         .args(&options.args)
         .envs(&options.env)
@@ -100,18 +129,20 @@ pub async fn extension_process_run(
     let reader = async {
         let mut out = Vec::new();
         let mut err = Vec::new();
-        if let Some(handle) = stdout.as_mut() {
-            handle
-                .read_to_end(&mut out)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
-        if let Some(handle) = stderr.as_mut() {
-            handle
-                .read_to_end(&mut err)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
+        let read_out = async {
+            match stdout.as_mut() {
+                Some(handle) => handle.read_to_end(&mut out).await.map(|_| ()),
+                None => Ok(()),
+            }
+        };
+        let read_err = async {
+            match stderr.as_mut() {
+                Some(handle) => handle.read_to_end(&mut err).await.map(|_| ()),
+                None => Ok(()),
+            }
+        };
+        let (a, b) = tokio::join!(read_out, read_err);
+        a.and(b).map_err(|e| e.to_string())?;
         spawned
             .wait()
             .await
@@ -149,6 +180,23 @@ mod tests {
         assert!(validate("../git", &options()).is_err());
         assert!(validate("git;rm", &options()).is_err());
         assert!(validate("", &options()).is_err());
+    }
+    #[test]
+    fn resolves_binaries_outside_the_inherited_path() {
+        assert!(resolve("sh").is_absolute());
+        assert_eq!(
+            resolve("no-such-binary-l8db"),
+            std::path::PathBuf::from("no-such-binary-l8db")
+        );
+    }
+    #[tokio::test]
+    async fn runs_a_resolved_binary() {
+        let mut opts = options();
+        opts.args = vec!["-c".into(), "echo out; echo err >&2".into()];
+        let result = extension_process_run("sh".into(), opts).await.unwrap();
+        assert_eq!(result.status, Some(0));
+        assert_eq!(result.stdout, "out\n");
+        assert_eq!(result.stderr, "err\n");
     }
     #[test]
     fn rejects_oversized_inputs() {

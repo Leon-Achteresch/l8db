@@ -47,7 +47,19 @@ export const useFeatureVideoStore = create<VideoState>()(
       sessionUsed: false,
       loading: false,
       error: false,
-      open: (activeId, manual = false) => set({ activeId, manual, sessionUsed: true }),
+      open: (activeId, manual = false) =>
+        set((state) => ({
+          activeId,
+          manual,
+          sessionUsed: true,
+          history:
+            manual || state.history[activeId]
+              ? state.history
+              : pruneHistory({
+                  ...state.history,
+                  [activeId]: { status: "offered", at: Date.now() },
+                }),
+        })),
       close: () => set({ activeId: null }),
       mark: (id, status) =>
         set((state) => ({

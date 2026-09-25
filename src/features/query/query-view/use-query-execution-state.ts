@@ -10,6 +10,7 @@ import { cancelTask, useTasksStore } from "@/lib/tasks";
 export function useQueryExecutionState() {
   const [result, setResultState] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [executedSql, setExecutedSql] = useState("");
   const [errorSource, setErrorSource] = useState<{ text: string; base: number } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
@@ -38,6 +39,8 @@ export function useQueryExecutionState() {
   return {
     result,
     setResultState,
+    executedSql,
+    setExecutedSql,
     error,
     setError,
     setErrorSource,

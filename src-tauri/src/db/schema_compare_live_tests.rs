@@ -20,6 +20,17 @@ fn lab_url(args: &Value) -> Result<(DatabaseKind, String), String> {
     let kind: DatabaseKind =
         serde_json::from_value(args["kind"].clone()).map_err(|e| e.to_string())?;
     let url = text(args, "connectionString").to_string();
+    if kind == DatabaseKind::Sqlite {
+        let path = crate::db::sqlite::file_path(&url)?;
+        let temp = std::env::temp_dir();
+        let allowed = std::path::Path::new(&path).starts_with(&temp)
+            || path.starts_with("/tmp/")
+            || path.starts_with("/private/tmp/");
+        if !allowed || path.contains("..") {
+            return Err("Nur SQLite-Dateien im temporären Verzeichnis sind erlaubt".into());
+        }
+        return Ok((kind, url));
+    }
     let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
     let redirected = parsed
         .query_pairs()
@@ -54,6 +65,16 @@ impl Lab {
                 return self.transactions.rollback(tx).await.map(|_| Value::Null)
             }
             "list_transactions" => return Ok(json!(self.transactions.list_active_ids().await)),
+            "compare_table_data" => {
+                let request = &args["request"];
+                lab_url(&request["left"])?;
+                lab_url(&request["right"])?;
+                let request: crate::db::data_compare::CompareRequest =
+                    serde_json::from_value(request.clone()).map_err(|e| e.to_string())?;
+                return crate::db::data_compare::compare(&request, &self.pool)
+                    .await
+                    .map(|v| json!(v));
+            }
             _ => {}
         }
         let (kind, url) = lab_url(args)?;
@@ -168,7 +189,7 @@ async fn respond(mut socket: tokio::net::TcpStream, lab: Arc<Lab>) -> Result<(),
 }
 
 #[tokio::test]
-#[ignore = "Schema-Vergleich-Lab: lokale PostgreSQL-/Oracle-Container"]
+#[ignore = "Schema-Vergleich-Lab: lokale Datenbank-Container"]
 async fn schema_compare_bridge() {
     let port = std::env::var("L8DB_SCHEMA_COMPARE_BRIDGE_PORT").unwrap_or("27041".into());
     let lab = Arc::new(Lab {

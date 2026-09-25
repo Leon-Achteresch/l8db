@@ -225,6 +225,22 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["ssh", "host", "keys", "fingerprint", "tofu", "trust"],
   },
   {
+    id: "production-read-only",
+    tabId: "security",
+    tabLabel: "Sicherheit & SSH",
+    title: "Produktion standardmäßig schreibgeschützt öffnen",
+    description: "Produktionsverbindungen bis zum Aktivieren des Schreibmodus schreibgeschützt.",
+    keywords: ["produktion", "umgebung", "schreibschutz", "prod", "guardrail", "schreibmodus"],
+  },
+  {
+    id: "production-commit",
+    tabId: "security",
+    tabLabel: "Sicherheit & SSH",
+    title: "Commits auf Produktion bestätigen",
+    description: "Commit auf Produktion nur nach Bestätigung, Löschungen mit Namenseingabe.",
+    keywords: ["produktion", "commit", "bestätigen", "transaktion", "rollback"],
+  },
+  {
     id: "conn-timeout",
     tabId: "security",
     tabLabel: "Sicherheit & SSH",

@@ -25,6 +25,13 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
   cassandra: "Cassandra / ScyllaDB",
   duckdb: "DuckDB",
   odbc: "ODBC",
+  elasticsearch: "Elasticsearch / OpenSearch",
+  influxdb: "InfluxDB",
+  sqlite_http: "SQLite über HTTP (D1, libSQL)",
+  dynamodb: "Amazon DynamoDB",
+  athena: "Amazon Athena",
+  bigquery: "Google BigQuery",
+  snowflake: "Snowflake",
 };
 
 export function platformOs(platform?: string): PlatformOs {
@@ -54,7 +61,7 @@ export function driverTypeLabel(driver: Driver): string {
     case "odbc":
       return "ODBC";
     case "cargo_feature":
-      return "Build-Feature";
+      return "Eingebettet (Build-Feature)";
   }
 }
 

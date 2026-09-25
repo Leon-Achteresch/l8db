@@ -30,10 +30,17 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | OceanBase | Mysql | builtin |
 | SQLite | Sqlite | builtin |
 | libSQL / Turso (lokal) | Sqlite | builtin |
-| DuckDB | Duckdb | Cargo feature `duckdb` |
+| libSQL / Turso (remote) | SqliteHttp | builtin (HTTP) |
+| Cloudflare D1 | SqliteHttp | builtin (HTTP) |
+| DuckDB | Duckdb | builtin (Cargo feature `duckdb`, default) |
 | SQL Server | Mssql | builtin |
 | Azure SQL | Mssql | builtin |
 | ClickHouse | Clickhouse | builtin |
+| InfluxDB | Influxdb | builtin (HTTP) |
+| Elasticsearch | Elasticsearch | builtin (HTTP) |
+| OpenSearch | Elasticsearch | builtin (HTTP) |
+| Google BigQuery | Bigquery | builtin (REST API v2) |
+| Snowflake | Snowflake | builtin (SQL API v2) |
 | MongoDB | Mongodb | builtin |
 | MongoDB Atlas | Mongodb | builtin |
 | Amazon DocumentDB | Mongodb | builtin |
@@ -46,6 +53,9 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | Oracle Database | Oracle | Oracle Instant Client |
 | Apache Cassandra | Cassandra | builtin |
 | ScyllaDB | Cassandra | builtin |
+| Amazon DynamoDB | Dynamodb | builtin |
+| DynamoDB Local / LocalStack | Dynamodb | builtin |
+| Amazon Athena | Athena | builtin |
 | ODBC (generisch) | Odbc | installed ODBC driver |
 | IBM Db2 | Odbc | IBM DB2 ODBC DRIVER |
 | Firebird | Odbc | Firebird/InterBase(r) driver |
@@ -53,10 +63,10 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | SAP ASE (Sybase) | Odbc | Adaptive Server Enterprise |
 | SAP HANA | Odbc | HDBODBC |
 | Teradata | Odbc | Teradata Database ODBC Driver |
-| Snowflake | Odbc | SnowflakeDSIIDriver |
-| Google BigQuery | Odbc | Simba ODBC Driver for Google BigQuery |
+| Snowflake (ODBC) | Odbc | SnowflakeDSIIDriver |
+| Google BigQuery (ODBC) | Odbc | Simba ODBC Driver for Google BigQuery |
 | Databricks | Odbc | Simba Spark ODBC Driver |
-| Amazon Athena | Odbc | Simba Athena ODBC Driver |
+| Amazon Athena (ODBC) | Odbc | Simba Athena ODBC Driver |
 | Vertica | Odbc | Vertica |
 | Exasol | Odbc | EXASOL Driver |
 | Trino / Presto | Odbc | Trino ODBC Driver |
@@ -71,22 +81,73 @@ All adapters implement connection testing, database/schema/table/column discover
 | Family | Additional registry capabilities |
 | --- | --- |
 | Postgres | Row editing, transactions, table transactions, DDL, explain, catalog administration, CSV import, full export, data comparison, schema snapshots, migration scripts, cancellation, debugger |
-| Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions |
-| Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation; no SSH/TLS or stored functions |
-| Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user |
-| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation, server output, object grants and administration; explain is currently disabled |
+| Mysql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, schema and data comparison |
+| Sqlite | Row editing, transactions, views, indexes, constraints, DDL, explain, cancellation, schema and data comparison; no SSH/TLS or stored functions |
+| Mssql | Row editing, transactions, table transactions, SQL catalog objects, DDL, explain, sessions, sequences, proxy user, schema and data comparison |
+| Oracle | Row editing, transactions, table transactions, SQL catalog objects, DDL, PL/SQL debugger, compilation, server output, object grants and administration, explain (PLAN_TABLE; ANALYZE needs V$SESSION and V$SQL_PLAN_STATISTICS_ALL) |
 | Duckdb | SQL catalog objects, DDL, explain; no row editing or transaction UI |
 | Clickhouse | Views, functions, DDL, column changes, explain and overview |
 | Mongodb | JSON queries and filters, collections, indexes and DDL |
 | Redis | Redis commands and key-pattern filtering |
 | Cassandra | CQL, keyspaces, indexes, DDL and column changes |
 | Odbc | Queries, views and DDL; other capabilities remain disabled |
+| SqliteHttp | Row editing via SQL, views, indexes, foreign keys, triggers, DDL, explain; every statement commits immediately, so rollback is rejected |
+| Elasticsearch | Indices, data streams and aliases as tables, mapping fields as columns, SQL, Dev-Tools requests, Lucene/Query-DSL filters, drop/truncate index; no row editing |
+| Influxdb | Buckets/databases, measurements, tags and fields; SQL (v3), Flux (v2), InfluxQL and line-protocol writes |
+| Dynamodb | PartiQL queries and filters, key/GSI/LSI indexes, row editing staged in a transaction; no DDL, SSH or TLS options |
+| Athena | Trino SQL, catalogs as databases, partition keys, cancellation via StopQueryExecution, scan/cost notices in server output |
+| Bigquery | Datasets as schemas, views, dry-run explain with byte estimate, job-based cancellation |
+| Snowflake | Databases, schemas, views, role quick switch (proxy user), text explain, statement cancellation |
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
-## Optional builds
+## AWS providers
 
-Standard builds omit DuckDB and ODBC. Enable them with `bun run tauri build -- --features duckdb`, `--features odbc`, or `--features duckdb,odbc`. DuckDB is bundled when enabled. ODBC additionally needs a platform driver manager and the vendor driver from the table above, matching the app architecture. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
+DynamoDB and Athena talk to the AWS JSON APIs directly (hand-written SigV4 over `reqwest`, see [aws.rs](../src-tauri/src/db/aws.rs)); no AWS SDK is linked. URL layout:
+
+```
+dynamodb://ACCESS_KEY:SECRET[:SESSION_TOKEN]@REGION[?endpoint=http://localhost:8000]
+dynamodb://REGION?profile=NAME
+athena://REGION/CATALOG?workgroup=primary&output=s3://bucket/prefix/&schema=default
+```
+
+- Host is the region; `auto` resolves it from `AWS_REGION`, `AWS_DEFAULT_REGION` or the profile's `region`.
+- Credentials: user/password are the access key and secret (the session token is appended to the secret as `secret:token`, so the whole secret lives in the OS keychain). `?profile=` reads `~/.aws/credentials` and `~/.aws/config` (static keys, `credential_process`, AWS SSO via the `aws sso login` token cache). Without either, environment variables and then `AWS_PROFILE`/`default` are used. `role_arn`/`source_profile` (AssumeRole) are not supported; use `credential_process` or SSO. Apps started from Finder do not see shell environment variables.
+- `?endpoint=` overrides the service endpoint (DynamoDB Local, LocalStack, VPC endpoints).
+- DynamoDB: tables are listed per region, columns are the key schema plus attributes sampled from 100 items. Browsing uses `Scan` (filters use PartiQL `ExecuteStatement`) with a cursor cache for paging; sorting is not applied. Counts use `Scan` with `Select=COUNT` and fall back to the approximate `ItemCount` above the cap. Row edits are staged and committed together with `ExecuteTransaction` (max. 100 changes, one change per item); key attributes cannot be changed.
+- Athena: `ListDataCatalogs` feed the database picker, Athena databases are schemas. Queries poll `GetQueryExecution`; cancel and query timeout call `StopQueryExecution`. With server output enabled every query reports scanned bytes and an estimated cost (5 USD/TB, 10 MB minimum). The ODBC entry remains available as "Amazon Athena (ODBC)".
+- Tests: `cargo test --lib -- db::aws db::dynamodb db::athena` covers SigV4 test vectors and a mocked Athena API. `dynamodb_local_end_to_end` (ignored) needs `amazon/dynamodb-local` on `127.0.0.1:18000` or `L8DB_E2E_DYNAMODB_URL`. The smoke test uses `L8DB_SMOKE_DYNAMODB_URL` / `L8DB_SMOKE_ATHENA_URL` (DynamoDB queries its first table).
+
+## Cloud warehouses
+
+BigQuery and Snowflake talk HTTPS to the vendor APIs; SSH tunnels and the SSL selector do not apply. Secrets (service-account JSON, access tokens, private keys) occupy the password slot of the URL and therefore live in the OS keychain like every other password. The ODBC entries stay available as alternates.
+
+**BigQuery** (`bigquery.rs`): `bigquery://[auth[:secret]@]project[/default_dataset]?location=EU&endpoint=…&credentials_file=…`
+
+- `auth` empty or `adc`: Application Default Credentials from `GOOGLE_APPLICATION_CREDENTIALS`, otherwise `application_default_credentials.json` in the gcloud config directory (`CLOUDSDK_CONFIG`, `~/.config/gcloud`, `%APPDATA%\gcloud`). Both `service_account` and `authorized_user` (refresh token from `gcloud auth application-default login`) files work; `quota_project_id` becomes `x-goog-user-project`.
+- `service_account`: key JSON as secret or `credentials_file`; signed as an RS256 JWT and exchanged at `token_uri`.
+- `token`: a ready OAuth access token. `none`: no authorization header (emulator).
+- `endpoint` overrides `https://bigquery.googleapis.com`, e.g. for `ghcr.io/goccy/bigquery-emulator`.
+- Datasets are schemas, `tables.list` separates tables and views, columns come from `tables.get` (records flattened as `a.b`, repeated fields as JSON). Unfiltered table reads use the free `tabledata.list`, counts use `numRows`; filters, sorting and views fall back to a query. Queries use `jobs.query` plus `jobs.getQueryResults` paging; cancellation calls `jobs.cancel`. Explain runs a dry run and reports the processed bytes; explain analyze runs the job and maps its query-plan stages.
+- Types: INT64 as numbers within ±2^53, NUMERIC/BIGNUMERIC as strings, TIMESTAMP as `YYYY-MM-DD HH:MM:SS[.ffffff] UTC`, BYTES as `\x…` hex, JSON parsed, GEOGRAPHY as WKT.
+
+**Snowflake** (`snowflake.rs`): `snowflake://user[:secret]@account/DATABASE?schema=…&warehouse=…&role=…&authenticator=…&private_key_file=…`
+
+- `authenticator=snowflake_jwt` (default when the secret is a PEM key or `private_key_file` is set): PKCS#8, PKCS#1 or encrypted PKCS#8 (AES/3DES, PBKDF2) keys; the passphrase follows the PEM block in the secret or is the secret when `private_key_file` is used. The JWT uses `ACCOUNT.USER.SHA256:<fingerprint>`.
+- `programmatic_access_token` (default otherwise) and `oauth` send the secret as bearer token.
+- Statements run asynchronously with polling, result partitions are paged (gzip-aware), multi-statement scripts set `MULTI_STATEMENT_COUNT` and return the last result. Cancellation calls the statement cancel endpoint. The catalog uses `SHOW` commands so browsing works without a running warehouse; row reads and filtered counts need one.
+- The workspace header's proxy-user switch lists `SHOW ROLES` and sends the choice as `proxy_user`, which overrides `role`. The warehouse is chosen in the connection editor.
+- Types: FIXED with scale 0 as numbers within ±2^53 (otherwise strings), DATE/TIME/TIMESTAMP_NTZ/LTZ/TZ converted from epoch values, VARIANT/OBJECT/ARRAY parsed as JSON, BINARY as `\x…` hex.
+
+Tests: the adapters are covered by mocked HTTP tests (`cargo test bigquery snowflake warehouse_auth`). `emulator_end_to_end` is ignored and runs against the BigQuery emulator when `L8DB_E2E_BIGQUERY_URL` is set, e.g. `bigquery://test?endpoint=http%3A%2F%2F127.0.0.1%3A9050&auth=none` with a `dataset1.table_a` fixture. Snowflake has no emulator; only the mocked tests exist.
+
+## Default and optional builds
+
+Standard builds include DuckDB and ODBC (Cargo default features `duckdb` and `odbc`). DuckDB is compiled from the bundled sources. ODBC uses odbc-api's `vendored-unix-odbc`: the unixODBC driver manager is compiled from source and linked statically on macOS and Linux, so the binary has no dynamic dependency on `libodbc` and starts on machines without unixODBC (`otool -L` / `ldd` show no ODBC library). Windows links the system `odbc32.dll`, which is always present. Only the vendor driver from the table above is still needed, registered in `odbcinst.ini` and matching the app architecture. The static driver manager reads `/etc/odbcinst.ini`; on macOS l8db sets `ODBCSYSINI` to `/opt/homebrew/etc`, `/usr/local/etc` or `/Library/ODBC` when `/etc/odbcinst.ini` is missing and `ODBCSYSINI`/`ODBCINSTINI` are not set. The vendored unixODBC is LGPL-2.1.
+
+`bun run tauri build -- --no-default-features` builds without both; add `--features duckdb` or `--features odbc` to re-enable one. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
+
+DuckDB also opens CSV and Parquet files: a DuckDB connection whose path ends in `.csv` or `.parquet` opens an in-memory database with a view named after the file (`read_csv_auto` / `read_parquet`).
 
 ## Adding a product or family
 
@@ -95,5 +156,17 @@ Standard builds omit DuckDB and ODBC. Enable them with `bun run tauri build -- -
 3. Mirror serialized Rust types in [the TypeScript bridge](../src/lib/db/index.ts), especially [provider types](../src/lib/db/providers.ts). Keep invocations centralized in that bridge. Update URL detection through the registry and gate UI with capabilities.
 4. Preserve effective SSH URLs, secret handling, read-only protection and validated filters. A failed tunnel must never fall back to a direct connection.
 5. Add registry/URL/bridge regressions and adapter tests. Run `bun run test`, `bun run check`, `bun run build`, `cargo check --locked`, `cargo clippy --all-targets --locked`, and `cargo test --locked` in their respective directories. Test optional builds separately when affected.
+
+## HTTP families
+
+| Family | URL | Notes |
+| --- | --- | --- |
+| Elasticsearch | `elasticsearch://user:pw@host:9200`, `opensearch://host:9200`, `https://…` for known cloud hosts | API key via user `apikey` or `?api_key=` (`id:key` or encoded); `?tls=true`, `?insecure=true`; the flavor is detected via `GET /`. Filters take builder SQL, Lucene or Query-DSL JSON. Offsets beyond 10 000 use PIT + `search_after` (Elasticsearch) or scroll (OpenSearch). Queries accept SQL or `GET index/_search {…}`. |
+| Influxdb | `influxdb://token:TOKEN@host:8086/bucket?org=acme` | `?version=2\|3` forces the API, otherwise `/ping` decides. Table views show the last hour; change with `?range=15m`, `7d` or `all`. Queries accept SQL (v3), Flux (v2), InfluxQL and line protocol. |
+| SqliteHttp | `libsql://[token:TOKEN@]host[?authToken=…&tls=false]`, `d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/<database name or uuid>` | libSQL uses the Hrana `/v2/pipeline`; D1 uses the Cloudflare `/raw` query API. |
+
+Generic `http(s)://` URLs remain ClickHouse unless the host matches a known Elastic, InfluxData or AWS OpenSearch domain. InfluxDB 1.x is not supported.
+
+Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. D1 is covered by a mocked HTTP server in the unit tests.
 
 `smoke_adapters_from_env` is ignored by default and runs configured `L8DB_SMOKE_<KIND>_URL` providers. It is not the mandatory integration suite. The isolated PostgreSQL/SSH suite is described in [integration-tests.md](integration-tests.md).

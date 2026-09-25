@@ -17,6 +17,7 @@ import { CopyToSchemaDialog } from "@/features/schema-copy/copy-to-schema-dialog
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { CopyTableDialog } from "@/features/table-copy/copy-table-dialog";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { buildInvalidSet, isViewInvalid } from "@/lib/invalid-objects";
 import { useInvalidObjectsQuery } from "@/lib/queries";
@@ -59,6 +60,9 @@ export function SidebarEntityList({
     name: string;
     objectType: SchemaCopyObjectType;
   } | null>(null);
+  const [tableCopySource, setTableCopySource] = useState<{ schema: string; name: string } | null>(
+    null,
+  );
   const {
     confirmAction,
     setConfirmAction,
@@ -135,6 +139,7 @@ export function SidebarEntityList({
         </Tooltip>
       </div>
       <CopyToSchemaDialog target={copyTarget} onClose={() => setCopyTarget(null)} />
+      <CopyTableDialog source={tableCopySource} onClose={() => setTableCopySource(null)} />
       <EntityConfirmDialog
         confirmAction={confirmAction}
         actionLoading={actionLoading}
@@ -183,6 +188,9 @@ export function SidebarEntityList({
                             name: item.name,
                             objectType: "table",
                           })
+                        }
+                        onCopyToConnection={() =>
+                          setTableCopySource({ schema: item.schema, name: item.name })
                         }
                         onAlterTable={() => handleAlterTable(item.schema, item.name)}
                         onFocusInErDiagram={() => handleFocusInErDiagram(item.schema, item.name)}

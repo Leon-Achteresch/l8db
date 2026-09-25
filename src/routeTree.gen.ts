@@ -23,6 +23,7 @@ import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
+import { Route as AppWorkspaceBackupRouteImport } from './routes/_app._workspace.backup'
 import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
@@ -30,6 +31,7 @@ import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._worksp
 import { Route as AppWorkspaceImportRouteImport } from './routes/_app._workspace.import'
 import { Route as AppWorkspaceInvalidObjectsRouteImport } from './routes/_app._workspace.invalid-objects'
 import { Route as AppWorkspaceMonitorRouteImport } from './routes/_app._workspace.monitor'
+import { Route as AppWorkspaceNotebookRouteImport } from './routes/_app._workspace.notebook'
 import { Route as AppWorkspaceQueryRouteImport } from './routes/_app._workspace.query'
 import { Route as AppWorkspaceQueryBuilderRouteImport } from './routes/_app._workspace.query-builder'
 import { Route as AppWorkspaceReplicationRouteImport } from './routes/_app._workspace.replication'
@@ -120,6 +122,11 @@ const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
+const AppWorkspaceBackupRoute = AppWorkspaceBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
 const AppWorkspaceCompareRoute = AppWorkspaceCompareRouteImport.update({
   id: '/compare',
   path: '/compare',
@@ -154,6 +161,11 @@ const AppWorkspaceInvalidObjectsRoute =
 const AppWorkspaceMonitorRoute = AppWorkspaceMonitorRouteImport.update({
   id: '/monitor',
   path: '/monitor',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceNotebookRoute = AppWorkspaceNotebookRouteImport.update({
+  id: '/notebook',
+  path: '/notebook',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceQueryRoute = AppWorkspaceQueryRouteImport.update({
@@ -286,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
@@ -293,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
+  '/notebook': typeof AppWorkspaceNotebookRoute
   '/query': typeof AppWorkspaceQueryRouteWithChildren
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
@@ -327,6 +341,7 @@ export interface FileRoutesByTo {
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
   '/enums': typeof AppWorkspaceEnumsRoute
@@ -334,6 +349,7 @@ export interface FileRoutesByTo {
   '/import': typeof AppWorkspaceImportRoute
   '/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/monitor': typeof AppWorkspaceMonitorRoute
+  '/notebook': typeof AppWorkspaceNotebookRoute
   '/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/replication': typeof AppWorkspaceReplicationRoute
   '/saved-plan': typeof AppWorkspaceSavedPlanRoute
@@ -370,6 +386,7 @@ export interface FileRoutesById {
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
+  '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
   '/_app/_workspace/compare': typeof AppWorkspaceCompareRoute
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
@@ -377,6 +394,7 @@ export interface FileRoutesById {
   '/_app/_workspace/import': typeof AppWorkspaceImportRoute
   '/_app/_workspace/invalid-objects': typeof AppWorkspaceInvalidObjectsRoute
   '/_app/_workspace/monitor': typeof AppWorkspaceMonitorRoute
+  '/_app/_workspace/notebook': typeof AppWorkspaceNotebookRoute
   '/_app/_workspace/query': typeof AppWorkspaceQueryRouteWithChildren
   '/_app/_workspace/query-builder': typeof AppWorkspaceQueryBuilderRoute
   '/_app/_workspace/replication': typeof AppWorkspaceReplicationRoute
@@ -414,6 +432,7 @@ export interface FileRouteTypes {
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
+    | '/backup'
     | '/compare'
     | '/create-table'
     | '/enums'
@@ -421,6 +440,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/invalid-objects'
     | '/monitor'
+    | '/notebook'
     | '/query'
     | '/query-builder'
     | '/replication'
@@ -455,6 +475,7 @@ export interface FileRouteTypes {
     | '/release-notes'
     | '/settings'
     | '/available-extensions'
+    | '/backup'
     | '/compare'
     | '/create-table'
     | '/enums'
@@ -462,6 +483,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/invalid-objects'
     | '/monitor'
+    | '/notebook'
     | '/query-builder'
     | '/replication'
     | '/saved-plan'
@@ -497,6 +519,7 @@ export interface FileRouteTypes {
     | '/_app/_plain'
     | '/_app/_workspace'
     | '/_app/_plain/available-extensions'
+    | '/_app/_workspace/backup'
     | '/_app/_workspace/compare'
     | '/_app/_workspace/create-table'
     | '/_app/_workspace/enums'
@@ -504,6 +527,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/import'
     | '/_app/_workspace/invalid-objects'
     | '/_app/_workspace/monitor'
+    | '/_app/_workspace/notebook'
     | '/_app/_workspace/query'
     | '/_app/_workspace/query-builder'
     | '/_app/_workspace/replication'
@@ -641,6 +665,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceIndexRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
+    '/_app/_workspace/backup': {
+      id: '/_app/_workspace/backup'
+      path: '/backup'
+      fullPath: '/backup'
+      preLoaderRoute: typeof AppWorkspaceBackupRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
     '/_app/_workspace/compare': {
       id: '/_app/_workspace/compare'
       path: '/compare'
@@ -688,6 +719,13 @@ declare module '@tanstack/react-router' {
       path: '/monitor'
       fullPath: '/monitor'
       preLoaderRoute: typeof AppWorkspaceMonitorRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/notebook': {
+      id: '/_app/_workspace/notebook'
+      path: '/notebook'
+      fullPath: '/notebook'
+      preLoaderRoute: typeof AppWorkspaceNotebookRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/query': {
@@ -866,6 +904,7 @@ const AppWorkspaceQueryRouteWithChildren =
   AppWorkspaceQueryRoute._addFileChildren(AppWorkspaceQueryRouteChildren)
 
 interface AppWorkspaceRouteChildren {
+  AppWorkspaceBackupRoute: typeof AppWorkspaceBackupRoute
   AppWorkspaceCompareRoute: typeof AppWorkspaceCompareRoute
   AppWorkspaceCreateTableRoute: typeof AppWorkspaceCreateTableRoute
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
@@ -873,6 +912,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceImportRoute: typeof AppWorkspaceImportRoute
   AppWorkspaceInvalidObjectsRoute: typeof AppWorkspaceInvalidObjectsRoute
   AppWorkspaceMonitorRoute: typeof AppWorkspaceMonitorRoute
+  AppWorkspaceNotebookRoute: typeof AppWorkspaceNotebookRoute
   AppWorkspaceQueryRoute: typeof AppWorkspaceQueryRouteWithChildren
   AppWorkspaceQueryBuilderRoute: typeof AppWorkspaceQueryBuilderRoute
   AppWorkspaceReplicationRoute: typeof AppWorkspaceReplicationRoute
@@ -896,6 +936,7 @@ interface AppWorkspaceRouteChildren {
 }
 
 const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
+  AppWorkspaceBackupRoute: AppWorkspaceBackupRoute,
   AppWorkspaceCompareRoute: AppWorkspaceCompareRoute,
   AppWorkspaceCreateTableRoute: AppWorkspaceCreateTableRoute,
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,
@@ -903,6 +944,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceImportRoute: AppWorkspaceImportRoute,
   AppWorkspaceInvalidObjectsRoute: AppWorkspaceInvalidObjectsRoute,
   AppWorkspaceMonitorRoute: AppWorkspaceMonitorRoute,
+  AppWorkspaceNotebookRoute: AppWorkspaceNotebookRoute,
   AppWorkspaceQueryRoute: AppWorkspaceQueryRouteWithChildren,
   AppWorkspaceQueryBuilderRoute: AppWorkspaceQueryBuilderRoute,
   AppWorkspaceReplicationRoute: AppWorkspaceReplicationRoute,

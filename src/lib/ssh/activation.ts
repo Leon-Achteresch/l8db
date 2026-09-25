@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { withTimeout } from "@/lib/async";
 import { connectionError, isAuthFailure } from "@/lib/connection-url";
-import { useConnectionsStore } from "@/lib/connections";
+import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import { closeSshTunnel, testConnectionString } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
 import { useSettingsStore } from "@/lib/settings";
@@ -39,7 +39,7 @@ async function performActivation(
       };
     }
     if (id && !next) return { ok: false, error: "Verbindung nicht gefunden." };
-    if (next?.ssh?.host) {
+    if (usesTunnel(next)) {
       const outcome = await ensureSshTunnel(next, sshPassword);
       if (!outcome.ok) return outcome;
     }
@@ -61,7 +61,7 @@ async function performActivation(
           };
         }
       } catch (error) {
-        if (next.ssh?.host && previous?.id !== next.id) {
+        if (usesTunnel(next) && previous?.id !== next.id) {
           await closeSshTunnel(next.id).catch(() => undefined);
           useConnectionsStore.setState((state) => ({
             connections: state.connections.map((entry) =>
@@ -76,7 +76,7 @@ async function performActivation(
       try {
         await closeSshTunnel(previous.id);
       } catch {
-        toast.warning("Der bisherige SSH-Tunnel konnte nicht geschlossen werden.");
+        toast.warning("Der bisherige Netzwerk-Tunnel konnte nicht geschlossen werden.");
       }
       useConnectionsStore.setState((state) => ({
         connections: state.connections.map((entry) =>
@@ -164,10 +164,12 @@ export async function activateConnectionWithToast(
 export async function restoreSshTunnel(): Promise<void> {
   const store = useConnectionsStore.getState();
   const active = store.connections.find((entry) => entry.id === store.activeId);
-  if (!active?.ssh?.host) return;
+  if (!usesTunnel(active)) return;
   const outcome = await ensureSshTunnel(active);
   if (!outcome.ok) {
-    toast.error(`SSH-Tunnel fehlgeschlagen: ${outcome.error ?? "Unbekannter Fehler"}`);
+    toast.error(
+      `${active?.ssh?.host ? "SSH-Tunnel" : "Proxy-Tunnel"} fehlgeschlagen: ${outcome.error ?? "Unbekannter Fehler"}`,
+    );
     await activateConnection(null);
   }
 }

@@ -44,6 +44,7 @@ jobs:
           L8DB_FEATURE_VIDEO_BROWSER=webkit bun test tests/feature-video-browser.test.ts
       - name: Production CSP and extension isolation
         run: |
+          bun run extension build extention/password-manager
           L8DB_PRODUCTION_BROWSER=1 L8DB_EXTENSION_BROWSER=1 bun test tests/production-browser.test.ts tests/extension-browser.test.ts
           L8DB_PRODUCTION_BROWSER=webkit L8DB_EXTENSION_BROWSER=webkit bun test tests/production-browser.test.ts tests/extension-browser.test.ts
 
@@ -94,6 +95,8 @@ jobs:
       - run: cargo fmt --check
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
+        working-directory: src-tauri
+      - run: cargo clippy --all-targets --locked --no-default-features
         working-directory: src-tauri
       - run: cargo test --locked
         working-directory: src-tauri

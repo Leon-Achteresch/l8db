@@ -283,3 +283,63 @@ describe("collision regressions", () => {
     expect(result.counts).toEqual({ only_left: 1, only_right: 0, changed: 1, equal: 0 });
   });
 });
+
+describe("Sync-Skript je Datenbank", () => {
+  const diff = compareTableData({
+    keyColumns: ["id"],
+    compareColumns: ["name", "data", "flag", "ratio"],
+    left: [
+      { id: 1, name: "a'b\\c", data: "\\x00ff", flag: true, ratio: 1.5 },
+      { id: 2, name: null, data: null, flag: false, ratio: 2 },
+    ],
+    right: [
+      { id: 2, name: "x", data: "\\x01", flag: false, ratio: 2 },
+      { id: 3, name: "z", data: null, flag: null, ratio: null },
+    ],
+  }).rows;
+  const columnTypes = {
+    id: "int",
+    name: "varchar",
+    data: "varbinary",
+    flag: "bit",
+    ratio: "float",
+  };
+  const build = (kind: "mysql" | "mssql" | "sqlite", includeDeletes = true) =>
+    buildSyncScript({
+      rows: diff,
+      direction: "left_to_right",
+      target: { schema: "app", table: "t" },
+      keyColumns: ["id"],
+      compareColumns: ["name", "data", "flag", "ratio"],
+      kind,
+      columnTypes,
+      includeDeletes,
+    });
+
+  test("MySQL maskiert Backslashes und vergleicht NULL-sicher", () => {
+    const script = build("mysql");
+    expect(script.sql).toContain("DELETE FROM `app`.`t` WHERE `id` = 3;");
+    expect(script.sql).toContain(
+      "INSERT INTO `app`.`t` (`id`, `name`, `data`, `flag`, `ratio`) VALUES (1, 'a''b\\\\c', X'00FF', 1, 1.5);",
+    );
+    expect(script.sql).toContain("`name` <=> 'x'");
+    expect(script.sql).not.toContain("`ratio` <=>");
+    expect(script.deleteCount).toBe(1);
+  });
+
+  test("SQL Server nutzt N-Literale, 0x-Binärwerte und IDENTITY_INSERT", () => {
+    const script = build("mssql");
+    expect(script.sql).toContain("SET IDENTITY_INSERT [app].[t] ON\nINSERT INTO [app].[t]");
+    expect(script.sql).toContain("VALUES (1, N'a''b\\c', 0x00FF, 1, 1.5)\nIF");
+    expect(script.sql).toContain("[data] = 0x01");
+    expect(script.insertCount).toBe(1);
+  });
+
+  test("SQLite nutzt X-Literale und IS", () => {
+    const script = build("sqlite", false);
+    expect(script.sql).toContain("X'00FF'");
+    expect(script.sql).toContain(`"name" IS 'x'`);
+    expect(script.sql).not.toContain("DELETE");
+    expect(script.deleteCount).toBe(0);
+  });
+});

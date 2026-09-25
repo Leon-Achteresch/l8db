@@ -8,6 +8,7 @@ export type CellDraft = {
 export type CellDraftValidation = { ok: true } | { ok: false; error: string };
 
 const JSON_TYPE_PATTERN = /json/i;
+const TEXT_EDITOR_TYPE_PATTERN = /^(?:vector|halfvec|sparsevec|geometry|geography)\b/i;
 const LONG_TEXT_THRESHOLD = 50;
 
 export function valueToText(value: unknown): string {
@@ -31,6 +32,7 @@ export function toCellDraft(value: unknown, kind: CellEditorKind = "text"): Cell
 
 export function detectCellEditorKind(value: unknown, dataType?: string | null): CellEditorKind {
   if (dataType && JSON_TYPE_PATTERN.test(dataType)) return "json";
+  if (dataType && TEXT_EDITOR_TYPE_PATTERN.test(dataType)) return "text";
   if (typeof value === "object" && value !== null) return "json";
   if (typeof value === "string") {
     const trimmed = value.trim();

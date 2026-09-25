@@ -1,6 +1,6 @@
 [package]
 name = "l8db"
-version = "0.6.0"
+version = "0.7.0"
 description = "Fast, native desktop client for PostgreSQL and other databases."
 authors = ["Leon Achteresch"]
 edition = "2021"
@@ -29,20 +29,23 @@ async-trait = "0.1"
 bytes = "1"
 tempfile = "3"
 sha2 = "0.11"
+hmac = "0.13"
+percent-encoding = "2"
 url = "2"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 postgres-native-tls = "0.5"
 native-tls = "0.2"
 russh = "0.63"
+base64 = "0.22"
 bb8 = "0.9"
 bb8-postgres = "0.9"
-tokio = { version = "1", features = ["time", "macros", "rt", "net", "process", "io-util"] }
+tokio = { version = "1", features = ["time", "macros", "rt", "net", "process", "io-util", "fs", "sync"] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 mysql_async = { version = "0.37", default-features = false, features = ["minimal", "native-tls-tls"] }
-rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+rusqlite = { version = "0.40", default-features = false, features = ["bundled", "backup"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 chrono = "0.4"
 tokio-util = { version = "0.7", features = ["compat"] }
@@ -53,13 +56,22 @@ oracle = "0.6"
 scylla = "1"
 futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
-odbc-api = { version = "29", optional = true }
+odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80"], optional = true }
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-single-instance = "2"
 regex = "1"
+parquet = { version = "58", default-features = false, features = ["snap", "zstd", "lz4", "flate2-zlib-rs", "json"] }
+calamine = { version = "0.36", features = ["dates"] }
 toml_edit = "0.25"
+rsa = { version = "0.10.0-rc.18", features = ["sha2", "pkcs5"] }
+pkcs8 = { version = "0.11", features = ["pem", "encryption", "3des"] }
+flate2 = "1"
+
+[dev-dependencies]
+rand = "0.10"
 
 [features]
-default = []
+default = ["duckdb", "odbc"]
 duckdb = ["dep:duckdb"]
 odbc = ["dep:odbc-api"]
 
@@ -84,3 +96,6 @@ tiberius = { version = "0.12", default-features = false, features = ["tds73", "n
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
+
+[target.'cfg(not(windows))'.dependencies]
+odbc-api = { version = "29", default-features = false, features = ["vendored-unix-odbc"], optional = true }

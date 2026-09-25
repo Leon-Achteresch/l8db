@@ -6,7 +6,7 @@ use rusqlite::{Connection, OpenFlags};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_sql, hex_blob, rows_to_objects, unsupported, where_clause,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult,
     SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
@@ -797,8 +797,22 @@ impl DatabaseAdapter for SqliteAdapter {
         Ok(out)
     }
 
+    async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
+        create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Sqlite),
+        )
+    }
+
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
-        let sql = create_table_sql(req, quote, true);
+        let sql = create_table_ddl(
+            req,
+            quote,
+            true,
+            Some(super::constraints::ConstraintDialect::Sqlite),
+        )?;
         self.run(move |c| c.execute_batch(&sql).map_err(map_err))
             .await
     }
@@ -831,7 +845,44 @@ impl DatabaseAdapter for SqliteAdapter {
             "Schemas (nutze ATTACH DATABASE im SQL-Arbeitsplatz)",
         ))
     }
+
+    async fn snapshot_rows(
+        &self,
+        request: &super::snapshot::SnapshotRequest,
+    ) -> Result<TableData, String> {
+        let object = format!("{}.{}", quote(&request.schema), quote(&request.table));
+        let sql = super::snapshot::select_sql(request, &object, quote)?;
+        let mut collector = super::snapshot::Collector::new(request.max_rows);
+        self.run(move |c| {
+            let mut stmt = c.prepare(&sql).map_err(map_err)?;
+            let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+            let mut rows = stmt.query([]).map_err(map_err)?;
+            while let Some(row) = rows.next().map_err(map_err)? {
+                let mut object = serde_json::Map::new();
+                for (index, name) in columns.iter().enumerate() {
+                    object.insert(
+                        name.clone(),
+                        value_to_json(row.get_ref(index).map_err(map_err)?),
+                    );
+                }
+                collector.push(object)?;
+            }
+            collector.finish(columns)
+        })
+        .await
+    }
+
+    async fn schema_catalog(
+        &self,
+        schema: &str,
+        types: &[String],
+    ) -> Result<Vec<super::schema_catalog::CatalogObject>, String> {
+        self.schema_catalog_impl(schema, types).await
+    }
 }
+
+#[path = "sqlite_catalog.rs"]
+mod catalog;
 
 #[cfg(test)]
 mod tests {

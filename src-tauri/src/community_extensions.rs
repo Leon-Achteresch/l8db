@@ -21,6 +21,19 @@ struct Installed {
     #[serde(skip_serializing_if = "Option::is_none")]
     development_path: Option<String>,
 }
+const PERMISSIONS: &[&str] = &[
+    "database:read",
+    "database:write",
+    "network",
+    "filesystem:extension-storage",
+    "filesystem",
+    "clipboard:read",
+    "clipboard:write",
+    "process:execute",
+    "connections:read",
+    "connections:write",
+];
+
 fn safe_id(id: &str) -> bool {
     let parts: Vec<_> = id.split('.').collect();
     id.len() <= 160
@@ -281,7 +294,7 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             installed.grants =
                 serde_json::from_value(value["grants"].clone()).map_err(|e| e.to_string())?;
             if installed.grants.iter().any(|p| {
-                !["database:read", "filesystem:extension-storage", "network"].contains(&p.as_str())
+                !PERMISSIONS.contains(&p.as_str())
                     || !installed.archive["manifest"]["permissions"]
                         .as_array()
                         .is_some_and(|permissions| permissions.contains(&json!(p)))

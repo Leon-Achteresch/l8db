@@ -372,7 +372,7 @@ pub(crate) fn table_page_sql(
 }
 
 pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
-const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
+pub(crate) const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
 pub(crate) const TRANSACTION_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '30min'";
 
 pub(crate) fn session_guards(settings: &[&str]) -> String {
@@ -1012,7 +1012,10 @@ impl DatabaseAdapter for PostgresAdapter {
     ) -> Result<super::export::TableExportOutcome, String> {
         use super::export;
 
-        export::validate_csv_options(&request.options)?;
+        use super::export_formats::{FileFormat, RowSink, SinkSpec};
+        if request.format == FileFormat::Csv {
+            export::validate_csv_options(&request.options)?;
+        }
         let trimmed = request
             .filter
             .as_deref()
@@ -1027,7 +1030,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
         let column_rows = conn
             .query(
-                "SELECT column_name \
+                "SELECT column_name, data_type \
                  FROM information_schema.columns \
                  WHERE table_schema = $1 AND table_name = $2 \
                  ORDER BY ordinal_position",
@@ -1036,6 +1039,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .await
             .map_err(map_pg_err)?;
         let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+        let column_types: Vec<String> = column_rows.iter().map(|row| row.get(1)).collect();
         if columns.is_empty() {
             return Err("Keine Spalten für den Export gefunden.".to_string());
         }
@@ -1068,7 +1072,16 @@ impl DatabaseAdapter for PostgresAdapter {
         .map_err(map_pg_err)?;
 
         let max_rows = export::effective_max_rows(request.max_rows);
-        let mut writer = match export::CsvFileWriter::create(&request.path, &request.options) {
+        let kinds =
+            super::export_formats::parquet_kinds(&columns, &column_types, &[], &request.masks);
+        let mut writer = match RowSink::create(SinkSpec {
+            format: request.format,
+            path: &request.path,
+            columns: &columns,
+            kinds,
+            csv: Some(&request.options),
+            title: Some(&request.table),
+        }) {
             Ok(writer) => writer,
             Err(e) => {
                 let _ = conn.batch_execute("COMMIT").await;
@@ -1084,9 +1097,6 @@ impl DatabaseAdapter for PostgresAdapter {
         if let Err(e) =
             cancellable_export(&conn, self.ssl, &request.job_id, conn.query(&sql, &[])).await
         {
-            failure = Some(e);
-        }
-        if let Err(e) = writer.write_header(&columns) {
             failure = Some(e);
         }
 
@@ -1109,10 +1119,22 @@ impl DatabaseAdapter for PostgresAdapter {
                     }
                 };
             let fetched = data_rows.len() as i64;
-            for row in data_rows.iter().take(remaining as usize) {
-                let value: serde_json::Value = row.get(0);
-                let line = export::csv_row_line(&columns, &value, &request.masks, &request.options);
-                if let Err(e) = writer.write_line(&line) {
+            let mut values: Vec<serde_json::Value> = data_rows
+                .iter()
+                .take(remaining as usize)
+                .map(|row| row.get(0))
+                .collect();
+            for mask in request
+                .masks
+                .iter()
+                .filter(|mask| mask.mode == super::masking::MaskMode::Shuffle)
+            {
+                super::masking::shuffle_column(&mut values, &mask.column, total as u64);
+            }
+            for value in &values {
+                if let Err(e) =
+                    writer.write_row(&columns, value, &request.masks, Some(&request.options))
+                {
                     failure = Some(e);
                     break;
                 }
@@ -2139,236 +2161,18 @@ impl DatabaseAdapter for PostgresAdapter {
         request: &super::CsvImportRequest,
     ) -> Result<super::CsvImportOutcome, String> {
         self.ensure_writable()?;
-        if request.columns.is_empty() {
-            return Err("Keine Zielspalten zugeordnet.".to_string());
-        }
-        if request.file.is_some() && !request.rows.is_empty() {
-            return Err("Datei und direkte Datenzeilen dürfen nicht kombiniert werden.".into());
-        }
-        if request.rows.is_empty() && request.file.is_none() {
-            return Err("Keine Datenzeilen zum Import.".to_string());
-        }
-        if request.rows.len() > super::CSV_IMPORT_MAX_ROWS {
-            return Err(format!(
-                "Zu viele Zeilen: {} (Maximum {}).",
-                request.rows.len(),
-                super::CSV_IMPORT_MAX_ROWS
-            ));
-        }
-        let available = self
-            .list_import_columns(&request.schema, &request.table)
-            .await?;
-        let mut types: Vec<String> = Vec::with_capacity(request.columns.len());
-        for column in &request.columns {
-            let found = available
-                .iter()
-                .find(|c| &c.name == column)
-                .ok_or_else(|| format!("Unbekannte Spalte: {column}"))?;
-            if found.is_generated {
-                return Err(format!(
-                    "Generierte Spalte {column} kann nicht befüllt werden."
-                ));
-            }
-            types.push(found.data_type.clone());
-        }
-        for (index, row) in request.rows.iter().enumerate() {
-            if row.len() != request.columns.len() {
-                return Err(format!(
-                    "Zeile {} hat {} Werte, erwartet werden {}.",
-                    index + 1,
-                    row.len(),
-                    request.columns.len()
-                ));
-            }
-        }
-
-        let column_list = request
-            .columns
-            .iter()
-            .map(|c| quote_ident(c))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let placeholders = types
-            .iter()
-            .enumerate()
-            .map(|(i, ty)| format!("${}::text::{}", i + 1, ty))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let mut sql = format!(
-            "INSERT INTO {}.{} ({}) VALUES ({})",
-            quote_ident(&request.schema),
-            quote_ident(&request.table),
-            column_list,
-            placeholders
-        );
-
-        let (conn, connection) = super::execution::connect(async {
-            self.config
-                .connect(super::connection::tls_connector(self.ssl)?)
-                .await
-                .map_err(map_pg_err)
-        })
+        super::import::validate_request(request)?;
+        let plan = super::import::prepare_plan(
+            super::import::Dialect::Postgres,
+            self,
+            &request.schema,
+            &request.table,
+            &request.columns,
+            request.conflict.as_ref(),
+        )
         .await?;
-        tokio::spawn(async move {
-            let _ = connection.await;
-        });
-        if let Some(conflict) = &request.conflict {
-            let key = conn.query_opt("SELECT array_agg(a.attname::text ORDER BY k.position) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum, position) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum WHERE n.nspname = $1 AND t.relname = $2 AND c.conname = $3 AND c.contype IN ('p', 'u') AND NOT c.condeferrable GROUP BY c.oid", &[&request.schema, &request.table, &conflict.constraint]).await.map_err(map_pg_err)?.ok_or("Konfliktziel muss ein nicht aufschiebbarer Primär- oder Unique-Schlüssel sein.")?;
-            let keys: Vec<String> = key.get(0);
-            if keys.iter().any(|key| !request.columns.contains(key)) {
-                return Err("Alle Konfliktschlüssel müssen zugeordnet sein.".into());
-            }
-            let mut updates = Vec::new();
-            for name in &conflict.update_columns {
-                if keys.contains(name)
-                    || !request.columns.contains(name)
-                    || available.iter().any(|column| {
-                        column.name == *name && (column.is_generated || column.is_identity)
-                    })
-                {
-                    return Err(format!("Spalte {name} darf nicht aktualisiert werden."));
-                }
-                updates.push(format!(
-                    "{} = EXCLUDED.{}",
-                    quote_ident(name),
-                    quote_ident(name)
-                ));
-            }
-            sql.push_str(&format!(
-                " ON CONFLICT ON CONSTRAINT {} {}",
-                quote_ident(&conflict.constraint),
-                if updates.is_empty() {
-                    "DO NOTHING".to_string()
-                } else {
-                    format!("DO UPDATE SET {}", updates.join(", "))
-                }
-            ));
-        }
-        sql.push_str(" RETURNING (xmax = 0)");
-        let statement = self
-            .controlled(&conn, async {
-                conn.prepare(&sql).await.map_err(map_pg_err)
-            })
-            .await?;
-        self.controlled(&conn, async {
-            begin_guarded(&conn, "BEGIN", &[STREAM_IDLE_GUARD])
-                .await
-                .map_err(map_pg_err)
-        })
-        .await?;
-
-        let mut inserted: u64 = 0;
-        let mut updated: u64 = 0;
-        let mut skipped: u64 = 0;
-        let rows: Box<dyn Iterator<Item = Result<Vec<Option<String>>, String>> + Send> =
-            match &request.file {
-                Some(source) => {
-                    if source.indices.len() != request.columns.len() {
-                        return Err("CSV-Zuordnung stimmt nicht mit Zielspalten überein.".into());
-                    }
-                    Box::new(super::csv_stream::CsvRows::open(source)?)
-                }
-                None => Box::new(request.rows.clone().into_iter().map(Ok)),
-            };
-        for (index, row) in rows.enumerate() {
-            let row = match row {
-                Ok(row) => row,
-                Err(error) => {
-                    conn.batch_execute("ROLLBACK").await.map_err(map_pg_err)?;
-                    return Err(format!(
-                        "Datensatz {}: {error} Import vollständig zurückgerollt.",
-                        index + 1
-                    ));
-                }
-            };
-            let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = row
-                .iter()
-                .map(|v| v as &(dyn tokio_postgres::types::ToSql + Sync))
-                .collect();
-            match self
-                .controlled(&conn, async {
-                    conn.query_opt(&statement, &params)
-                        .await
-                        .map_err(map_pg_err)
-                })
-                .await
-            {
-                Ok(n) => {
-                    match n {
-                        Some(row) if row.get::<_, bool>(0) => inserted += 1,
-                        Some(_) => updated += 1,
-                        None => skipped += 1,
-                    }
-                    if (index + 1) % 100 == 0 || index + 1 == request.rows.len() {
-                        super::execution::progress((index + 1) as u64);
-                    }
-                }
-                Err(err) => {
-                    let failed_column = request
-                        .columns
-                        .iter()
-                        .find(|column| err.contains(column.as_str()))
-                        .cloned();
-                    let message = match tokio::time::timeout(super::execution::connection_duration(), conn.simple_query("ROLLBACK")).await {
-                        Ok(Ok(_)) => format!("{err} Import vollständig zurückgerollt."),
-                        _ => format!("{err} Rollback nicht bestätigt; Serverzustand vor erneutem Import prüfen."),
-                    };
-                    return Ok(super::CsvImportOutcome {
-                        inserted_rows: 0,
-                        updated_rows: 0,
-                        skipped_rows: 0,
-                        failed_row: Some((index + 1) as u32),
-                        failed_column,
-                        error: Some(message),
-                    });
-                }
-            }
-        }
-
-        if super::execution::cancellation_token().is_cancelled() {
-            tokio::time::timeout(
-                super::execution::connection_duration(),
-                conn.simple_query("ROLLBACK"),
-            )
-            .await
-            .map_err(|_| {
-                "Abbruch angefordert, Rollback nicht bestätigt. Serverzustand prüfen.".to_string()
-            })?
-            .map_err(map_pg_err)?;
-            return Ok(super::CsvImportOutcome {
-                inserted_rows: 0,
-                updated_rows: 0,
-                skipped_rows: 0,
-                failed_row: None,
-                failed_column: None,
-                error: Some("Import vom Benutzer abgebrochen und zurückgerollt.".into()),
-            });
-        }
-        if let Err(err) = self
-            .controlled(&conn, async {
-                conn.simple_query("COMMIT").await.map_err(map_pg_err)
-            })
-            .await
-        {
-            let message = format!("Commit-Ergebnis nicht bestätigt: {err}. Vor erneutem Import den Serverzustand prüfen.");
-            return Ok(super::CsvImportOutcome {
-                inserted_rows: 0,
-                updated_rows: 0,
-                skipped_rows: 0,
-                failed_row: None,
-                failed_column: None,
-                error: Some(message),
-            });
-        }
-
-        Ok(super::CsvImportOutcome {
-            inserted_rows: inserted,
-            updated_rows: updated,
-            skipped_rows: skipped,
-            failed_row: None,
-            failed_column: None,
-            error: None,
-        })
+        let session = super::import::PgTx::open(&self.config, self.ssl).await?;
+        super::import::run_import(plan, Box::new(session), request).await
     }
 
     async fn add_column(
@@ -3056,6 +2860,38 @@ impl DatabaseAdapter for PostgresAdapter {
         self.list_constraints_impl(schema, table).await
     }
 
+    async fn column_value_options(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::constraints::ColumnValueOptions>, String> {
+        let conn = self.get_meta().await?;
+        self.timed(conn.cancel_token(), async {
+            let rows = conn
+                .query(
+                    "SELECT a.attname::text, array_agg(e.enumlabel::text ORDER BY e.enumsortorder) \
+                     FROM pg_attribute a \
+                     JOIN pg_class c ON c.oid = a.attrelid \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     JOIN pg_type t ON t.oid = a.atttypid \
+                     JOIN pg_enum e ON e.enumtypid = COALESCE(NULLIF(t.typbasetype, 0), t.oid) \
+                     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+                     GROUP BY a.attname, a.attnum ORDER BY a.attnum",
+                    &[&schema, &table],
+                )
+                .await
+                .map_err(map_pg_err)?;
+            Ok(rows
+                .iter()
+                .map(|r| super::constraints::ColumnValueOptions {
+                    column: r.get(0),
+                    values: r.get(1),
+                })
+                .collect())
+        })
+        .await
+    }
+
     async fn install_extension(&self, name: &str, schema: Option<&str>) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
@@ -3121,12 +2957,12 @@ impl DatabaseAdapter for PostgresAdapter {
         &self,
         req: &super::CreateTableRequest,
     ) -> Result<String, String> {
-        Ok(Self::build_create_table_sql(req))
+        Self::build_create_table_sql(req)
     }
 
     async fn create_table(&self, req: &super::CreateTableRequest) -> Result<(), String> {
         self.ensure_writable()?;
-        self.run_ddl(&[Self::build_create_table_sql(req)], true)
+        self.run_ddl(&[Self::build_create_table_sql(req)?], true)
             .await
     }
 
@@ -4365,8 +4201,9 @@ impl PostgresAdapter {
                             is_unique: false,
                         })
                         .collect(),
+                    ..Default::default()
                 };
-                Ok(Self::build_create_table_sql(&request))
+                Self::build_create_table_sql(&request)
             }
             "view" => {
                 let definition = self.get_view_definition(source_schema, name).await?;
@@ -4508,9 +4345,8 @@ impl PostgresAdapter {
         Ok(results)
     }
 
-    fn build_create_table_sql(req: &super::CreateTableRequest) -> String {
+    fn build_create_table_sql(req: &super::CreateTableRequest) -> Result<String, String> {
         let mut parts: Vec<String> = Vec::new();
-        let mut pk_cols: Vec<String> = Vec::new();
 
         for col in &req.columns {
             let mut def = format!("{} {}", quote_ident(&col.name), col.data_type);
@@ -4526,27 +4362,26 @@ impl PostgresAdapter {
                 def.push_str(" UNIQUE");
             }
             parts.push(def);
-            if col.is_primary_key {
-                pk_cols.push(quote_ident(&col.name));
-            }
         }
 
-        if !pk_cols.is_empty() {
-            parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
-        }
+        parts.extend(super::primary_key_clause(req, quote_ident));
+        parts.extend(super::constraints::table_clauses(
+            super::constraints::ConstraintDialect::Postgres,
+            req,
+        )?);
 
         let if_not_exists = if req.if_not_exists {
             "IF NOT EXISTS "
         } else {
             ""
         };
-        format!(
+        Ok(format!(
             "CREATE TABLE {}{}.{} (\n  {}\n)",
             if_not_exists,
             quote_ident(&req.schema),
             quote_ident(&req.name),
             parts.join(",\n  "),
-        )
+        ))
     }
 }
 
@@ -4773,9 +4608,10 @@ mod tests {
                     is_unique: false,
                 },
             ],
+            ..Default::default()
         };
 
-        let ddl = PostgresAdapter::build_create_table_sql(&req);
+        let ddl = PostgresAdapter::build_create_table_sql(&req).unwrap();
         assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS \"public\".\"kunde\" ("));
         assert!(ddl.contains("\"id\" bigserial NOT NULL"));
         assert!(ddl.contains("\"email\" text NOT NULL UNIQUE"));
@@ -4845,6 +4681,7 @@ mod tests {
             path: path.to_str().unwrap().into(),
             masks: vec![],
             max_rows: None,
+            format: Default::default(),
             options: CsvExportOptions {
                 delimiter: ",".into(),
                 quote: "\"".into(),
@@ -4948,6 +4785,7 @@ mod tests {
             has_header: true,
             empty_as_null: true,
             indices: vec![0, 1],
+            ..Default::default()
         };
         let request = crate::db::CsvImportRequest {
             file: Some(source),
@@ -5063,6 +4901,7 @@ mod tests {
                         options: options.clone(),
                         masks: vec![],
                         max_rows: None,
+                        format: Default::default(),
                     },
                     &|_| {},
                 )

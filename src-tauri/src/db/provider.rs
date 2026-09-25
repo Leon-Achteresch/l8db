@@ -14,6 +14,13 @@ pub enum DatabaseKind {
     Cassandra,
     Duckdb,
     Odbc,
+    Elasticsearch,
+    Influxdb,
+    SqliteHttp,
+    Dynamodb,
+    Athena,
+    Bigquery,
+    Snowflake,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -50,6 +57,9 @@ pub struct Capabilities {
     pub sql_filter: bool,
     pub read_only_mode: bool,
     pub csv_import: bool,
+    pub import_conflicts: bool,
+    pub table_copy: bool,
+    pub test_data: bool,
     pub column_search: bool,
     pub source_search: bool,
     pub schema_snapshot: bool,
@@ -71,6 +81,7 @@ pub struct Capabilities {
     pub object_admin: bool,
     pub ssl: bool,
     pub ssh: bool,
+    pub backup: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -108,6 +119,9 @@ const NONE: Capabilities = Capabilities {
     sql_filter: true,
     read_only_mode: false,
     csv_import: false,
+    import_conflicts: false,
+    table_copy: false,
+    test_data: false,
     column_search: false,
     source_search: false,
     schema_snapshot: false,
@@ -129,6 +143,7 @@ const NONE: Capabilities = Capabilities {
     query_cancel: false,
     ssl: true,
     ssh: true,
+    backup: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -146,12 +161,16 @@ const SQL_COMMON: Capabilities = Capabilities {
     explain: true,
     overview: true,
     table_script: true,
+    csv_import: true,
+    import_conflicts: true,
+    table_copy: true,
+    test_data: true,
     ..NONE
 };
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 11] = [
+    pub const ALL: [DatabaseKind; 18] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -163,11 +182,19 @@ impl DatabaseKind {
         DatabaseKind::Cassandra,
         DatabaseKind::Duckdb,
         DatabaseKind::Odbc,
+        DatabaseKind::Elasticsearch,
+        DatabaseKind::Influxdb,
+        DatabaseKind::SqliteHttp,
+        DatabaseKind::Dynamodb,
+        DatabaseKind::Athena,
+        DatabaseKind::Bigquery,
+        DatabaseKind::Snowflake,
     ];
 
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Postgres => Capabilities {
+                backup: true,
                 query_stats: true,
                 debugger: true,
                 query_cancel: true,
@@ -205,14 +232,17 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
+                backup: true,
                 query_stats: true,
                 sessions: true,
                 transactions: true,
                 table_transactions: true,
                 row_edit: true,
+                data_compare: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Sqlite => Capabilities {
+                backup: true,
                 query_cancel: true,
                 databases: false,
                 ssl: false,
@@ -221,9 +251,11 @@ impl DatabaseKind {
                 transactions: true,
                 table_transactions: false,
                 row_edit: true,
+                data_compare: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Duckdb => Capabilities {
+                test_data: false,
                 databases: false,
                 ssl: false,
                 ssh: false,
@@ -231,6 +263,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                backup: true,
                 query_stats: true,
                 proxy_user: true,
                 sessions: true,
@@ -238,9 +271,12 @@ impl DatabaseKind {
                 transactions: true,
                 table_transactions: true,
                 row_edit: true,
+                data_compare: true,
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                csv_import: true,
+                table_copy: true,
                 query_stats: true,
                 ssl: false,
                 views: true,
@@ -254,7 +290,6 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
-                explain: false,
                 query_stats: true,
                 object_grants: true,
                 proxy_user: true,
@@ -286,6 +321,10 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Mongodb => Capabilities {
+                csv_import: true,
+                import_conflicts: true,
+                test_data: true,
+                backup: true,
                 ssl: false,
                 indexes: true,
                 ddl: true,
@@ -294,6 +333,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Redis => Capabilities {
+                backup: true,
                 schemas: false,
                 ssl: false,
                 query_language: "redis",
@@ -305,6 +345,56 @@ impl DatabaseKind {
                 views: true,
                 ddl: true,
                 ssl: false,
+                ..NONE
+            },
+            DatabaseKind::Elasticsearch => Capabilities {
+                databases: false,
+                filter_hint: "SQL-Bedingung, Lucene-Query (status:active AND age:>21) oder Query-DSL als JSON",
+                ..NONE
+            },
+            DatabaseKind::Influxdb => Capabilities {
+                schemas: false,
+                filter_hint: "SQL-Bedingung auf Tags und Felder, z. B. \"host\" = 'a' AND \"usage\" > 50",
+                ..NONE
+            },
+            DatabaseKind::SqliteHttp => Capabilities {
+                ssl: false,
+                ssh: false,
+                view_editor: false,
+                functions: false,
+                alter_columns: false,
+                constraints: false,
+                overview: false,
+                row_edit: true,
+                ..SQL_COMMON
+            },
+            DatabaseKind::Dynamodb => Capabilities {
+                databases: false,
+                schemas: false,
+                ssl: false,
+                ssh: false,
+                indexes: true,
+                transactions: true,
+                row_edit: true,
+                filter_hint: "PartiQL-WHERE-Ausdruck, z. B. \"status\" = 'aktiv'",
+                ..NONE
+            },
+            DatabaseKind::Athena => Capabilities {
+                ssl: false,
+                ssh: false,
+                query_cancel: true,
+                server_output: true,
+                filter_hint: "SQL-WHERE-Ausdruck (Trino), z. B. \"dt\" = '2026-01-01'",
+                ..NONE
+            },
+            DatabaseKind::Bigquery | DatabaseKind::Snowflake => Capabilities {
+                databases: self == DatabaseKind::Snowflake,
+                proxy_user: self == DatabaseKind::Snowflake,
+                views: true,
+                explain: true,
+                query_cancel: true,
+                ssl: false,
+                ssh: false,
                 ..NONE
             },
         }
@@ -323,6 +413,13 @@ impl DatabaseKind {
             DatabaseKind::Cassandra => &["cassandra", "scylla"],
             DatabaseKind::Duckdb => &["duckdb"],
             DatabaseKind::Odbc => &["odbc"],
+            DatabaseKind::Elasticsearch => &["elasticsearch", "opensearch", "https", "http"],
+            DatabaseKind::Influxdb => &["influxdb", "https", "http"],
+            DatabaseKind::SqliteHttp => &["libsql", "d1"],
+            DatabaseKind::Dynamodb => &["dynamodb"],
+            DatabaseKind::Athena => &["athena"],
+            DatabaseKind::Bigquery => &["bigquery"],
+            DatabaseKind::Snowflake => &["snowflake"],
         }
     }
 
@@ -472,10 +569,17 @@ const PROVIDERS: &[Provider] = &[
     my("oceanbase", "OceanBase", 2881, "mysql://root@localhost:2881/test", "OceanBase im MySQL-Modus.", &[]),
     Provider { id: "sqlite", name: "SQLite", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/app.db", hint: "Pfad zu einer SQLite-Datei oder :memory:. Eingebetteter Treiber, keine Installation nötig.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "libsql", name: "libSQL / Turso (lokal)", group: "Dateibasiert", kind: DatabaseKind::Sqlite, port: None, placeholder: "/Users/name/daten/local.db", hint: "Lokale libSQL-Dateien sind SQLite-kompatibel.", hosts: &[], driver: Driver::Builtin },
-    Provider { id: "duckdb", name: "DuckDB", group: "Dateibasiert", kind: DatabaseKind::Duckdb, port: None, placeholder: "/Users/name/daten/analytics.duckdb", hint: "Analytische Datei-Datenbank. Benötigt einen Build mit dem Cargo-Feature duckdb.", hosts: &[], driver: Driver::CargoFeature { feature: "duckdb" } },
+    Provider { id: "duckdb", name: "DuckDB", group: "Dateibasiert", kind: DatabaseKind::Duckdb, port: None, placeholder: "/Users/name/daten/analytics.duckdb", hint: "Analytische Datei-Datenbank, eingebettet. Öffnet auch CSV- und Parquet-Dateien.", hosts: &[], driver: Driver::CargoFeature { feature: "duckdb" } },
+    Provider { id: "turso", name: "libSQL / Turso (remote)", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "libsql://token:AUTH_TOKEN@datenbank-org.turso.io", hint: "HTTP-Pipeline-API von libSQL/sqld. Auth-Token als Passwort; ?tls=false für lokale sqld-Server auf Port 8080.", hosts: &[".turso.io"], driver: Driver::Builtin },
+    Provider { id: "d1", name: "Cloudflare D1", group: "SQLite über HTTP", kind: DatabaseKind::SqliteHttp, port: None, placeholder: "d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/datenbank", hint: "Cloudflare-API mit Account-ID als Benutzer und API-Token (D1 Edit) als Passwort. Datenbank per Name oder UUID.", hosts: &["api.cloudflare.com"], driver: Driver::Builtin },
     Provider { id: "mssql", name: "SQL Server", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://sa:Password1@localhost:1433/master?encrypt=false", hint: "TDS-Protokoll. Parameter: encrypt=true|false, trust_server_certificate=true.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "azure-sql", name: "Azure SQL", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://user:password@server.database.windows.net:1433/db?encrypt=true", hint: "Azure erfordert Verschlüsselung. Login im Format user oder user@server.", hosts: &[".database.windows.net"], driver: Driver::Builtin },
     Provider { id: "clickhouse", name: "ClickHouse", group: "Analytisch", kind: DatabaseKind::Clickhouse, port: Some(8123), placeholder: "clickhouse://default:password@localhost:8123/default", hint: "HTTP-Schnittstelle auf Port 8123 (8443 mit ?secure=1).", hosts: &[".clickhouse.cloud"], driver: Driver::Builtin },
+    Provider { id: "influxdb", name: "InfluxDB", group: "Analytisch", kind: DatabaseKind::Influxdb, port: Some(8086), placeholder: "influxdb://token:API_TOKEN@localhost:8086/bucket?org=meine-org", hint: "Token als Passwort. v2 (Flux/InfluxQL, Port 8086) und v3 (SQL/InfluxQL, Port 8181) werden erkannt, ?version=2|3 erzwingt. Zeitraum der Tabellenansicht mit ?range=7d (Standard 1h, all für alles).", hosts: &[".influxdata.com"], driver: Driver::Builtin },
+    Provider { id: "elasticsearch", name: "Elasticsearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "elasticsearch://elastic:password@localhost:9200", hint: "Indizes erscheinen als Tabellen. Basic-Auth, API-Key (Benutzer apikey) oder ohne Anmeldung. Queries als SQL oder Dev-Tools-Request, z. B. GET index/_search {…}.", hosts: &[".elastic-cloud.com", ".found.io", ".elastic.cloud"], driver: Driver::Builtin },
+    Provider { id: "opensearch", name: "OpenSearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "opensearch://admin:password@localhost:9200?sslmode=require", hint: "OpenSearch mit SQL-Plugin oder Dev-Tools-Requests. sslmode=require akzeptiert selbstsignierte Zertifikate.", hosts: &[".es.amazonaws.com", ".aoss.amazonaws.com"], driver: Driver::Builtin },
+    Provider { id: "bigquery", name: "Google BigQuery", group: "Analytisch", kind: DatabaseKind::Bigquery, port: None, placeholder: "bigquery://my-project/my_dataset?location=EU", hint: "REST API v2. Anmeldung per Application Default Credentials (gcloud auth application-default login), Service-Account-JSON oder Zugriffstoken. Datasets erscheinen als Schemas.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "snowflake", name: "Snowflake", group: "Analytisch", kind: DatabaseKind::Snowflake, port: None, placeholder: "snowflake://USER@myorg-account/DB/PUBLIC?warehouse=COMPUTE_WH&role=ANALYST", hint: "SQL API v2 mit Key-Pair (JWT), Programmatic Access Token oder OAuth. Rolle und Warehouse lassen sich wechseln.", hosts: &[".snowflakecomputing.com"], driver: Driver::Builtin },
     Provider { id: "mongodb", name: "MongoDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@localhost:27017/app?authSource=admin", hint: "Collections erscheinen als Tabellen. Filter und Queries sind JSON-Dokumente.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "atlas", name: "MongoDB Atlas", group: "NoSQL", kind: DatabaseKind::Mongodb, port: None, placeholder: "mongodb+srv://user:password@cluster0.abcde.mongodb.net/app", hint: "SRV-URL aus dem Atlas-Connect-Dialog.", hosts: &[".mongodb.net"], driver: Driver::Builtin },
     Provider { id: "documentdb", name: "Amazon DocumentDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@cluster.region.docdb.amazonaws.com:27017/app?tls=true&retryWrites=false", hint: "MongoDB-API. retryWrites=false ist erforderlich.", hosts: &[".docdb.amazonaws.com"], driver: Driver::Builtin },
@@ -488,6 +592,9 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "oracle", name: "Oracle Database", group: "Enterprise", kind: DatabaseKind::Oracle, port: Some(1521), placeholder: "oracle://system:password@localhost:1521/FREEPDB1", hint: "Benötigt den Oracle Instant Client (wird zur Laufzeit geladen). Schemas entsprechen Benutzern.", hosts: &["localhost", "127.0.0.1"], driver: Driver::RuntimeLibrary { library: "Oracle Instant Client" } },
     Provider { id: "cassandra", name: "Apache Cassandra", group: "Wide-Column", kind: DatabaseKind::Cassandra, port: Some(9042), placeholder: "cassandra://cassandra:cassandra@localhost:9042/keyspace", hint: "CQL über das native Protokoll. Keyspaces erscheinen als Schemas.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "scylladb", name: "ScyllaDB", group: "Wide-Column", kind: DatabaseKind::Cassandra, port: Some(9042), placeholder: "cassandra://scylla:password@node.clusters.scylla.cloud:9042/keyspace", hint: "Cassandra-kompatibel.", hosts: &[".scylla.cloud"], driver: Driver::Builtin },
+    Provider { id: "dynamodb", name: "Amazon DynamoDB", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key (Benutzer/Passwort), AWS-Profil (?profile=) oder Umgebung. Tabellen per Scan, Queries in PartiQL.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "dynamodb-local", name: "DynamoDB Local / LocalStack", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000", hint: "Eigener Endpunkt über ?endpoint=. Beliebige Schlüssel genügen.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "athena", name: "Amazon Athena", group: "AWS", kind: DatabaseKind::Athena, port: None, placeholder: "athena://eu-central-1/AwsDataCatalog?profile=default&workgroup=primary", hint: "Nativ über die Athena-API. Host ist die Region, Pfad der Katalog. Optional ?output=s3://bucket/pfad/ und ?schema=default.", hosts: &[], driver: Driver::Builtin },
     odbc("odbc", "ODBC (generisch)", None, "", "odbc://?Driver=Name&Server=host&Database=db&UID=user&PWD=pass", "Beliebiger installierter ODBC-Treiber. Die Query-Parameter bilden den Connection String."),
     odbc("db2", "IBM Db2", Some(50000), "IBM DB2 ODBC DRIVER", "odbc://db2inst1:password@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER", "Benötigt den IBM Data Server Driver (ODBC)."),
     odbc("firebird", "Firebird", Some(3050), "Firebird/InterBase(r) driver", "odbc://SYSDBA:masterkey@localhost:3050/%2Fdata%2Fdb.fdb?Driver=Firebird%2FInterBase(r)%20driver", "Benötigt den Firebird ODBC-Treiber."),
@@ -495,10 +602,10 @@ const PROVIDERS: &[Provider] = &[
     odbc("sybase", "SAP ASE (Sybase)", Some(5000), "Adaptive Server Enterprise", "odbc://sa:password@localhost:5000/master?Driver=Adaptive%20Server%20Enterprise", "Benötigt den SAP ASE ODBC-Treiber."),
     odbc("hana", "SAP HANA", Some(30015), "HDBODBC", "odbc://SYSTEM:password@localhost:30015/?Driver=HDBODBC", "Benötigt den SAP HANA Client (HDBODBC)."),
     odbc("teradata", "Teradata", Some(1025), "Teradata Database ODBC Driver", "odbc://dbc:dbc@localhost:1025/?Driver=Teradata%20Database%20ODBC%20Driver", "Benötigt Teradata Tools and Utilities."),
-    odbc("snowflake", "Snowflake", Some(443), "SnowflakeDSIIDriver", "odbc://user:password@account.snowflakecomputing.com:443/DB?Driver=SnowflakeDSIIDriver&Warehouse=WH&Schema=PUBLIC", "Benötigt den Snowflake ODBC-Treiber."),
-    odbc("bigquery", "Google BigQuery", None, "Simba ODBC Driver for Google BigQuery", "odbc://?Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery&Catalog=project&OAuthMechanism=0&KeyFilePath=%2Fpath%2Fkey.json&Email=sa%40project.iam.gserviceaccount.com", "Benötigt den Simba BigQuery ODBC-Treiber."),
+    odbc("snowflake-odbc", "Snowflake (ODBC)", Some(443), "SnowflakeDSIIDriver", "odbc://user:password@account.snowflakecomputing.com:443/DB?Driver=SnowflakeDSIIDriver&Warehouse=WH&Schema=PUBLIC", "Benötigt den Snowflake ODBC-Treiber."),
+    odbc("bigquery-odbc", "Google BigQuery (ODBC)", None, "Simba ODBC Driver for Google BigQuery", "odbc://?Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery&Catalog=project&OAuthMechanism=0&KeyFilePath=%2Fpath%2Fkey.json&Email=sa%40project.iam.gserviceaccount.com", "Benötigt den Simba BigQuery ODBC-Treiber."),
     odbc("databricks", "Databricks", Some(443), "Simba Spark ODBC Driver", "odbc://token:dapi...@adb-123.azuredatabricks.net:443/?Driver=Simba%20Spark%20ODBC%20Driver&HTTPPath=%2Fsql%2F1.0%2Fwarehouses%2Fabc&SSL=1&ThriftTransport=2&AuthMech=3", "Benötigt den Databricks (Simba Spark) ODBC-Treiber."),
-    odbc("athena", "Amazon Athena", Some(443), "Simba Athena ODBC Driver", "odbc://?Driver=Simba%20Athena%20ODBC%20Driver&AwsRegion=eu-central-1&S3OutputLocation=s3%3A%2F%2Fbucket%2F&AuthenticationType=IAM%20Credentials&UID=key&PWD=secret", "Benötigt den Athena ODBC-Treiber."),
+    odbc("athena-odbc", "Amazon Athena (ODBC)", Some(443), "Simba Athena ODBC Driver", "odbc://?Driver=Simba%20Athena%20ODBC%20Driver&AwsRegion=eu-central-1&S3OutputLocation=s3%3A%2F%2Fbucket%2F&AuthenticationType=IAM%20Credentials&UID=key&PWD=secret", "Benötigt den Athena ODBC-Treiber."),
     odbc("vertica", "Vertica", Some(5433), "Vertica", "odbc://dbadmin:password@localhost:5433/VMart?Driver=Vertica", "Benötigt den Vertica ODBC-Treiber."),
     odbc("exasol", "Exasol", Some(8563), "EXASOL Driver", "odbc://sys:exasol@localhost:8563/?Driver=EXASOL%20Driver&EXAHOST=localhost%3A8563", "Benötigt den Exasol ODBC-Treiber."),
     odbc("trino", "Trino / Presto", Some(8080), "Trino ODBC Driver", "odbc://user@localhost:8080/hive?Driver=Trino%20ODBC%20Driver", "Benötigt den Starburst/Trino ODBC-Treiber."),
@@ -651,10 +758,7 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             }
         }
         Driver::CargoFeature { feature } => {
-            let compiled = match feature {
-                "duckdb" => cfg!(feature = "duckdb"),
-                _ => false,
-            };
+            let compiled = feature == "duckdb" && cfg!(feature = "duckdb");
             DriverStatus {
                 available: compiled,
                 detail: if compiled {
@@ -679,6 +783,7 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
 
 #[cfg(feature = "odbc")]
 fn odbc_environment_status() -> Result<Vec<String>, String> {
+    super::odbc::configure_system_ini();
     let env = odbc_api::Environment::new()
         .map_err(|e| format!("ODBC-Treibermanager nicht verfügbar: {e}"))?;
     Ok(env
@@ -691,7 +796,7 @@ fn odbc_environment_status() -> Result<Vec<String>, String> {
 
 #[cfg(not(feature = "odbc"))]
 fn odbc_environment_status() -> Result<Vec<String>, String> {
-    Err("ODBC ist in diesem Build nicht enthalten. Build mit: cargo tauri build --features odbc (benötigt unixODBC)".to_string())
+    Err("ODBC ist in diesem Build nicht enthalten (mit --no-default-features gebaut). Build mit: cargo tauri build --features odbc".to_string())
 }
 
 pub fn list_providers() -> Vec<ProviderInfo> {
@@ -734,14 +839,17 @@ pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
         },
         DatabaseKind::Odbc => {
             if !cfg!(feature = "odbc") {
-                return Err("ODBC ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features odbc (benötigt unixODBC)".to_string());
+                return Err("ODBC ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features odbc".to_string());
             }
             match std::env::consts::OS {
                 "macos" => Ok("brew install unixodbc"),
-                "linux" => Ok("sudo -n apt-get install -y unixodbc unixodbc-dev"),
+                "linux" => Ok("sudo -n apt-get install -y unixodbc"),
                 "windows" => Err("Der ODBC-Datenquellen-Administrator ist Teil von Windows. Hersteller-Treiber zusätzlich installieren, siehe https://learn.microsoft.com/sql/odbc/admin/odbc-data-source-administrator".to_string()),
                 os => Err(format!("Automatische Installation wird auf {os} nicht unterstützt. Siehe https://www.unixodbc.org")),
             }
+        }
+        DatabaseKind::Duckdb if cfg!(feature = "duckdb") => {
+            Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string())
         }
         DatabaseKind::Duckdb => Err("DuckDB ist in diesem Build nicht enthalten und kann nicht nachinstalliert werden. Erneut bauen mit: bun run tauri build -- --features duckdb".to_string()),
         _ => Err("Dieser Treiber ist eingebettet und bereits verfügbar.".to_string()),
@@ -806,11 +914,8 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     if output.status.success() {
         let mut result = short;
         let still_missing = !kind_driver_status(kind).available
-            && match kind {
-                DatabaseKind::Oracle => true,
-                DatabaseKind::Odbc => cfg!(feature = "odbc"),
-                _ => false,
-            };
+            && (kind == DatabaseKind::Oracle
+                || (kind == DatabaseKind::Odbc && cfg!(feature = "odbc")));
         if still_missing {
             result.push_str(
                 "\n\nHinweis: Die Installation war erfolgreich, der Treiber wird aber noch nicht erkannt. Starte l8db neu und prüfe den Status danach erneut.",
@@ -875,9 +980,21 @@ mod tests {
     }
 
     #[test]
-    fn duckdb_reports_rebuild() {
+    fn duckdb_is_embedded_by_default() {
         let err = install_command(DatabaseKind::Duckdb).unwrap_err();
-        assert!(err.contains("duckdb"), "{err}");
+        if cfg!(feature = "duckdb") {
+            assert!(err.contains("eingebettet"), "{err}");
+            assert!(kind_driver_status(DatabaseKind::Duckdb).available);
+        } else {
+            assert!(err.contains("duckdb"), "{err}");
+        }
+    }
+
+    #[cfg(feature = "odbc")]
+    #[test]
+    fn odbc_driver_manager_is_bundled() {
+        let status = kind_driver_status(DatabaseKind::Odbc);
+        assert!(status.available, "{}", status.detail);
     }
 
     #[test]

@@ -1,5 +1,11 @@
-import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
+import {
+  isReadOnlyConnection,
+  type SavedConnection,
+  useConnectionsStore,
+  usesTunnel,
+} from "@/lib/connections";
 import { type DatabaseKind, registerReadOnlyResolver } from "@/lib/db";
+import { isProductionLocked } from "@/lib/environments";
 import { capabilitiesFor } from "@/lib/providers";
 import { extractUrlPassword, injectUrlPassword, peekSecret } from "@/lib/secrets";
 
@@ -90,12 +96,19 @@ export function effectiveConnectionString(connection: SavedConnection): string {
     cached && extractUrlPassword(connection.connectionString) === null
       ? injectUrlPassword(connection.connectionString, cached)
       : connection.connectionString;
+  const serverReadOnly =
+    isReadOnlyConnection(connection) ||
+    (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode);
   const base = proxyUserConnectionString(
-    isReadOnlyConnection(connection) ? readOnlyConnectionString(raw) : raw,
+    serverReadOnly ? readOnlyConnectionString(raw) : raw,
     connection,
   );
-  if (!connection.ssh?.host) return base;
+  if (!usesTunnel(connection)) return base;
   if (!connection.tunnelPort)
-    throw new Error("SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden.");
+    throw new Error(
+      connection.ssh?.host
+        ? "SSH-Tunnel ist nicht verbunden. Bitte erneut verbinden."
+        : "Proxy-Tunnel ist nicht verbunden. Bitte erneut verbinden.",
+    );
   return tunneledConnectionString(base, connection.tunnelPort, connection.kind);
 }

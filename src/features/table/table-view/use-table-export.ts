@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { useActiveConnection } from "@/lib/connections";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
+import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
+import { applyMasks, type ColumnMask } from "@/lib/masking";
 import type { useTableRowsQuery } from "@/lib/queries";
 
 type Options = {
@@ -19,6 +21,7 @@ type Options = {
   totalCount: number | null | undefined;
   data: ReturnType<typeof useTableRowsQuery>["data"];
   connection: ReturnType<typeof useActiveConnection>;
+  masks?: ColumnMask[];
 };
 
 export function useTableExport({
@@ -31,10 +34,12 @@ export function useTableExport({
   totalCount,
   data,
   connection,
+  masks = [],
 }: Options) {
   const [exporting, setExporting] = useState(false);
   const [csvExportOpen, setCsvExportOpen] = useState(false);
   const [xlsxExportOpen, setXlsxExportOpen] = useState(false);
+  const [dataExportFormat, setDataExportFormat] = useState<DataExportFormat | null>(null);
   const gridExportHotkey = useResolvedHotkey("grid.export");
   useHotkey(
     gridExportHotkey,
@@ -63,8 +68,8 @@ export function useTableExport({
     });
   }, [data, exportColumns]);
   const exportRows = useMemo(
-    () => (csvExportOpen || xlsxExportOpen ? getExportRows() : []),
-    [csvExportOpen, xlsxExportOpen, getExportRows],
+    () => (csvExportOpen || xlsxExportOpen || dataExportFormat ? getExportRows() : []),
+    [csvExportOpen, xlsxExportOpen, dataExportFormat, getExportRows],
   );
 
   const fullExportSource = useMemo(
@@ -85,7 +90,7 @@ export function useTableExport({
     if (!data) return;
     setExporting(true);
     try {
-      const exportRows = getExportRows();
+      const exportRows = applyMasks(exportColumns, getExportRows(), masks);
       const ext = format === "json" ? "json" : "sql";
       let content: string;
       if (format === "json") {
@@ -122,7 +127,9 @@ export function useTableExport({
     csvExportOpen,
     setCsvExportOpen,
     xlsxExportOpen,
+    dataExportFormat,
     setXlsxExportOpen,
+    setDataExportFormat,
     exportColumns,
     exportRows,
     fullExportSource,
