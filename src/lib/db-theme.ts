@@ -20,6 +20,8 @@ const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
   cassandra: { hue: 28, chroma: 0.12, glow: 0.14, shader: ["#4a2c14", "#e08a3c", "#ffe2c4"] },
   duckdb: { hue: 75, chroma: 0.12, glow: 0.14, shader: ["#3a3a14", "#e6d34a", "#fff6c2"] },
   odbc: { hue: 230, chroma: 0.08, glow: 0.1, shader: ["#20243a", "#8ea0d4", "#e4e8f6"] },
+  bigquery: { hue: 255, chroma: 0.14, glow: 0.18, shader: ["#15306b", "#669df6", "#dbe8ff"] },
+  snowflake: { hue: 220, chroma: 0.13, glow: 0.2, shader: ["#0b3354", "#29b5e8", "#d2f1fc"] },
 };
 
 const PROVIDER_THEMES: Record<string, DbThemeTokens> = {

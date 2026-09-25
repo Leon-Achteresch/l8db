@@ -9,7 +9,9 @@ export type SqlDialect =
   | "transactsql"
   | "clickhouse"
   | "plsql"
-  | "duckdb";
+  | "duckdb"
+  | "bigquery"
+  | "snowflake";
 
 export type SqlKeywordCaseOption = "upper" | "lower" | "preserve";
 
@@ -23,6 +25,8 @@ const DIALECT_BY_KIND: Partial<Record<DatabaseKind, SqlDialect>> = {
   clickhouse: "clickhouse",
   oracle: "plsql",
   duckdb: "duckdb",
+  bigquery: "bigquery",
+  snowflake: "snowflake",
 };
 
 const DIALECT_LABELS: Record<SqlDialect, string> = {
@@ -34,6 +38,8 @@ const DIALECT_LABELS: Record<SqlDialect, string> = {
   clickhouse: "ClickHouse",
   plsql: "PL/SQL",
   duckdb: "DuckDB",
+  bigquery: "BigQuery",
+  snowflake: "Snowflake",
 };
 
 export function sqlDialectForKind(kind: DatabaseKind | null | undefined): SqlDialect {

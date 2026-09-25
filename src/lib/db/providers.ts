@@ -11,7 +11,9 @@ export type DatabaseKind =
   | "oracle"
   | "cassandra"
   | "duckdb"
-  | "odbc";
+  | "odbc"
+  | "bigquery"
+  | "snowflake";
 
 export interface Capabilities {
   databases: boolean;
