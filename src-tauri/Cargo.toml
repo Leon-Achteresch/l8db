@@ -62,6 +62,12 @@ regex = "1"
 parquet = { version = "58", default-features = false, features = ["snap", "zstd", "lz4", "flate2-zlib-rs", "json"] }
 calamine = { version = "0.36", features = ["dates"] }
 toml_edit = "0.25"
+rsa = { version = "0.10.0-rc.18", features = ["sha2", "pkcs5"] }
+pkcs8 = { version = "0.11", features = ["pem", "encryption", "3des"] }
+flate2 = "1"
+
+[dev-dependencies]
+rand = "0.10"
 
 [features]
 default = []

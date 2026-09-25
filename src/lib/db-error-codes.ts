@@ -108,6 +108,22 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/AccessDenied|not authorized/i, "AccessDenied", "Berechtigung fehlt"],
     [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
   ],
+  bigquery: [
+    [/BigQuery 40[13]\b/i, "403", "Berechtigung fehlt oder Anmeldung ungültig"],
+    [/BigQuery 404\b|Not found: /i, "404", "Objekt nicht gefunden"],
+    [/Syntax error/i, "SYNTAX", "Syntaxfehler"],
+    [/quota|rate ?limit/i, "QUOTA", "Kontingent oder Ratenlimit überschritten"],
+  ],
+  snowflake: [
+    [/\b390144\b|\b390318\b|JWT token is invalid/i, "390144", "Authentifizierung fehlgeschlagen"],
+    [
+      /\(42S02\)|does not exist or not authorized/i,
+      "42S02",
+      "Objekt nicht gefunden oder keine Berechtigung",
+    ],
+    [/\(42000\)|syntax error/i, "42000", "Syntaxfehler"],
+    [/No active warehouse/i, "000606", "Kein aktives Warehouse ausgewählt"],
+  ],
 };
 
 export function dbErrorCode(

@@ -19,6 +19,8 @@ pub enum DatabaseKind {
     SqliteHttp,
     Dynamodb,
     Athena,
+    Bigquery,
+    Snowflake,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -168,7 +170,7 @@ const SQL_COMMON: Capabilities = Capabilities {
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 16] = [
+    pub const ALL: [DatabaseKind; 18] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -185,6 +187,8 @@ impl DatabaseKind {
         DatabaseKind::SqliteHttp,
         DatabaseKind::Dynamodb,
         DatabaseKind::Athena,
+        DatabaseKind::Bigquery,
+        DatabaseKind::Snowflake,
     ];
 
     pub fn capabilities(self) -> Capabilities {
@@ -383,6 +387,16 @@ impl DatabaseKind {
                 filter_hint: "SQL-WHERE-Ausdruck (Trino), z. B. \"dt\" = '2026-01-01'",
                 ..NONE
             },
+            DatabaseKind::Bigquery | DatabaseKind::Snowflake => Capabilities {
+                databases: self == DatabaseKind::Snowflake,
+                proxy_user: self == DatabaseKind::Snowflake,
+                views: true,
+                explain: true,
+                query_cancel: true,
+                ssl: false,
+                ssh: false,
+                ..NONE
+            },
         }
     }
 
@@ -404,6 +418,8 @@ impl DatabaseKind {
             DatabaseKind::SqliteHttp => &["libsql", "d1"],
             DatabaseKind::Dynamodb => &["dynamodb"],
             DatabaseKind::Athena => &["athena"],
+            DatabaseKind::Bigquery => &["bigquery"],
+            DatabaseKind::Snowflake => &["snowflake"],
         }
     }
 
@@ -562,6 +578,8 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "influxdb", name: "InfluxDB", group: "Analytisch", kind: DatabaseKind::Influxdb, port: Some(8086), placeholder: "influxdb://token:API_TOKEN@localhost:8086/bucket?org=meine-org", hint: "Token als Passwort. v2 (Flux/InfluxQL, Port 8086) und v3 (SQL/InfluxQL, Port 8181) werden erkannt, ?version=2|3 erzwingt. Zeitraum der Tabellenansicht mit ?range=7d (Standard 1h, all für alles).", hosts: &[".influxdata.com"], driver: Driver::Builtin },
     Provider { id: "elasticsearch", name: "Elasticsearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "elasticsearch://elastic:password@localhost:9200", hint: "Indizes erscheinen als Tabellen. Basic-Auth, API-Key (Benutzer apikey) oder ohne Anmeldung. Queries als SQL oder Dev-Tools-Request, z. B. GET index/_search {…}.", hosts: &[".elastic-cloud.com", ".found.io", ".elastic.cloud"], driver: Driver::Builtin },
     Provider { id: "opensearch", name: "OpenSearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "opensearch://admin:password@localhost:9200?sslmode=require", hint: "OpenSearch mit SQL-Plugin oder Dev-Tools-Requests. sslmode=require akzeptiert selbstsignierte Zertifikate.", hosts: &[".es.amazonaws.com", ".aoss.amazonaws.com"], driver: Driver::Builtin },
+    Provider { id: "bigquery", name: "Google BigQuery", group: "Analytisch", kind: DatabaseKind::Bigquery, port: None, placeholder: "bigquery://my-project/my_dataset?location=EU", hint: "REST API v2. Anmeldung per Application Default Credentials (gcloud auth application-default login), Service-Account-JSON oder Zugriffstoken. Datasets erscheinen als Schemas.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "snowflake", name: "Snowflake", group: "Analytisch", kind: DatabaseKind::Snowflake, port: None, placeholder: "snowflake://USER@myorg-account/DB/PUBLIC?warehouse=COMPUTE_WH&role=ANALYST", hint: "SQL API v2 mit Key-Pair (JWT), Programmatic Access Token oder OAuth. Rolle und Warehouse lassen sich wechseln.", hosts: &[".snowflakecomputing.com"], driver: Driver::Builtin },
     Provider { id: "mongodb", name: "MongoDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@localhost:27017/app?authSource=admin", hint: "Collections erscheinen als Tabellen. Filter und Queries sind JSON-Dokumente.", hosts: &["localhost", "127.0.0.1"], driver: Driver::Builtin },
     Provider { id: "atlas", name: "MongoDB Atlas", group: "NoSQL", kind: DatabaseKind::Mongodb, port: None, placeholder: "mongodb+srv://user:password@cluster0.abcde.mongodb.net/app", hint: "SRV-URL aus dem Atlas-Connect-Dialog.", hosts: &[".mongodb.net"], driver: Driver::Builtin },
     Provider { id: "documentdb", name: "Amazon DocumentDB", group: "NoSQL", kind: DatabaseKind::Mongodb, port: Some(27017), placeholder: "mongodb://user:password@cluster.region.docdb.amazonaws.com:27017/app?tls=true&retryWrites=false", hint: "MongoDB-API. retryWrites=false ist erforderlich.", hosts: &[".docdb.amazonaws.com"], driver: Driver::Builtin },
@@ -584,8 +602,8 @@ const PROVIDERS: &[Provider] = &[
     odbc("sybase", "SAP ASE (Sybase)", Some(5000), "Adaptive Server Enterprise", "odbc://sa:password@localhost:5000/master?Driver=Adaptive%20Server%20Enterprise", "Benötigt den SAP ASE ODBC-Treiber."),
     odbc("hana", "SAP HANA", Some(30015), "HDBODBC", "odbc://SYSTEM:password@localhost:30015/?Driver=HDBODBC", "Benötigt den SAP HANA Client (HDBODBC)."),
     odbc("teradata", "Teradata", Some(1025), "Teradata Database ODBC Driver", "odbc://dbc:dbc@localhost:1025/?Driver=Teradata%20Database%20ODBC%20Driver", "Benötigt Teradata Tools and Utilities."),
-    odbc("snowflake", "Snowflake", Some(443), "SnowflakeDSIIDriver", "odbc://user:password@account.snowflakecomputing.com:443/DB?Driver=SnowflakeDSIIDriver&Warehouse=WH&Schema=PUBLIC", "Benötigt den Snowflake ODBC-Treiber."),
-    odbc("bigquery", "Google BigQuery", None, "Simba ODBC Driver for Google BigQuery", "odbc://?Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery&Catalog=project&OAuthMechanism=0&KeyFilePath=%2Fpath%2Fkey.json&Email=sa%40project.iam.gserviceaccount.com", "Benötigt den Simba BigQuery ODBC-Treiber."),
+    odbc("snowflake-odbc", "Snowflake (ODBC)", Some(443), "SnowflakeDSIIDriver", "odbc://user:password@account.snowflakecomputing.com:443/DB?Driver=SnowflakeDSIIDriver&Warehouse=WH&Schema=PUBLIC", "Benötigt den Snowflake ODBC-Treiber."),
+    odbc("bigquery-odbc", "Google BigQuery (ODBC)", None, "Simba ODBC Driver for Google BigQuery", "odbc://?Driver=Simba%20ODBC%20Driver%20for%20Google%20BigQuery&Catalog=project&OAuthMechanism=0&KeyFilePath=%2Fpath%2Fkey.json&Email=sa%40project.iam.gserviceaccount.com", "Benötigt den Simba BigQuery ODBC-Treiber."),
     odbc("databricks", "Databricks", Some(443), "Simba Spark ODBC Driver", "odbc://token:dapi...@adb-123.azuredatabricks.net:443/?Driver=Simba%20Spark%20ODBC%20Driver&HTTPPath=%2Fsql%2F1.0%2Fwarehouses%2Fabc&SSL=1&ThriftTransport=2&AuthMech=3", "Benötigt den Databricks (Simba Spark) ODBC-Treiber."),
     odbc("athena-odbc", "Amazon Athena (ODBC)", Some(443), "Simba Athena ODBC Driver", "odbc://?Driver=Simba%20Athena%20ODBC%20Driver&AwsRegion=eu-central-1&S3OutputLocation=s3%3A%2F%2Fbucket%2F&AuthenticationType=IAM%20Credentials&UID=key&PWD=secret", "Benötigt den Athena ODBC-Treiber."),
     odbc("vertica", "Vertica", Some(5433), "Vertica", "odbc://dbadmin:password@localhost:5433/VMart?Driver=Vertica", "Benötigt den Vertica ODBC-Treiber."),

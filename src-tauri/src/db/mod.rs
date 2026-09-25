@@ -2,6 +2,7 @@ mod athena;
 mod aws;
 pub mod backup;
 pub mod backup_tools;
+mod bigquery;
 mod cassandra;
 mod clickhouse;
 pub mod commands;
@@ -21,6 +22,8 @@ pub mod export;
 pub mod export_formats;
 mod filter_expr;
 mod http_api;
+#[cfg(test)]
+mod http_mock;
 pub mod import;
 pub mod import_source;
 pub(crate) mod influxdb;
@@ -40,12 +43,14 @@ pub mod schema_catalog;
 pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
+mod snowflake;
 mod sql_script;
 mod sqlite;
 mod sqlite_http;
 pub mod ssh;
 pub mod table_copy;
 pub mod transaction;
+mod warehouse_auth;
 
 use async_trait::async_trait;
 use pool::PoolState;
@@ -1814,6 +1819,11 @@ pub fn create_adapter_from_string(
             connection_string,
             pool_state,
             key,
+        )?),
+        DatabaseKind::Bigquery => Box::new(bigquery::BigqueryAdapter::new(connection_string)?),
+        DatabaseKind::Snowflake => Box::new(snowflake::SnowflakeAdapter::new(
+            connection_string,
+            database,
         )?),
         #[cfg(feature = "duckdb")]
         DatabaseKind::Duckdb => Box::new(duckdb::DuckdbAdapter::new(

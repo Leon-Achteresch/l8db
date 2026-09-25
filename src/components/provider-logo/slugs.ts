@@ -55,6 +55,8 @@ export const PROVIDER_SLUG: Record<string, string | null> = {
   teradata: "teradata",
   snowflake: "snowflake",
   bigquery: "google-bigquery",
+  "snowflake-odbc": "snowflake",
+  "bigquery-odbc": "google-bigquery",
   databricks: "databricks",
   athena: "aws-amazon-athena",
   "athena-odbc": "aws-amazon-athena",
@@ -85,4 +87,6 @@ export const KIND_SLUG: Record<DatabaseKind, string | null> = {
   sqlite_http: "turso",
   dynamodb: "aws-amazon-dynamodb",
   athena: "aws-amazon-athena",
+  bigquery: "google-bigquery",
+  snowflake: "snowflake",
 };

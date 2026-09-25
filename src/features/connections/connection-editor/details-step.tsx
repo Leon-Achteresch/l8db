@@ -6,9 +6,11 @@ import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
 import { ConnectionAwsFields } from "./aws-fields";
+import { ConnectionBigqueryFields } from "./bigquery-fields";
 import { DriverMissingNotice } from "./driver-missing-notice";
 import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
+import { ConnectionSnowflakeFields } from "./snowflake-fields";
 import { ConnectionTestResultStatus } from "./test-result-status";
 import { ConnectionTnsInputs } from "./tns-inputs";
 import { ConnectionUrlInput } from "./url-input";
@@ -106,6 +108,12 @@ export function ConnectionDetailsStep({
     value,
     windowsAuth,
   } = editor;
+  const WarehouseFields =
+    kind === "bigquery"
+      ? ConnectionBigqueryFields
+      : kind === "snowflake"
+        ? ConnectionSnowflakeFields
+        : null;
   return (
     <div className="flex flex-col gap-3 pr-1">
       {!activeInfo.driver_status.available && (
@@ -184,6 +192,19 @@ export function ConnectionDetailsStep({
         <ConnectionAwsFields
           key={provider}
           kind={kind}
+          host={host}
+          setHost={setHost}
+          database={database}
+          setDatabase={setDatabase}
+          user={user}
+          setUser={setUser}
+          password={password}
+          setPassword={setPassword}
+          extraParams={extraParams}
+          setExtraParams={setExtraParams}
+        />
+      ) : WarehouseFields ? (
+        <WarehouseFields
           host={host}
           setHost={setHost}
           database={database}
