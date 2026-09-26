@@ -895,34 +895,6 @@ export async function vaultSetup(
   return needs && status.state !== "signed-in" ? { ...status, needs } : status;
 }
 
-async function refreshView(api: L8dbApi, busy?: string) {
-  const items = await Promise.all(
-    Object.keys(binaries).map(async (provider) => {
-      const version = busy === provider ? null : await cliVersion(api, provider);
-      return {
-        id: provider,
-        label: labels[provider],
-        icon: "package",
-        description: busy === provider ? "wird installiert …" : (version ?? "nicht installiert"),
-        ...(version || busy === provider
-          ? {}
-          : { badge: "Installieren", command: "vault.install", commandArguments: provider }),
-      };
-    }),
-  );
-  await api.views.setTreeData("vault.clis", [
-    { id: "sync", label: "Zugänge jetzt abgleichen", icon: "refresh-cw", command: "vault.sync" },
-    { id: "export", label: "Verbindungen freigeben", icon: "upload", command: "vault.export" },
-    {
-      id: "import",
-      label: "Einzelne Verbindungen laden",
-      icon: "download",
-      command: "vault.import",
-    },
-    ...items,
-  ]);
-}
-
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1002,20 +974,15 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
     const provider =
       typeof payload === "string" && payload in binaries ? payload : await configured();
     try {
-      await refreshView(api, provider);
       const version = await installCli(api, provider);
       await api.window.showInformationMessage(`${labels[provider]}-CLI installiert: ${version}`);
     } catch (error) {
       await api.window.showErrorMessage(message(error));
-    } finally {
-      await refreshView(api);
     }
   };
-  void refreshView(api).catch(() => undefined);
   void startup().catch((error) => api.logger.warn(`Automatischer Abgleich: ${message(error)}`));
   context.subscriptions.push(
     api.commands.registerCommand("vault.install", (payload) => install(payload)),
-    api.commands.registerCommand("vault.refresh", () => refreshView(api)),
     api.commands.registerCommand(
       "vault.setup",
       async (payload) =>

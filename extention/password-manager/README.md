@@ -10,7 +10,7 @@ Einrichtung: In den Einstellungen unter „Erweiterungen“ zeigt die Karte nach
 - 1Password: Anmeldung über die Desktop-App („Mit 1Password CLI integrieren“); bei mehreren Konten wird eines ausgewählt.
 - Keeper: Region, E-Mail und Master-Passwort richten eine dauerhafte Anmeldung für das Gerät ein (`this-device register`, `persistent-login on`, `timeout 30d`). Verlangt Keeper eine Gerätefreigabe oder 2FA, zeigt der Assistent die einmaligen Terminal-Befehle an.
 
-Danach in der Befehlspalette, in der Statusleiste oder direkt im Assistenten:
+Danach direkt im Assistenten, über die Statusleiste oder in der Befehlspalette:
 
 - `Passwortmanager: Zugänge abgleichen` (`vault.sync`, Payload `{ quiet: true }` liefert `{ total, added, updated, removed, skipped }` statt einer Meldung) übernimmt alle Einträge, deren Titel mit `l8db:` beginnt. Läuft mit `vault.autoSync` (Standard an) auch beim Start (`onStartup`); ist der Tresor gesperrt, zeigt die Statusleiste einen Hinweis zum Entsperren. Verbindungen, die ein früherer Abgleich angelegt hat und die im Tresor fehlen, werden entfernt. Verbindungen, die schon vorher lokal existierten, bleiben immer erhalten.
 - `Passwortmanager: Verbindungen freigeben` legt pro Verbindung einen Login-Eintrag `l8db: <Name>` an (Benutzer, Passwort, Adresse ohne Passwort als Website, Profil in den Notizen) bzw. aktualisiert ihn. Für neue Einträge fragt l8db nach dem Ziel: persönlicher Tresor oder geteilter Bereich (Bitwarden-Sammlung via `organizationId`/`collectionIds`, 1Password-Tresor via `--vault`, Keeper-Ordner aus `list-sf` via `--folder`).
@@ -18,7 +18,7 @@ Danach in der Befehlspalette, in der Statusleiste oder direkt im Assistenten:
 
 Einträge können auch direkt im Passwortmanager angelegt werden: Titel `l8db: <Name>`, Benutzername, Passwort und eine Datenbank-Adresse wie `postgres://host:5432/db` als Website. Erkannte Schemata: `postgres(ql)`, `mysql`, `mariadb`, `mssql`, `sqlserver`, `clickhouse`, `mongodb(+srv)`, `redis`, `rediss`, `valkey`, `oracle`, `cassandra`, `scylla`, `elasticsearch`, `opensearch`, `influxdb`, `libsql`, `snowflake`. Titel, Website, Benutzername und Passwort haben beim Laden Vorrang vor dem gespeicherten Profil. Einträge ohne Profil bekommen die ID `pm-<anbieter>-<eintrag>`.
 
-CLI-Installation: Die Seitenleiste „Passwortmanager“ zeigt pro Anbieter die installierte CLI-Version oder einen „Installieren“-Button (auch als Befehl `Passwortmanager: CLI installieren`). l8db probiert die Paketmanager der Reihe nach und nimmt den ersten, der funktioniert:
+CLI-Installation: Der Assistent zeigt die installierte CLI-Version oder „Jetzt installieren“ (auch als Befehl `Passwortmanager: CLI installieren`). l8db probiert die Paketmanager der Reihe nach und nimmt den ersten, der funktioniert:
 
 - Keeper: `pipx`, `pip --user`, eigenes venv unter `~/.local/share/l8db/keeper`, unter Windows `py -m pip`
 - Bitwarden: `npm -g`, Homebrew, winget (`Bitwarden.CLI`)
