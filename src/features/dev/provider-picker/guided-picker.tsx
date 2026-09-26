@@ -1,9 +1,14 @@
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
+import {
+  CATEGORIES,
+  type CategoryId,
+  categoryOf,
+  POPULAR_IDS,
+} from "@/features/connections/provider-picker/categories";
+import { ProviderOption } from "@/features/connections/provider-picker/provider-option";
 import type { ProviderInfo } from "@/lib/db";
-import { CATEGORIES, type CategoryId, categoryOf, POPULAR_IDS } from "./categories";
-import { ProviderOption } from "./provider-option";
 
 export function GuidedPicker({
   providers,

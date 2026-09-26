@@ -19,7 +19,6 @@ export function ConnectionEditor({
   const {
     activeInfo,
     busy,
-    groups,
     guided,
     info,
     pasteConnectionString,
@@ -90,10 +89,8 @@ export function ConnectionEditor({
             >
               {step === 1 && (
                 <ConnectionProviderStep
-                  groups={groups}
                   providers={providers}
                   provider={provider}
-                  info={info}
                   selectProvider={selectProvider}
                   pasteConnectionString={pasteConnectionString}
                 />

@@ -1,4 +1,4 @@
-import { ClipboardPaste, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardPaste, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,12 @@ export function SmartPicker({
   providers,
   selected,
   onSelect,
+  onPaste,
 }: {
   providers: ProviderInfo[];
   selected: string;
   onSelect: (id: string) => void;
+  onPaste?: (url: string) => void;
 }) {
   const [value, setValue] = useState("");
   const kind = value.trim().length > 2 ? kindFromUrl(value) : undefined;
@@ -22,6 +24,12 @@ export function SmartPicker({
     ? providers.find((provider) => provider.id === detectProvider(value, kind))
     : undefined;
   const filtered = providers.filter((provider) => detected || matchesProvider(provider, value));
+
+  function continueWithDetected() {
+    if (!detected) return;
+    if (onPaste) onPaste(value.trim());
+    else onSelect(detected.id);
+  }
 
   async function paste() {
     const text = await navigator.clipboard.readText().catch(() => "");
@@ -36,6 +44,18 @@ export function SmartPicker({
           <input
             value={value}
             onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              const needle = value.trim().toLowerCase();
+              const available = filtered.filter((provider) => provider.driver_status.available);
+              const target =
+                available.find(
+                  (provider) => provider.id === needle || provider.name.toLowerCase() === needle,
+                ) ?? (available.length === 1 ? available[0] : undefined);
+              if (detected) continueWithDetected();
+              else if (needle && target) onSelect(target.id);
+            }}
             placeholder="Verbindungs-URL einfügen oder Namen tippen"
             aria-label="Verbindungs-URL oder Datenbankname"
             className="h-full min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:font-sans placeholder:text-sm placeholder:text-muted-foreground"
@@ -61,13 +81,9 @@ export function SmartPicker({
               Host, Benutzer und Datenbank werden aus der URL übernommen.
             </p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            disabled={selected === detected.id}
-            onClick={() => onSelect(detected.id)}
-          >
-            {selected === detected.id ? "Übernommen" : "Übernehmen"}
+          <Button type="button" size="sm" onClick={continueWithDetected}>
+            Weiter mit {detected.name}
+            <ArrowRight className="size-3.5" />
           </Button>
         </div>
       ) : (

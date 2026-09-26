@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { SmartPicker } from "@/features/connections/provider-picker/smart-picker";
 import { useProvidersStore } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { CategoryPicker } from "./provider-picker/category-picker";
 import { GuidedPicker } from "./provider-picker/guided-picker";
 import { PopularPicker } from "./provider-picker/popular-picker";
-import { SmartPicker } from "./provider-picker/smart-picker";
 
 const variants = [
   {
