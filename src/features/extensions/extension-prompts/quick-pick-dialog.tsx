@@ -57,6 +57,8 @@ export function QuickPickDialog({
             <button
               key={item.index}
               type="button"
+              role={prompt.canPickMany ? "checkbox" : undefined}
+              aria-checked={prompt.canPickMany ? selected.includes(item.index) : undefined}
               onClick={() => toggle(item.index)}
               className={cn(
                 "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",

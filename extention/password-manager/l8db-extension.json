@@ -1,8 +1,8 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.1.0",
-  "description": "Lädt und speichert Verbindungen samt Passwort in Keeper, Bitwarden oder 1Password über deren offizielle CLI.",
+  "version": "1.2.0",
+  "description": "Stellt Datenbank-Zugänge aus Bitwarden, 1Password oder Keeper direkt in l8db bereit – auch für ganze Teams über geteilte Sammlungen, Tresore und Ordner.",
   "publisher": "l8db",
   "engines": {
     "l8db": ">=0.7.0 <1.0.0",
@@ -10,27 +10,50 @@
   },
   "main": "dist/extension.js",
   "activationEvents": [
+    "onStartup",
     "onView:vault.clis",
+    "onCommand:vault.sync",
     "onCommand:vault.import",
     "onCommand:vault.export",
     "onCommand:vault.install",
     "onCommand:vault.setup"
   ],
-  "permissions": ["process:execute", "connections:read", "connections:write"],
+  "permissions": [
+    "process:execute",
+    "connections:read",
+    "connections:write",
+    "filesystem:extension-storage"
+  ],
   "capabilities": {
     "process": {
-      "commands": ["keeper", "bw", "op", "pipx", "python3", "py", "npm", "brew", "winget", "sh"]
+      "commands": [
+        "keeper",
+        "bw",
+        "op",
+        "pipx",
+        "python3",
+        "py",
+        "npm",
+        "brew",
+        "winget",
+        "sh"
+      ]
     }
   },
   "contributes": {
     "commands": [
       {
-        "id": "vault.import",
-        "title": "Passwortmanager: Verbindungen laden"
+        "id": "vault.sync",
+        "title": "Passwortmanager: Zugänge abgleichen",
+        "icon": "refresh-cw"
       },
       {
         "id": "vault.export",
-        "title": "Passwortmanager: Verbindungen speichern"
+        "title": "Passwortmanager: Verbindungen freigeben"
+      },
+      {
+        "id": "vault.import",
+        "title": "Passwortmanager: Einzelne Verbindungen laden"
       },
       {
         "id": "vault.install",
@@ -50,13 +73,22 @@
       "vault.provider": {
         "type": "string",
         "default": "keeper",
-        "enum": ["keeper", "bitwarden", "1password"],
+        "enum": [
+          "keeper",
+          "bitwarden",
+          "1password"
+        ],
         "description": "Passwortmanager, dessen CLI verwendet wird (keeper, bw oder op)."
+      },
+      "vault.autoSync": {
+        "type": "boolean",
+        "default": true,
+        "description": "Datenbank-Zugänge beim Start automatisch aus dem Passwortmanager laden"
       }
     },
     "menus": [
       {
-        "command": "vault.import",
+        "command": "vault.sync",
         "location": "palette"
       },
       {
@@ -64,11 +96,15 @@
         "location": "palette"
       },
       {
+        "command": "vault.import",
+        "location": "palette"
+      },
+      {
         "command": "vault.install",
         "location": "palette"
       },
       {
-        "command": "vault.refresh",
+        "command": "vault.sync",
         "location": "view/title",
         "view": "vault.clis"
       }
@@ -79,6 +115,13 @@
         "title": "Passwortmanager",
         "location": "sidebar",
         "icon": "package"
+      }
+    ],
+    "statusBar": [
+      {
+        "id": "vault.status",
+        "alignment": "right",
+        "priority": 20
       }
     ]
   }

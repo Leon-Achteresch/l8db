@@ -234,6 +234,7 @@ export interface L8dbApi {
   connections: {
     list(): Promise<VaultConnection[]>;
     save(connections: VaultConnection[]): Promise<SaveConnectionsResult>;
+    remove(ids: string[]): Promise<number>;
   };
   process: {
     run(command: string, options?: ProcessOptions): Promise<ProcessResult>;

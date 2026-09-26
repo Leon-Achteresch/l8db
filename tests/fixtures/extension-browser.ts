@@ -44,6 +44,7 @@ export async function run() {
     prompt: (async (request: { kind: string; items?: { picked?: boolean }[] }) => request.kind === "quickPick" ? request.items!.map((_, index) => index) : request.kind === "inputBox" ? "master" : undefined) as never,
     listConnections: async () => [localConnection],
     saveConnections: async (items: VaultConnection[]) => { savedConnections.push(items); return { added: items.length, updated: 0, skipped: [] } },
+    removeConnections: async (ids: string[]) => ids.length,
   }, "0.1.0");
   const archive = (id: string, code: string): ExtensionArchive => ({
     format: 1,
