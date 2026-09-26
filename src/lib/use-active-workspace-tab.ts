@@ -69,6 +69,9 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab, pending?: bool
       }),
     );
   }
+  if (tab.kind === "bucket") {
+    return Boolean(matchRoute({ pending, to: "/buckets/$bucket", params: { bucket: tab.bucket } }));
+  }
   if (tab.kind === "package") {
     return Boolean(
       matchRoute({

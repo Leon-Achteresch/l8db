@@ -56,6 +56,13 @@ The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products,
 | Amazon DynamoDB | Dynamodb | builtin |
 | DynamoDB Local / LocalStack | Dynamodb | builtin |
 | Amazon Athena | Athena | builtin |
+| MinIO | S3 | builtin |
+| Amazon S3 | S3 | builtin |
+| Cloudflare R2 | S3 | builtin |
+| Google Cloud Storage (S3) | S3 | builtin |
+| Backblaze B2 | S3 | builtin |
+| DigitalOcean Spaces | S3 | builtin |
+| S3-kompatibel | S3 | builtin |
 | ODBC (generisch) | Odbc | installed ODBC driver |
 | IBM Db2 | Odbc | IBM DB2 ODBC DRIVER |
 | Firebird | Odbc | Firebird/InterBase(r) driver |
@@ -98,6 +105,7 @@ All adapters implement connection testing, database/schema/table/column discover
 | Athena | Trino SQL, catalogs as databases, partition keys, cancellation via StopQueryExecution, scan/cost notices in server output |
 | Bigquery | Datasets as schemas, views, dry-run explain with byte estimate, job-based cancellation |
 | Snowflake | Databases, schemas, views, role quick switch (proxy user), text explain, statement cancellation |
+| S3 | Object storage (`object_storage`): bucket browser instead of tables, uploads/downloads, bucket and object configuration, S3 Select; read-only mode supported |
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
@@ -117,6 +125,23 @@ athena://REGION/CATALOG?workgroup=primary&output=s3://bucket/prefix/&schema=defa
 - DynamoDB: tables are listed per region, columns are the key schema plus attributes sampled from 100 items. Browsing uses `Scan` (filters use PartiQL `ExecuteStatement`) with a cursor cache for paging; sorting is not applied. Counts use `Scan` with `Select=COUNT` and fall back to the approximate `ItemCount` above the cap. Row edits are staged and committed together with `ExecuteTransaction` (max. 100 changes, one change per item); key attributes cannot be changed.
 - Athena: `ListDataCatalogs` feed the database picker, Athena databases are schemas. Queries poll `GetQueryExecution`; cancel and query timeout call `StopQueryExecution`. With server output enabled every query reports scanned bytes and an estimated cost (5 USD/TB, 10 MB minimum). The ODBC entry remains available as "Amazon Athena (ODBC)".
 - Tests: `cargo test --lib -- db::aws db::dynamodb db::athena` covers SigV4 test vectors and a mocked Athena API. `dynamodb_local_end_to_end` (ignored) needs `amazon/dynamodb-local` on `127.0.0.1:18000` or `L8DB_E2E_DYNAMODB_URL`. The smoke test uses `L8DB_SMOKE_DYNAMODB_URL` / `L8DB_SMOKE_ATHENA_URL` (DynamoDB queries its first table).
+
+## Object storage (S3)
+
+The `s3` family covers Amazon S3 and every S3-compatible service. It speaks the S3 REST API directly (SigV4 on `reqwest`, credentials shared with [aws.rs](../src-tauri/src/db/aws.rs)); code lives in [db/s3](../src-tauri/src/db/s3/).
+
+```
+s3://ACCESS_KEY:SECRET@REGION/OPTIONAL_BUCKET?endpoint=https%3A%2F%2Fs3.example.com&path_style=true
+s3://eu-central-1?profile=default
+```
+
+- Host is the region. Without credentials in the URL, the AWS environment/profile chain is used. `endpoint` switches to a custom service and defaults to path-style addressing; a path segment pins the connection to one bucket (useful when `ListBuckets` is denied). The provider label is derived from the endpoint host (R2, B2, Spaces, GCS, `:9000`/`minio` → MinIO, otherwise S3-kompatibel).
+- Buckets replace tables: the sidebar lists buckets and opens a bucket tab (`/buckets/$bucket`) with object browser, bucket settings and incomplete multipart uploads. The generic `DatabaseAdapter` maps buckets to tables so the SQL editor, MCP and smoke test work too.
+- Object browser: prefix navigation, recursive search, versions view, multi-select, preview (image, CSV, JSON, text, hex), text editing (keeps metadata and tags), upload/download of files and folders (8 MiB multipart parts, progress in the task panel, cancellable, drag & drop into the active bucket), rename, server-side copy/move, delete (optionally all versions, governance bypass), metadata and properties, tags, restore versions, retention and legal hold, presigned GET/PUT URLs, S3 Select.
+- Bucket settings: statistics, versioning, default encryption, object lock defaults, tags, policy (with presets), lifecycle rules, CORS, notifications, replication, static website, ACL and location. Features a server does not implement are reported as unsupported.
+- SQL editor: `SHOW BUCKETS`, `LIST s3://bucket/prefix/` and `SELECT … FROM s3://bucket/key.csv` (S3 Select for CSV/TSV, JSON, JSON lines and Parquet, optionally gzip/bzip2).
+- Lab: `scripts/minio-lab.sh` starts MinIO from `tests/lab/minio/compose.yml` (API `127.0.0.1:9000`, console `:9001`, `l8dbadmin`/`l8dbsecret`) and seeds the buckets `demo`, `versioned` and `locked`; `scripts/minio-lab.sh down` removes it. Connection URL: `s3://l8dbadmin:l8dbsecret@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A9000`.
+- Tests: `cargo test --lib db::s3` (SigV4 vectors, XML, event stream, path safety) and `bun test tests/s3-storage.test.ts tests/s3-provider-detection.test.ts`. The ignored `s3_live_*` tests run against the lab or `L8DB_E2E_S3_URL`: `cargo test --lib s3_live -- --ignored --test-threads=1`. The smoke test uses `L8DB_SMOKE_S3_URL`.
 
 ## Cloud warehouses
 

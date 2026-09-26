@@ -66,6 +66,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   ssl: true,
   ssh: true,
   backup: true,
+  object_storage: false,
   query_language: "sql",
   filter_hint: "SQL WHERE-Ausdruck",
 };

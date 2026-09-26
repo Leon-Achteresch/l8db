@@ -20,7 +20,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
     <SidebarGroup className="mt-auto border-t pt-2">
       <SidebarGroupContent>
         <SidebarMenu>
-          {caps.query_language === "sql" && (
+          {caps.query_language === "sql" && !caps.object_storage && (
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link to="/import">

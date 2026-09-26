@@ -1,7 +1,16 @@
-import { Braces, ChartColumn, FileText, type LucideIcon, Plug, Table2, Zap } from "lucide-react";
+import {
+  Braces,
+  ChartColumn,
+  FileText,
+  HardDrive,
+  type LucideIcon,
+  Plug,
+  Table2,
+  Zap,
+} from "lucide-react";
 import type { DatabaseKind, ProviderInfo } from "@/lib/db";
 
-export type CategoryId = "sql" | "file" | "documents" | "cache" | "analytics" | "other";
+export type CategoryId = "sql" | "file" | "documents" | "cache" | "analytics" | "storage" | "other";
 
 export interface Category {
   id: CategoryId;
@@ -48,6 +57,13 @@ export const CATEGORIES: Category[] = [
     icon: ChartColumn,
   },
   {
+    id: "storage",
+    title: "Objektspeicher",
+    question: "Dateien in Buckets",
+    description: "S3-kompatible Speicher wie MinIO, Amazon S3 oder Cloudflare R2.",
+    icon: HardDrive,
+  },
+  {
     id: "other",
     title: "Sonstige",
     question: "Etwas anderes",
@@ -74,6 +90,7 @@ const CATEGORY_BY_KIND: Record<DatabaseKind, CategoryId> = {
   bigquery: "analytics",
   snowflake: "analytics",
   athena: "analytics",
+  s3: "storage",
   odbc: "other",
 };
 

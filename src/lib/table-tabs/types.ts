@@ -38,6 +38,7 @@ export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigg
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
 export type PackageTab = { kind: "package"; schema: string; name: string };
+export type BucketTab = { kind: "bucket"; bucket: string };
 export interface CompareWorkspace {
   mode?: "definitions" | "data";
   dataLeft?: import("@/features/compare/data-compare-side-picker").DataCompareSideSelection;
@@ -68,6 +69,7 @@ export type Tab =
   | ViewEditorTab
   | AlterTableTab
   | PackageTab
+  | BucketTab
   | ToolTab;
 
 export type ClosedTab = Tab & {
@@ -95,6 +97,7 @@ export interface TabsState {
   openViewEditorTab: (tab: Omit<ViewEditorTab, "kind">) => void;
   openAlterTableTab: (tab: Omit<AlterTableTab, "kind">) => void;
   openPackageTab: (tab: Omit<PackageTab, "kind">) => void;
+  openBucketTab: (tab: Omit<BucketTab, "kind">) => void;
   openToolTab: (tool: ToolId, id?: string) => void;
   updateCompareTab: (id: string, compare: CompareWorkspace, title: string) => void;
   closeTab: (key: string) => void;

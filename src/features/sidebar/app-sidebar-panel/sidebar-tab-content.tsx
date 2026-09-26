@@ -1,6 +1,7 @@
 import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
+import { SidebarBucketList } from "@/features/storage/sidebar-bucket-list";
 import { SavedQueriesList } from "./saved-queries-list";
 import { SidebarEntityList } from "./sidebar-entity-list";
 import { SidebarExtensionList } from "./sidebar-extension-list";
@@ -13,6 +14,7 @@ import type { SidebarObjectQueries } from "./use-sidebar-object-queries";
 
 interface SidebarTabContentProps {
   hasConnection: boolean;
+  objectStorage?: boolean;
   sidebarTab: SidebarTabValue;
   q: SidebarObjectQueries;
   packages: SidebarObjectQueries["functions"];
@@ -21,6 +23,7 @@ interface SidebarTabContentProps {
 
 export function SidebarTabContent({
   hasConnection,
+  objectStorage = false,
   sidebarTab,
   q,
   packages,
@@ -30,6 +33,8 @@ export function SidebarTabContent({
     <>
       {!hasConnection ? (
         <p className="py-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
+      ) : sidebarTab === "tables" && objectStorage ? (
+        <SidebarBucketList />
       ) : sidebarTab === "tables" ? (
         <SidebarEntityList
           items={q.tables}

@@ -34,6 +34,7 @@ mod mssql;
 mod mysql;
 #[cfg(feature = "odbc")]
 mod odbc;
+pub mod s3;
 #[cfg(feature = "odbc")]
 pub use odbc::configure_system_ini as configure_odbc;
 mod oracle;
@@ -51,8 +52,8 @@ mod sqlite;
 mod sqlite_http;
 pub mod ssh;
 pub mod table_copy;
-pub mod transfer;
 pub mod transaction;
+pub mod transfer;
 mod warehouse_auth;
 
 use async_trait::async_trait;
@@ -1851,6 +1852,7 @@ pub fn create_adapter_from_string(
             database,
         )?),
         DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::S3 => Box::new(s3::S3Adapter::new(connection_string)?),
         DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
             connection_string,
             database,
@@ -2049,6 +2051,7 @@ mod tests {
             ),
             super::DatabaseKind::Elasticsearch => "GET _cluster/health".to_string(),
             super::DatabaseKind::Influxdb => "SHOW MEASUREMENTS".to_string(),
+            super::DatabaseKind::S3 => "SHOW BUCKETS".to_string(),
             _ => "SELECT 1".to_string(),
         }
     }

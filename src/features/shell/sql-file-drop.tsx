@@ -9,6 +9,7 @@ import { isMainWindow } from "@/lib/connections";
 import { OPEN_FILES_EVENT, resolveOpenFiles, takePendingOpenFiles } from "@/lib/db";
 import { type OpenFileTarget, runOpenFileActions } from "@/lib/file-open";
 import { isSqlDropName } from "@/lib/sql-file";
+import { takeBucketDrop } from "@/lib/storage/drop-target";
 import { useTableTabs } from "@/lib/table-tabs";
 
 function hasFiles(event: DragEvent): boolean {
@@ -73,6 +74,7 @@ export function SqlFileDrop() {
       void getCurrentWindow()
         .onDragDropEvent((event) => {
           if (event.payload.type !== "drop") return;
+          if (takeBucketDrop(event.payload.paths)) return;
           void resolveOpenFiles(event.payload.paths)
             .then(runOpenFileActions)
             .then(open)

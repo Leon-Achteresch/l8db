@@ -30,7 +30,7 @@ export function WorkspaceStatus() {
             <span className="max-w-40 truncate">Keine Verbindung</span>
           )}
         </Link>
-        {connection && (
+        {connection && !caps.object_storage && (
           <span className="truncate font-mono">
             {database} / {schema}
           </span>
@@ -59,13 +59,17 @@ export function WorkspaceStatus() {
           <span className="hidden items-center gap-1 sm:flex">
             <LockKeyhole className="size-3" />
             {connection.ssh?.host ? "SSH · " : ""}
-            {caps.query_language === "redis"
-              ? connection.connectionString.startsWith("rediss:")
-                ? "TLS"
-                : "TLS aus"
-              : connection.sslMode === "disable"
+            {caps.object_storage
+              ? /[?&]endpoint=http(%3A|:)/i.test(connection.connectionString)
                 ? "TLS aus"
-                : `TLS ${connection.sslMode}`}
+                : "TLS"
+              : caps.query_language === "redis"
+                ? connection.connectionString.startsWith("rediss:")
+                  ? "TLS"
+                  : "TLS aus"
+                : connection.sslMode === "disable"
+                  ? "TLS aus"
+                  : `TLS ${connection.sslMode}`}
           </span>
         )}
       </div>

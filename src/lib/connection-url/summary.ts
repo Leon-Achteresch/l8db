@@ -9,9 +9,27 @@ import {
 import { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
 import { filePath, kindFromUrl } from "./parse";
 
+function detectObjectStorage(value: string, candidates: ProviderInfo[]): string {
+  let endpoint: URL | null = null;
+  try {
+    const raw = new URL(value.trim()).searchParams.get("endpoint");
+    endpoint = raw ? new URL(raw) : null;
+  } catch {
+    endpoint = null;
+  }
+  if (!endpoint) return "s3";
+  const host = endpoint.hostname.toLowerCase();
+  const match = candidates.find((provider) =>
+    provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
+  );
+  if (match) return match.id;
+  return host.includes("minio") || endpoint.port === "9000" ? "minio" : "s3-compatible";
+}
+
 export function detectProvider(value: string, kind = kindFromUrl(value)): string {
   const candidates = allProviders().filter((provider) => provider.kind === (kind ?? "postgres"));
   if (!candidates.length) return "postgres";
+  if (kind === "s3") return detectObjectStorage(value, candidates);
   let host = "";
   const oracle = parseOracleKeyValue(value);
   if (oracle) {
