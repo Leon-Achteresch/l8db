@@ -194,6 +194,7 @@
           connections: {
             list: () => rpc("connections.list"),
             save: (items) => rpc("connections.save", items),
+            remove: (ids) => rpc("connections.remove", ids),
           },
           process: { run: (command, options) => rpc("process.run", command, options ?? null) },
           window: {

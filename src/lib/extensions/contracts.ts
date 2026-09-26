@@ -98,6 +98,7 @@ export interface CoreServices {
   prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>>;
   listConnections(): Promise<VaultConnection[]>;
   saveConnections(items: VaultConnection[]): Promise<SaveConnectionsResult>;
+  removeConnections(ids: string[]): Promise<number>;
 }
 export type RpcHandler = (method: string, args: Json[]) => Promise<Json | void>;
 export interface ExtensionRuntime {

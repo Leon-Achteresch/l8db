@@ -188,6 +188,15 @@ export function createExtensionHost() {
       store.addImported(merge.added);
       return { added: merge.added.length, updated: merge.updated.length, skipped: merge.skipped };
     },
+    async removeConnections(ids) {
+      const store = useConnectionsStore.getState();
+      const known = new Set(
+        store.connections.filter((connection) => !connection.temporary).map((c) => c.id),
+      );
+      const targets = [...new Set(ids)].filter((id) => known.has(id));
+      for (const id of targets) store.removeConnection(id);
+      return targets.length;
+    },
   };
   const manager = new ExtensionManager(
     new TauriExtensionStorage(),
