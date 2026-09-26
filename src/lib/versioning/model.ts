@@ -1,9 +1,34 @@
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { validateSafety } from "./safety";
 import { sqlCode } from "./sql-code";
-import type { DatabaseRelease, ObjectDifference, ObjectSnapshot, VersioningProject } from "./types";
+import type {
+  DatabaseRelease,
+  DeployKind,
+  ObjectDifference,
+  ObjectSnapshot,
+  VersioningKind,
+  VersioningProject,
+} from "./types";
 
 export const PROJECT_PATH = "database/project.json";
+export const VERSIONING_KINDS: VersioningKind[] = [
+  "postgres",
+  "oracle",
+  "mysql",
+  "mssql",
+  "sqlite",
+  "duckdb",
+  "clickhouse",
+];
+export const isVersioningKind = (kind: string | undefined): kind is VersioningKind =>
+  VERSIONING_KINDS.includes(kind as VersioningKind);
+export const deployable = (kind: string | undefined): kind is DeployKind =>
+  kind === "postgres" || kind === "oracle";
+export function deployKind(kind: VersioningKind): DeployKind {
+  if (!deployable(kind))
+    throw new Error("Releases und Deployments sind für PostgreSQL und Oracle verfügbar.");
+  return kind;
+}
 export const normalizeSource = (value: string) => value.replace(/\r\n?/g, "\n").trimEnd();
 
 export async function checksum(value: string): Promise<string> {
@@ -30,7 +55,7 @@ export function parseProject(text: string): VersioningProject {
     project.format !== 1 ||
     !identifier(project.id) ||
     !project.name?.trim() ||
-    !["postgres", "oracle"].includes(project.kind) ||
+    !isVersioningKind(project.kind) ||
     !Array.isArray(project.objects)
   )
     throw new Error("Ungültiges Versionierungsprojekt.");
@@ -90,6 +115,7 @@ export async function parseRelease(
     !identifier(release.id) ||
     release.projectId !== project.id ||
     release.kind !== project.kind ||
+    !deployable(release.kind) ||
     (release.parent !== null && (!identifier(release.parent) || release.parent === release.id)) ||
     !Array.isArray(release.objects) ||
     !Array.isArray(release.migrations) ||
@@ -127,7 +153,7 @@ export async function parseRelease(
   return release;
 }
 
-export function validateMigration(sql: string, kind: "postgres" | "oracle"): string[] {
+export function validateMigration(sql: string, kind: DeployKind): string[] {
   if (/^(?:<{7}|={7}|>{7}|\|{7})(?:\s|$)/m.test(sql))
     throw new Error("Migration enthält ungelöste Merge-Konflikte.");
   const split = splitSqlStatements(sql, kind);

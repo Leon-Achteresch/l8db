@@ -11,7 +11,14 @@ import { captureObjects } from "./capture";
 import { mappedCheck, preflightChecks, runReleaseChecks } from "./checks";
 import { control, initialPolicy, type PolicyRecord, sharedTarget } from "./control";
 import { baselineLedger, readLedger, releaseHash } from "./ledger";
-import { checksum, compareSnapshots, releaseChain, releaseTrack, validateMigration } from "./model";
+import {
+  checksum,
+  compareSnapshots,
+  deployKind,
+  releaseChain,
+  releaseTrack,
+  validateMigration,
+} from "./model";
 import {
   committedRelease,
   loadReleases,
@@ -281,7 +288,7 @@ export async function planDeployment(
   const sql = chain.flatMap((release) =>
     release.migrations.map((migration) => mappedMigration(migration.sql, target, release)),
   );
-  for (const statement of sql) validateMigration(statement, project.kind);
+  for (const statement of sql) validateMigration(statement, deployKind(project.kind));
   const snapshots = (release: DatabaseRelease) =>
     release.objects.map((entry) => ({
       schema: target.schema || entry.object.selection.schema,
@@ -303,7 +310,7 @@ export async function planDeployment(
         hash: await releaseHash(release),
         objects: snapshots(release),
         statements: release.migrations.flatMap((migration) =>
-          validateMigration(mappedMigration(migration.sql, target, release), project.kind).map(
+          validateMigration(mappedMigration(migration.sql, target, release), release.kind).map(
             (sql, index) => ({
               id: `${release.id}:${migration.id}:${index + 1}`,
               migration: migration.id,

@@ -17,7 +17,7 @@ import {
 } from "@/lib/db";
 import { packageOid } from "@/lib/plsql";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { checksum, normalizeSource } from "./model";
+import { checksum, deployable, normalizeSource } from "./model";
 import { oracleConstraintMetadataSql, portableOracleMetadata } from "./oracle-metadata";
 import { requalify } from "./schema";
 import type { ManagedObject, ObjectSnapshot } from "./types";
@@ -43,7 +43,7 @@ export async function captureObject(
   const metadataRead = <T>(operation: string, fallback: () => Promise<T>): Promise<T> =>
     transaction ? versioningMetadata<T>(transaction, operation, schema, name) : fallback();
   let definition: string;
-  if (side.objectType === "table") {
+  if (side.objectType === "table" && deployable(connection.kind)) {
     const [columns, constraints, indexes, triggers] = await Promise.all([
       metadataRead("columns", () =>
         listTableColumnsDetailed(connection.kind, url, schema, name, db),

@@ -1,6 +1,6 @@
 # Datenbank-Versionierung
 
-Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit PostgreSQL- oder Oracle-Verbindungen. Ein Git-Branch beschreibt einen Entwicklungsstand. Jede verbundene Datenbank hat unabhängig davon einen geprüften Release-Stand. Branch-Wechsel führen kein SQL aus.
+Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit SQL-Datenbanken (PostgreSQL, Oracle, MySQL/MariaDB, SQL Server, SQLite, DuckDB, ClickHouse). Das Modell ist zustandsbasiert wie bei Redgate SQL Source Control, dbForge Source Control oder DataGrip-DDL-Mappings: Pro Objekt liegt eine Definitionsdatei im Repository. Releases mit Migrationen und Kunden-Deployments gibt es nur für PostgreSQL und Oracle; bei den übrigen Familien sind die Tabs **Releases** und **Datenbanken** ausgeblendet. Ein Git-Branch beschreibt einen Entwicklungsstand. Jede verbundene Datenbank hat unabhängig davon einen geprüften Release-Stand. Branch-Wechsel führen kein SQL aus.
 
 Die [Erweiterung für den produktiven Betrieb](database-versioning-operations.md) beschreibt Release-Linien, Update-Regeln, Datenprüfungen, Sitzungs- und Zeitlimits, Oracle-Metadaten sowie die zugrunde liegende Web-Recherche und verbleibende Grenzen.
 
@@ -11,12 +11,17 @@ Das Badge zählt geänderte Git-Dateien, einen ungespeicherten Entwurf sowie Zie
 ## Einzelne Datenbank
 
 1. Repository öffnen oder Git im gewählten Ordner initialisieren. Git muss installiert und `user.name`/`user.email` eingerichtet sein.
-2. Mit der aktiven PostgreSQL- oder Oracle-Verbindung ein Projekt anlegen.
-3. In **Änderungen** einzelne Objekte oder die unterstützten Objekte eines Schemas aufnehmen. Dateien vergleichen, bearbeiten und gezielt committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
-4. Einen Ausgangsrelease ohne Migration anlegen und dessen Manifest committen.
-5. Unter **Datenbanken** auch eine einzelne Entwicklungs-, Test- oder Produktionsdatenbank als Ziel hinzufügen. Die Baseline wird nur zugeordnet, wenn ihre verwalteten Definitionen tatsächlich zum Release passen.
-6. Auf einem Feature-Branch arbeiten. Den nächsten Release mit Vorgänger und geprüftem Migrations-SQL erstellen und committen.
-7. Ziele und Zielrelease auswählen, mit **Planen** das tatsächlich für diese Ziele verwendete SQL prüfen und den Release-Namen zur Ausführung eingeben.
+2. Mit der aktiven SQL-Verbindung ein Projekt anlegen.
+3. In **Änderungen** eine Entwicklungsdatenbank (Verbindung, Datenbank, Schema) verknüpfen. Die Verknüpfung gilt nur auf diesem Rechner (`localStorage`), weil Verbindungs-IDs lokal sind.
+4. **Vergleichen** liest alle unterstützten Objekte des Schemas und zeigt pro Objekt, ob es in der Datenbank abweicht, neu ist oder fehlt, jeweils mit Diff Repository ↔ Datenbank. Ausgewählte Objekte mit **Ins Repository übernehmen** speichern: Neue Objekte werden in `project.json` aufgenommen, in der Datenbank fehlende Objekte samt Datei entfernt. Für die Gegenrichtung öffnet **Repository-Stand im Editor** die gespeicherte Definition als SQL-Tab; ausgeführt wird dabei nichts automatisch.
+5. Unter **Repository** die Dateien prüfen, bearbeiten und gezielt oder mit **Alle für Commit** committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
+
+Ab hier nur PostgreSQL und Oracle:
+
+6. Einen Ausgangsrelease ohne Migration anlegen und dessen Manifest committen.
+7. Unter **Datenbanken** auch eine einzelne Entwicklungs-, Test- oder Produktionsdatenbank als Ziel hinzufügen. Die Baseline wird nur zugeordnet, wenn ihre verwalteten Definitionen tatsächlich zum Release passen.
+8. Auf einem Feature-Branch arbeiten. Den nächsten Release mit Vorgänger und geprüftem Migrations-SQL erstellen und committen.
+9. Ziele und Zielrelease auswählen, mit **Planen** das tatsächlich für diese Ziele verwendete SQL prüfen und den Release-Namen zur Ausführung eingeben.
 
 Der SQL-Vorschlag unterstützt die vorhandenen Vergleichsoperationen. Er ersetzt keine Prüfung von Datenmigrationen, Abhängigkeiten oder Betriebsanforderungen. Gespeicherte Tabellendefinitionen sind Vergleichsmetadaten, kein vollständiger Datenbank-Dump.
 
