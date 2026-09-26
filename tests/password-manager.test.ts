@@ -341,12 +341,14 @@ function harness(
       },
       remove: async (ids: string[]) => {
         removed.push(ids);
-        for (const id of ids)
-          connections.splice(
-            connections.findIndex((entry) => entry.id === id),
-            1,
-          );
-        return ids.length;
+        let count = 0;
+        for (const id of ids) {
+          const index = connections.findIndex((entry) => entry.id === id);
+          if (index < 0) continue;
+          connections.splice(index, 1);
+          count++;
+        }
+        return count;
       },
     },
     process: {
