@@ -17,7 +17,18 @@ async function handleConnectionsSave(ctx: RpcContext): Promise<Json | void> {
   return result as unknown as Json;
 }
 
+async function handleConnectionsRemove(ctx: RpcContext): Promise<Json | void> {
+  ctx.permissions.require(ctx.extension, "connections:write");
+  const ids = ctx.args[0];
+  if (!Array.isArray(ids) || ids.length > 500 || ids.some((id) => typeof id !== "string"))
+    throw new ExtensionError("ProtocolError", "Invalid connection ids");
+  const removed = await ctx.core.removeConnections(ids as string[]);
+  ctx.log(ctx.id, "info", `connections removed: -${removed}`);
+  return removed;
+}
+
 export const rpcConnectionsHandlers: Record<string, RpcHandler> = {
   "connections.list": handleConnectionsList,
   "connections.save": handleConnectionsSave,
+  "connections.remove": handleConnectionsRemove,
 };

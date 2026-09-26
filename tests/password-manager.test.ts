@@ -114,8 +114,9 @@ function decodeB64(value: string) {
 function fakeKeeper() {
   const records = new Map<
     string,
-    { title: string; notes: string; login: string; password: string }
+    { title: string; notes: string; login: string; password: string; url: string; folder?: string }
   >();
+  const folders = [{ shared_folder_uid: "SF1", name: "Team Datenbanken", folder_type: "Classic" }];
   let next = 1;
   const field = (args: string[], name: string) => {
     const raw = args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) ?? "";
@@ -149,12 +150,14 @@ function fakeKeeper() {
           fields: [
             { type: "login", value: [r.login] },
             { type: "password", value: [r.password] },
+            { type: "url", value: r.url ? [r.url] : [] },
           ],
           custom: [],
           notes: r.notes,
         }),
       };
     }
+    if (command === "list-sf") return { status: 0, stdout: JSON.stringify(folders) };
     if (command === "record-add") {
       const uid = `UID${next++}`;
       records.set(uid, {
@@ -162,16 +165,20 @@ function fakeKeeper() {
         notes: flag(args, "-n"),
         login: field(args, "login"),
         password: field(args, "password"),
+        url: field(args, "url"),
+        ...(args.includes("--folder") ? { folder: flag(args, "--folder") } : {}),
       });
       return { status: 0, stdout: uid };
     }
     if (command === "record-update") {
       const uid = flag(args, "-r");
       records.set(uid, {
+        ...records.get(uid),
         title: flag(args, "-t"),
         notes: flag(args, "-n"),
         login: field(args, "login"),
         password: field(args, "password"),
+        url: field(args, "url"),
       });
       return { status: 0, stdout: "" };
     }
@@ -192,6 +199,13 @@ function fakeBitwarden() {
     }
     expect(rest.slice(-2)).toEqual(["--session", "SESSION"]);
     if (command === "sync") return { status: 0, stdout: "Syncing complete." };
+    if (command === "list" && rest[0] === "organizations")
+      return { status: 0, stdout: JSON.stringify([{ id: "org-1", name: "Firma" }]) };
+    if (command === "list" && rest[0] === "collections")
+      return {
+        status: 0,
+        stdout: JSON.stringify([{ id: "col-1", organizationId: "org-1", name: "Datenbanken" }]),
+      };
     if (command === "list") return { status: 0, stdout: JSON.stringify([...items.values()]) };
     if (command === "create") {
       const id = `bw-${next++}`;
@@ -208,8 +222,13 @@ function fakeBitwarden() {
 }
 
 function fakeOnePassword() {
-  const items = new Map<string, { title: string; values: Record<string, string> }>();
+  const items = new Map<
+    string,
+    { title: string; values: Record<string, string>; url?: string; vault?: string }
+  >();
   let next = 1;
+  const option = (args: string[], name: string) =>
+    args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
   const values = (args: string[]) =>
     Object.fromEntries(
       args
@@ -217,7 +236,15 @@ function fakeOnePassword() {
         .map((arg) => [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)]),
     );
   const cli: Cli = (args) => {
-    const [, command, ...rest] = args;
+    const [group, command, ...rest] = args;
+    if (group === "vault")
+      return {
+        status: 0,
+        stdout: JSON.stringify([
+          { id: "v-team", name: "Team" },
+          { id: "v-private", name: "Private" },
+        ]),
+      };
     if (command === "list")
       return {
         status: 0,
@@ -233,6 +260,7 @@ function fakeOnePassword() {
         stdout: JSON.stringify({
           id: rest[0],
           title: item.title,
+          urls: item.url ? [{ primary: true, href: item.url }] : [],
           fields: Object.entries(item.values).map(([id, value]) => ({
             id,
             value,
@@ -242,11 +270,21 @@ function fakeOnePassword() {
       };
     }
     if (command === "create") {
-      items.set(`op-${next++}`, { title: rest[rest.indexOf("--title") + 1], values: values(rest) });
+      items.set(`op-${next++}`, {
+        title: option(rest, "--title") ?? "",
+        values: values(rest),
+        url: option(rest, "--url"),
+        vault: option(rest, "--vault"),
+      });
       return { status: 0, stdout: "{}" };
     }
     if (command === "edit") {
-      items.set(rest[0], { title: rest[rest.indexOf("--title") + 1], values: values(rest) });
+      items.set(rest[0], {
+        ...items.get(rest[0]),
+        title: option(rest, "--title") ?? "",
+        values: values(rest),
+        url: option(rest, "--url"),
+      });
       return { status: 0, stdout: "{}" };
     }
     return { status: 1, stdout: "", stderr: "unknown" };
@@ -254,23 +292,61 @@ function fakeOnePassword() {
   return { cli, items };
 }
 
-function harness(provider: string, clis: Record<string, Cli>, local: VaultConnection[]) {
-  const handlers = new Map<string, () => Promise<void>>();
+function harness(
+  provider: string,
+  clis: Record<string, Cli>,
+  local: VaultConnection[],
+  options: { autoSync?: boolean; pickTarget?: number } = {},
+) {
+  const handlers = new Map<string, (payload?: Json) => Promise<unknown>>();
   const messages: string[] = [];
   const savedBatches: VaultConnection[][] = [];
+  const removed: string[][] = [];
+  const storage = new Map<string, Json>();
+  const statusBar: { text: string; background?: string }[] = [];
+  const connections = [...local];
   const api = {
     commands: {
-      registerCommand(id: string, handler: () => Promise<void>) {
+      registerCommand(id: string, handler: (payload?: Json) => Promise<unknown>) {
         handlers.set(id, handler);
         return { dispose: () => handlers.delete(id) };
       },
     },
-    configuration: { get: async () => provider },
+    configuration: {
+      get: async (key: string) =>
+        key === "vault.autoSync" ? (options.autoSync ?? false) : provider,
+    },
+    storage: {
+      get: async (key: string) => storage.get(key) ?? null,
+      set: async (key: string, value: Json) => void storage.set(key, value),
+    },
+    statusBar: {
+      set: async (_id: string, update: { text: string }) => void statusBar.push(update),
+    },
+    views: { setTreeData: async () => undefined },
+    logger: { info() {}, warn() {}, error() {} },
     connections: {
-      list: async () => local,
+      list: async () => connections,
       save: async (items: VaultConnection[]) => {
         savedBatches.push(items);
-        return { added: items.length, updated: 0, skipped: [] };
+        let added = 0;
+        for (const item of items) {
+          const index = connections.findIndex((entry) => entry.id === item.id);
+          if (index < 0) {
+            connections.push(item);
+            added++;
+          } else connections[index] = item;
+        }
+        return { added, updated: items.length - added, skipped: [] };
+      },
+      remove: async (ids: string[]) => {
+        removed.push(ids);
+        for (const id of ids)
+          connections.splice(
+            connections.findIndex((entry) => entry.id === id),
+            1,
+          );
+        return ids.length;
       },
     },
     process: {
@@ -281,8 +357,10 @@ function harness(provider: string, clis: Record<string, Cli>, local: VaultConnec
       },
     },
     window: {
-      showQuickPick: async (items: { picked?: boolean }[]) =>
-        items.filter((item) => item.picked).map((item) => ({ ...item })),
+      showQuickPick: async (items: { picked?: boolean }[], pick?: { canPickMany?: boolean }) =>
+        pick?.canPickMany || options.pickTarget === undefined
+          ? items.filter((item) => item.picked).map((item) => ({ ...item }))
+          : [{ ...items[options.pickTarget] }],
       showInputBox: async () => "master",
       showInformationMessage: async (message: string) => {
         messages.push(message);
@@ -298,7 +376,15 @@ function harness(provider: string, clis: Record<string, Cli>, local: VaultConnec
     { extensionId: "l8db.password-manager", extensionPath: "", storagePath: "", subscriptions: [] },
     api,
   );
-  return { run: (id: string) => handlers.get(id)!(), messages, savedBatches };
+  return {
+    run: (id: string, payload?: Json) => handlers.get(id)!(payload),
+    messages,
+    savedBatches,
+    removed,
+    storage,
+    statusBar,
+    connections,
+  };
 }
 
 const local: VaultConnection[] = [
@@ -324,7 +410,7 @@ describe.each([
     const fake = create();
     const vault = harness(provider, { [binary]: fake.cli }, local);
     await vault.run("vault.export");
-    expect(vault.messages.at(-1)).toContain("2 angelegt, 0 aktualisiert");
+    expect(vault.messages.at(-1)).toMatch(/2 angelegt( in „Private“)?, 0 aktualisiert/);
     const store = "records" in fake ? fake.records : fake.items;
     expect(store.size).toBe(2);
     await vault.run("vault.export");
@@ -362,6 +448,123 @@ describe.each([
     await vault.run("vault.import");
     expect(vault.messages.at(-1)).toStartWith("ERROR");
   });
+});
+
+describe.each([
+  ["keeper", () => fakeKeeper(), "keeper", "SF1"],
+  ["bitwarden", () => fakeBitwarden(), "bw", "col-1"],
+  ["1password", () => fakeOnePassword(), "op", "v-team"],
+] as const)("%s team sharing", (provider, create, binary, shared) => {
+  test("shares connections into a team target with a readable address", async () => {
+    const fake = create();
+    const admin = harness(provider, { [binary]: fake.cli }, [local[0]], { pickTarget: 1 });
+    await admin.run("vault.export");
+    const [entry] = [...("records" in fake ? fake.records : fake.items).values()] as Record<
+      string,
+      unknown
+    >[];
+    const where = entry.folder ?? entry.vault ?? (entry.collectionIds as string[] | undefined)?.[0];
+    expect(where).toBe(shared);
+    if (provider === "bitwarden") expect(entry.organizationId).toBe("org-1");
+    const url = entry.url ?? (entry.login as { uris: { uri: string }[] } | undefined)?.uris[0]?.uri;
+    expect(url).toBe(local[0].connectionString);
+  });
+
+  test("employees receive shared connections on startup and lose revoked ones", async () => {
+    const fake = create();
+    const admin = harness(provider, { [binary]: fake.cli }, local, { pickTarget: 1 });
+    await admin.run("vault.export");
+    const employee = harness(provider, { [binary]: fake.cli }, [], { autoSync: true });
+    const first = (await employee.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(first).toMatchObject({ total: 2, added: 2, removed: 0 });
+    expect(employee.connections.map((entry) => entry.password).sort()).toEqual([
+      "p=a;ss$w0rd\\n",
+      "s3cr@t pw",
+    ]);
+    const store: Map<string, unknown> = "records" in fake ? fake.records : fake.items;
+    store.delete([...store.keys()][0]);
+    const second = (await employee.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(second).toMatchObject({ total: 1, added: 0, removed: 1 });
+    expect(employee.connections).toHaveLength(1);
+    expect(employee.statusBar.at(-1)?.text).toContain("1 Zugang");
+    const own = harness(provider, { [binary]: fake.cli }, local);
+    await own.run("vault.sync", { quiet: true });
+    store.clear();
+    const kept = (await own.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(kept.removed).toBe(0);
+    expect(own.connections).toHaveLength(2);
+  });
+});
+
+test("reads entries typed by hand into the password manager", () => {
+  const typed = extension.readEntry("bitwarden", {
+    ref: "abc",
+    title: "L8DB: Buchhaltung",
+    username: "buchhaltung",
+    password: "geheim",
+    urls: ["https://intranet.example.com", "postgresql://db.firma.local:5432/finanzen"],
+  });
+  expect(typed).toEqual({
+    id: "pm-bitwarden-abc",
+    name: "Buchhaltung",
+    kind: "postgres",
+    connectionString: "postgresql://buchhaltung@db.firma.local:5432/finanzen",
+    password: "geheim",
+    profile: {
+      id: "pm-bitwarden-abc",
+      name: "Buchhaltung",
+      kind: "postgres",
+      connectionString: "postgresql://buchhaltung@db.firma.local:5432/finanzen",
+    },
+  });
+  const merged = mergeVaultConnections([typed!], []);
+  expect(merged.added[0].connectionString).toBe(
+    "postgresql://buchhaltung:geheim@db.firma.local:5432/finanzen",
+  );
+  expect(
+    extension.readEntry("keeper", {
+      ref: "r",
+      title: "l8db: Cache",
+      urls: ["redis://:pw%40x@cache:6379"],
+    })?.password,
+  ).toBe("pw@x");
+  expect(
+    extension.readEntry("keeper", { ref: "r", title: "l8db: Web", urls: ["https://x.de"] }),
+  ).toBeNull();
+});
+
+test("edits made in the password manager win over the stored profile", () => {
+  const notes = extension.toNotes(local[0]);
+  const edited = extension.readEntry("keeper", {
+    ref: "r",
+    title: "l8db: Prod (neu)",
+    notes,
+    username: "reader",
+    password: "rotated",
+    urls: ["postgres://app@db2.example.com:5432/prod"],
+  });
+  expect(edited).toMatchObject({
+    id: saved.id,
+    name: "Prod (neu)",
+    connectionString: "postgres://reader@db2.example.com:5432/prod",
+    password: "rotated",
+    profile: { tags: saved.tags, name: "Prod (neu)" },
+  });
+});
+
+test("the host removes connections together with their secrets", async () => {
+  const { createExtensionHost } = await import("../src/lib/extensions/host");
+  const { useConnectionsStore } = await import("../src/lib/connections");
+  const core = (
+    createExtensionHost().manager as unknown as {
+      core: import("../src/lib/extensions/contracts").CoreServices;
+    }
+  ).core;
+  useConnectionsStore.setState({
+    connections: [saved, { ...saved, id: "tmp", temporary: true }],
+  });
+  expect(await core.removeConnections([saved.id, "tmp", "unknown", saved.id])).toBe(1);
+  expect(useConnectionsStore.getState().connections.map((entry) => entry.id)).toEqual(["tmp"]);
 });
 
 test("host saves into the connection store and keychain and lists them back", async () => {

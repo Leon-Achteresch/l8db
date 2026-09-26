@@ -2,11 +2,38 @@ import type { ExtensionContext, Json, L8dbApi, VaultConnection } from "@l8db/ext
 
 export const MARKER = "l8db-connection:v1:";
 const TITLE_PREFIX = "l8db: ";
+const PREFIX = /^\s*l8db\s*:\s*/i;
+const NOTES_HINT =
+  "Von l8db angelegt. Adresse, Benutzername und Passwort darfst du hier ändern, die letzte Zeile bitte nicht.";
 const TIMEOUT = 120000;
 
 export interface VaultRecord {
   ref: string;
   connection: VaultConnection;
+}
+
+export interface VaultEntry {
+  ref: string;
+  title: unknown;
+  notes?: unknown;
+  username?: unknown;
+  password?: unknown;
+  urls?: unknown[];
+}
+
+export interface VaultTarget {
+  id: string | null;
+  label: string;
+  description: string;
+  organization?: string;
+}
+
+export interface SyncResult {
+  total: number;
+  added: number;
+  updated: number;
+  removed: number;
+  skipped: string[];
 }
 
 export type VaultState = "signed-out" | "locked" | "signed-in";
@@ -40,9 +67,39 @@ export interface VaultSession {
 
 export interface VaultBackend {
   list(): Promise<VaultRecord[]>;
-  create(connection: VaultConnection): Promise<void>;
+  targets(): Promise<VaultTarget[]>;
+  create(connection: VaultConnection, target?: VaultTarget): Promise<void>;
   update(ref: string, connection: VaultConnection): Promise<void>;
 }
+
+const SCHEMES: Record<string, string> = {
+  postgres: "postgres",
+  postgresql: "postgres",
+  mysql: "mysql",
+  mariadb: "mysql",
+  mssql: "mssql",
+  sqlserver: "mssql",
+  clickhouse: "clickhouse",
+  mongodb: "mongodb",
+  "mongodb+srv": "mongodb",
+  redis: "redis",
+  rediss: "redis",
+  valkey: "redis",
+  oracle: "oracle",
+  cassandra: "cassandra",
+  scylla: "cassandra",
+  elasticsearch: "elasticsearch",
+  opensearch: "elasticsearch",
+  influxdb: "influxdb",
+  libsql: "sqlite_http",
+  snowflake: "snowflake",
+};
+
+const PERSONAL: VaultTarget = {
+  id: null,
+  label: "Nur für mich",
+  description: "Persönlicher Tresor, niemand sonst sieht die Zugänge",
+};
 
 function encode(text: string): string {
   let binary = "";
@@ -56,7 +113,62 @@ function decode(text: string): string {
 
 export function toNotes(connection: VaultConnection): string {
   const { password: _password, ...rest } = connection;
-  return MARKER + encode(JSON.stringify(rest));
+  return `${NOTES_HINT}\n${MARKER}${encode(JSON.stringify(rest))}`;
+}
+
+export function address(value: unknown, user?: unknown) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  const kind = SCHEMES[/^([a-z][a-z0-9+.-]*):\/\//i.exec(text)?.[1].toLowerCase() ?? ""];
+  if (!kind) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (!url.hostname) return null;
+  const secret = url.password ? decodeURIComponent(url.password) : null;
+  url.password = "";
+  if (typeof user === "string" && user.trim()) url.username = encodeURIComponent(user.trim());
+  return { kind, connectionString: url.toString(), secret };
+}
+
+export function isEntryTitle(value: unknown) {
+  return typeof value === "string" && PREFIX.test(value);
+}
+
+export function readEntry(provider: string, entry: VaultEntry): VaultConnection | null {
+  const stored = fromNotes(entry.notes, entry.password);
+  const target = (entry.urls ?? [])
+    .map((url) => address(url, entry.username))
+    .find((found) => found !== null);
+  if (!stored && !target) return null;
+  const id = stored?.id ?? `pm-${provider}-${entry.ref}`;
+  const title = typeof entry.title === "string" ? entry.title.replace(PREFIX, "").trim() : "";
+  const name = title || stored?.name || id;
+  const kind = stored?.kind ?? (target?.kind as string);
+  const connectionString = target?.connectionString ?? (stored?.connectionString as string);
+  const password =
+    typeof entry.password === "string" && entry.password
+      ? entry.password
+      : (target?.secret ?? null);
+  const base =
+    stored?.profile && typeof stored.profile === "object" && !Array.isArray(stored.profile)
+      ? stored.profile
+      : {};
+  return {
+    id,
+    name,
+    kind,
+    connectionString,
+    password,
+    profile: { ...base, id, name, kind, connectionString },
+  };
+}
+
+function link(connection: VaultConnection) {
+  return address(connection.connectionString) ? connection.connectionString : null;
 }
 
 export function fromNotes(notes: unknown, password: unknown): VaultConnection | null {
@@ -107,36 +219,60 @@ function json(text: string): unknown {
 
 export function keeper(api: L8dbApi): VaultBackend {
   const call = (...args: string[]) => run(api, "keeper", ["--batch-mode", ...args]);
-  const fields = (connection: VaultConnection) => [
-    ...(username(connection.connectionString)
-      ? [`login=$BASE64:${encode(username(connection.connectionString))}`]
-      : []),
-    ...(connection.password ? [`password=$BASE64:${encode(connection.password)}`] : []),
-  ];
+  const secret = (name: string, value: string) => `${name}=$BASE64:${encode(value)}`;
+  const fields = (connection: VaultConnection) => {
+    const url = link(connection);
+    return [
+      ...(username(connection.connectionString)
+        ? [secret("login", username(connection.connectionString))]
+        : []),
+      ...(connection.password ? [secret("password", connection.password)] : []),
+      ...(url ? [secret("url", url)] : []),
+    ];
+  };
   return {
     async list() {
       const found = json((await call("search", "l8db", "-c", "r", "--format", "json")) || "[]");
       const records: VaultRecord[] = [];
       for (const hit of Array.isArray(found) ? found : []) {
-        if (
-          typeof hit?.record_uid !== "string" ||
-          !String(hit.title ?? "").startsWith(TITLE_PREFIX)
-        )
-          continue;
+        if (typeof hit?.record_uid !== "string" || !isEntryTitle(hit.title)) continue;
         const record = json(
           await call("get", hit.record_uid, "--format", "json", "--unmask"),
         ) as Record<string, unknown>;
         const list = Array.isArray(record.fields)
           ? (record.fields as { type?: string; value?: unknown[] }[])
           : [];
-        const password =
-          list.find((field) => field.type === "password")?.value?.[0] ?? record.password;
-        const connection = fromNotes(record.notes, password);
+        const value = (type: string) => list.find((field) => field.type === type)?.value ?? [];
+        const connection = readEntry("keeper", {
+          ref: hit.record_uid,
+          title: record.title ?? hit.title,
+          notes: record.notes,
+          username: value("login")[0] ?? record.login,
+          password: value("password")[0] ?? record.password,
+          urls: [...value("url"), record.login_url],
+        });
         if (connection) records.push({ ref: hit.record_uid, connection });
       }
       return records;
     },
-    async create(connection) {
+    async targets() {
+      try {
+        const found = json(await call("list-sf", "--format", "json"));
+        return [
+          PERSONAL,
+          ...(Array.isArray(found) ? found : [])
+            .filter((entry) => typeof entry?.shared_folder_uid === "string")
+            .map((entry) => ({
+              id: entry.shared_folder_uid as string,
+              label: String(entry.name ?? entry.shared_folder_uid),
+              description: "Geteilter Ordner, alle Mitglieder erhalten die Zugänge",
+            })),
+        ];
+      } catch {
+        return [PERSONAL];
+      }
+    },
+    async create(connection, target) {
       await call(
         "record-add",
         "-f",
@@ -144,6 +280,7 @@ export function keeper(api: L8dbApi): VaultBackend {
         title(connection),
         "-rt",
         "login",
+        ...(target?.id ? ["--folder", target.id] : []),
         "-n",
         toNotes(connection),
         ...fields(connection),
@@ -171,11 +308,11 @@ export function bitwarden(api: L8dbApi, auth: VaultSession = { bw: null, op: nul
     const status = json(await run(api, "bw", ["status"])) as { status?: string };
     if (status.status === "unauthenticated")
       throw new Error(
-        "Bitwarden CLI ist nicht angemeldet. Bitte zuerst `bw login` im Terminal ausführen.",
+        "Bitwarden ist auf diesem Gerät nicht angemeldet. Öffne Einstellungen → Erweiterungen → Passwortmanager-Sync und melde dich an.",
       );
     const password = await api.window.showInputBox({
-      title: "Bitwarden",
-      prompt: "Master-Passwort zum Entsperren",
+      title: "Bitwarden entsperren",
+      prompt: "Master-Passwort, um die Datenbank-Zugänge zu laden",
       password: true,
     });
     if (!password) throw new Error("Abgebrochen.");
@@ -189,34 +326,75 @@ export function bitwarden(api: L8dbApi, auth: VaultSession = { bw: null, op: nul
   };
   const call = async (...args: string[]) => run(api, "bw", [...args, "--session", await unlock()]);
   const items = new Map<string, Record<string, unknown>>();
-  const body = (connection: VaultConnection, base: Record<string, unknown> = {}) =>
-    encode(
+  const body = (
+    connection: VaultConnection,
+    base: Record<string, unknown> = {},
+    target?: VaultTarget,
+  ) => {
+    const login = (base.login as Record<string, unknown>) ?? {};
+    const url = link(connection);
+    return encode(
       JSON.stringify({
         type: 1,
         ...base,
+        ...(target?.id ? { organizationId: target.organization, collectionIds: [target.id] } : {}),
         name: title(connection),
         notes: toNotes(connection),
         login: {
-          ...((base.login as Record<string, unknown>) ?? {}),
+          ...login,
           username: username(connection.connectionString) || null,
           password: connection.password,
+          uris: url ? [{ match: null, uri: url }] : (login.uris ?? []),
         },
       }),
     );
+  };
   return {
     async list() {
-      const found = json(await call("list", "items", "--search", TITLE_PREFIX.trim()));
+      const found = json(await call("list", "items", "--search", "l8db"));
       const records: VaultRecord[] = [];
       for (const item of Array.isArray(found) ? found : []) {
-        const connection = fromNotes(item?.notes, item?.login?.password);
-        if (!connection || typeof item.id !== "string") continue;
+        if (typeof item?.id !== "string" || !isEntryTitle(item.name)) continue;
+        const uris = Array.isArray(item.login?.uris) ? item.login.uris : [];
+        const connection = readEntry("bitwarden", {
+          ref: item.id,
+          title: item.name,
+          notes: item.notes,
+          username: item.login?.username,
+          password: item.login?.password,
+          urls: uris.map((entry: { uri?: unknown }) => entry?.uri),
+        });
+        if (!connection) continue;
         items.set(item.id, item);
         records.push({ ref: item.id, connection });
       }
       return records;
     },
-    async create(connection) {
-      await call("create", "item", body(connection));
+    async targets() {
+      const organizations = json(await call("list", "organizations"));
+      const collections = json(await call("list", "collections"));
+      const names = new Map<string, string>(
+        (Array.isArray(organizations) ? organizations : []).map((entry) => [
+          String(entry?.id),
+          String(entry?.name ?? ""),
+        ]),
+      );
+      return [
+        PERSONAL,
+        ...(Array.isArray(collections) ? collections : [])
+          .filter(
+            (entry) => typeof entry?.id === "string" && typeof entry?.organizationId === "string",
+          )
+          .map((entry) => ({
+            id: entry.id as string,
+            organization: entry.organizationId as string,
+            label: [names.get(entry.organizationId), entry.name].filter(Boolean).join(" › "),
+            description: "Sammlung, alle Mitglieder erhalten die Zugänge",
+          })),
+      ];
+    },
+    async create(connection, target) {
+      await call("create", "item", body(connection, {}, target));
     },
     async update(ref, connection) {
       await call("edit", "item", ref, body(connection, items.get(ref)));
@@ -230,30 +408,63 @@ export function onePassword(
 ): VaultBackend {
   const call = (...args: string[]) =>
     run(api, "op", [...args, ...(auth.op ? ["--account", auth.op] : [])]);
-  const assignments = (connection: VaultConnection) => [
-    `username=${username(connection.connectionString)}`,
-    `password=${connection.password ?? ""}`,
-    `notesPlain=${toNotes(connection)}`,
-  ];
+  const assignments = (connection: VaultConnection) => {
+    const url = link(connection);
+    return [
+      ...(url ? ["--url", url] : []),
+      `username=${username(connection.connectionString)}`,
+      `password=${connection.password ?? ""}`,
+      `notesPlain=${toNotes(connection)}`,
+    ];
+  };
   return {
     async list() {
-      const found = json(
-        (await call("item", "list", "--tags", "l8db", "--format", "json")) || "[]",
-      );
+      const found = json((await call("item", "list", "--format", "json")) || "[]");
       const records: VaultRecord[] = [];
       for (const hit of Array.isArray(found) ? found : []) {
         if (typeof hit?.id !== "string") continue;
+        const tagged = Array.isArray(hit.tags) && hit.tags.includes("l8db");
+        if (!tagged && !isEntryTitle(hit.title)) continue;
         const item = json(await call("item", "get", hit.id, "--format", "json", "--reveal")) as {
+          title?: string;
           fields?: { id?: string; purpose?: string; value?: unknown }[];
+          urls?: { href?: unknown }[];
         };
         const field = (id: string, purpose: string) =>
           item.fields?.find((f) => f.id === id || f.purpose === purpose)?.value;
-        const connection = fromNotes(field("notesPlain", "NOTES"), field("password", "PASSWORD"));
+        const connection = readEntry("1password", {
+          ref: hit.id,
+          title: item.title ?? hit.title,
+          notes: field("notesPlain", "NOTES"),
+          username: field("username", "USERNAME"),
+          password: field("password", "PASSWORD"),
+          urls: (item.urls ?? hit.urls ?? []).map((entry: { href?: unknown }) => entry?.href),
+        });
         if (connection) records.push({ ref: hit.id, connection });
       }
       return records;
     },
-    async create(connection) {
+    async targets() {
+      const found = json((await call("vault", "list", "--format", "json")) || "[]");
+      const vaults = (Array.isArray(found) ? found : [])
+        .filter((entry) => typeof entry?.id === "string")
+        .map((entry) => {
+          const own = /^(private|personal|employee|privat)$/i.test(String(entry.name));
+          return {
+            id: entry.id as string,
+            label: String(entry.name ?? entry.id),
+            description: own
+              ? "Persönlicher Tresor, niemand sonst sieht die Zugänge"
+              : "Tresor, alle mit Zugriff erhalten die Zugänge",
+            own,
+          };
+        })
+        .sort((a, b) => Number(b.own) - Number(a.own) || a.label.localeCompare(b.label));
+      return vaults.length
+        ? vaults.map(({ own: _own, ...target }) => target)
+        : [{ ...PERSONAL, label: "Privat" }];
+    },
+    async create(connection, target) {
       await call(
         "item",
         "create",
@@ -263,6 +474,7 @@ export function onePassword(
         title(connection),
         "--tags",
         "l8db",
+        ...(target?.id ? ["--vault", target.id] : []),
         ...assignments(connection),
       );
     },
@@ -297,23 +509,42 @@ async function pick(api: L8dbApi, connections: VaultConnection[], placeholder: s
   return connections.filter((connection) => ids.has(connection.id));
 }
 
+function unique(records: VaultRecord[]) {
+  return [...new Map(records.map((record) => [record.connection.id, record.connection])).values()];
+}
+
 export async function importConnections(api: L8dbApi, backend: VaultBackend, name: string) {
   const records = await backend.list();
   if (!records.length) {
     await api.window.showInformationMessage(`Keine l8db-Verbindungen in ${name} gefunden.`);
     return { added: 0, updated: 0, skipped: [] };
   }
-  const selected = await pick(
-    api,
-    [...new Map(records.map((record) => [record.connection.id, record.connection])).values()],
-    `Aus ${name} laden`,
-  );
+  const selected = await pick(api, unique(records), `Aus ${name} laden`);
   if (!selected.length) return { added: 0, updated: 0, skipped: [] };
   const result = await api.connections.save(selected);
   await api.window.showInformationMessage(
     `${name}: ${result.added} neu, ${result.updated} aktualisiert${result.skipped.length ? `, übersprungen: ${result.skipped.join(", ")}` : ""}.`,
   );
   return result;
+}
+
+async function chooseTarget(api: L8dbApi, targets: VaultTarget[], name: string) {
+  if (targets.length < 2) return targets[0];
+  const items = targets.map((target, index) => ({
+    label: target.label,
+    description: target.description,
+    picked: index === 0,
+  }));
+  const chosen = await api.window.showQuickPick(items, {
+    title: `Wo in ${name} speichern?`,
+  });
+  const entry = chosen?.[0];
+  if (!entry) return undefined;
+  return targets.find((target, index) =>
+    typeof entry === "string"
+      ? target.label === entry
+      : items[index].label === entry.label && items[index].description === entry.description,
+  );
 }
 
 export async function exportConnections(api: L8dbApi, backend: VaultBackend, name: string) {
@@ -327,6 +558,9 @@ export async function exportConnections(api: L8dbApi, backend: VaultBackend, nam
   const existing = new Map(
     (await backend.list()).map((record) => [record.connection.id, record.ref]),
   );
+  const fresh = selected.filter((connection) => !existing.has(connection.id));
+  const target = fresh.length ? await chooseTarget(api, await backend.targets(), name) : undefined;
+  if (fresh.length && !target) return { created: 0, updated: 0 };
   let created = 0;
   let updated = 0;
   for (const connection of selected) {
@@ -335,12 +569,70 @@ export async function exportConnections(api: L8dbApi, backend: VaultBackend, nam
       await backend.update(ref, connection);
       updated++;
     } else {
-      await backend.create(connection);
+      await backend.create(connection, target);
       created++;
     }
   }
-  await api.window.showInformationMessage(`${name}: ${created} angelegt, ${updated} aktualisiert.`);
+  await api.window.showInformationMessage(
+    `${name}: ${created} angelegt${target?.id ? ` in „${target.label}“` : ""}, ${updated} aktualisiert.`,
+  );
   return { created, updated };
+}
+
+async function tracked(api: L8dbApi, key: string): Promise<string[] | null> {
+  try {
+    const value = await api.storage.get(key);
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return null;
+  }
+}
+
+export async function syncConnections(
+  api: L8dbApi,
+  backend: VaultBackend,
+  provider: string,
+): Promise<SyncResult> {
+  const connections = unique(await backend.list());
+  const key = `synced_${provider.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const before = await tracked(api, key);
+  const local = new Set((await api.connections.list()).map((connection) => connection.id));
+  const saved = connections.length
+    ? await api.connections.save(connections)
+    : { added: 0, updated: 0, skipped: [] };
+  const ids = new Set(connections.map((connection) => connection.id));
+  const stale = (before ?? []).filter((id) => !ids.has(id) && local.has(id));
+  const removed =
+    stale.length && typeof api.connections.remove === "function"
+      ? await api.connections.remove(stale)
+      : 0;
+  if (before) {
+    const owned = new Set(before);
+    await api.storage
+      .set(
+        key,
+        [...ids].filter((id) => owned.has(id) || !local.has(id)),
+      )
+      .catch(() => undefined);
+  }
+  return {
+    total: connections.length - saved.skipped.length,
+    added: saved.added,
+    updated: saved.updated,
+    removed,
+    skipped: saved.skipped,
+  };
+}
+
+export function syncSummary(result: SyncResult, name: string) {
+  if (!result.total && !result.removed && !result.skipped.length)
+    return `In ${name} sind noch keine Datenbank-Zugänge für l8db hinterlegt.`;
+  const changes = [
+    result.added && `${result.added} neu`,
+    result.removed && `${result.removed} entfernt`,
+    result.skipped.length && `nicht lesbar: ${result.skipped.join(", ")}`,
+  ].filter(Boolean);
+  return `${result.total === 1 ? "1 Datenbank-Zugang" : `${result.total} Datenbank-Zugänge`} aus ${name} bereit${changes.length ? ` (${changes.join(", ")})` : ""}.`;
 }
 
 const OP_LINUX = [
@@ -538,6 +830,7 @@ export const accounts: Record<string, VaultAccount> = {
           "Keine 1Password-Konten gefunden. Aktiviere in der 1Password-App unter Einstellungen → Entwickler „Mit 1Password CLI integrieren“ und versuche es erneut.",
         );
       await run(api, "op", ["vault", "list", "--format", "json", "--account", auth.op]);
+      return undefined;
     },
     async logout(api, auth) {
       if (auth.op) await run(api, "op", ["signout", "--account", auth.op]).catch(() => undefined);
@@ -618,10 +911,20 @@ async function refreshView(api: L8dbApi, busy?: string) {
     }),
   );
   await api.views.setTreeData("vault.clis", [
+    { id: "sync", label: "Zugänge jetzt abgleichen", icon: "refresh-cw", command: "vault.sync" },
+    { id: "export", label: "Verbindungen freigeben", icon: "upload", command: "vault.export" },
+    {
+      id: "import",
+      label: "Einzelne Verbindungen laden",
+      icon: "download",
+      command: "vault.import",
+    },
     ...items,
-    { id: "import", label: "Verbindungen laden", icon: "database", command: "vault.import" },
-    { id: "export", label: "Verbindungen speichern", icon: "database", command: "vault.export" },
   ]);
+}
+
+function message(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function activate(context: ExtensionContext, api: L8dbApi): void {
@@ -634,14 +937,65 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
     const factory = backends[provider];
     if (!factory) throw new Error(`Unbekannter Passwortmanager: ${provider}`);
     if (!cache.has(provider)) cache.set(provider, factory(api, auth));
-    return { backend: cache.get(provider) as VaultBackend, name: labels[provider] ?? provider };
+    return {
+      backend: cache.get(provider) as VaultBackend,
+      name: labels[provider] ?? provider,
+      provider,
+    };
+  };
+  const status = (update: Parameters<L8dbApi["statusBar"]["set"]>[1]) =>
+    api.statusBar.set("vault.status", update).catch(() => undefined);
+  let running: Promise<SyncResult> | null = null;
+  const sync = async (quiet: boolean): Promise<SyncResult> => {
+    running ??= (async () => {
+      const { backend, name, provider } = await resolve();
+      try {
+        const result = await syncConnections(api, backend, provider);
+        const time = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+        await status({
+          text: `${name}: ${result.total} ${result.total === 1 ? "Zugang" : "Zugänge"}`,
+          tooltip: `${syncSummary(result, name)} Stand ${time} Uhr. Klicken zum Aktualisieren.`,
+          command: "vault.sync",
+        });
+        if (!quiet) await api.window.showInformationMessage(syncSummary(result, name));
+        return result;
+      } catch (error) {
+        await status({
+          text: `${name}: nicht abgeglichen`,
+          tooltip: `${message(error)} Klicken, um es erneut zu versuchen.`,
+          command: "vault.sync",
+          background: "warning",
+        });
+        throw error;
+      }
+    })().finally(() => {
+      running = null;
+    });
+    return running;
+  };
+  const startup = async () => {
+    if ((await api.configuration.get<boolean>("vault.autoSync")) === false) return;
+    const provider = await configured();
+    if (!backends[provider]) return;
+    const current = await vaultStatus(api, provider, auth);
+    if (!current.cli || current.state === "signed-out") return;
+    if (current.state === "locked") {
+      await status({
+        text: `${labels[provider]} gesperrt`,
+        tooltip: "Klicken, um den Tresor zu entsperren und die Datenbank-Zugänge zu laden.",
+        command: "vault.sync",
+        background: "warning",
+      });
+      return;
+    }
+    await sync(true);
   };
   const guard = (action: typeof importConnections | typeof exportConnections) => async () => {
     try {
       const { backend, name } = await resolve();
       await action(api, backend, name);
     } catch (error) {
-      await api.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+      await api.window.showErrorMessage(message(error));
     }
   };
   const install = async (payload?: unknown) => {
@@ -652,12 +1006,13 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
       const version = await installCli(api, provider);
       await api.window.showInformationMessage(`${labels[provider]}-CLI installiert: ${version}`);
     } catch (error) {
-      await api.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+      await api.window.showErrorMessage(message(error));
     } finally {
       await refreshView(api);
     }
   };
   void refreshView(api).catch(() => undefined);
+  void startup().catch((error) => api.logger.warn(`Automatischer Abgleich: ${message(error)}`));
   context.subscriptions.push(
     api.commands.registerCommand("vault.install", (payload) => install(payload)),
     api.commands.registerCommand("vault.refresh", () => refreshView(api)),
@@ -671,6 +1026,16 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
           await configured(),
         )) as unknown as Json,
     ),
+    api.commands.registerCommand("vault.sync", async (payload) => {
+      const quiet =
+        !!payload && typeof payload === "object" && !Array.isArray(payload) && !!payload.quiet;
+      if (quiet) return (await sync(true)) as unknown as Json;
+      try {
+        return (await sync(false)) as unknown as Json;
+      } catch (error) {
+        await api.window.showErrorMessage(message(error));
+      }
+    }),
     api.commands.registerCommand("vault.import", guard(importConnections)),
     api.commands.registerCommand("vault.export", guard(exportConnections)),
   );
