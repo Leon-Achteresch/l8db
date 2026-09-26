@@ -51,6 +51,7 @@ mod sqlite;
 mod sqlite_http;
 pub mod ssh;
 pub mod table_copy;
+pub mod transfer;
 pub mod transaction;
 mod warehouse_auth;
 
