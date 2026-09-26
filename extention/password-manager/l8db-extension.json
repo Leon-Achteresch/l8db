@@ -11,7 +11,6 @@
   "main": "dist/extension.js",
   "activationEvents": [
     "onStartup",
-    "onView:vault.clis",
     "onCommand:vault.sync",
     "onCommand:vault.import",
     "onCommand:vault.export",
@@ -60,11 +59,6 @@
         "title": "Passwortmanager: CLI installieren"
       },
       {
-        "id": "vault.refresh",
-        "title": "Passwortmanager: Status aktualisieren",
-        "icon": "refresh-cw"
-      },
-      {
         "id": "vault.setup",
         "title": "Passwortmanager: Einrichtung"
       }
@@ -102,19 +96,6 @@
       {
         "command": "vault.install",
         "location": "palette"
-      },
-      {
-        "command": "vault.sync",
-        "location": "view/title",
-        "view": "vault.clis"
-      }
-    ],
-    "views": [
-      {
-        "id": "vault.clis",
-        "title": "Passwortmanager",
-        "location": "sidebar",
-        "icon": "package"
       }
     ],
     "statusBar": [

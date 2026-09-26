@@ -323,7 +323,6 @@ function harness(
     statusBar: {
       set: async (_id: string, update: { text: string }) => void statusBar.push(update),
     },
-    views: { setTreeData: async () => undefined },
     logger: { info() {}, warn() {}, error() {} },
     connections: {
       list: async () => connections,
@@ -614,7 +613,6 @@ describe("CLI installation", () => {
     >,
   ) {
     const calls: string[] = [];
-    const trees: unknown[][] = [];
     const api = {
       process: {
         run: async (command: string, options: ProcessOptions = {}) => {
@@ -624,9 +622,8 @@ describe("CLI installation", () => {
           return { stdout: "", stderr: "", ...handler(options.args ?? []) };
         },
       },
-      views: { setTreeData: async (_id: string, items: unknown[]) => void trees.push(items) },
     } as unknown as L8dbApi;
-    return { api, calls, trees };
+    return { api, calls };
   }
 
   test("falls back to the next package manager and verifies the binary", async () => {
@@ -658,40 +655,6 @@ describe("CLI installation", () => {
     const { api, calls } = installApi({});
     await expect(extension.installCli(api, "1password")).rejects.toThrow("developer.1password.com");
     expect(calls.map((call) => call.split(" ")[0])).toEqual(["brew", "winget", "sh"]);
-  });
-
-  test("the sidebar offers an install button only for missing CLIs", async () => {
-    const { api, trees } = installApi({ bw: () => ({ status: 0, stdout: "2026.9.0" }) });
-    const handlers = new Map<string, (payload?: unknown) => Promise<unknown>>();
-    Object.assign(api, {
-      commands: {
-        registerCommand: (id: string, handler: (payload?: unknown) => Promise<unknown>) => (
-          handlers.set(id, handler), { dispose() {} }
-        ),
-      },
-      configuration: { get: async () => "keeper" },
-      window: {
-        showErrorMessage: async () => undefined,
-        showInformationMessage: async () => undefined,
-      },
-    });
-    extension.activate(
-      { extensionId: "x", extensionPath: "", storagePath: "", subscriptions: [] },
-      api,
-    );
-    await handlers.get("vault.refresh")?.();
-    const tree = trees.at(-1) as {
-      id: string;
-      description?: string;
-      command?: string;
-      commandArguments?: string;
-    }[];
-    expect(tree.find((item) => item.id === "bitwarden")).toMatchObject({ description: "2026.9.0" });
-    expect(tree.find((item) => item.id === "bitwarden")?.command).toBeUndefined();
-    expect(tree.find((item) => item.id === "keeper")).toMatchObject({
-      command: "vault.install",
-      commandArguments: "keeper",
-    });
   });
 });
 
