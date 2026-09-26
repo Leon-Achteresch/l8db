@@ -63,6 +63,7 @@ function fakeCore() {
     prompt: (async (request: unknown) => { prompts.push(request); return undefined }) as CoreServices["prompt"],
     listConnections: async () => [{ id: "c1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "pw", profile: {} }],
     saveConnections: async items => ({ added: items.length, updated: 0, skipped: [] }),
+    removeConnections: async ids => ids.length,
   };
   return { core, notifications, clipboard, files, processes, prompts };
 }

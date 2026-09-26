@@ -289,6 +289,10 @@ export const SEARCH_ITEMS: SearchItem[] = [
       "bitwarden",
       "1password",
       "keeper",
+      "firma",
+      "team",
+      "zugänge",
+      "zugangsdaten",
     ],
   },
   {

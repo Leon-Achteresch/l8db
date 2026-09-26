@@ -33,7 +33,11 @@ test.skipIf(!master)(
           return { dispose: () => handlers.delete(id) };
         },
       },
-      configuration: { get: async () => "bitwarden" },
+      configuration: {
+        get: async (key: string) => (key === "vault.autoSync" ? false : "bitwarden"),
+      },
+      views: { setTreeData: async () => undefined },
+      logger: { info() {}, warn() {}, error() {} },
       connections: {
         list: async () => local,
         save: async (items: VaultConnection[]) => {

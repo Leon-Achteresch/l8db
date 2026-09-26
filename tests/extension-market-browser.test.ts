@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import config from "../src-tauri/tauri.conf.json";
+import { bundleFixture } from "./fixtures/browser-bundle";
 
 test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
   "Markt installiert und aktiviert Jev im echten Extension-Sandbox-Flow",
@@ -24,69 +24,7 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
         },
       ],
     });
-    const bundle = await Bun.build({
-      entrypoints: ["tests/fixtures/extension-market-browser.tsx"],
-      target: "browser",
-      format: "esm",
-      plugins: [
-        {
-          name: "fixture-resolver",
-          setup(build) {
-            build.onResolve({ filter: /^@\/lib\/db$/ }, () => ({
-              path: "db-stub",
-              namespace: "fixture-stub",
-            }));
-            build.onLoad({ filter: /.*/, namespace: "fixture-stub" }, () => ({
-              contents:
-                "export async function readCommunityExtension(){ throw new Error('unavailable') }",
-              loader: "js",
-            }));
-            build.onResolve({ filter: /^@\// }, (args) => {
-              const base = resolve("src", args.path.slice(2));
-              const path = [
-                base,
-                `${base}.ts`,
-                `${base}.tsx`,
-                `${base}.js`,
-                `${base}/index.ts`,
-                `${base}/index.tsx`,
-              ].find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
-              if (!path) throw new Error(`Missing fixture module: ${args.path}`);
-              return { path };
-            });
-            build.onResolve({ filter: /\.js\?raw$/ }, (args) => ({
-              path: resolve(args.resolveDir, args.path),
-              namespace: "raw-asset",
-            }));
-            build.onResolve({ filter: /\?raw$/ }, (args) => ({
-              path: resolve(args.resolveDir, args.path),
-              namespace: "raw-asset",
-            }));
-            build.onLoad({ filter: /\?raw$/, namespace: "raw-asset" }, async (args) => ({
-              contents: `export default ${JSON.stringify(await readFile(args.path.replace(/\?raw$/, ""), "utf8"))}`,
-              loader: "js",
-            }));
-            build.onResolve({ filter: /\?url$/ }, (args) => ({
-              path: args.path,
-              namespace: "url-stub",
-            }));
-            build.onLoad({ filter: /.*/, namespace: "url-stub" }, () => ({
-              contents: 'export default ""',
-              loader: "js",
-            }));
-            build.onResolve({ filter: /\?worker$/ }, (args) => ({
-              path: args.path,
-              namespace: "worker-stub",
-            }));
-            build.onLoad({ filter: /.*/, namespace: "worker-stub" }, () => ({
-              contents: "export default class WorkerStub {}",
-              loader: "js",
-            }));
-          },
-        },
-      ],
-    });
-    if (!bundle.success) throw new Error(bundle.logs.map(String).join("\n"));
+    const output = await bundleFixture("tests/fixtures/extension-market-browser.tsx");
     const frame = await readFile(resolve("src/lib/extensions/sandbox-frame.js"), "utf8");
     const hash = createHash("sha256").update(frame).digest("base64");
     const csp = Object.entries(config.app.security.csp)
@@ -96,7 +34,7 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
       port: 0,
       fetch(request) {
         if (new URL(request.url).pathname === "/test.js")
-          return new Response(bundle.outputs[0], {
+          return new Response(output, {
             headers: { "Content-Type": "text/javascript" },
           });
         return new Response('<div id="root"></div><script type="module" src="/test.js"></script>', {

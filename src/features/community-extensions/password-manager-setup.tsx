@@ -1,5 +1,4 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { DownloadIcon, UploadIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -19,6 +18,7 @@ import {
 } from "./password-manager";
 import { SetupStep } from "./setup-step";
 import { VaultProviderPicker } from "./vault-provider-picker";
+import { VaultReadyPanel } from "./vault-ready-panel";
 
 export function PasswordManagerSetup({ extension }: { extension: ExtensionDescriptor }) {
   const host = useExtensionHost();
@@ -30,6 +30,7 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
   const [error, setError] = useState<string | null>(null);
   const current = useRef(provider?.id);
   current.current = provider?.id;
+  const firstState = useRef<{ provider?: string; state?: string }>({});
 
   const call = useCallback(
     async (action: string, request: Record<string, Json> = {}) => {
@@ -68,10 +69,9 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
     }
   };
 
-  const transfer = (command: "vault.import" | "vault.export") =>
-    void host.executeCommand(command).catch((cause) => toast.error(errorText(cause)));
-
   const live = status?.provider === provider?.id ? status : null;
+  if (live && firstState.current.provider !== live.provider)
+    firstState.current = { provider: live.provider, state: live.state };
   const signedIn = live?.state === "signed-in";
   const step = !provider || choosing ? 1 : !live?.cli ? 2 : signedIn ? 4 : 3;
   const state = (index: number) => (index < step ? "done" : index === step ? "active" : "upcoming");
@@ -81,6 +81,11 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-pretty text-muted-foreground">
+        Legt deine Firma Datenbank-Zugänge im Passwortmanager ab, holt l8db sie von dort. Du musst
+        keine Adressen oder Passwörter abtippen, und neue oder geänderte Zugänge kommen automatisch
+        an.
+      </p>
       <ol>
         <SetupStep
           index={1}
@@ -184,23 +189,12 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
           <AlertDescription className="break-words">{error}</AlertDescription>
         </Alert>
       )}
-      {signedIn && step === 4 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Bereit</p>
-            <p className="text-xs text-muted-foreground">
-              Verbindungen landen als Einträge „l8db: Name“ in {provider?.name}.
-            </p>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => transfer("vault.import")}>
-            <DownloadIcon />
-            Verbindungen laden
-          </Button>
-          <Button size="sm" onClick={() => transfer("vault.export")}>
-            <UploadIcon />
-            Verbindungen speichern
-          </Button>
-        </div>
+      {signedIn && step === 4 && provider && (
+        <VaultReadyPanel
+          extension={extension}
+          provider={provider}
+          autoStart={firstState.current.state !== "signed-in"}
+        />
       )}
     </div>
   );
