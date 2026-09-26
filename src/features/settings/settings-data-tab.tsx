@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router";
+import { ArrowRightLeftIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -159,6 +161,18 @@ export function SettingsDataTab() {
             onCheckedChange={setHighlightNullValues}
             aria-label="NULL-Werte hervorheben"
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Transfer"
+          description="Komplette Schemas mit Struktur und Daten in eine andere Verbindung kopieren, auch zwischen Datenbankfamilien."
+        >
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/transfer">
+              <ArrowRightLeftIcon className="size-3.5" />
+              <span>Transfer öffnen</span>
+            </Link>
+          </Button>
         </SettingsRow>
       </div>
     </div>
