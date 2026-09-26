@@ -1,6 +1,15 @@
 import type { CompareSideSelection } from "@/lib/compare-types";
 
-export type VersioningKind = "postgres" | "oracle";
+export type VersioningKind =
+  | "postgres"
+  | "oracle"
+  | "mysql"
+  | "mssql"
+  | "sqlite"
+  | "duckdb"
+  | "clickhouse";
+
+export type DeployKind = "postgres" | "oracle";
 
 export interface ManagedObject {
   id: string;
@@ -35,7 +44,7 @@ export interface DatabaseRelease {
   format: 1;
   id: string;
   projectId: string;
-  kind: VersioningKind;
+  kind: DeployKind;
   parent: string | null;
   createdAt: string;
   objects: ObjectSnapshot[];
