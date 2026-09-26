@@ -217,6 +217,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["null", "hervorheben", "darstellung", "gitter", "tabelle", "leer"],
   },
   {
+    id: "transfer",
+    tabId: "data",
+    tabLabel: "Daten & Abfragen",
+    title: "Transfer",
+    description: "Komplette Schemas mit Struktur und Daten in eine andere Verbindung kopieren.",
+    keywords: ["transfer", "kopieren", "migration", "migrieren", "datenbank", "übertragen"],
+  },
+  {
     id: "ssh-tofu",
     tabId: "security",
     tabLabel: "Sicherheit & SSH",
