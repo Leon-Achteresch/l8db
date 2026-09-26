@@ -205,7 +205,7 @@ export function SidebarConnectionPicker({
               ? { type: "spring", stiffness: 300, damping: 28, mass: 0.82 }
               : { duration: 0.26, ease: [0.4, 0, 0.2, 1] },
         }}
-        className="absolute inset-x-0 top-0 z-30 overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-sm"
+        className="absolute inset-x-0 top-0 z-30 overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-sm has-[[data-tour=sidebar-connection]:focus-visible]:ring-2 has-[[data-tour=sidebar-connection]:focus-visible]:ring-ring"
       >
         <AnimatePresence initial={false} mode="popLayout">
           {!open ? (
@@ -216,7 +216,7 @@ export function SidebarConnectionPicker({
               data-tour="sidebar-connection"
               aria-expanded={false}
               onClick={() => setOpen(true)}
-              className="flex h-10 w-full min-w-0 items-center gap-2 px-3 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="flex h-10 w-full min-w-0 items-center gap-2 px-3 text-left text-xs hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none"
             >
               <SidebarConnectionTriggerContent
                 isSwitching={isSwitching}
