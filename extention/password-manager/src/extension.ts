@@ -395,7 +395,8 @@ export async function cliVersion(api: L8dbApi, provider: string): Promise<string
       timeoutMs: 60000,
     });
     if (result.status !== 0) return null;
-    return (result.stdout || result.stderr).trim().split("\n").pop()?.trim() || "installiert";
+    const line = (result.stdout || result.stderr).trim().split("\n").pop()?.trim();
+    return line?.match(/\d+(?:\.\d+)+/)?.[0] ?? (line || "installiert");
   } catch {
     return null;
   }
@@ -562,12 +563,13 @@ export const accounts: Record<string, VaultAccount> = {
         ["this-device", "register"],
         ["this-device", "persistent-login", "on"],
         ["this-device", "timeout", "30d"],
-      ])
-        try {
-          await run(api, "keeper", ["--batch-mode", ...keeperTarget(input), ...step], env);
-        } catch {
-          return "terminal";
-        }
+      ]) {
+        const ok = await run(api, "keeper", ["--batch-mode", ...keeperTarget(input), ...step], env)
+          .then(() => true)
+          .catch(() => false);
+        if (!ok) break;
+      }
+      return "terminal";
     },
     async logout(api) {
       await run(api, "keeper", ["--batch-mode", "logout"]).catch(() => undefined);

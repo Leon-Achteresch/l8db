@@ -435,7 +435,7 @@ describe("CLI installation", () => {
       keeper: () =>
         installed ? { status: 0, stdout: "Commander Version: 17.1.0" } : { status: 1 },
     });
-    expect(await extension.installCli(api, "keeper")).toBe("Commander Version: 17.1.0");
+    expect(await extension.installCli(api, "keeper")).toBe("17.1.0");
     expect(calls).toEqual([
       "pipx install keepercommander",
       "python3 -m pip install --user keepercommander",
@@ -579,7 +579,7 @@ describe("vault setup", () => {
     const calls: string[][] = [];
     let loggedIn = false;
     const keeper: Cli = (args, env) => {
-      if (args[0] === "--version") return { status: 0, stdout: "Keeper Commander, version 17" };
+      if (args[0] === "--version") return { status: 0, stdout: "Keeper Commander, version 17.0" };
       if (args.includes("login-status"))
         return { status: 0, stdout: loggedIn ? "Logged in\n" : "Not logged in\n" };
       if (args.includes("whoami"))
@@ -595,7 +595,13 @@ describe("vault setup", () => {
       input,
       "keeper",
     );
-    expect(ok).toMatchObject({ state: "signed-in", account: "me@example.com", server: "EU" });
+    expect(ok).toMatchObject({
+      state: "signed-in",
+      cli: "17.0",
+      account: "me@example.com",
+      server: "EU",
+    });
+    expect(ok.needs).toBeUndefined();
     expect(
       calls.filter((call) => call.includes("this-device")).map((call) => call.slice(7)),
     ).toEqual([["register"], ["persistent-login", "on"], ["timeout", "30d"]]);
@@ -612,6 +618,22 @@ describe("vault setup", () => {
       "keeper",
     );
     expect(fallback).toMatchObject({ state: "signed-out", needs: "terminal" });
+    const silent: Cli = (args) =>
+      args[0] === "--version"
+        ? version
+        : args.includes("login-status")
+          ? { status: 0, stdout: "Not logged in" }
+          : {
+              status: 0,
+              stdout: "Persistent login is not working in this non-interactive environment",
+            };
+    const quiet = await extension.vaultSetup(
+      api({ keeper: silent }),
+      { bw: null, op: null },
+      input,
+      "keeper",
+    );
+    expect(quiet).toMatchObject({ state: "signed-out", needs: "terminal" });
   });
 
   test("1password explains the app integration when no account is known", async () => {
