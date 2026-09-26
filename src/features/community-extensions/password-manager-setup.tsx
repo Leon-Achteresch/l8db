@@ -103,11 +103,15 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
           state={state(2)}
           summary={live?.cli && `${provider?.name}-CLI ${live.cli}`}
         >
-          {!live ? (
+          {!live && !error ? (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Spinner className="size-3.5" />
               Suche die {provider?.name}-CLI …
             </p>
+          ) : !live ? (
+            <Button size="sm" variant="outline" disabled={!!busy} onClick={onRefresh}>
+              Erneut prüfen
+            </Button>
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
