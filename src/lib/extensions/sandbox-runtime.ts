@@ -113,6 +113,7 @@ export class SandboxRuntime implements ExtensionRuntime {
     id: string,
     method: string,
     data: Record<string, unknown> = {},
+    timeout = this.timeout,
   ): Promise<Json | void> {
     const sandbox = this.sandboxes.get(id);
     if (!sandbox) return Promise.reject(new Error(`Extension runtime unavailable: ${id}`));
@@ -123,7 +124,7 @@ export class SandboxRuntime implements ExtensionRuntime {
         const error = new Error(`Extension ${method} timed out`);
         reject(error);
         sandbox.failure(error);
-      }, this.timeout);
+      }, timeout);
       sandbox.requests.set(requestId, { resolve, reject, timer });
       try {
         sandbox.port.postMessage({ type: "request", id: requestId, method, ...data });
@@ -141,7 +142,7 @@ export class SandboxRuntime implements ExtensionRuntime {
     await this.request(id, "deactivate");
   }
   execute(id: string, command: string, payload?: Json) {
-    return this.request(id, "execute", { command, payload });
+    return this.request(id, "execute", { command, payload }, 900000);
   }
   event(id: string, name: string, payload: Json) {
     this.sandboxes.get(id)?.port.postMessage({ type: "event", name, payload });

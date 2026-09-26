@@ -1,4 +1,4 @@
-import type { ExtensionContext, L8dbApi, VaultConnection } from "@l8db/extension-api";
+import type { ExtensionContext, Json, L8dbApi, VaultConnection } from "@l8db/extension-api";
 
 export const MARKER = "l8db-connection:v1:";
 const TITLE_PREFIX = "l8db: ";
@@ -7,6 +7,35 @@ const TIMEOUT = 120000;
 export interface VaultRecord {
   ref: string;
   connection: VaultConnection;
+}
+
+export type VaultState = "signed-out" | "locked" | "signed-in";
+
+export interface VaultStatus {
+  provider: string;
+  cli: string | null;
+  state: VaultState;
+  account?: string;
+  server?: string;
+  accounts?: { id: string; label: string }[];
+  needs?: "code" | "terminal";
+  detail?: string;
+}
+
+export interface VaultLogin {
+  email?: string;
+  password?: string;
+  code?: string;
+  method?: string;
+  server?: string;
+  clientId?: string;
+  clientSecret?: string;
+  account?: string;
+}
+
+export interface VaultSession {
+  bw: string | null;
+  op: string | null;
 }
 
 export interface VaultBackend {
@@ -136,10 +165,9 @@ export function keeper(api: L8dbApi): VaultBackend {
   };
 }
 
-export function bitwarden(api: L8dbApi): VaultBackend {
-  let session: string | null = null;
+export function bitwarden(api: L8dbApi, auth: VaultSession = { bw: null, op: null }): VaultBackend {
   const unlock = async () => {
-    if (session) return session;
+    if (auth.bw) return auth.bw;
     const status = json(await run(api, "bw", ["status"])) as { status?: string };
     if (status.status === "unauthenticated")
       throw new Error(
@@ -151,13 +179,13 @@ export function bitwarden(api: L8dbApi): VaultBackend {
       password: true,
     });
     if (!password) throw new Error("Abgebrochen.");
-    session = (
+    auth.bw = (
       await run(api, "bw", ["unlock", "--raw", "--passwordenv", "L8DB_BW_PASSWORD"], {
         L8DB_BW_PASSWORD: password,
       })
     ).trim();
-    await run(api, "bw", ["sync", "--session", session]);
-    return session;
+    await run(api, "bw", ["sync", "--session", auth.bw]);
+    return auth.bw;
   };
   const call = async (...args: string[]) => run(api, "bw", [...args, "--session", await unlock()]);
   const items = new Map<string, Record<string, unknown>>();
@@ -196,8 +224,12 @@ export function bitwarden(api: L8dbApi): VaultBackend {
   };
 }
 
-export function onePassword(api: L8dbApi): VaultBackend {
-  const call = (...args: string[]) => run(api, "op", args);
+export function onePassword(
+  api: L8dbApi,
+  auth: VaultSession = { bw: null, op: null },
+): VaultBackend {
+  const call = (...args: string[]) =>
+    run(api, "op", [...args, ...(auth.op ? ["--account", auth.op] : [])]);
   const assignments = (connection: VaultConnection) => [
     `username=${username(connection.connectionString)}`,
     `password=${connection.password ?? ""}`,
@@ -240,7 +272,7 @@ export function onePassword(api: L8dbApi): VaultBackend {
   };
 }
 
-export const backends: Record<string, (api: L8dbApi) => VaultBackend> = {
+export const backends: Record<string, (api: L8dbApi, auth?: VaultSession) => VaultBackend> = {
   keeper,
   bitwarden,
   "1password": onePassword,
@@ -389,6 +421,185 @@ export async function installCli(api: L8dbApi, provider: string): Promise<string
   );
 }
 
+type AccountState = Omit<VaultStatus, "provider" | "cli">;
+
+interface VaultAccount {
+  status(api: L8dbApi, auth: VaultSession): Promise<AccountState>;
+  login(api: L8dbApi, auth: VaultSession, input: VaultLogin): Promise<VaultStatus["needs"]>;
+  logout(api: L8dbApi, auth: VaultSession): Promise<void>;
+}
+
+const BW_CODE = /code is required|no provider selected/i;
+
+async function bitwardenState(api: L8dbApi, auth: VaultSession): Promise<AccountState> {
+  const raw = json(
+    await run(api, "bw", ["status", ...(auth.bw ? ["--session", auth.bw] : [])]),
+  ) as { status?: string; userEmail?: string | null; serverUrl?: string | null };
+  if (raw.status !== "unlocked") auth.bw = null;
+  return {
+    state:
+      raw.status === "unlocked" ? "signed-in" : raw.status === "locked" ? "locked" : "signed-out",
+    account: raw.userEmail ?? undefined,
+    server: raw.serverUrl ?? undefined,
+  };
+}
+
+async function onePasswordAccounts(api: L8dbApi) {
+  const found = json((await run(api, "op", ["account", "list", "--format", "json"])) || "[]");
+  return (Array.isArray(found) ? found : [])
+    .filter((entry) => typeof entry?.account_uuid === "string")
+    .map((entry) => ({
+      id: entry.account_uuid as string,
+      label: [entry.email, entry.url].filter(Boolean).join(" · ") || (entry.account_uuid as string),
+    }));
+}
+
+function keeperTarget(input: VaultLogin) {
+  return [...(input.server ? ["--server", input.server] : []), "--user", input.email ?? ""];
+}
+
+export const accounts: Record<string, VaultAccount> = {
+  bitwarden: {
+    status: bitwardenState,
+    async login(api, auth, input) {
+      const current = await bitwardenState(api, auth);
+      const env = { L8DB_BW_PASSWORD: input.password ?? "" };
+      if (current.state === "signed-out") {
+        if (input.server) await run(api, "bw", ["config", "server", input.server]);
+        if (input.clientId) {
+          await run(api, "bw", ["login", "--apikey", "--nointeraction"], {
+            BW_CLIENTID: input.clientId,
+            BW_CLIENTSECRET: input.clientSecret ?? "",
+          });
+        } else {
+          try {
+            auth.bw = (
+              await run(
+                api,
+                "bw",
+                [
+                  "login",
+                  input.email ?? "",
+                  "--passwordenv",
+                  "L8DB_BW_PASSWORD",
+                  "--raw",
+                  "--nointeraction",
+                  ...(input.method ? ["--method", input.method] : []),
+                  ...(input.code ? ["--code", input.code] : []),
+                ],
+                env,
+              )
+            ).trim();
+          } catch (error) {
+            if (!BW_CODE.test(String(error))) throw error;
+            if (!input.code) return "code";
+            throw new Error(
+              "Bitwarden verlangt eine zusätzliche Bestätigung dieses Geräts. Melde dich stattdessen mit API-Schlüssel an.",
+            );
+          }
+        }
+      }
+      if (!auth.bw)
+        auth.bw = (
+          await run(
+            api,
+            "bw",
+            ["unlock", "--raw", "--passwordenv", "L8DB_BW_PASSWORD", "--nointeraction"],
+            env,
+          )
+        ).trim();
+      await run(api, "bw", ["sync", "--session", auth.bw]);
+    },
+    async logout(api, auth) {
+      auth.bw = null;
+      await run(api, "bw", ["logout"]).catch(() => undefined);
+    },
+  },
+  "1password": {
+    async status(api, auth) {
+      const list = await onePasswordAccounts(api);
+      if (!auth.op || !list.some((entry) => entry.id === auth.op)) auth.op = list[0]?.id ?? null;
+      if (!auth.op) return { state: "signed-out", accounts: list };
+      try {
+        const me = json(
+          await run(api, "op", ["whoami", "--format", "json", "--account", auth.op]),
+        ) as { email?: string; url?: string };
+        return { state: "signed-in", account: me.email, server: me.url, accounts: list };
+      } catch {
+        return { state: "locked", accounts: list };
+      }
+    },
+    async login(api, auth, input) {
+      const list = await onePasswordAccounts(api);
+      auth.op = list.find((entry) => entry.id === input.account)?.id ?? list[0]?.id ?? null;
+      if (!auth.op)
+        throw new Error(
+          "Keine 1Password-Konten gefunden. Aktiviere in der 1Password-App unter Einstellungen → Entwickler „Mit 1Password CLI integrieren“ und versuche es erneut.",
+        );
+      await run(api, "op", ["vault", "list", "--format", "json", "--account", auth.op]);
+    },
+    async logout(api, auth) {
+      if (auth.op) await run(api, "op", ["signout", "--account", auth.op]).catch(() => undefined);
+    },
+  },
+  keeper: {
+    async status(api) {
+      if (!/^Logged in$/m.test(await run(api, "keeper", ["--batch-mode", "login-status"])))
+        return { state: "signed-out" };
+      try {
+        const me = json(await run(api, "keeper", ["--batch-mode", "whoami", "--json"])) as {
+          user?: string;
+          data_center?: string;
+        };
+        return { state: "signed-in", account: me.user, server: me.data_center };
+      } catch {
+        return { state: "signed-in" };
+      }
+    },
+    async login(api, _auth, input) {
+      const env = { KEEPER_PASSWORD: input.password ?? "" };
+      for (const step of [
+        ["this-device", "register"],
+        ["this-device", "persistent-login", "on"],
+        ["this-device", "timeout", "30d"],
+      ])
+        try {
+          await run(api, "keeper", ["--batch-mode", ...keeperTarget(input), ...step], env);
+        } catch {
+          return "terminal";
+        }
+    },
+    async logout(api) {
+      await run(api, "keeper", ["--batch-mode", "logout"]).catch(() => undefined);
+    },
+  },
+};
+
+export async function vaultStatus(
+  api: L8dbApi,
+  provider: string,
+  auth: VaultSession,
+): Promise<VaultStatus> {
+  const cli = await cliVersion(api, provider);
+  if (!cli) return { provider, cli, state: "signed-out" };
+  return { provider, cli, ...(await accounts[provider].status(api, auth)) };
+}
+
+export async function vaultSetup(
+  api: L8dbApi,
+  auth: VaultSession,
+  request: VaultLogin & { action?: string; provider?: string },
+  fallback: string,
+): Promise<VaultStatus> {
+  const provider = request.provider && request.provider in binaries ? request.provider : fallback;
+  let needs: VaultStatus["needs"];
+  if (request.action === "install") await installCli(api, provider);
+  if (request.action === "login") needs = await accounts[provider].login(api, auth, request);
+  if (request.action === "logout") await accounts[provider].logout(api, auth);
+  const status = await vaultStatus(api, provider, auth);
+  return needs && status.state !== "signed-in" ? { ...status, needs } : status;
+}
+
 async function refreshView(api: L8dbApi, busy?: string) {
   const items = await Promise.all(
     Object.keys(binaries).map(async (provider) => {
@@ -413,11 +624,14 @@ async function refreshView(api: L8dbApi, busy?: string) {
 
 export function activate(context: ExtensionContext, api: L8dbApi): void {
   const cache = new Map<string, VaultBackend>();
+  const auth: VaultSession = { bw: null, op: null };
+  const configured = async () =>
+    (await api.configuration.get<string>("vault.provider")) || "keeper";
   const resolve = async () => {
-    const provider = (await api.configuration.get<string>("vault.provider")) || "keeper";
+    const provider = await configured();
     const factory = backends[provider];
     if (!factory) throw new Error(`Unbekannter Passwortmanager: ${provider}`);
-    if (!cache.has(provider)) cache.set(provider, factory(api));
+    if (!cache.has(provider)) cache.set(provider, factory(api, auth));
     return { backend: cache.get(provider) as VaultBackend, name: labels[provider] ?? provider };
   };
   const guard = (action: typeof importConnections | typeof exportConnections) => async () => {
@@ -430,9 +644,7 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
   };
   const install = async (payload?: unknown) => {
     const provider =
-      typeof payload === "string" && payload in binaries
-        ? payload
-        : (await api.configuration.get<string>("vault.provider")) || "keeper";
+      typeof payload === "string" && payload in binaries ? payload : await configured();
     try {
       await refreshView(api, provider);
       const version = await installCli(api, provider);
@@ -447,6 +659,16 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
   context.subscriptions.push(
     api.commands.registerCommand("vault.install", (payload) => install(payload)),
     api.commands.registerCommand("vault.refresh", () => refreshView(api)),
+    api.commands.registerCommand(
+      "vault.setup",
+      async (payload) =>
+        (await vaultSetup(
+          api,
+          auth,
+          payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {},
+          await configured(),
+        )) as unknown as Json,
+    ),
     api.commands.registerCommand("vault.import", guard(importConnections)),
     api.commands.registerCommand("vault.export", guard(exportConnections)),
   );
