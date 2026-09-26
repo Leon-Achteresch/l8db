@@ -66,6 +66,14 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
               contents: `export default ${JSON.stringify(await readFile(args.path.replace(/\?raw$/, ""), "utf8"))}`,
               loader: "js",
             }));
+            build.onResolve({ filter: /\?url$/ }, (args) => ({
+              path: args.path,
+              namespace: "url-stub",
+            }));
+            build.onLoad({ filter: /.*/, namespace: "url-stub" }, () => ({
+              contents: 'export default ""',
+              loader: "js",
+            }));
             build.onResolve({ filter: /\?worker$/ }, (args) => ({
               path: args.path,
               namespace: "worker-stub",
@@ -116,14 +124,15 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
         },
       );
       await page.goto(`http://localhost:${server.port}`);
-      const market = page.getByRole("region", { name: "Extension-Markt" });
+      const market = page.getByRole("region", { name: "Entdecken" });
       await market.getByText("Jev Plan-Diagnose").waitFor();
       await market.getByRole("button", { name: "Installieren" }).click();
       await market.getByRole("button", { name: "Installiert" }).waitFor();
-      const community = page.getByRole("region", { name: "Community Extensions" });
-      await community.getByLabel("network", { exact: true }).check();
-      await community.getByLabel("filesystem:extension-storage", { exact: true }).check();
-      await community.getByRole("button", { name: "Aktivieren" }).click();
+      const community = page.getByRole("region", { name: "Installiert" });
+      await community.getByRole("button", { name: "Aktivieren", exact: true }).click();
+      await community.getByRole("checkbox", { name: /network/ }).check();
+      await community.getByRole("checkbox", { name: /filesystem:extension-storage/ }).check();
+      await community.getByRole("button", { name: "Erlauben und aktivieren" }).click();
       await page.getByRole("button", { name: "Mit Jev prüfen" }).last().click();
       await page.getByRole("dialog").getByRole("textbox").fill("test-byok-key");
       await page.getByRole("dialog").getByRole("button", { name: "Übernehmen" }).click();

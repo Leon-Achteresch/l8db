@@ -1,7 +1,7 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lädt und speichert Verbindungen samt Passwort in Keeper, Bitwarden oder 1Password über deren offizielle CLI.",
   "publisher": "l8db",
   "engines": {
@@ -13,7 +13,8 @@
     "onView:vault.clis",
     "onCommand:vault.import",
     "onCommand:vault.export",
-    "onCommand:vault.install"
+    "onCommand:vault.install",
+    "onCommand:vault.setup"
   ],
   "permissions": ["process:execute", "connections:read", "connections:write"],
   "capabilities": {
@@ -39,6 +40,10 @@
         "id": "vault.refresh",
         "title": "Passwortmanager: Status aktualisieren",
         "icon": "refresh-cw"
+      },
+      {
+        "id": "vault.setup",
+        "title": "Passwortmanager: Einrichtung"
       }
     ],
     "configuration": {

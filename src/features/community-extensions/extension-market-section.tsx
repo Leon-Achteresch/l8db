@@ -43,7 +43,7 @@ export function ExtensionMarketSection() {
       if (installed.some((item) => item.archive.manifest.id === entry.id))
         await host.updateExtension(archive);
       else await host.installExtension(archive);
-      toast.success(`${entry.name} installiert. Berechtigungen unten prüfen und aktivieren.`);
+      toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -52,25 +52,31 @@ export function ExtensionMarketSection() {
   };
 
   return (
-    <section className="space-y-4" aria-label="Extension-Markt">
+    <section className="space-y-3" aria-labelledby="extension-market">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Extension-Markt</h2>
-          <p className="text-sm text-muted-foreground">
-            Offiziell unterstützte Extensions aus dem öffentlichen l8db-Katalog. Pakete werden vor
-            der Installation mit SHA-256 geprüft und zunächst deaktiviert installiert.
+          <h3 id="extension-market" className="text-sm font-semibold">
+            Entdecken
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Offizielle Erweiterungen, vor der Installation per SHA-256 geprüft.
           </p>
         </div>
-        <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()}>
-          <RefreshCwIcon className="size-4" />
-          Aktualisieren
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Katalog aktualisieren"
+          disabled={loading}
+          onClick={() => void refresh()}
+        >
+          <RefreshCwIcon className={loading ? "animate-spin" : undefined} />
         </Button>
       </div>
       {loading && !catalog && (
-        <p className="text-sm text-muted-foreground">Katalog wird geladen…</p>
+        <p className="text-xs text-muted-foreground">Katalog wird geladen …</p>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-xs text-destructive">
           Katalog nicht verfügbar: {error}
         </p>
       )}
@@ -86,8 +92,8 @@ export function ExtensionMarketSection() {
             />
           ))}
           {catalog.extensions.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Der Katalog enthält noch keine Extensions.
+            <p className="text-xs text-muted-foreground">
+              Der Katalog enthält noch keine Erweiterungen.
             </p>
           )}
         </div>
