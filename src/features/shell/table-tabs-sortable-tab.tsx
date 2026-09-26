@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
+  ArchiveIcon,
   BracesIcon,
   CopyIcon,
   EyeIcon,
@@ -74,6 +75,8 @@ function tabVisual(tab: Tab) {
       return { Icon: EyeIcon, iconColor: "text-cyan-500" };
     case "alter-table":
       return { Icon: WrenchIcon, iconColor: "text-orange-500" };
+    case "bucket":
+      return { Icon: ArchiveIcon, iconColor: "text-orange-500" };
     case "tool": {
       const { Icon, iconColor } = TOOL_TABS[tab.tool];
       return { Icon, iconColor };

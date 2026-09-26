@@ -1,7 +1,7 @@
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
-import { isAwsKind } from "@/lib/aws";
+import { endpointFromPlaceholder, isAwsKind } from "@/lib/aws";
 import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
@@ -202,6 +202,7 @@ export function ConnectionDetailsStep({
           setPassword={setPassword}
           extraParams={extraParams}
           setExtraParams={setExtraParams}
+          endpointPlaceholder={endpointFromPlaceholder(info.placeholder)}
         />
       ) : WarehouseFields ? (
         <WarehouseFields

@@ -77,6 +77,7 @@ export const MCP_SQL_KINDS: DatabaseKind[] = [
   "sqlite_http",
   "elasticsearch",
   "influxdb",
+  "s3",
 ];
 
 export function mcpSupported(

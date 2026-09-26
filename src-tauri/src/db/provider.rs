@@ -21,6 +21,7 @@ pub enum DatabaseKind {
     Athena,
     Bigquery,
     Snowflake,
+    S3,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -82,6 +83,7 @@ pub struct Capabilities {
     pub ssl: bool,
     pub ssh: bool,
     pub backup: bool,
+    pub object_storage: bool,
     pub query_language: &'static str,
     pub filter_hint: &'static str,
 }
@@ -144,6 +146,7 @@ const NONE: Capabilities = Capabilities {
     ssl: true,
     ssh: true,
     backup: false,
+    object_storage: false,
     query_language: "sql",
     filter_hint: "SQL WHERE-Ausdruck",
 };
@@ -170,7 +173,7 @@ const SQL_COMMON: Capabilities = Capabilities {
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 18] = [
+    pub const ALL: [DatabaseKind; 19] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -189,6 +192,7 @@ impl DatabaseKind {
         DatabaseKind::Athena,
         DatabaseKind::Bigquery,
         DatabaseKind::Snowflake,
+        DatabaseKind::S3,
     ];
 
     pub fn capabilities(self) -> Capabilities {
@@ -368,6 +372,17 @@ impl DatabaseKind {
                 row_edit: true,
                 ..SQL_COMMON
             },
+            DatabaseKind::S3 => Capabilities {
+                databases: false,
+                schemas: false,
+                ssl: false,
+                ssh: false,
+                sql_filter: false,
+                read_only_mode: true,
+                object_storage: true,
+                filter_hint: "Schlüssel-Präfix, z. B. logs/2026/",
+                ..NONE
+            },
             DatabaseKind::Dynamodb => Capabilities {
                 databases: false,
                 schemas: false,
@@ -420,6 +435,7 @@ impl DatabaseKind {
             DatabaseKind::Athena => &["athena"],
             DatabaseKind::Bigquery => &["bigquery"],
             DatabaseKind::Snowflake => &["snowflake"],
+            DatabaseKind::S3 => &["s3"],
         }
     }
 
@@ -594,6 +610,13 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "scylladb", name: "ScyllaDB", group: "Wide-Column", kind: DatabaseKind::Cassandra, port: Some(9042), placeholder: "cassandra://scylla:password@node.clusters.scylla.cloud:9042/keyspace", hint: "Cassandra-kompatibel.", hosts: &[".scylla.cloud"], driver: Driver::Builtin },
     Provider { id: "dynamodb", name: "Amazon DynamoDB", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key (Benutzer/Passwort), AWS-Profil (?profile=) oder Umgebung. Tabellen per Scan, Queries in PartiQL.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "dynamodb-local", name: "DynamoDB Local / LocalStack", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000", hint: "Eigener Endpunkt über ?endpoint=. Beliebige Schlüssel genügen.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "minio", name: "MinIO", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://minioadmin:minioadmin@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A9000", hint: "S3-API von MinIO (Path-Style). Access Key als Benutzer, Secret Key als Passwort, Endpunkt über ?endpoint=. Buckets erscheinen in der Seitenleiste.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "s3", name: "Amazon S3", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key, AWS-Profil (?profile=) oder Umgebung. Optional Pfad = fester Bucket, ?path_style=true für Path-Style.", hosts: &[".amazonaws.com"], driver: Driver::Builtin },
+    Provider { id: "r2", name: "Cloudflare R2", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://ACCESS_KEY:SECRET_KEY@us-east-1?endpoint=https%3A%2F%2FACCOUNT_ID.r2.cloudflarestorage.com", hint: "S3-kompatible API von R2 (Region us-east-1 entspricht auto).", hosts: &[".r2.cloudflarestorage.com"], driver: Driver::Builtin },
+    Provider { id: "gcs-s3", name: "Google Cloud Storage (S3)", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://HMAC_KEY:HMAC_SECRET@us-east-1?endpoint=https%3A%2F%2Fstorage.googleapis.com", hint: "XML-API mit HMAC-Schlüsseln (Interoperabilität).", hosts: &["storage.googleapis.com"], driver: Driver::Builtin },
+    Provider { id: "b2", name: "Backblaze B2", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://KEY_ID:APP_KEY@us-west-004?endpoint=https%3A%2F%2Fs3.us-west-004.backblazeb2.com", hint: "S3-kompatible API von B2.", hosts: &[".backblazeb2.com"], driver: Driver::Builtin },
+    Provider { id: "spaces", name: "DigitalOcean Spaces", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://KEY:SECRET@fra1?endpoint=https%3A%2F%2Ffra1.digitaloceanspaces.com", hint: "S3-kompatible API von Spaces.", hosts: &[".digitaloceanspaces.com"], driver: Driver::Builtin },
+    Provider { id: "s3-compatible", name: "S3-kompatibel", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://KEY:SECRET@us-east-1?endpoint=https%3A%2F%2Fs3.example.com", hint: "Ceph RGW, Wasabi, Garage, SeaweedFS, LocalStack und andere S3-APIs.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "athena", name: "Amazon Athena", group: "AWS", kind: DatabaseKind::Athena, port: None, placeholder: "athena://eu-central-1/AwsDataCatalog?profile=default&workgroup=primary", hint: "Nativ über die Athena-API. Host ist die Region, Pfad der Katalog. Optional ?output=s3://bucket/pfad/ und ?schema=default.", hosts: &[], driver: Driver::Builtin },
     odbc("odbc", "ODBC (generisch)", None, "", "odbc://?Driver=Name&Server=host&Database=db&UID=user&PWD=pass", "Beliebiger installierter ODBC-Treiber. Die Query-Parameter bilden den Connection String."),
     odbc("db2", "IBM Db2", Some(50000), "IBM DB2 ODBC DRIVER", "odbc://db2inst1:password@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER", "Benötigt den IBM Data Server Driver (ODBC)."),

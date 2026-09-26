@@ -92,6 +92,20 @@ const WRITE_COMMANDS = new Set([
   "update_row",
   "update_row_in_transaction",
   "update_view_definition",
+  "s3_create_bucket",
+  "s3_delete_bucket",
+  "s3_put_object_text",
+  "s3_create_folder",
+  "s3_delete_objects",
+  "s3_delete_prefix",
+  "s3_copy_objects",
+  "s3_rename_object",
+  "s3_restore_version",
+  "s3_update_object_properties",
+  "s3_put_config",
+  "s3_delete_config",
+  "s3_abort_multipart_upload",
+  "s3_upload",
 ]);
 
 export const READ_ONLY_MESSAGE =

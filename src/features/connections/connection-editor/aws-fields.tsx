@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   AWS_AUTO_REGION,
   AWS_REGIONS,
@@ -33,6 +34,7 @@ export function ConnectionAwsFields({
   setPassword,
   extraParams,
   setExtraParams,
+  endpointPlaceholder,
 }: {
   kind: DatabaseKind;
   host: string;
@@ -45,6 +47,7 @@ export function ConnectionAwsFields({
   setPassword: (value: string) => void;
   extraParams: string;
   setExtraParams: (value: string) => void;
+  endpointPlaceholder?: string;
 }) {
   const [mode, setMode] = useState<AwsAuthMode>(() => awsAuthMode(user, extraParams));
   const { secret, token } = splitAwsSecret(password);
@@ -179,15 +182,44 @@ export function ConnectionAwsFields({
       )}
       <ConnectionField
         id="connection-aws-endpoint"
-        label="Endpunkt (optional)"
+        label={kind === "s3" ? "Endpunkt (leer = Amazon S3)" : "Endpunkt (optional)"}
         placeholder={
-          kind === "dynamodb"
+          endpointPlaceholder ||
+          (kind === "dynamodb"
             ? "http://localhost:8000"
-            : "https://athena.eu-central-1.amazonaws.com"
+            : kind === "s3"
+              ? "http://localhost:9000"
+              : "https://athena.eu-central-1.amazonaws.com")
         }
         value={param("endpoint")}
         onChange={(event) => setParam("endpoint", event.target.value)}
       />
+      {kind === "s3" && (
+        <>
+          <ConnectionField
+            id="connection-s3-bucket"
+            label="Fester Bucket (optional)"
+            placeholder="Leer = alle Buckets anzeigen"
+            value={database}
+            onChange={(event) => setDatabase(event.target.value)}
+          />
+          <label className="flex items-center justify-between gap-3 text-xs font-medium">
+            <span className="flex flex-col gap-0.5">
+              Path-Style-Adressierung
+              <span className="font-normal text-muted-foreground">
+                endpunkt/bucket/schlüssel statt bucket.endpunkt. Standard bei eigenem Endpunkt.
+              </span>
+            </span>
+            <Switch
+              checked={
+                param("path_style") ? param("path_style") === "true" : Boolean(param("endpoint"))
+              }
+              onCheckedChange={(checked) => setParam("path_style", checked ? "true" : "false")}
+              aria-label="Path-Style-Adressierung"
+            />
+          </label>
+        </>
+      )}
     </div>
   );
 }
