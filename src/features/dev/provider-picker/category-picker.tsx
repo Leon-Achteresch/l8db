@@ -1,8 +1,6 @@
 import { Star } from "lucide-react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
-import type { ProviderInfo } from "@/lib/db";
-import { cn } from "@/lib/utils";
 import {
   CATEGORIES,
   type CategoryId,
@@ -10,8 +8,10 @@ import {
   connectionNeeds,
   POPULAR_IDS,
   POPULAR_NOTES,
-} from "./categories";
-import { ProviderOption } from "./provider-option";
+} from "@/features/connections/provider-picker/categories";
+import { ProviderOption } from "@/features/connections/provider-picker/provider-option";
+import type { ProviderInfo } from "@/lib/db";
+import { cn } from "@/lib/utils";
 
 export function CategoryPicker({
   providers,

@@ -1,9 +1,13 @@
 import { ChevronDown, Search } from "lucide-react";
 import { useState } from "react";
+import {
+  matchesProvider,
+  POPULAR_IDS,
+  POPULAR_NOTES,
+} from "@/features/connections/provider-picker/categories";
+import { ProviderOption } from "@/features/connections/provider-picker/provider-option";
 import type { ProviderInfo } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { matchesProvider, POPULAR_IDS, POPULAR_NOTES } from "./categories";
-import { ProviderOption } from "./provider-option";
 
 export function PopularPicker({
   providers,

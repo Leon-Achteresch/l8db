@@ -25,7 +25,6 @@ export function useConnectionEditor({
 }: Omit<ConnectionEditorProps, "onCancel">) {
   const queryClient = useQueryClient();
   const providers = useProvidersStore((state) => state.providers);
-  const groups = [...new Set(providers.map((entry) => entry.group))];
   const seed = connection ?? template;
   const [name, setName] = useState(connection?.name ?? "");
   const [value, setValue] = useState(connection?.connectionString ?? "");
@@ -258,7 +257,6 @@ export function useConnectionEditor({
     elapsed,
     extraParams,
     file,
-    groups,
     guided,
     host,
     info,
