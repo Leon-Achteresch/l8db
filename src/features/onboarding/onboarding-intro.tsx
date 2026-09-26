@@ -124,13 +124,13 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
       <motion.div
         className="absolute inset-x-0 top-0 z-10 bg-black"
         initial={{ height: "50%" }}
-        animate={{ height: "11%" }}
+        animate={{ height: "0%" }}
         transition={{ duration: 1.5, delay: 0.25, ease: CURTAIN }}
       />
       <motion.div
         className="absolute inset-x-0 bottom-0 z-10 bg-black"
         initial={{ height: "50%" }}
-        animate={{ height: "11%" }}
+        animate={{ height: "0%" }}
         transition={{ duration: 1.5, delay: 0.25, ease: CURTAIN }}
       />
 
