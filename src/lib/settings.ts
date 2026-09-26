@@ -198,7 +198,7 @@ const DEFAULT_SETTINGS = {
   editorFormatLinesBetweenQueries: 2,
   editorKeymap: "default" as EditorKeymap,
   confirmDestructiveQueries: true,
-  productionReadOnly: false,
+  productionReadOnly: true,
   productionConfirmCommit: true,
   productionAutoRollback: false,
   highlightNullValues: true,
@@ -307,6 +307,11 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "l8db.settings",
+      version: 1,
+      migrate: (persisted, version) =>
+        version < 1
+          ? { ...(persisted as Record<string, unknown>), productionReadOnly: true }
+          : persisted,
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
         return {
