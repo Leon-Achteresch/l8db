@@ -92,6 +92,8 @@ Object.defineProperty(globalThis, "localStorage", {
 const { loadProviders } = await import("../src/lib/providers");
 await loadProviders();
 const { useConnectionsStore, visibleSchemas } = await import("../src/lib/connections");
+const { restorableActiveId } = await import("../src/lib/connections/store");
+const { useSettingsStore } = await import("../src/lib/settings");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const {
   parseConnectionUrl,
@@ -143,7 +145,11 @@ beforeEach(() => {
   calls.length = 0;
   rejectConnection = false;
   keychainUnavailable = false;
-  useConnectionsStore.setState({ connections: [direct, tunneled], activeId: null });
+  useConnectionsStore.setState({
+    connections: [direct, tunneled],
+    activeId: null,
+    hostGroupRules: [],
+  });
   useTransactionStore.setState({ transactions: [] });
 });
 
@@ -342,6 +348,82 @@ describe("Other providers", () => {
 });
 
 describe("Connection lifecycle", () => {
+  test("restores development connections but never restores production automatically", () => {
+    const prod = { ...direct, id: "prod", environment: "production" as const };
+    const rules = [
+      {
+        id: "prod-host",
+        name: "Production",
+        pattern: "localhost",
+        environment: "production" as const,
+      },
+    ];
+    expect(
+      restorableActiveId({ connections: [direct], activeId: direct.id, hostGroupRules: [] }),
+    ).toBe(direct.id);
+    expect(
+      restorableActiveId({ connections: [prod], activeId: prod.id, hostGroupRules: [] }),
+    ).toBeNull();
+    expect(
+      restorableActiveId({ connections: [direct], activeId: direct.id, hostGroupRules: rules }),
+    ).toBeNull();
+    expect(
+      restorableActiveId({
+        connections: [{ ...direct, environment: "test" }],
+        activeId: direct.id,
+        hostGroupRules: rules,
+      }),
+    ).toBe(direct.id);
+    expect(
+      restorableActiveId({ connections: [direct], activeId: "missing", hostGroupRules: [] }),
+    ).toBeNull();
+  });
+
+  test("old saved production selection starts disconnected", async () => {
+    const prod = { ...direct, environment: "production" as const };
+    storage.set(
+      "l8db.connections",
+      JSON.stringify({
+        state: { connections: [prod], activeId: prod.id, hostGroupRules: [] },
+        version: 0,
+      }),
+    );
+    await useConnectionsStore.persist.rehydrate();
+    expect(useConnectionsStore.getState().connections[0].id).toBe(prod.id);
+    expect(useConnectionsStore.getState().activeId).toBeNull();
+    useConnectionsStore.getState().setActiveId(prod.id);
+    const persisted = JSON.parse(storage.get("l8db.connections") ?? "null");
+    expect(persisted.state.activeId).toBeNull();
+  });
+
+  test("old settings enable production protection while new choices remain explicit", async () => {
+    const options = useSettingsStore.persist.getOptions();
+    useSettingsStore.persist.setOptions({
+      storage: {
+        getItem: (key) => JSON.parse(storage.get(key) ?? "null"),
+        setItem: (key, value) => storage.set(key, JSON.stringify(value)),
+        removeItem: (key) => storage.delete(key),
+      },
+    });
+    try {
+      storage.set(
+        "l8db.settings",
+        JSON.stringify({ state: { productionReadOnly: false, rowLimit: 500 }, version: 0 }),
+      );
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().productionReadOnly).toBe(true);
+      expect(useSettingsStore.getState().rowLimit).toBe(500);
+      storage.set(
+        "l8db.settings",
+        JSON.stringify({ state: { productionReadOnly: false }, version: 1 }),
+      );
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState().productionReadOnly).toBe(false);
+    } finally {
+      useSettingsStore.persist.setOptions(options);
+    }
+  });
+
   test("saving never activates an untested connection or persists a password", () => {
     useConnectionsStore.getState().addConnection({ ...direct, name: "New" });
     expect(useConnectionsStore.getState().activeId).toBeNull();

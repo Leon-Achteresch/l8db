@@ -1,6 +1,5 @@
 import { ArrowRight, PlugZap, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { SlideActionButton } from "@/components/motion/slide-action-button";
 import { Button } from "@/components/ui/button";
 import { serverLabel } from "@/lib/connection-groups";
 import { ConnectionDetailsStep } from "./connection-editor/details-step";
@@ -128,13 +127,9 @@ export function ConnectionEditor({
                 <PlugZap className="size-4" />
                 Testen
               </Button>
-              <SlideActionButton
-                className={busy ? "h-11 w-60 pointer-events-none opacity-70" : "h-11 w-60"}
-                completeLabel="Gespeichert"
-                onComplete={() => void save()}
-              >
-                Speichern
-              </SlideActionButton>
+              <Button type="submit" disabled={busy} className="h-11 min-w-36">
+                Verbindung speichern
+              </Button>
             </div>
           )}
         </footer>

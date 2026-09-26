@@ -1,5 +1,6 @@
 import { type useNavigate, useRouter } from "@tanstack/react-router";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, SearchIcon } from "lucide-react";
+import { useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
   DropdownMenu,
@@ -23,8 +24,15 @@ interface HiddenTabsMenuProps {
 export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: HiddenTabsMenuProps) {
   const router = useRouter();
   const reveal = useSplitView((state) => state.reveal);
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLocaleLowerCase();
+  const matchingTabs = hiddenTabs.filter((tab) =>
+    `${tabLabel(tab)} ${"schema" in tab ? tab.schema : tab.kind}`
+      .toLocaleLowerCase()
+      .includes(query),
+  );
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => !open && setSearch("")}>
       <Tooltip
         content={`Weitere geöffnete Objekte (${hiddenTabs.length})`}
         side="bottom"
@@ -41,9 +49,33 @@ export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: Hidde
           </button>
         </DropdownMenuTrigger>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
+      >
         <DropdownMenuLabel>Weitere geöffnete Objekte</DropdownMenuLabel>
-        {hiddenTabs.map((tab) => (
+        <div className="sticky top-0 z-10 flex items-center gap-2 rounded-lg border bg-popover px-2 py-1.5">
+          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete") {
+                event.stopPropagation();
+              }
+            }}
+            aria-label="Geöffnete Objekte suchen"
+            placeholder="Objekt suchen…"
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        {matchingTabs.length === 0 && (
+          <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+            Kein geöffnetes Objekt gefunden.
+          </p>
+        )}
+        {matchingTabs.map((tab) => (
           <DropdownMenuItem
             key={tabKey(tab)}
             onPointerEnter={() => preloadTab(router, tab)}
