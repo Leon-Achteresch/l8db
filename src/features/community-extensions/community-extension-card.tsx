@@ -1,32 +1,16 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  ChevronDownIcon,
-  EllipsisIcon,
-  KeyRoundIcon,
-  type LucideIcon,
-  PowerOffIcon,
-  PuzzleIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-  UploadIcon,
-} from "lucide-react";
+import { ChevronDownIcon, KeyRoundIcon, type LucideIcon, PuzzleIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ComponentType, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { readCommunityExtension } from "@/lib/db";
 import { SPRING_LAYOUT, SPRING_PANEL } from "@/lib/ease";
 import type { ExtensionDescriptor } from "@/lib/extensions/contracts";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import { cn } from "@/lib/utils";
+import { ExtensionActionsMenu } from "./extension-actions-menu";
 import { ExtensionDetails } from "./extension-details";
 import { ExtensionPermissionConsent } from "./extension-permission-consent";
 import { PASSWORD_MANAGER_ID } from "./password-manager";
@@ -118,43 +102,13 @@ export function CommunityExtensionCard({
               Aktivieren
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Weitere Aktionen für ${manifest.name}`}
-              >
-                <EllipsisIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {extension.enabled && (
-                <DropdownMenuItem onSelect={() => run(() => host.disableExtension(id))}>
-                  <PowerOffIcon />
-                  Deaktivieren
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onSelect={() => run(reload)}>
-                <RefreshCwIcon />
-                Neu laden
-              </DropdownMenuItem>
-              {!extension.developmentPath && (
-                <DropdownMenuItem onSelect={() => run(update)}>
-                  <UploadIcon />
-                  Aus Datei aktualisieren
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => run(() => host.uninstallExtension(id))}
-              >
-                <Trash2Icon />
-                Deinstallieren
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ExtensionActionsMenu
+            extension={extension}
+            onDisable={() => run(() => host.disableExtension(id))}
+            onReload={() => run(reload)}
+            onUpdate={() => run(update)}
+            onUninstall={() => run(() => host.uninstallExtension(id))}
+          />
         </div>
       </div>
 
