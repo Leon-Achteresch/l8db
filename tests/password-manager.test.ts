@@ -435,7 +435,7 @@ describe("CLI installation", () => {
       keeper: () =>
         installed ? { status: 0, stdout: "Commander Version: 17.1.0" } : { status: 1 },
     });
-    expect(await extension.installCli(api, "keeper")).toBe("Commander Version: 17.1.0");
+    expect(await extension.installCli(api, "keeper")).toBe("17.1.0");
     expect(calls).toEqual([
       "pipx install keepercommander",
       "python3 -m pip install --user keepercommander",
@@ -487,5 +487,210 @@ describe("CLI installation", () => {
       command: "vault.install",
       commandArguments: "keeper",
     });
+  });
+});
+
+describe("vault setup", () => {
+  const api = (clis: Record<string, Cli>, calls: string[][] = []) =>
+    ({
+      process: {
+        run: async (command: string, options: ProcessOptions = {}) => {
+          calls.push([command, ...(options.args ?? [])]);
+          const cli = clis[command];
+          if (!cli) throw new Error(`not allowed: ${command}`);
+          return { stderr: "", ...cli(options.args ?? [], options.env) };
+        },
+      },
+    }) as unknown as L8dbApi;
+  const version = { status: 0, stdout: "1.0.0" };
+
+  test("bitwarden asks for a two-step code, then signs in and keeps the session", async () => {
+    let state = "unauthenticated";
+    const calls: string[][] = [];
+    const bw: Cli = (args, env) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "status")
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            status: args.includes("SESSION") && state === "unlocked" ? "unlocked" : state,
+            userEmail: state === "unauthenticated" ? null : "me@example.com",
+          }),
+        };
+      if (args[0] === "config") return { status: 0, stdout: "Saved setting `config`." };
+      if (args[0] === "login") {
+        expect(env?.L8DB_BW_PASSWORD).toBe("master");
+        if (!args.includes("--code")) return { status: 1, stdout: "Code is required." };
+        state = "unlocked";
+        return { status: 0, stdout: "SESSION\n" };
+      }
+      if (args[0] === "sync") return { status: 0, stdout: "Syncing complete." };
+      return { status: 1, stdout: "", stderr: "unknown" };
+    };
+    const auth = { bw: null, op: null };
+    const input = {
+      action: "login",
+      provider: "bitwarden",
+      email: "me@example.com",
+      password: "master",
+      server: "https://vault.bitwarden.eu",
+    };
+    const first = await extension.vaultSetup(api({ bw }, calls), auth, input, "keeper");
+    expect(first).toMatchObject({ state: "signed-out", needs: "code" });
+    expect(calls).toContainEqual(["bw", "config", "server", "https://vault.bitwarden.eu"]);
+    const second = await extension.vaultSetup(
+      api({ bw }, calls),
+      auth,
+      { ...input, code: "123456", method: "0" },
+      "keeper",
+    );
+    expect(second).toMatchObject({ state: "signed-in", account: "me@example.com", cli: "1.0.0" });
+    expect(second.needs).toBeUndefined();
+    expect(auth.bw).toBe("SESSION");
+    expect(calls).toContainEqual(["bw", "sync", "--session", "SESSION"]);
+  });
+
+  test("bitwarden unlocks a logged-in vault with the master password only", async () => {
+    let unlocked = false;
+    const bw: Cli = (args, env) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "status")
+        return { status: 0, stdout: JSON.stringify({ status: unlocked ? "unlocked" : "locked" }) };
+      if (args[0] === "login") throw new Error("must not log in again");
+      if (args[0] === "unlock") {
+        expect(env?.L8DB_BW_PASSWORD).toBe("master");
+        unlocked = true;
+        return { status: 0, stdout: "S2" };
+      }
+      return { status: 0, stdout: "" };
+    };
+    const auth = { bw: null, op: null };
+    const status = await extension.vaultSetup(
+      api({ bw }),
+      auth,
+      { action: "login", password: "master" },
+      "bitwarden",
+    );
+    expect(status.state).toBe("signed-in");
+    expect(auth.bw).toBe("S2");
+  });
+
+  test("keeper registers a persistent login and falls back to the terminal on prompts", async () => {
+    const calls: string[][] = [];
+    let loggedIn = false;
+    const keeper: Cli = (args, env) => {
+      if (args[0] === "--version") return { status: 0, stdout: "Keeper Commander, version 17.0" };
+      if (args.includes("login-status"))
+        return { status: 0, stdout: loggedIn ? "Logged in\n" : "Not logged in\n" };
+      if (args.includes("whoami"))
+        return { status: 0, stdout: JSON.stringify({ user: "me@example.com", data_center: "EU" }) };
+      expect(env?.KEEPER_PASSWORD).toBe("pw");
+      if (args.includes("timeout")) loggedIn = true;
+      return { status: 0, stdout: "" };
+    };
+    const input = { action: "login", email: "me@example.com", password: "pw", server: "EU" };
+    const ok = await extension.vaultSetup(
+      api({ keeper }, calls),
+      { bw: null, op: null },
+      input,
+      "keeper",
+    );
+    expect(ok).toMatchObject({
+      state: "signed-in",
+      cli: "17.0",
+      account: "me@example.com",
+      server: "EU",
+    });
+    expect(ok.needs).toBeUndefined();
+    expect(
+      calls.filter((call) => call.includes("this-device")).map((call) => call.slice(7)),
+    ).toEqual([["register"], ["persistent-login", "on"], ["timeout", "30d"]]);
+    const denied: Cli = (args) =>
+      args[0] === "--version"
+        ? version
+        : args.includes("login-status")
+          ? { status: 0, stdout: "Not logged in" }
+          : { status: 1, stdout: "", stderr: "Device approval required" };
+    const fallback = await extension.vaultSetup(
+      api({ keeper: denied }),
+      { bw: null, op: null },
+      input,
+      "keeper",
+    );
+    expect(fallback).toMatchObject({ state: "signed-out", needs: "terminal" });
+    const silent: Cli = (args) =>
+      args[0] === "--version"
+        ? version
+        : args.includes("login-status")
+          ? { status: 0, stdout: "Not logged in" }
+          : {
+              status: 0,
+              stdout: "Persistent login is not working in this non-interactive environment",
+            };
+    const quiet = await extension.vaultSetup(
+      api({ keeper: silent }),
+      { bw: null, op: null },
+      input,
+      "keeper",
+    );
+    expect(quiet).toMatchObject({ state: "signed-out", needs: "terminal" });
+  });
+
+  test("1password explains the app integration when no account is known", async () => {
+    const empty: Cli = (args) => (args[0] === "--version" ? version : { status: 0, stdout: "[]" });
+    await expect(
+      extension.vaultSetup(
+        api({ op: empty }),
+        { bw: null, op: null },
+        { action: "login" },
+        "1password",
+      ),
+    ).rejects.toThrow("Mit 1Password CLI integrieren");
+    const auth = { bw: null, op: null };
+    let authorized = false;
+    const op: Cli = (args) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "account")
+        return {
+          status: 0,
+          stdout: JSON.stringify([
+            { account_uuid: "A1", email: "me@example.com", url: "my.1password.eu" },
+          ]),
+        };
+      if (args[0] === "whoami")
+        return authorized
+          ? {
+              status: 0,
+              stdout: JSON.stringify({ email: "me@example.com", url: "my.1password.eu" }),
+            }
+          : { status: 1, stdout: "", stderr: "account is not signed in" };
+      if (args[0] === "vault") {
+        authorized = true;
+        return { status: 0, stdout: "[]" };
+      }
+      return { status: 1, stdout: "", stderr: "unknown" };
+    };
+    const before = await extension.vaultSetup(api({ op }), auth, {}, "1password");
+    expect(before).toMatchObject({ state: "locked", accounts: [{ id: "A1" }] });
+    const after = await extension.vaultSetup(
+      api({ op }),
+      auth,
+      { action: "login", account: "A1" },
+      "1password",
+    );
+    expect(after).toMatchObject({ state: "signed-in", account: "me@example.com" });
+    expect(auth.op).toBe("A1");
+  });
+
+  test("reports a missing CLI without probing the account", async () => {
+    const calls: string[][] = [];
+    const status = await extension.vaultSetup(
+      api({}, calls),
+      { bw: null, op: null },
+      {},
+      "bitwarden",
+    );
+    expect(status).toEqual({ provider: "bitwarden", cli: null, state: "signed-out" });
+    expect(calls).toEqual([["bw", "--version"]]);
   });
 });

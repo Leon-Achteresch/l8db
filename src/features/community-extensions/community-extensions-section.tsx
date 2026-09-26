@@ -1,12 +1,20 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { ChevronDownIcon, FolderCodeIcon, PackageIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { readCommunityExtension } from "@/lib/db";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import { CommunityExtensionCard } from "./community-extension-card";
+import { errorText } from "./password-manager";
 
 export function CommunityExtensionsSection() {
   const host = useExtensionHost();
@@ -21,7 +29,7 @@ export function CommunityExtensionsSection() {
     setPending(true);
     void Promise.resolve()
       .then(action)
-      .catch((error) => toast.error(String(error)))
+      .catch((error) => toast.error(errorText(error)))
       .finally(() => {
         setPending(false);
         refresh();
@@ -42,29 +50,39 @@ export function CommunityExtensionsSection() {
       development ? path : undefined,
     );
   };
+  const extensions = host.listExtensions();
   return (
     <motion.section
       layout
       transition={{ layout: SPRING_LAYOUT }}
-      className="space-y-4 border-t pt-6"
-      aria-label="Community Extensions"
+      className="space-y-3"
+      aria-labelledby="installed-extensions"
     >
-      <h2 className="text-lg font-semibold">Community Extensions</h2>
-      <p className="text-sm text-muted-foreground">
-        Installiere ein Paket oder lade einen lokalen Entwicklungsordner. Prüfe Herausgeber und
-        Berechtigungen vor der Aktivierung. Die Deinstallation löscht auch den eigenen
-        Extension-Speicher.
-      </p>
-      <fieldset disabled={pending} className="space-y-4">
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => run(() => install(false))}>
-            Paket installieren
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => run(() => install(true))}>
-            Entwicklungsordner laden
-          </Button>
-        </div>
-        {host.listExtensions().map((extension) => (
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="installed-extensions" className="text-sm font-semibold">
+          Installiert
+        </h3>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" disabled={pending}>
+              Aus Datei installieren
+              <ChevronDownIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => run(() => install(false))}>
+              <PackageIcon />
+              Paket (.l8db-extension)
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => run(() => install(true))}>
+              <FolderCodeIcon />
+              Entwicklungsordner
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <fieldset disabled={pending} className="min-w-0 space-y-3">
+        {extensions.map((extension) => (
           <CommunityExtensionCard
             key={extension.archive.manifest.id}
             extension={extension}
@@ -72,19 +90,26 @@ export function CommunityExtensionsSection() {
           />
         ))}
       </fieldset>
-      {!host.listExtensions().length && (
-        <p className="text-sm text-muted-foreground">Keine Community Extensions installiert.</p>
+      {!extensions.length && (
+        <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
+          Noch keine Erweiterungen installiert. Unter „Entdecken“ findest du offizielle
+          Erweiterungen.
+        </p>
       )}
-      <details>
-        <summary className="cursor-pointer text-sm">Extension-Logs ({host.logs.length})</summary>
-        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs select-text">
-          {host.logs
-            .map(
-              (entry) => `${entry.time} [extension:${entry.id}] ${entry.level}: ${entry.message}`,
-            )
-            .join("\n")}
-        </pre>
-      </details>
+      {host.logs.length > 0 && (
+        <details className="group text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            Protokoll ({host.logs.length})
+          </summary>
+          <pre className="mt-2 max-h-64 overflow-auto rounded-xl bg-muted/60 p-3 whitespace-pre-wrap break-all select-text">
+            {host.logs
+              .map(
+                (entry) => `${entry.time} [extension:${entry.id}] ${entry.level}: ${entry.message}`,
+              )
+              .join("\n")}
+          </pre>
+        </details>
+      )}
     </motion.section>
   );
 }

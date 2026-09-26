@@ -78,7 +78,7 @@ fn truncate(mut text: String) -> String {
     text
 }
 
-fn resolve(command: &str) -> std::path::PathBuf {
+fn dirs() -> Vec<std::path::PathBuf> {
     let mut dirs = crate::db::backup_tools::search_dirs();
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         dirs.push(std::path::PathBuf::from(home).join(".local/bin"));
@@ -92,6 +92,15 @@ fn resolve(command: &str) -> std::path::PathBuf {
     if let Some(local) = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) {
         dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
     }
+    dirs
+}
+
+fn child_path() -> std::ffi::OsString {
+    std::env::join_paths(dirs()).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
+}
+
+fn resolve(command: &str) -> std::path::PathBuf {
+    let dirs = dirs();
     let names = if cfg!(windows) {
         vec![
             format!("{command}.exe"),
@@ -116,6 +125,7 @@ pub async fn extension_process_run(
     let mut child = tokio::process::Command::new(resolve(&command));
     child
         .args(&options.args)
+        .env("PATH", child_path())
         .envs(&options.env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -197,6 +207,32 @@ mod tests {
         assert_eq!(result.status, Some(0));
         assert_eq!(result.stdout, "out\n");
         assert_eq!(result.stderr, "err\n");
+    }
+    #[test]
+    fn child_path_keeps_inherited_entries_and_adds_tool_dirs() {
+        let path = child_path();
+        let entries: Vec<_> = std::env::split_paths(&path).collect();
+        for inherited in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
+            if !inherited.as_os_str().is_empty() {
+                assert!(entries.contains(&inherited));
+            }
+        }
+        if cfg!(target_os = "macos") {
+            assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
+            assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
+        }
+    }
+    #[tokio::test]
+    async fn scripts_find_their_interpreter_without_an_inherited_path() {
+        if !std::path::Path::new("/usr/local/bin/node").is_file()
+            && !std::path::Path::new("/opt/homebrew/bin/node").is_file()
+        {
+            return;
+        }
+        let mut opts = options();
+        opts.args = vec!["-c".into(), "command -v node".into()];
+        let result = extension_process_run("sh".into(), opts).await.unwrap();
+        assert_eq!(result.status, Some(0), "{}", result.stderr);
     }
     #[test]
     fn rejects_oversized_inputs() {

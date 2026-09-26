@@ -1,12 +1,34 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { motion } from "motion/react";
-import { useState } from "react";
+import { ChevronDownIcon, KeyRoundIcon, type LucideIcon, PuzzleIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { type ComponentType, useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { readCommunityExtension } from "@/lib/db";
-import { SPRING_LAYOUT } from "@/lib/ease";
-import type { ExtensionDescriptor, Permission } from "@/lib/extensions/contracts";
+import { SPRING_LAYOUT, SPRING_PANEL } from "@/lib/ease";
+import type { ExtensionDescriptor } from "@/lib/extensions/contracts";
 import { useExtensionHost } from "@/lib/extensions/react-context";
+import { cn } from "@/lib/utils";
+import { ExtensionActionsMenu } from "./extension-actions-menu";
+import { ExtensionDetails } from "./extension-details";
+import { ExtensionPermissionConsent } from "./extension-permission-consent";
+import { PASSWORD_MANAGER_ID } from "./password-manager";
+import { PasswordManagerSetup } from "./password-manager-setup";
+
+const GUIDED: Record<
+  string,
+  { icon: LucideIcon; setup: ComponentType<{ extension: ExtensionDescriptor }> }
+> = {
+  [PASSWORD_MANAGER_ID]: { icon: KeyRoundIcon, setup: PasswordManagerSetup },
+};
+
+const reveal = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: "auto", opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: SPRING_PANEL,
+};
 
 export function CommunityExtensionCard({
   extension,
@@ -17,178 +39,139 @@ export function CommunityExtensionCard({
 }) {
   const host = useExtensionHost();
   const { manifest } = extension.archive;
-  const [grants, setGrants] = useState<Permission[]>(extension.grants);
-  const [configuration, setConfiguration] = useState(
-    JSON.stringify(extension.configuration, null, 2),
-  );
+  const id = manifest.id;
+  const guided = GUIDED[id];
+  const Icon = guided?.icon ?? PuzzleIcon;
+  const Setup = guided?.setup;
+  const [consent, setConsent] = useState(false);
+  const [details, setDetails] = useState(false);
+  const failed = extension.state === "failed";
+
+  const activate = () => {
+    if (manifest.permissions?.length) setConsent(true);
+    else run(() => host.enableExtension(id, []));
+  };
+
+  const update = async () => {
+    const path = await open({
+      multiple: false,
+      filters: [{ name: "l8db Extension", extensions: ["l8db-extension"] }],
+    });
+    if (typeof path === "string")
+      await host.updateExtension(await readCommunityExtension(path, false));
+  };
+
+  const reload = async () =>
+    host.reloadExtension(
+      id,
+      extension.developmentPath
+        ? await readCommunityExtension(extension.developmentPath, true)
+        : undefined,
+    );
+
   return (
     <motion.article
       layout
       transition={{ layout: SPRING_LAYOUT }}
-      className="space-y-3 rounded-lg border p-4"
+      aria-label={manifest.name}
+      className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-xs"
     >
-      <div>
-        <strong>{manifest.name}</strong>{" "}
-        <span className="text-xs text-muted-foreground">
-          {manifest.version} · {extension.state} · {extension.enabled ? "Aktiviert" : "Deaktiviert"}
+      <div className="flex items-start gap-3 p-4">
+        <span
+          aria-hidden
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors",
+            extension.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+          )}
+        >
+          <Icon className="size-5" />
         </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">{manifest.name}</h3>
+            <Badge variant={failed ? "destructive" : extension.enabled ? "secondary" : "outline"}>
+              {failed ? "Fehler" : extension.enabled ? "Aktiv" : "Inaktiv"}
+            </Badge>
+            <span className="text-xs text-muted-foreground tabular-nums">v{manifest.version}</span>
+          </div>
+          <p className="mt-0.5 text-xs text-pretty text-muted-foreground">{manifest.description}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {!extension.enabled && !consent && (
+            <Button size="sm" onClick={activate}>
+              Aktivieren
+            </Button>
+          )}
+          <ExtensionActionsMenu
+            extension={extension}
+            onDisable={() => run(() => host.disableExtension(id))}
+            onReload={() => run(reload)}
+            onUpdate={() => run(update)}
+            onUninstall={() => run(() => host.uninstallExtension(id))}
+          />
+        </div>
       </div>
-      <p className="text-xs font-mono text-muted-foreground">{manifest.id}</p>
-      <p className="text-sm text-muted-foreground">{manifest.description}</p>
+
       {extension.error && (
-        <p role="alert" className="break-all text-xs text-destructive">
-          {extension.error}
-        </p>
+        <div className="px-4 pb-4">
+          <Alert variant="destructive">
+            <AlertDescription className="break-all">{extension.error}</AlertDescription>
+          </Alert>
+        </div>
       )}
-      {!!manifest.permissions?.length && (
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Berechtigungen</legend>
-          {manifest.permissions.map((permission) => (
-            <label key={permission} className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={grants.includes(permission)}
-                disabled={!host.permissions.supported.includes(permission)}
-                onChange={(event) =>
-                  setGrants((previous) =>
-                    event.target.checked
-                      ? [...previous, permission]
-                      : previous.filter((p) => p !== permission),
-                  )
+
+      <AnimatePresence initial={false}>
+        {consent && !extension.enabled && (
+          <motion.div {...reveal} className="overflow-hidden">
+            <div className="space-y-3 border-t bg-muted/30 px-4 py-4">
+              <p className="text-xs">
+                <span className="font-medium">{manifest.name}</span> von {manifest.publisher}{" "}
+                benötigt folgende Freigaben:
+              </p>
+              <ExtensionPermissionConsent
+                extension={extension}
+                confirmLabel="Erlauben und aktivieren"
+                onCancel={() => setConsent(false)}
+                onConfirm={(grants) =>
+                  run(async () => {
+                    await host.enableExtension(id, grants);
+                    setConsent(false);
+                  })
                 }
               />
-              {permission}
-              {!host.permissions.supported.includes(permission) && " (wird nicht unterstützt)"}
-            </label>
-          ))}
-        </fieldset>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => run(() => host.enableExtension(manifest.id, grants))}>
-          {extension.enabled ? "Freigaben anwenden" : "Aktivieren"}
-        </Button>
-        {extension.enabled && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => run(() => host.disableExtension(manifest.id))}
-          >
-            Deaktivieren
-          </Button>
+            </div>
+          </motion.div>
         )}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            run(async () =>
-              host.reloadExtension(
-                manifest.id,
-                extension.developmentPath
-                  ? await readCommunityExtension(extension.developmentPath, true)
-                  : undefined,
-              ),
-            )
-          }
+      </AnimatePresence>
+
+      {Setup && extension.enabled && (
+        <div className="border-t px-4 py-4">
+          <Setup extension={extension} />
+        </div>
+      )}
+
+      <div className="border-t">
+        <button
+          type="button"
+          aria-expanded={details}
+          onClick={() => setDetails((value) => !value)}
+          className="flex w-full items-center gap-1.5 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
         >
-          Neu laden
-        </Button>
-        {!extension.developmentPath && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              run(async () => {
-                const path = await open({
-                  multiple: false,
-                  filters: [{ name: "l8db Extension", extensions: ["l8db-extension"] }],
-                });
-                if (typeof path !== "string") return;
-                await host.updateExtension(await readCommunityExtension(path, false));
-              })
-            }
-          >
-            Aktualisieren
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => run(() => host.uninstallExtension(manifest.id))}
-        >
-          Deinstallieren
-        </Button>
-      </div>
-      {extension.developmentPath && (
-        <p className="break-all text-xs text-muted-foreground">
-          Entwicklung: {extension.developmentPath}
-        </p>
-      )}
-      {(manifest.contributes?.commands ?? []).map((command) => (
-        <Button
-          key={command.id}
-          size="sm"
-          variant="outline"
-          disabled={!extension.enabled}
-          onClick={() => run(() => host.executeCommand(command.id))}
-        >
-          {command.title}
-        </Button>
-      ))}
-      {(manifest.contributes?.views ?? []).length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Ansichten: {(manifest.contributes?.views ?? []).map((view) => view.title).join(", ")}
-        </p>
-      )}
-      {(manifest.contributes?.panels ?? []).length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Panels: {(manifest.contributes?.panels ?? []).map((panel) => panel.title).join(", ")}
-        </p>
-      )}
-      {(manifest.contributes?.statusBar ?? []).length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Statusleiste: {(manifest.contributes?.statusBar ?? []).map((item) => item.id).join(", ")}
-        </p>
-      )}
-      {manifest.capabilities?.network && (
-        <p className="break-all text-xs text-muted-foreground">
-          Netzwerk-Hosts: {manifest.capabilities.network.hosts.join(", ")}
-        </p>
-      )}
-      {manifest.capabilities?.process && (
-        <p className="break-all text-xs text-muted-foreground">
-          Prozesse: {manifest.capabilities.process.commands.join(", ")}
-        </p>
-      )}
-      {!!Object.keys(manifest.contributes?.configuration ?? {}).length && (
-        <details>
-          <summary className="cursor-pointer text-sm">Konfiguration</summary>
-          <dl className="my-2 space-y-1 text-xs">
-            {Object.entries(manifest.contributes!.configuration!).map(([key, property]) => (
-              <div key={key}>
-                <dt className="font-mono">
-                  {key} ({property.type})
-                </dt>
-                <dd>
-                  {property.description} · Standard: {String(property.default)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <Input
-            aria-label={`Konfiguration ${manifest.id} als JSON`}
-            value={configuration}
-            onChange={(event) => setConfiguration(event.target.value)}
+          <ChevronDownIcon
+            className={cn("size-3.5 transition-transform duration-200", details && "rotate-180")}
           />
-          <Button
-            className="mt-2"
-            size="sm"
-            variant="outline"
-            onClick={() => run(() => host.setConfiguration(manifest.id, JSON.parse(configuration)))}
-          >
-            Speichern
-          </Button>
-        </details>
-      )}
+          Details
+        </button>
+        <AnimatePresence initial={false}>
+          {details && (
+            <motion.div {...reveal} className="overflow-hidden">
+              <div className="px-4 pb-4">
+                <ExtensionDetails extension={extension} guided={!!Setup} run={run} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </motion.article>
   );
 }
