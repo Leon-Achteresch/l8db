@@ -176,6 +176,8 @@ pub fn run() {
             db::commands::read_import_preview,
             db::commands::export_rows_file,
             db::commands::copy_table_to_connection,
+            db::transfer::plan_transfer,
+            db::transfer::run_transfer,
             db::datagen::datagen_plan,
             db::datagen::datagen_preview,
             db::datagen::datagen_run,

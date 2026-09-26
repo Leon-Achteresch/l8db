@@ -34,6 +34,7 @@ const CONFIGURED_COMMANDS = new Set([
   "open_proxy_tunnel",
   "csv_import",
   "copy_table_to_connection",
+  "run_transfer",
   "datagen_run",
 ]);
 
@@ -73,6 +74,7 @@ const WRITE_COMMANDS = new Set([
   "execute_in_transaction",
   "copy_schema_table_data",
   "copy_table_to_connection",
+  "run_transfer",
   "execute_object_ddl",
   "execute_schema_object_copy",
   "execute_in_transaction_with_params",
