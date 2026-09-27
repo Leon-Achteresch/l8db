@@ -10,6 +10,14 @@ Bucket file listings and Auth users require a project Secret API Key, entered in
 
 Relevant Supabase documentation: [Management API](https://supabase.com/docs/reference/api/introduction), [personal access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens), [Storage access](https://supabase.com/docs/guides/storage/security/access-control), and [Auth admin users](https://supabase.com/docs/reference/javascript/auth-admin-listusers).
 
+## Appwrite BaaS
+
+The **Appwrite** tab in BaaS connects one project at a time using its API endpoint (`https://<region>.cloud.appwrite.io/v1` for Appwrite Cloud), project ID and [project API key](https://appwrite.io/docs/partners/project/api-keys). Because keys are project-scoped, add each project separately. l8db verifies the key with `GET /project` before saving it in the OS keychain; the form clears the key after connection and never persists it in localStorage. HTTPS is required, except for localhost development endpoints. Redirects are not followed when sending the key.
+
+The project view lists Storage buckets and files, TablesDB databases and tables, Functions, Auth users and Sites. Each section reports its own permission error so other sections remain usable. Give the key `project.read` and the relevant read scopes for the sections you want to inspect (`buckets.read`, `files.read`, `databases.read`, `functions.read`, `users.read`, `sites.read`). Lists are paginated in batches of 100. The current Appwrite view is read-only and uses the current TablesDB endpoints, not the legacy DocumentsDB collection API. Disconnecting removes that project's key and profile.
+
+Relevant Appwrite documentation: [REST API and query format](https://appwrite.io/docs/apis/rest), [project endpoint](https://appwrite.io/docs/references/cloud/server-rest/project), [Storage API](https://appwrite.io/docs/references/cloud/server-rest/storage), and [TablesDB API](https://appwrite.io/docs/references/cloud/server-swift/tablesDB).
+
 ## Products and drivers
 
 | Product | Family | Required driver |
