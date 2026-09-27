@@ -1,4 +1,5 @@
 import { ActivityIcon, GaugeIcon, ListChecksIcon, RefreshCw, TerminalIcon } from "lucide-react";
+import { startTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +82,10 @@ export function MonitorView() {
           </div>
         </header>
 
-        <Tabs value={tab} onValueChange={(value) => setTab(value as MonitorTab)}>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => startTransition(() => setTab(value as MonitorTab))}
+        >
           <TabsList>
             <TabsTrigger value="performance" className="gap-1.5 text-xs">
               <GaugeIcon className="size-3.5" />
