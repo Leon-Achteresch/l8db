@@ -37,6 +37,7 @@ export function QuerySchemaBrowser({
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const schemaScrollRef = useRef<HTMLDivElement>(null);
+  const statementScrollRef = useRef<HTMLDivElement>(null);
   const [memberQuery, setMemberQuery] = useState("");
   const [activeMember, setActiveMember] = useState<string | undefined>(undefined);
   const members = useMemo(() => parsePlsqlMembers(sql), [sql]);
@@ -78,11 +79,35 @@ export function QuerySchemaBrowser({
     overscan: 10,
     initialRect: { width: 300, height: 600 },
   });
-  const statements = useMemo(
-    () =>
-      tab === "outline" && members.length === 0 ? splitSqlStatements(sql, kind).statements : [],
-    [sql, kind, tab, members.length],
-  );
+  const statements = useMemo(() => {
+    if (tab !== "outline" || members.length > 0) return [];
+    let cursor = 0;
+    let line = 1;
+    let lastNewline = -1;
+    return splitSqlStatements(sql, kind).statements.map((statement) => {
+      let newline = sql.indexOf("\n", cursor);
+      while (newline >= 0 && newline < statement.start) {
+        line += 1;
+        lastNewline = newline;
+        cursor = newline + 1;
+        newline = sql.indexOf("\n", cursor);
+      }
+      return {
+        start: statement.start,
+        summary: summarizeStatement(statement.text),
+        line,
+        column: statement.start - lastNewline,
+      };
+    });
+  }, [sql, kind, tab, members.length]);
+  const statementVirtualizer = useVirtualizer({
+    count: statements.length,
+    getScrollElement: () => statementScrollRef.current,
+    estimateSize: () => 57,
+    getItemKey: (index) => statements[index].start,
+    overscan: 8,
+    initialRect: { width: 300, height: 600 },
+  });
   if (members.length > 0) {
     return (
       <aside className="flex h-full min-h-0 flex-col bg-muted/15" aria-label="Package-Mitglieder">
@@ -298,32 +323,46 @@ export function QuerySchemaBrowser({
           </div>
         </>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto p-2">
+        <div
+          ref={statementScrollRef}
+          className="min-h-0 flex-1 overflow-auto p-2"
+          data-slot="query-statement-list"
+        >
           {!statements.length && (
             <p className="p-2 text-xs text-muted-foreground">
               Statements erscheinen hier, sobald du SQL schreibst.
             </p>
           )}
-          {statements.map((statement, index) => {
-            const summary = summarizeStatement(statement.text);
-            const lines = sql.slice(0, statement.start).split("\n");
-            return (
-              <button
-                type="button"
-                key={statement.start}
-                className="mb-1 block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
-                onClick={() => onJump(lines.length, lines[lines.length - 1].length + 1)}
-              >
-                <span className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>
-                    {String(index + 1).padStart(2, "0")} · {summary.kind}
-                  </span>
-                  <span>Zeile {lines.length}</span>
-                </span>
-                <span className="mt-1 block truncate font-mono text-xs">{summary.preview}</span>
-              </button>
-            );
-          })}
+          <div className="relative" style={{ height: statementVirtualizer.getTotalSize() }}>
+            {statementVirtualizer.getVirtualItems().map((virtualRow) => {
+              const statement = statements[virtualRow.index];
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={statementVirtualizer.measureElement}
+                  className="absolute top-0 left-0 w-full pb-1"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <button
+                    type="button"
+                    className="block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
+                    onClick={() => onJump(statement.line, statement.column)}
+                  >
+                    <span className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>
+                        {String(virtualRow.index + 1).padStart(2, "0")} · {statement.summary.kind}
+                      </span>
+                      <span>Zeile {statement.line}</span>
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-xs">
+                      {statement.summary.preview}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </aside>
