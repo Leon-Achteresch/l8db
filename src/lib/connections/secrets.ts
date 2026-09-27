@@ -50,7 +50,31 @@ export async function initConnectionSecrets(): Promise<void> {
     ),
   );
   if (changed) {
-    useConnectionsStore.setState({ connections: next });
+    const originals = new Map(connections.map((connection) => [connection.id, connection]));
+    const initialized = new Map(next.map((connection) => [connection.id, connection]));
+    useConnectionsStore.setState((state) => {
+      let hasUpdates = false;
+      const connections = state.connections.map((connection) => {
+        const original = originals.get(connection.id);
+        const restored = initialized.get(connection.id);
+        if (!original || !restored) return connection;
+        const sslMode = connection.sslMode ?? restored.sslMode;
+        const ssh = connection.ssh ?? restored.ssh;
+        const connectionString =
+          connection.connectionString === original.connectionString
+            ? restored.connectionString
+            : connection.connectionString;
+        if (
+          sslMode === connection.sslMode &&
+          ssh === connection.ssh &&
+          connectionString === connection.connectionString
+        )
+          return connection;
+        hasUpdates = true;
+        return { ...connection, sslMode, ssh, connectionString };
+      });
+      return hasUpdates ? { connections } : state;
+    });
   }
 }
 
