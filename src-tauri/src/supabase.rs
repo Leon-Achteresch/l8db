@@ -237,6 +237,7 @@ pub struct SupabaseObject {
     pub id: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub last_accessed_at: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -965,9 +966,15 @@ mod tests {
         )
         .unwrap();
         assert!(health[0].healthy);
-        let objects: Vec<SupabaseObject> =
-            serde_json::from_str(r#"[{"name":"photos","id":null,"metadata":null}]"#).unwrap();
-        assert!(objects[0].id.is_none());
+        let objects: Vec<SupabaseObject> = serde_json::from_str(
+            r#"[{"name":"photo.png","id":"1","created_at":"2026-09-27T12:00:00Z","updated_at":"2026-09-27T13:00:00Z","last_accessed_at":"2026-09-27T14:00:00Z","metadata":{"size":512,"mimetype":"image/png"}},{"name":"photos","id":null,"metadata":null}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            objects[0].last_accessed_at.as_deref(),
+            Some("2026-09-27T14:00:00Z")
+        );
+        assert!(objects[1].id.is_none());
         let users: SupabaseAuthUsersPage = serde_json::from_str(
             r#"{"users":[{"id":"a","email":"user@example.com","email_confirmed_at":"2026-09-27T12:00:00Z","phone_confirmed_at":null,"is_anonymous":false}],"total":1}"#,
         )
