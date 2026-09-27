@@ -50,6 +50,8 @@ export function SidebarEntityButton({
     <SidebarMenuButton {...props} onClick={onClick} asChild isActive={isActive}>
       <Link
         to="/tables/$schema/$table"
+        preload="intent"
+        preloadDelay={80}
         params={{ schema, table: name }}
         search={{ type: entity }}
         data-tour={first ? "sidebar-table" : undefined}

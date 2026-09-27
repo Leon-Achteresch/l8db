@@ -52,6 +52,8 @@ export function AppHeaderNavigation() {
       <Tooltip key={item.title} content={item.title} side="bottom">
         <Link
           to={item.url}
+          preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
+          preloadDelay={80}
           aria-label={item.title}
           aria-current={active ? "page" : undefined}
           className={cn(
@@ -135,7 +137,12 @@ export function AppHeaderNavigation() {
           <DropdownMenuContent align="start">
             {navItems.map((item) => (
               <DropdownMenuItem key={item.url} asChild>
-                <Link to={item.url} aria-current={item.url === activeUrl ? "page" : undefined}>
+                <Link
+                  to={item.url}
+                  preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
+                  preloadDelay={80}
+                  aria-current={item.url === activeUrl ? "page" : undefined}
+                >
                   <item.icon className="size-4" />
                   {item.title}
                   {hasNewFeatures(item.featureScope, seenFeatures) && (
