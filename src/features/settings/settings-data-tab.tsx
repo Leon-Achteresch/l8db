@@ -166,6 +166,7 @@ export function SettingsDataTab() {
         <SettingsRow
           title="Transfer"
           description="Komplette Schemas mit Struktur und Daten in eine andere Verbindung kopieren, auch zwischen Datenbankfamilien."
+          featureId="settings.data.transfer"
         >
           <Button variant="outline" size="sm" asChild>
             <Link to="/transfer">

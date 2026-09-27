@@ -1,7 +1,9 @@
 import { Blocks, CodeXml, Database, Info, Keyboard, ShieldCheck, Sliders } from "lucide-react";
 import { motion } from "motion/react";
+import { NewBadge } from "@/components/new-badge";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
 export interface SettingsTabItem {
@@ -63,6 +65,7 @@ interface SettingsSidebarProps {
 
 export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps) {
   const update = useVisibleUpdate();
+  const seenFeatures = useSeenNewFeatures();
 
   return (
     <nav className="flex flex-col gap-1" aria-label="Einstellungskategorien">
@@ -109,6 +112,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
             <div className="relative min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm">{tab.label}</span>
+                {hasNewFeatures(`settings.${tab.id}`, seenFeatures) ? <NewBadge /> : null}
               </div>
               <p className="truncate text-xs text-muted-foreground">{tab.description}</p>
             </div>

@@ -1,0 +1,102 @@
+import { useSyncExternalStore } from "react";
+import { version as appVersion } from "../../package.json";
+
+export const NEW_FEATURES = {
+  "settings.data.transfer": "0.7.0",
+} as const;
+
+export type NewFeatureId = keyof typeof NEW_FEATURES;
+
+const STORAGE_PREFIX = "l8db.new-feature-seen";
+
+type FeatureStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function featureStorageKey(id: NewFeatureId): string {
+  return `${STORAGE_PREFIX}:${NEW_FEATURES[id]}:${id}`;
+}
+
+export function hasNewFeatures(
+  scope: string | undefined,
+  seen: ReadonlySet<NewFeatureId>,
+  version = appVersion,
+): boolean {
+  if (!scope) return false;
+  return (Object.entries(NEW_FEATURES) as [NewFeatureId, string][]).some(
+    ([id, introducedIn]) =>
+      introducedIn === version && !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)),
+  );
+}
+
+export function createNewFeatureStore(storage: FeatureStorage | null, version = appVersion) {
+  const listeners = new Set<() => void>();
+
+  const readSeen = () => {
+    const result = new Set<NewFeatureId>();
+    if (!storage) return result;
+    for (const [id, introducedIn] of Object.entries(NEW_FEATURES) as [NewFeatureId, string][]) {
+      if (introducedIn !== version) continue;
+      try {
+        if (storage.getItem(featureStorageKey(id)) === "1") result.add(id);
+      } catch {
+        return result;
+      }
+    }
+    return result;
+  };
+
+  let snapshot = readSeen();
+
+  const publish = (next: Set<NewFeatureId>) => {
+    if (next.size === snapshot.size && [...next].every((id) => snapshot.has(id))) return;
+    snapshot = next;
+    for (const listener of listeners) listener();
+  };
+
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    markSeen: (id: NewFeatureId) => {
+      if (NEW_FEATURES[id] !== version || snapshot.has(id)) return;
+      try {
+        storage?.setItem(featureStorageKey(id), "1");
+      } catch {
+        publish(new Set([...snapshot, id]));
+        return;
+      }
+      publish(new Set([...snapshot, id]));
+    },
+    refresh: () => publish(readSeen()),
+  };
+}
+
+function browserStorage(): FeatureStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const store = createNewFeatureStore(browserStorage());
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === null || event.key.startsWith(`${STORAGE_PREFIX}:`)) store.refresh();
+  });
+}
+
+export function markNewFeatureSeen(id: NewFeatureId): void {
+  store.markSeen(id);
+}
+
+export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+export function useHasNewFeatures(scope: string | undefined): boolean {
+  return hasNewFeatures(scope, useSeenNewFeatures());
+}
