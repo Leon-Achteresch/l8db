@@ -249,6 +249,27 @@ pub struct SupabaseServiceHealth {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseBackup {
+    pub id: Option<i64>,
+    pub is_physical_backup: Option<bool>,
+    pub status: Option<String>,
+    pub inserted_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabasePhysicalBackupData {
+    pub earliest_physical_backup_date_unix: Option<i64>,
+    pub latest_physical_backup_date_unix: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseBackups {
+    pub pitr_enabled: Option<bool>,
+    pub backups: Vec<SupabaseBackup>,
+    pub physical_backup_data: Option<SupabasePhysicalBackupData>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseAuthUser {
     pub id: String,
     pub email: Option<String>,
@@ -428,6 +449,16 @@ pub async fn supabase_health(reference: String) -> Result<Vec<SupabaseServiceHea
     management_get(
         &token().await?,
         &format!("projects/{reference}/health?services=auth&services=db&services=pooler&services=realtime&services=rest&services=storage"),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_backups(reference: String) -> Result<SupabaseBackups, String> {
+    let reference = validate_ref(&reference)?;
+    management_get(
+        &token().await?,
+        &format!("projects/{reference}/database/backups"),
     )
     .await
 }
@@ -747,8 +778,8 @@ mod tests {
     use super::{
         bucket_details_url, client, project_api_auth, select_project_key, table_rows_sql,
         upload_file, validate_object_key, validate_project_secret_key, validate_ref,
-        SupabaseApiKey, SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction, SupabaseObject,
-        SupabaseProject, SupabaseServiceHealth,
+        SupabaseApiKey, SupabaseAuthUsersPage, SupabaseBackups, SupabaseBucket, SupabaseFunction,
+        SupabaseObject, SupabaseProject, SupabaseServiceHealth,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -966,6 +997,19 @@ mod tests {
         )
         .unwrap();
         assert!(health[0].healthy);
+        let backups: SupabaseBackups = serde_json::from_str(
+            r#"{"region":"eu-central-1","walg_enabled":true,"pitr_enabled":true,"backups":[{"id":42,"is_physical_backup":true,"status":"COMPLETED","inserted_at":"2026-09-27T12:00:00Z"}],"physical_backup_data":{"earliest_physical_backup_date_unix":1790500000,"latest_physical_backup_date_unix":1790510000}}"#,
+        )
+        .unwrap();
+        assert_eq!(backups.pitr_enabled, Some(true));
+        assert_eq!(backups.backups[0].status.as_deref(), Some("COMPLETED"));
+        assert_eq!(
+            backups
+                .physical_backup_data
+                .unwrap()
+                .latest_physical_backup_date_unix,
+            Some(1790510000)
+        );
         let objects: Vec<SupabaseObject> = serde_json::from_str(
             r#"[{"name":"photo.png","id":"1","created_at":"2026-09-27T12:00:00Z","updated_at":"2026-09-27T13:00:00Z","last_accessed_at":"2026-09-27T14:00:00Z","metadata":{"size":512,"mimetype":"image/png"}},{"name":"photos","id":null,"metadata":null}]"#,
         )

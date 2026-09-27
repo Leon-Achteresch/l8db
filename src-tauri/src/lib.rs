@@ -108,6 +108,7 @@ pub fn run() {
             supabase::supabase_bucket_details,
             supabase::supabase_functions,
             supabase::supabase_health,
+            supabase::supabase_backups,
             supabase::supabase_tables,
             supabase::supabase_table_columns,
             supabase::supabase_table_rows,

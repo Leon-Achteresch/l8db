@@ -7,6 +7,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import type { SupabaseProject } from "@/lib/db";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { SupabaseAuthView } from "./supabase-auth-view";
+import { SupabaseBackupsView } from "./supabase-backups-view";
 import { SupabaseDatabaseView } from "./supabase-database-view";
 import { SupabaseFunctionsView } from "./supabase-functions-view";
 import { SupabaseProjectKey } from "./supabase-project-key";
@@ -94,6 +95,7 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
       <SupabaseServiceHealth reference={project.reference} />
       <SupabaseProjectKey key={project.reference} reference={project.reference} />
       <SupabaseDatabaseView key={project.reference} reference={project.reference} />
+      <SupabaseBackupsView key={project.reference} reference={project.reference} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
         <SupabaseStorageView key={project.reference} reference={project.reference} />
