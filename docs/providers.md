@@ -18,6 +18,14 @@ The project view lists Storage buckets and files, TablesDB databases and tables,
 
 Relevant Appwrite documentation: [REST API and query format](https://appwrite.io/docs/apis/rest), [project endpoint](https://appwrite.io/docs/references/cloud/server-rest/project), [Storage API](https://appwrite.io/docs/references/cloud/server-rest/storage), and [TablesDB API](https://appwrite.io/docs/references/cloud/server-swift/tablesDB).
 
+## PocketBase BaaS
+
+The **PocketBase** tab connects a PocketBase instance by its base URL and a [superuser impersonation token](https://pocketbase.io/docs/authentication/#api-keys). PocketBase requires superuser access to list collection definitions. This token has full administrative privileges on the instance; l8db uses it only for read requests, verifies it through `GET /api/settings`, and stores it in the OS keychain. HTTPS is required except on loopback hosts, and redirects are not followed when sending the token.
+
+The view lists non-system collections, their fields, paginated records, Auth collections and file fields attached to records. PocketBase stores files on records rather than in separate buckets, so filenames appear beneath their records. Hidden fields and system collections are excluded from the response sent to the frontend. The project card opens the PocketBase dashboard on the instance. Disconnecting removes the token and profile. The current view is read-only; files are listed but cannot yet be opened or downloaded in l8db.
+
+Relevant PocketBase documentation: [collections API](https://pocketbase.io/docs/api-collections/), [records API](https://pocketbase.io/docs/api-records/), [files API](https://pocketbase.io/docs/api-files/), and [dashboard route](https://pocketbase.io/docs/).
+
 ## Products and drivers
 
 | Product | Family | Required driver |
