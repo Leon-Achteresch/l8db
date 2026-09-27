@@ -6,11 +6,14 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
 } from "@/components/ui/sidebar";
+import { PASSWORD_MANAGER_ID } from "@/features/community-extensions/password-manager";
 import { useExtensionHost, useExtensionViews } from "@/lib/extensions/react-context";
 import { ExtensionTreeNode } from "./extension-sidebar-views/extension-tree-node";
 
 export function ExtensionSidebarViews() {
-  const views = useExtensionViews().filter((view) => view.location === "sidebar");
+  const views = useExtensionViews().filter(
+    (view) => view.location === "sidebar" && view.extensionId !== PASSWORD_MANAGER_ID,
+  );
   const host = useExtensionHost();
   const [collapsed, setCollapsed] = useState<string[]>([]);
   if (views.length === 0) return null;
