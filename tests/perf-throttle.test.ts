@@ -8,6 +8,8 @@ const DIST = process.env.L8DB_PERF_DIST ?? "dist";
 const RATE = Number(process.env.L8DB_PERF_CPU_RATE ?? 8);
 const HEAP_LIMIT_MB = Number(process.env.L8DB_PERF_HEAP_LIMIT_MB ?? 512);
 const HEAP_BUDGET_MB = Number(process.env.L8DB_PERF_HEAP_BUDGET_MB ?? 160);
+const GRID_ROWS = Number(process.env.L8DB_PERF_GRID_ROWS ?? 2000);
+const GRID_COLUMNS = Number(process.env.L8DB_PERF_GRID_COLUMNS ?? 60);
 const FRAME_P95_MS = Number(process.env.L8DB_PERF_FRAME_P95 ?? 17.5);
 const FRAME_WORST_MS = Number(process.env.L8DB_PERF_FRAME_WORST ?? 50);
 const STEP_WORST_MS = Number(process.env.L8DB_PERF_STEP_WORST ?? 100);
@@ -141,7 +143,7 @@ beforeAll(async () => {
     (url) => url.hostname !== "localhost",
     (route) => route.fulfill({ contentType: "text/html", body: "" }),
   );
-  await seedApp(page, 3000, { rows: 2000, columns: 60 }, "perf-test");
+  await seedApp(page, 3000, { rows: GRID_ROWS, columns: GRID_COLUMNS }, "perf-test");
   await page.goto(`http://localhost:${server.port}/`);
   await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
   await page.waitForTimeout(2000);
@@ -199,7 +201,7 @@ test.skipIf(!ENABLED)(
 );
 
 test.skipIf(!ENABLED)(
-  "Tabelle: Öffnen, Scrollen in 2000 × 60 Zellen und Tabwechsel",
+  `Tabelle: Öffnen, Scrollen in ${GRID_ROWS} × ${GRID_COLUMNS} Zellen und Tabwechsel`,
   async () => {
     expectStep(
       "Tabelle öffnen",
@@ -209,30 +211,58 @@ test.skipIf(!ENABLED)(
         await page.waitForTimeout(2000);
       }),
     );
-    expectSmooth(
-      "Tabelle scrollen",
-      await sample(() =>
-        page.evaluate(async () => {
-          let scroller = document.querySelector("tbody")?.parentElement ?? null;
-          while (scroller && getComputedStyle(scroller).overflowY !== "auto")
-            scroller = scroller.parentElement;
-          if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
-          const target = scroller;
-          let start = 0;
-          await new Promise<void>((done) => {
-            const step = (now: number) => {
-              if (!start) start = now;
-              target.scrollTop += 60;
-              target.scrollLeft += now - start < 1500 ? 60 : -60;
-              if (now - start < 3000) requestAnimationFrame(step);
-              else done();
-            };
-            requestAnimationFrame(step);
-          });
-        }),
-      ),
-    );
+    const scrollTable = (checkCoverage: boolean) =>
+      page.evaluate(async (checkCoverage) => {
+        let scroller = document.querySelector("tbody")?.parentElement ?? null;
+        while (scroller && getComputedStyle(scroller).overflowY !== "auto")
+          scroller = scroller.parentElement;
+        if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
+        const target = scroller;
+        const coverage = { samples: 0, gaps: 0, misses: [] as unknown[] };
+        let start = 0;
+        await new Promise<void>((done) => {
+          const step = (now: number) => {
+            if (!start) start = now;
+            if (checkCoverage) {
+              const box = target.getBoundingClientRect();
+              for (const x of [box.left + box.width * 0.4, box.left + box.width * 0.8]) {
+                for (const y of [box.top + box.height * 0.4, box.top + box.height * 0.8]) {
+                  const cell = document.elementFromPoint(x, y)?.closest("td");
+                  coverage.samples++;
+                  if (!cell?.closest("tr[data-index]") || cell.hasAttribute("aria-hidden")) {
+                    coverage.gaps++;
+                    if (coverage.misses.length < 12)
+                      coverage.misses.push({
+                        top: target.scrollTop,
+                        left: target.scrollLeft,
+                        x,
+                        y,
+                        cell: cell?.outerHTML.slice(0, 110),
+                      });
+                  }
+                }
+              }
+            }
+            target.scrollTop += now - start < 1500 ? 60 : -60;
+            target.scrollLeft += now - start < 1500 ? 60 : -60;
+            if (now - start < 3000) requestAnimationFrame(step);
+            else done();
+          };
+          requestAnimationFrame(step);
+        });
+        return coverage;
+      }, checkCoverage);
+    const tableScroll = await sample(async () => {
+      await scrollTable(false);
+    });
+    expectSmooth("Tabelle scrollen", tableScroll);
+    const coverage = await scrollTable(true);
+    if (coverage.gaps) console.log("grid coverage", coverage);
+    expect(coverage.samples).toBeGreaterThan(100);
+    expect(coverage.gaps).toBe(0);
     const tabs = page.locator("[data-tab-key]");
+    await page.locator('a[data-name="table_0004"]').first().click();
+    await page.waitForSelector('tbody tr[data-index="0"]');
     expect(await tabs.count()).toBeGreaterThan(1);
     expectStep(
       "Tabs wechseln",
