@@ -9,7 +9,8 @@ import {
   RefreshCwIcon,
   TimerIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,13 +25,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { UndoRedoControls } from "@/components/undo-redo-controls";
 import { fileLabel } from "@/lib/dashboard-file";
 import {
   CHARTS,
+  clearDashboardHistory,
   createId,
   type Dashboard,
   emptyDataset,
+  redoDashboards,
   settle,
+  undoDashboards,
   useDashboardsStore,
 } from "@/lib/dashboards";
 import { ChartDialog, type ChartDraft } from "./chart-dialog";
@@ -57,6 +62,10 @@ export function DashboardEditor({
   const [draftIsNew, setDraftIsNew] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const editing = !dashboard.locked;
+  const canUndo = useStore(useDashboardsStore.temporal, (state) => state.pastStates.length > 0);
+  const canRedo = useStore(useDashboardsStore.temporal, (state) => state.futureStates.length > 0);
+
+  useEffect(() => clearDashboardHistory(), []);
   const update = (patch: Partial<Dashboard> | ((d: Dashboard) => Partial<Dashboard>)) =>
     store.update(dashboard.id, patch);
 
@@ -195,6 +204,15 @@ export function DashboardEditor({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          {editing && (
+            <UndoRedoControls
+              enabled={!dialogOpen}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={undoDashboards}
+              onRedo={redoDashboards}
+            />
+          )}
           {editing && (
             <Button size="sm" onClick={startNewChart}>
               <PlusIcon /> Chart
