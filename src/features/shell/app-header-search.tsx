@@ -1,16 +1,23 @@
 import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Database, Keyboard, Plug, Puzzle, Search, Sparkles, TextSearch } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
-import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import {
   buildHotkeyItems,
   buildNotebookItems,
   buildObjectItems,
 } from "@/features/shell/app-header-search/command-items";
-import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
@@ -30,6 +37,16 @@ import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_RESULTS = 60;
 const NO_ITEMS: CommandItem[] = [];
+const ObjectSearchDialog = lazy(() =>
+  import("@/features/objects/object-search-dialog").then(({ ObjectSearchDialog }) => ({
+    default: ObjectSearchDialog,
+  })),
+);
+const ShortcutsDialog = lazy(() =>
+  import("@/features/shell/shortcuts-dialog").then(({ ShortcutsDialog }) => ({
+    default: ShortcutsDialog,
+  })),
+);
 
 export function AppHeaderSearch() {
   const easyMode = useSettingsStore((state) => state.easyMode);
@@ -43,6 +60,10 @@ export function AppHeaderSearch() {
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const [objectSearchOpen, setObjectSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const objectSearchMounted = useRef(false);
+  const shortcutsMounted = useRef(false);
+  if (objectSearchOpen) objectSearchMounted.current = true;
+  if (shortcutsOpen) shortcutsMounted.current = true;
   const { data: objects } = useAllSchemaObjectsQuery(open);
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
@@ -262,8 +283,16 @@ export function AppHeaderSearch() {
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
       />
-      <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {objectSearchMounted.current && (
+        <Suspense fallback={null}>
+          <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
+        </Suspense>
+      )}
+      {shortcutsMounted.current && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        </Suspense>
+      )}
     </>
   );
 }
