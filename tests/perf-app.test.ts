@@ -197,6 +197,86 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  `Erweiterte Suche bleibt bei ${TABLES} Tabellen begrenzt und bedienbar`,
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]');
+    try {
+      await app.page.getByRole("button", { name: "Erweiterte Suche" }).click();
+      const results = app.page.getByRole("region", { name: "Suchergebnisse" });
+      await results.waitFor();
+      await app.page.waitForTimeout(250);
+      expect(await results.locator("[data-index]").count()).toBeGreaterThan(0);
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+      expect(await app.page.getByText(`${TABLES + Math.min(TABLES, 400)} Ergebnisse`).count()).toBe(
+        1,
+      );
+      const lastView = `v_table_${String(Math.min(TABLES, 400) - 1).padStart(4, "0")}`;
+      await results.locator("button").first().focus();
+      await app.page.keyboard.press("End");
+      await app.page.waitForFunction(
+        (name) => document.activeElement?.textContent?.includes(name),
+        lastView,
+      );
+      await app.page.keyboard.press("Home");
+      await app.page.waitForFunction(() =>
+        document.activeElement?.textContent?.includes("table_0000"),
+      );
+      const scroll = await measure("advanced-search-scroll", app.page, async () => {
+        await results.evaluate(async (element) => {
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              element.scrollTop += now - start < 2500 ? 120 : -120;
+              if (now - start < 5000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        });
+      });
+      expect(scroll.fps).toBeGreaterThan(59);
+      expect(scroll.p95).toBeLessThan(21);
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await app.page.waitForFunction(
+        (lastView) =>
+          document.querySelector('[aria-label="Suchergebnisse"]')?.textContent?.includes(lastView),
+        lastView,
+      );
+      const lastTable = `table_${String(TABLES - 1).padStart(4, "0")}`;
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill(`public.${lastTable}`);
+      await app.page.waitForFunction(
+        (name) =>
+          document.querySelector('[aria-label="Suchergebnisse"]')?.textContent?.includes(name),
+        lastTable,
+      );
+      expect(await results.locator("[data-index]").count()).toBe(1);
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill("col_1");
+      await app.page.getByText(`${Math.min(TABLES, 500)} Ergebnisse`).waitFor();
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await app.page.waitForFunction(
+        (lastColumnTable) =>
+          document
+            .querySelector('[aria-label="Suchergebnisse"]')
+            ?.textContent?.includes(lastColumnTable),
+        `table_${String(Math.min(TABLES, 500) - 1).padStart(4, "0")}`,
+      );
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   "Tabellenscrollen im vollständigen Workspace mit 5000 Zeilen und 120 Spalten",
   async () => {
     const app = await open("/tables/public/table_0000", 'tbody tr[data-index="0"]', {
