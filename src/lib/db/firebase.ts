@@ -1,0 +1,52 @@
+import type { BaasFilePreview } from "./baas-file";
+import { invoke } from "./core";
+
+export interface FirebaseProfile {
+  projectId: string;
+  projectNumber: string | null;
+  displayName: string | null;
+  state: string | null;
+}
+
+export interface FirebaseBucket {
+  name: string;
+  location: string | null;
+  storageClass: string | null;
+  timeCreated: string | null;
+}
+
+export interface FirebaseBucketPage {
+  items: FirebaseBucket[];
+  nextPageToken: string | null;
+}
+
+export interface FirebaseObject {
+  name: string;
+  size: string | null;
+  contentType: string | null;
+  timeCreated: string | null;
+  updated: string | null;
+}
+
+export interface FirebaseObjectPage {
+  items: FirebaseObject[];
+  prefixes: string[];
+  nextPageToken: string | null;
+}
+
+export const firebaseConnect = () => invoke<FirebaseProfile | null>("firebase_connect");
+export const firebaseProfiles = () => invoke<FirebaseProfile[]>("firebase_profiles");
+export const firebaseDisconnect = (projectId: string) =>
+  invoke<void>("firebase_disconnect", { projectId });
+export const firebaseBuckets = (projectId: string, pageToken?: string) =>
+  invoke<FirebaseBucketPage>("firebase_buckets", { projectId, pageToken });
+export const firebaseObjects = (
+  projectId: string,
+  bucket: string,
+  prefix: string,
+  pageToken?: string,
+) => invoke<FirebaseObjectPage>("firebase_objects", { projectId, bucket, prefix, pageToken });
+export const firebasePreviewObject = (projectId: string, bucket: string, objectName: string) =>
+  invoke<BaasFilePreview>("firebase_preview_object", { projectId, bucket, objectName });
+export const firebaseDownloadObject = (projectId: string, bucket: string, objectName: string) =>
+  invoke<boolean>("firebase_download_object", { projectId, bucket, objectName });
