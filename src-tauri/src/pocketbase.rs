@@ -232,15 +232,6 @@ async fn get<T: serde::de::DeserializeOwned>(
         .map_err(|_| "PocketBase hat unerwartete Daten geliefert.".into())
 }
 
-async fn project_get<T: serde::de::DeserializeOwned>(
-    id: &str,
-    path: &str,
-    page: Option<u32>,
-) -> Result<T, String> {
-    let (profile, token) = profile_and_token(id).await?;
-    get(&profile.endpoint, &token, path, page).await
-}
-
 #[tauri::command]
 pub async fn pocketbase_connect(
     endpoint: String,
@@ -287,8 +278,22 @@ pub async fn pocketbase_collections(
     id: String,
     page: u32,
 ) -> Result<PocketBasePage<PocketBaseCollection>, String> {
-    let mut response: PocketBasePage<PocketBaseCollection> =
-        project_get(&id, "collections?filter=system%3Dfalse", Some(page)).await?;
+    let (profile, token) = profile_and_token(&id).await?;
+    collections_for(&profile.endpoint, &token, page).await
+}
+
+async fn collections_for(
+    endpoint: &str,
+    token: &str,
+    page: u32,
+) -> Result<PocketBasePage<PocketBaseCollection>, String> {
+    let mut response: PocketBasePage<PocketBaseCollection> = get(
+        endpoint,
+        token,
+        "collections?filter=system%3Dfalse",
+        Some(page),
+    )
+    .await?;
     response
         .items
         .retain(|item| !item.system && item.name != "_superusers");
@@ -301,14 +306,31 @@ pub async fn pocketbase_records(
     collection_id: String,
     page: u32,
 ) -> Result<PocketBasePage<PocketBaseRecord>, String> {
-    let collection_id = validate_id(&collection_id)?;
-    let collection: PocketBaseCollection =
-        project_get(&id, &format!("collections/{collection_id}"), None).await?;
+    validate_id(&collection_id)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    records_for(&profile.endpoint, &token, &collection_id, page).await
+}
+
+async fn records_for(
+    endpoint: &str,
+    token: &str,
+    collection_id: &str,
+    page: u32,
+) -> Result<PocketBasePage<PocketBaseRecord>, String> {
+    let collection_id = validate_id(collection_id)?;
+    let collection: PocketBaseCollection = get(
+        endpoint,
+        token,
+        &format!("collections/{collection_id}"),
+        None,
+    )
+    .await?;
     if collection.system || collection.name == "_superusers" {
         return Err("PocketBase-Collection nicht freigegeben.".into());
     }
-    let mut records: PocketBasePage<PocketBaseRecord> = project_get(
-        &id,
+    let mut records: PocketBasePage<PocketBaseRecord> = get(
+        endpoint,
+        token,
         &format!("collections/{collection_id}/records"),
         Some(page),
     )
@@ -317,15 +339,13 @@ pub async fn pocketbase_records(
     Ok(records)
 }
 
-async fn file_response(
-    id: &str,
+fn validate_file_request(
     collection_id: &str,
     record_id: &str,
     filename: &str,
-    http_client: &reqwest::Client,
-) -> Result<reqwest::Response, String> {
-    let collection_id = validate_id(collection_id)?;
-    let record_id = validate_id(record_id)?;
+) -> Result<(), String> {
+    validate_id(collection_id)?;
+    validate_id(record_id)?;
     if filename.is_empty()
         || filename.len() > 255
         || filename == "."
@@ -335,10 +355,42 @@ async fn file_response(
     {
         return Err("Ungültiger Dateiname.".into());
     }
+    Ok(())
+}
+
+async fn file_response(
+    id: &str,
+    collection_id: &str,
+    record_id: &str,
+    filename: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    validate_file_request(collection_id, record_id, filename)?;
     let (profile, token) = profile_and_token(id).await?;
-    let collection: PocketBaseCollection = get(
+    file_response_for(
         &profile.endpoint,
         &token,
+        collection_id,
+        record_id,
+        filename,
+        http_client,
+    )
+    .await
+}
+
+async fn file_response_for(
+    endpoint: &str,
+    token: &str,
+    collection_id: &str,
+    record_id: &str,
+    filename: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    let endpoint = validate_endpoint(endpoint)?;
+    validate_file_request(collection_id, record_id, filename)?;
+    let collection: PocketBaseCollection = get(
+        &endpoint,
+        token,
         &format!("collections/{collection_id}"),
         None,
     )
@@ -347,8 +399,8 @@ async fn file_response(
         return Err("PocketBase-Collection nicht freigegeben.".into());
     }
     let record: PocketBaseRecord = get(
-        &profile.endpoint,
-        &token,
+        &endpoint,
+        token,
         &format!("collections/{collection_id}/records/{record_id}"),
         None,
     )
@@ -357,8 +409,8 @@ async fn file_response(
         return Err("Datei ist in diesem Datensatz nicht sichtbar.".into());
     }
     let response = client()
-        .post(format!("{}/api/files/token", profile.endpoint))
-        .header("Authorization", &token)
+        .post(format!("{endpoint}/api/files/token"))
+        .header("Authorization", token)
         .send()
         .await
         .map_err(|_| "PocketBase-Dateizugriff ist nicht erreichbar.".to_string())?;
@@ -372,7 +424,7 @@ async fn file_response(
         .json()
         .await
         .map_err(|_| "PocketBase hat einen ungültigen Dateitoken geliefert.".to_string())?;
-    let mut url = Url::parse(&format!("{}/api/files", profile.endpoint))
+    let mut url = Url::parse(&format!("{endpoint}/api/files"))
         .map_err(|_| "Ungültige PocketBase-Datei-URL.".to_string())?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige PocketBase-Datei-URL.".to_string())?
@@ -429,6 +481,7 @@ mod tests {
     use super::{
         file_is_visible, get, profile_id, remove_hidden_fields, validate_endpoint, validate_id,
     };
+    use base64::Engine;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -523,5 +576,70 @@ mod tests {
         .unwrap();
         assert_eq!(response, serde_json::json!({}));
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_lab_reads_collection_records_and_protected_file() {
+        let Ok(endpoint) = std::env::var("L8DB_E2E_POCKETBASE_URL") else {
+            return;
+        };
+        let token = std::env::var("L8DB_E2E_POCKETBASE_TOKEN").unwrap();
+        let collection_id = std::env::var("L8DB_E2E_POCKETBASE_COLLECTION_ID").unwrap();
+        let record_id = std::env::var("L8DB_E2E_POCKETBASE_RECORD_ID").unwrap();
+        let filename = std::env::var("L8DB_E2E_POCKETBASE_FILENAME").unwrap();
+        let settings: super::PocketBaseSettings =
+            get(&endpoint, &token, "settings", None).await.unwrap();
+        assert!(!settings.meta.app_name.is_empty());
+        let collections = super::collections_for(&endpoint, &token, 1).await.unwrap();
+        let collection = collections
+            .items
+            .iter()
+            .find(|item| item.id == collection_id)
+            .unwrap();
+        let records = super::records_for(&endpoint, &token, &collection_id, 1)
+            .await
+            .unwrap();
+        let record = records
+            .items
+            .iter()
+            .find(|item| item.id == record_id)
+            .unwrap();
+        assert!(collection
+            .fields
+            .iter()
+            .all(|field| !field.hidden || !record.data.contains_key(&field.name)));
+        assert!(file_is_visible(collection, record, &filename));
+        let response = super::file_response_for(
+            &endpoint,
+            &token,
+            &collection_id,
+            &record_id,
+            &filename,
+            super::client(),
+        )
+        .await
+        .unwrap();
+        let preview = crate::baas_file::preview_response(response).await.unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(preview.base64)
+            .unwrap();
+        assert!(!bytes.is_empty());
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("download.txt");
+        let response = super::file_response_for(
+            &endpoint,
+            &token,
+            &collection_id,
+            &record_id,
+            &filename,
+            crate::baas_file::download_client(),
+        )
+        .await
+        .unwrap();
+        crate::baas_file::save_response(response, path.clone())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
     }
 }
