@@ -96,6 +96,14 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["sidebar", "seitenleiste", "dichter", "kompakt", "abstände", "zeilenhöhe"],
   },
   {
+    id: "nav-in-header",
+    tabId: "general",
+    tabLabel: "Allgemein",
+    title: "Navigation im Header",
+    description: "Bereiche oben im Header statt in der Leiste am linken Rand anzeigen.",
+    keywords: ["navigation", "header", "leiste", "rail", "bereiche", "layout"],
+  },
+  {
     id: "density",
     tabId: "general",
     tabLabel: "Allgemein",
