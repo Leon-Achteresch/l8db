@@ -46,6 +46,7 @@ const VIEWS = [
   "/available-extensions",
   "/dev",
 ];
+const WARMUP_VIEWS = process.env.L8DB_PERF_WARMUP_VIEWS?.split(",") ?? VIEWS;
 
 type Sample = { frames: number; p95: number; worst: number; dropped: number };
 
@@ -144,7 +145,7 @@ beforeAll(async () => {
   await page.goto(`http://localhost:${server.port}/`);
   await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
   await page.waitForTimeout(2000);
-  for (const view of VIEWS) {
+  for (const view of WARMUP_VIEWS) {
     await navigate(view);
     await page.waitForTimeout(1500);
   }
