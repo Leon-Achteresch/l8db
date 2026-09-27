@@ -213,6 +213,10 @@ pub struct SupabaseBucket {
     pub public: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub file_size_limit: Option<u64>,
+    pub allowed_mime_types: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -365,6 +369,45 @@ pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, 
         &format!("projects/{reference}/storage/buckets"),
     )
     .await
+}
+
+fn bucket_details_url(reference: &str, bucket: &str) -> Result<reqwest::Url, String> {
+    let reference = validate_ref(reference)?;
+    let bucket = validate_bucket(bucket)?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/bucket"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket);
+    Ok(url)
+}
+
+#[tauri::command]
+pub async fn supabase_bucket_details(
+    reference: String,
+    bucket: String,
+) -> Result<SupabaseBucket, String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für Bucket-Details wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let response = project_api_auth(
+        client().get(bucket_details_url(reference, bucket)?),
+        &api_key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let details: SupabaseBucket = response_json(response).await?;
+    if details.id != bucket {
+        return Err("Supabase hat einen anderen Bucket zurückgegeben.".into());
+    }
+    Ok(details)
 }
 
 #[tauri::command]
@@ -696,10 +739,10 @@ pub async fn supabase_auth_users(
 #[cfg(test)]
 mod tests {
     use super::{
-        client, project_api_auth, select_project_key, table_rows_sql, upload_file,
-        validate_object_key, validate_project_secret_key, validate_ref, SupabaseApiKey,
-        SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject,
-        SupabaseServiceHealth,
+        bucket_details_url, client, project_api_auth, select_project_key, table_rows_sql,
+        upload_file, validate_object_key, validate_project_secret_key, validate_ref,
+        SupabaseApiKey, SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction, SupabaseObject,
+        SupabaseProject, SupabaseServiceHealth,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -877,6 +920,15 @@ mod tests {
     }
 
     #[test]
+    fn bucket_details_use_project_host_and_encode_bucket_id() {
+        let url = bucket_details_url("abcdefghijklmnopqrst", "photos & files").unwrap();
+        assert_eq!(url.host_str(), Some("abcdefghijklmnopqrst.supabase.co"));
+        assert_eq!(url.path(), "/storage/v1/bucket/photos%20&%20files");
+        assert!(bucket_details_url("example.com", "photos").is_err());
+        assert!(bucket_details_url("abcdefghijklmnopqrst", "../auth").is_err());
+    }
+
+    #[test]
     fn management_and_project_api_payloads_decode() {
         let projects: Vec<SupabaseProject> = serde_json::from_str(
             r#"[{"id":"1","ref":"abcdefghijklmnopqrst","name":"Demo","region":"eu-central-1","status":"ACTIVE_HEALTHY","database":{"host":"db.example.supabase.co","version":"17"}}]"#,
@@ -886,6 +938,12 @@ mod tests {
         let buckets: Vec<SupabaseBucket> =
             serde_json::from_str(r#"[{"id":"avatars","name":"avatars","public":true}]"#).unwrap();
         assert!(buckets[0].public);
+        let details: SupabaseBucket = serde_json::from_str(
+            r#"{"id":"photos","name":"Photos","public":false,"type":"STANDARD","file_size_limit":1048576,"allowed_mime_types":["image/png"]}"#,
+        )
+        .unwrap();
+        assert_eq!(details.file_size_limit, Some(1024 * 1024));
+        assert_eq!(details.allowed_mime_types.unwrap(), ["image/png"]);
         let functions: Vec<SupabaseFunction> =
             serde_json::from_str(r#"[{"slug":"send-mail","status":"ACTIVE","version":2}]"#)
                 .unwrap();

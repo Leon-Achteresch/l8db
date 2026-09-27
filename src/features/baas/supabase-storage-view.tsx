@@ -4,6 +4,7 @@ import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
+  supabaseBucketDetails,
   supabaseBuckets,
   supabaseDownloadObject,
   supabaseHasProjectKey,
@@ -21,6 +22,12 @@ function formatBytes(value: unknown): string {
   return `${(value / 1024 ** unit).toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${["B", "KB", "MB", "GB"][unit]}`;
 }
 
+function formatDate(value: string | null): string {
+  if (!value) return "Nicht angegeben";
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString("de-DE") : value;
+}
+
 export function SupabaseStorageView({ reference }: { reference: string }) {
   const queryClient = useQueryClient();
   const [bucket, setBucket] = useState<string | null>(null);
@@ -33,6 +40,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<string | null>(null);
   const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-upload");
+  const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-details");
   const buckets = useQuery({
     queryKey: ["supabase", reference, "buckets"],
     queryFn: () => supabaseBuckets(reference),
@@ -41,18 +49,26 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     queryKey: ["supabase", reference, "has-project-key"],
     queryFn: () => supabaseHasProjectKey(reference),
   });
-  const selected = buckets.data?.find((entry) => entry.name === bucket) ?? buckets.data?.[0];
-  const objects = useQuery({
-    queryKey: ["supabase", reference, "objects", selected?.name, prefix, offset],
+  const selected = buckets.data?.find((entry) => entry.id === bucket) ?? buckets.data?.[0];
+  const details = useQuery({
+    queryKey: ["supabase", reference, "bucket-details", selected?.id],
     queryFn: () => {
       if (!selected) throw new Error("Kein Bucket gewählt.");
-      return supabaseObjects(reference, selected.name, prefix, offset);
+      return supabaseBucketDetails(reference, selected.id);
+    },
+    enabled: Boolean(selected && hasKey.data),
+  });
+  const objects = useQuery({
+    queryKey: ["supabase", reference, "objects", selected?.id, prefix, offset],
+    queryFn: () => {
+      if (!selected) throw new Error("Kein Bucket gewählt.");
+      return supabaseObjects(reference, selected.id, prefix, offset);
     },
     enabled: Boolean(selected && hasKey.data),
   });
 
-  function openBucket(name: string) {
-    setBucket(name);
+  function openBucket(id: string) {
+    setBucket(id);
     setPrefix("");
     setOffset(0);
     setPreview(null);
@@ -66,13 +82,13 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     setUploadError(null);
     setUploaded(null);
     try {
-      const key = await supabaseUploadObject(reference, selected.name, prefix);
+      const key = await supabaseUploadObject(reference, selected.id, prefix);
       if (key) {
         setOffset(0);
         setPreview(null);
         setUploaded(`${key.split("/").at(-1)} wurde hochgeladen.`);
         await queryClient.invalidateQueries({
-          queryKey: ["supabase", reference, "objects", selected.name],
+          queryKey: ["supabase", reference, "objects", selected.id],
         });
       }
     } catch (reason) {
@@ -151,7 +167,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => openBucket(entry.name)}
+                onClick={() => openBucket(entry.id)}
                 aria-pressed={selected?.id === entry.id}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === entry.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >
@@ -162,6 +178,60 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
               </button>
             ))}
           </div>
+          {selected && hasKey.data && (
+            <div ref={detailsFeature.ref} className="mt-4 rounded-xl border bg-background/50 p-3">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-medium">Bucket-Details</h4>
+                {detailsFeature.isNew && <NewBadge />}
+              </div>
+              {details.isPending ? (
+                <p className="mt-3 text-xs text-muted-foreground">Details werden geladen…</p>
+              ) : details.isError ? (
+                <p role="alert" className="mt-3 text-xs text-destructive">
+                  {String(details.error)}
+                </p>
+              ) : (
+                <dl className="mt-3 grid gap-x-4 gap-y-3 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">Bucket-ID</dt>
+                    <dd className="mt-0.5 break-all font-mono">{details.data.id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Zugriff</dt>
+                    <dd className="mt-0.5">{details.data.public ? "Öffentlich" : "Privat"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Typ</dt>
+                    <dd className="mt-0.5">{details.data.kind ?? "Nicht angegeben"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Maximale Dateigröße</dt>
+                    <dd className="mt-0.5">
+                      {details.data.file_size_limit == null
+                        ? "Kein Bucket-Limit"
+                        : formatBytes(details.data.file_size_limit)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Erlaubte MIME-Typen</dt>
+                    <dd className="mt-0.5 break-words">
+                      {details.data.allowed_mime_types?.length
+                        ? details.data.allowed_mime_types.join(", ")
+                        : "Alle"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Erstellt</dt>
+                    <dd className="mt-0.5">{formatDate(details.data.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Aktualisiert</dt>
+                    <dd className="mt-0.5">{formatDate(details.data.updated_at)}</dd>
+                  </div>
+                </dl>
+              )}
+            </div>
+          )}
           <div className="mt-5 border-t pt-4">
             {hasKey.isPending ? (
               <p className="text-xs text-muted-foreground">API-Zugriff wird geprüft…</p>
@@ -190,7 +260,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                       </Button>
                     )}
                     <p className="truncate font-mono text-xs text-muted-foreground">
-                      /{selected?.name}/{prefix}
+                      /{selected.id}/{prefix}
                     </p>
                   </div>
                 </div>
@@ -235,7 +305,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                               title={entry.name}
                               onClick={() =>
                                 setPreview({
-                                  bucket: selected.name,
+                                  bucket: selected.id,
                                   key: `${prefix}${entry.name}`,
                                   name: entry.name,
                                 })
@@ -281,7 +351,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                     </Button>
                   </div>
                 )}
-                {preview && preview.bucket === selected.name && (
+                {preview && preview.bucket === selected.id && (
                   <BaasFilePreview
                     key={`${preview.bucket}:${preview.key}`}
                     name={preview.name}
