@@ -105,6 +105,7 @@ pub fn run() {
             supabase::supabase_is_connected,
             supabase::supabase_projects,
             supabase::supabase_buckets,
+            supabase::supabase_bucket_details,
             supabase::supabase_functions,
             supabase::supabase_health,
             supabase::supabase_tables,

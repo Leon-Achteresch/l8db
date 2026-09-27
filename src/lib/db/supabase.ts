@@ -17,6 +17,9 @@ export interface SupabaseBucket {
   public: boolean;
   created_at: string | null;
   updated_at: string | null;
+  kind: string | null;
+  file_size_limit: number | null;
+  allowed_mime_types: string[] | null;
 }
 
 export interface SupabaseFunction {
@@ -83,6 +86,8 @@ export const supabaseDisconnect = () => invoke<void>("supabase_disconnect");
 export const supabaseProjects = () => invoke<SupabaseProject[]>("supabase_projects");
 export const supabaseBuckets = (reference: string) =>
   invoke<SupabaseBucket[]>("supabase_buckets", { reference });
+export const supabaseBucketDetails = (reference: string, bucket: string) =>
+  invoke<SupabaseBucket>("supabase_bucket_details", { reference, bucket });
 export const supabaseFunctions = (reference: string) =>
   invoke<SupabaseFunction[]>("supabase_functions", { reference });
 export const supabaseHealth = (reference: string) =>
