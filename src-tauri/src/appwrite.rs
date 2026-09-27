@@ -78,6 +78,44 @@ pub struct AppwriteNamedResource {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct AppwriteFunction {
+    #[serde(rename = "$id")]
+    pub id: String,
+    pub name: String,
+    pub enabled: Option<bool>,
+    pub live: Option<bool>,
+    pub runtime: Option<String>,
+    #[serde(rename = "latestDeploymentStatus")]
+    pub latest_deployment_status: Option<String>,
+    #[serde(rename = "deploymentId")]
+    pub deployment_id: Option<String>,
+    pub events: Option<Vec<String>>,
+    pub schedule: Option<String>,
+    pub timeout: Option<u64>,
+    pub execute: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AppwriteSite {
+    #[serde(rename = "$id")]
+    pub id: String,
+    pub name: String,
+    pub enabled: Option<bool>,
+    pub live: Option<bool>,
+    pub framework: Option<String>,
+    #[serde(rename = "latestDeploymentStatus")]
+    pub latest_deployment_status: Option<String>,
+    #[serde(rename = "deploymentId")]
+    pub deployment_id: Option<String>,
+    #[serde(rename = "buildRuntime")]
+    pub build_runtime: Option<String>,
+    pub adapter: Option<String>,
+    #[serde(rename = "outputDirectory")]
+    pub output_directory: Option<String>,
+    pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteUser {
     #[serde(rename = "$id")]
     pub id: String,
@@ -157,7 +195,7 @@ struct ColumnList {
 #[derive(Deserialize)]
 struct FunctionList {
     total: u64,
-    functions: Vec<AppwriteNamedResource>,
+    functions: Vec<AppwriteFunction>,
 }
 
 #[derive(Deserialize)]
@@ -169,7 +207,7 @@ struct UserList {
 #[derive(Deserialize)]
 struct SiteList {
     total: u64,
-    sites: Vec<AppwriteNamedResource>,
+    sites: Vec<AppwriteSite>,
 }
 
 fn client() -> &'static reqwest::Client {
@@ -642,7 +680,7 @@ pub async fn appwrite_columns(
 pub async fn appwrite_functions(
     id: String,
     offset: u32,
-) -> Result<AppwritePage<AppwriteNamedResource>, String> {
+) -> Result<AppwritePage<AppwriteFunction>, String> {
     let page: FunctionList = project_get(&id, "functions", Some(offset)).await?;
     Ok(AppwritePage {
         total: page.total,
@@ -660,10 +698,7 @@ pub async fn appwrite_users(id: String, offset: u32) -> Result<AppwritePage<Appw
 }
 
 #[tauri::command]
-pub async fn appwrite_sites(
-    id: String,
-    offset: u32,
-) -> Result<AppwritePage<AppwriteNamedResource>, String> {
+pub async fn appwrite_sites(id: String, offset: u32) -> Result<AppwritePage<AppwriteSite>, String> {
     let page: SiteList = project_get(&id, "sites", Some(offset)).await?;
     Ok(AppwritePage {
         total: page.total,
@@ -675,7 +710,7 @@ pub async fn appwrite_sites(
 mod tests {
     use super::{
         client, get, profile_id, upload_path, validate_endpoint, validate_id, AppwriteBucket,
-        AppwriteFile, AppwriteProfile,
+        AppwriteFile, AppwriteFunction, AppwriteProfile, AppwriteSite,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -738,6 +773,46 @@ mod tests {
         }))
         .unwrap();
         assert!(older.maximum_file_size.is_none());
+    }
+
+    #[test]
+    fn function_and_site_models_exclude_variable_values() {
+        let function: AppwriteFunction = serde_json::from_value(serde_json::json!({
+            "$id": "function_1",
+            "name": "Webhook",
+            "enabled": true,
+            "live": false,
+            "runtime": "node-22",
+            "latestDeploymentStatus": "ready",
+            "deploymentId": "deployment_1",
+            "events": ["users.*.create"],
+            "schedule": "0 * * * *",
+            "timeout": 30,
+            "execute": ["users"],
+            "vars": [{"key": "TOKEN", "value": "private-example"}]
+        }))
+        .unwrap();
+        assert_eq!(function.runtime.as_deref(), Some("node-22"));
+        assert_eq!(function.events.as_ref().unwrap()[0], "users.*.create");
+        assert!(!serde_json::to_string(&function)
+            .unwrap()
+            .contains("private-example"));
+        let site: AppwriteSite = serde_json::from_value(serde_json::json!({
+            "$id": "site_1",
+            "name": "Docs",
+            "enabled": true,
+            "framework": "sveltekit",
+            "latestDeploymentStatus": "building",
+            "buildRuntime": "node-22",
+            "adapter": "node",
+            "outputDirectory": "build",
+            "vars": [{"key": "SECRET", "value": "private-example"}]
+        }))
+        .unwrap();
+        assert_eq!(site.framework.as_deref(), Some("sveltekit"));
+        assert!(!serde_json::to_string(&site)
+            .unwrap()
+            .contains("private-example"));
     }
 
     #[tokio::test]

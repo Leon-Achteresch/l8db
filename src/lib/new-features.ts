@@ -10,6 +10,8 @@ export const NEW_FEATURES = {
   "baas.appwrite": "0.7.0",
   "baas.appwrite.storage-upload": "0.7.0",
   "baas.appwrite.storage-details": "0.7.0",
+  "baas.appwrite.function-details": "0.7.0",
+  "baas.appwrite.site-details": "0.7.0",
   "baas.appwrite.rows": "0.7.0",
   "baas.appwrite.columns": "0.7.0",
   "baas.pocketbase": "0.7.0",

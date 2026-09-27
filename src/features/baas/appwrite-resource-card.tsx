@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { type ReactNode, type Ref, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { AppwritePage } from "@/lib/db";
 
@@ -16,6 +17,9 @@ export function AppwriteResourceCard<T extends ResourceItem>({
   icon,
   load,
   detail,
+  renderDetails,
+  detailsRef,
+  detailsNew,
 }: {
   id: string;
   kind: string;
@@ -23,8 +27,12 @@ export function AppwriteResourceCard<T extends ResourceItem>({
   icon: ReactNode;
   load: (id: string, offset: number) => Promise<AppwritePage<T>>;
   detail: (item: T) => string;
+  renderDetails?: (item: T) => ReactNode;
+  detailsRef?: Ref<HTMLDivElement>;
+  detailsNew?: boolean;
 }) {
   const [offset, setOffset] = useState(0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const resources = useQuery({
     queryKey: ["appwrite", id, kind, offset],
     queryFn: () => load(id, offset),
@@ -58,14 +66,36 @@ export function AppwriteResourceCard<T extends ResourceItem>({
         <p className="mt-5 text-xs text-muted-foreground">Keine Einträge vorhanden.</p>
       ) : (
         <div className="mt-4 divide-y">
-          {resources.data.items.map((item) => (
+          {resources.data.items.map((item, index) => (
             <div key={item.id} className="py-3 first:pt-0">
-              <p className="truncate text-xs font-medium" title={item.name || item.id}>
-                {item.name || item.id}
-              </p>
+              {renderDetails ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 text-left text-xs font-medium hover:text-primary"
+                  aria-expanded={expandedId === item.id}
+                  onClick={() => setExpandedId((current) => (current === item.id ? null : item.id))}
+                >
+                  <span className="min-w-0 flex-1 truncate" title={item.name || item.id}>
+                    {item.name || item.id}
+                  </span>
+                  {detailsNew && index === 0 && <NewBadge />}
+                  <ChevronDown
+                    className={`size-3.5 shrink-0 transition-transform ${expandedId === item.id ? "rotate-180" : ""}`}
+                  />
+                </button>
+              ) : (
+                <p className="truncate text-xs font-medium" title={item.name || item.id}>
+                  {item.name || item.id}
+                </p>
+              )}
               <p className="mt-1 truncate text-[11px] text-muted-foreground" title={detail(item)}>
                 {detail(item)}
               </p>
+              {renderDetails && expandedId === item.id && (
+                <div ref={detailsRef} className="mt-3 rounded-lg bg-muted/40 p-3">
+                  {renderDetails(item)}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -78,7 +108,10 @@ export function AppwriteResourceCard<T extends ResourceItem>({
               size="icon-sm"
               aria-label={`${title}: vorherige Seite`}
               disabled={offset === 0}
-              onClick={() => setOffset((value) => Math.max(0, value - 100))}
+              onClick={() => {
+                setOffset((value) => Math.max(0, value - 100));
+                setExpandedId(null);
+              }}
             >
               <ChevronLeft className="size-3.5" />
             </Button>
@@ -90,7 +123,10 @@ export function AppwriteResourceCard<T extends ResourceItem>({
               size="icon-sm"
               aria-label={`${title}: nächste Seite`}
               disabled={offset + resources.data.items.length >= resources.data.total}
-              onClick={() => setOffset((value) => value + 100)}
+              onClick={() => {
+                setOffset((value) => value + 100);
+                setExpandedId(null);
+              }}
             >
               <ChevronRight className="size-3.5" />
             </Button>

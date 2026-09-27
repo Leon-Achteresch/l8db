@@ -46,6 +46,34 @@ export interface AppwriteNamedResource {
   created_at: string | null;
 }
 
+export interface AppwriteFunction {
+  id: string;
+  name: string;
+  enabled: boolean | null;
+  live: boolean | null;
+  runtime: string | null;
+  latest_deployment_status: string | null;
+  deployment_id: string | null;
+  events: string[] | null;
+  schedule: string | null;
+  timeout: number | null;
+  execute: string[] | null;
+}
+
+export interface AppwriteSite {
+  id: string;
+  name: string;
+  enabled: boolean | null;
+  live: boolean | null;
+  framework: string | null;
+  latest_deployment_status: string | null;
+  deployment_id: string | null;
+  build_runtime: string | null;
+  adapter: string | null;
+  output_directory: string | null;
+  timeout: number | null;
+}
+
 export interface AppwriteUser {
   id: string;
   name: string;
@@ -90,8 +118,8 @@ export const appwriteRows = (id: string, databaseId: string, tableId: string, of
 export const appwriteColumns = (id: string, databaseId: string, tableId: string, offset: number) =>
   invoke<AppwritePage<AppwriteColumn>>("appwrite_columns", { id, databaseId, tableId, offset });
 export const appwriteFunctions = (id: string, offset: number) =>
-  invoke<AppwritePage<AppwriteNamedResource>>("appwrite_functions", { id, offset });
+  invoke<AppwritePage<AppwriteFunction>>("appwrite_functions", { id, offset });
 export const appwriteUsers = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteUser>>("appwrite_users", { id, offset });
 export const appwriteSites = (id: string, offset: number) =>
-  invoke<AppwritePage<AppwriteNamedResource>>("appwrite_sites", { id, offset });
+  invoke<AppwritePage<AppwriteSite>>("appwrite_sites", { id, offset });
