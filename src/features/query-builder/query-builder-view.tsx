@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { UndoRedoControls } from "@/components/undo-redo-controls";
 import { QueryBuilderColumns } from "@/features/query-builder/query-builder-columns";
 import { QueryBuilderConditions } from "@/features/query-builder/query-builder-conditions";
 import { QueryBuilderJoin } from "@/features/query-builder/query-builder-join";
@@ -28,6 +29,10 @@ export function QueryBuilderView() {
   const {
     state,
     setState,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
     joinTypeDraft,
     tablesQuery,
     baseColumnsQuery,
@@ -103,6 +108,7 @@ export function QueryBuilderView() {
           />
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <UndoRedoControls canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
           <Button variant="outline" onClick={reset}>
             <RotateCcwIcon />
             Zurücksetzen
