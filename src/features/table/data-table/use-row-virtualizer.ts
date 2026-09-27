@@ -24,7 +24,7 @@ export function useRowVirtualizer(
     scrollMargin: draftHeight,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
-    overscan: Math.ceil(256 / estimatedRowHeight),
+    overscan: Math.ceil(128 / estimatedRowHeight),
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
     initialRect: { ...lastGridRect },
