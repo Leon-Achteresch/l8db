@@ -1,3 +1,4 @@
+mod appwrite;
 mod community_extensions;
 mod db;
 mod extension_process;
@@ -75,6 +76,16 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            appwrite::appwrite_connect,
+            appwrite::appwrite_profiles,
+            appwrite::appwrite_disconnect,
+            appwrite::appwrite_buckets,
+            appwrite::appwrite_files,
+            appwrite::appwrite_databases,
+            appwrite::appwrite_tables,
+            appwrite::appwrite_functions,
+            appwrite::appwrite_users,
+            appwrite::appwrite_sites,
             supabase::supabase_connect,
             supabase::supabase_disconnect,
             supabase::supabase_is_connected,
