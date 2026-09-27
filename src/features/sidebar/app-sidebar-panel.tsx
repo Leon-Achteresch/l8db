@@ -12,7 +12,7 @@ import {
   TableIcon,
   UsersIcon,
 } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, startTransition, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -135,7 +135,9 @@ export function AppSidebarPanel() {
           <SidebarObjectTabs
             tabs={sidebarTabs}
             value={sidebarTab}
-            onValueChange={(value) => setSidebarTab(value as typeof sidebarTab)}
+            onValueChange={(value) =>
+              startTransition(() => setSidebarTab(value as typeof sidebarTab))
+            }
           />
         </div>
       ) : null}
