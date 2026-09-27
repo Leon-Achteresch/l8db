@@ -90,6 +90,7 @@ pub fn run() {
             appwrite::appwrite_disconnect,
             appwrite::appwrite_buckets,
             appwrite::appwrite_files,
+            appwrite::appwrite_upload_file,
             appwrite::appwrite_preview_file,
             appwrite::appwrite_download_file,
             appwrite::appwrite_databases,
