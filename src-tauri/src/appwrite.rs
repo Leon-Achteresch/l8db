@@ -73,6 +73,14 @@ pub struct AppwriteUser {
     pub created_at: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AppwriteRow {
+    #[serde(rename = "$id")]
+    pub id: String,
+    #[serde(flatten)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
 #[derive(Deserialize)]
 struct BucketList {
     total: u64,
@@ -95,6 +103,12 @@ struct DatabaseList {
 struct TableList {
     total: u64,
     tables: Vec<AppwriteNamedResource>,
+}
+
+#[derive(Deserialize)]
+struct RowList {
+    total: u64,
+    rows: Vec<AppwriteRow>,
 }
 
 #[derive(Deserialize)]
@@ -414,6 +428,27 @@ pub async fn appwrite_tables(
     Ok(AppwritePage {
         total: page.total,
         items: page.tables,
+    })
+}
+
+#[tauri::command]
+pub async fn appwrite_rows(
+    id: String,
+    database_id: String,
+    table_id: String,
+    offset: u32,
+) -> Result<AppwritePage<AppwriteRow>, String> {
+    let database_id = validate_id(&database_id)?;
+    let table_id = validate_id(&table_id)?;
+    let page: RowList = project_get(
+        &id,
+        &format!("tablesdb/{database_id}/tables/{table_id}/rows"),
+        Some(offset),
+    )
+    .await?;
+    Ok(AppwritePage {
+        total: page.total,
+        items: page.rows,
     })
 }
 

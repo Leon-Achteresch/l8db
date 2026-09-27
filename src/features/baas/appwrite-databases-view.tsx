@@ -3,11 +3,13 @@ import { ChevronLeft, ChevronRight, Database, RefreshCw, Table2 } from "lucide-r
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { appwriteDatabases, appwriteTables } from "@/lib/db";
+import { AppwriteRowsView } from "./appwrite-rows-view";
 
 export function AppwriteDatabasesView({ id }: { id: string }) {
   const [databaseId, setDatabaseId] = useState<string | null>(null);
   const [databaseOffset, setDatabaseOffset] = useState(0);
   const [tableOffset, setTableOffset] = useState(0);
+  const [tableId, setTableId] = useState<string | null>(null);
   const databases = useQuery({
     queryKey: ["appwrite", id, "databases", databaseOffset],
     queryFn: () => appwriteDatabases(id, databaseOffset),
@@ -22,6 +24,8 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
     },
     enabled: Boolean(selected),
   });
+  const selectedTable =
+    tables.data?.items.find((item) => item.id === tableId) ?? tables.data?.items[0];
 
   return (
     <section className="min-w-0 rounded-2xl border bg-card p-5">
@@ -62,6 +66,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                 onClick={() => {
                   setDatabaseId(item.id);
                   setTableOffset(0);
+                  setTableId(null);
                 }}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === item.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >
@@ -77,7 +82,12 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                 size="icon-sm"
                 aria-label="Vorherige Datenbanken"
                 disabled={databaseOffset === 0}
-                onClick={() => setDatabaseOffset((value) => Math.max(0, value - 100))}
+                onClick={() => {
+                  setDatabaseOffset((value) => Math.max(0, value - 100));
+                  setDatabaseId(null);
+                  setTableOffset(0);
+                  setTableId(null);
+                }}
               >
                 <ChevronLeft className="size-3.5" />
               </Button>
@@ -90,6 +100,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                   setDatabaseOffset((value) => value + 100);
                   setDatabaseId(null);
                   setTableOffset(0);
+                  setTableId(null);
                 }}
               >
                 <ChevronRight className="size-3.5" />
@@ -114,12 +125,18 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
             ) : (
               <div className="mt-3 divide-y">
                 {tables.data.items.map((table) => (
-                  <div key={table.id} className="py-2 text-xs">
+                  <button
+                    key={table.id}
+                    type="button"
+                    aria-pressed={selectedTable?.id === table.id}
+                    onClick={() => setTableId(table.id)}
+                    className={`block w-full py-2 text-left text-xs ${selectedTable?.id === table.id ? "text-primary" : "hover:text-primary"}`}
+                  >
                     <p className="truncate font-medium">{table.name}</p>
                     <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
                       {table.id}
                     </p>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -131,7 +148,10 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                     size="icon-sm"
                     aria-label="Vorherige Tabellen"
                     disabled={tableOffset === 0}
-                    onClick={() => setTableOffset((value) => Math.max(0, value - 100))}
+                    onClick={() => {
+                      setTableOffset((value) => Math.max(0, value - 100));
+                      setTableId(null);
+                    }}
                   >
                     <ChevronLeft className="size-3.5" />
                   </Button>
@@ -140,12 +160,23 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                     size="icon-sm"
                     aria-label="Weitere Tabellen"
                     disabled={tableOffset + tables.data.items.length >= tables.data.total}
-                    onClick={() => setTableOffset((value) => value + 100)}
+                    onClick={() => {
+                      setTableOffset((value) => value + 100);
+                      setTableId(null);
+                    }}
                   >
                     <ChevronRight className="size-3.5" />
                   </Button>
                 </div>
               )}
+            {selected && selectedTable && (
+              <AppwriteRowsView
+                key={`${selected.id}:${selectedTable.id}`}
+                id={id}
+                databaseId={selected.id}
+                tableId={selectedTable.id}
+              />
+            )}
           </div>
         </>
       )}
