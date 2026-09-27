@@ -3,6 +3,41 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.7.46] - 2026-09-27
+
+### Features
+- Navigationsleiste, Fehlergrenzen, Undo/Redo und Onboarding-Erweiterungen
+- Keeper-Gerätefreigabe und 2FA direkt im Assistenten
+- use the vault as connection store
+- provide company database access from shared vaults
+- native object storage support with MinIO lab
+- open transfer from data settings
+- copy complete databases across connections and families
+- compare linked database with repository and support all SQL families
+- guided setup with provider choice, CLI install and sign-in
+- replace provider tiles with paste-or-search picker
+- add provider picker design lab with four beginner layouts
+
+### Fixes
+- Biome-Fehler im Quick-Pick-Dialog und cargo fmt
+- abgelaufene Keeper-Sitzung beim Antworten sauber melden
+- PTY-Schreiben ohne globale Sitzungssperre
+- drop the sidebar view, setup lives in settings
+- detect silent Keeper login failures and clean up version display
+- tidy card actions menu and give CLI processes a usable PATH
+- open intro curtains fully instead of letterboxing
+- show full focus ring on connection switcher
+
+### Weitere Änderungen
+- Keep NEW badges visible for three seconds
+- Add four settings redesign previews to dev lab
+- Add release-scoped NEW badges for features
+- Hide password manager views from sidebar
+- Open table in editor with quoted SELECT and row limit
+- Remove connection card badge row
+- Move transfer navigation to settings
+- Fix production startup safeguards and connection UI
+
 ## [0.7.8] - 2026-09-25
 
 ### Features
