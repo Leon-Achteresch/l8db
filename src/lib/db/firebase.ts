@@ -51,6 +51,35 @@ export interface FirebaseAuthPage {
   nextPageToken: string | null;
 }
 
+export interface FirebaseFirestoreDatabase {
+  name: string;
+  locationId: string | null;
+  type: string | null;
+  pointInTimeRecoveryEnablement: string | null;
+}
+
+export interface FirebaseFirestoreDatabases {
+  databases: FirebaseFirestoreDatabase[];
+  unreachable: string[];
+}
+
+export interface FirebaseFirestoreCollections {
+  collectionIds: string[];
+  nextPageToken: string | null;
+}
+
+export interface FirebaseFirestoreDocument {
+  name: string;
+  fields: Record<string, unknown>;
+  createTime: string | null;
+  updateTime: string | null;
+}
+
+export interface FirebaseFirestoreDocuments {
+  documents: FirebaseFirestoreDocument[];
+  nextPageToken: string | null;
+}
+
 export const firebaseConnect = () => invoke<FirebaseProfile | null>("firebase_connect");
 export const firebaseProfiles = () => invoke<FirebaseProfile[]>("firebase_profiles");
 export const firebaseDisconnect = (projectId: string) =>
@@ -71,3 +100,29 @@ export const firebaseDownloadObject = (projectId: string, bucket: string, object
   invoke<boolean>("firebase_download_object", { projectId, bucket, objectName });
 export const firebaseAuthUsers = (projectId: string, pageToken?: string) =>
   invoke<FirebaseAuthPage>("firebase_auth_users", { projectId, pageToken });
+export const firebaseFirestoreDatabases = (projectId: string) =>
+  invoke<FirebaseFirestoreDatabases>("firebase_firestore_databases", { projectId });
+export const firebaseFirestoreCollections = (
+  projectId: string,
+  databaseId: string,
+  parentPath: string,
+  pageToken?: string,
+) =>
+  invoke<FirebaseFirestoreCollections>("firebase_firestore_collections", {
+    projectId,
+    databaseId,
+    parentPath,
+    pageToken,
+  });
+export const firebaseFirestoreDocuments = (
+  projectId: string,
+  databaseId: string,
+  collectionPath: string,
+  pageToken?: string,
+) =>
+  invoke<FirebaseFirestoreDocuments>("firebase_firestore_documents", {
+    projectId,
+    databaseId,
+    collectionPath,
+    pageToken,
+  });
