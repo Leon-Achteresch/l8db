@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Database, RefreshCw, Table2 } from "lucide-r
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { appwriteDatabases, appwriteTables } from "@/lib/db";
+import { AppwriteColumnsView } from "./appwrite-columns-view";
 import { AppwriteRowsView } from "./appwrite-rows-view";
 
 export function AppwriteDatabasesView({ id }: { id: string }) {
@@ -170,12 +171,10 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                 </div>
               )}
             {selected && selectedTable && (
-              <AppwriteRowsView
-                key={`${selected.id}:${selectedTable.id}`}
-                id={id}
-                databaseId={selected.id}
-                tableId={selectedTable.id}
-              />
+              <div key={`${selected.id}:${selectedTable.id}`}>
+                <AppwriteColumnsView id={id} databaseId={selected.id} tableId={selectedTable.id} />
+                <AppwriteRowsView id={id} databaseId={selected.id} tableId={selectedTable.id} />
+              </div>
             )}
           </div>
         </>
