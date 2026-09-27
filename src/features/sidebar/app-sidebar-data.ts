@@ -1,4 +1,5 @@
 import {
+  Cloud,
   GaugeIcon,
   GitCompare,
   GitCompareArrows,
@@ -21,10 +22,12 @@ export type AppSidebarNavItem = {
   url: FileRouteTypes["to"];
   icon: LucideIcon;
   available?: (caps: Capabilities) => boolean;
+  featureScope?: string;
 };
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
+    { title: "BaaS", url: "/baas", icon: Cloud, featureScope: "baas" },
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Übersicht", url: "/", icon: Home, available: (caps) => caps.overview },
     { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminalIcon },

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "baas.supabase": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
 } as const;

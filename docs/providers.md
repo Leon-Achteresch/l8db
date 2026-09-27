@@ -2,6 +2,14 @@
 
 The registry in [provider.rs](../src-tauri/src/db/provider.rs) defines products, protocol families, driver availability and feature flags. A product entry selects a family adapter; it is not a guarantee of complete compatibility with every hosted service. PostgreSQL wire-compatible products can have different catalogs, SQL and permissions.
 
+## Supabase BaaS
+
+The **BaaS** navigation area connects to Supabase independently of the PostgreSQL connection. Create a [personal access token](https://supabase.com/dashboard/account/tokens) with read access to Projects, Project Settings, Storage and Edge Functions. l8db verifies the project list before saving the token in the OS keychain. The project view shows service health, buckets and Edge Functions; individual permission errors do not hide the other resources. A matching PostgreSQL connection can be opened from that view.
+
+Bucket file listings and Auth users require a project Secret API Key, entered in the project's API Key section and stored in the OS keychain after verification. The Management API token does not authenticate project Storage or Auth requests. The key is used only by the Rust backend. The project view is currently read-only; use the PostgreSQL workspace for SQL operations. Disconnecting removes the Management API token and the saved project keys.
+
+Relevant Supabase documentation: [Management API](https://supabase.com/docs/reference/api/introduction), [personal access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens), [Storage access](https://supabase.com/docs/guides/storage/security/access-control), and [Auth admin users](https://supabase.com/docs/reference/javascript/auth-admin-listusers).
+
 ## Products and drivers
 
 | Product | Family | Required driver |

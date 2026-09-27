@@ -13,6 +13,7 @@ import { appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { isEasyModeRouteVisible } from "@/lib/easy-mode";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ function isNavActive(url: string, pathname: string) {
 export function AppHeaderNavigation() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const seenFeatures = useSeenNewFeatures();
   const navItems = appSidebarData.navMain.filter(
     (item) =>
       isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
@@ -59,6 +61,13 @@ export function AppHeaderNavigation() {
           )}
         >
           <item.icon className="size-4" strokeWidth={2} />
+          {hasNewFeatures(item.featureScope, seenFeatures) && (
+            <span
+              className="absolute right-0 top-0 size-1.5 rounded-full bg-primary"
+              role="img"
+              aria-label="Neu"
+            />
+          )}
         </Link>
       </Tooltip>
     );
@@ -129,6 +138,13 @@ export function AppHeaderNavigation() {
                 <Link to={item.url} aria-current={item.url === activeUrl ? "page" : undefined}>
                   <item.icon className="size-4" />
                   {item.title}
+                  {hasNewFeatures(item.featureScope, seenFeatures) && (
+                    <span
+                      className="ml-auto size-1.5 rounded-full bg-primary"
+                      role="img"
+                      aria-label="Neu"
+                    />
+                  )}
                 </Link>
               </DropdownMenuItem>
             ))}
