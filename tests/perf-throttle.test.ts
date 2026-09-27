@@ -13,6 +13,7 @@ const GRID_COLUMNS = Number(process.env.L8DB_PERF_GRID_COLUMNS ?? 60);
 const FRAME_P95_MS = Number(process.env.L8DB_PERF_FRAME_P95 ?? 17.5);
 const FRAME_WORST_MS = Number(process.env.L8DB_PERF_FRAME_WORST ?? 50);
 const STEP_WORST_MS = Number(process.env.L8DB_PERF_STEP_WORST ?? 100);
+const CLICK_WORST_MS = Number(process.env.L8DB_PERF_CLICK_WORST ?? Math.max(48, RATE * 12));
 
 const VIEWS = [
   "/",
@@ -196,6 +197,36 @@ test.skipIf(!ENABLED)(
         await page.waitForTimeout(800);
       }),
     );
+  },
+  60000,
+);
+
+test.skipIf(!ENABLED)(
+  "Erweiterte Suche blockiert den ersten Klick nicht",
+  async () => {
+    await navigate("/");
+    await page.locator('a[data-name="table_0000"]').first().waitFor();
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const clicks: number[] = [];
+      Object.assign(window, { __searchClickDurations: clicks });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === "click") clicks.push(entry.duration);
+        }
+      }).observe({ type: "event", durationThreshold: 16 });
+    });
+    await page.getByRole("button", { name: "Erweiterte Suche" }).click();
+    await page.getByRole("region", { name: "Suchergebnisse" }).waitFor();
+    await page.waitForTimeout(100);
+    const durations = await page.evaluate(
+      () => (window as unknown as { __searchClickDurations: number[] }).__searchClickDurations,
+    );
+    expect(durations.length).toBeGreaterThan(0);
+    const worst = Math.max(...durations);
+    console.log(`perf-throttle Erweiterte Suche Klick: ${worst} ms`);
+    expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
+    await page.keyboard.press("Escape");
   },
   60000,
 );
