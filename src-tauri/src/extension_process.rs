@@ -194,7 +194,7 @@ struct Buffer {
 
 struct Session {
     child: Box<dyn Child + Send + Sync>,
-    writer: Box<dyn Write + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     buffer: Arc<Mutex<Buffer>>,
     notify: Arc<tokio::sync::Notify>,
     _master: Box<dyn MasterPty + Send>,
@@ -275,7 +275,7 @@ pub async fn extension_process_start(
         id,
         Session {
             child,
-            writer,
+            writer: Arc::new(Mutex::new(writer)),
             buffer,
             notify,
             _master: pair.master,
@@ -295,13 +295,12 @@ pub fn extension_process_write(id: u32, data: String) -> Result<(), String> {
     if data.len() > MAX_ARG_LEN || data.contains('\0') {
         return Err("Invalid process input".into());
     }
-    with_session(id, |session| {
-        session
-            .writer
-            .write_all(data.as_bytes())
-            .and_then(|_| session.writer.flush())
-            .map_err(|e| e.to_string())
-    })
+    let writer = with_session(id, |session| Ok(session.writer.clone()))?;
+    let mut writer = writer.lock().map_err(|e| e.to_string())?;
+    writer
+        .write_all(data.as_bytes())
+        .and_then(|_| writer.flush())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]
@@ -423,7 +422,11 @@ mod tests {
     #[tokio::test]
     async fn sessions_run_in_a_terminal_and_take_input() {
         let mut opts = options();
-        opts.args = vec!["-c".into(), "test -t 0 && read x && echo \"got $x\"".into()];
+        opts.args = vec![
+            "-c".into(),
+            "test -t 0 && read x && echo \"got $x $L8DB_TEST\"".into(),
+        ];
+        opts.env.insert("L8DB_TEST".into(), "env".into());
         let id = extension_process_start("sh".into(), opts).await.unwrap();
         extension_process_write(id, "hi\n".into()).unwrap();
         let mut output = String::new();
@@ -435,7 +438,7 @@ mod tests {
             }
         };
         assert_eq!(status, Some(0), "{output}");
-        assert!(output.contains("got hi"), "{output}");
+        assert!(output.contains("got hi env"), "{output}");
         assert!(extension_process_read(id, Some(1)).await.is_err());
     }
     #[test]
