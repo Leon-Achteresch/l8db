@@ -227,6 +227,8 @@ pub struct SupabaseFunction {
     pub status: Option<String>,
     pub version: Option<i64>,
     pub verify_jwt: Option<bool>,
+    pub entrypoint_path: Option<String>,
+    pub import_map_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -252,6 +254,9 @@ pub struct SupabaseAuthUser {
     pub phone: Option<String>,
     pub created_at: Option<String>,
     pub last_sign_in_at: Option<String>,
+    pub email_confirmed_at: Option<String>,
+    pub phone_confirmed_at: Option<String>,
+    pub is_anonymous: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -944,10 +949,17 @@ mod tests {
         .unwrap();
         assert_eq!(details.file_size_limit, Some(1024 * 1024));
         assert_eq!(details.allowed_mime_types.unwrap(), ["image/png"]);
-        let functions: Vec<SupabaseFunction> =
-            serde_json::from_str(r#"[{"slug":"send-mail","status":"ACTIVE","version":2}]"#)
-                .unwrap();
+        let functions: Vec<SupabaseFunction> = serde_json::from_str(
+            r#"[{"slug":"send-mail","status":"ACTIVE","version":2,"verify_jwt":true,"entrypoint_path":"index.ts","import_map_path":"import_map.json"}]"#,
+        )
+        .unwrap();
         assert_eq!(functions[0].slug, "send-mail");
+        assert_eq!(functions[0].verify_jwt, Some(true));
+        assert_eq!(functions[0].entrypoint_path.as_deref(), Some("index.ts"));
+        assert_eq!(
+            functions[0].import_map_path.as_deref(),
+            Some("import_map.json")
+        );
         let health: Vec<SupabaseServiceHealth> = serde_json::from_str(
             r#"[{"name":"storage","healthy":true,"status":"ACTIVE_HEALTHY"}]"#,
         )
@@ -956,9 +968,16 @@ mod tests {
         let objects: Vec<SupabaseObject> =
             serde_json::from_str(r#"[{"name":"photos","id":null,"metadata":null}]"#).unwrap();
         assert!(objects[0].id.is_none());
-        let users: SupabaseAuthUsersPage =
-            serde_json::from_str(r#"{"users":[{"id":"a","email":"user@example.com"}],"total":1}"#)
-                .unwrap();
+        let users: SupabaseAuthUsersPage = serde_json::from_str(
+            r#"{"users":[{"id":"a","email":"user@example.com","email_confirmed_at":"2026-09-27T12:00:00Z","phone_confirmed_at":null,"is_anonymous":false}],"total":1}"#,
+        )
+        .unwrap();
         assert_eq!(users.users[0].email.as_deref(), Some("user@example.com"));
+        assert_eq!(
+            users.users[0].email_confirmed_at.as_deref(),
+            Some("2026-09-27T12:00:00Z")
+        );
+        assert_eq!(users.users[0].phone_confirmed_at, None);
+        assert_eq!(users.users[0].is_anonymous, Some(false));
     }
 }
