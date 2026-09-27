@@ -321,6 +321,33 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "View Editor lädt Monaco erst für die Definition",
+  async () => {
+    const app = await open(
+      "/view-editor/public/v_table_0000",
+      '[data-slot="tabs-content"][data-state="active"]',
+    );
+    try {
+      await app.page.getByRole("tab", { name: "Daten" }).waitFor();
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
+      await app.page.getByRole("tab", { name: "Definition" }).click();
+      await app.page.locator('.monaco-editor[role="code"]').waitFor();
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   "Tabellenscrollen im vollständigen Workspace mit 5000 Zeilen und 120 Spalten",
   async () => {
     const app = await open("/tables/public/table_0000", 'tbody tr[data-index="0"]', {
