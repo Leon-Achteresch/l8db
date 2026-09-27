@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ActivityIcon, AlertTriangleIcon, GaugeIcon, LockKeyhole } from "lucide-react";
-
+import { AnimatedNumber } from "@/components/animated-number";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -32,40 +32,52 @@ export function ActivityTab({ m }: { m: MonitorViewState }) {
         {[
           {
             label: "Sessions",
-            value: capabilities.sessions
-              ? sessionsQuery.isPending
-                ? "…"
-                : (sessionsQuery.data?.length ?? 0).toLocaleString("de-DE")
-              : "—",
+            value: capabilities.sessions ? (
+              sessionsQuery.isPending ? (
+                "…"
+              ) : (
+                <AnimatedNumber value={sessionsQuery.data?.length ?? 0} />
+              )
+            ) : (
+              "—"
+            ),
             detail: capabilities.sessions ? "Alle Verbindungen" : "Nicht verfügbar",
             icon: ActivityIcon,
           },
           {
             label: "Aktiv",
             value:
-              capabilities.sessions && activeSessions != null
-                ? activeSessions.toLocaleString("de-DE")
-                : "—",
+              capabilities.sessions && activeSessions != null ? (
+                <AnimatedNumber value={activeSessions} />
+              ) : (
+                "—"
+              ),
             detail: "Laufende Queries",
             icon: GaugeIcon,
           },
           {
             label: "Blockiert",
             value:
-              capabilities.sessions && blockedSessions != null
-                ? blockedSessions.toLocaleString("de-DE")
-                : "—",
+              capabilities.sessions && blockedSessions != null ? (
+                <AnimatedNumber value={blockedSessions} />
+              ) : (
+                "—"
+              ),
             detail: "Warten auf andere Sessions",
             icon: AlertTriangleIcon,
           },
           {
             supported: capabilities.locks,
             label: "Locks",
-            value: capabilities.locks
-              ? locksQuery.isPending
-                ? "…"
-                : (locksQuery.data?.length ?? 0).toLocaleString("de-DE")
-              : "—",
+            value: capabilities.locks ? (
+              locksQuery.isPending ? (
+                "…"
+              ) : (
+                <AnimatedNumber value={locksQuery.data?.length ?? 0} />
+              )
+            ) : (
+              "—"
+            ),
             detail: capabilities.locks ? "Aktuelle Locks" : "Nicht verfügbar",
             icon: LockKeyhole,
           },
