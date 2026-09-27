@@ -108,6 +108,7 @@ pub fn run() {
             supabase::supabase_health,
             supabase::supabase_has_project_key,
             supabase::supabase_set_project_key,
+            supabase::supabase_import_project_key,
             supabase::supabase_delete_project_key,
             supabase::supabase_objects,
             supabase::supabase_preview_object,

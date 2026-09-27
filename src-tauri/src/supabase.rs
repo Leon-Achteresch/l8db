@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -14,6 +15,34 @@ fn client() -> &'static reqwest::Client {
             .build()
             .expect("Supabase HTTP client")
     })
+}
+
+fn project_api_auth(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+    let request = request.header("apikey", api_key);
+    if api_key.starts_with("eyJ") && api_key.split('.').count() == 3 {
+        request.bearer_auth(api_key)
+    } else {
+        request
+    }
+}
+
+fn validate_project_secret_key(api_key: &str) -> Result<(), String> {
+    if api_key.starts_with("sb_secret_") && api_key.len() > "sb_secret_".len() {
+        return Ok(());
+    }
+    let parts = api_key.split('.').collect::<Vec<_>>();
+    if parts.len() != 3 || !parts[0].starts_with("eyJ") || parts[2].is_empty() {
+        return Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into());
+    }
+    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    if claims.as_ref().and_then(|value| value["role"].as_str()) == Some("service_role") {
+        Ok(())
+    } else {
+        Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into())
+    }
 }
 
 fn validate_ref(reference: &str) -> Result<&str, String> {
@@ -172,6 +201,44 @@ pub struct SupabaseAuthUsersPage {
     pub users: Vec<SupabaseAuthUser>,
 }
 
+#[derive(Deserialize)]
+struct SupabaseApiKey {
+    api_key: Option<String>,
+    #[serde(rename = "type")]
+    kind: String,
+    name: Option<String>,
+}
+
+fn select_project_key(keys: &[SupabaseApiKey]) -> Result<&str, String> {
+    let modern = keys
+        .iter()
+        .filter(|key| key.kind == "secret")
+        .filter_map(|key| {
+            key.api_key
+                .as_deref()
+                .filter(|value| value.starts_with("sb_secret_"))
+                .map(|value| (key.name.as_deref(), value))
+        })
+        .collect::<Vec<_>>();
+    if let Some((_, value)) = modern.iter().find(|(name, _)| *name == Some("default")) {
+        return Ok(value);
+    }
+    if modern.len() == 1 {
+        return Ok(modern[0].1);
+    }
+    if modern.len() > 1 {
+        return Err(
+            "Mehrere Secret API Keys vorhanden. Bitte den gewünschten Schlüssel manuell eingeben."
+                .into(),
+        );
+    }
+    keys.iter()
+        .find(|key| key.kind == "legacy" && key.name.as_deref() == Some("service_role"))
+        .and_then(|key| key.api_key.as_deref())
+        .filter(|value| validate_project_secret_key(value).is_ok())
+        .ok_or_else(|| "Kein verwendbarer Secret API Key gefunden. Das Zugangstoken benötigt API Keys: Read und API Key Secrets: Read; alternativ den Schlüssel manuell eingeben.".into())
+}
+
 #[tauri::command]
 pub async fn supabase_connect(access_token: String) -> Result<Vec<SupabaseProject>, String> {
     let access_token = access_token.trim();
@@ -247,13 +314,14 @@ pub async fn supabase_set_project_key(reference: String, api_key: String) -> Res
     if api_key.is_empty() {
         return Err("API-Schlüssel fehlt.".into());
     }
-    let response = client()
-        .get(format!("https://{reference}.supabase.co/storage/v1/bucket"))
-        .header("apikey", api_key)
-        .bearer_auth(api_key)
-        .send()
-        .await
-        .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
+    validate_project_secret_key(api_key)?;
+    let response = project_api_auth(
+        client().get(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        api_key,
+    )
+    .send()
+    .await
+    .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
     let _: serde_json::Value = response_json(response).await?;
     crate::db::secrets::store_secret(project_key_account(reference), api_key.to_string()).await?;
     let mut references = project_key_index().await?;
@@ -262,6 +330,18 @@ pub async fn supabase_set_project_key(reference: String, api_key: String) -> Res
         save_project_key_index(&references).await?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_import_project_key(reference: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let keys: Vec<SupabaseApiKey> = management_get(
+        &token().await?,
+        &format!("projects/{reference}/api-keys?reveal=true"),
+    )
+    .await?;
+    let api_key = select_project_key(&keys)?;
+    supabase_set_project_key(reference.to_string(), api_key.to_string()).await
 }
 
 #[tauri::command]
@@ -301,10 +381,7 @@ pub async fn supabase_objects(
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(&bucket);
-    let response = client()
-        .post(url)
-        .header("apikey", &api_key)
-        .bearer_auth(&api_key)
+    let response = project_api_auth(client().post(url), &api_key)
         .json(&serde_json::json!({
             "prefix": prefix,
             "limit": 100,
@@ -347,10 +424,7 @@ async fn object_response(
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
         .push(bucket)
         .extend(object_key.split('/'));
-    http_client
-        .get(url)
-        .header("apikey", &api_key)
-        .bearer_auth(&api_key)
+    project_api_auth(http_client.get(url), &api_key)
         .send()
         .await
         .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())
@@ -401,25 +475,123 @@ pub async fn supabase_auth_users(
     let api_key = crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| "Für Auth wird ein Supabase Secret API Key benötigt.".to_string())?;
-    let response = client()
-        .get(format!(
+    let response = project_api_auth(
+        client().get(format!(
             "https://{reference}.supabase.co/auth/v1/admin/users"
-        ))
-        .header("apikey", &api_key)
-        .bearer_auth(&api_key)
-        .query(&[("page", page), ("per_page", 50)])
-        .send()
-        .await
-        .map_err(|error| format!("Supabase Auth ist nicht erreichbar: {error}"))?;
+        )),
+        &api_key,
+    )
+    .query(&[("page", page), ("per_page", 50)])
+    .send()
+    .await
+    .map_err(|error| format!("Supabase Auth ist nicht erreichbar: {error}"))?;
     response_json(response).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_object_key, validate_ref, SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction,
-        SupabaseObject, SupabaseProject, SupabaseServiceHealth,
+        client, project_api_auth, select_project_key, validate_object_key,
+        validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
+        SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject, SupabaseServiceHealth,
     };
+
+    #[test]
+    fn project_key_selection_prefers_default_secret_and_rejects_ambiguity() {
+        let keys = vec![
+            SupabaseApiKey {
+                kind: "legacy".into(),
+                name: Some("service_role".into()),
+                api_key: Some(
+                    "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature".into(),
+                ),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("other".into()),
+                api_key: Some("sb_secret_other".into()),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("default".into()),
+                api_key: Some("sb_secret_default".into()),
+            },
+        ];
+        assert_eq!(select_project_key(&keys).unwrap(), "sb_secret_default");
+        assert_eq!(select_project_key(&keys[..2]).unwrap(), "sb_secret_other");
+        let more = vec![
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("one".into()),
+                api_key: Some("sb_secret_one".into()),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("two".into()),
+                api_key: Some("sb_secret_two".into()),
+            },
+        ];
+        assert!(select_project_key(&more).is_err());
+        assert_eq!(
+            select_project_key(&keys[..1]).unwrap(),
+            "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature"
+        );
+        let hidden: Vec<SupabaseApiKey> = serde_json::from_str(
+            r#"[{"type":"secret","name":"default","api_key":null},{"type":"publishable","name":"default","api_key":"sb_publishable_example"}]"#,
+        )
+        .unwrap();
+        assert!(select_project_key(&hidden).is_err());
+    }
+
+    #[test]
+    fn project_key_validation_rejects_public_keys() {
+        assert!(validate_project_secret_key("sb_secret_example").is_ok());
+        assert!(validate_project_secret_key("sb_publishable_example").is_err());
+        assert!(validate_project_secret_key(
+            "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature"
+        )
+        .is_ok());
+        assert!(
+            validate_project_secret_key("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.signature")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn project_api_uses_bearer_only_for_legacy_jwt_keys() {
+        let secret = project_api_auth(
+            client().get("https://example.supabase.co/storage/v1/bucket"),
+            "sb_secret_example",
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            secret.headers().get("apikey").unwrap().to_str().unwrap(),
+            "sb_secret_example"
+        );
+        assert!(secret.headers().get("authorization").is_none());
+
+        let legacy_key = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature";
+        let legacy = project_api_auth(
+            client().get("https://example.supabase.co/storage/v1/bucket"),
+            legacy_key,
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            legacy.headers().get("apikey").unwrap().to_str().unwrap(),
+            legacy_key
+        );
+        assert_eq!(
+            legacy
+                .headers()
+                .get("authorization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            format!("Bearer {legacy_key}")
+        );
+    }
 
     #[test]
     fn project_refs_are_restricted_to_supabase_hosts() {

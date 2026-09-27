@@ -69,6 +69,8 @@ export const supabaseHasProjectKey = (reference: string) =>
   invoke<boolean>("supabase_has_project_key", { reference });
 export const supabaseSetProjectKey = (reference: string, apiKey: string) =>
   invoke<void>("supabase_set_project_key", { reference, apiKey });
+export const supabaseImportProjectKey = (reference: string) =>
+  invoke<void>("supabase_import_project_key", { reference });
 export const supabaseDeleteProjectKey = (reference: string) =>
   invoke<void>("supabase_delete_project_key", { reference });
 export const supabaseObjects = (

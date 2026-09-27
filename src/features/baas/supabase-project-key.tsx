@@ -1,15 +1,23 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabaseDeleteProjectKey, supabaseHasProjectKey, supabaseSetProjectKey } from "@/lib/db";
+import {
+  supabaseDeleteProjectKey,
+  supabaseHasProjectKey,
+  supabaseImportProjectKey,
+  supabaseSetProjectKey,
+} from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function SupabaseProjectKey({ reference }: { reference: string }) {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const importFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.project-key-import");
   const hasKey = useQuery({
     queryKey: ["supabase", reference, "has-project-key"],
     queryFn: () => supabaseHasProjectKey(reference),
@@ -22,7 +30,23 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
       await supabaseSetProjectKey(reference, apiKey);
       queryClient.setQueryData(["supabase", reference, "has-project-key"], true);
       await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "objects"] });
+      await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "auth-users"] });
       setApiKey("");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importKey() {
+    setBusy(true);
+    setError(null);
+    try {
+      await supabaseImportProjectKey(reference);
+      queryClient.setQueryData(["supabase", reference, "has-project-key"], true);
+      await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "objects"] });
+      await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "auth-users"] });
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -67,10 +91,28 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
           </Button>
         </div>
       ) : (
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Für Storage-Dateien und Auth-Benutzer wird ein Secret API Key benötigt. Übernimm einen
+          vorhandenen Schlüssel aus Supabase oder gib ihn manuell ein. Er wird nach erfolgreicher
+          Prüfung im OS-Schlüsselbund gespeichert.
+        </p>
+      )}
+      <div ref={importFeature.ref} className="mt-3 flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void importKey()}
+          disabled={busy || hasKey.isPending || hasKey.isError}
+        >
+          {hasKey.data ? "Aus Supabase aktualisieren" : "Aus Supabase übernehmen"}
+        </Button>
+        {importFeature.isNew && <NewBadge />}
+      </div>
+      {!hasKey.data && !hasKey.isPending && !hasKey.isError && (
         <>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            Für Storage-Dateien und Auth-Benutzer wird ein Secret API Key benötigt. Er wird nach
-            erfolgreicher Prüfung im OS-Schlüsselbund gespeichert.
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Dafür braucht das Zugangstoken die Rechte API Keys: Read und API Key Secrets: Read.
           </p>
           <form
             onSubmit={(event) => {
