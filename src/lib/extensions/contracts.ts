@@ -8,6 +8,7 @@ import type {
   Json,
   Permission,
   ProcessOptions,
+  ProcessOutput,
   ProcessResult,
   PromptKind,
   PromptRequest,
@@ -32,6 +33,7 @@ export type {
   PanelSnapshot,
   Permission,
   ProcessOptions,
+  ProcessOutput,
   ProcessResult,
   PromptKind,
   PromptRequest,
@@ -95,6 +97,10 @@ export interface CoreServices {
   readTextFile(path: string): Promise<string>;
   writeTextFile(path: string, contents: string): Promise<void>;
   runProcess(request: { command: string; options: ProcessOptions }): Promise<ProcessResult>;
+  startProcess(request: { command: string; options: ProcessOptions }): Promise<number>;
+  writeProcess(id: number, data: string): Promise<void>;
+  readProcess(id: number, timeoutMs: number): Promise<ProcessOutput>;
+  stopProcess(id: number): Promise<void>;
   prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>>;
   listConnections(): Promise<VaultConnection[]>;
   saveConnections(items: VaultConnection[]): Promise<SaveConnectionsResult>;

@@ -8,7 +8,7 @@ Einrichtung: In den Einstellungen unter „Erweiterungen“ zeigt die Karte nach
 
 - Bitwarden: Server (bitwarden.com, bitwarden.eu oder eigener), E-Mail und Master-Passwort; verlangt Bitwarden einen zweiten Faktor, fragt der Assistent den Code ab (Authenticator-App oder E-Mail). Alternativ Anmeldung per API-Schlüssel (`client_id`/`client_secret`), die auch die Bestätigung neuer Geräte umgeht. Ein gesperrter Tresor wird nur mit dem Master-Passwort entsperrt; die Sitzung bleibt im Speicher.
 - 1Password: Anmeldung über die Desktop-App („Mit 1Password CLI integrieren“); bei mehreren Konten wird eines ausgewählt.
-- Keeper: Region, E-Mail und Master-Passwort richten eine dauerhafte Anmeldung für das Gerät ein (`this-device register`, `persistent-login on`, `timeout 30d`). Verlangt Keeper eine Gerätefreigabe oder 2FA, zeigt der Assistent die einmaligen Terminal-Befehle an.
+- Keeper: Region, E-Mail und Master-Passwort richten eine dauerhafte Anmeldung für das Gerät ein (`this-device register`, `persistent-login on`, `timeout 30d`). Verlangt Keeper eine Gerätefreigabe oder 2FA, fragt der Assistent sie direkt ab (Link per E-Mail, Keeper Push, Code per 2FA oder Bestätigungscode, danach die 2FA-Methode und den Code). Dafür läuft `keeper` über `process.start` in einem Pseudo-Terminal (Payload `{ action: "answer", method | channel | code }`). Nur bei Schritten wie SSO zeigt er die einmaligen Terminal-Befehle an.
 
 Danach direkt im Assistenten, über die Statusleiste oder in der Befehlspalette:
 
@@ -28,7 +28,7 @@ CLI-Installation: Der Assistent zeigt die installierte CLI-Version oder „Jetzt
 
 Schlägt alles fehl, verweist die Meldung auf die offizielle Installationsanleitung.
 
-Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.3.0.l8db-extension`
+Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.4.0.l8db-extension`
 
 Browser-Test des ganzen Firmen-Ablaufs in der echten Sandbox: `L8DB_EXTENSION_BROWSER=1 bun test tests/password-manager-browser.test.ts`.
 

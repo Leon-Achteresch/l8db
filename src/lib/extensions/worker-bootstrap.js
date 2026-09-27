@@ -196,7 +196,18 @@
             save: (items) => rpc("connections.save", items),
             remove: (ids) => rpc("connections.remove", ids),
           },
-          process: { run: (command, options) => rpc("process.run", command, options ?? null) },
+          process: {
+            run: (command, options) => rpc("process.run", command, options ?? null),
+            start: async (command, options) => {
+              const id = await rpc("process.start", command, options ?? null);
+              return {
+                id,
+                write: (data) => rpc("process.write", id, data),
+                read: (timeoutMs) => rpc("process.read", id, timeoutMs ?? null),
+                stop: () => rpc("process.stop", id),
+              };
+            },
+          },
           window: {
             showQuickPick: (items, options) => rpc("window.showQuickPick", items, options ?? null),
             showInputBox: (options) => rpc("window.showInputBox", options ?? null),

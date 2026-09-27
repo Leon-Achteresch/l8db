@@ -1,4 +1,10 @@
-import type { ExtensionContext, Json, L8dbApi, VaultConnection } from "@l8db/extension-api";
+import type {
+  ExtensionContext,
+  Json,
+  L8dbApi,
+  ProcessSession,
+  VaultConnection,
+} from "@l8db/extension-api";
 
 export const MARKER = "l8db-connection:v1:";
 const TITLE_PREFIX = "l8db: ";
@@ -39,9 +45,12 @@ export interface VaultStatus {
   account?: string;
   server?: string;
   accounts?: { id: string; label: string }[];
-  needs?: "code" | "terminal";
+  needs?: "code" | "terminal" | "device" | "2fa";
+  channels?: { id: string; label: string }[];
   detail?: string;
 }
+
+type VaultPrompt = Pick<VaultStatus, "needs" | "channels" | "detail">;
 
 export interface VaultLogin {
   email?: string;
@@ -52,11 +61,13 @@ export interface VaultLogin {
   clientId?: string;
   clientSecret?: string;
   account?: string;
+  channel?: string;
 }
 
 export interface VaultSession {
   bw: string | null;
   op: string | null;
+  keeper?: { session: ProcessSession; needs: VaultStatus["needs"] } | null;
 }
 
 export interface VaultBackend {
@@ -659,7 +670,8 @@ type AccountState = Omit<VaultStatus, "provider" | "cli">;
 
 interface VaultAccount {
   status(api: L8dbApi, auth: VaultSession): Promise<AccountState>;
-  login(api: L8dbApi, auth: VaultSession, input: VaultLogin): Promise<VaultStatus["needs"]>;
+  login(api: L8dbApi, auth: VaultSession, input: VaultLogin): Promise<VaultPrompt | undefined>;
+  answer?(api: L8dbApi, auth: VaultSession, input: VaultLogin): Promise<VaultPrompt | undefined>;
   logout(api: L8dbApi, auth: VaultSession): Promise<void>;
 }
 
@@ -691,6 +703,85 @@ async function onePasswordAccounts(api: L8dbApi) {
 function keeperTarget(input: VaultLogin) {
   return [...(input.server ? ["--server", input.server] : []), "--user", input.email ?? ""];
 }
+
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]|\\r`, "g");
+const KEEPER_CHANNELS: [RegExp, string][] = [
+  [/^TOTP \(.*?\)/, "Authenticator-App"],
+  [/^Send SMS Code/, "SMS"],
+  [/^WebAuthN \(.*?\)/, "Sicherheitsschlüssel"],
+  [/^Backup Codes/, "Backup-Code"],
+];
+const KEEPER_EXPIRED = "Die Keeper-Anmeldung ist abgelaufen. Bitte melde dich erneut an.";
+
+async function keeperStop(auth: VaultSession) {
+  const pending = auth.keeper;
+  auth.keeper = null;
+  await pending?.session.stop().catch(() => undefined);
+}
+
+async function keeperPrompt(api: L8dbApi, auth: VaultSession): Promise<VaultPrompt | undefined> {
+  const pending = auth.keeper;
+  if (!pending) throw new Error(KEEPER_EXPIRED);
+  let text = "";
+  let log = "";
+  const deadline = Date.now() + TIMEOUT;
+  while (Date.now() < deadline) {
+    const chunk = await pending.session.read(1000).catch(() => null);
+    if (!chunk) {
+      auth.keeper = null;
+      throw new Error(KEEPER_EXPIRED);
+    }
+    const output = chunk.output.replace(ANSI, "");
+    text += output;
+    log += output;
+    if (chunk.exited) {
+      auth.keeper = null;
+      const status = await run(api, "keeper", ["--batch-mode", "login-status"]).catch(() => "");
+      if (!/^Logged in$/m.test(status)) {
+        const reason = log.trim().split("\n").pop()?.trim().slice(0, 300);
+        throw new Error(`Keeper-Anmeldung fehlgeschlagen${reason ? `: ${reason}` : "."}`);
+      }
+      await run(api, "keeper", ["--batch-mode", "this-device", "timeout", "30d"]).catch(
+        () => undefined,
+      );
+      return undefined;
+    }
+    const detail = /invalid/i.test(log) ? "Keeper hat den Code nicht akzeptiert." : undefined;
+    const factor = text.lastIndexOf("Two-Factor Authentication Required");
+    let prompt: VaultPrompt | null = null;
+    if (/Selection \(or Enter to check status\): ?$/.test(text))
+      prompt = { needs: "device", detail };
+    else if (/Enter 2FA Code: ?$/.test(text)) prompt = { needs: "code", detail };
+    else if (factor >= 0 && /Selection: ?$/.test(text)) {
+      const channels = [...text.slice(factor).matchAll(/^\s*(\d+)\.\s+(.+?)\s*$/gm)].map(
+        ([, id, label]) => ({
+          id,
+          label: KEEPER_CHANNELS.reduce((name, [from, to]) => name.replace(from, to), label),
+        }),
+      );
+      if (channels.length === 1) {
+        await pending.session.write("1\n");
+        text = "";
+        continue;
+      }
+      prompt = { needs: "2fa", channels, detail };
+    } else if (/Password: ?$/.test(text)) {
+      await keeperStop(auth);
+      throw new Error("Keeper hat das Master-Passwort abgelehnt.");
+    } else if (!chunk.output && /: ?$/.test(text)) {
+      await keeperStop(auth);
+      return { needs: "terminal" };
+    }
+    if (prompt) {
+      pending.needs = prompt.needs;
+      return prompt;
+    }
+  }
+  await keeperStop(auth);
+  throw new Error("Keeper antwortet nicht. Bitte versuche es erneut.");
+}
+
+const DEVICE_METHODS: Record<string, string> = { email: "1", push: "2", sms: "3" };
 
 export const accounts: Record<string, VaultAccount> = {
   bitwarden: {
@@ -726,7 +817,7 @@ export const accounts: Record<string, VaultAccount> = {
             ).trim();
           } catch (error) {
             if (!BW_CODE.test(String(error))) throw error;
-            if (!input.code) return "code";
+            if (!input.code) return { needs: "code" };
             throw new Error(
               "Bitwarden verlangt eine zusätzliche Bestätigung dieses Geräts. Melde dich stattdessen mit API-Schlüssel an.",
             );
@@ -791,21 +882,38 @@ export const accounts: Record<string, VaultAccount> = {
         return { state: "signed-in" };
       }
     },
-    async login(api, _auth, input) {
-      const env = { KEEPER_PASSWORD: input.password ?? "" };
-      for (const step of [
-        ["this-device", "register"],
-        ["this-device", "persistent-login", "on"],
-        ["this-device", "timeout", "30d"],
-      ]) {
-        const ok = await run(api, "keeper", ["--batch-mode", ...keeperTarget(input), ...step], env)
-          .then(() => true)
-          .catch(() => false);
-        if (!ok) break;
-      }
-      return "terminal";
+    async login(api, auth, input) {
+      await keeperStop(auth);
+      const session = await api.process.start("keeper", {
+        args: ["--batch-mode", ...keeperTarget(input), "this-device", "persistent-login", "on"],
+        env: { KEEPER_PASSWORD: input.password ?? "" },
+        timeoutMs: 600000,
+      });
+      auth.keeper = { session, needs: undefined };
+      return keeperPrompt(api, auth);
     },
-    async logout(api) {
+    async answer(api, auth, input) {
+      const pending = auth.keeper;
+      if (!pending) throw new Error(KEEPER_EXPIRED);
+      const code = (input.code ?? "").replace(/[^\x21-\x7e]/g, "");
+      let line: string;
+      if (pending.needs === "device")
+        line = DEVICE_METHODS[input.method ?? ""] ?? (code ? `c ${code}` : "");
+      else if (pending.needs === "2fa" && /^\d{1,2}$/.test(input.channel ?? ""))
+        line = input.channel as string;
+      else if (pending.needs === "code" && code) line = code;
+      else throw new Error("Bitte gib den Code ein.");
+      await pending.session.write(`${line}\n`).catch(async () => {
+        await keeperStop(auth);
+        throw new Error(KEEPER_EXPIRED);
+      });
+      const prompt = await keeperPrompt(api, auth);
+      if (prompt?.needs === "device" && !line && !prompt.detail)
+        return { ...prompt, detail: "Das Gerät ist noch nicht freigegeben." };
+      return prompt;
+    },
+    async logout(api, auth) {
+      await keeperStop(auth);
       await run(api, "keeper", ["--batch-mode", "logout"]).catch(() => undefined);
     },
   },
@@ -828,12 +936,13 @@ export async function vaultSetup(
   fallback: string,
 ): Promise<VaultStatus> {
   const provider = request.provider && request.provider in binaries ? request.provider : fallback;
-  let needs: VaultStatus["needs"];
+  let prompt: VaultPrompt | undefined;
   if (request.action === "install") await installCli(api, provider);
-  if (request.action === "login") needs = await accounts[provider].login(api, auth, request);
+  if (request.action === "login") prompt = await accounts[provider].login(api, auth, request);
+  if (request.action === "answer") prompt = await accounts[provider].answer?.(api, auth, request);
   if (request.action === "logout") await accounts[provider].logout(api, auth);
   const status = await vaultStatus(api, provider, auth);
-  return needs && status.state !== "signed-in" ? { ...status, needs } : status;
+  return prompt?.needs && status.state !== "signed-in" ? { ...status, ...prompt } : status;
 }
 
 function message(error: unknown) {
