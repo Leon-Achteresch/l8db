@@ -4,6 +4,7 @@ mod db;
 mod extension_process;
 mod file_open;
 mod mcp;
+mod pocketbase;
 mod supabase;
 mod versioning;
 
@@ -76,6 +77,11 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            pocketbase::pocketbase_connect,
+            pocketbase::pocketbase_profiles,
+            pocketbase::pocketbase_disconnect,
+            pocketbase::pocketbase_collections,
+            pocketbase::pocketbase_records,
             appwrite::appwrite_connect,
             appwrite::appwrite_profiles,
             appwrite::appwrite_disconnect,
