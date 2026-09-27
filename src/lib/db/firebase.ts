@@ -46,6 +46,8 @@ export const firebaseObjects = (
   prefix: string,
   pageToken?: string,
 ) => invoke<FirebaseObjectPage>("firebase_objects", { projectId, bucket, prefix, pageToken });
+export const firebaseUploadObject = (projectId: string, bucket: string, prefix: string) =>
+  invoke<string | null>("firebase_upload_object", { projectId, bucket, prefix });
 export const firebasePreviewObject = (projectId: string, bucket: string, objectName: string) =>
   invoke<BaasFilePreview>("firebase_preview_object", { projectId, bucket, objectName });
 export const firebaseDownloadObject = (projectId: string, bucket: string, objectName: string) =>
