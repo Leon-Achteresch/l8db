@@ -775,65 +775,132 @@ describe("vault setup", () => {
     expect(auth.bw).toBe("S2");
   });
 
-  test("keeper registers a persistent login and falls back to the terminal on prompts", async () => {
-    const calls: string[][] = [];
+  test("keeper walks through device approval and 2FA in the app", async () => {
+    const esc = String.fromCharCode(27);
+    const device = `${esc}[33mDevice Approval Required${esc}[39m\n  1. Email\n\nSelection (or Enter to check status): `;
+    const factor =
+      "Two-Factor Authentication Required\n  1. TOTP (Google and Microsoft Authenticator)\n  2. Send SMS Code  +49 1\n  q. Cancel login\n\nSelection: ";
+    const replies: Record<string, string | null> = {
+      "": device,
+      "1\n":
+        "Email sent to me@example.com\nWaiting for device approval.\nSelection (or Enter to check status): ",
+      "\n": "Waiting for device approval.\nSelection (or Enter to check status): ",
+      "\n\n": factor,
+      "2\n": "SMS sent successfully.\n2FA Code Duration: Require Every Login.\n\nEnter 2FA Code: ",
+      "123456\n": null,
+    };
     let loggedIn = false;
-    const keeper: Cli = (args, env) => {
+    let pending: string | null = replies[""];
+    let history = "";
+    const writes: string[] = [];
+    const started: { command: string; options: ProcessOptions }[] = [];
+    const calls: string[][] = [];
+    const keeper: Cli = (args) => {
       if (args[0] === "--version") return { status: 0, stdout: "Keeper Commander, version 17.0" };
       if (args.includes("login-status"))
         return { status: 0, stdout: loggedIn ? "Logged in\n" : "Not logged in\n" };
       if (args.includes("whoami"))
         return { status: 0, stdout: JSON.stringify({ user: "me@example.com", data_center: "EU" }) };
-      expect(env?.KEEPER_PASSWORD).toBe("pw");
-      if (args.includes("timeout")) loggedIn = true;
       return { status: 0, stdout: "" };
     };
-    const input = { action: "login", email: "me@example.com", password: "pw", server: "EU" };
-    const ok = await extension.vaultSetup(
-      api({ keeper }, calls),
-      { bw: null, op: null },
-      input,
-      "keeper",
-    );
-    expect(ok).toMatchObject({
-      state: "signed-in",
-      cli: "17.0",
-      account: "me@example.com",
+    const base = api({ keeper }, calls);
+    const session = {
+      id: 1,
+      write: async (data: string) => {
+        writes.push(data);
+        history = data === "\n" && history === "\n" ? "\n\n" : data;
+        pending = replies[history] ?? null;
+        if (history === "123456\n") loggedIn = true;
+      },
+      read: async () => {
+        const output = pending ?? "";
+        const exited = pending === null;
+        pending = "";
+        return { output, exited, status: exited ? 0 : null };
+      },
+      stop: async () => undefined,
+    };
+    const client = {
+      process: {
+        ...base.process,
+        start: async (command: string, options: ProcessOptions) => {
+          started.push({ command, options });
+          return session;
+        },
+      },
+    } as unknown as L8dbApi;
+    const auth = { bw: null, op: null };
+    const step = (request: Record<string, string>) =>
+      extension.vaultSetup(client, auth, request, "keeper");
+
+    const first = await step({
+      action: "login",
+      email: "me@example.com",
+      password: "pw",
       server: "EU",
     });
-    expect(ok.needs).toBeUndefined();
-    expect(
-      calls.filter((call) => call.includes("this-device")).map((call) => call.slice(7)),
-    ).toEqual([["register"], ["persistent-login", "on"], ["timeout", "30d"]]);
-    const denied: Cli = (args) =>
-      args[0] === "--version"
-        ? version
-        : args.includes("login-status")
-          ? { status: 0, stdout: "Not logged in" }
-          : { status: 1, stdout: "", stderr: "Device approval required" };
-    const fallback = await extension.vaultSetup(
-      api({ keeper: denied }),
-      { bw: null, op: null },
-      input,
-      "keeper",
-    );
-    expect(fallback).toMatchObject({ state: "signed-out", needs: "terminal" });
-    const silent: Cli = (args) =>
-      args[0] === "--version"
-        ? version
-        : args.includes("login-status")
-          ? { status: 0, stdout: "Not logged in" }
-          : {
-              status: 0,
-              stdout: "Persistent login is not working in this non-interactive environment",
-            };
-    const quiet = await extension.vaultSetup(
-      api({ keeper: silent }),
-      { bw: null, op: null },
-      input,
-      "keeper",
-    );
-    expect(quiet).toMatchObject({ state: "signed-out", needs: "terminal" });
+    expect(first).toMatchObject({ state: "signed-out", needs: "device" });
+    expect(started[0].command).toBe("keeper");
+    expect(started[0].options.args?.slice(-3)).toEqual(["this-device", "persistent-login", "on"]);
+    expect(started[0].options.env?.KEEPER_PASSWORD).toBe("pw");
+    expect(await step({ action: "answer", method: "email" })).toMatchObject({ needs: "device" });
+    expect(await step({ action: "answer", method: "resume" })).toMatchObject({
+      needs: "device",
+      detail: "Das Gerät ist noch nicht freigegeben.",
+    });
+    const channels = await step({ action: "answer", method: "resume" });
+    expect(channels.needs).toBe("2fa");
+    expect(channels.channels).toEqual([
+      { id: "1", label: "Authenticator-App" },
+      { id: "2", label: "SMS  +49 1" },
+    ]);
+    expect(await step({ action: "answer", channel: "2" })).toMatchObject({ needs: "code" });
+    await expect(step({ action: "answer", code: " " })).rejects.toThrow("Code ein");
+    const done = await step({ action: "answer", code: " 123 456\n" });
+    expect(done).toMatchObject({ state: "signed-in", account: "me@example.com" });
+    expect(done.needs).toBeUndefined();
+    expect(writes).toEqual(["1\n", "\n", "\n", "2\n", "123456\n"]);
+    expect(calls.some((call) => call.join(" ").endsWith("this-device timeout 30d"))).toBe(true);
+    await expect(step({ action: "answer", code: "1" })).rejects.toThrow("abgelaufen");
+  });
+
+  test("keeper rejects a wrong password and hands unknown prompts to the terminal", async () => {
+    const keeper: Cli = (args) =>
+      args[0] === "--version" ? version : { status: 0, stdout: "Not logged in" };
+    const login = async (text: string) => {
+      let stopped = false;
+      let output = text;
+      const client = {
+        process: {
+          ...api({ keeper }).process,
+          start: async () => ({
+            id: 1,
+            write: async () => undefined,
+            read: async () => {
+              const chunk = { output, exited: false, status: null };
+              output = "";
+              return chunk;
+            },
+            stop: async () => {
+              stopped = true;
+            },
+          }),
+        },
+      } as unknown as L8dbApi;
+      const result = extension.vaultSetup(
+        client,
+        { bw: null, op: null },
+        { action: "login", email: "me@example.com", password: "pw" },
+        "keeper",
+      );
+      return { result, stopped: () => stopped };
+    };
+    const wrong = await login("Invalid email or password\nPassword: ");
+    await expect(wrong.result).rejects.toThrow("Master-Passwort abgelehnt");
+    expect(wrong.stopped()).toBe(true);
+    const sso = await login("SSO Login URL:\nhttps://sso\n\nSelection: ");
+    expect(await sso.result).toMatchObject({ needs: "terminal" });
+    expect(sso.stopped()).toBe(true);
   });
 
   test("1password explains the app integration when no account is known", async () => {

@@ -48,6 +48,7 @@ function fakeCore() {
   const files = new Map<string, string>();
   const processes: { command: string; options: unknown }[] = [];
   const prompts: unknown[] = [];
+  const sessions: string[] = [];
   const core: CoreServices = {
     database: () => null,
     notify: message => notifications.push(message),
@@ -60,12 +61,16 @@ function fakeCore() {
     readTextFile: async path => files.get(path) ?? "",
     writeTextFile: async (path, contents) => { files.set(path, contents) },
     runProcess: async request => { processes.push(request); return { status: 0, stdout: "out", stderr: "" } },
+    startProcess: async request => { processes.push(request); return 7 },
+    writeProcess: async (id, data) => { sessions.push(`write ${id} ${data}`) },
+    readProcess: async id => ({ output: "done", exited: id === 7 && sessions.includes("write 7 exit"), status: 0 }),
+    stopProcess: async id => { sessions.push(`stop ${id}`) },
     prompt: (async (request: unknown) => { prompts.push(request); return undefined }) as CoreServices["prompt"],
     listConnections: async () => [{ id: "c1", name: "Prod", kind: "postgres", connectionString: "postgres://app@db/prod", password: "pw", profile: {} }],
     saveConnections: async items => ({ added: items.length, updated: 0, skipped: [] }),
     removeConnections: async ids => ids.length,
   };
-  return { core, notifications, clipboard, files, processes, prompts };
+  return { core, notifications, clipboard, files, processes, prompts, sessions };
 }
 function setup() {
   const storage = new MemoryStorage();
@@ -327,6 +332,21 @@ test("secrets, clipboard, files and processes are permission gated", async () =>
   expect(await allowed("process.run", ["tool", { args: ["--help"] }])).toEqual({ status: 0, stdout: "out", stderr: "" });
   await expect(allowed("process.run", ["other", {}])).rejects.toThrow(ExtensionError);
   expect(processes).toHaveLength(1);
+});
+test("process sessions belong to the extension that started them", async () => {
+  const { manager, runtime, sessions } = setup();
+  await manager.installExtension(richArchive());
+  await manager.enableExtension("test.rich", ["process:execute"]);
+  await manager.activate("test.rich");
+  const rpc = runtime.rpc.get("test.rich")!;
+  await expect(rpc("process.write", [7, "x"])).rejects.toThrow("Unknown process");
+  expect(await rpc("process.start", ["tool", {}])).toBe(7);
+  await rpc("process.write", [7, "exit"]);
+  expect(await rpc("process.read", [7, 50])).toEqual({ output: "done", exited: true, status: 0 });
+  await expect(rpc("process.write", [7, "again"])).rejects.toThrow("Unknown process");
+  await rpc("process.start", ["tool", {}]);
+  await manager.disableExtension("test.rich");
+  expect(sessions).toEqual(["write 7 exit", "stop 7"]);
 });
 test("connections list and save are permission gated", async () => {
   const { manager, runtime } = setup();
