@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import {
   type BuilderOrder,
   type ColumnOption,
@@ -31,6 +32,7 @@ export function QueryBuilderOrders({
   onAdd,
   onRemove,
 }: QueryBuilderOrdersProps) {
+  const listRef = useListAnimation<HTMLDivElement>();
   return (
     <div className="rounded-md border">
       <div className="flex items-center justify-between border-b px-3 py-2">
@@ -40,7 +42,7 @@ export function QueryBuilderOrders({
           Sortierung
         </Button>
       </div>
-      <div className="space-y-2 p-3">
+      <div ref={listRef} className="space-y-2 p-3">
         {orders.length === 0 ? (
           <p className="text-sm text-muted-foreground">Keine Sortierung definiert.</p>
         ) : (

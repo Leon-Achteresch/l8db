@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { recordDiagnosticError } from "@/lib/diagnostics";
+import { errorMessageOf, errorStackOf, isChunkFailure } from "@/lib/error-details";
 import { cn } from "@/lib/utils";
 
 interface RouteErrorViewProps {
@@ -15,32 +16,11 @@ interface RouteErrorViewProps {
   reset: () => void;
 }
 
-function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message || error.name;
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function stackOf(error: unknown): string | null {
-  if (error instanceof Error && typeof error.stack === "string") return error.stack;
-  return null;
-}
-
-function isChunkFailure(message: string): boolean {
-  return /dynamically imported module|importing a module script failed|outdated optimize dep|loading chunk|chunkloaderror|failed to fetch|504/i.test(
-    message,
-  );
-}
-
 export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
   const [copied, setCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const message = messageOf(error);
-  const stack = stackOf(error);
+  const message = errorMessageOf(error);
+  const stack = errorStackOf(error);
   const chunkFailure = useMemo(() => isChunkFailure(message), [message]);
 
   useEffect(() => {

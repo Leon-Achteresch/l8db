@@ -36,6 +36,7 @@ function headerSection(pathname: string) {
 export function AppHeader() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const navInHeader = useSettingsStore((state) => state.navInHeader);
   const versioning = useVersioningPanel();
   const section = useRouterSelect((s) => headerSection(s.location.pathname));
   const txCount = useTransactionStore((s) => s.transactions.length);
@@ -59,13 +60,21 @@ export function AppHeader() {
       data-tauri-drag-region="deep"
       className={cn(
         "@container relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
-        "border-b border-border/60",
-        "bg-card/80 backdrop-blur-xl backdrop-saturate-150 dark:bg-background/72",
+        "bg-sidebar",
         IS_MAC && "pl-[72px]",
         USE_CUSTOM_WINDOW_CONTROLS && "pr-[140px]",
       )}
     >
-      <AppHeaderNavigation />
+      {navInHeader ? (
+        <AppHeaderNavigation />
+      ) : (
+        <Link
+          to="/"
+          className="ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
+        >
+          l8db
+        </Link>
+      )}
 
       <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
         <div className="flex w-full max-w-[640px] items-center gap-2">

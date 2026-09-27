@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useRef } from "react";
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import {
   buildChartData,
   profileColumns,
@@ -47,7 +48,13 @@ export function ResultChartView({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        <ResultChartCanvas ref={canvasRef} chart={deferred.chart} data={data} />
+        <PanelErrorBoundary
+          label="Das Diagramm"
+          source="result-chart"
+          resetKeys={[deferred.chart, data]}
+        >
+          <ResultChartCanvas ref={canvasRef} chart={deferred.chart} data={data} />
+        </PanelErrorBoundary>
       </div>
     </div>
   );
