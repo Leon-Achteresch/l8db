@@ -1,13 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, File, RefreshCw } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, ChevronLeft, ChevronRight, File, RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   appwriteBuckets,
   appwriteDownloadFile,
   appwriteFiles,
   appwritePreviewFile,
+  appwriteUploadFile,
 } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: number | null): string {
@@ -18,12 +21,17 @@ function formatBytes(value: number | null): string {
 }
 
 export function AppwriteStorageView({ id }: { id: string }) {
+  const queryClient = useQueryClient();
   const [bucketId, setBucketId] = useState<string | null>(null);
   const [bucketOffset, setBucketOffset] = useState(0);
   const [fileOffset, setFileOffset] = useState(0);
   const [preview, setPreview] = useState<{ bucketId: string; fileId: string; name: string } | null>(
     null,
   );
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<string | null>(null);
+  const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-upload");
   const buckets = useQuery({
     queryKey: ["appwrite", id, "buckets", bucketOffset],
     queryFn: () => appwriteBuckets(id, bucketOffset),
@@ -39,26 +47,71 @@ export function AppwriteStorageView({ id }: { id: string }) {
     enabled: Boolean(selected),
   });
 
+  async function upload() {
+    if (!selected || uploading) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploaded(null);
+    try {
+      const fileId = await appwriteUploadFile(id, selected.id);
+      if (fileId) {
+        setFileOffset(0);
+        setPreview(null);
+        setUploaded(`Datei in ${selected.name} hochgeladen.`);
+        await queryClient.invalidateQueries({ queryKey: ["appwrite", id, "files", selected.id] });
+        await queryClient.invalidateQueries({ queryKey: ["appwrite", id, "buckets"] });
+      }
+    } catch (reason) {
+      setUploadError(String(reason));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <section className="min-w-0 rounded-2xl border bg-card p-5">
-      <div className="flex items-center gap-2">
-        <Archive className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Storage</h3>
-        {buckets.data && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {buckets.data.total} Buckets
-          </span>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Storage aktualisieren"
-          onClick={() => void buckets.refetch()}
-          disabled={buckets.isFetching}
-        >
-          <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Archive className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Storage</h3>
+          {buckets.data && (
+            <span className="text-xs text-muted-foreground">{buckets.data.total} Buckets</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div ref={uploadFeature.ref} className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void upload()}
+              disabled={!selected || uploading}
+              title="API-Schlüssel benötigt files.write; es werden keine zusätzlichen Datei-Berechtigungen gesetzt."
+            >
+              <Upload className="size-3.5" /> {uploading ? "Lädt hoch…" : "Datei hochladen"}
+            </Button>
+            {uploadFeature.isNew && <NewBadge />}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Storage aktualisieren"
+            onClick={() => void buckets.refetch()}
+            disabled={buckets.isFetching}
+          >
+            <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
+      {uploadError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {uploadError}
+        </p>
+      )}
+      {uploaded && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {uploaded}
+        </p>
+      )}
       {buckets.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Buckets werden geladen…</p>
       ) : buckets.isError ? (
@@ -79,6 +132,8 @@ export function AppwriteStorageView({ id }: { id: string }) {
                   setBucketId(item.id);
                   setFileOffset(0);
                   setPreview(null);
+                  setUploadError(null);
+                  setUploaded(null);
                 }}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === item.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >

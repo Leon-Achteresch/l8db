@@ -65,6 +65,8 @@ export const appwriteBuckets = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteBucket>>("appwrite_buckets", { id, offset });
 export const appwriteFiles = (id: string, bucketId: string, offset: number) =>
   invoke<AppwritePage<AppwriteFile>>("appwrite_files", { id, bucketId, offset });
+export const appwriteUploadFile = (id: string, bucketId: string) =>
+  invoke<string | null>("appwrite_upload_file", { id, bucketId });
 export const appwritePreviewFile = (id: string, bucketId: string, fileId: string) =>
   invoke<BaasFilePreview>("appwrite_preview_file", { id, bucketId, fileId });
 export const appwriteDownloadFile = (id: string, bucketId: string, fileId: string, name: string) =>

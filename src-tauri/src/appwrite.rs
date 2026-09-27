@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use url::Url;
 
 const PROFILES_ACCOUNT: &str = "baas:appwrite:profiles";
@@ -103,6 +104,16 @@ struct BucketList {
 struct FileList {
     total: u64,
     files: Vec<AppwriteFile>,
+}
+
+#[derive(Deserialize)]
+struct UploadedFile {
+    #[serde(rename = "$id")]
+    id: String,
+    #[serde(rename = "chunksUploaded")]
+    chunks_uploaded: Option<u64>,
+    #[serde(rename = "chunksTotal")]
+    chunks_total: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -368,6 +379,128 @@ pub async fn appwrite_files(
     })
 }
 
+async fn upload_path(
+    path: &std::path::Path,
+    profile: &AppwriteProfile,
+    api_key: &str,
+    bucket_id: &str,
+    http_client: &reqwest::Client,
+) -> Result<String, String> {
+    const CHUNK_SIZE: u64 = 5 * 1024 * 1024;
+    let bucket_id = validate_id(bucket_id)?;
+    let endpoint = validate_endpoint(&profile.endpoint)?;
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|_| "Datei konnte nicht gelesen werden.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Bitte eine Datei auswählen.".into());
+    }
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
+    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| "Datei konnte nicht geöffnet werden.".to_string())?;
+    let mut offset = 0;
+    let mut file_id: Option<String> = None;
+    loop {
+        let size = (metadata.len() - offset).min(CHUNK_SIZE) as usize;
+        let mut bytes = vec![0_u8; size];
+        file.read_exact(&mut bytes)
+            .await
+            .map_err(|_| "Datei hat sich während des Uploads geändert.".to_string())?;
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(name.to_string())
+            .mime_str(mime_type.as_ref())
+            .map_err(|_| "Ungültiger Dateityp.".to_string())?;
+        let form = reqwest::multipart::Form::new()
+            .text(
+                "fileId",
+                file_id.as_deref().unwrap_or("unique()").to_string(),
+            )
+            .part("file", part);
+        let mut request = http_client
+            .post(format!("{endpoint}/storage/buckets/{bucket_id}/files"))
+            .header("X-Appwrite-Project", &profile.project_id)
+            .header("X-Appwrite-Key", api_key)
+            .header("X-Appwrite-Response-Format", "2.3.0")
+            .multipart(form);
+        if metadata.len() > 0 {
+            request = request.header(
+                reqwest::header::CONTENT_RANGE,
+                format!(
+                    "bytes {offset}-{}/{total}",
+                    offset + size as u64 - 1,
+                    total = metadata.len()
+                ),
+            );
+        }
+        if let Some(id) = &file_id {
+            request = request.header("X-Appwrite-ID", id);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|_| "Appwrite Storage ist beim Upload nicht erreichbar.".to_string())?;
+        if !response.status().is_success() {
+            let hint = match response.status().as_u16() {
+                401 => "API-Schlüssel oder Projekt-ID ungültig.",
+                403 => "Für den Upload fehlt files.write oder eine Bucket-Berechtigung.",
+                413 => "Datei überschreitet das Größenlimit des Buckets.",
+                _ => "Upload fehlgeschlagen.",
+            };
+            return Err(format!(
+                "Appwrite HTTP {}: {hint}",
+                response.status().as_u16()
+            ));
+        }
+        let uploaded: UploadedFile = response
+            .json()
+            .await
+            .map_err(|_| "Appwrite hat unerwartete Upload-Daten geliefert.".to_string())?;
+        let id = validate_id(&uploaded.id)?.to_string();
+        if file_id.as_ref().is_some_and(|previous| previous != &id) {
+            return Err("Appwrite hat die Datei-ID während des Uploads geändert.".into());
+        }
+        file_id = Some(id);
+        offset += size as u64;
+        if offset == metadata.len() {
+            if uploaded
+                .chunks_uploaded
+                .zip(uploaded.chunks_total)
+                .is_some_and(|(done, total)| done != total)
+            {
+                return Err("Appwrite hat den Upload nicht vollständig bestätigt.".into());
+            }
+            return Ok(file_id.unwrap());
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn appwrite_upload_file(
+    app: tauri::AppHandle,
+    id: String,
+    bucket_id: String,
+) -> Result<Option<String>, String> {
+    validate_id(&bucket_id)?;
+    let (profile, api_key) = profile_and_key(&id).await?;
+    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
+        return Ok(None);
+    };
+    let file_id = upload_path(
+        &path,
+        &profile,
+        &api_key,
+        &bucket_id,
+        crate::baas_file::upload_client(),
+    )
+    .await?;
+    Ok(Some(file_id))
+}
+
 async fn file_response(
     id: &str,
     bucket_id: &str,
@@ -526,7 +659,9 @@ pub async fn appwrite_sites(
 
 #[cfg(test)]
 mod tests {
-    use super::{get, profile_id, validate_endpoint, validate_id};
+    use super::{
+        client, get, profile_id, upload_path, validate_endpoint, validate_id, AppwriteProfile,
+    };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -592,6 +727,99 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(response, serde_json::json!({}));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn upload_sends_two_multipart_chunks_with_scoped_credentials() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for index in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 8192];
+                let headers_end = loop {
+                    let read = stream.read(&mut buffer).await.unwrap();
+                    assert!(read > 0);
+                    request.extend_from_slice(&buffer[..read]);
+                    if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                        break end + 4;
+                    }
+                };
+                let headers = String::from_utf8_lossy(&request[..headers_end]).to_ascii_lowercase();
+                assert!(headers.starts_with("post /v1/storage/buckets/bucket_1/files "));
+                assert!(headers.contains("x-appwrite-project: project_1"));
+                assert!(headers.contains("x-appwrite-key: secret"));
+                assert!(headers.contains("content-type: multipart/form-data; boundary="));
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap();
+                while request.len() < headers_end + content_length {
+                    let read = stream.read(&mut buffer).await.unwrap();
+                    assert!(read > 0);
+                    request.extend_from_slice(&buffer[..read]);
+                }
+                let body = &request[headers_end..headers_end + content_length];
+                assert!(body
+                    .windows(b"name=\"fileId\"\r\n\r\n".len())
+                    .any(|part| part == b"name=\"fileId\"\r\n\r\n"));
+                assert!(body
+                    .windows(b"filename=\"upload.txt\"\r\n".len())
+                    .any(|part| part == b"filename=\"upload.txt\"\r\n"));
+                let file_header = body
+                    .windows(b"filename=\"upload.txt\"".len())
+                    .position(|part| part == b"filename=\"upload.txt\"")
+                    .unwrap();
+                let data_start = file_header
+                    + body[file_header..]
+                        .windows(4)
+                        .position(|part| part == b"\r\n\r\n")
+                        .unwrap()
+                    + 4;
+                if index == 0 {
+                    assert!(headers.contains("content-range: bytes 0-5242879/5242882"));
+                    assert!(!headers.contains("x-appwrite-id:"));
+                    assert!(body.windows(8).any(|part| part == b"unique()"));
+                    assert!(body[data_start..data_start + 5 * 1024 * 1024]
+                        .iter()
+                        .all(|byte| *byte == b'a'));
+                } else {
+                    assert!(headers.contains("content-range: bytes 5242880-5242881/5242882"));
+                    assert!(headers.contains("x-appwrite-id: uploaded_1"));
+                    assert!(body.windows(10).any(|part| part == b"uploaded_1"));
+                    assert_eq!(&body[data_start..data_start + 2], b"Za");
+                }
+                let payload = format!(
+                    "{{\"$id\":\"uploaded_1\",\"chunksUploaded\":{},\"chunksTotal\":2}}",
+                    index + 1
+                );
+                let response = format!(
+                    "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                    payload.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("upload.txt");
+        let mut bytes = vec![b'a'; 5 * 1024 * 1024 + 2];
+        bytes[5 * 1024 * 1024] = b'Z';
+        std::fs::write(&path, bytes).unwrap();
+        let profile = AppwriteProfile {
+            id: "profile_1".into(),
+            endpoint: format!("http://127.0.0.1:{}/v1", address.port()),
+            project_id: "project_1".into(),
+            name: "Test".into(),
+            region: None,
+        };
+        let id = upload_path(&path, &profile, "secret", "bucket_1", client())
+            .await
+            .unwrap();
+        assert_eq!(id, "uploaded_1");
         server.await.unwrap();
     }
 }
