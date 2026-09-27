@@ -1,3 +1,4 @@
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guard";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
@@ -24,14 +25,36 @@ export function AppLayout() {
       className="min-h-0 flex-1"
     >
       <ConnectionAuthGuard />
-      <AppSidebar />
-      <SidebarInset className="overflow-hidden">
+      <PanelErrorBoundary
+        label="Die Seitenleiste"
+        source="sidebar"
+        className="w-(--sidebar-width) shrink-0 border-r"
+      >
+        <AppSidebar />
+      </PanelErrorBoundary>
+      <SidebarInset className="overflow-hidden rounded-tl-xl border-t border-l shadow-lg shadow-black/10 dark:shadow-black/40">
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <DeferredOutlet />
           </div>
-          {panelOpen && <TransactionPanel />}
-          {!easyMode && <VersioningPanel />}
+          {panelOpen && (
+            <PanelErrorBoundary
+              label="Das Transaktions-Panel"
+              source="transaction-panel"
+              className="w-80 shrink-0 border-l"
+            >
+              <TransactionPanel />
+            </PanelErrorBoundary>
+          )}
+          {!easyMode && (
+            <PanelErrorBoundary
+              label="Das Versionierungs-Panel"
+              source="versioning-panel"
+              className="w-80 shrink-0 border-l"
+            >
+              <VersioningPanel />
+            </PanelErrorBoundary>
+          )}
         </div>
         <WorkspaceStatus />
       </SidebarInset>
