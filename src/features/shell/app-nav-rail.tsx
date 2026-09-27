@@ -37,6 +37,8 @@ export function AppNavRail() {
           <Tooltip key={item.title} content={item.title} side="right">
             <Link
               to={item.url}
+              preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
+              preloadDelay={80}
               aria-label={item.title}
               aria-current={active ? "page" : undefined}
               className={cn(
