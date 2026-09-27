@@ -1,5 +1,6 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { DatabaseIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ColumnInfo, DatabaseKind, TableInfo } from "@/lib/db";
@@ -35,6 +36,7 @@ export function QuerySchemaBrowser({
   const [tab, setTab] = useState<"schema" | "outline">("schema");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const schemaScrollRef = useRef<HTMLDivElement>(null);
   const [memberQuery, setMemberQuery] = useState("");
   const [activeMember, setActiveMember] = useState<string | undefined>(undefined);
   const members = useMemo(() => parsePlsqlMembers(sql), [sql]);
@@ -56,20 +58,31 @@ export function QuerySchemaBrowser({
     }
     return map;
   }, [columns]);
-  const visible = useMemo(
+  const visible = useMemo(() => {
+    if (members.length > 0 || tab !== "schema") return [];
+    return tables
+      .filter(
+        (table) =>
+          `${table.schema}.${table.name}`.toLocaleLowerCase().includes(term) ||
+          columnMap
+            .get(JSON.stringify([table.schema, table.name]))
+            ?.some((column) => column.name.toLocaleLowerCase().includes(term)),
+      )
+      .sort((a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name));
+  }, [tables, term, columnMap, members.length, tab]);
+  const schemaVirtualizer = useVirtualizer({
+    count: visible.length,
+    getScrollElement: () => schemaScrollRef.current,
+    estimateSize: () => 40,
+    getItemKey: (index) => JSON.stringify([visible[index].schema, visible[index].name]),
+    overscan: 10,
+    initialRect: { width: 300, height: 600 },
+  });
+  const statements = useMemo(
     () =>
-      tables
-        .filter(
-          (table) =>
-            `${table.schema}.${table.name}`.toLocaleLowerCase().includes(term) ||
-            columnMap
-              .get(JSON.stringify([table.schema, table.name]))
-              ?.some((column) => column.name.toLocaleLowerCase().includes(term)),
-        )
-        .sort((a, b) => a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name)),
-    [tables, term, columnMap],
+      tab === "outline" && members.length === 0 ? splitSqlStatements(sql, kind).statements : [],
+    [sql, kind, tab, members.length],
   );
-  const statements = useMemo(() => splitSqlStatements(sql, kind).statements, [sql, kind]);
   if (members.length > 0) {
     return (
       <aside className="flex h-full min-h-0 flex-col bg-muted/15" aria-label="Package-Mitglieder">
@@ -162,7 +175,10 @@ export function QuerySchemaBrowser({
           <div className="flex items-center gap-1 border-b p-2">
             <Input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                schemaScrollRef.current?.scrollTo({ top: 0 });
+              }}
               placeholder="Tabellen und Spalten…"
               aria-label="Schema durchsuchen"
               className="h-7 min-w-0 text-xs"
@@ -177,7 +193,11 @@ export function QuerySchemaBrowser({
               <RefreshCwIcon className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-2">
+          <div
+            ref={schemaScrollRef}
+            className="min-h-0 flex-1 overflow-auto p-2"
+            data-slot="query-schema-list"
+          >
             {error && (
               <p role="alert" className="p-2 text-xs text-destructive">
                 Metadaten konnten nicht vollständig geladen werden. Erneut laden, um es noch einmal
@@ -194,68 +214,83 @@ export function QuerySchemaBrowser({
                 {term ? "Keine passenden Tabellen oder Spalten." : "Keine Tabellen verfügbar."}
               </p>
             )}
-            {visible.map((table) => {
-              const key = JSON.stringify([table.schema, table.name]);
-              const isOpen = Boolean(term) || expanded.has(key);
-              const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
-              const fields = columnMap.get(JSON.stringify([table.schema, table.name])) ?? [];
-              return (
-                <details
-                  key={JSON.stringify([table.schema, table.name])}
-                  className="group mb-1 rounded-md open:bg-muted/40"
-                  open={isOpen}
-                  onToggle={(event) => {
-                    const open = event.currentTarget.open;
-                    setExpanded((previous) => {
-                      if (previous.has(key) === open) return previous;
-                      const next = new Set(previous);
-                      if (open) next.add(key);
-                      else next.delete(key);
-                      return next;
-                    });
-                  }}
-                >
-                  <summary className="cursor-pointer rounded-md px-2 py-2 text-xs hover:bg-muted focus-visible:outline-ring">
-                    <span className="ml-1 font-mono" title={qualified}>
-                      {table.name}
-                    </span>
-                    <span className="ml-2 text-[10px] text-muted-foreground">{table.schema}</span>
-                  </summary>
-                  {isOpen && (
-                    <div className="px-2 pb-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mb-1 h-6 w-full justify-start gap-1 text-[10px]"
-                        onClick={() => onInsert(qualified)}
-                      >
-                        <PlusIcon className="size-3" />
-                        Tabellennamen einfügen
-                      </Button>
-                      {!fields.length && (
-                        <p className="py-2 text-[10px] text-muted-foreground">
-                          Keine Spaltenmetadaten verfügbar.
-                        </p>
+            <div className="relative" style={{ height: schemaVirtualizer.getTotalSize() }}>
+              {schemaVirtualizer.getVirtualItems().map((virtualRow) => {
+                const table = visible[virtualRow.index];
+                const key = JSON.stringify([table.schema, table.name]);
+                const isOpen = Boolean(term) || expanded.has(key);
+                const qualified = [table.schema, table.name].filter(Boolean).map(quote).join(".");
+                const fields = columnMap.get(JSON.stringify([table.schema, table.name])) ?? [];
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={schemaVirtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full pb-1"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <details
+                      className="group rounded-md open:bg-muted/40"
+                      open={isOpen}
+                      onToggle={(event) => {
+                        if (term) return;
+                        const open = event.currentTarget.open;
+                        setExpanded((previous) => {
+                          if (previous.has(key) === open) return previous;
+                          const next = new Set(previous);
+                          if (open) next.add(key);
+                          else next.delete(key);
+                          return next;
+                        });
+                      }}
+                    >
+                      <summary className="cursor-pointer rounded-md px-2 py-2 text-xs hover:bg-muted focus-visible:outline-ring">
+                        <span className="ml-1 font-mono" title={qualified}>
+                          {table.name}
+                        </span>
+                        <span className="ml-2 text-[10px] text-muted-foreground">
+                          {table.schema}
+                        </span>
+                      </summary>
+                      {isOpen && (
+                        <div className="px-2 pb-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mb-1 h-6 w-full justify-start gap-1 text-[10px]"
+                            onClick={() => onInsert(qualified)}
+                          >
+                            <PlusIcon className="size-3" />
+                            Tabellennamen einfügen
+                          </Button>
+                          {!fields.length && (
+                            <p className="py-2 text-[10px] text-muted-foreground">
+                              Keine Spaltenmetadaten verfügbar.
+                            </p>
+                          )}
+                          {fields.map((column) => (
+                            <button
+                              type="button"
+                              key={column.name}
+                              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-ring"
+                              title={`${column.name} · ${column.data_type} · Einfügen`}
+                              onClick={() => onInsert(quote(column.name))}
+                            >
+                              <span className="min-w-0 flex-1 truncate font-mono">
+                                {column.name}
+                              </span>
+                              <span className="max-w-24 truncate text-[10px] text-muted-foreground">
+                                {column.data_type}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       )}
-                      {fields.map((column) => (
-                        <button
-                          type="button"
-                          key={column.name}
-                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-ring"
-                          title={`${column.name} · ${column.data_type} · Einfügen`}
-                          onClick={() => onInsert(quote(column.name))}
-                        >
-                          <span className="min-w-0 flex-1 truncate font-mono">{column.name}</span>
-                          <span className="max-w-24 truncate text-[10px] text-muted-foreground">
-                            {column.data_type}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </details>
-              );
-            })}
+                    </details>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <div className="flex h-7 shrink-0 items-center gap-2 border-t px-3 text-[10px] text-muted-foreground">
             <DatabaseIcon className="size-3" />
