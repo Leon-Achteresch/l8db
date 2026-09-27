@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio_util::io::ReaderStream;
 
 const PROFILES_ACCOUNT: &str = "baas:firebase:profiles";
 const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
@@ -263,6 +264,53 @@ fn storage_url(bucket: &str, object: Option<&str>) -> Result<reqwest::Url, Strin
     Ok(url)
 }
 
+fn upload_url(bucket: &str, object_name: &str) -> Result<reqwest::Url, String> {
+    let bucket = validate_bucket(bucket)?;
+    let object_name = validate_object_name(object_name)?;
+    let mut url = reqwest::Url::parse("https://storage.googleapis.com/upload/storage/v1/b")
+        .map_err(|_| "Ungültige Firebase-Upload-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Firebase-Upload-URL.".to_string())?
+        .push(bucket)
+        .push("o");
+    url.query_pairs_mut()
+        .append_pair("uploadType", "media")
+        .append_pair("name", object_name)
+        .append_pair("ifGenerationMatch", "0");
+    Ok(url)
+}
+
+async fn upload_file(
+    path: &std::path::Path,
+    url: reqwest::Url,
+    token: &str,
+    http_client: &reqwest::Client,
+) -> Result<FirebaseObject, String> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|_| "Datei konnte nicht gelesen werden.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Bitte eine Datei auswählen.".into());
+    }
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| "Datei konnte nicht geöffnet werden.".to_string())?;
+    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
+    let response = http_client
+        .post(url)
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, mime_type.as_ref())
+        .header(reqwest::header::CONTENT_LENGTH, metadata.len())
+        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)))
+        .send()
+        .await
+        .map_err(|_| "Firebase Storage ist beim Upload nicht erreichbar.".to_string())?;
+    if response.status().as_u16() == 412 {
+        return Err("Datei existiert bereits. Sie wurde nicht überschrieben.".into());
+    }
+    response_json(response).await
+}
+
 #[tauri::command]
 pub async fn firebase_connect(app: tauri::AppHandle) -> Result<Option<FirebaseProfile>, String> {
     let Some(path) = crate::baas_file::pick_open_path(app).await? else {
@@ -396,6 +444,43 @@ pub async fn firebase_objects(
     .await
 }
 
+#[tauri::command]
+pub async fn firebase_upload_object(
+    app: tauri::AppHandle,
+    project_id: String,
+    bucket: String,
+    prefix: String,
+) -> Result<Option<String>, String> {
+    validate_project_id(&project_id)?;
+    validate_bucket(&bucket)?;
+    if prefix.len() > 1024
+        || prefix.contains('\0')
+        || (!prefix.is_empty() && !prefix.ends_with('/'))
+    {
+        return Err("Ungültiger Firebase-Storage-Ordner.".into());
+    }
+    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
+        return Ok(None);
+    };
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
+    let object_name = validate_object_name(&format!("{prefix}{name}"))?.to_string();
+    let token = access_token(&project_id).await?;
+    let object = upload_file(
+        &path,
+        upload_url(&bucket, &object_name)?,
+        &token,
+        crate::baas_file::upload_client(),
+    )
+    .await?;
+    if object.name != object_name {
+        return Err("Firebase hat einen anderen Dateinamen zurückgegeben.".into());
+    }
+    Ok(Some(object_name))
+}
+
 async fn object_response(
     project_id: &str,
     bucket: &str,
@@ -448,9 +533,64 @@ pub async fn firebase_download_object(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_service_account, storage_url, validate_project_id, FirebaseBucketPage,
-        FirebaseObjectPage,
+        parse_service_account, storage_url, upload_file, upload_url, validate_project_id,
+        FirebaseBucketPage, FirebaseObjectPage,
     };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn upload_streams_file_and_requires_absent_generation() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for status in ["200 OK", "412 Precondition Failed"] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 4096];
+                loop {
+                    let read = stream.read(&mut buffer).await.unwrap();
+                    assert!(read > 0);
+                    request.extend_from_slice(&buffer[..read]);
+                    if let Some(headers_end) =
+                        request.windows(4).position(|part| part == b"\r\n\r\n")
+                    {
+                        if request.len() >= headers_end + 4 + 5 {
+                            break;
+                        }
+                    }
+                }
+                let headers_end = request
+                    .windows(4)
+                    .position(|part| part == b"\r\n\r\n")
+                    .unwrap();
+                let headers = String::from_utf8_lossy(&request[..headers_end]).to_ascii_lowercase();
+                assert!(headers.starts_with("post /upload/storage/v1/b/example/o?uploadtype=media&name=folder%2fhello.txt&ifgenerationmatch=0 "));
+                assert!(headers.contains("authorization: bearer test-token"));
+                assert!(headers.contains("content-type: text/plain"));
+                assert!(headers.contains("content-length: 5"));
+                assert_eq!(&request[headers_end + 4..], b"hello");
+                let body = r#"{"name":"folder/hello.txt"}"#;
+                stream
+                    .write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes())
+                    .await
+                    .unwrap();
+            }
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("hello.txt");
+        std::fs::write(&path, b"hello").unwrap();
+        let url = reqwest::Url::parse(&format!("http://{address}/upload/storage/v1/b/example/o?uploadType=media&name=folder%2Fhello.txt&ifGenerationMatch=0")).unwrap();
+        let first = upload_file(&path, url.clone(), "test-token", super::client())
+            .await
+            .unwrap();
+        assert_eq!(first.name, "folder/hello.txt");
+        let second = upload_file(&path, url, "test-token", super::client())
+            .await
+            .unwrap_err();
+        assert!(second.contains("nicht überschrieben"));
+        server.await.unwrap();
+    }
 
     #[test]
     fn service_account_restricts_token_exchange_to_google() {
@@ -481,5 +621,20 @@ mod tests {
         let objects: FirebaseObjectPage = serde_json::from_str(r#"{"items":[{"name":"folder/a.txt","size":"42","contentType":"text/plain"}],"prefixes":["folder/sub/"],"nextPageToken":"next"}"#).unwrap();
         assert_eq!(objects.items[0].name, "folder/a.txt");
         assert_eq!(objects.prefixes, ["folder/sub/"]);
+        let upload = upload_url("example-project.firebasestorage.app", "folder/new.txt").unwrap();
+        assert_eq!(upload.host_str(), Some("storage.googleapis.com"));
+        let query: std::collections::HashMap<_, _> = upload.query_pairs().collect();
+        assert_eq!(
+            query.get("uploadType").map(|value| value.as_ref()),
+            Some("media")
+        );
+        assert_eq!(
+            query.get("name").map(|value| value.as_ref()),
+            Some("folder/new.txt")
+        );
+        assert_eq!(
+            query.get("ifGenerationMatch").map(|value| value.as_ref()),
+            Some("0")
+        );
     }
 }

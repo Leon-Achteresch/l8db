@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import {
   firebaseDownloadObject,
   firebaseObjects,
   firebasePreviewObject,
+  firebaseUploadObject,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasFilePreview } from "./baas-file-preview";
@@ -29,12 +30,17 @@ function formatDate(value: string | null): string {
 }
 
 export function FirebaseStorageView({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.firebase.storage");
+  const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.firebase.storage-upload");
   const [bucketPages, setBucketPages] = useState([""]);
   const [bucketName, setBucketName] = useState<string | null>(null);
   const [prefix, setPrefix] = useState("");
   const [objectPages, setObjectPages] = useState([""]);
   const [preview, setPreview] = useState<FirebaseObject | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<string | null>(null);
   const bucketPageToken = bucketPages.at(-1) ?? "";
   const objectPageToken = objectPages.at(-1) ?? "";
   const buckets = useQuery({
@@ -57,6 +63,8 @@ export function FirebaseStorageView({ projectId }: { projectId: string }) {
     setPrefix("");
     setObjectPages([""]);
     setPreview(null);
+    setUploadError(null);
+    setUploaded(null);
   }
 
   function changeBucketPage(token: string | null) {
@@ -65,12 +73,38 @@ export function FirebaseStorageView({ projectId }: { projectId: string }) {
     setPrefix("");
     setObjectPages([""]);
     setPreview(null);
+    setUploadError(null);
+    setUploaded(null);
   }
 
   function openFolder(path: string) {
     setPrefix(path);
     setObjectPages([""]);
     setPreview(null);
+    setUploadError(null);
+    setUploaded(null);
+  }
+
+  async function upload() {
+    if (!selected) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploaded(null);
+    try {
+      const name = await firebaseUploadObject(projectId, selected.name, prefix);
+      if (name) {
+        setObjectPages([""]);
+        setPreview(null);
+        setUploaded(`${name.split("/").at(-1)} wurde hochgeladen.`);
+        await queryClient.invalidateQueries({
+          queryKey: ["firebase", projectId, "objects", selected.name, prefix],
+        });
+      }
+    } catch (reason) {
+      setUploadError(String(reason));
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -81,16 +115,39 @@ export function FirebaseStorageView({ projectId }: { projectId: string }) {
           <h3 className="text-sm font-semibold">Cloud Storage</h3>
           {feature.isNew && <NewBadge />}
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Firebase Storage aktualisieren"
-          onClick={() => void buckets.refetch()}
-          disabled={buckets.isFetching}
-        >
-          <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div ref={uploadFeature.ref} className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void upload()}
+              disabled={!selected || uploading}
+            >
+              <Upload className="size-3.5" /> {uploading ? "Lädt hoch…" : "Datei hochladen"}
+            </Button>
+            {uploadFeature.isNew && <NewBadge />}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Firebase Storage aktualisieren"
+            onClick={() => void buckets.refetch()}
+            disabled={buckets.isFetching}
+          >
+            <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
+      {uploadError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {uploadError}
+        </p>
+      )}
+      {uploaded && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {uploaded}
+        </p>
+      )}
       {buckets.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Buckets werden geladen…</p>
       ) : buckets.isError ? (
