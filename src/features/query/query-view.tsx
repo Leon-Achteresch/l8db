@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
@@ -114,7 +114,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => setHistoryOpen((open) => !open),
+    toggleHistory: () => startTransition(() => setHistoryOpen((open) => !open)),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -196,7 +196,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => setHistoryOpen(true)}
+                onOpenHistory={() => startTransition(() => setHistoryOpen(true))}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}

@@ -1,6 +1,6 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { DownloadIcon, PlayIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
-import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SegmentedControl } from "@/components/motion/segmented-control";
@@ -10,7 +10,6 @@ import { firstLine } from "@/features/query/query-history-panel/format";
 import { HistoryEntryItem } from "@/features/query/query-history-panel/history-entry-item";
 import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
 import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 
@@ -24,6 +23,7 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const entries = useQueryHistoryStore((state) => state.entries);
   const removeEntry = useQueryHistoryStore((state) => state.removeEntry);
   const clearForConnection = useQueryHistoryStore((state) => state.clearForConnection);
@@ -68,16 +68,24 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
     );
   }, [savedQueries, search]);
 
+  const visibleEntries = tab === "history" ? history : saved;
+  const virtualizer = useVirtualizer({
+    count: visibleEntries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 64,
+    getItemKey: (index) => `${tab}:${visibleEntries[index].id}`,
+    overscan: 10,
+  });
+
   return (
-    <motion.div
-      layout
-      transition={{ layout: SPRING_LAYOUT }}
-      className="flex h-full w-full min-w-0 flex-col bg-muted/20"
-    >
+    <div className="flex h-full w-full min-w-0 flex-col bg-muted/20">
       <div className="shrink-0 border-b px-4 py-3">
         <SegmentedControl
           value={tab}
-          onChange={setTab}
+          onChange={(value) => {
+            setTab(value);
+            scrollRef.current?.scrollTo({ top: 0 });
+          }}
           label="Query-Bibliothek"
           options={[
             { value: "history", label: "Verlauf" },
@@ -91,7 +99,10 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              scrollRef.current?.scrollTo({ top: 0 });
+            }}
             placeholder="Suchen…"
             aria-label="Query-Verlauf durchsuchen"
             className="h-8 pl-8 text-xs"
@@ -103,114 +114,113 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
         Bis zu {limit} Einträge je Verbindung. Sehr lange SQL-Texte werden gekennzeichnet gekürzt.
         Aufbewahrung in den Einstellungen ändern.
       </p>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "history" ? (
-          history.length === 0 ? (
-            <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-              {search
+      {tab === "history" && connectionId && history.length > 0 && (
+        <div className="flex shrink-0 justify-end border-b p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+            onClick={() => {
+              const removed = entries.filter((entry) => entry.connectionId === connectionId);
+              clearForConnection(connectionId);
+              toast("Verlauf entfernt", {
+                action: { label: "Rückgängig", onClick: () => restore(removed) },
+              });
+            }}
+          >
+            <Trash2Icon className="size-3" />
+            Verlauf dieser Verbindung löschen
+          </Button>
+        </div>
+      )}
+      {tab === "saved" && (
+        <div className="flex shrink-0 justify-end gap-1 border-b p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+            onClick={() => setImportOpen(true)}
+          >
+            <UploadIcon className="size-3" />
+            Importieren
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+            onClick={() => setExportOpen(true)}
+            disabled={savedQueries.length === 0}
+          >
+            <DownloadIcon className="size-3" />
+            Exportieren
+          </Button>
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        data-slot="query-history-list"
+      >
+        {visibleEntries.length === 0 ? (
+          <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+            {tab === "saved"
+              ? "Keine gespeicherten Queries. Über „Speichern“ legst du eine an."
+              : search
                 ? "Keine Treffer. Suche ändern oder leeren."
                 : "Noch keine Queries ausgeführt."}
-            </p>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {connectionId && (
-                <div className="flex justify-end p-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                    onClick={() => {
-                      const removed = entries.filter(
-                        (entry) => entry.connectionId === connectionId,
-                      );
-                      clearForConnection(connectionId);
-                      toast("Verlauf entfernt", {
-                        action: { label: "Rückgängig", onClick: () => restore(removed) },
-                      });
-                    }}
-                  >
-                    <Trash2Icon className="size-3" />
-                    Verlauf dieser Verbindung löschen
-                  </Button>
-                </div>
-              )}
-              {history.map((entry) => (
-                <HistoryEntryItem
-                  key={entry.id}
-                  entry={entry}
-                  onLoad={onLoad}
-                  undoableRemove={undoableRemove}
-                />
-              ))}
-            </div>
-          )
+          </p>
         ) : (
-          <div className="divide-y divide-border/50">
-            <div className="flex justify-end gap-1 p-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                onClick={() => setImportOpen(true)}
+          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className="absolute top-0 left-0 w-full border-b border-border/50"
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
-                <UploadIcon className="size-3" />
-                Importieren
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                onClick={() => setExportOpen(true)}
-                disabled={savedQueries.length === 0}
-              >
-                <DownloadIcon className="size-3" />
-                Exportieren
-              </Button>
-            </div>
-            {saved.length === 0 && (
-              <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-                Keine gespeicherten Queries. Über „Speichern“ legst du eine an.
-              </p>
-            )}
-            {saved.map((item) => (
-              <motion.div
-                key={item.id}
-                layout
-                transition={{ layout: SPRING_LAYOUT }}
-                className="group px-3 py-2 hover:bg-muted/40"
-              >
-                <button
-                  type="button"
-                  className="block w-full text-left"
-                  onClick={() => onLoad(item.sql, "new")}
-                  title="In neuem SQL-Tab öffnen"
-                >
-                  <p className="truncate text-xs font-medium">{item.name}</p>
-                  <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                    {firstLine(item.sql)}
-                  </p>
-                </button>
-                <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-1 px-1.5 text-[11px]"
-                    onClick={() => onLoad(item.sql, "new")}
-                  >
-                    <PlayIcon className="size-3" />
-                    Neuer Tab
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
-                    onClick={() => undoableDelete(item.id)}
-                  >
-                    <Trash2Icon className="size-3" />
-                    Löschen
-                  </Button>
-                </div>
-              </motion.div>
+                {tab === "history" ? (
+                  <HistoryEntryItem
+                    entry={history[virtualRow.index]}
+                    onLoad={onLoad}
+                    undoableRemove={undoableRemove}
+                  />
+                ) : (
+                  <div className="group px-3 py-2 hover:bg-muted/40">
+                    <button
+                      type="button"
+                      className="block w-full text-left"
+                      onClick={() => onLoad(saved[virtualRow.index].sql, "new")}
+                      title="In neuem SQL-Tab öffnen"
+                    >
+                      <p className="truncate text-xs font-medium">{saved[virtualRow.index].name}</p>
+                      <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                        {firstLine(saved[virtualRow.index].sql)}
+                      </p>
+                    </button>
+                    <div className="mt-1 hidden flex-wrap gap-1 group-hover:flex group-focus-within:flex">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-1.5 text-[11px]"
+                        onClick={() => onLoad(saved[virtualRow.index].sql, "new")}
+                      >
+                        <PlayIcon className="size-3" />
+                        Neuer Tab
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                        onClick={() => undoableDelete(saved[virtualRow.index].id)}
+                      >
+                        <Trash2Icon className="size-3" />
+                        Löschen
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -222,6 +232,6 @@ export function QueryHistoryPanel({ connectionId, onLoad }: QueryHistoryPanelPro
         onOpenChange={setExportOpen}
       />
       <SavedQueriesImportDialog open={importOpen} onOpenChange={setImportOpen} />
-    </motion.div>
+    </div>
   );
 }
