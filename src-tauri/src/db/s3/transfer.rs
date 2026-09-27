@@ -18,7 +18,6 @@ use super::xml;
 pub const PART_SIZE: u64 = 8 * 1024 * 1024;
 const FILE_CONCURRENCY: usize = 4;
 const PART_CONCURRENCY: usize = 3;
-const DOWNLOAD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const CANCELLED: &str = "Übertragung abgebrochen";
 
 #[derive(Debug, Clone, Serialize)]
@@ -510,11 +509,9 @@ async fn download_file(
         let mut file = tokio::fs::File::create(&temp)
             .await
             .map_err(|e| format!("{}: {e}", temp.display()))?;
-        while let Some(chunk) = tokio::time::timeout(DOWNLOAD_IDLE_TIMEOUT, response.chunk())
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|_| {
-                "Download unterbrochen: 30 Sekunden lang keine Daten empfangen.".to_string()
-            })?
             .map_err(|e| format!("Download unterbrochen: {e}"))?
         {
             file.write_all(&chunk)
