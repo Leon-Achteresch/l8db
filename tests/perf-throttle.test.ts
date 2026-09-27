@@ -141,7 +141,7 @@ beforeAll(async () => {
     (url) => url.hostname !== "localhost",
     (route) => route.fulfill({ contentType: "text/html", body: "" }),
   );
-  await seedApp(page, 3000, { rows: 2000, columns: 60 });
+  await seedApp(page, 3000, { rows: 2000, columns: 60 }, "perf-test");
   await page.goto(`http://localhost:${server.port}/`);
   await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
   await page.waitForTimeout(2000);

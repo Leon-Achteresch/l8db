@@ -19,9 +19,10 @@ export async function seedApp(
   page: Page,
   tables: number,
   grid = { rows: 500, columns: 24 },
+  password: string | null = null,
 ): Promise<void> {
   await page.addInitScript(
-    ({ count, rowCount, columnCount }) => {
+    ({ count, rowCount, columnCount, password }) => {
       const names = Array.from({ length: count }, (_, i) => `table_${String(i).padStart(4, "0")}`);
       const columns = Array.from({ length: columnCount }, (_, i) => ({
         name: i === 0 ? "id" : `col_${i}`,
@@ -183,7 +184,7 @@ export async function seedApp(
             };
           }
           case "load_secret":
-            return null;
+            return args?.account === "perf" ? password : null;
           default:
             return [];
         }
@@ -204,7 +205,7 @@ export async function seedApp(
         },
       });
     },
-    { count: tables, rowCount: grid.rows, columnCount: grid.columns },
+    { count: tables, rowCount: grid.rows, columnCount: grid.columns, password },
   );
 
   await page.addInitScript((charts: string[]) => {

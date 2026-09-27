@@ -216,14 +216,23 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const lastView = `v_table_${String(Math.min(TABLES, 400) - 1).padStart(4, "0")}`;
       await results.locator("button").first().focus();
       await app.page.keyboard.press("End");
-      await app.page.waitForFunction(
-        (name) => document.activeElement?.textContent?.includes(name),
-        lastView,
-      );
+      await app.page.waitForFunction((name) => {
+        const active = document.activeElement;
+        return Boolean(
+          active?.tagName === "BUTTON" &&
+            active.closest('[aria-label="Suchergebnisse"]') &&
+            active.textContent?.includes(name),
+        );
+      }, lastView);
       await app.page.keyboard.press("Home");
-      await app.page.waitForFunction(() =>
-        document.activeElement?.textContent?.includes("table_0000"),
-      );
+      await app.page.waitForFunction(() => {
+        const active = document.activeElement;
+        return Boolean(
+          active?.tagName === "BUTTON" &&
+            active.closest('[aria-label="Suchergebnisse"]') &&
+            active.textContent?.includes("table_0000"),
+        );
+      });
       const scroll = await measure("advanced-search-scroll", app.page, async () => {
         await results.evaluate(async (element) => {
           let start = 0;
