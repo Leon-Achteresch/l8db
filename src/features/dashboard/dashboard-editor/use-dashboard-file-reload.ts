@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { confirmExpertSql, fileLabel, fileStamp, readDashboardFile } from "@/lib/dashboard-file";
-import { useDashboardsStore } from "@/lib/dashboards";
+import { useDashboardsStore, withoutDashboardHistory } from "@/lib/dashboards";
 
 export function useDashboardFileReload(dashboardId: string, path: string | null) {
   const store = useDashboardsStore();
@@ -25,13 +25,15 @@ export function useDashboardFileReload(dashboardId: string, path: string | null)
         }
         const { dashboard: parsed } = await readDashboardFile(path);
         if (!confirmExpertSql(parsed)) return;
-        store.update(dashboardId, {
-          name: parsed.name,
-          datasets: parsed.datasets,
-          widgets: parsed.widgets,
-          refreshSec: parsed.refreshSec,
-          fileStamp: stamp,
-        });
+        withoutDashboardHistory(() =>
+          store.update(dashboardId, {
+            name: parsed.name,
+            datasets: parsed.datasets,
+            widgets: parsed.widgets,
+            refreshSec: parsed.refreshSec,
+            fileStamp: stamp,
+          }),
+        );
         void queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
         toast.success(`${fileLabel(path)} neu geladen`);
       } catch (error) {
