@@ -7,7 +7,7 @@ const orders = { kind: "table", schema: "public", table: "orders" };
 function startup(tabs?: object, split?: object, activeId: string | null = "a", version = 3) {
   const script = `
     const values = new Map();
-    values.set("l8db.connections", JSON.stringify({ state: { connections: [], activeId: ${JSON.stringify(activeId)} }, version: 0 }));
+    values.set("l8db.connections", JSON.stringify({ state: { connections: ["a", "b"].map((id) => ({ id, name: id, kind: "postgres", connectionString: "postgres://localhost/" + id })), activeId: ${JSON.stringify(activeId)} }, version: 0 }));
     const tabs = ${JSON.stringify(tabs ?? null)};
     const split = ${JSON.stringify(split ?? null)};
     if (tabs) values.set("l8db.table-tabs", JSON.stringify({ state: tabs, version: ${version} }));
