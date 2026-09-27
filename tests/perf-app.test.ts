@@ -212,6 +212,34 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Dashboard lädt Monaco erst für eine eigene SQL-Abfrage",
+  async () => {
+    const app = await open("/dashboard", ".react-grid-item");
+    try {
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
+      await app.page.getByRole("button", { name: "Chart", exact: true }).first().click();
+      await app.page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      await app.page.getByRole("button", { name: "Erweitert" }).click();
+      await app.page.getByRole("tab", { name: "Quelle & SQL" }).click();
+      await app.page.getByRole("button", { name: "Ich möchte selbst SQL schreiben" }).click();
+      await app.page.locator('.monaco-editor[role="code"]').waitFor();
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   `Erweiterte Suche bleibt bei ${TABLES} Tabellen begrenzt und bedienbar`,
   async () => {
     const app = await open("/", 'a[data-name="table_0000"]');
