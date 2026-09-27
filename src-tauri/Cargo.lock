@@ -2867,7 +2867,7 @@ dependencies = [
  "idna",
  "ipnet",
  "jni 0.22.4",
- "rand 0.10.1",
+ "rand 0.10.3",
  "thiserror 2.0.18",
  "tinyvec",
  "tokio",
@@ -2887,7 +2887,7 @@ dependencies = [
  "jni 0.22.4",
  "once_cell",
  "prefix-trie",
- "rand 0.10.1",
+ "rand 0.10.3",
  "ring",
  "thiserror 2.0.18",
  "tinyvec",
@@ -2912,7 +2912,7 @@ dependencies = [
  "ndk-context",
  "once_cell",
  "parking_lot",
- "rand 0.10.1",
+ "rand 0.10.3",
  "resolv-conf",
  "smallvec",
  "system-configuration",
@@ -3592,7 +3592,7 @@ dependencies = [
  "portable-pty",
  "postgres-native-tls",
  "quick-xml 0.42.0",
- "rand 0.10.1",
+ "rand 0.10.3",
  "redis",
  "regex",
  "reqwest",
@@ -3617,7 +3617,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tokio-util",
- "toml_edit 0.25.11+spec-1.1.0",
+ "toml_edit 0.25.12+spec-1.1.0",
  "url",
  "webview2-com",
  "windows-core 0.61.2",
@@ -4154,7 +4154,7 @@ dependencies = [
  "native-tls",
  "pem",
  "percent-encoding",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "socket2",
  "thiserror 2.0.18",
@@ -4322,7 +4322,7 @@ checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
 dependencies = [
  "num-integer",
  "num-traits",
- "rand 0.10.1",
+ "rand 0.10.3",
  "rand_core 0.10.1",
 ]
 
@@ -4623,9 +4623,9 @@ dependencies = [
 
 [[package]]
 name = "odbc-api"
-version = "29.0.0"
+version = "29.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efbf786f321712df749f34b99279334e45383b50d40c173ba5597894c21d1d34"
+checksum = "bdd11ce3c3b073577b4083a6d5f947ea19ddee7cd859ba90d045ad622d10eba7"
 dependencies = [
  "atoi 3.1.0",
  "log",
@@ -4836,7 +4836,7 @@ dependencies = [
  "delegate",
  "futures",
  "log",
- "rand 0.10.1",
+ "rand 0.10.3",
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
@@ -5243,7 +5243,7 @@ dependencies = [
  "hmac 0.13.0",
  "md-5",
  "memchr",
- "rand 0.10.1",
+ "rand 0.10.3",
  "sha2 0.11.0",
  "stringprep",
 ]
@@ -5371,7 +5371,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.11+spec-1.1.0",
+ "toml_edit 0.25.12+spec-1.1.0",
 ]
 
 [[package]]
@@ -5501,9 +5501,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.1"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -5873,7 +5873,7 @@ dependencies = [
  "pkcs5",
  "pkcs8",
  "polyval",
- "rand 0.10.1",
+ "rand 0.10.3",
  "rand_core 0.10.1",
  "rsa",
  "russh-cryptovec",
@@ -7695,7 +7695,7 @@ dependencies = [
  "pin-project-lite",
  "postgres-protocol",
  "postgres-types",
- "rand 0.10.1",
+ "rand 0.10.3",
  "socket2",
  "tokio",
  "tokio-util",
@@ -7822,9 +7822,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.11+spec-1.1.0"
+version = "0.25.12+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b59c4d22ed448339746c59b905d24568fcbb3ab65a500494f7b8c3e97739f2b"
+checksum = "d2153edc6955a6c354fad8f5efd38b6a8769bdccf9fe50f8e1329f81b0baa5d7"
 dependencies = [
  "indexmap 2.14.0",
  "toml_datetime 1.1.1+spec-1.1.0",
