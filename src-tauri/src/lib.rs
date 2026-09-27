@@ -3,6 +3,7 @@ mod db;
 mod extension_process;
 mod file_open;
 mod mcp;
+mod supabase;
 mod versioning;
 
 #[cfg(target_os = "windows")]
@@ -74,6 +75,18 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            supabase::supabase_connect,
+            supabase::supabase_disconnect,
+            supabase::supabase_is_connected,
+            supabase::supabase_projects,
+            supabase::supabase_buckets,
+            supabase::supabase_functions,
+            supabase::supabase_health,
+            supabase::supabase_has_project_key,
+            supabase::supabase_set_project_key,
+            supabase::supabase_delete_project_key,
+            supabase::supabase_objects,
+            supabase::supabase_auth_users,
             versioning::versioning_repository,
             versioning::metadata::versioning_metadata,
             versioning::control::versioning_control,
