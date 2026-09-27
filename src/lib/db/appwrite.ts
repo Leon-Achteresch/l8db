@@ -49,6 +49,14 @@ export interface AppwriteRow {
   [key: string]: unknown;
 }
 
+export interface AppwriteColumn {
+  key: string;
+  kind: string;
+  required: boolean;
+  array: boolean;
+  status: string | null;
+}
+
 export const appwriteConnect = (endpoint: string, projectId: string, apiKey: string) =>
   invoke<AppwriteProfile>("appwrite_connect", { endpoint, projectId, apiKey });
 export const appwriteProfiles = () => invoke<AppwriteProfile[]>("appwrite_profiles");
@@ -67,6 +75,8 @@ export const appwriteTables = (id: string, databaseId: string, offset: number) =
   invoke<AppwritePage<AppwriteNamedResource>>("appwrite_tables", { id, databaseId, offset });
 export const appwriteRows = (id: string, databaseId: string, tableId: string, offset: number) =>
   invoke<AppwritePage<AppwriteRow>>("appwrite_rows", { id, databaseId, tableId, offset });
+export const appwriteColumns = (id: string, databaseId: string, tableId: string, offset: number) =>
+  invoke<AppwritePage<AppwriteColumn>>("appwrite_columns", { id, databaseId, tableId, offset });
 export const appwriteFunctions = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteNamedResource>>("appwrite_functions", { id, offset });
 export const appwriteUsers = (id: string, offset: number) =>

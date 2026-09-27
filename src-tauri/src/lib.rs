@@ -95,6 +95,7 @@ pub fn run() {
             appwrite::appwrite_databases,
             appwrite::appwrite_tables,
             appwrite::appwrite_rows,
+            appwrite::appwrite_columns,
             appwrite::appwrite_functions,
             appwrite::appwrite_users,
             appwrite::appwrite_sites,
