@@ -2,6 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio_util::io::ReaderStream;
 
 const TOKEN_ACCOUNT: &str = "baas:supabase:access-token";
 const KEY_INDEX_ACCOUNT: &str = "baas:supabase:project-key-index";
@@ -72,6 +73,19 @@ fn validate_object_key(key: &str) -> Result<&str, String> {
         return Err("Ungültiger Storage-Dateipfad.".into());
     }
     Ok(key)
+}
+
+fn validate_bucket(bucket: &str) -> Result<&str, String> {
+    if bucket.is_empty()
+        || bucket.len() > 256
+        || bucket.contains('/')
+        || bucket.contains('\\')
+        || bucket == "."
+        || bucket == ".."
+    {
+        return Err("Ungültiger Bucket-Name.".into());
+    }
+    Ok(bucket)
 }
 
 async fn project_key_index() -> Result<Vec<String>, String> {
@@ -490,9 +504,7 @@ pub async fn supabase_objects(
     offset: u32,
 ) -> Result<Vec<SupabaseObject>, String> {
     let reference = validate_ref(&reference)?;
-    if bucket.is_empty() || bucket.len() > 256 || bucket.contains('/') {
-        return Err("Ungültiger Bucket-Name.".into());
-    }
+    let bucket = validate_bucket(&bucket)?;
     let api_key = crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| {
@@ -504,7 +516,7 @@ pub async fn supabase_objects(
     .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
-        .push(&bucket);
+        .push(bucket);
     let response = project_api_auth(client().post(url), &api_key)
         .json(&serde_json::json!({
             "prefix": prefix,
@@ -525,15 +537,7 @@ async fn object_response(
     http_client: &reqwest::Client,
 ) -> Result<reqwest::Response, String> {
     let reference = validate_ref(reference)?;
-    if bucket.is_empty()
-        || bucket.len() > 256
-        || bucket.contains('/')
-        || bucket.contains('\\')
-        || bucket == "."
-        || bucket == ".."
-    {
-        return Err("Ungültiger Bucket-Name.".into());
-    }
+    let bucket = validate_bucket(bucket)?;
     let object_key = validate_object_key(object_key)?;
     let api_key = crate::db::secrets::load_secret(project_key_account(reference))
         .await?
@@ -552,6 +556,83 @@ async fn object_response(
         .send()
         .await
         .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())
+}
+
+async fn upload_file(
+    path: &std::path::Path,
+    url: reqwest::Url,
+    api_key: &str,
+    http_client: &reqwest::Client,
+) -> Result<(), String> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|_| "Datei konnte nicht gelesen werden.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Bitte eine Datei auswählen.".into());
+    }
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| "Datei konnte nicht geöffnet werden.".to_string())?;
+    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
+    let response = project_api_auth(http_client.post(url), api_key)
+        .header(reqwest::header::CONTENT_TYPE, mime_type.as_ref())
+        .header(reqwest::header::CONTENT_LENGTH, metadata.len())
+        .header("x-upsert", "false")
+        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)))
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist beim Upload nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        let hint = match response.status().as_u16() {
+            400 => "Datei existiert bereits oder wird von den Bucket-Regeln abgelehnt.",
+            401 => "API-Schlüssel ungültig.",
+            403 => "Für den Upload fehlt die Berechtigung.",
+            409 => "Datei existiert bereits.",
+            413 => "Datei überschreitet das Größenlimit des Buckets.",
+            _ => "Upload fehlgeschlagen.",
+        };
+        return Err(format!(
+            "Supabase HTTP {}: {hint}",
+            response.status().as_u16()
+        ));
+    }
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_upload_object(
+    app: tauri::AppHandle,
+    reference: String,
+    bucket: String,
+    prefix: String,
+) -> Result<Option<String>, String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    if !prefix.is_empty() && !prefix.ends_with('/') {
+        return Err("Ungültiger Storage-Ordner.".into());
+    }
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für den Upload wird ein Supabase Secret API Key benötigt.".to_string())?;
+    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
+        return Ok(None);
+    };
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
+    let object_key = validate_object_key(&format!("{prefix}{name}"))?.to_string();
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket)
+        .extend(object_key.split('/'));
+    upload_file(&path, url, &api_key, crate::baas_file::upload_client()).await?;
+    Ok(Some(object_key))
 }
 
 #[tauri::command]
@@ -615,10 +696,61 @@ pub async fn supabase_auth_users(
 #[cfg(test)]
 mod tests {
     use super::{
-        client, project_api_auth, select_project_key, table_rows_sql, validate_object_key,
-        validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
-        SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject, SupabaseServiceHealth,
+        client, project_api_auth, select_project_key, table_rows_sql, upload_file,
+        validate_object_key, validate_project_secret_key, validate_ref, SupabaseApiKey,
+        SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject,
+        SupabaseServiceHealth,
     };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn upload_streams_file_without_overwriting_or_exposing_key_as_bearer() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut buffer).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+                if let Some(headers_end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    if request.len() >= headers_end + 4 + 5 {
+                        break;
+                    }
+                }
+            }
+            let headers_end = request
+                .windows(4)
+                .position(|part| part == b"\r\n\r\n")
+                .unwrap();
+            let headers = String::from_utf8_lossy(&request[..headers_end]).to_ascii_lowercase();
+            assert!(headers.starts_with("post /storage/v1/object/bucket/folder/hello.txt "));
+            assert!(headers.contains("apikey: sb_secret_example"));
+            assert!(!headers.contains("authorization:"));
+            assert!(headers.contains("x-upsert: false"));
+            assert!(headers.contains("content-type: text/plain"));
+            assert!(headers.contains("content-length: 5"));
+            assert_eq!(&request[headers_end + 4..], b"hello");
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+                .await
+                .unwrap();
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("hello.txt");
+        std::fs::write(&path, b"hello").unwrap();
+        let url = reqwest::Url::parse(&format!(
+            "http://{address}/storage/v1/object/bucket/folder/hello.txt"
+        ))
+        .unwrap();
+        upload_file(&path, url, "sb_secret_example", client())
+            .await
+            .unwrap();
+        server.await.unwrap();
+    }
 
     #[test]
     fn table_row_queries_quote_names_and_cap_offsets() {

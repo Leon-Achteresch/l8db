@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   supabaseBuckets,
@@ -8,7 +9,9 @@ import {
   supabaseHasProjectKey,
   supabaseObjects,
   supabasePreviewObject,
+  supabaseUploadObject,
 } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: unknown): string {
@@ -19,12 +22,17 @@ function formatBytes(value: unknown): string {
 }
 
 export function SupabaseStorageView({ reference }: { reference: string }) {
+  const queryClient = useQueryClient();
   const [bucket, setBucket] = useState<string | null>(null);
   const [prefix, setPrefix] = useState("");
   const [offset, setOffset] = useState(0);
   const [preview, setPreview] = useState<{ bucket: string; key: string; name: string } | null>(
     null,
   );
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<string | null>(null);
+  const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-upload");
   const buckets = useQuery({
     queryKey: ["supabase", reference, "buckets"],
     queryFn: () => supabaseBuckets(reference),
@@ -48,6 +56,30 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     setPrefix("");
     setOffset(0);
     setPreview(null);
+    setUploadError(null);
+    setUploaded(null);
+  }
+
+  async function upload() {
+    if (!selected) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploaded(null);
+    try {
+      const key = await supabaseUploadObject(reference, selected.name, prefix);
+      if (key) {
+        setOffset(0);
+        setPreview(null);
+        setUploaded(`${key.split("/").at(-1)} wurde hochgeladen.`);
+        await queryClient.invalidateQueries({
+          queryKey: ["supabase", reference, "objects", selected.name],
+        });
+      }
+    } catch (reason) {
+      setUploadError(String(reason));
+    } finally {
+      setUploading(false);
+    }
   }
 
   function up() {
@@ -61,7 +93,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
 
   return (
     <section className="min-w-0 rounded-2xl border bg-card p-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Archive className="size-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">Storage</h3>
@@ -69,16 +101,40 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
             <span className="text-xs text-muted-foreground">{buckets.data.length} Buckets</span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Storage aktualisieren"
-          onClick={() => void buckets.refetch()}
-          disabled={buckets.isFetching}
-        >
-          <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div ref={uploadFeature.ref} className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void upload()}
+              disabled={!selected || !hasKey.data || uploading}
+              title={!hasKey.data ? "Projekt API Key für Upload benötigt" : undefined}
+            >
+              <Upload className="size-3.5" /> {uploading ? "Lädt hoch…" : "Datei hochladen"}
+            </Button>
+            {uploadFeature.isNew && <NewBadge />}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Storage aktualisieren"
+            onClick={() => void buckets.refetch()}
+            disabled={buckets.isFetching}
+          >
+            <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
+      {uploadError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {uploadError}
+        </p>
+      )}
+      {uploaded && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {uploaded}
+        </p>
+      )}
       {buckets.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Buckets werden geladen…</p>
       ) : buckets.isError ? (

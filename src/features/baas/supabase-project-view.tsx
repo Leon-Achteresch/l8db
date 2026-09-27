@@ -96,11 +96,11 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
       </section>
 
       <SupabaseServiceHealth reference={project.reference} />
-      <SupabaseProjectKey reference={project.reference} />
+      <SupabaseProjectKey key={project.reference} reference={project.reference} />
       <SupabaseDatabaseView key={project.reference} reference={project.reference} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
-        <SupabaseStorageView reference={project.reference} />
+        <SupabaseStorageView key={project.reference} reference={project.reference} />
         <div className="space-y-6">
           <section className="min-w-0 rounded-2xl border bg-card p-5">
             <div className="flex items-center gap-2">
@@ -153,7 +153,7 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
               </div>
             )}
           </section>
-          <SupabaseAuthView reference={project.reference} />
+          <SupabaseAuthView key={project.reference} reference={project.reference} />
         </div>
       </div>
     </div>
