@@ -5,7 +5,7 @@ Neue Funktionen werden in `src/lib/new-features.ts` mit einer stabilen Kennung u
 Für eine neue Einstellung:
 
 1. Die Kennung und die aktuelle Version in `NEW_FEATURES` eintragen.
-2. Die zugehörige `SettingsRow` mit `featureId="settings.data.transfer"` versehen. Die Zeile zeigt das Badge und meldet die Funktion als gesehen, sobald mindestens die Hälfte der Zeile in einem sichtbaren Fenster im Viewport liegt.
+2. Die zugehörige `SettingsRow` mit `featureId="settings.data.transfer"` versehen. Die Zeile zeigt das Badge und meldet die Funktion als gesehen, nachdem mindestens die Hälfte der Zeile drei Sekunden durchgehend im Viewport eines sichtbaren Fensters lag. Wird sie vorher verlassen oder das Fenster verborgen, beginnt die Zeit beim nächsten Sichtkontakt neu.
 3. Die Kennung muss den Weg in der Oberfläche abbilden. `settings.data.transfer` markiert automatisch den Settings Button im Header, die Kategorie „Daten & Abfragen“ und einen passenden Suchtreffer. Diese Wegweiser werden selbst nicht als Sichtkontakt gezählt.
 
 Andere Ansichten können `useNewFeatureVisibility<HTMLElement>(featureId)` am tatsächlichen Bedienelement verwenden. Der Hook liefert `ref` und `isNew`; `NewBadge` rendert das Badge. Für übergeordnete Navigation dient `useHasNewFeatures(scope)` oder `hasNewFeatures(scope, useSeenNewFeatures())`, wenn mehrere Einträge in einer Liste dargestellt werden. Nur das tatsächliche Feature erhält den Sichtkontakt Hook.

@@ -39,6 +39,11 @@ Use Bun 1.3.10 and commit `bun.lock`; do not add an npm lockfile.
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
 
+## NEW badges for features
+
+- Register every new user-facing feature in `NEW_FEATURES` in `src/lib/new-features.ts` with a stable hierarchical ID for its navigation path and the app version that introduces it.
+- Attach the feature ID to its actual UI element with `SettingsRow.featureId` or `useNewFeatureVisibility()`. Navigation badges derive from the ID; navigation alone must not mark the feature as seen. See `docs/new-feature-badges.md`.
+
 ## Frontend → Backend Bridge
 
 All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitions mirroring Rust structs live there — keep them in sync when changing Tauri commands.
