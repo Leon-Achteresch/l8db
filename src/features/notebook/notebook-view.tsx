@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
 import { type NotebookCell, type NotebookCellType, useNotebookStore } from "@/lib/notebook";
@@ -76,31 +77,37 @@ export function NotebookView() {
                 onRemove={() => store().removeCell(cell.id)}
                 onAdd={(type) => add(type, index + 1)}
               >
-                {cell.type === "markdown" ? (
-                  <MarkdownCell
-                    source={cell.source}
-                    onChange={(source) =>
-                      update(cell.id, (c) => (c.type === "markdown" ? { ...c, source } : c))
-                    }
-                  />
-                ) : cell.type === "variables" ? (
-                  <VariablesCell
-                    variables={cell.variables}
-                    onChange={(variables) =>
-                      update(cell.id, (c) => (c.type === "variables" ? { ...c, variables } : c))
-                    }
-                  />
-                ) : (
-                  <SqlCell
-                    cell={cell}
-                    connectionId={defaultConnection}
-                    output={outputs[cell.id]}
-                    running={Boolean(running[cell.id])}
-                    onRun={() => void runner.runCell(cell.id)}
-                    onRunFrom={() => void runner.runFrom(cell.id)}
-                    onCancel={runner.cancel}
-                  />
-                )}
+                <PanelErrorBoundary
+                  label="Die Zelle"
+                  source="notebook-cell"
+                  resetKeys={[cell, outputs[cell.id]]}
+                >
+                  {cell.type === "markdown" ? (
+                    <MarkdownCell
+                      source={cell.source}
+                      onChange={(source) =>
+                        update(cell.id, (c) => (c.type === "markdown" ? { ...c, source } : c))
+                      }
+                    />
+                  ) : cell.type === "variables" ? (
+                    <VariablesCell
+                      variables={cell.variables}
+                      onChange={(variables) =>
+                        update(cell.id, (c) => (c.type === "variables" ? { ...c, variables } : c))
+                      }
+                    />
+                  ) : (
+                    <SqlCell
+                      cell={cell}
+                      connectionId={defaultConnection}
+                      output={outputs[cell.id]}
+                      running={Boolean(running[cell.id])}
+                      onRun={() => void runner.runCell(cell.id)}
+                      onRunFrom={() => void runner.runFrom(cell.id)}
+                      onCancel={runner.cancel}
+                    />
+                  )}
+                </PanelErrorBoundary>
               </NotebookCellFrame>
             )),
             <div key="new" className="flex h-full flex-col items-center justify-center gap-2">
