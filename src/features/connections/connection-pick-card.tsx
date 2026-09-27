@@ -7,9 +7,7 @@ import {
   Pencil,
   Play,
   Save,
-  ShieldCheck,
   Star,
-  Terminal,
   Trash2,
   Unplug,
   User,
@@ -72,13 +70,6 @@ export function ConnectionPickCard({
           connection={connection}
           active={active}
           onDoubleClick={onOpen}
-          badges={
-            connection.temporary ? (
-              <span className="inline-flex items-center rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400">
-                Temporär
-              </span>
-            ) : null
-          }
           actions={
             <div className="flex items-center gap-0.5">
               <button
@@ -247,6 +238,7 @@ export function ConnectionSelectCard({
         onCheckedChange(!checked);
       }}
       className={disabled ? "opacity-60" : "cursor-pointer"}
+      title={disabledReason ?? undefined}
       actions={
         <Checkbox
           checked={checked}
@@ -257,13 +249,6 @@ export function ConnectionSelectCard({
           className="m-1.5"
         />
       }
-      badges={
-        disabledReason ? (
-          <span className="inline-flex items-center rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-            {disabledReason}
-          </span>
-        ) : null
-      }
       footer={children}
     />
   );
@@ -273,7 +258,6 @@ function ConnectionCardShell({
   connection,
   active,
   actions,
-  badges,
   footer,
   className,
   ...rest
@@ -281,7 +265,6 @@ function ConnectionCardShell({
   connection: SavedConnection;
   active: boolean;
   actions: ReactNode;
-  badges?: ReactNode;
   footer?: ReactNode;
 } & ComponentProps<typeof motion.article>) {
   const reduce = useReducedMotion();
@@ -362,39 +345,6 @@ function ConnectionCardShell({
               </span>
             )}
           </div>
-        </div>
-
-        <div className="mt-2.5 flex min-h-[20px] flex-wrap items-center gap-1.5">
-          {badges}
-          {connection.ssh?.host && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">
-              <Terminal className="size-2.5" />
-              SSH
-            </span>
-          )}
-          {connection.sslMode && connection.sslMode !== "disable" && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="size-2.5" />
-              TLS
-            </span>
-          )}
-          {connection.readOnly && (
-            <span className="inline-flex items-center rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-              Nur lesen
-            </span>
-          )}
-          {connection.tags?.map((tag) => (
-            <span
-              key={tag.name}
-              className="inline-flex max-w-[120px] items-center gap-1 truncate rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-            >
-              <span
-                className="size-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: tag.color }}
-              />
-              <span className="truncate">{tag.name}</span>
-            </span>
-          ))}
         </div>
       </div>
 
