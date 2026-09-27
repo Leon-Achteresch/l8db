@@ -903,6 +903,35 @@ describe("vault setup", () => {
     expect(sso.stopped()).toBe(true);
   });
 
+  test("keeper explains a Commander policy restriction", async () => {
+    const keeper: Cli = () => ({ status: 0, stdout: "Not logged in\n" });
+    const base = api({ keeper });
+    const client = {
+      ...base,
+      process: {
+        ...base.process,
+        start: async () => ({
+          id: 1,
+          write: async () => undefined,
+          read: async () => ({
+            output: "Client Restricted\n",
+            exited: true,
+            status: 1,
+          }),
+          stop: async () => undefined,
+        }),
+      },
+    } as unknown as L8dbApi;
+    await expect(
+      extension.vaultSetup(
+        client,
+        { bw: null, op: null },
+        { action: "login", email: "me@example.com", password: "pw" },
+        "keeper",
+      ),
+    ).rejects.toThrow("Commander SDK");
+  });
+
   test("1password explains the app integration when no account is known", async () => {
     const empty: Cli = (args) => (args[0] === "--version" ? version : { status: 0, stdout: "[]" });
     await expect(
