@@ -3,6 +3,7 @@ import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
   "baas.supabase": "0.7.0",
+  "baas.supabase.project-key-import": "0.7.0",
   "baas.appwrite": "0.7.0",
   "baas.appwrite.rows": "0.7.0",
   "baas.appwrite.columns": "0.7.0",
