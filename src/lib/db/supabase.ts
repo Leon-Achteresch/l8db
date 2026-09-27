@@ -29,6 +29,8 @@ export interface SupabaseFunction {
   status: string | null;
   version: number | null;
   verify_jwt: boolean | null;
+  entrypoint_path: string | null;
+  import_map_path: string | null;
 }
 
 export interface SupabaseObject {
@@ -51,6 +53,9 @@ export interface SupabaseAuthUser {
   phone: string | null;
   created_at: string | null;
   last_sign_in_at: string | null;
+  email_confirmed_at: string | null;
+  phone_confirmed_at: string | null;
+  is_anonymous: boolean | null;
 }
 
 export interface SupabaseAuthUsersPage {

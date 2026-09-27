@@ -7,6 +7,8 @@ export const NEW_FEATURES = {
   "baas.supabase.database": "0.7.0",
   "baas.supabase.storage-upload": "0.7.0",
   "baas.supabase.storage-details": "0.7.0",
+  "baas.supabase.function-details": "0.7.0",
+  "baas.supabase.auth-details": "0.7.0",
   "baas.appwrite": "0.7.0",
   "baas.appwrite.storage-upload": "0.7.0",
   "baas.appwrite.storage-details": "0.7.0",
