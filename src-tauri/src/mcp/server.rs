@@ -30,7 +30,8 @@ pub(super) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Bigquery,
     DatabaseKind::Snowflake,
 ];
-const NOSQL_KINDS: &[DatabaseKind] = &[DatabaseKind::Mongodb, DatabaseKind::Redis];
+const NOSQL_KINDS: &[DatabaseKind] =
+    &[DatabaseKind::Mongodb, DatabaseKind::Redis, DatabaseKind::S3];
 
 pub(super) struct Server {
     pub(super) pool: PoolState,
@@ -489,6 +490,7 @@ fn http_read_only(kind: DatabaseKind, sql: &str) -> Option<bool> {
     match kind {
         DatabaseKind::Elasticsearch => db::elasticsearch::read_only_request(sql),
         DatabaseKind::Influxdb => db::influxdb::read_only_statement(sql),
+        DatabaseKind::S3 => Some(true),
         _ => None,
     }
 }

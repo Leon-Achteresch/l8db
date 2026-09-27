@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
-import { PROJECT_PATH } from "@/lib/versioning/model";
+import { providerForKind } from "@/lib/providers";
+import { deployable, isVersioningKind, PROJECT_PATH } from "@/lib/versioning/model";
 import { useVersioningPanel } from "@/lib/versioning/panel";
 import { encode, saveFile } from "@/lib/versioning/repository";
 import { changedFiles } from "@/lib/versioning/status";
@@ -53,9 +54,11 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
     workspace.targets?.targets.length &&
       workspace.targets.targets.every((target) => Boolean(target.release)),
   );
+  const deploys = deployable(project?.kind);
+  const committed = Boolean(status?.head) && count === 0;
   const create = async () => {
-    if (!name.trim() || !connection || !["postgres", "oracle"].includes(connection.kind))
-      throw new Error("Projektname und eine PostgreSQL- oder Oracle-Verbindung auswählen.");
+    if (!name.trim() || !connection || !isVersioningKind(connection.kind))
+      throw new Error("Projektname und eine SQL-Verbindung auswählen.");
     await saveFile(
       repo,
       PROJECT_PATH,
@@ -131,8 +134,14 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
           />
           <p className="text-xs text-muted-foreground">
             {connection?.name ?? "Verbindung auswählen"} ·{" "}
-            {connection?.kind ?? "PostgreSQL oder Oracle"}
+            {connection ? (providerForKind(connection.kind)?.name ?? connection.kind) : "SQL"}
           </p>
+          {connection && !isVersioningKind(connection.kind) && (
+            <p className="text-xs text-destructive">
+              Git-Versionierung unterstützt PostgreSQL, Oracle, MySQL, SQL Server, SQLite, DuckDB
+              und ClickHouse.
+            </p>
+          )}
           <Button size="sm" onClick={() => void run(create)}>
             Versionierungsprojekt anlegen
           </Button>
@@ -145,7 +154,7 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
               <p title={repo} className="mt-0.5 truncate text-[11px] text-muted-foreground">
                 {repo.split(/[\\/]/).filter(Boolean).at(-1)}{" "}
                 <span className="mx-1 opacity-50">/</span>{" "}
-                {project.kind === "oracle" ? "Oracle" : "PostgreSQL"}
+                {providerForKind(project.kind)?.name ?? project.kind}
               </p>
             </div>
             <VersioningPopover
@@ -245,17 +254,20 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
           <div className="mx-5 mb-3 rounded-xl bg-muted/35 px-3 py-3">
             <p className="text-[11px] font-semibold">Einrichtung</p>
             <div className="mt-2 grid grid-cols-3 gap-1">
-              {[
-                { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
-                { id: "releases", label: "2 · Baseline", done: baselineReady },
-                {
-                  id: "targets",
-                  label: "3 · Kunden",
-                  done: customersReady,
-                },
-              ].map((step) => (
+              {(deploys
+                ? [
+                    { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
+                    { id: "releases", label: "2 · Baseline", done: baselineReady },
+                    { id: "targets", label: "3 · Kunden", done: customersReady },
+                  ]
+                : [
+                    { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
+                    { id: "development", label: "2 · Commit", done: committed },
+                    { id: "activity", label: "3 · Verlauf", done: committed },
+                  ]
+              ).map((step) => (
                 <button
-                  key={step.id}
+                  key={step.label}
                   type="button"
                   disabled={busy || workspace.dirty}
                   onClick={() => setTab(step.id)}
@@ -268,14 +280,18 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
               {!project.objects.length
-                ? "Ein Quellschema aufnehmen. Es werden Definitionen gespeichert, keine Datenzeilen."
-                : !baselineReady
-                  ? "Aus den Definitionen eine Baseline erstellen und committen."
-                  : !workspace.targets?.targets.length
-                    ? "Kunden mit eigener Connection, Datenbank und eigenem Schema zuordnen."
-                    : !customersReady
-                      ? "Für jedes Kundenziel den vorhandenen Stand gegen die Baseline prüfen."
-                      : "Kundenziel wählen, Baseline prüfen und spätere Releases zuerst planen."}
+                ? "Entwicklungsdatenbank verknüpfen, vergleichen und ins Repository übernehmen. Es werden Definitionen gespeichert, keine Datenzeilen."
+                : !deploys
+                  ? committed
+                    ? "Nach Schemaänderungen erneut vergleichen, übernehmen und committen. Releases und Kunden-Deployments gibt es für PostgreSQL und Oracle."
+                    : "Übernommene Definitionen prüfen und committen."
+                  : !baselineReady
+                    ? "Aus den Definitionen eine Baseline erstellen und committen."
+                    : !workspace.targets?.targets.length
+                      ? "Kunden mit eigener Connection, Datenbank und eigenem Schema zuordnen."
+                      : !customersReady
+                        ? "Für jedes Kundenziel den vorhandenen Stand gegen die Baseline prüfen."
+                        : "Kundenziel wählen, Baseline prüfen und spätere Releases zuerst planen."}
             </p>
           </div>
           <Tabs
@@ -300,22 +316,24 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
                 { id: "releases", label: "Releases", icon: TagIcon },
                 { id: "targets", label: "Datenbanken", icon: ServerIcon },
                 { id: "activity", label: "Aktivität", icon: HistoryIcon },
-              ].map(({ id, label, icon: Icon, count: badge }) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  disabled={busy}
-                  className="relative h-10 flex-none gap-1.5 rounded-none border-0 px-2.5 text-xs shadow-none data-[state=active]:text-foreground data-[state=active]:after:opacity-100 data-[state=active]:after:bg-primary data-[state=inactive]:text-muted-foreground"
-                >
-                  <Icon className="size-3.5" />
-                  {label}
-                  {Boolean(badge) && (
-                    <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
-                      {badge}
-                    </span>
-                  )}
-                </TabsTrigger>
-              ))}
+              ]
+                .filter(({ id }) => deploys || (id !== "releases" && id !== "targets"))
+                .map(({ id, label, icon: Icon, count: badge }) => (
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    disabled={busy}
+                    className="relative h-10 flex-none gap-1.5 rounded-none border-0 px-2.5 text-xs shadow-none data-[state=active]:text-foreground data-[state=active]:after:opacity-100 data-[state=active]:after:bg-primary data-[state=inactive]:text-muted-foreground"
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                    {Boolean(badge) && (
+                      <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
+                        {badge}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                ))}
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-4">
               <fieldset disabled={busy} className="min-w-0">

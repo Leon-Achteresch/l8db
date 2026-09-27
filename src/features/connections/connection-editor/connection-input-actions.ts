@@ -86,7 +86,8 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
     if (step === 1 && next.driver_status.available) setStep(2);
   }
 
-  function pasteConnectionString() {
+  function pasteConnectionString(url?: string) {
+    if (url) setValue(url);
     setMode("string");
     setResult({ status: "idle" });
     setStep(2);

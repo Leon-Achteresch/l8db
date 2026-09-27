@@ -120,6 +120,14 @@ pub fn canonical(source: DatabaseKind, data_type: &str, length: Option<i32>) -> 
     {
         return Canonical::TimestampTz;
     }
+    if lower.contains(" unsigned") {
+        match base.as_str() {
+            "smallint" => return Canonical::Int,
+            "mediumint" | "int" | "integer" => return Canonical::BigInt,
+            "bigint" => return Canonical::Decimal(Some((20, 0))),
+            _ => {}
+        }
+    }
     match base.as_str() {
         "smallint" | "int2" | "tinyint" | "smallserial" | "int8_t" | "int16" | "uint8"
         | "utinyint" | "usmallint" => Canonical::SmallInt,
@@ -434,7 +442,7 @@ pub fn create_index_sql(
     )
 }
 
-async fn primary_key(
+pub(super) async fn primary_key(
     adapter: &dyn DatabaseAdapter,
     schema: &str,
     table: &str,
@@ -807,7 +815,11 @@ mod tests {
         assert_eq!(canonical(pg, "integer[]", None), Text);
         let my = DatabaseKind::Mysql;
         assert_eq!(canonical(my, "tinyint(1)", None), Bool);
-        assert_eq!(canonical(my, "int unsigned", None), Int);
+        assert_eq!(canonical(my, "int unsigned", None), BigInt);
+        assert_eq!(
+            canonical(my, "bigint unsigned", None),
+            Decimal(Some((20, 0)))
+        );
         assert_eq!(canonical(my, "varchar(255)", None), Varchar(Some(255)));
         assert_eq!(canonical(my, "datetime(6)", None), Timestamp);
         let ms = DatabaseKind::Mssql;

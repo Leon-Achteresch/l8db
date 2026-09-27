@@ -1,11 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { usePasswordManager } from "@/features/community-extensions/password-manager";
 import { initialSslMode } from "@/lib/connection-defaults";
 import { detectProvider, kindFromUrl } from "@/lib/connection-url";
 import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
 import { oracleTnsNames, type SslMode } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
+import { useExtensionHost } from "@/lib/extensions/react-context";
 import type { MaskRule } from "@/lib/masking";
 import { useProvidersStore } from "@/lib/providers";
 import { loadSecret, withSslModeParam } from "@/lib/secrets";
@@ -25,9 +27,11 @@ export function useConnectionEditor({
 }: Omit<ConnectionEditorProps, "onCancel">) {
   const queryClient = useQueryClient();
   const providers = useProvidersStore((state) => state.providers);
-  const groups = [...new Set(providers.map((entry) => entry.group))];
   const seed = connection ?? template;
   const [name, setName] = useState(connection?.name ?? "");
+  const extensionHost = useExtensionHost();
+  const vault = usePasswordManager();
+  const [storeInVault, setStoreInVault] = useState(connection ? Boolean(connection.vault) : true);
   const [value, setValue] = useState(connection?.connectionString ?? "");
   const [provider, setProvider] = useState(
     seed ? detectProvider(seed.connectionString, seed.kind) : "postgres",
@@ -196,6 +200,7 @@ export function useConnectionEditor({
     environment,
     maskRules,
     tags,
+    vault: vault && storeInVault ? { host: extensionHost, name: vault.name } : null,
     onSaved,
   });
 
@@ -258,7 +263,6 @@ export function useConnectionEditor({
     elapsed,
     extraParams,
     file,
-    groups,
     guided,
     host,
     info,
@@ -312,6 +316,7 @@ export function useConnectionEditor({
     setSshUser,
     setSsl,
     setStep,
+    setStoreInVault,
     setTags,
     setTns,
     setTnsAlias,
@@ -328,7 +333,9 @@ export function useConnectionEditor({
     sshUser,
     ssl,
     step,
+    storeInVault,
     switchMode,
+    vault,
     tags,
     test,
     tns,

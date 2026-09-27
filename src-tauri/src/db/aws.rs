@@ -136,16 +136,20 @@ impl AwsConnection {
             })
     }
 
-    pub async fn client(&self, service: &'static Service) -> Result<AwsClient, String> {
-        let region = self.region()?;
-        let credentials = match &self.source {
+    pub async fn credentials(&self) -> Result<Credentials, String> {
+        Ok(match &self.source {
             CredentialSource::Static(c) => c.clone(),
             CredentialSource::Profile(name) => cached_profile_credentials(name).await?,
             CredentialSource::Default => match env_credentials() {
                 Some(c) => c,
                 None => cached_profile_credentials(&self.profile_name()).await?,
             },
-        };
+        })
+    }
+
+    pub async fn client(&self, service: &'static Service) -> Result<AwsClient, String> {
+        let region = self.region()?;
+        let credentials = self.credentials().await?;
         let endpoint = match &self.endpoint {
             Some(e) => e.clone(),
             None => default_endpoint(service, &region)?,
@@ -305,7 +309,7 @@ pub struct SignRequest<'a> {
     pub amz_date: &'a str,
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub fn hex(bytes: &[u8]) -> String {
     super::hex_blob(bytes)[2..].to_string()
 }
 

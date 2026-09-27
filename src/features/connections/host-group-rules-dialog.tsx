@@ -24,6 +24,7 @@ import {
   useConnectionsStore,
 } from "@/lib/connections";
 import { ENVIRONMENTS } from "@/lib/environments";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 
 interface Props {
   open: boolean;
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
+  const listRef = useListAnimation<HTMLDivElement>();
   const connections = useConnectionsStore((state) => state.connections);
   const [rules, setRules] = useState<HostGroupRule[]>([]);
 
@@ -64,7 +66,7 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
             ohne eigene Umgebung.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+        <div ref={listRef} className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
           {rules.length === 0 && (
             <p className="py-6 text-center text-xs text-muted-foreground">
               Noch keine Regeln. Ohne Regeln wird nach exaktem Server gruppiert.

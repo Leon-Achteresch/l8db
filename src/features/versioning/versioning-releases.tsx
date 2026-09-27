@@ -13,6 +13,7 @@ import { buildCompareApplyPlan } from "@/lib/compare-apply-plan";
 import { cn } from "@/lib/utils";
 import {
   checksum,
+  deployKind,
   parseRelease,
   releasePath,
   releaseTrack,
@@ -98,12 +99,12 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
       throw new Error(
         "Eine Baseline erfasst den bestehenden Stand. SQL erst im nächsten Release hinzufügen.",
       );
-    if (sql.trim()) validateMigration(sql, project.kind);
+    if (sql.trim()) validateMigration(sql, deployKind(project.kind));
     const release: DatabaseRelease = {
       format: 1,
       id,
       projectId: project.id,
-      kind: project.kind,
+      kind: deployKind(project.kind),
       parent: parent || null,
       createdAt: new Date().toISOString(),
       objects,

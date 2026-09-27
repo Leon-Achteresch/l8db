@@ -34,6 +34,7 @@ const CONFIGURED_COMMANDS = new Set([
   "open_proxy_tunnel",
   "csv_import",
   "copy_table_to_connection",
+  "run_transfer",
   "datagen_run",
 ]);
 
@@ -73,6 +74,7 @@ const WRITE_COMMANDS = new Set([
   "execute_in_transaction",
   "copy_schema_table_data",
   "copy_table_to_connection",
+  "run_transfer",
   "execute_object_ddl",
   "execute_schema_object_copy",
   "execute_in_transaction_with_params",
@@ -90,6 +92,20 @@ const WRITE_COMMANDS = new Set([
   "update_row",
   "update_row_in_transaction",
   "update_view_definition",
+  "s3_create_bucket",
+  "s3_delete_bucket",
+  "s3_put_object_text",
+  "s3_create_folder",
+  "s3_delete_objects",
+  "s3_delete_prefix",
+  "s3_copy_objects",
+  "s3_rename_object",
+  "s3_restore_version",
+  "s3_update_object_properties",
+  "s3_put_config",
+  "s3_delete_config",
+  "s3_abort_multipart_upload",
+  "s3_upload",
 ]);
 
 export const READ_ONLY_MESSAGE =

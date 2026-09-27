@@ -1,9 +1,10 @@
 import { createRouter } from "@tanstack/react-router";
+import { RouteErrorView } from "@/features/shell/route-error-view";
 import { useConnectionsStore } from "@/lib/connections";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { routeTree } from "./routeTree.gen";
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({ routeTree, defaultErrorComponent: RouteErrorView });
 
 declare module "@tanstack/react-router" {
   interface Register {

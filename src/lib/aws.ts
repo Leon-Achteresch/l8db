@@ -40,7 +40,7 @@ export const AWS_REGIONS = [
 ];
 
 export function isAwsKind(kind: DatabaseKind): boolean {
-  return kind === "dynamodb" || kind === "athena";
+  return kind === "dynamodb" || kind === "athena" || kind === "s3";
 }
 
 export function awsParam(search: string, key: string): string {
@@ -74,4 +74,9 @@ export function splitAwsSecret(password: string): { secret: string; token: strin
 
 export function joinAwsSecret(secret: string, token: string): string {
   return token.trim() ? `${secret}:${token.trim()}` : secret;
+}
+
+export function endpointFromPlaceholder(placeholder: string): string {
+  const index = placeholder.indexOf("?");
+  return index < 0 ? "" : awsParam(placeholder.slice(index), "endpoint");
 }

@@ -3,18 +3,15 @@ import { ExtensionMarketSection } from "@/features/community-extensions/extensio
 
 export function SettingsExtensionsTab() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold tracking-tight">Erweiterungen</h2>
         <p className="text-xs text-muted-foreground">
-          Community-Plugins, Treibererweiterungen und benutzerdefinierte Skripte verwalten.
+          Erweiterungen installieren, freigeben und einrichten.
         </p>
       </div>
-
-      <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-xs">
-        <ExtensionMarketSection />
-        <CommunityExtensionsSection />
-      </div>
+      <CommunityExtensionsSection />
+      <ExtensionMarketSection />
     </div>
   );
 }

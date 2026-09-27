@@ -351,6 +351,7 @@ pub struct ImportPlan {
     pub columns: Vec<ImportColumnInfo>,
     pub conflict: Option<ConflictPlan>,
     pub identity_insert: bool,
+    pub overriding: bool,
 }
 
 impl ImportPlan {
@@ -475,8 +476,13 @@ impl ImportPlan {
                     oracle_select()
                 ),
                 Dialect::Postgres => format!(
-                    "INSERT INTO {} ({columns}) VALUES {} RETURNING (xmax = 0)",
+                    "INSERT INTO {} ({columns}) {}VALUES {} RETURNING (xmax = 0)",
                     self.target,
+                    if self.overriding {
+                        "OVERRIDING SYSTEM VALUE "
+                    } else {
+                        ""
+                    },
                     values()
                 ),
                 _ => format!(
@@ -750,6 +756,7 @@ pub async fn prepare_plan(
         dialect,
         target: dialect.target(schema, table),
         identity_insert: dialect == Dialect::Mssql && mapped.iter().any(|c| c.is_identity),
+        overriding: false,
         columns: mapped,
         conflict,
     })
@@ -765,8 +772,16 @@ impl PgTx {
         config: &tokio_postgres::Config,
         ssl: super::SslMode,
     ) -> Result<Self, String> {
+        Self::open_with(config, ssl, "BEGIN").await
+    }
+
+    pub async fn open_with(
+        config: &tokio_postgres::Config,
+        ssl: super::SslMode,
+        begin: &str,
+    ) -> Result<Self, String> {
         let client = super::execution::connect_postgres(config, ssl).await?;
-        super::postgres::begin_guarded(&client, "BEGIN", &[super::postgres::STREAM_IDLE_GUARD])
+        super::postgres::begin_guarded(&client, begin, &[super::postgres::STREAM_IDLE_GUARD])
             .await
             .map_err(super::map_pg_err)?;
         Ok(Self { client, ssl })
@@ -1165,6 +1180,21 @@ impl BatchWriter {
         self.session.rollback().await
     }
 
+    pub async fn finish(
+        mut self,
+    ) -> Result<(Counts, Box<dyn TxSession>), (Failure, Box<dyn TxSession>)> {
+        if let Err(failure) = self.flush().await {
+            return Err((failure, self.session));
+        }
+        if self.plan.identity_insert && self.started {
+            let sql = format!("SET IDENTITY_INSERT {} OFF", self.plan.target);
+            if let Err(message) = self.session.execute(&sql).await {
+                return Err((Failure { row: None, message }, self.session));
+            }
+        }
+        Ok((self.counts, self.session))
+    }
+
     pub fn transactional(&self) -> bool {
         self.plan.dialect.transactional()
     }
@@ -1376,6 +1406,7 @@ mod tests {
             columns: vec![column("id", "int"), column("name", "varchar(20)")],
             conflict,
             identity_insert: false,
+            overriding: false,
         }
     }
 

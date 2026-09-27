@@ -55,6 +55,9 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab): unknown {
       params: { schema: tab.schema, table: tab.table },
     });
   }
+  if (tab.kind === "bucket") {
+    return navigate({ to: "/buckets/$bucket", params: { bucket: tab.bucket } });
+  }
   if (tab.kind === "package") {
     return navigate({
       to: "/packages/$schema/$name",
@@ -87,6 +90,7 @@ export function tabLabel(tab: Tab): string {
   if (tab.kind === "trigger") return tab.trigger;
   if (tab.kind === "view-editor") return tab.view;
   if (tab.kind === "alter-table") return tab.table;
+  if (tab.kind === "bucket") return tab.bucket;
   if (tab.kind === "extension-panel") return tab.title;
   if (tab.kind === "tool") return tab.title ?? TOOL_TABS[tab.tool].label;
   return tab.name;

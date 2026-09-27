@@ -1,5 +1,7 @@
 import { ArrowRight, SearchX } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { SEARCH_ITEMS } from "./settings-search-results/search-items";
 
 interface SettingsSearchResultsProps {
@@ -14,6 +16,7 @@ export function SettingsSearchResults({
   onClearQuery,
 }: SettingsSearchResultsProps) {
   const normalized = query.trim().toLowerCase();
+  const seenFeatures = useSeenNewFeatures();
 
   const results = SEARCH_ITEMS.filter((item) => {
     return (
@@ -58,6 +61,9 @@ export function SettingsSearchResults({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{result.title}</span>
+                {hasNewFeatures(`settings.${result.tabId}.${result.id}`, seenFeatures) ? (
+                  <NewBadge />
+                ) : null}
                 <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   {result.tabLabel}
                 </span>

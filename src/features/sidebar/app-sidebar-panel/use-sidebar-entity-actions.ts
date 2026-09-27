@@ -6,6 +6,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { dropTable, getTableDdl, truncateTable } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
+import { quoteIdent } from "@/lib/sql-filter/quote";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import type { EntityConfirmAction } from "./entity-confirm-dialog";
@@ -59,13 +60,21 @@ export function useSidebarEntityActions(type: "table" | "view") {
     }
   };
 
+  const selectSql = (itemSchema: string, itemName: string) => {
+    const kind = activeConnection?.kind;
+    const table = `${itemSchema ? `${quoteIdent(itemSchema, kind)}.` : ""}${quoteIdent(itemName, kind)}`;
+    if (kind === "mssql") return `SELECT TOP (100) * FROM ${table}`;
+    if (kind === "oracle") return `SELECT * FROM ${table} FETCH FIRST 100 ROWS ONLY`;
+    return `SELECT * FROM ${table} LIMIT 100`;
+  };
+
   const handleOpenInEditor = (itemSchema: string, itemName: string) => {
     const id = openQueryTabWithSql(
       caps.query_language === "json"
         ? JSON.stringify({ find: itemName, filter: {} }, null, 2)
         : caps.query_language === "redis"
           ? "SCAN 0 MATCH * COUNT 100"
-          : `SELECT * FROM ${itemSchema}."${itemName}";`,
+          : selectSql(itemSchema, itemName),
     );
     navigate({ to: "/query/$id", params: { id } });
   };

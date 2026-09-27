@@ -114,8 +114,9 @@ function decodeB64(value: string) {
 function fakeKeeper() {
   const records = new Map<
     string,
-    { title: string; notes: string; login: string; password: string }
+    { title: string; notes: string; login: string; password: string; url: string; folder?: string }
   >();
+  const folders = [{ shared_folder_uid: "SF1", name: "Team Datenbanken", folder_type: "Classic" }];
   let next = 1;
   const field = (args: string[], name: string) => {
     const raw = args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) ?? "";
@@ -149,12 +150,14 @@ function fakeKeeper() {
           fields: [
             { type: "login", value: [r.login] },
             { type: "password", value: [r.password] },
+            { type: "url", value: r.url ? [r.url] : [] },
           ],
           custom: [],
           notes: r.notes,
         }),
       };
     }
+    if (command === "list-sf") return { status: 0, stdout: JSON.stringify(folders) };
     if (command === "record-add") {
       const uid = `UID${next++}`;
       records.set(uid, {
@@ -162,16 +165,20 @@ function fakeKeeper() {
         notes: flag(args, "-n"),
         login: field(args, "login"),
         password: field(args, "password"),
+        url: field(args, "url"),
+        ...(args.includes("--folder") ? { folder: flag(args, "--folder") } : {}),
       });
       return { status: 0, stdout: uid };
     }
     if (command === "record-update") {
       const uid = flag(args, "-r");
       records.set(uid, {
+        ...records.get(uid),
         title: flag(args, "-t"),
         notes: flag(args, "-n"),
         login: field(args, "login"),
         password: field(args, "password"),
+        url: field(args, "url"),
       });
       return { status: 0, stdout: "" };
     }
@@ -192,6 +199,13 @@ function fakeBitwarden() {
     }
     expect(rest.slice(-2)).toEqual(["--session", "SESSION"]);
     if (command === "sync") return { status: 0, stdout: "Syncing complete." };
+    if (command === "list" && rest[0] === "organizations")
+      return { status: 0, stdout: JSON.stringify([{ id: "org-1", name: "Firma" }]) };
+    if (command === "list" && rest[0] === "collections")
+      return {
+        status: 0,
+        stdout: JSON.stringify([{ id: "col-1", organizationId: "org-1", name: "Datenbanken" }]),
+      };
     if (command === "list") return { status: 0, stdout: JSON.stringify([...items.values()]) };
     if (command === "create") {
       const id = `bw-${next++}`;
@@ -208,8 +222,13 @@ function fakeBitwarden() {
 }
 
 function fakeOnePassword() {
-  const items = new Map<string, { title: string; values: Record<string, string> }>();
+  const items = new Map<
+    string,
+    { title: string; values: Record<string, string>; url?: string; vault?: string }
+  >();
   let next = 1;
+  const option = (args: string[], name: string) =>
+    args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
   const values = (args: string[]) =>
     Object.fromEntries(
       args
@@ -217,7 +236,15 @@ function fakeOnePassword() {
         .map((arg) => [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)]),
     );
   const cli: Cli = (args) => {
-    const [, command, ...rest] = args;
+    const [group, command, ...rest] = args;
+    if (group === "vault")
+      return {
+        status: 0,
+        stdout: JSON.stringify([
+          { id: "v-team", name: "Team" },
+          { id: "v-private", name: "Private" },
+        ]),
+      };
     if (command === "list")
       return {
         status: 0,
@@ -233,6 +260,7 @@ function fakeOnePassword() {
         stdout: JSON.stringify({
           id: rest[0],
           title: item.title,
+          urls: item.url ? [{ primary: true, href: item.url }] : [],
           fields: Object.entries(item.values).map(([id, value]) => ({
             id,
             value,
@@ -242,11 +270,21 @@ function fakeOnePassword() {
       };
     }
     if (command === "create") {
-      items.set(`op-${next++}`, { title: rest[rest.indexOf("--title") + 1], values: values(rest) });
+      items.set(`op-${next++}`, {
+        title: option(rest, "--title") ?? "",
+        values: values(rest),
+        url: option(rest, "--url"),
+        vault: option(rest, "--vault"),
+      });
       return { status: 0, stdout: "{}" };
     }
     if (command === "edit") {
-      items.set(rest[0], { title: rest[rest.indexOf("--title") + 1], values: values(rest) });
+      items.set(rest[0], {
+        ...items.get(rest[0]),
+        title: option(rest, "--title") ?? "",
+        values: values(rest),
+        url: option(rest, "--url"),
+      });
       return { status: 0, stdout: "{}" };
     }
     return { status: 1, stdout: "", stderr: "unknown" };
@@ -254,23 +292,62 @@ function fakeOnePassword() {
   return { cli, items };
 }
 
-function harness(provider: string, clis: Record<string, Cli>, local: VaultConnection[]) {
-  const handlers = new Map<string, () => Promise<void>>();
+function harness(
+  provider: string,
+  clis: Record<string, Cli>,
+  local: VaultConnection[],
+  options: { autoSync?: boolean } = {},
+) {
+  const handlers = new Map<string, (payload?: Json) => Promise<unknown>>();
   const messages: string[] = [];
   const savedBatches: VaultConnection[][] = [];
+  const removed: string[][] = [];
+  const storage = new Map<string, Json>();
+  const statusBar: { text: string; background?: string }[] = [];
+  const connections = [...local];
   const api = {
     commands: {
-      registerCommand(id: string, handler: () => Promise<void>) {
+      registerCommand(id: string, handler: (payload?: Json) => Promise<unknown>) {
         handlers.set(id, handler);
         return { dispose: () => handlers.delete(id) };
       },
     },
-    configuration: { get: async () => provider },
+    configuration: {
+      get: async (key: string) =>
+        key === "vault.autoSync" ? (options.autoSync ?? false) : provider,
+    },
+    storage: {
+      get: async (key: string) => storage.get(key) ?? null,
+      set: async (key: string, value: Json) => void storage.set(key, value),
+    },
+    statusBar: {
+      set: async (_id: string, update: { text: string }) => void statusBar.push(update),
+    },
+    logger: { info() {}, warn() {}, error() {} },
     connections: {
-      list: async () => local,
+      list: async () => connections,
       save: async (items: VaultConnection[]) => {
         savedBatches.push(items);
-        return { added: items.length, updated: 0, skipped: [] };
+        let added = 0;
+        for (const item of items) {
+          const index = connections.findIndex((entry) => entry.id === item.id);
+          if (index < 0) {
+            connections.push(item);
+            added++;
+          } else connections[index] = item;
+        }
+        return { added, updated: items.length - added, skipped: [] };
+      },
+      remove: async (ids: string[]) => {
+        removed.push(ids);
+        let count = 0;
+        for (const id of ids) {
+          const index = connections.findIndex((entry) => entry.id === id);
+          if (index < 0) continue;
+          connections.splice(index, 1);
+          count++;
+        }
+        return count;
       },
     },
     process: {
@@ -298,7 +375,15 @@ function harness(provider: string, clis: Record<string, Cli>, local: VaultConnec
     { extensionId: "l8db.password-manager", extensionPath: "", storagePath: "", subscriptions: [] },
     api,
   );
-  return { run: (id: string) => handlers.get(id)!(), messages, savedBatches };
+  return {
+    run: (id: string, payload?: Json) => handlers.get(id)!(payload),
+    messages,
+    savedBatches,
+    removed,
+    storage,
+    statusBar,
+    connections,
+  };
 }
 
 const local: VaultConnection[] = [
@@ -330,9 +415,10 @@ describe.each([
     await vault.run("vault.export");
     expect(vault.messages.at(-1)).toContain("0 angelegt, 2 aktualisiert");
     expect(store.size).toBe(2);
-    await vault.run("vault.import");
-    expect(vault.messages.at(-1)).not.toContain("ERROR");
-    const loaded = vault.savedBatches[0].sort((a, b) => a.name.localeCompare(b.name));
+    const fresh = harness(provider, { [binary]: fake.cli }, []);
+    await fresh.run("vault.import");
+    expect(fresh.messages.at(-1)).not.toContain("ERROR");
+    const loaded = fresh.savedBatches[0].sort((a, b) => a.name.localeCompare(b.name));
     const expected = [...local].sort((a, b) => a.name.localeCompare(b.name));
     expect(loaded).toEqual(expected);
     expect(loaded.map((entry) => entry.password)).toEqual(["p=a;ss$w0rd\\n", "s3cr@t pw"]);
@@ -349,8 +435,9 @@ describe.each([
     const store: Map<string, unknown> = "records" in fake ? fake.records : fake.items;
     const [first] = [...store.values()];
     store.set("duplicate", structuredClone(first));
-    await vault.run("vault.import");
-    expect(vault.savedBatches[0].map((entry) => entry.id)).toEqual([local[0].id]);
+    const fresh = harness(provider, { [binary]: fake.cli }, []);
+    await fresh.run("vault.import");
+    expect(fresh.savedBatches[0].map((entry) => entry.id)).toEqual([local[0].id]);
   });
 
   test("reports CLI failures instead of throwing", async () => {
@@ -364,7 +451,155 @@ describe.each([
   });
 });
 
-test("host saves into the connection store and keychain and lists them back", async () => {
+describe.each([
+  ["keeper", () => fakeKeeper(), "keeper"],
+  ["bitwarden", () => fakeBitwarden(), "bw"],
+  ["1password", () => fakeOnePassword(), "op"],
+] as const)("%s as connection store", (provider, create, binary) => {
+  const entries = (fake: ReturnType<typeof create>) =>
+    [...("records" in fake ? fake.records : fake.items).values()] as Record<string, unknown>[];
+
+  test("saves into the personal vault without asking for a target", async () => {
+    const fake = create();
+    const own = harness(provider, { [binary]: fake.cli }, [local[0]]);
+    await own.run("vault.save", { id: local[0].id });
+    const [entry] = entries(fake);
+    expect(entry.folder ?? entry.vault ?? entry.collectionIds ?? entry.organizationId).toBe(
+      undefined,
+    );
+    const url = entry.url ?? (entry.login as { uris: { uri: string }[] } | undefined)?.uris[0]?.uri;
+    expect(url).toBe(local[0].connectionString);
+    own.connections[0] = { ...local[0], name: "Prod umbenannt" };
+    await own.run("vault.save", { id: local[0].id });
+    expect(entries(fake)).toHaveLength(1);
+    expect(entries(fake)[0].title ?? entries(fake)[0].name).toBe("l8db: Prod umbenannt");
+    await expect(own.run("vault.save", { id: "missing" })).rejects.toThrow("nicht gespeichert");
+  });
+
+  test("removing a vault connection only hides it and never touches the vault", async () => {
+    const fake = create();
+    const admin = harness(provider, { [binary]: fake.cli }, local);
+    await admin.run("vault.export");
+    const user = harness(provider, { [binary]: fake.cli }, []);
+    expect(await user.run("vault.sync", { quiet: true })).toMatchObject({ total: 2, added: 2 });
+    user.connections.splice(0, 1);
+    const hidden = (await user.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(hidden).toMatchObject({ total: 1, added: 0, hidden: 1, removed: 0 });
+    expect(user.connections).toHaveLength(1);
+    expect(entries(fake)).toHaveLength(2);
+    await user.run("vault.import");
+    expect(user.connections).toHaveLength(2);
+    expect(await user.run("vault.sync", { quiet: true })).toMatchObject({ total: 2, hidden: 0 });
+  });
+
+  test("a connection saved from l8db and removed right away stays hidden", async () => {
+    const fake = create();
+    const own = harness(provider, { [binary]: fake.cli }, [local[0]]);
+    await own.run("vault.sync", { quiet: true });
+    await own.run("vault.save", { id: local[0].id });
+    own.connections.splice(0, 1);
+    expect(await own.run("vault.sync", { quiet: true })).toMatchObject({ total: 0, hidden: 1 });
+    expect(own.connections).toHaveLength(0);
+  });
+
+  test("employees receive shared connections on startup and lose revoked ones", async () => {
+    const fake = create();
+    const admin = harness(provider, { [binary]: fake.cli }, local);
+    await admin.run("vault.export");
+    const employee = harness(provider, { [binary]: fake.cli }, [], { autoSync: true });
+    const first = (await employee.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(first).toMatchObject({ total: 2, added: 2, removed: 0 });
+    expect(employee.connections.map((entry) => entry.password).sort()).toEqual([
+      "p=a;ss$w0rd\\n",
+      "s3cr@t pw",
+    ]);
+    const store: Map<string, unknown> = "records" in fake ? fake.records : fake.items;
+    store.delete([...store.keys()][0]);
+    const second = (await employee.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(second).toMatchObject({ total: 1, added: 0, removed: 1 });
+    expect(employee.connections).toHaveLength(1);
+    expect(employee.statusBar.at(-1)?.text).toContain("1 Zugang");
+    const own = harness(provider, { [binary]: fake.cli }, local);
+    await own.run("vault.sync", { quiet: true });
+    store.clear();
+    const kept = (await own.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(kept.removed).toBe(0);
+    expect(own.connections).toHaveLength(2);
+  });
+});
+
+test("reads entries typed by hand into the password manager", () => {
+  const typed = extension.readEntry("bitwarden", {
+    ref: "abc",
+    title: "L8DB: Buchhaltung",
+    username: "buchhaltung",
+    password: "geheim",
+    urls: ["https://intranet.example.com", "postgresql://db.firma.local:5432/finanzen"],
+  });
+  expect(typed).toEqual({
+    id: "pm-bitwarden-abc",
+    name: "Buchhaltung",
+    kind: "postgres",
+    connectionString: "postgresql://buchhaltung@db.firma.local:5432/finanzen",
+    password: "geheim",
+    profile: {
+      id: "pm-bitwarden-abc",
+      name: "Buchhaltung",
+      kind: "postgres",
+      connectionString: "postgresql://buchhaltung@db.firma.local:5432/finanzen",
+    },
+  });
+  const merged = mergeVaultConnections([typed!], []);
+  expect(merged.added[0].connectionString).toBe(
+    "postgresql://buchhaltung:geheim@db.firma.local:5432/finanzen",
+  );
+  expect(
+    extension.readEntry("keeper", {
+      ref: "r",
+      title: "l8db: Cache",
+      urls: ["redis://:pw%40x@cache:6379"],
+    })?.password,
+  ).toBe("pw@x");
+  expect(
+    extension.readEntry("keeper", { ref: "r", title: "l8db: Web", urls: ["https://x.de"] }),
+  ).toBeNull();
+});
+
+test("edits made in the password manager win over the stored profile", () => {
+  const notes = extension.toNotes(local[0]);
+  const edited = extension.readEntry("keeper", {
+    ref: "r",
+    title: "l8db: Prod (neu)",
+    notes,
+    username: "reader",
+    password: "rotated",
+    urls: ["postgres://app@db2.example.com:5432/prod"],
+  });
+  expect(edited).toMatchObject({
+    id: saved.id,
+    name: "Prod (neu)",
+    connectionString: "postgres://reader@db2.example.com:5432/prod",
+    password: "rotated",
+    profile: { tags: saved.tags, name: "Prod (neu)" },
+  });
+});
+
+test("the host removes connections together with their secrets", async () => {
+  const { createExtensionHost } = await import("../src/lib/extensions/host");
+  const { useConnectionsStore } = await import("../src/lib/connections");
+  const core = (
+    createExtensionHost().manager as unknown as {
+      core: import("../src/lib/extensions/contracts").CoreServices;
+    }
+  ).core;
+  useConnectionsStore.setState({
+    connections: [saved, { ...saved, id: "tmp", temporary: true }],
+  });
+  expect(await core.removeConnections([saved.id, "tmp", "unknown", saved.id])).toBe(1);
+  expect(useConnectionsStore.getState().connections.map((entry) => entry.id)).toEqual(["tmp"]);
+});
+
+test("host keeps vault passwords out of the keychain and lists them back", async () => {
   const { createExtensionHost } = await import("../src/lib/extensions/host");
   const { useConnectionsStore } = await import("../src/lib/connections");
   const core = (
@@ -384,8 +619,9 @@ test("host saves into the connection store and keychain and lists them back", as
   expect(connections).toHaveLength(2);
   expect(connections[0].readOnly).toBe(true);
   expect(connections[0].connectionString).toContain("app:rotated@");
-  expect(keychain.get(saved.id)).toBe("rotated");
-  expect(keychain.get(local[1].id)).toBe("new-secret");
+  expect(connections.every((entry) => entry.vault)).toBe(true);
+  expect(keychain.has(saved.id)).toBe(false);
+  expect(keychain.has(local[1].id)).toBe(false);
   expect(
     JSON.parse(storage.get("l8db.connections") ?? "{}").state.connections[0].connectionString,
   ).not.toContain("rotated");
@@ -409,7 +645,6 @@ describe("CLI installation", () => {
     >,
   ) {
     const calls: string[] = [];
-    const trees: unknown[][] = [];
     const api = {
       process: {
         run: async (command: string, options: ProcessOptions = {}) => {
@@ -419,9 +654,8 @@ describe("CLI installation", () => {
           return { stdout: "", stderr: "", ...handler(options.args ?? []) };
         },
       },
-      views: { setTreeData: async (_id: string, items: unknown[]) => void trees.push(items) },
     } as unknown as L8dbApi;
-    return { api, calls, trees };
+    return { api, calls };
   }
 
   test("falls back to the next package manager and verifies the binary", async () => {
@@ -435,7 +669,7 @@ describe("CLI installation", () => {
       keeper: () =>
         installed ? { status: 0, stdout: "Commander Version: 17.1.0" } : { status: 1 },
     });
-    expect(await extension.installCli(api, "keeper")).toBe("Commander Version: 17.1.0");
+    expect(await extension.installCli(api, "keeper")).toBe("17.1.0");
     expect(calls).toEqual([
       "pipx install keepercommander",
       "python3 -m pip install --user keepercommander",
@@ -454,38 +688,276 @@ describe("CLI installation", () => {
     await expect(extension.installCli(api, "1password")).rejects.toThrow("developer.1password.com");
     expect(calls.map((call) => call.split(" ")[0])).toEqual(["brew", "winget", "sh"]);
   });
+});
 
-  test("the sidebar offers an install button only for missing CLIs", async () => {
-    const { api, trees } = installApi({ bw: () => ({ status: 0, stdout: "2026.9.0" }) });
-    const handlers = new Map<string, (payload?: unknown) => Promise<unknown>>();
-    Object.assign(api, {
-      commands: {
-        registerCommand: (id: string, handler: (payload?: unknown) => Promise<unknown>) => (
-          handlers.set(id, handler), { dispose() {} }
-        ),
+describe("vault setup", () => {
+  const api = (clis: Record<string, Cli>, calls: string[][] = []) =>
+    ({
+      process: {
+        run: async (command: string, options: ProcessOptions = {}) => {
+          calls.push([command, ...(options.args ?? [])]);
+          const cli = clis[command];
+          if (!cli) throw new Error(`not allowed: ${command}`);
+          return { stderr: "", ...cli(options.args ?? [], options.env) };
+        },
       },
-      configuration: { get: async () => "keeper" },
-      window: {
-        showErrorMessage: async () => undefined,
-        showInformationMessage: async () => undefined,
-      },
-    });
-    extension.activate(
-      { extensionId: "x", extensionPath: "", storagePath: "", subscriptions: [] },
-      api,
+    }) as unknown as L8dbApi;
+  const version = { status: 0, stdout: "1.0.0" };
+
+  test("bitwarden asks for a two-step code, then signs in and keeps the session", async () => {
+    let state = "unauthenticated";
+    const calls: string[][] = [];
+    const bw: Cli = (args, env) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "status")
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            status: args.includes("SESSION") && state === "unlocked" ? "unlocked" : state,
+            userEmail: state === "unauthenticated" ? null : "me@example.com",
+          }),
+        };
+      if (args[0] === "config") return { status: 0, stdout: "Saved setting `config`." };
+      if (args[0] === "login") {
+        expect(env?.L8DB_BW_PASSWORD).toBe("master");
+        if (!args.includes("--code")) return { status: 1, stdout: "Code is required." };
+        state = "unlocked";
+        return { status: 0, stdout: "SESSION\n" };
+      }
+      if (args[0] === "sync") return { status: 0, stdout: "Syncing complete." };
+      return { status: 1, stdout: "", stderr: "unknown" };
+    };
+    const auth = { bw: null, op: null };
+    const input = {
+      action: "login",
+      provider: "bitwarden",
+      email: "me@example.com",
+      password: "master",
+      server: "https://vault.bitwarden.eu",
+    };
+    const first = await extension.vaultSetup(api({ bw }, calls), auth, input, "keeper");
+    expect(first).toMatchObject({ state: "signed-out", needs: "code" });
+    expect(calls).toContainEqual(["bw", "config", "server", "https://vault.bitwarden.eu"]);
+    const second = await extension.vaultSetup(
+      api({ bw }, calls),
+      auth,
+      { ...input, code: "123456", method: "0" },
+      "keeper",
     );
-    await handlers.get("vault.refresh")?.();
-    const tree = trees.at(-1) as {
-      id: string;
-      description?: string;
-      command?: string;
-      commandArguments?: string;
-    }[];
-    expect(tree.find((item) => item.id === "bitwarden")).toMatchObject({ description: "2026.9.0" });
-    expect(tree.find((item) => item.id === "bitwarden")?.command).toBeUndefined();
-    expect(tree.find((item) => item.id === "keeper")).toMatchObject({
-      command: "vault.install",
-      commandArguments: "keeper",
+    expect(second).toMatchObject({ state: "signed-in", account: "me@example.com", cli: "1.0.0" });
+    expect(second.needs).toBeUndefined();
+    expect(auth.bw).toBe("SESSION");
+    expect(calls).toContainEqual(["bw", "sync", "--session", "SESSION"]);
+  });
+
+  test("bitwarden unlocks a logged-in vault with the master password only", async () => {
+    let unlocked = false;
+    const bw: Cli = (args, env) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "status")
+        return { status: 0, stdout: JSON.stringify({ status: unlocked ? "unlocked" : "locked" }) };
+      if (args[0] === "login") throw new Error("must not log in again");
+      if (args[0] === "unlock") {
+        expect(env?.L8DB_BW_PASSWORD).toBe("master");
+        unlocked = true;
+        return { status: 0, stdout: "S2" };
+      }
+      return { status: 0, stdout: "" };
+    };
+    const auth = { bw: null, op: null };
+    const status = await extension.vaultSetup(
+      api({ bw }),
+      auth,
+      { action: "login", password: "master" },
+      "bitwarden",
+    );
+    expect(status.state).toBe("signed-in");
+    expect(auth.bw).toBe("S2");
+  });
+
+  test("keeper walks through device approval and 2FA in the app", async () => {
+    const esc = String.fromCharCode(27);
+    const device = `${esc}[33mDevice Approval Required${esc}[39m\n  1. Email\n\nSelection (or Enter to check status): `;
+    const factor =
+      "Two-Factor Authentication Required\n  1. TOTP (Google and Microsoft Authenticator)\n  2. Send SMS Code  +49 1\n  q. Cancel login\n\nSelection: ";
+    const replies: Record<string, string | null> = {
+      "": device,
+      "1\n":
+        "Email sent to me@example.com\nWaiting for device approval.\nSelection (or Enter to check status): ",
+      "\n": "Waiting for device approval.\nSelection (or Enter to check status): ",
+      "\n\n": factor,
+      "2\n": "SMS sent successfully.\n2FA Code Duration: Require Every Login.\n\nEnter 2FA Code: ",
+      "123456\n": null,
+    };
+    let loggedIn = false;
+    let pending: string | null = replies[""];
+    let history = "";
+    const writes: string[] = [];
+    const started: { command: string; options: ProcessOptions }[] = [];
+    const calls: string[][] = [];
+    const keeper: Cli = (args) => {
+      if (args[0] === "--version") return { status: 0, stdout: "Keeper Commander, version 17.0" };
+      if (args.includes("login-status"))
+        return { status: 0, stdout: loggedIn ? "Logged in\n" : "Not logged in\n" };
+      if (args.includes("whoami"))
+        return { status: 0, stdout: JSON.stringify({ user: "me@example.com", data_center: "EU" }) };
+      return { status: 0, stdout: "" };
+    };
+    const base = api({ keeper }, calls);
+    const session = {
+      id: 1,
+      write: async (data: string) => {
+        writes.push(data);
+        history = data === "\n" && history === "\n" ? "\n\n" : data;
+        pending = replies[history] ?? null;
+        if (history === "123456\n") loggedIn = true;
+      },
+      read: async () => {
+        const output = pending ?? "";
+        const exited = pending === null;
+        pending = "";
+        return { output, exited, status: exited ? 0 : null };
+      },
+      stop: async () => undefined,
+    };
+    const client = {
+      process: {
+        ...base.process,
+        start: async (command: string, options: ProcessOptions) => {
+          started.push({ command, options });
+          return session;
+        },
+      },
+    } as unknown as L8dbApi;
+    const auth = { bw: null, op: null };
+    const step = (request: Record<string, string>) =>
+      extension.vaultSetup(client, auth, request, "keeper");
+
+    const first = await step({
+      action: "login",
+      email: "me@example.com",
+      password: "pw",
+      server: "EU",
     });
+    expect(first).toMatchObject({ state: "signed-out", needs: "device" });
+    expect(started[0].command).toBe("keeper");
+    expect(started[0].options.args?.slice(-3)).toEqual(["this-device", "persistent-login", "on"]);
+    expect(started[0].options.env?.KEEPER_PASSWORD).toBe("pw");
+    expect(await step({ action: "answer", method: "email" })).toMatchObject({ needs: "device" });
+    expect(await step({ action: "answer", method: "resume" })).toMatchObject({
+      needs: "device",
+      detail: "Das Gerät ist noch nicht freigegeben.",
+    });
+    const channels = await step({ action: "answer", method: "resume" });
+    expect(channels.needs).toBe("2fa");
+    expect(channels.channels).toEqual([
+      { id: "1", label: "Authenticator-App" },
+      { id: "2", label: "SMS  +49 1" },
+    ]);
+    expect(await step({ action: "answer", channel: "2" })).toMatchObject({ needs: "code" });
+    await expect(step({ action: "answer", code: " " })).rejects.toThrow("Code ein");
+    const done = await step({ action: "answer", code: " 123 456\n" });
+    expect(done).toMatchObject({ state: "signed-in", account: "me@example.com" });
+    expect(done.needs).toBeUndefined();
+    expect(writes).toEqual(["1\n", "\n", "\n", "2\n", "123456\n"]);
+    expect(calls.some((call) => call.join(" ").endsWith("this-device timeout 30d"))).toBe(true);
+    await expect(step({ action: "answer", code: "1" })).rejects.toThrow("abgelaufen");
+  });
+
+  test("keeper rejects a wrong password and hands unknown prompts to the terminal", async () => {
+    const keeper: Cli = (args) =>
+      args[0] === "--version" ? version : { status: 0, stdout: "Not logged in" };
+    const login = async (text: string) => {
+      let stopped = false;
+      let output = text;
+      const client = {
+        process: {
+          ...api({ keeper }).process,
+          start: async () => ({
+            id: 1,
+            write: async () => undefined,
+            read: async () => {
+              const chunk = { output, exited: false, status: null };
+              output = "";
+              return chunk;
+            },
+            stop: async () => {
+              stopped = true;
+            },
+          }),
+        },
+      } as unknown as L8dbApi;
+      const result = extension.vaultSetup(
+        client,
+        { bw: null, op: null },
+        { action: "login", email: "me@example.com", password: "pw" },
+        "keeper",
+      );
+      return { result, stopped: () => stopped };
+    };
+    const wrong = await login("Invalid email or password\nPassword: ");
+    await expect(wrong.result).rejects.toThrow("Master-Passwort abgelehnt");
+    expect(wrong.stopped()).toBe(true);
+    const sso = await login("SSO Login URL:\nhttps://sso\n\nSelection: ");
+    expect(await sso.result).toMatchObject({ needs: "terminal" });
+    expect(sso.stopped()).toBe(true);
+  });
+
+  test("1password explains the app integration when no account is known", async () => {
+    const empty: Cli = (args) => (args[0] === "--version" ? version : { status: 0, stdout: "[]" });
+    await expect(
+      extension.vaultSetup(
+        api({ op: empty }),
+        { bw: null, op: null },
+        { action: "login" },
+        "1password",
+      ),
+    ).rejects.toThrow("Mit 1Password CLI integrieren");
+    const auth = { bw: null, op: null };
+    let authorized = false;
+    const op: Cli = (args) => {
+      if (args[0] === "--version") return version;
+      if (args[0] === "account")
+        return {
+          status: 0,
+          stdout: JSON.stringify([
+            { account_uuid: "A1", email: "me@example.com", url: "my.1password.eu" },
+          ]),
+        };
+      if (args[0] === "whoami")
+        return authorized
+          ? {
+              status: 0,
+              stdout: JSON.stringify({ email: "me@example.com", url: "my.1password.eu" }),
+            }
+          : { status: 1, stdout: "", stderr: "account is not signed in" };
+      if (args[0] === "vault") {
+        authorized = true;
+        return { status: 0, stdout: "[]" };
+      }
+      return { status: 1, stdout: "", stderr: "unknown" };
+    };
+    const before = await extension.vaultSetup(api({ op }), auth, {}, "1password");
+    expect(before).toMatchObject({ state: "locked", accounts: [{ id: "A1" }] });
+    const after = await extension.vaultSetup(
+      api({ op }),
+      auth,
+      { action: "login", account: "A1" },
+      "1password",
+    );
+    expect(after).toMatchObject({ state: "signed-in", account: "me@example.com" });
+    expect(auth.op).toBe("A1");
+  });
+
+  test("reports a missing CLI without probing the account", async () => {
+    const calls: string[][] = [];
+    const status = await extension.vaultSetup(
+      api({}, calls),
+      { bw: null, op: null },
+      {},
+      "bitwarden",
+    );
+    expect(status).toEqual({ provider: "bitwarden", cli: null, state: "signed-out" });
+    expect(calls).toEqual([["bw", "--version"]]);
   });
 });

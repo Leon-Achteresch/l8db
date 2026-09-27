@@ -39,6 +39,11 @@ Use Bun 1.3.10 and commit `bun.lock`; do not add an npm lockfile.
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
 
+## NEW badges for features
+
+- Register every new user-facing feature in `NEW_FEATURES` in `src/lib/new-features.ts` with a stable hierarchical ID for its navigation path and the app version that introduces it.
+- Attach the feature ID to its actual UI element with `SettingsRow.featureId` or `useNewFeatureVisibility()`. Navigation badges derive from the ID; navigation alone must not mark the feature as seen. See `docs/new-feature-badges.md`.
+
 ## Frontend → Backend Bridge
 
 All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitions mirroring Rust structs live there — keep them in sync when changing Tauri commands.
@@ -55,6 +60,7 @@ All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitio
 - SSH tunnels (`src-tauri/src/db/ssh/`, `russh`): local port-forward per connection id; frontend opens the tunnel on activation/test and talks to `127.0.0.1:<port>` via `effectiveConnectionString()` (`src/lib/ssh/`). Auth: password, key or agent; optional ProxyJump chain and SOCKS5/HTTP proxy; proxy-only connections use the same local-port model (`open_proxy_tunnel`, `usesTunnel()`). Never add a direct-connect fallback — a failed tunnel must fail loudly. See `docs/ssh-network.md`.
 - Secrets live in the OS keychain (`store_secret`/`load_secret`/`delete_secret`); `connectionString` in the store is the *direct* URL, `tunnelPort` is memory-only, `effectiveConnectionString()` resolves the usable URL. All `invoke()` call sites must use the effective URL.
 - `fetch_table_rows` defaults to 100 rows. Simple (builder-generated) filters are validated server-side (`validate_table_filter`: string literals are stripped, then `; -- /* */ UNION RETURNING INTO` are rejected); explicit raw SQL sets `allow_raw=true` (`fetch_table_rows`/`count_table_rows`, threaded from the SQL filter modes via `filterRaw`/`fkRaw`).
+- Object storage: the `s3` family (`src-tauri/src/db/s3/`) sets the `object_storage` capability. Its UI lives in `src/features/storage/` and talks to dedicated `s3_*` commands (`src/lib/db/storage.ts`); the generic adapter only maps buckets to tables for SQL/MCP. MinIO lab: `scripts/minio-lab.sh` (see `docs/providers.md`).
 - `smoke_adapters_from_env` (ignored) exercises every adapter whose `L8DB_SMOKE_<KIND>_URL` env var is set (see `docs/providers.md`).
 - Ignored Rust tests under `#[ignore]` need a local lab: Postgres 18 on `127.0.0.1:5433` (`postgres`/`testpw`, db `testdb`, `wal_level=logical`; override via `L8DB_E2E_PG_URL`) plus OpenSSH on `127.0.0.1:2222` (root login, provider hostname `l8db-pg`; overrides `L8DB_E2E_SSH_HOST`/`_PORT`, client key via `L8DB_E2E_KEY_FILE`, isolated known_hosts via `L8DB_KNOWN_HOSTS`). Subscription tests create a `testsub` database and clean up after themselves; `connect=false` keeps CREATE SUBSCRIPTION deterministic (no worker timing).
 

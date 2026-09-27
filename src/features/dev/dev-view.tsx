@@ -4,6 +4,9 @@ import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { ConnectionSelectLab } from "./connection-select-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
+import { FontLab } from "./font-lab";
+import { ProviderPickerLab } from "./provider-picker-lab";
+import { SettingsDesignLab } from "./settings-design-lab";
 import { TabPreview } from "./tab-preview";
 
 const variants = [
@@ -61,6 +64,15 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="connection-select" className="flex-none px-4">
               Connection-Select
+            </TabsTrigger>
+            <TabsTrigger value="fonts" className="flex-none px-4">
+              Schriften
+            </TabsTrigger>
+            <TabsTrigger value="provider-picker" className="flex-none px-4">
+              Datenbank-Auswahl
+            </TabsTrigger>
+            <TabsTrigger value="settings-design" className="flex-none px-4">
+              Einstellungen
             </TabsTrigger>
           </TabsList>
         </div>
@@ -158,6 +170,15 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="connection-select">
           <ConnectionSelectLab />
+        </TabsContent>
+        <TabsContent value="fonts">
+          <FontLab />
+        </TabsContent>
+        <TabsContent value="provider-picker">
+          <ProviderPickerLab />
+        </TabsContent>
+        <TabsContent value="settings-design">
+          <SettingsDesignLab />
         </TabsContent>
       </Tabs>
     </main>

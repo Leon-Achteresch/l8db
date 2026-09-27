@@ -35,10 +35,13 @@ export function DeleteConnectionDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Verbindung entfernen?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {deleting?.vault ? "Verbindung ausblenden?" : "Verbindung entfernen?"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            „{deleting?.name}“ und die gespeicherten Zugangsdaten werden aus l8db entfernt. Die
-            Datenbank selbst bleibt erhalten.
+            {deleting?.vault
+              ? `„${deleting.name}“ wird in l8db ausgeblendet. Der Eintrag im Passwortmanager bleibt unverändert und lässt sich über „Ausgeblendete einblenden“ zurückholen.`
+              : `„${deleting?.name}“ und die gespeicherten Zugangsdaten werden aus l8db entfernt. Die Datenbank selbst bleibt erhalten.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -54,12 +57,12 @@ export function DeleteConnectionDialog({
                 useTableTabs.getState().clearTabsForConnection(deleteId);
                 if (editorId === deleteId || !useConnectionsStore.getState().connections.length)
                   setEditorId(null);
-                toast.success("Verbindung entfernt");
+                toast.success(deleting?.vault ? "Verbindung ausgeblendet" : "Verbindung entfernt");
                 setDeleteId(null);
               }
             }}
           >
-            Entfernen
+            {deleting?.vault ? "Ausblenden" : "Entfernen"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

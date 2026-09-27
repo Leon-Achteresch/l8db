@@ -8,7 +8,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { gridCellText } from "@/lib/grid-search";
-import { loadSecret, storeSecret } from "@/lib/secrets";
+import { loadSecret, rememberSecret } from "@/lib/secrets";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
@@ -16,6 +16,7 @@ import type {
   DatabaseInfo,
   FetchOptions,
   ProcessOptions,
+  ProcessOutput,
   ProcessResult,
   PromptKind,
   PromptRequest,
@@ -164,6 +165,30 @@ export function createExtensionHost() {
         throw new ExtensionError("ProcessError", String(error));
       }
     },
+    async startProcess(request) {
+      try {
+        return await tauriInvoke<number>("extension_process_start", request);
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async writeProcess(id, data) {
+      try {
+        await tauriInvoke("extension_process_write", { id, data });
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async readProcess(id, timeoutMs) {
+      try {
+        return await tauriInvoke<ProcessOutput>("extension_process_read", { id, timeoutMs });
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async stopProcess(id) {
+      await tauriInvoke("extension_process_stop", { id }).catch(() => undefined);
+    },
     prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>> {
       return useExtensionPrompts.getState().request(request);
     },
@@ -178,7 +203,8 @@ export function createExtensionHost() {
     async saveConnections(items) {
       const store = useConnectionsStore.getState();
       const merge = mergeVaultConnections(items, store.connections);
-      for (const [id, password] of merge.passwords) await storeSecret(id, password);
+      for (const [id, password] of merge.passwords)
+        await rememberSecret(id, password).catch(() => undefined);
       const updated = new Map(merge.updated.map((connection) => [connection.id, connection]));
       useConnectionsStore.setState((state) => ({
         connections: state.connections.map(
@@ -187,6 +213,15 @@ export function createExtensionHost() {
       }));
       store.addImported(merge.added);
       return { added: merge.added.length, updated: merge.updated.length, skipped: merge.skipped };
+    },
+    async removeConnections(ids) {
+      const store = useConnectionsStore.getState();
+      const known = new Set(
+        store.connections.filter((connection) => !connection.temporary).map((c) => c.id),
+      );
+      const targets = [...new Set(ids)].filter((id) => known.has(id));
+      for (const id of targets) store.removeConnection(id);
+      return targets.length;
     },
   };
   const manager = new ExtensionManager(

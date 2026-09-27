@@ -44,6 +44,7 @@ export async function run() {
     prompt: (async (request: { kind: string; items?: { picked?: boolean }[] }) => request.kind === "quickPick" ? request.items!.map((_, index) => index) : request.kind === "inputBox" ? "master" : undefined) as never,
     listConnections: async () => [localConnection],
     saveConnections: async (items: VaultConnection[]) => { savedConnections.push(items); return { added: items.length, updated: 0, skipped: [] } },
+    removeConnections: async (ids: string[]) => ids.length,
   }, "0.1.0");
   const archive = (id: string, code: string): ExtensionArchive => ({
     format: 1,
@@ -92,7 +93,7 @@ export async function run() {
   await manager.executeCommand("vault.import");
   const vaultWithoutWrite = savedConnections.length;
   await manager.enableExtension("l8db.password-manager", ["process:execute", "connections:read", "connections:write"]);
-  await manager.executeCommand("vault.import");
+  await manager.executeCommand("vault.sync");
   const vault = { stored: [...vaultItems.values()].map(item => (item.login as { password: string }).password), withoutWrite: vaultWithoutWrite, loaded: savedConnections[0] as unknown as Json };
   for (const item of manager.listExtensions()) await manager.uninstallExtension(item.archive.manifest.id);
   return { vault, command, eventSeen, disposed, restarted, security, timeout, isolated, notifications, remaining: manager.listExtensions().length, frames: document.querySelectorAll("iframe").length } as Json;

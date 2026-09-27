@@ -179,6 +179,17 @@ export interface ProcessResult {
   stdout: string;
   stderr: string;
 }
+export interface ProcessOutput {
+  output: string;
+  exited: boolean;
+  status: number | null;
+}
+export interface ProcessSession {
+  readonly id: number;
+  write(data: string): Promise<void>;
+  read(timeoutMs?: number): Promise<ProcessOutput>;
+  stop(): Promise<void>;
+}
 export interface VaultConnection {
   id: string;
   name: string;
@@ -234,9 +245,11 @@ export interface L8dbApi {
   connections: {
     list(): Promise<VaultConnection[]>;
     save(connections: VaultConnection[]): Promise<SaveConnectionsResult>;
+    remove(ids: string[]): Promise<number>;
   };
   process: {
     run(command: string, options?: ProcessOptions): Promise<ProcessResult>;
+    start(command: string, options?: ProcessOptions): Promise<ProcessSession>;
   };
   window: {
     showQuickPick(items: (string | QuickPickItem)[], options?: QuickPickOptions): Promise<(string | QuickPickItem)[] | undefined>;
