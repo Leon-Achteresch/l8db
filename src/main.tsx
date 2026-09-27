@@ -48,8 +48,11 @@ function render() {
 
 let startupReady = false;
 
-Promise.all([executionSettings.ready, loadProviders(), initConnectionSecrets()])
-  .then(restoreSshTunnel)
+Promise.all([
+  executionSettings.ready,
+  initConnectionSecrets(),
+  loadProviders().then(restoreSshTunnel),
+])
   .then(() => {
     startupReady = true;
   })
