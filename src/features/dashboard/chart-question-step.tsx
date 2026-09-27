@@ -15,6 +15,7 @@ import {
   syncJoins,
   type TimeBucket,
 } from "@/lib/dashboards";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { filterOperatorLabel, parseFilterList } from "@/lib/sql-filter";
 import { ChartFilterEditor, type ChartFilterField } from "./chart-filter-editor";
 import { ChartExpertMapping } from "./chart-question-step/expert-mapping";
@@ -32,6 +33,7 @@ export function ChartQuestionStep({
   onChange: (patch: Partial<Dataset>) => void;
   resultColumns: string[];
 }) {
+  const filtersRef = useListAnimation<HTMLDivElement>();
   const s = dataset.simple;
   const { columns, joins } = useDatasetColumns(s);
   const [filterDraft, setFilterDraft] = useState<{
@@ -134,7 +136,7 @@ export function ChartQuestionStep({
           </p>
         </div>
         {s.filters.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div ref={filtersRef} className="flex flex-wrap gap-1.5">
             {s.filters.map((f) => (
               <button
                 key={f.id}
