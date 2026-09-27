@@ -69,14 +69,20 @@ Promise.all([
     void extensionHost
       .start()
       .catch((error) => extensionHost.manager.log("host", "error", String(error)));
+    if (!import.meta.env.DEV && isMainWindow) scheduleAutoUpdater();
   });
 
-if (!import.meta.env.DEV && isMainWindow) {
-  const startUpdater = () => {
-    void import("@/lib/auto-updater")
-      .then(({ initAutoUpdater }) => initAutoUpdater())
-      .catch(() => undefined);
+function scheduleAutoUpdater() {
+  const schedule = () => {
+    const start = () => {
+      void import("@/lib/auto-updater")
+        .then(({ initAutoUpdater }) => initAutoUpdater())
+        .catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === "function")
+      window.requestIdleCallback(start, { timeout: 1000 });
+    else setTimeout(start, 0);
   };
-  if (document.readyState === "complete") startUpdater();
-  else window.addEventListener("load", startUpdater, { once: true });
+  if (document.readyState === "complete") schedule();
+  else window.addEventListener("load", schedule, { once: true });
 }
