@@ -38,6 +38,7 @@ export interface SupabaseObject {
   id: string | null;
   created_at: string | null;
   updated_at: string | null;
+  last_accessed_at: string | null;
   metadata: Record<string, unknown> | null;
 }
 

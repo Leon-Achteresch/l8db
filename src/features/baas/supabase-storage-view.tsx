@@ -4,6 +4,7 @@ import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
+  type SupabaseObject,
   supabaseBucketDetails,
   supabaseBuckets,
   supabaseDownloadObject,
@@ -33,14 +34,17 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
   const [bucket, setBucket] = useState<string | null>(null);
   const [prefix, setPrefix] = useState("");
   const [offset, setOffset] = useState(0);
-  const [preview, setPreview] = useState<{ bucket: string; key: string; name: string } | null>(
-    null,
-  );
+  const [preview, setPreview] = useState<{
+    bucket: string;
+    key: string;
+    object: SupabaseObject;
+  } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<string | null>(null);
   const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-upload");
   const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-details");
+  const fileDetailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.file-details");
   const buckets = useQuery({
     queryKey: ["supabase", reference, "buckets"],
     queryFn: () => supabaseBuckets(reference),
@@ -307,7 +311,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                                 setPreview({
                                   bucket: selected.id,
                                   key: `${prefix}${entry.name}`,
-                                  name: entry.name,
+                                  object: entry,
                                 })
                               }
                             >
@@ -352,14 +356,65 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                   </div>
                 )}
                 {preview && preview.bucket === selected.id && (
-                  <BaasFilePreview
-                    key={`${preview.bucket}:${preview.key}`}
-                    name={preview.name}
-                    queryKey={["supabase", reference, "preview", preview.bucket, preview.key]}
-                    load={() => supabasePreviewObject(reference, preview.bucket, preview.key)}
-                    download={() => supabaseDownloadObject(reference, preview.bucket, preview.key)}
-                    onClose={() => setPreview(null)}
-                  />
+                  <>
+                    <div
+                      ref={fileDetailsFeature.ref}
+                      className="mt-4 rounded-xl border bg-background/50 p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-medium">Datei-Details</h4>
+                        {fileDetailsFeature.isNew && <NewBadge />}
+                      </div>
+                      <dl className="mt-3 grid gap-x-4 gap-y-3 text-xs sm:grid-cols-2">
+                        <div>
+                          <dt className="text-muted-foreground">Pfad</dt>
+                          <dd className="mt-0.5 break-all font-mono">
+                            /{preview.bucket}/{preview.key}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Datei-ID</dt>
+                          <dd className="mt-0.5 break-all font-mono">{preview.object.id}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Größe</dt>
+                          <dd className="mt-0.5">
+                            {formatBytes(preview.object.metadata?.size) || "Nicht angegeben"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">MIME-Typ</dt>
+                          <dd className="mt-0.5 break-all">
+                            {typeof preview.object.metadata?.mimetype === "string"
+                              ? preview.object.metadata.mimetype
+                              : "Nicht angegeben"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Erstellt</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.created_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Aktualisiert</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.updated_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Letzter Zugriff</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.last_accessed_at)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <BaasFilePreview
+                      key={`${preview.bucket}:${preview.key}`}
+                      name={preview.object.name}
+                      queryKey={["supabase", reference, "preview", preview.bucket, preview.key]}
+                      load={() => supabasePreviewObject(reference, preview.bucket, preview.key)}
+                      download={() =>
+                        supabaseDownloadObject(reference, preview.bucket, preview.key)
+                      }
+                      onClose={() => setPreview(null)}
+                    />
+                  </>
                 )}
               </>
             )}
