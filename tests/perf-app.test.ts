@@ -240,6 +240,59 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Monitor lädt das Latenzdiagramm nur mit Laufzeitdaten",
+  async () => {
+    const app = await open("/monitor", '[data-tour="monitor"]');
+    try {
+      expect(await app.page.getByText("Noch keine Laufzeitdaten vorhanden.").count()).toBe(1);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("monitor-latency-chart")),
+        ),
+      ).toBe(false);
+      await app.page.evaluate(() => {
+        localStorage.setItem(
+          "l8db.query-history",
+          JSON.stringify({
+            state: {
+              retentionLimit: 500,
+              entries: [
+                {
+                  id: "perf-monitor-latency",
+                  connectionId: "perf",
+                  database: "l8db_perf",
+                  sql: "SELECT 1",
+                  ranAt: Date.now(),
+                  durationMs: 15,
+                  rowCount: 1,
+                  error: null,
+                },
+              ],
+            },
+            version: 0,
+          }),
+        );
+      });
+      await app.page.reload();
+      await app.page.locator('[data-slot="chart"]').waitFor();
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("monitor-latency-chart")),
+        ),
+      ).toBe(true);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   `Erweiterte Suche bleibt bei ${TABLES} Tabellen begrenzt und bedienbar`,
   async () => {
     const app = await open("/", 'a[data-name="table_0000"]');
