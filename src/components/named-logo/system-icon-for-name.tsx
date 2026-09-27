@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { candidateKeys } from "./brand-icons";
+import { candidateKeys } from "./name-keys";
 import { NAME_TO_SYSTEM } from "./system-icons";
 
 export function SystemIconForName({ name, className }: { name: string; className?: string }) {
