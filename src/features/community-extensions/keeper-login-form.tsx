@@ -12,6 +12,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { copyText } from "@/lib/clipboard";
 import type { Json } from "@/lib/extensions/contracts";
+import { KeeperApproval } from "./keeper-approval";
 import type { VaultStatus } from "./password-manager";
 import { VaultField } from "./vault-field";
 
@@ -28,11 +29,15 @@ export function KeeperLoginForm({
   status,
   busy,
   onLogin,
+  onAnswer,
+  onCancel,
   onRefresh,
 }: {
   status: VaultStatus;
   busy: boolean;
   onLogin: (input: Record<string, Json>) => void;
+  onAnswer: (input: Record<string, Json>) => void;
+  onCancel: () => void;
   onRefresh: () => void;
 }) {
   const [region, setRegion] = useState("EU");
@@ -52,12 +57,15 @@ export function KeeperLoginForm({
     onLogin({ server: region, email: email.trim(), password });
   };
 
+  if (status.needs === "device" || status.needs === "2fa" || status.needs === "code")
+    return <KeeperApproval status={status} busy={busy} onAnswer={onAnswer} onCancel={onCancel} />;
+
   if (status.needs === "terminal")
     return (
       <div className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          Keeper möchte dieses Gerät bestätigen oder fragt nach einem zweiten Faktor. Das geht nur
-          interaktiv: Führe die Befehle einmalig im Terminal aus und prüfe danach erneut.
+          Keeper verlangt einen Anmeldeschritt, den l8db nicht selbst abfragen kann, zum Beispiel
+          SSO. Führe die Befehle einmalig im Terminal aus und prüfe danach erneut.
         </p>
         <div className="relative">
           <pre className="overflow-x-auto rounded-xl bg-muted/60 p-3 pr-10 font-mono text-xs leading-relaxed select-text">

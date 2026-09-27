@@ -1,5 +1,9 @@
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 
@@ -7,6 +11,7 @@ const MAX_ARGS: usize = 50;
 const MAX_ARG_LEN: usize = 4096;
 const MAX_ENV_VARS: usize = 20;
 const MAX_OUTPUT: usize = 512 * 1024;
+const MAX_SESSIONS: usize = 8;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,6 +178,186 @@ pub async fn extension_process_run(
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessOutput {
+    pub output: String,
+    pub exited: bool,
+    pub status: Option<i32>,
+}
+
+#[derive(Default)]
+struct Buffer {
+    data: Vec<u8>,
+    eof: bool,
+}
+
+struct Session {
+    child: Box<dyn Child + Send + Sync>,
+    writer: Box<dyn Write + Send>,
+    buffer: Arc<Mutex<Buffer>>,
+    notify: Arc<tokio::sync::Notify>,
+    _master: Box<dyn MasterPty + Send>,
+}
+
+static SESSIONS: LazyLock<Mutex<HashMap<u32, Session>>> = LazyLock::new(Default::default);
+static NEXT_SESSION: AtomicU32 = AtomicU32::new(1);
+
+fn with_session<T>(
+    id: u32,
+    f: impl FnOnce(&mut Session) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+    f(sessions.get_mut(&id).ok_or("Unknown process")?)
+}
+
+fn take_session(id: u32) -> Option<Session> {
+    SESSIONS.lock().ok()?.remove(&id)
+}
+
+#[tauri::command(async)]
+pub async fn extension_process_start(
+    command: String,
+    options: ProcessOptions,
+) -> Result<u32, String> {
+    let timeout = validate(&command, &options)?;
+    if SESSIONS.lock().map_err(|e| e.to_string())?.len() >= MAX_SESSIONS {
+        return Err("Too many running processes".into());
+    }
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: 40,
+            cols: 200,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| e.to_string())?;
+    let mut builder = CommandBuilder::new(resolve(&command));
+    builder.args(&options.args);
+    builder.env("PATH", child_path());
+    for (key, value) in &options.env {
+        builder.env(key, value);
+    }
+    if let Some(cwd) = &options.cwd {
+        builder.cwd(cwd);
+    }
+    let child = pair
+        .slave
+        .spawn_command(builder)
+        .map_err(|e| e.to_string())?;
+    drop(pair.slave);
+    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    let buffer = Arc::new(Mutex::new(Buffer::default()));
+    let notify = Arc::new(tokio::sync::Notify::new());
+    let (sink, signal) = (buffer.clone(), notify.clone());
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 4096];
+        loop {
+            let read = reader.read(&mut chunk).unwrap_or(0);
+            let Ok(mut buffer) = sink.lock() else { break };
+            if read == 0 {
+                buffer.eof = true;
+            } else {
+                buffer.data.extend_from_slice(&chunk[..read]);
+                let excess = buffer.data.len().saturating_sub(MAX_OUTPUT);
+                buffer.data.drain(..excess);
+            }
+            drop(buffer);
+            signal.notify_one();
+            if read == 0 {
+                break;
+            }
+        }
+    });
+    let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+    SESSIONS.lock().map_err(|e| e.to_string())?.insert(
+        id,
+        Session {
+            child,
+            writer,
+            buffer,
+            notify,
+            _master: pair.master,
+        },
+    );
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(timeout)).await;
+        if let Some(mut session) = take_session(id) {
+            let _ = session.child.kill();
+        }
+    });
+    Ok(id)
+}
+
+#[tauri::command(async)]
+pub fn extension_process_write(id: u32, data: String) -> Result<(), String> {
+    if data.len() > MAX_ARG_LEN || data.contains('\0') {
+        return Err("Invalid process input".into());
+    }
+    with_session(id, |session| {
+        session
+            .writer
+            .write_all(data.as_bytes())
+            .and_then(|_| session.writer.flush())
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command(async)]
+pub async fn extension_process_read(
+    id: u32,
+    timeout_ms: Option<u64>,
+) -> Result<ProcessOutput, String> {
+    let wait = Duration::from_millis(timeout_ms.unwrap_or(1000).clamp(1, 30_000));
+    let notify = with_session(id, |session| Ok(session.notify.clone()))?;
+    let _ = tokio::time::timeout(wait, notify.notified()).await;
+    let (output, finished) = with_session(id, |session| {
+        let exited = session
+            .child
+            .try_wait()
+            .map_err(|e| e.to_string())?
+            .is_some();
+        let mut buffer = session.buffer.lock().map_err(|e| e.to_string())?;
+        let data = std::mem::take(&mut buffer.data);
+        let finished = buffer.eof || (exited && data.is_empty());
+        Ok((String::from_utf8_lossy(&data).into_owned(), finished))
+    })?;
+    if !finished {
+        return Ok(ProcessOutput {
+            output,
+            exited: false,
+            status: None,
+        });
+    }
+    let mut status = None;
+    if let Some(mut session) = take_session(id) {
+        for _ in 0..50 {
+            if let Some(exit) = session.child.try_wait().map_err(|e| e.to_string())? {
+                status = Some(exit.exit_code() as i32);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        if status.is_none() {
+            let _ = session.child.kill();
+        }
+    }
+    Ok(ProcessOutput {
+        output,
+        exited: true,
+        status,
+    })
+}
+
+#[tauri::command(async)]
+pub fn extension_process_stop(id: u32) -> Result<(), String> {
+    if let Some(mut session) = take_session(id) {
+        session.child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +418,25 @@ mod tests {
         opts.args = vec!["-c".into(), "command -v node".into()];
         let result = extension_process_run("sh".into(), opts).await.unwrap();
         assert_eq!(result.status, Some(0), "{}", result.stderr);
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sessions_run_in_a_terminal_and_take_input() {
+        let mut opts = options();
+        opts.args = vec!["-c".into(), "test -t 0 && read x && echo \"got $x\"".into()];
+        let id = extension_process_start("sh".into(), opts).await.unwrap();
+        extension_process_write(id, "hi\n".into()).unwrap();
+        let mut output = String::new();
+        let status = loop {
+            let chunk = extension_process_read(id, Some(5000)).await.unwrap();
+            output.push_str(&chunk.output);
+            if chunk.exited {
+                break chunk.status;
+            }
+        };
+        assert_eq!(status, Some(0), "{output}");
+        assert!(output.contains("got hi"), "{output}");
+        assert!(extension_process_read(id, Some(1)).await.is_err());
     }
     #[test]
     fn rejects_oversized_inputs() {

@@ -13,7 +13,9 @@ export interface VaultStatus {
   account?: string;
   server?: string;
   accounts?: { id: string; label: string }[];
-  needs?: "code" | "terminal";
+  needs?: "code" | "terminal" | "device" | "2fa";
+  channels?: { id: string; label: string }[];
+  detail?: string;
 }
 
 export interface VaultSyncResult {
