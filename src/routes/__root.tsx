@@ -7,7 +7,7 @@ import "../index.css";
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
-import { Onboarding } from "@/features/onboarding/onboarding";
+import { OnboardingHost } from "@/features/onboarding/onboarding-host";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
 import { AppFrame } from "@/features/shell/app-frame";
 import { AppHeader } from "@/features/shell/app-header";
@@ -16,7 +16,7 @@ import { RouteErrorView } from "@/features/shell/route-error-view";
 import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
-import { AppTour } from "@/features/tour/app-tour";
+import { AppTourHost } from "@/features/tour/app-tour-host";
 import { FeatureVideoHost } from "@/features/updates/feature-video-host";
 import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
 
@@ -35,8 +35,8 @@ function RootComponent() {
         <SqlConfirmationDialog />
         <TasksDialog />
         <WindowCloseGuard />
-        <AppTour />
-        <Onboarding />
+        <AppTourHost />
+        <OnboardingHost />
         <FeatureVideoHost />
         <Toaster />
       </ThemeProvider>
