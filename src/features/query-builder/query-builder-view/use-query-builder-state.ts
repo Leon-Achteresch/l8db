@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SetStateAction, useEffect, useMemo, useState } from "react";
+import { temporal } from "zundo";
+import { createStore, useStore } from "zustand";
 import { relationKey } from "@/features/query-builder/query-builder-join";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveSchema } from "@/lib/db-selection";
@@ -14,6 +16,7 @@ import {
   type QueryBuilderState,
   type QuerySource,
 } from "@/lib/query-builder";
+import { groupRapidEdits, HISTORY_LIMIT } from "@/lib/undo-history";
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -22,9 +25,23 @@ function createId(): string {
 
 export function useQueryBuilderState(connection: SavedConnection | null) {
   const schema = useActiveSchema();
-  const [state, setState] = useState<QueryBuilderState>(() =>
-    emptyBuilderState(connection?.kind ?? null),
+  const [store] = useState(() =>
+    createStore<{ builder: QueryBuilderState }>()(
+      temporal(() => ({ builder: emptyBuilderState(connection?.kind ?? null) }), {
+        limit: HISTORY_LIMIT,
+        equality: (past, current) =>
+          JSON.stringify(past.builder) === JSON.stringify(current.builder),
+        handleSet: groupRapidEdits,
+      }),
+    ),
   );
+  const state = useStore(store, (current) => current.builder);
+  const canUndo = useStore(store.temporal, (current) => current.pastStates.length > 0);
+  const canRedo = useStore(store.temporal, (current) => current.futureStates.length > 0);
+  const setState = (update: SetStateAction<QueryBuilderState>) =>
+    store.setState((current) => ({
+      builder: typeof update === "function" ? update(current.builder) : update,
+    }));
   const [joinTypeDraft, setJoinTypeDraft] = useState<JoinType>("INNER");
 
   const tablesQuery = useTablesQuery();
@@ -36,8 +53,9 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
   );
 
   useEffect(() => {
-    setState(emptyBuilderState(connection?.kind ?? null));
-  }, [connection?.kind]);
+    store.setState({ builder: emptyBuilderState(connection?.kind ?? null) });
+    store.temporal.getState().clear();
+  }, [store, connection?.kind]);
 
   const relations = useMemo(
     () =>
@@ -226,6 +244,10 @@ export function useQueryBuilderState(connection: SavedConnection | null) {
   return {
     state,
     setState,
+    canUndo,
+    canRedo,
+    undo: () => store.temporal.getState().undo(),
+    redo: () => store.temporal.getState().redo(),
     joinTypeDraft,
     tablesQuery,
     baseColumnsQuery,

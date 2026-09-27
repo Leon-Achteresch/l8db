@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { GripVerticalIcon, XIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { toast } from "sonner";
-
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
 import { ConnectionScopeContext, useConnectionsStore, usesTunnel } from "@/lib/connections";
@@ -182,30 +182,36 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {tab || detailSql ? (
             <ConnectionScopeContext.Provider value={overrideId}>
-              <Suspense
-                fallback={
-                  <div role="status" className="p-4 text-sm text-muted-foreground">
-                    Ansicht wird geladen…
-                  </div>
-                }
+              <PanelErrorBoundary
+                label="Diese Ansicht"
+                source="split-pane"
+                resetKeys={[target, linkKey]}
               >
-                <MasterSelectionContext.Provider value={target}>
-                  {detailSql && source ? (
-                    <MasterDetailResult
-                      key={linkKey}
-                      source={source}
-                      sql={detailSql}
-                      column={sourceColumn}
-                    />
-                  ) : tab ? (
-                    overrideId && tab.kind === "table" ? (
-                      <ScopedTableContent key={target} tab={tab} />
-                    ) : (
-                      <TabPaneContent key={target} tab={tab} />
-                    )
-                  ) : null}
-                </MasterSelectionContext.Provider>
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <div role="status" className="p-4 text-sm text-muted-foreground">
+                      Ansicht wird geladen…
+                    </div>
+                  }
+                >
+                  <MasterSelectionContext.Provider value={target}>
+                    {detailSql && source ? (
+                      <MasterDetailResult
+                        key={linkKey}
+                        source={source}
+                        sql={detailSql}
+                        column={sourceColumn}
+                      />
+                    ) : tab ? (
+                      overrideId && tab.kind === "table" ? (
+                        <ScopedTableContent key={target} tab={tab} />
+                      ) : (
+                        <TabPaneContent key={target} tab={tab} />
+                      )
+                    ) : null}
+                  </MasterSelectionContext.Provider>
+                </Suspense>
+              </PanelErrorBoundary>
             </ConnectionScopeContext.Provider>
           ) : (
             <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">

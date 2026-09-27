@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { AnimatedNumber } from "@/components/animated-number";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
@@ -23,7 +24,7 @@ export function DashboardMetric({ label, value, loading, error, icon: Icon }: Pr
           className="mt-2 text-3xl font-medium tracking-tight"
           title={error ? "Konnte nicht geladen werden" : undefined}
         >
-          {error ? "—" : (value ?? 0).toLocaleString("de-DE")}
+          {error ? "—" : <AnimatedNumber value={value ?? 0} />}
         </p>
       )}
     </div>
