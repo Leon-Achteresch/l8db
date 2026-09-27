@@ -344,6 +344,52 @@ pub struct FirebaseFirestoreDocuments {
     pub next_page_token: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFunctionBuild {
+    pub runtime: Option<String>,
+    pub entry_point: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFunction {
+    pub name: String,
+    pub description: Option<String>,
+    pub state: Option<String>,
+    pub environment: Option<String>,
+    pub url: Option<String>,
+    pub update_time: Option<String>,
+    pub build_config: Option<FirebaseFunctionBuild>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFunctionsPage {
+    #[serde(default)]
+    pub functions: Vec<FirebaseFunction>,
+    pub next_page_token: Option<String>,
+    #[serde(default)]
+    pub unreachable: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseHostingSite {
+    pub name: String,
+    pub default_url: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseHostingPage {
+    #[serde(default)]
+    pub sites: Vec<FirebaseHostingSite>,
+    pub next_page_token: Option<String>,
+}
+
 async fn profiles() -> Result<Vec<FirebaseProfile>, String> {
     let raw = crate::db::secrets::load_secret(PROFILES_ACCOUNT.to_string()).await?;
     match raw {
@@ -709,6 +755,56 @@ pub async fn firebase_firestore_documents(
     .await
 }
 
+#[tauri::command]
+pub async fn firebase_functions(
+    project_id: String,
+    page_token: Option<String>,
+) -> Result<FirebaseFunctionsPage, String> {
+    let project_id = validate_project_id(&project_id)?;
+    let token = access_token(project_id).await?;
+    let mut request = client()
+        .get(format!(
+            "https://cloudfunctions.googleapis.com/v2/projects/{project_id}/locations/-/functions"
+        ))
+        .bearer_auth(token)
+        .query(&[("pageSize", "100")]);
+    if let Some(page_token) = page_token.filter(|value| !value.is_empty()) {
+        request = request.query(&[("pageToken", validate_page_token(&page_token)?)]);
+    }
+    response_json(
+        request
+            .send()
+            .await
+            .map_err(|_| "Firebase Functions sind nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn firebase_hosting_sites(
+    project_id: String,
+    page_token: Option<String>,
+) -> Result<FirebaseHostingPage, String> {
+    let project_id = validate_project_id(&project_id)?;
+    let token = access_token(project_id).await?;
+    let mut request = client()
+        .get(format!(
+            "https://firebasehosting.googleapis.com/v1beta1/projects/{project_id}/sites"
+        ))
+        .bearer_auth(token)
+        .query(&[("pageSize", "100")]);
+    if let Some(page_token) = page_token.filter(|value| !value.is_empty()) {
+        request = request.query(&[("pageToken", validate_page_token(&page_token)?)]);
+    }
+    response_json(
+        request
+            .send()
+            .await
+            .map_err(|_| "Firebase Hosting ist nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
 async fn object_response(
     project_id: &str,
     bucket: &str,
@@ -764,7 +860,7 @@ mod tests {
         firestore_url, parse_service_account, storage_url, upload_file, upload_url,
         validate_firestore_path, validate_project_id, FirebaseAuthPage, FirebaseBucketPage,
         FirebaseFirestoreCollections, FirebaseFirestoreDatabases, FirebaseFirestoreDocuments,
-        FirebaseObjectPage,
+        FirebaseFunctionsPage, FirebaseHostingPage, FirebaseObjectPage,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -920,5 +1016,30 @@ mod tests {
         let missing: FirebaseFirestoreDocuments = serde_json::from_str(r#"{"documents":[{"name":"projects/example-project/databases/(default)/documents/users/missing"}]}"#).unwrap();
         assert!(missing.documents[0].fields.is_empty());
         assert!(missing.documents[0].create_time.is_none());
+    }
+
+    #[test]
+    fn functions_and_hosting_hide_unneeded_remote_fields() {
+        let functions: FirebaseFunctionsPage = serde_json::from_str(r#"{"functions":[{"name":"projects/example-project/locations/europe-west1/functions/process","state":"ACTIVE","buildConfig":{"runtime":"nodejs22","entryPoint":"process","environmentVariables":{"PRIVATE_KEY":"secret-value"}},"serviceConfig":{"environmentVariables":{"TOKEN":"secret-token"}}}],"unreachable":["asia-east1"]}"#).unwrap();
+        assert_eq!(
+            functions.functions[0]
+                .build_config
+                .as_ref()
+                .unwrap()
+                .runtime
+                .as_deref(),
+            Some("nodejs22")
+        );
+        assert_eq!(functions.unreachable, ["asia-east1"]);
+        let sites: FirebaseHostingPage = serde_json::from_str(r#"{"sites":[{"name":"projects/example-project/sites/example-project","defaultUrl":"https://example-project.web.app","type":"DEFAULT_SITE","labels":{"internal":"secret-label"}}]}"#).unwrap();
+        assert_eq!(sites.sites[0].kind.as_deref(), Some("DEFAULT_SITE"));
+        let frontend = format!(
+            "{}{}",
+            serde_json::to_string(&functions).unwrap(),
+            serde_json::to_string(&sites).unwrap()
+        );
+        for secret in ["secret-value", "secret-token", "secret-label"] {
+            assert!(!frontend.contains(secret));
+        }
     }
 }

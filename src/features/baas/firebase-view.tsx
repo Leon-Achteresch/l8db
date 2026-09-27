@@ -62,7 +62,7 @@ export function FirebaseView() {
             {feature.isNew && <NewBadge />}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            Projekte, Cloud Storage, Firestore und Auth.
+            Projekte, Cloud Storage, Firestore, Auth, Functions und Hosting.
           </p>
         </div>
         {selected && (
