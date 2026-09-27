@@ -48,6 +48,20 @@ export interface SupabaseServiceHealth {
   status: string;
 }
 
+export interface SupabaseBackups {
+  pitr_enabled: boolean | null;
+  backups: {
+    id: number | null;
+    is_physical_backup: boolean | null;
+    status: string | null;
+    inserted_at: string | null;
+  }[];
+  physical_backup_data: {
+    earliest_physical_backup_date_unix: number | null;
+    latest_physical_backup_date_unix: number | null;
+  } | null;
+}
+
 export interface SupabaseAuthUser {
   id: string;
   email: string | null;
@@ -98,6 +112,8 @@ export const supabaseFunctions = (reference: string) =>
   invoke<SupabaseFunction[]>("supabase_functions", { reference });
 export const supabaseHealth = (reference: string) =>
   invoke<SupabaseServiceHealth[]>("supabase_health", { reference });
+export const supabaseBackups = (reference: string) =>
+  invoke<SupabaseBackups>("supabase_backups", { reference });
 export const supabaseTables = (reference: string, offset: number) =>
   invoke<SupabaseTablesPage>("supabase_tables", { reference, offset });
 export const supabaseTableColumns = (reference: string, schema: string, table: string) =>
