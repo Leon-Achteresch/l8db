@@ -30,6 +30,14 @@ Supabase, Appwrite and PocketBase files can be opened from their resource lists.
 
 Relevant PocketBase documentation: [collections API](https://pocketbase.io/docs/api-collections/), [records API](https://pocketbase.io/docs/api-records/), [files API](https://pocketbase.io/docs/api-files/), and [dashboard route](https://pocketbase.io/docs/).
 
+## Firebase BaaS
+
+The **Firebase** tab connects a project by selecting its [service account JSON file](https://firebase.google.com/docs/admin/setup). The Rust backend reads the file with a native picker, verifies access through the Firebase Management API, and stores the credential in the OS keychain. The private key and OAuth access token are not returned to the WebView. The JSON must use Google's standard token endpoint; l8db sends the signed assertion only to that endpoint. The service account needs permission to read the Firebase project and `storage.buckets.list` plus `storage.objects.list` and `storage.objects.get` for Cloud Storage. Each resource reports its own permission error.
+
+The project view opens its Firebase console page and shows project identity and Cloud Storage. Buckets and object folders use Google Cloud Storage pagination. Files can be previewed and downloaded through the same native backend flow as other BaaS providers. The current Firebase view is read-only. Disconnecting removes the saved service account credential and profile.
+
+Relevant Firebase and Google Cloud documentation: [Firebase project API](https://firebase.google.com/docs/reference/firebase-management/rest/v1beta1/projects/get), [service accounts](https://firebase.google.com/docs/admin/setup), [Google service account OAuth](https://developers.google.com/identity/protocols/oauth2/service-account), [list buckets](https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list), [list objects](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list), and [get object media](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get).
+
 ## Products and drivers
 
 | Product | Family | Required driver |

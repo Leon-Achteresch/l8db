@@ -4,6 +4,7 @@ mod community_extensions;
 mod db;
 mod extension_process;
 mod file_open;
+mod firebase;
 mod mcp;
 mod pocketbase;
 mod supabase;
@@ -121,6 +122,13 @@ pub fn run() {
             supabase::supabase_preview_object,
             supabase::supabase_download_object,
             supabase::supabase_auth_users,
+            firebase::firebase_connect,
+            firebase::firebase_profiles,
+            firebase::firebase_disconnect,
+            firebase::firebase_buckets,
+            firebase::firebase_objects,
+            firebase::firebase_preview_object,
+            firebase::firebase_download_object,
             versioning::versioning_repository,
             versioning::metadata::versioning_metadata,
             versioning::control::versioning_control,
