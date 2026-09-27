@@ -153,6 +153,18 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(tabSwitch.fps).toBeGreaterThan(MIN_FPS);
       expect(tabSwitch.p95).toBeLessThan(MAX_P95_MS);
       expect(tabSwitch.worst).toBeLessThan(200);
+      await app.page.getByRole("tab", { name: /Views/i }).first().click();
+      await app.page
+        .getByRole("tab", { name: /Tabellen/i })
+        .first()
+        .click();
+      await app.page.waitForFunction(
+        () =>
+          document
+            .querySelector('[role="tab"][aria-label="Tabellen"]')
+            ?.getAttribute("aria-selected") === "true",
+      );
+      await app.page.locator('a[data-name="table_0000"]').waitFor();
 
       expect(app.errors).toEqual([]);
     } finally {
@@ -279,6 +291,26 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
             .querySelector('[aria-label="Suchergebnisse"]')
             ?.textContent?.includes(lastColumnTable),
         `table_${String(Math.min(TABLES, 500) - 1).padStart(4, "0")}`,
+      );
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill("table_0000");
+      await results.locator('[data-index="0"] button').click();
+      await app.page.route(/\/assets\/sql-editor-[^/]+\.js$/, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        await route.continue();
+      });
+      await app.page.getByRole("tab", { name: "SQL", exact: true }).click();
+      await app.page.getByRole("textbox", { name: "SQL-Filter" }).fill("status = 'active'");
+      const sqlEditor = app.page.locator('.monaco-editor[role="code"]');
+      await sqlEditor.waitFor();
+      await app.page.waitForFunction(() =>
+        document
+          .querySelector('.monaco-editor[role="code"] .view-lines')
+          ?.textContent?.replace(/\u00a0/g, " ")
+          .includes("status = 'active'"),
+      );
+      expect(await sqlEditor.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
       );
       expect(app.errors).toEqual([]);
     } finally {

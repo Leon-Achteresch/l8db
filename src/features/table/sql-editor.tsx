@@ -13,6 +13,7 @@ interface SqlEditorProps {
   placeholder?: string;
   className?: string;
   readOnly?: boolean;
+  autoFocus?: boolean;
 }
 
 function themeFor(resolved: string | undefined): string {
@@ -27,6 +28,7 @@ export function SqlEditor({
   placeholder,
   className,
   readOnly = false,
+  autoFocus = false,
 }: SqlEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -127,6 +129,10 @@ export function SqlEditor({
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (autoFocus) editorRef.current?.focus();
+  }, [autoFocus]);
 
   useEffect(() => {
     const editor = editorRef.current;
