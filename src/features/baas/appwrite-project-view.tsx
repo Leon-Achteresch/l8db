@@ -2,11 +2,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FunctionSquare, Globe2, Layout, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type AppwriteProfile, appwriteFunctions, appwriteSites, appwriteUsers } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AppwriteDatabasesView } from "./appwrite-databases-view";
 import { AppwriteResourceCard } from "./appwrite-resource-card";
 import { AppwriteStorageView } from "./appwrite-storage-view";
 
 export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
+  const functionDetails = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.function-details");
+  const siteDetails = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.site-details");
   const endpoint = new URL(profile.endpoint);
   const dashboard = endpoint.hostname.endsWith(".cloud.appwrite.io")
     ? `https://appwrite.io/projects/${profile.project_id}`
@@ -42,7 +45,67 @@ export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
           title="Functions"
           icon={<FunctionSquare className="size-4 text-muted-foreground" />}
           load={appwriteFunctions}
-          detail={(item) => item.id}
+          detail={(item) =>
+            [item.runtime, item.latest_deployment_status].filter(Boolean).join(" · ") || item.id
+          }
+          detailsRef={functionDetails.ref}
+          detailsNew={functionDetails.isNew}
+          renderDetails={(item) => (
+            <dl className="grid gap-3 text-xs">
+              <div>
+                <dt className="text-muted-foreground">ID</dt>
+                <dd className="mt-0.5 break-all font-mono">{item.id}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="mt-0.5">
+                    {item.enabled == null ? "Unbekannt" : item.enabled ? "Aktiv" : "Inaktiv"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Konfiguration</dt>
+                  <dd className="mt-0.5">
+                    {item.live == null ? "Unbekannt" : item.live ? "Aktuell" : "Abweichend"}
+                  </dd>
+                </div>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Laufzeit · Deployment</dt>
+                <dd className="mt-0.5 break-all">
+                  {item.runtime ?? "Unbekannt"} · {item.latest_deployment_status ?? "Kein Status"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Aktives Deployment</dt>
+                <dd className="mt-0.5 break-all font-mono">{item.deployment_id || "Keines"}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="text-muted-foreground">Zeitlimit</dt>
+                  <dd className="mt-0.5">
+                    {item.timeout == null ? "Nicht angegeben" : `${item.timeout} s`}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Zeitplan</dt>
+                  <dd className="mt-0.5 break-all font-mono">{item.schedule || "Keiner"}</dd>
+                </div>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Trigger-Ereignisse</dt>
+                <dd className="mt-0.5 max-h-28 overflow-auto break-all font-mono">
+                  {item.events?.length ? item.events.join(", ") : "Keine"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Ausführungsrechte</dt>
+                <dd className="mt-0.5 max-h-28 overflow-auto break-all font-mono">
+                  {item.execute?.length ? item.execute.join(", ") : "Keine"}
+                </dd>
+              </div>
+            </dl>
+          )}
         />
         <AppwriteResourceCard
           id={profile.id}
@@ -58,7 +121,65 @@ export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
           title="Sites"
           icon={<Layout className="size-4 text-muted-foreground" />}
           load={appwriteSites}
-          detail={(item) => item.id}
+          detail={(item) =>
+            [item.framework, item.latest_deployment_status].filter(Boolean).join(" · ") || item.id
+          }
+          detailsRef={siteDetails.ref}
+          detailsNew={siteDetails.isNew}
+          renderDetails={(item) => (
+            <dl className="grid gap-3 text-xs">
+              <div>
+                <dt className="text-muted-foreground">ID</dt>
+                <dd className="mt-0.5 break-all font-mono">{item.id}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="mt-0.5">
+                    {item.enabled == null ? "Unbekannt" : item.enabled ? "Aktiv" : "Inaktiv"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Konfiguration</dt>
+                  <dd className="mt-0.5">
+                    {item.live == null ? "Unbekannt" : item.live ? "Aktuell" : "Abweichend"}
+                  </dd>
+                </div>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Framework · Deployment</dt>
+                <dd className="mt-0.5 break-all">
+                  {item.framework ?? "Unbekannt"} · {item.latest_deployment_status ?? "Kein Status"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Aktives Deployment</dt>
+                <dd className="mt-0.5 break-all font-mono">{item.deployment_id || "Keines"}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <dt className="text-muted-foreground">Build-Laufzeit</dt>
+                  <dd className="mt-0.5 break-all">{item.build_runtime || "Nicht angegeben"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Adapter</dt>
+                  <dd className="mt-0.5 break-all">{item.adapter || "Nicht angegeben"}</dd>
+                </div>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Ausgabeordner</dt>
+                <dd className="mt-0.5 break-all font-mono">
+                  {item.output_directory || "Nicht angegeben"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Zeitlimit</dt>
+                <dd className="mt-0.5">
+                  {item.timeout == null ? "Nicht angegeben" : `${item.timeout} s`}
+                </dd>
+              </div>
+            </dl>
+          )}
         />
       </div>
     </div>
