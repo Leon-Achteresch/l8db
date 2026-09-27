@@ -14,6 +14,7 @@ import {
 import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
 import { type Dashboard, useDashboardsStore } from "@/lib/dashboards";
 import { useDbSelectionStore } from "@/lib/db-selection";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 
 export function DashboardLibraryDrawer({
   open,
@@ -30,6 +31,7 @@ export function DashboardLibraryDrawer({
   connectionId: string;
   database: string | null;
 }) {
+  const listRef = useListAnimation<HTMLDivElement>();
   const width = useDashboardWorkspaceStore((s) => s.drawerWidths.dashboards);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -150,7 +152,7 @@ export function DashboardLibraryDrawer({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <div className="space-y-2">
+        <div ref={listRef} className="space-y-2">
           {dashboards
             .filter((d) => d.name.toLowerCase().includes(search.toLowerCase()))
             .map((item) => (
