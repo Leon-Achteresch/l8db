@@ -2,6 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FirebaseProfile } from "@/lib/db";
+import { FirebaseAuthView } from "./firebase-auth-view";
 import { FirebaseStorageView } from "./firebase-storage-view";
 
 export function FirebaseProjectView({ profile }: { profile: FirebaseProfile }) {
@@ -43,6 +44,7 @@ export function FirebaseProjectView({ profile }: { profile: FirebaseProfile }) {
         </div>
       </section>
       <FirebaseStorageView projectId={profile.projectId} />
+      <FirebaseAuthView projectId={profile.projectId} />
     </div>
   );
 }

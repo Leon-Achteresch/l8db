@@ -216,6 +216,35 @@ pub struct FirebaseObjectPage {
     pub next_page_token: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseAuthProvider {
+    pub provider_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseAuthUser {
+    pub local_id: String,
+    pub email: Option<String>,
+    pub display_name: Option<String>,
+    pub phone_number: Option<String>,
+    pub email_verified: Option<bool>,
+    pub disabled: Option<bool>,
+    pub created_at: Option<String>,
+    pub last_login_at: Option<String>,
+    #[serde(default)]
+    pub provider_user_info: Vec<FirebaseAuthProvider>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseAuthPage {
+    #[serde(default)]
+    pub users: Vec<FirebaseAuthUser>,
+    pub next_page_token: Option<String>,
+}
+
 async fn profiles() -> Result<Vec<FirebaseProfile>, String> {
     let raw = crate::db::secrets::load_secret(PROFILES_ACCOUNT.to_string()).await?;
     match raw {
@@ -481,6 +510,31 @@ pub async fn firebase_upload_object(
     Ok(Some(object_name))
 }
 
+#[tauri::command]
+pub async fn firebase_auth_users(
+    project_id: String,
+    page_token: Option<String>,
+) -> Result<FirebaseAuthPage, String> {
+    let project_id = validate_project_id(&project_id)?;
+    let token = access_token(project_id).await?;
+    let mut request = client()
+        .get(format!(
+            "https://identitytoolkit.googleapis.com/v1/projects/{project_id}/accounts:batchGet"
+        ))
+        .bearer_auth(token)
+        .query(&[("maxResults", "100")]);
+    if let Some(page_token) = page_token.filter(|value| !value.is_empty()) {
+        request = request.query(&[("nextPageToken", validate_page_token(&page_token)?)]);
+    }
+    response_json(
+        request
+            .send()
+            .await
+            .map_err(|_| "Firebase Auth ist nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
 async fn object_response(
     project_id: &str,
     bucket: &str,
@@ -534,7 +588,7 @@ pub async fn firebase_download_object(
 mod tests {
     use super::{
         parse_service_account, storage_url, upload_file, upload_url, validate_project_id,
-        FirebaseBucketPage, FirebaseObjectPage,
+        FirebaseAuthPage, FirebaseBucketPage, FirebaseObjectPage,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -636,5 +690,25 @@ mod tests {
             query.get("ifGenerationMatch").map(|value| value.as_ref()),
             Some("0")
         );
+    }
+
+    #[test]
+    fn auth_users_exclude_hashes_and_custom_claims_from_frontend() {
+        let page: FirebaseAuthPage = serde_json::from_str(r#"{"users":[{"localId":"uid-1","email":"user@example.com","emailVerified":true,"createdAt":"1790500000000","providerUserInfo":[{"providerId":"google.com","federatedId":"private-id"}],"passwordHash":"secret-hash","salt":"secret-salt","rawPassword":"secret-password","customAttributes":"{\"admin\":true}"}],"nextPageToken":"next"}"#).unwrap();
+        assert_eq!(page.users[0].local_id, "uid-1");
+        assert_eq!(
+            page.users[0].provider_user_info[0].provider_id,
+            "google.com"
+        );
+        let frontend = serde_json::to_string(&page).unwrap();
+        for secret in [
+            "secret-hash",
+            "secret-salt",
+            "secret-password",
+            "private-id",
+            "customAttributes",
+        ] {
+            assert!(!frontend.contains(secret));
+        }
     }
 }
