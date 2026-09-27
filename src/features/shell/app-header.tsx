@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
@@ -34,6 +34,10 @@ function headerSection(pathname: string) {
 }
 
 export function AppHeader() {
+  const headerRef = useRef<HTMLElement>(null);
+  const leadingRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLElement>(null);
+  const [searchWidth, setSearchWidth] = useState(460);
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navInHeader = useSettingsStore((state) => state.navInHeader);
@@ -53,10 +57,40 @@ export function AppHeader() {
     syncWithBackend();
   }, [syncWithBackend]);
 
+  useLayoutEffect(() => {
+    if (section === "/about") return;
+    const header = headerRef.current;
+    const leading = leadingRef.current;
+    const actions = actionsRef.current;
+    if (!header || !leading || !actions) return;
+
+    const updateSearchWidth = () => {
+      const headerBounds = header.getBoundingClientRect();
+      const leadingBounds = leading.getBoundingClientRect();
+      const actionsBounds = actions.getBoundingClientRect();
+      const leadingWidth = leadingBounds.right - headerBounds.left;
+      const trailingWidth = headerBounds.right - actionsBounds.left;
+      setSearchWidth(
+        Math.max(
+          28,
+          Math.min(460, headerBounds.width - 2 * Math.max(leadingWidth, trailingWidth) - 16),
+        ),
+      );
+    };
+
+    const observer = new ResizeObserver(updateSearchWidth);
+    observer.observe(header);
+    observer.observe(leading);
+    observer.observe(actions);
+    updateSearchWidth();
+    return () => observer.disconnect();
+  }, [section]);
+
   if (section === "/about") return null;
 
   return (
     <header
+      ref={headerRef}
       data-tauri-drag-region="deep"
       className={cn(
         "@container relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
@@ -65,34 +99,38 @@ export function AppHeader() {
         USE_CUSTOM_WINDOW_CONTROLS && "pr-[140px]",
       )}
     >
-      {navInHeader ? (
-        <AppHeaderNavigation />
-      ) : (
-        <Link
-          to="/"
-          className="ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
-        >
-          l8db
-        </Link>
-      )}
-
-      <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
-        <div className="flex w-full max-w-[640px] items-center gap-2">
+      <div ref={leadingRef} className="flex shrink-0 items-center gap-2">
+        {navInHeader ? (
+          <AppHeaderNavigation />
+        ) : (
+          <Link
+            to="/"
+            className="ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
+          >
+            l8db
+          </Link>
+        )}
+        <div className="flex items-center gap-2">
           <EnvironmentBadge />
           <TemporaryConnectionBadge />
           <ReadOnlyBadge />
           <ProxyUserSwitch />
-          <div className="min-w-0 flex-1">
-            <AppHeaderSearch />
-          </div>
         </div>
+      </div>
+
+      <div
+        className="@container/header-search absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        style={{ width: searchWidth }}
+      >
+        <AppHeaderSearch />
       </div>
 
       <div aria-hidden="true" className="absolute inset-x-0 top-0 h-2" />
 
       <nav
+        ref={actionsRef}
         data-tour="header-actions"
-        className="flex items-center gap-1 px-3"
+        className="ml-auto flex items-center gap-1 px-3"
         aria-label="Hauptnavigation"
       >
         {!easyMode && import.meta.env.DEV && (
