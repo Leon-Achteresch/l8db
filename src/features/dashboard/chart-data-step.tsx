@@ -1,10 +1,15 @@
 import { LinkIcon, PencilLineIcon, TableIcon } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { type Dataset, emptySimple } from "@/lib/dashboards";
 import { supports } from "@/lib/providers";
 import { DatasetSourcePicker } from "./dataset-source-picker";
-import { SqlEditor } from "./sql-editor";
+
+const SqlEditor = lazy(() =>
+  import("./sql-editor").then((module) => ({ default: module.SqlEditor })),
+);
 
 export function ChartDataStep({
   dataset,
@@ -28,11 +33,19 @@ export function ChartDataStep({
             dem Chart zu.
           </p>
         </div>
-        <SqlEditor
-          value={dataset.sql}
-          onChange={(sql) => onChange({ sql })}
-          className="min-h-64 flex-1 rounded-xl border bg-background"
-        />
+        <Suspense
+          fallback={
+            <div className="flex min-h-64 flex-1 items-center justify-center rounded-xl border bg-background">
+              <Spinner />
+            </div>
+          }
+        >
+          <SqlEditor
+            value={dataset.sql}
+            onChange={(sql) => onChange({ sql })}
+            className="min-h-64 flex-1 rounded-xl border bg-background"
+          />
+        </Suspense>
         <div>
           <Button
             variant="ghost"

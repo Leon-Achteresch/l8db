@@ -385,6 +385,36 @@ test.skipIf(!ENABLED)(
   60000,
 );
 
+test.skipIf(!ENABLED)(
+  "Dashboard: erster Chart-Klick bleibt reaktionsschnell",
+  async () => {
+    await navigate("/dashboard");
+    await page.waitForSelector(".react-grid-item", { timeout: 30000 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const clicks: number[] = [];
+      Object.assign(window, { __chartClickDurations: clicks });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === "click") clicks.push(entry.duration);
+        }
+      }).observe({ type: "event", durationThreshold: 16 });
+    });
+    await page.getByRole("button", { name: "Chart", exact: true }).first().click();
+    await page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+    await page.waitForTimeout(100);
+    const durations = await page.evaluate(
+      () => (window as unknown as { __chartClickDurations: number[] }).__chartClickDurations,
+    );
+    expect(durations.length).toBeGreaterThan(0);
+    const worst = Math.max(...durations);
+    console.log(`perf-throttle Dashboard Chart Klick: ${worst} ms`);
+    expect(worst).toBeLessThanOrEqual(CLICK_WORST_MS);
+    await page.keyboard.press("Escape");
+  },
+  60000,
+);
+
 test.skipIf(!ENABLED)("Speicher und Fehler", async () => {
   const heapMb = await page.evaluate(
     () =>
