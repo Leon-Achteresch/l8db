@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { startTransition, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
@@ -46,6 +46,7 @@ interface QueryViewProps {
 
 export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace();
+  const deferredNavigatorVisible = useDeferredValue(workspace.navigatorVisible, false);
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus);
@@ -229,6 +230,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           editorFocus={editorFocus}
           navigator={
             workspace.navigatorVisible &&
+            deferredNavigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser
