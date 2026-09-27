@@ -125,6 +125,13 @@ export async function seedApp(
               })),
             };
           case "execute_query":
+            if (String(args?.sql ?? "").includes("perf wide"))
+              return {
+                columns: columns.map((column) => column.name),
+                rows,
+                rows_affected: rows.length,
+                execution_time_ms: 4,
+              };
             return String(args?.sql ?? "").includes("perf")
               ? {
                   columns: ["label", "value", "value2"],

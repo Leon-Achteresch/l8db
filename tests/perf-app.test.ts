@@ -298,15 +298,17 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       const sample = await measure("workspace-table-scroll", app.page, async () => {
         await app.page.evaluate(async () => {
-          let scroller = document.querySelector("tbody")!.parentElement as HTMLElement;
+          let scroller = document.querySelector("tbody")?.parentElement ?? null;
           while (scroller && getComputedStyle(scroller).overflowY !== "auto")
-            scroller = scroller.parentElement!;
+            scroller = scroller.parentElement;
+          if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
+          const target = scroller;
           let start = 0;
           await new Promise<void>((resolve) => {
             const step = (now: number) => {
               if (!start) start = now;
-              scroller.scrollTop += 120;
-              scroller.scrollLeft += now - start < 5000 ? 120 : -120;
+              target.scrollTop += 120;
+              target.scrollLeft += now - start < 5000 ? 120 : -120;
               if (now - start < 10000) requestAnimationFrame(step);
               else resolve();
             };
@@ -317,6 +319,46 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(sample.fps).toBeGreaterThan(59);
       expect(sample.p95).toBeLessThan(21);
       expect(sample.worst).toBeLessThan(50);
+      expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Breites SQL-Ergebnis bleibt beim Scrollen vollständig und flüssig",
+  async () => {
+    const app = await open("/query", ".monaco-editor", { rows: 5000, columns: 120 });
+    try {
+      await app.page.locator(".monaco-editor .view-lines").first().click();
+      await app.page.keyboard.type("select 'perf wide'");
+      await app.page.getByRole("button", { name: "Ausführen", exact: true }).first().click();
+      await app.page.waitForSelector('tbody tr[data-index="0"]');
+      const scroll = await measure("wide-query-result-scroll", app.page, () =>
+        app.page.evaluate(async () => {
+          let scroller = document.querySelector("tbody")?.parentElement ?? null;
+          while (scroller && getComputedStyle(scroller).overflowY !== "auto")
+            scroller = scroller.parentElement;
+          if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
+          const target = scroller;
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              target.scrollTop += now - start < 2500 ? 90 : -90;
+              target.scrollLeft += now - start < 2500 ? 90 : -90;
+              if (now - start < 5000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        }),
+      );
+      expect(scroll.fps).toBeGreaterThan(55);
+      expect(scroll.p95).toBeLessThan(28);
       expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
       expect(app.errors).toEqual([]);
     } finally {
