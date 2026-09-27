@@ -164,6 +164,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
           id: createId(),
           name: `${source.name} (Kopie)`,
           favorite: false,
+          vault: false,
         };
         for (const suffix of ["", ...NETWORK_SECRET_SUFFIXES]) {
           void loadSecret(`${id}${suffix}`)

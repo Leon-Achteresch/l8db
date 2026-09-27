@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
+import { errorText, vaultSave } from "@/features/community-extensions/password-manager";
 import { connectionError } from "@/lib/connection-url";
 import {
   type ConnectionEnvironment,
@@ -9,8 +10,15 @@ import {
   usesTunnel,
 } from "@/lib/connections";
 import { listSchemas, type ProviderInfo, type SslMode, testConnectionString } from "@/lib/db";
+import type { ExtensionManager } from "@/lib/extensions/manager";
 import type { MaskRule } from "@/lib/masking";
-import { deleteSecret, extractUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
+import {
+  deleteSecret,
+  extractUrlPassword,
+  loadSecret,
+  rememberSecret,
+  storeSecret,
+} from "@/lib/secrets";
 import {
   activateConnection,
   closeSshTunnel,
@@ -47,6 +55,7 @@ export interface ConnectionOperationsContext {
   environment: ConnectionEnvironment | null;
   maskRules: MaskRule[];
   tags: string;
+  vault: { host: ExtensionManager; name: string } | null;
   onSaved: () => void;
 }
 
@@ -74,6 +83,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     environment,
     maskRules,
     tags,
+    vault,
     onSaved,
   } = ctx;
 
@@ -176,6 +186,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         showSingleSchemaSwitcher,
         color,
         environment,
+        vault: connection?.vault,
         maskRules: maskRules.filter((rule) => rule.pattern.trim()),
         tags: [
           ...new Set(
@@ -195,6 +206,21 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           connections: [...state.connections, { ...input, id }],
         }));
       toast.success("Verbindung gespeichert");
+      if (vault) {
+        const stored = vaultSave(vault.host, id).then(async () => {
+          useConnectionsStore.setState((state) => ({
+            connections: state.connections.map((entry) =>
+              entry.id === id ? { ...entry, vault: true } : entry,
+            ),
+          }));
+          if (dbPassword) await rememberSecret(id, dbPassword).catch(() => undefined);
+        });
+        toast.promise(stored, {
+          loading: `Speichere in ${vault.name} …`,
+          success: `In ${vault.name} gespeichert`,
+          error: (error) => `Nicht in ${vault.name} gespeichert: ${errorText(error)}`,
+        });
+      }
       onSaved();
     } catch (error) {
       setResult({ status: "error", message: connectionError(error) });

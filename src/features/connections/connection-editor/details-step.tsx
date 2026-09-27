@@ -1,6 +1,8 @@
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { endpointFromPlaceholder, isAwsKind } from "@/lib/aws";
 import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
@@ -99,7 +101,10 @@ export function ConnectionDetailsStep({
     sshPort,
     sshUser,
     ssl,
+    storeInVault,
+    setStoreInVault,
     switchMode,
+    vault,
     tags,
     tns,
     tnsAlias,
@@ -297,10 +302,32 @@ export function ConnectionDetailsStep({
         connection={connection}
       />
       <ConnectionTestResultStatus result={result} elapsed={elapsed} />
-      <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-        <LockKeyhole className="size-3" />
-        Passwörter bleiben im System-Schlüsselbund
-      </p>
+      {vault ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="connection-store-in-vault"
+              checked={storeInVault}
+              onCheckedChange={(value) => setStoreInVault(value === true)}
+            />
+            <Label htmlFor="connection-store-in-vault" className="text-xs font-normal">
+              {connection?.vault
+                ? `Änderungen auch in ${vault.name} speichern`
+                : `In ${vault.name} speichern`}
+            </Label>
+          </div>
+          {connection?.vault && !storeInVault && (
+            <p className="text-[11px] text-muted-foreground">
+              Ohne Haken gilt die Änderung nur bis zum nächsten Abgleich mit {vault.name}.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <LockKeyhole className="size-3" />
+          Passwörter bleiben im System-Schlüsselbund
+        </p>
+      )}
     </div>
   );
 }

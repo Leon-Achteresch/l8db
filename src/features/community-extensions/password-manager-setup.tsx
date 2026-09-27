@@ -11,6 +11,7 @@ import { KeeperLoginForm } from "./keeper-login-form";
 import { OnePasswordLoginForm } from "./one-password-login-form";
 import {
   errorText,
+  hasCommand,
   type VaultProvider,
   type VaultStatus,
   vaultProvider,
@@ -79,12 +80,22 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
   const onRefresh = () => void call("status");
   const onLogout = () => void call("logout");
 
+  if (!hasCommand(extension, "vault.setup"))
+    return (
+      <Alert>
+        <AlertDescription className="text-pretty">
+          Version {extension.archive.manifest.version} ist veraltet und kann weder die CLI
+          installieren noch dich anmelden. Aktualisiere die Erweiterung über den Marktplatz oder
+          über das Menü „…“ → „Aus Datei aktualisieren“.
+        </AlertDescription>
+      </Alert>
+    );
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-pretty text-muted-foreground">
-        Legt deine Firma Datenbank-Zugänge im Passwortmanager ab, holt l8db sie von dort. Du musst
-        keine Adressen oder Passwörter abtippen, und neue oder geänderte Zugänge kommen automatisch
-        an.
+        l8db speichert deine Verbindungen samt Passwort im Passwortmanager und lädt sie beim Start
+        von dort. Zugänge, die dein Team dort teilt, kommen automatisch dazu.
       </p>
       <ol>
         <SetupStep

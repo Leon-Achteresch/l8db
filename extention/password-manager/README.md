@@ -1,6 +1,6 @@
 # Passwortmanager-Sync
 
-Stellt Datenbank-Zugänge aus Keeper, Bitwarden oder 1Password direkt in l8db bereit und speichert l8db-Verbindungen dort, auch in geteilten Sammlungen, Tresoren und Ordnern für ganze Teams. Anleitung für Firmen: [docs/password-manager.md](../../docs/password-manager.md). Die Extension nutzt die offizielle CLI des jeweiligen Anbieters (`keeper` aus Keeper Commander, `bw`, `op`); l8db sucht sie im `PATH`, in `/opt/homebrew/bin`, `/usr/local/bin` und `~/.local/bin`.
+Speichert l8db-Verbindungen in Keeper, Bitwarden oder 1Password und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern. Anleitung für Firmen: [docs/password-manager.md](../../docs/password-manager.md). Die Extension nutzt die offizielle CLI des jeweiligen Anbieters (`keeper` aus Keeper Commander, `bw`, `op`); l8db sucht sie im `PATH`, in `/opt/homebrew/bin`, `/usr/local/bin` und `~/.local/bin`.
 
 Aktivierung erfordert `process:execute` (die CLIs und Paketmanager aus `capabilities.process`), `connections:read` (Speichern im Tresor), `connections:write` (Laden aus dem Tresor, Entfernen entzogener Zugänge über `connections.remove`) und `filesystem:extension-storage` (merkt sich, welche Verbindungen aus dem Tresor stammen; ohne diese Freigabe werden entzogene Zugänge nicht entfernt).
 
@@ -12,9 +12,11 @@ Einrichtung: In den Einstellungen unter „Erweiterungen“ zeigt die Karte nach
 
 Danach direkt im Assistenten, über die Statusleiste oder in der Befehlspalette:
 
-- `Passwortmanager: Zugänge abgleichen` (`vault.sync`, Payload `{ quiet: true }` liefert `{ total, added, updated, removed, skipped }` statt einer Meldung) übernimmt alle Einträge, deren Titel mit `l8db:` beginnt. Läuft mit `vault.autoSync` (Standard an) auch beim Start (`onStartup`); ist der Tresor gesperrt, zeigt die Statusleiste einen Hinweis zum Entsperren. Verbindungen, die ein früherer Abgleich angelegt hat und die im Tresor fehlen, werden entfernt. Verbindungen, die schon vorher lokal existierten, bleiben immer erhalten.
-- `Passwortmanager: Verbindungen freigeben` legt pro Verbindung einen Login-Eintrag `l8db: <Name>` an (Benutzer, Passwort, Adresse ohne Passwort als Website, Profil in den Notizen) bzw. aktualisiert ihn. Für neue Einträge fragt l8db nach dem Ziel: persönlicher Tresor oder geteilter Bereich (Bitwarden-Sammlung via `organizationId`/`collectionIds`, 1Password-Tresor via `--vault`, Keeper-Ordner aus `list-sf` via `--folder`).
-- `Passwortmanager: Einzelne Verbindungen laden` übernimmt ausgewählte Einträge ohne Abgleich.
+- `Passwortmanager: Zugänge abgleichen` (`vault.sync`, Payload `{ quiet: true }` liefert `{ total, added, updated, removed, hidden, skipped }` statt einer Meldung) übernimmt alle Einträge, deren Titel mit `l8db:` beginnt, auch aus geteilten Sammlungen, Tresoren und Ordnern. Läuft mit `vault.autoSync` (Standard an) auch beim Start (`onStartup`); ist der Tresor gesperrt, zeigt die Statusleiste einen Hinweis zum Entsperren. Verbindungen, die ein früherer Abgleich angelegt hat und die im Tresor fehlen, werden entfernt. Verbindungen, die schon vorher lokal existierten, bleiben immer erhalten. Wer eine Verbindung in l8db entfernt, blendet sie nur aus (`known_<anbieter>` in der Extension-Ablage); der Abgleich legt sie nicht erneut an. Passwörter landen nur im Sitzungsspeicher, nicht im Schlüsselbund.
+- `vault.save` (Payload `{ id }`) legt die Verbindung als Login-Eintrag `l8db: <Name>` im persönlichen Tresor an oder aktualisiert den vorhandenen Eintrag (auch in geteilten Bereichen). Der Verbindungsdialog ruft ihn auf, wenn „In … speichern“ angehakt ist.
+- `Passwortmanager: Bestehende Verbindungen speichern` (`vault.export`) macht dasselbe für mehrere ausgewählte Verbindungen.
+- `Passwortmanager: Ausgeblendete Verbindungen einblenden` (`vault.import`) holt ausgeblendete Einträge zurück.
+- Die Extension löscht nie Einträge im Passwortmanager und fragt nie nach einem Ziel-Tresor.
 
 Einträge können auch direkt im Passwortmanager angelegt werden: Titel `l8db: <Name>`, Benutzername, Passwort und eine Datenbank-Adresse wie `postgres://host:5432/db` als Website. Erkannte Schemata: `postgres(ql)`, `mysql`, `mariadb`, `mssql`, `sqlserver`, `clickhouse`, `mongodb(+srv)`, `redis`, `rediss`, `valkey`, `oracle`, `cassandra`, `scylla`, `elasticsearch`, `opensearch`, `influxdb`, `libsql`, `snowflake`. Titel, Website, Benutzername und Passwort haben beim Laden Vorrang vor dem gespeicherten Profil. Einträge ohne Profil bekommen die ID `pm-<anbieter>-<eintrag>`.
 
@@ -26,7 +28,7 @@ CLI-Installation: Der Assistent zeigt die installierte CLI-Version oder „Jetzt
 
 Schlägt alles fehl, verweist die Meldung auf die offizielle Installationsanleitung.
 
-Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.2.0.l8db-extension`
+Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.3.0.l8db-extension`
 
 Browser-Test des ganzen Firmen-Ablaufs in der echten Sandbox: `L8DB_EXTENSION_BROWSER=1 bun test tests/password-manager-browser.test.ts`.
 

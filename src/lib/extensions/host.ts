@@ -8,7 +8,7 @@ import { useConnectionsStore } from "@/lib/connections";
 import { executeQuery, executeQueryWithParams, isReadOnlyActive } from "@/lib/db";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
 import { gridCellText } from "@/lib/grid-search";
-import { loadSecret, storeSecret } from "@/lib/secrets";
+import { loadSecret, rememberSecret } from "@/lib/secrets";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { version } from "../../../package.json";
 import type {
@@ -178,7 +178,8 @@ export function createExtensionHost() {
     async saveConnections(items) {
       const store = useConnectionsStore.getState();
       const merge = mergeVaultConnections(items, store.connections);
-      for (const [id, password] of merge.passwords) await storeSecret(id, password);
+      for (const [id, password] of merge.passwords)
+        await rememberSecret(id, password).catch(() => undefined);
       const updated = new Map(merge.updated.map((connection) => [connection.id, connection]));
       useConnectionsStore.setState((state) => ({
         connections: state.connections.map(

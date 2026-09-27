@@ -7,10 +7,10 @@ import config from "../src-tauri/tauri.conf.json";
 import { bundleFixture } from "./fixtures/browser-bundle";
 
 test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
-  "Passwortmanager stellt Firmen-Zugänge bereit und teilt Verbindungen ins Team",
+  "Passwortmanager lädt geteilte Zugänge und speichert Verbindungen im persönlichen Tresor",
   async () => {
     const archive = await readFile(
-      "extention/password-manager/l8db.password-manager-1.2.0.l8db-extension",
+      "extention/password-manager/l8db.password-manager-1.3.0.l8db-extension",
       "utf8",
     );
     const output = await bundleFixture("tests/fixtures/password-manager-browser.tsx");
@@ -75,17 +75,13 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
         password: "geheim",
       });
 
-      await card.getByRole("button", { name: "Verbindungen freigeben" }).click();
+      await card.getByRole("button", { name: "Bestehende übernehmen" }).click();
       const dialog = page.getByRole("dialog");
       await dialog.getByText("In Bitwarden speichern").waitFor();
       const buchhaltung = dialog.getByRole("checkbox", { name: /Buchhaltung/ });
       if (await buchhaltung.isChecked()) await buchhaltung.uncheck();
       await dialog.getByRole("button", { name: /Übernehmen/ }).click();
-      await dialog.getByText("Wo in Bitwarden speichern?").waitFor();
-      await dialog.getByRole("button", { name: /Firma › Datenbanken/ }).click();
-      await dialog
-        .getByText("Bitwarden: 1 angelegt in „Firma › Datenbanken“, 0 aktualisiert.")
-        .waitFor();
+      await dialog.getByText("Bitwarden: 1 angelegt, 0 aktualisiert.").waitFor();
       await dialog.getByRole("button", { name: "OK" }).click();
       await card.getByText("2 Datenbank-Zugänge sind in l8db verfügbar.").waitFor();
       const shared = await page.evaluate(() =>
@@ -93,9 +89,9 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
           (item) => item.name === "l8db: Staging",
         ),
       );
+      expect(shared?.organizationId).toBeUndefined();
+      expect(shared?.collectionIds).toBeUndefined();
       expect(shared).toMatchObject({
-        organizationId: "org-1",
-        collectionIds: ["col-1"],
         login: {
           username: "app",
           password: "staging-pw",

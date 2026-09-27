@@ -74,8 +74,8 @@ export function mergeVaultConnections(
     const connectionString = withSecret(item);
     const target = candidate.duplicateOf;
     const next: SavedConnection = target
-      ? { ...target, ...resolved, id: target.id, connectionString }
-      : { ...resolved, connectionString };
+      ? { ...target, ...resolved, id: target.id, connectionString, vault: true }
+      : { ...resolved, connectionString, vault: true };
     if (target) result.updated.push(next);
     else result.added.push(next);
     if (item.password) result.passwords.set(next.id, item.password);
