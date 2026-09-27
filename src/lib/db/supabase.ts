@@ -111,6 +111,8 @@ export const supabaseObjects = (
   prefix: string,
   offset: number,
 ) => invoke<SupabaseObject[]>("supabase_objects", { reference, bucket, prefix, offset });
+export const supabaseUploadObject = (reference: string, bucket: string, prefix: string) =>
+  invoke<string | null>("supabase_upload_object", { reference, bucket, prefix });
 export const supabasePreviewObject = (reference: string, bucket: string, objectKey: string) =>
   invoke<BaasFilePreview>("supabase_preview_object", { reference, bucket, objectKey });
 export const supabaseDownloadObject = (reference: string, bucket: string, objectKey: string) =>

@@ -27,6 +27,18 @@ pub fn download_client() -> &'static reqwest::Client {
     })
 }
 
+pub fn upload_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(20))
+            .read_timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("BaaS upload HTTP client")
+    })
+}
+
 pub async fn pick_save_path(app: tauri::AppHandle, name: &str) -> Result<Option<PathBuf>, String> {
     let filename = name
         .replace('\\', "/")
@@ -45,6 +57,22 @@ pub async fn pick_save_path(app: tauri::AppHandle, name: &str) -> Result<Option<
     let picked = receiver
         .await
         .map_err(|_| "Speicherdialog wurde unterbrochen.".to_string())?;
+    picked
+        .map(|path| {
+            path.into_path()
+                .map_err(|_| "Dateipfad konnte nicht gelesen werden.".to_string())
+        })
+        .transpose()
+}
+
+pub async fn pick_open_path(app: tauri::AppHandle) -> Result<Option<PathBuf>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_file(move |path| {
+        let _ = sender.send(path);
+    });
+    let picked = receiver
+        .await
+        .map_err(|_| "Dateidialog wurde unterbrochen.".to_string())?;
     picked
         .map(|path| {
             path.into_path()

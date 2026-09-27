@@ -114,6 +114,7 @@ pub fn run() {
             supabase::supabase_import_project_key,
             supabase::supabase_delete_project_key,
             supabase::supabase_objects,
+            supabase::supabase_upload_object,
             supabase::supabase_preview_object,
             supabase::supabase_download_object,
             supabase::supabase_auth_users,
