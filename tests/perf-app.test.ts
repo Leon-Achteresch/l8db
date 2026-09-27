@@ -119,6 +119,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(dom.overviewRows).toBeGreaterThan(0);
       expect(dom.overviewRows).toBeLessThan(60);
       expect(dom.nodes).toBeLessThan(6000);
+      await app.page
+        .locator('button[data-tour="sidebar-connection"] span[aria-hidden] svg')
+        .waitFor();
 
       const sidebarScroll = await measure("sidebar-scroll", app.page, () =>
         wheel(app.page, 150, 500, 40, 200),
