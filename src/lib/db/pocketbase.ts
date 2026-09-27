@@ -50,3 +50,9 @@ export const pocketbasePreviewFile = (
   recordId: string,
   filename: string,
 ) => invoke<BaasFilePreview>("pocketbase_preview_file", { id, collectionId, recordId, filename });
+export const pocketbaseDownloadFile = (
+  id: string,
+  collectionId: string,
+  recordId: string,
+  filename: string,
+) => invoke<boolean>("pocketbase_download_file", { id, collectionId, recordId, filename });

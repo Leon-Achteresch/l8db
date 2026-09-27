@@ -24,7 +24,7 @@ The **PocketBase** tab connects a PocketBase instance by its base URL and a [sup
 
 The view lists non-system collections, their fields, paginated records, Auth collections and file fields attached to records. PocketBase stores files on records rather than in separate buckets, so filenames appear beneath their records. Hidden fields and system collections are excluded from the response sent to the frontend. The project card opens the PocketBase dashboard on the instance. Disconnecting removes the token and profile. The current view is read-only.
 
-Supabase, Appwrite and PocketBase files can be opened from their resource lists. l8db previews raster images and UTF-8 text or JSON; other file types can be saved locally. Preview requests stop at 4 MB, including when the remote service omits `Content-Length`. File requests run in the Rust backend and do not expose provider credentials to the WebView.
+Supabase, Appwrite and PocketBase files can be opened from their resource lists. l8db previews raster images and UTF-8 text or JSON. Preview requests stop at 4 MB, including when the remote service omits `Content-Length`. The native save dialog downloads files of any size directly through the Rust backend into a temporary file, then moves it to the chosen destination after success. Provider credentials do not reach the WebView.
 
 Relevant PocketBase documentation: [collections API](https://pocketbase.io/docs/api-collections/), [records API](https://pocketbase.io/docs/api-records/), [files API](https://pocketbase.io/docs/api-files/), and [dashboard route](https://pocketbase.io/docs/).
 

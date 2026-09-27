@@ -2,7 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, Database, File, RefreshCw, Users } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { pocketbaseCollections, pocketbasePreviewFile, pocketbaseRecords } from "@/lib/db";
+import {
+  pocketbaseCollections,
+  pocketbaseDownloadFile,
+  pocketbasePreviewFile,
+  pocketbaseRecords,
+} from "@/lib/db";
 import { BaasFilePreview } from "./baas-file-preview";
 
 function displayValue(value: unknown): string {
@@ -270,6 +275,9 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                 ]}
                 load={() =>
                   pocketbasePreviewFile(id, preview.collectionId, preview.recordId, preview.name)
+                }
+                download={() =>
+                  pocketbaseDownloadFile(id, preview.collectionId, preview.recordId, preview.name)
                 }
                 onClose={() => setPreview(null)}
               />
