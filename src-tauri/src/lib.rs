@@ -128,6 +128,7 @@ pub fn run() {
             firebase::firebase_buckets,
             firebase::firebase_objects,
             firebase::firebase_upload_object,
+            firebase::firebase_auth_users,
             firebase::firebase_preview_object,
             firebase::firebase_download_object,
             versioning::versioning_repository,

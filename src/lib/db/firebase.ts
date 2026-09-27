@@ -34,6 +34,23 @@ export interface FirebaseObjectPage {
   nextPageToken: string | null;
 }
 
+export interface FirebaseAuthUser {
+  localId: string;
+  email: string | null;
+  displayName: string | null;
+  phoneNumber: string | null;
+  emailVerified: boolean | null;
+  disabled: boolean | null;
+  createdAt: string | null;
+  lastLoginAt: string | null;
+  providerUserInfo: { providerId: string }[];
+}
+
+export interface FirebaseAuthPage {
+  users: FirebaseAuthUser[];
+  nextPageToken: string | null;
+}
+
 export const firebaseConnect = () => invoke<FirebaseProfile | null>("firebase_connect");
 export const firebaseProfiles = () => invoke<FirebaseProfile[]>("firebase_profiles");
 export const firebaseDisconnect = (projectId: string) =>
@@ -52,3 +69,5 @@ export const firebasePreviewObject = (projectId: string, bucket: string, objectN
   invoke<BaasFilePreview>("firebase_preview_object", { projectId, bucket, objectName });
 export const firebaseDownloadObject = (projectId: string, bucket: string, objectName: string) =>
   invoke<boolean>("firebase_download_object", { projectId, bucket, objectName });
+export const firebaseAuthUsers = (projectId: string, pageToken?: string) =>
+  invoke<FirebaseAuthPage>("firebase_auth_users", { projectId, pageToken });

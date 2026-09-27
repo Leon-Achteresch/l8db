@@ -61,7 +61,7 @@ export function FirebaseView() {
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">Firebase</h1>
             {feature.isNew && <NewBadge />}
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">Projekte und Cloud Storage.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Projekte, Cloud Storage und Auth.</p>
         </div>
         {selected && (
           <Button variant="outline" size="sm" onClick={() => setAdding((value) => !value)}>
