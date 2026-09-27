@@ -166,8 +166,10 @@ export function AppSidebarPanel() {
           (sidebarTab === "tables" || sidebarTab === "views") ? (
             <SidebarGroupAction
               onClick={() => {
-                setSearchModalMounted(true);
-                setSearchModalOpen(true);
+                startTransition(() => {
+                  setSearchModalMounted(true);
+                  setSearchModalOpen(true);
+                });
               }}
               aria-label="Erweiterte Suche"
               title="Erweiterte Suche mit Regex & SQL WHERE"
