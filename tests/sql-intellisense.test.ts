@@ -133,6 +133,22 @@ describe("suggestCompletions", () => {
     expect(packageForQualifier(registry, "  pkg_emp.ge")?.name).toBe("PKG_EMP");
     expect(packageForQualifier(registry, "  hr.")).toBeNull();
   });
+  it("limits shared-column documentation to the first forty tables", () => {
+    const manyTables: SqlObjectRegistry = {
+      ...registry,
+      columns: Array.from({ length: 43 }, (_, index) => ({
+        schema: "public",
+        table: `table_${index}`,
+        name: "status",
+        data_type: "text",
+      })),
+    };
+    const status = suggestCompletions(manyTables, "SELECT ", "SELECT ").find(
+      (suggestion) => suggestion.label === "status",
+    );
+    expect(status?.documentation?.split("\n")).toHaveLength(41);
+    expect(status?.documentation).toContain("public.table_39\n… 3 weitere");
+  });
 });
 
 describe("hover", () => {
@@ -173,4 +189,14 @@ test("limitMatches caps large lists and keeps prefix matches first", () => {
     items: items.slice(0, 3),
     truncated: false,
   });
+});
+
+test("limitMatches preserves order within prefix and fuzzy matches", () => {
+  const items = ["x_ab", "abOne", "y_ab", "abTwo", "abThree", "z_ab"].map((label) => ({ label }));
+  expect(limitMatches(items, "ab", 5)).toEqual({
+    items: [items[1], items[3], items[4], items[0], items[2]],
+    truncated: true,
+  });
+  expect(limitMatches(items, "ab", 6)).toEqual({ items, truncated: false });
+  expect(limitMatches(items, "", 2)).toEqual({ items: items.slice(0, 2), truncated: true });
 });
