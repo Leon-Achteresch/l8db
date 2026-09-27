@@ -22,6 +22,11 @@ export function DiffQueryEntry({ change }: { change: TransactionChange }) {
             {change.rowsAffected} Zeile(n) betroffen
           </div>
         )}
+        {change.detailsUnavailable && (
+          <div className="px-2.5 py-0.5 text-muted-foreground">
+            Einzelne Zeilenänderungen konnten nicht ermittelt werden.
+          </div>
+        )}
       </div>
     </div>
   );

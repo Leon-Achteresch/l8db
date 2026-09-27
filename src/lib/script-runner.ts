@@ -15,6 +15,7 @@ import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { executeWithTransactionChanges } from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
 export interface ScriptRequest {
@@ -115,22 +116,48 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         },
       };
       try {
-        const result = txId
-          ? await runManagedOperation(txId, () => executeInTransaction(txId!, entry.sql, options))
-          : await executeQuery(connection.kind, url, entry.sql, database ?? undefined, options);
+        const activeTxId = txId;
+        const tracked = activeTxId
+          ? await runManagedOperation(activeTxId, () =>
+              executeWithTransactionChanges(connection, activeTxId, entry.sql, () =>
+                executeInTransaction(activeTxId, entry.sql, options),
+              ),
+            )
+          : {
+              result: await executeQuery(
+                connection.kind,
+                url,
+                entry.sql,
+                database ?? undefined,
+                options,
+              ),
+              changes: [],
+            };
+        const { result } = tracked;
         entry.result = result;
         entry.status = "success";
         entry.rowCount = result.columns.length ? result.rows.length : null;
         entry.rowsAffected = result.rows_affected == null ? null : Number(result.rows_affected);
         lastResult = result;
         if (txId && isTransactionalStatement(entry.sql, connection.kind)) {
-          useTransactionStore.getState().addChange(txId, {
-            id: crypto.randomUUID(),
-            type: "query",
-            timestamp: Date.now(),
-            sql: entry.sql,
-            rowsAffected: result.rows_affected,
-          });
+          for (const change of [
+            {
+              type: "query" as const,
+              sql: entry.sql,
+              rowsAffected: result.rows_affected,
+              detailsUnavailable:
+                /^\s*(INSERT|UPDATE)\b/i.test(entry.sql) &&
+                !tracked.changes.length &&
+                Number(result.rows_affected) > 0,
+            },
+            ...tracked.changes,
+          ]) {
+            useTransactionStore.getState().addChange(txId, {
+              id: crypto.randomUUID(),
+              timestamp: Date.now(),
+              ...change,
+            });
+          }
         }
       } catch (failure) {
         entry.status = "error";

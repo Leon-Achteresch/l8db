@@ -1,7 +1,12 @@
 import { ChevronRightIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { TransactionChange } from "@/lib/transactions";
 
 export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
+  const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>(
+    change.fromSql ? "query.transaction.changes" : undefined,
+  );
   const oldVals = change.oldValues ?? {};
   const newVals = change.newValues ?? {};
   const allKeys = Array.from(new Set([...Object.keys(oldVals), ...Object.keys(newVals)])).filter(
@@ -9,15 +14,18 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
   );
 
   return (
-    <div className="rounded border border-border/60 bg-background overflow-hidden">
+    <div ref={ref} className="rounded border border-border/60 bg-background overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
         <ChevronRightIcon className="size-3 text-muted-foreground" />
         <span className="font-mono text-[11px] font-semibold text-foreground/80">
-          {change.schema}.{change.table}
+          {[change.schema, change.table].filter(Boolean).join(".")}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          ctid {change.ctid}
-        </span>
+        {isNew && <NewBadge />}
+        {change.ctid && (
+          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+            ctid {change.ctid}
+          </span>
+        )}
       </div>
       <div className="font-mono text-[11px] leading-[1.7]">
         {allKeys.map((key) => {

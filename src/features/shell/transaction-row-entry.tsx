@@ -1,4 +1,6 @@
 import { PlusIcon, Trash2Icon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { TransactionChange } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
@@ -9,12 +11,15 @@ function formatValue(raw: unknown): string {
 }
 
 export function DiffRowEntry({ change }: { change: TransactionChange }) {
+  const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>(
+    change.fromSql ? "query.transaction.changes" : undefined,
+  );
   const isInsert = change.type === "insert";
   const values = isInsert ? (change.rowValues ?? {}) : (change.oldValues ?? {});
   const keys = Object.keys(values).filter((k) => k !== "__ctid__");
 
   return (
-    <div className="rounded border border-border/60 bg-background overflow-hidden">
+    <div ref={ref} className="rounded border border-border/60 bg-background overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
         {isInsert ? (
           <PlusIcon className="size-3 text-emerald-500" />
@@ -22,8 +27,9 @@ export function DiffRowEntry({ change }: { change: TransactionChange }) {
           <Trash2Icon className="size-3 text-red-500" />
         )}
         <span className="font-mono text-[11px] font-semibold text-foreground/80">
-          {change.schema}.{change.table}
+          {[change.schema, change.table].filter(Boolean).join(".")}
         </span>
+        {isNew && <NewBadge />}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           {isInsert ? "INSERT" : "DELETE"}
           {change.ctid ? ` · ctid ${change.ctid}` : ""}
