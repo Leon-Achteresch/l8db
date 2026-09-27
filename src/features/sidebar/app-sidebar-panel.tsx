@@ -104,7 +104,7 @@ export function AppSidebarPanel() {
     <Sidebar
       collapsible="none"
       style={{ width: "var(--sidebar-width)" }}
-      className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
+      className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
         <SidebarConnectionPicker
