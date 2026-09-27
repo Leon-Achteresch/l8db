@@ -80,6 +80,33 @@ export interface FirebaseFirestoreDocuments {
   nextPageToken: string | null;
 }
 
+export interface FirebaseFunction {
+  name: string;
+  description: string | null;
+  state: string | null;
+  environment: string | null;
+  url: string | null;
+  updateTime: string | null;
+  buildConfig: { runtime: string | null; entryPoint: string | null } | null;
+}
+
+export interface FirebaseFunctionsPage {
+  functions: FirebaseFunction[];
+  nextPageToken: string | null;
+  unreachable: string[];
+}
+
+export interface FirebaseHostingSite {
+  name: string;
+  defaultUrl: string | null;
+  type: string | null;
+}
+
+export interface FirebaseHostingPage {
+  sites: FirebaseHostingSite[];
+  nextPageToken: string | null;
+}
+
 export const firebaseConnect = () => invoke<FirebaseProfile | null>("firebase_connect");
 export const firebaseProfiles = () => invoke<FirebaseProfile[]>("firebase_profiles");
 export const firebaseDisconnect = (projectId: string) =>
@@ -126,3 +153,7 @@ export const firebaseFirestoreDocuments = (
     collectionPath,
     pageToken,
   });
+export const firebaseFunctions = (projectId: string, pageToken?: string) =>
+  invoke<FirebaseFunctionsPage>("firebase_functions", { projectId, pageToken });
+export const firebaseHostingSites = (projectId: string, pageToken?: string) =>
+  invoke<FirebaseHostingPage>("firebase_hosting_sites", { projectId, pageToken });

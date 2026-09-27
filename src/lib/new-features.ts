@@ -16,6 +16,8 @@ export const NEW_FEATURES = {
   "baas.firebase.storage-upload": "0.7.0",
   "baas.firebase.auth": "0.7.0",
   "baas.firebase.firestore": "0.7.0",
+  "baas.firebase.functions": "0.7.0",
+  "baas.firebase.hosting": "0.7.0",
   "baas.appwrite": "0.7.0",
   "baas.appwrite.storage-upload": "0.7.0",
   "baas.appwrite.storage-details": "0.7.0",

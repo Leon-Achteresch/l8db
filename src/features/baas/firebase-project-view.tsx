@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import type { FirebaseProfile } from "@/lib/db";
 import { FirebaseAuthView } from "./firebase-auth-view";
 import { FirebaseFirestoreView } from "./firebase-firestore-view";
+import { FirebaseFunctionsView } from "./firebase-functions-view";
+import { FirebaseHostingView } from "./firebase-hosting-view";
 import { FirebaseStorageView } from "./firebase-storage-view";
 
 export function FirebaseProjectView({ profile }: { profile: FirebaseProfile }) {
@@ -47,6 +49,8 @@ export function FirebaseProjectView({ profile }: { profile: FirebaseProfile }) {
       <FirebaseStorageView projectId={profile.projectId} />
       <FirebaseFirestoreView projectId={profile.projectId} />
       <FirebaseAuthView projectId={profile.projectId} />
+      <FirebaseFunctionsView projectId={profile.projectId} />
+      <FirebaseHostingView projectId={profile.projectId} />
     </div>
   );
 }
