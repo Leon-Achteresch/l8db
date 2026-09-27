@@ -19,11 +19,21 @@ export interface AppwriteBucket {
   name: string;
   enabled: boolean;
   total_size: number | null;
+  maximum_file_size: number | null;
+  allowed_file_extensions: string[] | null;
+  file_security: boolean | null;
+  compression: string | null;
+  encryption: boolean | null;
+  antivirus: boolean | null;
+  transformations: boolean | null;
+  permissions: string[] | null;
 }
 
 export interface AppwriteFile {
   id: string;
   name: string;
+  key: string | null;
+  folder: string | null;
   size_original: number | null;
   mime_type: string | null;
   created_at: string | null;

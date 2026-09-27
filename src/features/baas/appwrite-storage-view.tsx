@@ -20,6 +20,17 @@ function formatBytes(value: number | null): string {
   return `${(value / 1024 ** unit).toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${["B", "KB", "MB", "GB"][unit]}`;
 }
 
+function formatDate(value: string | null): string | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString("de-DE") : null;
+}
+
+function formatFlag(value: boolean | null): string {
+  if (value == null) return "Nicht angegeben";
+  return value ? "Aktiv" : "Inaktiv";
+}
+
 export function AppwriteStorageView({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [bucketId, setBucketId] = useState<string | null>(null);
@@ -32,6 +43,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<string | null>(null);
   const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-upload");
+  const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-details");
   const buckets = useQuery({
     queryKey: ["appwrite", id, "buckets", bucketOffset],
     queryFn: () => appwriteBuckets(id, bucketOffset),
@@ -169,6 +181,64 @@ export function AppwriteStorageView({ id }: { id: string }) {
               </Button>
             </div>
           ) : null}
+          {selected && (
+            <div ref={detailsFeature.ref} className="mt-4 rounded-xl border bg-background/50 p-3">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-medium">Bucket-Regeln</h4>
+                {detailsFeature.isNew && <NewBadge />}
+              </div>
+              <dl className="mt-3 grid gap-x-4 gap-y-3 text-xs sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="mt-0.5">{selected.enabled ? "Aktiv" : "Deaktiviert"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Maximale Dateigröße</dt>
+                  <dd className="mt-0.5">
+                    {selected.maximum_file_size == null
+                      ? "Nicht angegeben"
+                      : formatBytes(selected.maximum_file_size)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Dateiendungen</dt>
+                  <dd className="mt-0.5 break-words">
+                    {selected.allowed_file_extensions == null
+                      ? "Nicht angegeben"
+                      : selected.allowed_file_extensions.length > 0
+                        ? selected.allowed_file_extensions.join(", ")
+                        : "Alle"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Dateiberechtigungen</dt>
+                  <dd className="mt-0.5">{formatFlag(selected.file_security)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Kompression</dt>
+                  <dd className="mt-0.5">{selected.compression ?? "Nicht angegeben"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Verschlüsselung</dt>
+                  <dd className="mt-0.5">{formatFlag(selected.encryption)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Virenscan</dt>
+                  <dd className="mt-0.5">{formatFlag(selected.antivirus)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Bildtransformationen</dt>
+                  <dd className="mt-0.5">{formatFlag(selected.transformations)}</dd>
+                </div>
+              </dl>
+              {selected.permissions && selected.permissions.length > 0 && (
+                <div className="mt-3 border-t pt-3 text-xs">
+                  <p className="text-muted-foreground">Bucket-Berechtigungen</p>
+                  <p className="mt-1 break-all font-mono">{selected.permissions.join(" · ")}</p>
+                </div>
+              )}
+            </div>
+          )}
           <div className="mt-5 border-t pt-4">
             <div className="flex items-center gap-2 text-xs font-medium">
               <File className="size-3.5 text-muted-foreground" /> Dateien in {selected?.name}
@@ -191,14 +261,23 @@ export function AppwriteStorageView({ id }: { id: string }) {
                     <File className="size-3.5 shrink-0 text-muted-foreground" />
                     <button
                       type="button"
-                      className="min-w-0 flex-1 truncate text-left hover:text-primary"
-                      title={file.name}
+                      className="min-w-0 flex-1 text-left hover:text-primary"
+                      title={file.key || `${file.folder ?? ""}${file.name}`}
                       onClick={() => {
                         if (selected)
                           setPreview({ bucketId: selected.id, fileId: file.id, name: file.name });
                       }}
                     >
-                      {file.name}
+                      <span className="block truncate">
+                        {file.key || `${file.folder ?? ""}${file.name}`}
+                      </span>
+                      {(file.mime_type || formatDate(file.created_at)) && (
+                        <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                          {[file.mime_type, formatDate(file.created_at)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      )}
                     </button>
                     <span className="shrink-0 text-muted-foreground">
                       {formatBytes(file.size_original)}
