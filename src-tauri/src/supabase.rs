@@ -32,6 +32,19 @@ fn project_key_account(reference: &str) -> String {
     format!("baas:supabase:{reference}:project-key")
 }
 
+fn validate_object_key(key: &str) -> Result<&str, String> {
+    if key.is_empty()
+        || key.len() > 1024
+        || key.contains('\\')
+        || key
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("Ungültiger Storage-Dateipfad.".into());
+    }
+    Ok(key)
+}
+
 async fn project_key_index() -> Result<Vec<String>, String> {
     let raw = crate::db::secrets::load_secret(KEY_INDEX_ACCOUNT.to_string()).await?;
     match raw {
@@ -305,6 +318,46 @@ pub async fn supabase_objects(
 }
 
 #[tauri::command]
+pub async fn supabase_preview_object(
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    let reference = validate_ref(&reference)?;
+    if bucket.is_empty()
+        || bucket.len() > 256
+        || bucket.contains('/')
+        || bucket.contains('\\')
+        || bucket == "."
+        || bucket == ".."
+    {
+        return Err("Ungültiger Bucket-Name.".into());
+    }
+    let object_key = validate_object_key(&object_key)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für die Dateivorschau wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object/authenticated"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(&bucket)
+        .extend(object_key.split('/'));
+    let response = client()
+        .get(url)
+        .header("apikey", &api_key)
+        .bearer_auth(&api_key)
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    crate::baas_file::preview_response(response).await
+}
+
+#[tauri::command]
 pub async fn supabase_auth_users(
     reference: String,
     page: u32,
@@ -332,8 +385,8 @@ pub async fn supabase_auth_users(
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_ref, SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction, SupabaseObject,
-        SupabaseProject, SupabaseServiceHealth,
+        validate_object_key, validate_ref, SupabaseAuthUsersPage, SupabaseBucket, SupabaseFunction,
+        SupabaseObject, SupabaseProject, SupabaseServiceHealth,
     };
 
     #[test]
@@ -343,6 +396,14 @@ mod tests {
         for invalid in ["", "../other", "a.b", "a/b", "A", "x?redirect=evil"] {
             assert!(validate_ref(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn object_keys_cannot_escape_storage_path() {
+        assert!(validate_object_key("folder/image.png").is_ok());
+        assert!(validate_object_key("../auth/users").is_err());
+        assert!(validate_object_key("folder//image.png").is_err());
+        assert!(validate_object_key("folder\\image.png").is_err());
     }
 
     #[test]

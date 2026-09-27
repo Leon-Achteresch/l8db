@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, Database, File, RefreshCw, Users } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { pocketbaseCollections, pocketbaseRecords } from "@/lib/db";
+import { pocketbaseCollections, pocketbasePreviewFile, pocketbaseRecords } from "@/lib/db";
+import { BaasFilePreview } from "./baas-file-preview";
 
 function displayValue(value: unknown): string {
   if (value == null) return "—";
@@ -15,6 +16,11 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
   const [collectionPage, setCollectionPage] = useState(1);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [recordPage, setRecordPage] = useState(1);
+  const [preview, setPreview] = useState<{
+    collectionId: string;
+    recordId: string;
+    name: string;
+  } | null>(null);
   const collections = useQuery({
     queryKey: ["pocketbase", id, "collections", collectionPage],
     queryFn: () => pocketbaseCollections(id, collectionPage),
@@ -71,6 +77,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                 onClick={() => {
                   setCollectionId(item.id);
                   setRecordPage(1);
+                  setPreview(null);
                 }}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === item.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >
@@ -92,6 +99,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   setCollectionPage((value) => value - 1);
                   setCollectionId(null);
                   setRecordPage(1);
+                  setPreview(null);
                 }}
               >
                 <ChevronLeft className="size-3.5" />
@@ -108,6 +116,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   setCollectionPage((value) => value + 1);
                   setCollectionId(null);
                   setRecordPage(1);
+                  setPreview(null);
                 }}
               >
                 <ChevronRight className="size-3.5" />
@@ -191,14 +200,23 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                       {attachments.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {attachments.map((file) => (
-                            <span
+                            <button
                               key={`${file.field}:${file.name}`}
+                              type="button"
+                              onClick={() => {
+                                if (selected)
+                                  setPreview({
+                                    collectionId: selected.id,
+                                    recordId: record.id,
+                                    name: file.name,
+                                  });
+                              }}
                               className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border bg-background px-2 py-1 text-[11px] text-muted-foreground"
                               title={`${file.field}: ${file.name}`}
                             >
                               <File className="size-3 shrink-0" />{" "}
                               <span className="truncate">{file.name}</span>
-                            </span>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -214,7 +232,10 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   size="icon-sm"
                   aria-label="Vorherige Datensätze"
                   disabled={recordPage === 1}
-                  onClick={() => setRecordPage((value) => value - 1)}
+                  onClick={() => {
+                    setRecordPage((value) => value - 1);
+                    setPreview(null);
+                  }}
                 >
                   <ChevronLeft className="size-3.5" />
                 </Button>
@@ -226,11 +247,32 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   size="icon-sm"
                   aria-label="Weitere Datensätze"
                   disabled={recordPage >= records.data.total_pages}
-                  onClick={() => setRecordPage((value) => value + 1)}
+                  onClick={() => {
+                    setRecordPage((value) => value + 1);
+                    setPreview(null);
+                  }}
                 >
                   <ChevronRight className="size-3.5" />
                 </Button>
               </div>
+            )}
+            {preview && preview.collectionId === selected?.id && (
+              <BaasFilePreview
+                key={`${preview.collectionId}:${preview.recordId}:${preview.name}`}
+                name={preview.name}
+                queryKey={[
+                  "pocketbase",
+                  id,
+                  "preview",
+                  preview.collectionId,
+                  preview.recordId,
+                  preview.name,
+                ]}
+                load={() =>
+                  pocketbasePreviewFile(id, preview.collectionId, preview.recordId, preview.name)
+                }
+                onClose={() => setPreview(null)}
+              />
             )}
           </div>
         </>

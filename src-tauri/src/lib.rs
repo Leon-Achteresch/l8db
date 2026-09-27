@@ -1,4 +1,5 @@
 mod appwrite;
+mod baas_file;
 mod community_extensions;
 mod db;
 mod extension_process;
@@ -82,11 +83,13 @@ pub fn run() {
             pocketbase::pocketbase_disconnect,
             pocketbase::pocketbase_collections,
             pocketbase::pocketbase_records,
+            pocketbase::pocketbase_preview_file,
             appwrite::appwrite_connect,
             appwrite::appwrite_profiles,
             appwrite::appwrite_disconnect,
             appwrite::appwrite_buckets,
             appwrite::appwrite_files,
+            appwrite::appwrite_preview_file,
             appwrite::appwrite_databases,
             appwrite::appwrite_tables,
             appwrite::appwrite_functions,
@@ -103,6 +106,7 @@ pub fn run() {
             supabase::supabase_set_project_key,
             supabase::supabase_delete_project_key,
             supabase::supabase_objects,
+            supabase::supabase_preview_object,
             supabase::supabase_auth_users,
             versioning::versioning_repository,
             versioning::metadata::versioning_metadata,
