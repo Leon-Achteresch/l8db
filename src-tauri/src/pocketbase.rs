@@ -25,6 +25,11 @@ struct PocketBaseMeta {
     app_name: String,
 }
 
+#[derive(Deserialize)]
+struct PocketBaseFileToken {
+    token: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PocketBaseField {
     pub name: String,
@@ -137,6 +142,24 @@ fn remove_hidden_fields(
             .data
             .retain(|name, _| visible.contains(name.as_str()));
     }
+}
+
+fn file_is_visible(
+    collection: &PocketBaseCollection,
+    record: &PocketBaseRecord,
+    filename: &str,
+) -> bool {
+    collection
+        .fields
+        .iter()
+        .filter(|field| field.kind == "file" && !field.hidden)
+        .any(|field| match record.data.get(&field.name) {
+            Some(serde_json::Value::String(value)) => value == filename,
+            Some(serde_json::Value::Array(values)) => {
+                values.iter().any(|value| value.as_str() == Some(filename))
+            }
+            _ => false,
+        })
 }
 
 async fn profiles() -> Result<Vec<PocketBaseProfile>, String> {
@@ -294,9 +317,83 @@ pub async fn pocketbase_records(
     Ok(records)
 }
 
+#[tauri::command]
+pub async fn pocketbase_preview_file(
+    id: String,
+    collection_id: String,
+    record_id: String,
+    filename: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    let collection_id = validate_id(&collection_id)?;
+    let record_id = validate_id(&record_id)?;
+    if filename.is_empty()
+        || filename.len() > 255
+        || filename == "."
+        || filename == ".."
+        || filename.contains('/')
+        || filename.contains('\\')
+    {
+        return Err("Ungültiger Dateiname.".into());
+    }
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection: PocketBaseCollection = get(
+        &profile.endpoint,
+        &token,
+        &format!("collections/{collection_id}"),
+        None,
+    )
+    .await?;
+    if collection.system || collection.name == "_superusers" {
+        return Err("PocketBase-Collection nicht freigegeben.".into());
+    }
+    let record: PocketBaseRecord = get(
+        &profile.endpoint,
+        &token,
+        &format!("collections/{collection_id}/records/{record_id}"),
+        None,
+    )
+    .await?;
+    if !file_is_visible(&collection, &record, &filename) {
+        return Err("Datei ist in diesem Datensatz nicht sichtbar.".into());
+    }
+    let response = client()
+        .post(format!("{}/api/files/token", profile.endpoint))
+        .header("Authorization", &token)
+        .send()
+        .await
+        .map_err(|_| "PocketBase-Dateizugriff ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Dateitoken konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let file_token: PocketBaseFileToken = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat einen ungültigen Dateitoken geliefert.".to_string())?;
+    let mut url = Url::parse(&format!("{}/api/files", profile.endpoint))
+        .map_err(|_| "Ungültige PocketBase-Datei-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige PocketBase-Datei-URL.".to_string())?
+        .push(collection_id)
+        .push(record_id)
+        .push(&filename);
+    url.query_pairs_mut()
+        .append_pair("token", &file_token.token);
+    let response = client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "PocketBase-Datei ist nicht erreichbar.".to_string())?;
+    crate::baas_file::preview_response(response).await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{get, profile_id, remove_hidden_fields, validate_endpoint, validate_id};
+    use super::{
+        file_is_visible, get, profile_id, remove_hidden_fields, validate_endpoint, validate_id,
+    };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -343,6 +440,24 @@ mod tests {
         remove_hidden_fields(&collection, &mut records);
         assert_eq!(records.items[0].data.len(), 1);
         assert_eq!(records.items[0].data["email"], "ada@example.com");
+    }
+
+    #[test]
+    fn preview_only_accepts_visible_file_fields() {
+        let collection = serde_json::from_value(serde_json::json!({
+            "id": "posts", "name": "posts", "type": "base", "system": false,
+            "fields": [
+                {"name": "image", "type": "file", "hidden": false},
+                {"name": "private", "type": "file", "hidden": true}
+            ]
+        }))
+        .unwrap();
+        let record = serde_json::from_value(serde_json::json!({
+            "id": "p1", "image": "hero.webp", "private": "secret.webp"
+        }))
+        .unwrap();
+        assert!(file_is_visible(&collection, &record, "hero.webp"));
+        assert!(!file_is_visible(&collection, &record, "secret.webp"));
     }
 
     #[tokio::test]

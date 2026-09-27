@@ -337,6 +337,29 @@ pub async fn appwrite_files(
 }
 
 #[tauri::command]
+pub async fn appwrite_preview_file(
+    id: String,
+    bucket_id: String,
+    file_id: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let file_id = validate_id(&file_id)?;
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = client()
+        .get(format!(
+            "{}/storage/buckets/{bucket_id}/files/{file_id}/download",
+            profile.endpoint
+        ))
+        .header("X-Appwrite-Project", &profile.project_id)
+        .header("X-Appwrite-Key", &key)
+        .header("X-Appwrite-Response-Format", "2.3.0")
+        .send()
+        .await
+        .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    crate::baas_file::preview_response(response).await
+}
+
+#[tauri::command]
 pub async fn appwrite_databases(
     id: String,
     offset: u32,

@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { supabaseBuckets, supabaseHasProjectKey, supabaseObjects } from "@/lib/db";
+import {
+  supabaseBuckets,
+  supabaseHasProjectKey,
+  supabaseObjects,
+  supabasePreviewObject,
+} from "@/lib/db";
+import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "";
@@ -15,6 +21,9 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
   const [bucket, setBucket] = useState<string | null>(null);
   const [prefix, setPrefix] = useState("");
   const [offset, setOffset] = useState(0);
+  const [preview, setPreview] = useState<{ bucket: string; key: string; name: string } | null>(
+    null,
+  );
   const buckets = useQuery({
     queryKey: ["supabase", reference, "buckets"],
     queryFn: () => supabaseBuckets(reference),
@@ -37,9 +46,11 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     setBucket(name);
     setPrefix("");
     setOffset(0);
+    setPreview(null);
   }
 
   function up() {
+    setPreview(null);
     setPrefix((current) => {
       const parent = current.split("/").filter(Boolean).slice(0, -1).join("/");
       return parent ? `${parent}/` : "";
@@ -155,14 +166,26 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                               onClick={() => {
                                 setPrefix(`${prefix}${entry.name}/`);
                                 setOffset(0);
+                                setPreview(null);
                               }}
                             >
                               {entry.name}
                             </button>
                           ) : (
-                            <span className="min-w-0 flex-1 truncate" title={entry.name}>
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 truncate text-left hover:text-primary"
+                              title={entry.name}
+                              onClick={() =>
+                                setPreview({
+                                  bucket: selected.name,
+                                  key: `${prefix}${entry.name}`,
+                                  name: entry.name,
+                                })
+                              }
+                            >
                               {entry.name}
-                            </span>
+                            </button>
                           )}
                           <span className="shrink-0 text-muted-foreground">
                             {formatBytes(entry.metadata?.size)}
@@ -178,7 +201,10 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                       size="sm"
                       variant="outline"
                       disabled={offset === 0}
-                      onClick={() => setOffset((value) => Math.max(0, value - 100))}
+                      onClick={() => {
+                        setOffset((value) => Math.max(0, value - 100));
+                        setPreview(null);
+                      }}
                     >
                       Zurück
                     </Button>
@@ -189,11 +215,23 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                       size="sm"
                       variant="outline"
                       disabled={(objects.data?.length ?? 0) < 100}
-                      onClick={() => setOffset((value) => value + 100)}
+                      onClick={() => {
+                        setOffset((value) => value + 100);
+                        setPreview(null);
+                      }}
                     >
                       Weiter <ChevronRight className="size-3" />
                     </Button>
                   </div>
+                )}
+                {preview && preview.bucket === selected.name && (
+                  <BaasFilePreview
+                    key={`${preview.bucket}:${preview.key}`}
+                    name={preview.name}
+                    queryKey={["supabase", reference, "preview", preview.bucket, preview.key]}
+                    load={() => supabasePreviewObject(reference, preview.bucket, preview.key)}
+                    onClose={() => setPreview(null)}
+                  />
                 )}
               </>
             )}

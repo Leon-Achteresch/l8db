@@ -1,3 +1,4 @@
+import type { BaasFilePreview } from "./baas-file";
 import { invoke } from "./core";
 
 export interface PocketBaseProfile {
@@ -43,3 +44,9 @@ export const pocketbaseCollections = (id: string, page: number) =>
   invoke<PocketBasePage<PocketBaseCollection>>("pocketbase_collections", { id, page });
 export const pocketbaseRecords = (id: string, collectionId: string, page: number) =>
   invoke<PocketBasePage<PocketBaseRecord>>("pocketbase_records", { id, collectionId, page });
+export const pocketbasePreviewFile = (
+  id: string,
+  collectionId: string,
+  recordId: string,
+  filename: string,
+) => invoke<BaasFilePreview>("pocketbase_preview_file", { id, collectionId, recordId, filename });

@@ -1,3 +1,4 @@
+import type { BaasFilePreview } from "./baas-file";
 import { invoke } from "./core";
 
 export interface SupabaseProject {
@@ -76,5 +77,7 @@ export const supabaseObjects = (
   prefix: string,
   offset: number,
 ) => invoke<SupabaseObject[]>("supabase_objects", { reference, bucket, prefix, offset });
+export const supabasePreviewObject = (reference: string, bucket: string, objectKey: string) =>
+  invoke<BaasFilePreview>("supabase_preview_object", { reference, bucket, objectKey });
 export const supabaseAuthUsers = (reference: string, page: number) =>
   invoke<SupabaseAuthUsersPage>("supabase_auth_users", { reference, page });

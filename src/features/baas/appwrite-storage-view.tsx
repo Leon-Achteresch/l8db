@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, File, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { appwriteBuckets, appwriteFiles } from "@/lib/db";
+import { appwriteBuckets, appwriteFiles, appwritePreviewFile } from "@/lib/db";
+import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: number | null): string {
   if (value == null) return "";
@@ -15,6 +16,9 @@ export function AppwriteStorageView({ id }: { id: string }) {
   const [bucketId, setBucketId] = useState<string | null>(null);
   const [bucketOffset, setBucketOffset] = useState(0);
   const [fileOffset, setFileOffset] = useState(0);
+  const [preview, setPreview] = useState<{ bucketId: string; fileId: string; name: string } | null>(
+    null,
+  );
   const buckets = useQuery({
     queryKey: ["appwrite", id, "buckets", bucketOffset],
     queryFn: () => appwriteBuckets(id, bucketOffset),
@@ -69,6 +73,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 onClick={() => {
                   setBucketId(item.id);
                   setFileOffset(0);
+                  setPreview(null);
                 }}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === item.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >
@@ -97,6 +102,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
                   setBucketOffset((value) => value + 100);
                   setBucketId(null);
                   setFileOffset(0);
+                  setPreview(null);
                 }}
               >
                 <ChevronRight className="size-3.5" />
@@ -123,9 +129,17 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 {files.data.items.map((file) => (
                   <div key={file.id} className="flex items-center gap-2 py-2 text-xs">
                     <File className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate" title={file.name}>
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left hover:text-primary"
+                      title={file.name}
+                      onClick={() => {
+                        if (selected)
+                          setPreview({ bucketId: selected.id, fileId: file.id, name: file.name });
+                      }}
+                    >
                       {file.name}
-                    </span>
+                    </button>
                     <span className="shrink-0 text-muted-foreground">
                       {formatBytes(file.size_original)}
                     </span>
@@ -141,7 +155,10 @@ export function AppwriteStorageView({ id }: { id: string }) {
                     size="icon-sm"
                     aria-label="Vorherige Dateien"
                     disabled={fileOffset === 0}
-                    onClick={() => setFileOffset((value) => Math.max(0, value - 100))}
+                    onClick={() => {
+                      setFileOffset((value) => Math.max(0, value - 100));
+                      setPreview(null);
+                    }}
                   >
                     <ChevronLeft className="size-3.5" />
                   </Button>
@@ -153,12 +170,24 @@ export function AppwriteStorageView({ id }: { id: string }) {
                     size="icon-sm"
                     aria-label="Weitere Dateien"
                     disabled={fileOffset + files.data.items.length >= files.data.total}
-                    onClick={() => setFileOffset((value) => value + 100)}
+                    onClick={() => {
+                      setFileOffset((value) => value + 100);
+                      setPreview(null);
+                    }}
                   >
                     <ChevronRight className="size-3.5" />
                   </Button>
                 </div>
               )}
+            {preview && preview.bucketId === selected?.id && (
+              <BaasFilePreview
+                key={`${preview.bucketId}:${preview.fileId}`}
+                name={preview.name}
+                queryKey={["appwrite", id, "preview", preview.bucketId, preview.fileId]}
+                load={() => appwritePreviewFile(id, preview.bucketId, preview.fileId)}
+                onClose={() => setPreview(null)}
+              />
+            )}
           </div>
         </>
       )}
