@@ -5,22 +5,27 @@ import athena from "thesvg/aws-amazon-athena";
 import documentdb from "thesvg/aws-amazon-documentdb";
 import dynamodb from "thesvg/aws-amazon-dynamodb";
 import redshift from "thesvg/aws-amazon-redshift";
+import s3 from "thesvg/aws-amazon-simple-storage-service";
 import cosmosdb from "thesvg/azure-azure-cosmos-db";
+import backblaze from "thesvg/backblaze";
 import clickhouse from "thesvg/clickhouse";
 import cloudflare from "thesvg/cloudflare";
 import cockroach from "thesvg/cockroach-labs";
 import cratedb from "thesvg/cratedb";
 import databricks from "thesvg/databricks";
+import digitalocean from "thesvg/digitalocean";
 import duckdb from "thesvg/duckdb";
 import elasticsearch from "thesvg/elasticsearch";
 import ferretdb from "thesvg/ferretdb";
 import firebird from "thesvg/firebird";
 import bigquery from "thesvg/google-bigquery";
+import googleCloudStorage from "thesvg/google-cloud-storage";
 import ibm from "thesvg/ibm";
 import influxdb from "thesvg/influxdb";
 import mariadb from "thesvg/mariadb";
 import access from "thesvg/microsoft-access";
 import mssql from "thesvg/microsoft-sql-server";
+import minio from "thesvg/minio";
 import mongodb from "thesvg/mongodb";
 import mysql from "thesvg/mysql";
 import neon from "thesvg/neon";
@@ -51,6 +56,11 @@ const ICONS: Record<string, IconModule> = {
   "apache-doris": apacheDoris,
   "apache-hive": apacheHive,
   "aws-amazon-athena": athena,
+  "aws-amazon-simple-storage-service": s3,
+  backblaze,
+  digitalocean,
+  "google-cloud-storage": googleCloudStorage,
+  minio,
   "aws-amazon-documentdb": documentdb,
   "aws-amazon-dynamodb": dynamodb,
   "aws-amazon-redshift": redshift,

@@ -20,6 +20,7 @@ export * from "./roles";
 export * from "./rows";
 export * from "./schema-catalog";
 export * from "./schema-objects";
+export * from "./storage";
 export * from "./transactions";
 export * from "./transfer";
 export * from "./types";

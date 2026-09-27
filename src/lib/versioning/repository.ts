@@ -33,6 +33,10 @@ export async function saveFile(
   await versioningRepository({ action: "write", repo, path, content, expected });
 }
 
+export async function deleteFile(repo: string, path: string, expected: string): Promise<void> {
+  await versioningRepository({ action: "delete", repo, path, expected });
+}
+
 export async function loadRepository(repo: string) {
   const status = await versioningRepository<RepositoryStatus>({ action: "status", repo });
   const text = await readFile(status.repo, PROJECT_PATH);

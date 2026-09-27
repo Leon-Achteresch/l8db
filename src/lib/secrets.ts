@@ -11,6 +11,11 @@ export async function storeSecret(account: string, secret: string): Promise<void
   await persistSecret(account, secret);
 }
 
+export async function rememberSecret(account: string, secret: string): Promise<void> {
+  sessionSecrets.set(account, secret);
+  await removeSecret(account);
+}
+
 export function peekSecret(account: string): string | null {
   return sessionSecrets.get(account) ?? null;
 }

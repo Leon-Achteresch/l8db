@@ -2,6 +2,7 @@ import { nextQueryTitle, storeFor } from "./helpers";
 import { tabKey } from "./tab-keys";
 import type {
   AlterTableTab,
+  BucketTab,
   ExtensionPanelTab,
   ExtensionTab,
   FunctionTab,
@@ -38,6 +39,7 @@ export function createOpenActions(
   | "openTriggerTab"
   | "openViewEditorTab"
   | "openAlterTableTab"
+  | "openBucketTab"
 > {
   return {
     openTab: (tab) => {
@@ -202,6 +204,15 @@ export function createOpenActions(
       set((state) => {
         if (state.tabs.some((t) => tabKey(t) === key)) return state;
         return storeFor([...state.tabs, at], state);
+      });
+    },
+
+    openBucketTab: (tab) => {
+      const bt: BucketTab = { kind: "bucket", ...tab };
+      const key = tabKey(bt);
+      set((state) => {
+        if (state.tabs.some((t) => tabKey(t) === key)) return state;
+        return storeFor([...state.tabs, bt], state);
       });
     },
   };

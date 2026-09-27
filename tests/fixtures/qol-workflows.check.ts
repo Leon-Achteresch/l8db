@@ -7,6 +7,7 @@ let failSql = "";
 let inserts = 0;
 let failInsert = 0;
 mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: Record<string, unknown> = {}) => {
+  if (command === "list_providers") return [];
   calls.push({ command, args });
   if (command === "begin_transaction") return "qol-tx";
   if (command === "execute_query" || command === "execute_in_transaction") {

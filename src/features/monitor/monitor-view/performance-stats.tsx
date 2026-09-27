@@ -5,6 +5,7 @@ import {
   GaugeIcon,
   SquareTerminal,
 } from "lucide-react";
+import { AnimatedNumber } from "@/components/animated-number";
 import { firstLine, formatBytes, formatMs } from "@/features/monitor/monitor-view/format";
 import type { MonitorViewState } from "@/features/monitor/monitor-view/use-monitor-view";
 
@@ -17,7 +18,7 @@ export function PerformanceStats({ m }: { m: MonitorViewState }) {
       {[
         {
           label: "Queries",
-          value: stats.total.toLocaleString("de-DE"),
+          value: <AnimatedNumber value={stats.total} />,
           detail: rangeLabel,
           icon: SquareTerminal,
         },
@@ -35,7 +36,7 @@ export function PerformanceStats({ m }: { m: MonitorViewState }) {
         },
         {
           label: "Fehler",
-          value: stats.errors.toLocaleString("de-DE"),
+          value: <AnimatedNumber value={stats.errors} />,
           detail: stats.total
             ? `${Math.round((stats.errors / stats.total) * 100)} % Anteil`
             : "Keine Queries",
@@ -43,11 +44,15 @@ export function PerformanceStats({ m }: { m: MonitorViewState }) {
         },
         {
           label: "Aktive Sessions",
-          value: capabilities.sessions
-            ? activeSessions == null
-              ? "…"
-              : activeSessions.toLocaleString("de-DE")
-            : "—",
+          value: capabilities.sessions ? (
+            activeSessions == null ? (
+              "…"
+            ) : (
+              <AnimatedNumber value={activeSessions} />
+            )
+          ) : (
+            "—"
+          ),
           detail: capabilities.sessions ? "Live" : "Nicht verfügbar",
           icon: ActivityIcon,
         },

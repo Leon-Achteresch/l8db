@@ -49,6 +49,7 @@ rusqlite = { version = "0.40", default-features = false, features = ["bundled", 
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
 chrono = "0.4"
 tokio-util = { version = "0.7", features = ["compat"] }
+portable-pty = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["json", "query", "native-tls", "charset", "http2"] }
 mongodb = "3"
 redis = { version = "1", features = ["tokio-comp", "tokio-native-tls-comp"] }
@@ -66,6 +67,8 @@ toml_edit = "0.25"
 rsa = { version = "0.10.0-rc.18", features = ["sha2", "pkcs5"] }
 pkcs8 = { version = "0.11", features = ["pem", "encryption", "3des"] }
 flate2 = "1"
+quick-xml = "0.42"
+md-5 = "0.11"
 
 [dev-dependencies]
 rand = "0.10"

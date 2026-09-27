@@ -1,7 +1,6 @@
 import {
   CheckCircle2Icon,
   CheckIcon,
-  DatabaseIcon,
   FileCode2Icon,
   GitCommitHorizontalIcon,
   GitMergeIcon,
@@ -10,30 +9,22 @@ import {
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CompareSidePicker } from "@/features/compare/compare-side-picker";
 import { DefinitionDiffEditor } from "@/features/compare/definition-diff-editor";
-import { listCompareObjects } from "@/lib/compare-definition";
-import { EMPTY_COMPARE_SIDE, supportedCompareObjectTypes } from "@/lib/compare-types";
-import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { captureObject } from "@/lib/versioning/capture";
 import { hasMergeMarkers } from "@/lib/versioning/conflicts";
-import { PROJECT_PATH } from "@/lib/versioning/model";
-import { encode, readFile, saveFile } from "@/lib/versioning/repository";
-import { newManagedObject, sourceFiles } from "@/lib/versioning/sources";
+import { readFile, saveFile } from "@/lib/versioning/repository";
 import { changedFiles } from "@/lib/versioning/status";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningConflicts } from "./versioning-conflicts";
+import { VersioningDatabaseChanges } from "./versioning-database-changes";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningPopover } from "./versioning-popover";
 import { VersioningSelect } from "./versioning-select";
 
 export function VersioningDevelopment({ workspace }: { workspace: VersioningWorkspace }) {
-  const { repo, project, projectText, status, run, refresh } = workspace;
-  const connections = useConnectionsStore((state) => state.connections);
+  const { repo, project, status, run, refresh } = workspace;
   const [showAll, setShowAll] = useState(false);
-  const [side, setSide] = useState(EMPTY_COMPARE_SIDE);
   const [path, setPath] = useState("");
   const [original, setOriginal] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
@@ -61,77 +52,6 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
     setDraft(diff.modified);
     setSaved(current);
     setMergedFrom(null);
-  };
-  const capture = async () => {
-    if (path && draft !== (saved ?? ""))
-      throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
-    const connection = connections.find((item) => item.id === side.connectionId);
-    if (
-      !project ||
-      !connection ||
-      connection.kind !== project.kind ||
-      !side.schema ||
-      !side.objectName
-    )
-      throw new Error("Ein passendes Datenbankobjekt auswählen.");
-    const existing = project.objects.find(
-      (object) =>
-        object.selection.schema === side.schema &&
-        object.selection.objectName === side.objectName &&
-        object.selection.objectType === side.objectType,
-    );
-    const object = existing ?? newManagedObject(side);
-    const snapshot = await captureObject(connection, side.database, object);
-    for (const [file, source] of Object.entries(sourceFiles(snapshot))) {
-      const previous = await readFile(repo, file);
-      await saveFile(repo, file, source, previous);
-    }
-    if (!existing)
-      await saveFile(
-        repo,
-        PROJECT_PATH,
-        encode({ ...project, objects: [...project.objects, object] }),
-        projectText,
-      );
-    await refresh();
-    await load(object.path);
-  };
-  const captureSchema = async () => {
-    if (path && draft !== (saved ?? ""))
-      throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
-    const connection = connections.find((item) => item.id === side.connectionId);
-    if (!project || !connection || connection.kind !== project.kind || !side.schema)
-      throw new Error("Eine passende Verbindung und ein Schema auswählen.");
-    const objects = [...project.objects];
-    const captures = [];
-    for (const objectType of supportedCompareObjectTypes(connection)) {
-      const entries = await listCompareObjects(connection, { ...side, objectType });
-      for (const entry of entries) {
-        if (entry.name === "L8DB_VERSIONING_STATE") continue;
-        if (captures.length >= 5000)
-          throw new Error("Mehr als 5000 Objekte. Bitte einen kleineren Umfang wählen.");
-        const selection = { ...side, objectType, objectName: entry.name, objectOid: entry.oid };
-        let object = objects.find(
-          (item) =>
-            item.selection.schema === side.schema &&
-            item.selection.objectType === objectType &&
-            item.selection.objectName === entry.name,
-        );
-        if (!object) {
-          object = newManagedObject(selection);
-          objects.push(object);
-        }
-        workspace.setMessage(`Schema lesen: ${entry.name}`);
-        captures.push(await captureObject(connection, side.database, object));
-      }
-    }
-    if (!captures.length) throw new Error("Keine lesbaren Objekte im Schema gefunden.");
-    for (const snapshot of captures) {
-      for (const [file, source] of Object.entries(sourceFiles(snapshot)))
-        await saveFile(repo, file, source, await readFile(repo, file));
-    }
-    await saveFile(repo, PROJECT_PATH, encode({ ...project, objects }), projectText);
-    await refresh();
   };
   const merge = async () => {
     if (!path || !mergeSource) throw new Error("Datei und Quell-Branch auswählen.");
@@ -181,51 +101,14 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
   const files = status.files.filter((file) => showAll || changes.has(file));
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <VersioningDatabaseChanges workspace={workspace} />
+      <div className="flex items-center gap-2 border-t border-border/50 pt-4">
         <div className="flex-1">
-          <h2 className="text-xs font-semibold">Arbeitsbaum</h2>
+          <h2 className="text-xs font-semibold">Repository</h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {changes.size} offen · {status.files.length} Dateien
           </p>
         </div>
-        <VersioningPopover
-          icon={DatabaseIcon}
-          label="Aus Datenbank übernehmen"
-          disabled={workspace.busy}
-          trigger={
-            !project.objects.length ? (
-              <Button size="sm" disabled={workspace.busy}>
-                <DatabaseIcon className="size-3.5" />
-                Quellschema aufnehmen
-              </Button>
-            ) : undefined
-          }
-        >
-          <CompareSidePicker
-            title="Quelle auswählen"
-            value={side}
-            onChange={setSide}
-            className="border-0 bg-transparent p-0"
-          />
-          <Button
-            size="sm"
-            disabled={!side.objectName}
-            onClick={() => void run(capture, "Objektdefinition übernommen")}
-          >
-            Definition übernehmen
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!side.schema}
-            onClick={() => void run(captureSchema, "Unterstützte Schema-Objekte aufgenommen")}
-          >
-            Schema aufnehmen
-          </Button>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Verwaltete Definitionen und Tabellenmetadaten. Datenzeilen werden nicht exportiert.
-          </p>
-        </VersioningPopover>
         <VersioningPopover
           icon={GitCommitHorizontalIcon}
           label={`Änderungen committen${selected.length ? ` (${selected.length})` : ""}`}
@@ -278,6 +161,17 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
         >
           Alle Dateien
         </button>
+        <label className="ml-auto flex items-center gap-2 text-muted-foreground">
+          <input
+            type="checkbox"
+            aria-label="Alle offenen Dateien auswählen"
+            className="size-3.5"
+            disabled={!changes.size}
+            checked={Boolean(changes.size) && selected.length === changes.size}
+            onChange={(event) => setSelected(event.target.checked ? [...changes.keys()] : [])}
+          />
+          Alle für Commit
+        </label>
       </div>
       <div className="max-h-72 overflow-y-auto">
         {files.map((file) => {
@@ -354,7 +248,7 @@ export function VersioningDevelopment({ workspace }: { workspace: VersioningWork
             <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
               {status.files.length
                 ? "Neue Änderungen erscheinen hier automatisch."
-                : "Über das Datenbank-Symbol kannst du einzelne Objekte oder ein Schema aufnehmen."}
+                : "Entwicklungsdatenbank verknüpfen und vergleichen, um das Schema aufzunehmen."}
             </p>
           </div>
         )}

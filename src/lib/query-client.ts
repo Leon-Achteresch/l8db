@@ -47,6 +47,7 @@ const connectionQueryRoots = new Set<string>([
   "scheduler-jobs",
   "column-search",
   "source-search",
+  "s3",
 ]);
 
 export function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {

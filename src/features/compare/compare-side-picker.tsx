@@ -29,6 +29,7 @@ interface CompareSidePickerProps {
   onChange: (value: CompareSideSelection) => void;
   lockConnection?: SavedConnection | null;
   hideObjectType?: boolean;
+  schemaOnly?: boolean;
   preferredObjectName?: string | null;
 }
 
@@ -39,6 +40,7 @@ export function CompareSidePicker({
   onChange,
   lockConnection,
   hideObjectType,
+  schemaOnly,
   preferredObjectName,
 }: CompareSidePickerProps) {
   const {
@@ -167,7 +169,7 @@ export function CompareSidePicker({
         </Select>
       </div>
 
-      {!hideObjectType && (
+      {!hideObjectType && !schemaOnly && (
         <div className="flex flex-col gap-1">
           <Label className="flex items-center gap-1.5 text-xs">
             <CompareObjectIcon type={value.objectType} />
@@ -200,51 +202,53 @@ export function CompareSidePicker({
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
-        <Label className="flex items-center gap-1.5 text-xs">
-          {loadingObjects ? (
-            <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
-          ) : (
-            <CompareObjectIcon type={value.objectType} />
-          )}
-          Objekt
-        </Label>
-        <Select
-          value={usesOid ? (value.objectOid ?? "") : (value.objectName ?? "")}
-          onValueChange={(picked) => {
-            if (usesOid) {
-              const match = objects.find((item) => item.oid === picked);
-              emit({
-                ...value,
-                objectOid: picked,
-                objectName: match?.name ?? null,
-              });
-              return;
-            }
-            emit({ ...value, objectName: picked, objectOid: null });
-          }}
-          disabled={!value.schema || loadingObjects || objects.length === 0}
-        >
-          <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
-            {loadingObjects && (
+      {!schemaOnly && (
+        <div className="flex flex-col gap-1">
+          <Label className="flex items-center gap-1.5 text-xs">
+            {loadingObjects ? (
               <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+            ) : (
+              <CompareObjectIcon type={value.objectType} />
             )}
-            <SelectValue placeholder={loadingObjects ? "Lädt…" : "Objekt wählen"} />
-          </SelectTrigger>
-          <SelectContent searchable>
-            {objects.map((item) => (
-              <SelectItem
-                key={item.oid ?? item.name}
-                value={usesOid ? (item.oid ?? item.name) : item.name}
-                className="text-xs"
-              >
-                <CompareObjectIcon type={value.objectType} />
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            Objekt
+          </Label>
+          <Select
+            value={usesOid ? (value.objectOid ?? "") : (value.objectName ?? "")}
+            onValueChange={(picked) => {
+              if (usesOid) {
+                const match = objects.find((item) => item.oid === picked);
+                emit({
+                  ...value,
+                  objectOid: picked,
+                  objectName: match?.name ?? null,
+                });
+                return;
+              }
+              emit({ ...value, objectName: picked, objectOid: null });
+            }}
+            disabled={!value.schema || loadingObjects || objects.length === 0}
+          >
+            <SelectTrigger className="h-8 w-full min-w-0 text-xs disabled:opacity-100">
+              {loadingObjects && (
+                <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+              )}
+              <SelectValue placeholder={loadingObjects ? "Lädt…" : "Objekt wählen"} />
+            </SelectTrigger>
+            <SelectContent searchable>
+              {objects.map((item) => (
+                <SelectItem
+                  key={item.oid ?? item.name}
+                  value={usesOid ? (item.oid ?? item.name) : item.name}
+                  className="text-xs"
+                >
+                  <CompareObjectIcon type={value.objectType} />
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }

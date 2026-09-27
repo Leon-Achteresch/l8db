@@ -18,7 +18,8 @@ export type DatabaseKind =
   | "dynamodb"
   | "athena"
   | "bigquery"
-  | "snowflake";
+  | "snowflake"
+  | "s3";
 
 export interface Capabilities {
   databases: boolean;
@@ -78,6 +79,7 @@ export interface Capabilities {
   ssl: boolean;
   ssh: boolean;
   backup: boolean;
+  object_storage: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   filter_hint: string;
 }

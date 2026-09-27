@@ -38,6 +38,9 @@ const QueryView = lazy(() =>
 const TableView = lazy(() =>
   import("@/features/table/table-view").then((module) => ({ default: module.TableView })),
 );
+const BucketView = lazy(() =>
+  import("@/features/storage/bucket-view").then((module) => ({ default: module.BucketView })),
+);
 const TriggerView = lazy(() =>
   import("@/features/triggers/trigger-view").then((module) => ({ default: module.TriggerView })),
 );
@@ -76,6 +79,8 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
       return <ViewEditorView schema={tab.schema} view={tab.view} />;
     case "alter-table":
       return <AlterTableView schema={tab.schema} table={tab.table} />;
+    case "bucket":
+      return <BucketView bucket={tab.bucket} />;
     case "tool": {
       if (tab.tool === "compare") return <CompareView tabId={tab.id} />;
       const ToolComponent = TOOL_TABS[tab.tool].Component;

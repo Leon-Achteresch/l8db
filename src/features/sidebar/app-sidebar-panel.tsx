@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ArchiveIcon,
   BracesIcon,
   EyeIcon,
   FileCodeIcon,
@@ -63,7 +64,12 @@ export function AppSidebarPanel() {
   const packages = q.functions?.filter((f) => f.return_type === "PACKAGE");
   const plainFunctions = q.functions?.filter((f) => f.return_type !== "PACKAGE");
   const sidebarTabs = [
-    { value: "tables", label: "Tabellen", icon: TableIcon, enabled: true },
+    {
+      value: "tables",
+      label: caps.object_storage ? "Buckets" : "Tabellen",
+      icon: caps.object_storage ? ArchiveIcon : TableIcon,
+      enabled: true,
+    },
     { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
     { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
     {
@@ -98,7 +104,7 @@ export function AppSidebarPanel() {
     <Sidebar
       collapsible="none"
       style={{ width: "var(--sidebar-width)" }}
-      className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden border-r md:flex"
+      className="hidden min-h-0 min-w-0 shrink-0 overflow-hidden md:flex"
     >
       <SidebarHeader className="gap-3.5 border-b p-2">
         <SidebarConnectionPicker
@@ -141,7 +147,11 @@ export function AppSidebarPanel() {
               sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
             }
           >
-            <SidebarGroupLabel className="flex-1">{sidebarTabLabel(sidebarTab)}</SidebarGroupLabel>
+            <SidebarGroupLabel className="flex-1">
+              {caps.object_storage && sidebarTab === "tables"
+                ? "Buckets"
+                : sidebarTabLabel(sidebarTab)}
+            </SidebarGroupLabel>
             {sidebarTab === "functions" ||
             sidebarTab === "procedures" ||
             sidebarTab === "packages" ||
@@ -150,6 +160,7 @@ export function AppSidebarPanel() {
             ) : null}
           </div>
           {caps.query_language !== "redis" &&
+          !caps.object_storage &&
           (sidebarTab === "tables" || sidebarTab === "views") ? (
             <SidebarGroupAction
               onClick={() => {
@@ -165,6 +176,7 @@ export function AppSidebarPanel() {
           <SidebarGroupContent>
             <SidebarTabContent
               hasConnection={Boolean(activeConnection)}
+              objectStorage={caps.object_storage}
               sidebarTab={sidebarTab}
               q={q}
               packages={packages}

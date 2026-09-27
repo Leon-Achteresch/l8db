@@ -3,6 +3,7 @@ import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } 
 import { useEffect } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tooltip } from "@/components/motion/tooltip";
+import { NewBadge } from "@/components/new-badge";
 import { AppHeaderNavigation } from "@/features/shell/app-header-navigation";
 import { AppHeaderSearch } from "@/features/shell/app-header-search";
 import { EnvironmentBadge } from "@/features/shell/environment-badge";
@@ -14,6 +15,7 @@ import { useActiveCapabilities } from "@/lib/db-selection";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -34,6 +36,7 @@ function headerSection(pathname: string) {
 export function AppHeader() {
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const navInHeader = useSettingsStore((state) => state.navInHeader);
   const versioning = useVersioningPanel();
   const section = useRouterSelect((s) => headerSection(s.location.pathname));
   const txCount = useTransactionStore((s) => s.transactions.length);
@@ -42,6 +45,7 @@ export function AppHeader() {
   const syncWithBackend = useTransactionStore((s) => s.syncWithBackend);
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
   const update = useVisibleUpdate();
+  const hasNewSettingsFeatures = useHasNewFeatures("settings");
 
   useWindowTitle();
 
@@ -56,13 +60,21 @@ export function AppHeader() {
       data-tauri-drag-region="deep"
       className={cn(
         "@container relative z-20 flex h-[var(--app-header-height)] shrink-0 select-none items-center gap-0",
-        "border-b border-border/60",
-        "bg-card/80 backdrop-blur-xl backdrop-saturate-150 dark:bg-background/72",
+        "bg-sidebar",
         IS_MAC && "pl-[72px]",
         USE_CUSTOM_WINDOW_CONTROLS && "pr-[140px]",
       )}
     >
-      <AppHeaderNavigation />
+      {navInHeader ? (
+        <AppHeaderNavigation />
+      ) : (
+        <Link
+          to="/"
+          className="ml-3 inline-flex h-7 shrink-0 items-center px-1 text-sm font-semibold tracking-tight"
+        >
+          l8db
+        </Link>
+      )}
 
       <div className="@container/header-search flex min-w-0 flex-1 justify-center px-2 @min-[54rem]:px-4">
         <div className="flex w-full max-w-[640px] items-center gap-2">
@@ -228,7 +240,7 @@ export function AppHeader() {
         <Tooltip content="Einstellungen" side="bottom">
           <Link
             to="/settings"
-            aria-label="Einstellungen"
+            aria-label={hasNewSettingsFeatures ? "Einstellungen, neue Funktionen" : "Einstellungen"}
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -236,10 +248,13 @@ export function AppHeader() {
             )}
           >
             <Settings className="size-4" strokeWidth={2} />
+            {hasNewSettingsFeatures ? (
+              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+            ) : null}
             {update ? (
               <span
                 aria-hidden
-                className="absolute right-0.5 top-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
+                className="absolute -bottom-0.5 -left-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
               />
             ) : null}
           </Link>

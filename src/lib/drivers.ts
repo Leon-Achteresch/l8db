@@ -30,6 +30,7 @@ export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
   sqlite_http: "SQLite über HTTP (D1, libSQL)",
   dynamodb: "Amazon DynamoDB",
   athena: "Amazon Athena",
+  s3: "S3 / MinIO",
   bigquery: "Google BigQuery",
   snowflake: "Snowflake",
 };

@@ -64,32 +64,43 @@ export function legendFor(
   }
 }
 
-export function headlineFor(kind: ChartKind, rows: Row[], shape: DatasetShape): string {
-  if (kind === "table") return `${rows.length} Zeilen`;
+export type Headline = { value: number; suffix?: string } | { text: string };
+
+export function headlineValue(kind: ChartKind, rows: Row[], shape: DatasetShape): Headline {
+  if (kind === "table") return { value: rows.length, suffix: " Zeilen" };
   const key = shape.metrics[0]?.key ?? "";
-  if (!rows.length || !key) return "—";
+  if (!rows.length || !key) return { text: "—" };
   if (kind === "gauge") {
     const max = rows.reduce((s, r) => s + toNumber(r[shape.metrics[1]?.key ?? ""]), 0) || 1;
-    return `${Math.round((rows.reduce((s, r) => s + toNumber(r[key]), 0) / max) * 100)}%`;
+    return {
+      value: Math.round((rows.reduce((s, r) => s + toNumber(r[key]), 0) / max) * 100),
+      suffix: "%",
+    };
   }
   if (kind === "score") {
     const total = rows.reduce((s, r) => s + toNumber(r[key]), 0);
     const max = rows.reduce((s, r) => s + toNumber(r[shape.metrics[1]?.key ?? ""]), 0) || 1;
     const pct = Math.round((total / max) * 100);
-    return pct >= 90 ? "Exzellent" : pct >= 70 ? "Gut" : pct >= 50 ? "Okay" : "Schwach";
+    return { text: pct >= 90 ? "Exzellent" : pct >= 70 ? "Gut" : pct >= 50 ? "Okay" : "Schwach" };
   }
   if (kind === "scatter") {
     const y = shape.metrics[1]?.key ?? key;
-    return fmtNumber(rows.reduce((s, r) => s + toNumber(r[y]), 0) / rows.length);
+    return { value: rows.reduce((s, r) => s + toNumber(r[y]), 0) / rows.length };
   }
   if (kind === "funnel" || kind === "bars")
-    return fmtNumber(Math.max(...rows.map((r) => toNumber(r[key]))));
-  if (kind === "kpi" && !shape.dimension) return fmtNumber(toNumber(rows[0][key]));
+    return { value: Math.max(...rows.map((r) => toNumber(r[key]))) };
+  if (kind === "kpi" && !shape.dimension) return { value: toNumber(rows[0][key]) };
   const keys =
     kind === "area" || kind === "line" || kind === "column" || kind === "radar"
       ? shape.metrics.map((m) => m.key)
       : [key];
-  return fmtNumber(rows.reduce((s, r) => s + keys.reduce((t, k) => t + toNumber(r[k]), 0), 0));
+  return { value: rows.reduce((s, r) => s + keys.reduce((t, k) => t + toNumber(r[k]), 0), 0) };
+}
+
+export function headlineFor(kind: ChartKind, rows: Row[], shape: DatasetShape): string {
+  const headline = headlineValue(kind, rows, shape);
+  if ("text" in headline) return headline.text;
+  return `${fmtNumber(headline.value)}${headline.suffix ?? ""}`;
 }
 
 export function deltaFor(rows: Row[], shape: DatasetShape, isTime: boolean): number | null {

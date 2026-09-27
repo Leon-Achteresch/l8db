@@ -1,57 +1,93 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.0.0",
-  "description": "Lädt und speichert Verbindungen samt Passwort in Keeper, Bitwarden oder 1Password über deren offizielle CLI.",
+  "version": "1.4.0",
+  "description": "Speichert deine l8db-Verbindungen in Bitwarden, 1Password oder Keeper und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern.",
   "publisher": "l8db",
   "engines": {
-    "l8db": ">=0.6.0 <1.0.0",
+    "l8db": ">=0.7.0 <1.0.0",
     "api": "^1.1.0"
   },
   "main": "dist/extension.js",
   "activationEvents": [
-    "onView:vault.clis",
+    "onStartup",
+    "onCommand:vault.sync",
+    "onCommand:vault.save",
     "onCommand:vault.import",
     "onCommand:vault.export",
-    "onCommand:vault.install"
+    "onCommand:vault.install",
+    "onCommand:vault.setup"
   ],
-  "permissions": ["process:execute", "connections:read", "connections:write"],
+  "permissions": [
+    "process:execute",
+    "connections:read",
+    "connections:write",
+    "filesystem:extension-storage"
+  ],
   "capabilities": {
     "process": {
-      "commands": ["keeper", "bw", "op", "pipx", "python3", "py", "npm", "brew", "winget", "sh"]
+      "commands": [
+        "keeper",
+        "bw",
+        "op",
+        "pipx",
+        "python3",
+        "py",
+        "npm",
+        "brew",
+        "winget",
+        "sh"
+      ]
     }
   },
   "contributes": {
     "commands": [
       {
-        "id": "vault.import",
-        "title": "Passwortmanager: Verbindungen laden"
+        "id": "vault.sync",
+        "title": "Passwortmanager: Zugänge abgleichen",
+        "icon": "refresh-cw"
+      },
+      {
+        "id": "vault.save",
+        "title": "Passwortmanager: Verbindung speichern"
       },
       {
         "id": "vault.export",
-        "title": "Passwortmanager: Verbindungen speichern"
+        "title": "Passwortmanager: Bestehende Verbindungen speichern"
+      },
+      {
+        "id": "vault.import",
+        "title": "Passwortmanager: Ausgeblendete Verbindungen einblenden"
       },
       {
         "id": "vault.install",
         "title": "Passwortmanager: CLI installieren"
       },
       {
-        "id": "vault.refresh",
-        "title": "Passwortmanager: Status aktualisieren",
-        "icon": "refresh-cw"
+        "id": "vault.setup",
+        "title": "Passwortmanager: Einrichtung"
       }
     ],
     "configuration": {
       "vault.provider": {
         "type": "string",
         "default": "keeper",
-        "enum": ["keeper", "bitwarden", "1password"],
+        "enum": [
+          "keeper",
+          "bitwarden",
+          "1password"
+        ],
         "description": "Passwortmanager, dessen CLI verwendet wird (keeper, bw oder op)."
+      },
+      "vault.autoSync": {
+        "type": "boolean",
+        "default": true,
+        "description": "Datenbank-Zugänge beim Start automatisch aus dem Passwortmanager laden"
       }
     },
     "menus": [
       {
-        "command": "vault.import",
+        "command": "vault.sync",
         "location": "palette"
       },
       {
@@ -59,21 +95,19 @@
         "location": "palette"
       },
       {
-        "command": "vault.install",
+        "command": "vault.import",
         "location": "palette"
       },
       {
-        "command": "vault.refresh",
-        "location": "view/title",
-        "view": "vault.clis"
+        "command": "vault.install",
+        "location": "palette"
       }
     ],
-    "views": [
+    "statusBar": [
       {
-        "id": "vault.clis",
-        "title": "Passwortmanager",
-        "location": "sidebar",
-        "icon": "package"
+        "id": "vault.status",
+        "alignment": "right",
+        "priority": 20
       }
     ]
   }

@@ -1,5 +1,7 @@
 import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AnimatedNumber } from "@/components/animated-number";
+import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { IconButton } from "@/components/icon-button";
 import {
   Select,
@@ -23,7 +25,14 @@ import {
   widgetOptions,
 } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
-import { CHART_RENDERERS, deltaFor, headlineFor, LegendCards, legendFor } from "./charts";
+import {
+  CHART_RENDERERS,
+  ChartHeadline,
+  deltaFor,
+  headlineValue,
+  LegendCards,
+  legendFor,
+} from "./charts";
 import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
 
@@ -95,7 +104,11 @@ export function WidgetCardInner({
                 <Skeleton className="h-7 w-16" />
               ) : (
                 <span className="text-2xl font-semibold tracking-tight tabular-nums">
-                  {shape && !problem ? headlineFor(widget.chart, rows, shape) : "—"}
+                  {shape && !problem ? (
+                    <ChartHeadline headline={headlineValue(widget.chart, rows, shape)} />
+                  ) : (
+                    "—"
+                  )}
                 </span>
               )}
               {delta !== null && (
@@ -105,8 +118,15 @@ export function WidgetCardInner({
                     delta >= 0 ? "bg-lime-300/70 text-lime-950" : "bg-rose-200/80 text-rose-950",
                   )}
                 >
-                  {delta >= 0 ? "+" : ""}
-                  {delta.toFixed(1)}%
+                  <AnimatedNumber
+                    value={delta}
+                    format={{
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                      signDisplay: "exceptZero",
+                    }}
+                    suffix="%"
+                  />
                 </span>
               )}
             </div>
@@ -175,7 +195,14 @@ export function WidgetCardInner({
             Keine Daten
           </div>
         ) : (
-          <Renderer rows={rows} shape={shape} options={options} />
+          <PanelErrorBoundary
+            label="Der Chart"
+            source="dashboard-widget"
+            compact
+            resetKeys={[rows, shape, options, widget.chart]}
+          >
+            <Renderer rows={rows} shape={shape} options={options} />
+          </PanelErrorBoundary>
         )}
       </div>
       {legendRows > 0 && widget.h >= 5 + legendRows && (

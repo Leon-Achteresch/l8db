@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
-import type { HostGroupRule } from "@/lib/connection-groups";
+import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
 import { closeSshTunnel } from "@/lib/db";
 import { deleteSecret, loadSecret, scrubUrlPassword, storeSecret } from "@/lib/secrets";
 import type { ConnectionInput, SavedConnection } from "./types";
@@ -50,9 +50,22 @@ function readStoredActiveId(): string | null {
   }
 }
 
-function persistableActiveId(state: Pick<ConnectionsState, "activeId" | "connections">) {
+export function restorableActiveId(
+  state: Pick<ConnectionsState, "activeId" | "connections" | "hostGroupRules">,
+): string | null {
   const active = state.connections.find((connection) => connection.id === state.activeId);
-  return active?.temporary ? null : state.activeId;
+  if (!active || active.temporary || active.environment === "production") return null;
+  if (active.environment) return active.id;
+  try {
+    const rule = matchingHostRule(
+      active,
+      state.hostGroupRules.filter((entry) => entry.environment),
+    );
+    if (rule?.environment === "production") return null;
+  } catch {
+    return null;
+  }
+  return active.id;
 }
 
 function createId(): string {
@@ -151,6 +164,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
           id: createId(),
           name: `${source.name} (Kopie)`,
           favorite: false,
+          vault: false,
         };
         for (const suffix of ["", ...NETWORK_SECRET_SUFFIXES]) {
           void loadSecret(`${id}${suffix}`)
@@ -192,12 +206,20 @@ export const useConnectionsStore = create<ConnectionsState>()(
       storage: createJSONStorage(() => scrubbingStorage),
       partialize: (state) => ({
         connections: state.connections.filter((connection) => !connection.temporary),
-        activeId: isMainWindow ? persistableActiveId(state) : readStoredActiveId(),
+        activeId: isMainWindow ? restorableActiveId(state) : readStoredActiveId(),
         favoriteServerKeys: state.favoriteServerKeys,
         serverOrder: state.serverOrder,
         collapsedServerKeys: state.collapsedServerKeys,
         hostGroupRules: state.hostGroupRules,
       }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<ConnectionsState> | undefined;
+        const merged = { ...current, ...saved };
+        return {
+          ...merged,
+          activeId: isMainWindow ? restorableActiveId(merged) : merged.activeId,
+        };
+      },
     },
   ),
 );

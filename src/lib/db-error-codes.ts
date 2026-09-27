@@ -102,6 +102,15 @@ const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
     [/UnrecognizedClientException|InvalidSignature/i, "Auth", "Zugangsdaten ungültig"],
     [/ProvisionedThroughputExceeded|Throttling/i, "Throttling", "Durchsatzgrenze erreicht"],
   ],
+  s3: [
+    [/NoSuchBucket/i, "NoSuchBucket", "Bucket nicht gefunden"],
+    [/NoSuchKey|Objekt nicht gefunden/i, "NoSuchKey", "Objekt nicht gefunden"],
+    [/BucketNotEmpty/i, "BucketNotEmpty", "Bucket ist nicht leer"],
+    [/BucketAlreadyOwnedByYou|BucketAlreadyExists/i, "BucketExists", "Bucket existiert bereits"],
+    [/AccessDenied/i, "AccessDenied", "Berechtigung fehlt oder Objekt gesperrt"],
+    [/SignatureDoesNotMatch|InvalidAccessKeyId/i, "Auth", "Zugangsdaten ungültig"],
+    [/NotImplemented/i, "NotImplemented", "Vom Anbieter nicht unterstützt"],
+  ],
   athena: [
     [/TABLE_NOT_FOUND|does not exist/i, "TABLE_NOT_FOUND", "Tabelle nicht gefunden"],
     [/SYNTAX_ERROR|mismatched input/i, "SYNTAX_ERROR", "Syntaxfehler"],
