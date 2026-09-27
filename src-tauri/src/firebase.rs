@@ -74,6 +74,18 @@ fn validate_database_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
+fn validate_site_id(id: &str) -> Result<&str, String> {
+    if id.is_empty()
+        || id.len() > 30
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err("Ungültige Firebase-Hosting-Site-ID.".into());
+    }
+    Ok(id)
+}
+
 fn validate_firestore_path(path: &str, document: bool) -> Result<Vec<&str>, String> {
     if path.is_empty() || path.len() > 2048 {
         return Err("Ungültiger Firestore-Pfad.".into());
@@ -387,6 +399,31 @@ pub struct FirebaseHostingSite {
 pub struct FirebaseHostingPage {
     #[serde(default)]
     pub sites: Vec<FirebaseHostingSite>,
+    pub next_page_token: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseHostingVersion {
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseHostingRelease {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub release_time: Option<String>,
+    pub message: Option<String>,
+    pub version: Option<FirebaseHostingVersion>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseHostingReleasesPage {
+    #[serde(default)]
+    pub releases: Vec<FirebaseHostingRelease>,
     pub next_page_token: Option<String>,
 }
 
@@ -805,6 +842,47 @@ pub async fn firebase_hosting_sites(
     .await
 }
 
+#[tauri::command]
+pub async fn firebase_hosting_releases(
+    project_id: String,
+    site_id: String,
+    page_token: Option<String>,
+) -> Result<FirebaseHostingReleasesPage, String> {
+    validate_project_id(&project_id)?;
+    let site_id = validate_site_id(&site_id)?;
+    let token = access_token(&project_id).await?;
+    let site: FirebaseHostingSite = response_json(
+        client()
+            .get(format!(
+                "https://firebasehosting.googleapis.com/v1beta1/projects/{project_id}/sites/{site_id}"
+            ))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|_| "Firebase-Hosting-Site ist nicht erreichbar.".to_string())?,
+    )
+    .await?;
+    if site.name.split('/').next_back() != Some(site_id) {
+        return Err("Hosting-Site gehört nicht zum verbundenen Projekt.".into());
+    }
+    let mut request = client()
+        .get(format!(
+            "https://firebasehosting.googleapis.com/v1beta1/sites/{site_id}/releases"
+        ))
+        .bearer_auth(token)
+        .query(&[("pageSize", "20")]);
+    if let Some(page_token) = page_token.filter(|value| !value.is_empty()) {
+        request = request.query(&[("pageToken", validate_page_token(&page_token)?)]);
+    }
+    response_json(
+        request
+            .send()
+            .await
+            .map_err(|_| "Firebase-Hosting-Releases sind nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
 async fn object_response(
     project_id: &str,
     bucket: &str,
@@ -858,9 +936,10 @@ pub async fn firebase_download_object(
 mod tests {
     use super::{
         firestore_url, parse_service_account, storage_url, upload_file, upload_url,
-        validate_firestore_path, validate_project_id, FirebaseAuthPage, FirebaseBucketPage,
-        FirebaseFirestoreCollections, FirebaseFirestoreDatabases, FirebaseFirestoreDocuments,
-        FirebaseFunctionsPage, FirebaseHostingPage, FirebaseObjectPage,
+        validate_firestore_path, validate_project_id, validate_site_id, FirebaseAuthPage,
+        FirebaseBucketPage, FirebaseFirestoreCollections, FirebaseFirestoreDatabases,
+        FirebaseFirestoreDocuments, FirebaseFunctionsPage, FirebaseHostingPage,
+        FirebaseHostingReleasesPage, FirebaseObjectPage,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -1041,5 +1120,12 @@ mod tests {
         for secret in ["secret-value", "secret-token", "secret-label"] {
             assert!(!frontend.contains(secret));
         }
+        assert!(validate_site_id("example-project").is_ok());
+        assert!(validate_site_id("../another-site").is_err());
+        let releases: FirebaseHostingReleasesPage = serde_json::from_str(r#"{"releases":[{"name":"sites/example-project/releases/123","type":"DEPLOY","releaseTime":"2026-09-28T10:00:00Z","version":{"name":"sites/example-project/versions/123","config":{"headers":[{"value":"secret-header"}]}},"releaseUser":{"email":"private@example.com"}}]}"#).unwrap();
+        let frontend = serde_json::to_string(&releases).unwrap();
+        assert!(frontend.contains("sites/example-project/versions/123"));
+        assert!(!frontend.contains("secret-header"));
+        assert!(!frontend.contains("private@example.com"));
     }
 }

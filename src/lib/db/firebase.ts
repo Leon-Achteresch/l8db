@@ -107,6 +107,19 @@ export interface FirebaseHostingPage {
   nextPageToken: string | null;
 }
 
+export interface FirebaseHostingRelease {
+  name: string;
+  type: string | null;
+  releaseTime: string | null;
+  message: string | null;
+  version: { name: string | null } | null;
+}
+
+export interface FirebaseHostingReleasesPage {
+  releases: FirebaseHostingRelease[];
+  nextPageToken: string | null;
+}
+
 export const firebaseConnect = () => invoke<FirebaseProfile | null>("firebase_connect");
 export const firebaseProfiles = () => invoke<FirebaseProfile[]>("firebase_profiles");
 export const firebaseDisconnect = (projectId: string) =>
@@ -157,3 +170,9 @@ export const firebaseFunctions = (projectId: string, pageToken?: string) =>
   invoke<FirebaseFunctionsPage>("firebase_functions", { projectId, pageToken });
 export const firebaseHostingSites = (projectId: string, pageToken?: string) =>
   invoke<FirebaseHostingPage>("firebase_hosting_sites", { projectId, pageToken });
+export const firebaseHostingReleases = (projectId: string, siteId: string, pageToken?: string) =>
+  invoke<FirebaseHostingReleasesPage>("firebase_hosting_releases", {
+    projectId,
+    siteId,
+    pageToken,
+  });

@@ -134,6 +134,7 @@ pub fn run() {
             firebase::firebase_firestore_documents,
             firebase::firebase_functions,
             firebase::firebase_hosting_sites,
+            firebase::firebase_hosting_releases,
             firebase::firebase_preview_object,
             firebase::firebase_download_object,
             versioning::versioning_repository,
