@@ -78,4 +78,23 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
     origin: "Chrome",
     reference: "Chrome: Strg+L Adressleiste",
   },
+  {
+    id: "edit.undo",
+    label: "Rückgängig",
+    description: "Letzte Änderung im Dashboard oder Query Builder zurücknehmen",
+    area: "Allgemein",
+    defaultHotkey: "Mod+Z",
+    origin: "VS Code",
+    reference: "VS Code/Chrome: Strg+Z",
+  },
+  {
+    id: "edit.redo",
+    label: "Wiederholen",
+    description: "Zurückgenommene Änderung im Dashboard oder Query Builder wiederherstellen",
+    area: "Allgemein",
+    defaultHotkey: "Mod+Shift+Z",
+    aliases: ["Mod+Y"],
+    origin: "VS Code",
+    reference: "VS Code: Strg+Y / Strg+Shift+Z",
+  },
 ];

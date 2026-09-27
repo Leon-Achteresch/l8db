@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
+import { motion } from "motion/react";
 import { Select as SelectPrimitive } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ export function SelectTrigger({
 }) {
   return (
     <SelectPrimitive.Trigger
+      asChild
       data-slot="select-trigger"
       data-size={size}
       className={cn(
@@ -23,10 +25,17 @@ export function SelectTrigger({
       )}
       {...props}
     >
-      {children}
-      <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
-      </SelectPrimitive.Icon>
+      <motion.button
+        type="button"
+        whileTap={props.disabled ? undefined : { scale: 0.95 }}
+        transition={{ duration: 0.12, ease: "easeOut" }}
+        style={{ willChange: "transform" }}
+      >
+        {children}
+        <SelectPrimitive.Icon asChild>
+          <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+        </SelectPrimitive.Icon>
+      </motion.button>
     </SelectPrimitive.Trigger>
   );
 }

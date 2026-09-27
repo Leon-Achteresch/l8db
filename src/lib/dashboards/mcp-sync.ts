@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Dashboard } from "./model";
-import { useDashboardsStore } from "./store";
+import { useDashboardsStore, withoutDashboardHistory } from "./store";
 
 type Content = Pick<Dashboard, "name" | "datasets" | "widgets" | "refreshSec">;
 
@@ -42,19 +42,21 @@ export function applyMcpDashboards(files: McpDashboardFile[]): void {
       mcpStamp: file.stamp,
     };
     synced.set(file.id, content(next));
-    if (current) {
-      store.update(current.id, next);
-      store.setActive(current.connectionId, current.id);
-    } else {
-      store.importDashboard({ ...next, mcpId: file.id, locked: true }, file.connectionId, null);
-    }
+    withoutDashboardHistory(() => {
+      if (current) {
+        store.update(current.id, next);
+        store.setActive(current.connectionId, current.id);
+      } else {
+        store.importDashboard({ ...next, mcpId: file.id, locked: true }, file.connectionId, null);
+      }
+    });
   }
   const ids = new Set(files.map((file) => file.id));
   for (const dashboard of useDashboardsStore.getState().dashboards) {
     if (!dashboard.mcpId || ids.has(dashboard.mcpId) || pending.has(dashboard.mcpId)) continue;
     synced.delete(dashboard.mcpId);
     dropping.add(dashboard.mcpId);
-    store.remove(dashboard.id);
+    withoutDashboardHistory(() => store.remove(dashboard.id));
     dropping.delete(dashboard.mcpId);
   }
 }

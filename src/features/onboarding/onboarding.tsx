@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { OnboardingChoice } from "@/features/onboarding/onboarding-choice";
+import { OnboardingExtensions } from "@/features/onboarding/onboarding-extensions";
 import { OnboardingIntro } from "@/features/onboarding/onboarding-intro";
 import { OnboardingThemePreview } from "@/features/onboarding/onboarding-theme-preview";
 import { EASE_OUT } from "@/lib/ease";
@@ -85,6 +86,13 @@ export function Onboarding() {
         },
       ],
     },
+    {
+      id: "extensions",
+      title: "Mach l8db zu deinem Werkzeug",
+      subtitle:
+        "Offizielle Erweiterungen aus dem Marketplace – mit einem Klick installiert, geprüft per SHA-256.",
+      content: <OnboardingExtensions onFinish={() => setDone(true)} />,
+    },
   ];
   const current = steps[Math.max(step, 1) - 1];
   const last = step === steps.length;
@@ -133,26 +141,30 @@ export function Onboarding() {
                     >
                       <h2 className="text-3xl font-semibold tracking-tight">{current.title}</h2>
                       <p className="mt-2 text-sm text-muted-foreground">{current.subtitle}</p>
-                      <div
-                        className={cn(
-                          "mt-8 grid gap-4",
-                          current.options.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2",
-                        )}
-                      >
-                        {current.options.map((option, index) => (
-                          <OnboardingChoice
-                            key={option.value}
-                            group={current.id}
-                            index={index}
-                            selected={current.value === option.value}
-                            onSelect={() => current.select(option.value)}
-                            title={option.label}
-                            description={option.description}
-                          >
-                            {option.preview}
-                          </OnboardingChoice>
-                        ))}
-                      </div>
+                      {"content" in current ? (
+                        current.content
+                      ) : (
+                        <div
+                          className={cn(
+                            "mt-8 grid gap-4",
+                            current.options.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2",
+                          )}
+                        >
+                          {current.options.map((option, index) => (
+                            <OnboardingChoice
+                              key={option.value}
+                              group={current.id}
+                              index={index}
+                              selected={current.value === option.value}
+                              onSelect={() => current.select(option.value)}
+                              title={option.label}
+                              description={option.description}
+                            >
+                              {option.preview}
+                            </OnboardingChoice>
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   </AnimatePresence>
 

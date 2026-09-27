@@ -1,7 +1,6 @@
 import { createRootRoute } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
-import { EasyModeOutlet } from "@/features/shell/easy-mode-outlet";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
 import "../index.css";
 
@@ -10,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
+import { AppFrame } from "@/features/shell/app-frame";
 import { AppHeader } from "@/features/shell/app-header";
 import { AppHotkeys } from "@/features/shell/app-hotkeys";
 import { RouteErrorView } from "@/features/shell/route-error-view";
@@ -28,9 +28,7 @@ function RootComponent() {
           <AppHotkeys />
           <SqlFileDrop />
           <AppHeader />
-          <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
-            <EasyModeOutlet />
-          </div>
+          <AppFrame />
         </DbThemeRoot>
         <UpdateAvailableDialog />
         <PasswordPromptDialog />

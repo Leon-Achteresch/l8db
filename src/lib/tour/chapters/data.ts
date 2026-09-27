@@ -16,11 +16,11 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       },
       {
         id: "header-nav",
-        title: "Die Knöpfe oben links",
-        body: "Das Logo bringt dich immer zurück zur Startseite. Daneben: SQL-Editor (Fragen an die Datenbank schreiben), ER-Diagramm (Bild, wie Tabellen zusammenhängen), Über l8db und Neuigkeiten.",
+        title: "Die Bereichs-Knöpfe",
+        body: "Das Logo oben links bringt dich immer zurück zur Startseite. In der Leiste am linken Rand (oder im Header, falls so eingestellt): SQL-Editor (Fragen an die Datenbank schreiben), ER-Diagramm (Bild, wie Tabellen zusammenhängen), Über l8db und Neuigkeiten.",
         action: "Schau dir die hervorgehobenen Knöpfe an und klicke dann auf „Weiter“.",
         target: "[data-tour='header-nav']",
-        side: "bottom",
+        side: "right",
       },
       {
         id: "header-search",

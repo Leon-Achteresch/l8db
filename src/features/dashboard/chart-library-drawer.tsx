@@ -13,6 +13,7 @@ import {
 } from "@/lib/chart-file";
 import { useDashboardWorkspaceStore } from "@/lib/dashboard-workspace";
 import { CHARTS, type Dashboard, useDashboardsStore } from "@/lib/dashboards";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 
 export function ChartLibraryDrawer({
   open,
@@ -25,6 +26,7 @@ export function ChartLibraryDrawer({
   dashboard: Dashboard;
   onLoaded: (id: string) => void;
 }) {
+  const listRef = useListAnimation<HTMLDivElement>();
   const library = useDashboardWorkspaceStore();
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,7 +99,7 @@ export function ChartLibraryDrawer({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Charts suchen…"
         />
-        <div className="space-y-2">
+        <div ref={listRef} className="space-y-2">
           {library.savedCharts
             .filter((chart) => chart.name.toLowerCase().includes(search.toLowerCase()))
             .map((chart) => (

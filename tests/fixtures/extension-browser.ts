@@ -93,7 +93,7 @@ export async function run() {
   await manager.executeCommand("vault.import");
   const vaultWithoutWrite = savedConnections.length;
   await manager.enableExtension("l8db.password-manager", ["process:execute", "connections:read", "connections:write"]);
-  await manager.executeCommand("vault.import");
+  await manager.executeCommand("vault.sync");
   const vault = { stored: [...vaultItems.values()].map(item => (item.login as { password: string }).password), withoutWrite: vaultWithoutWrite, loaded: savedConnections[0] as unknown as Json };
   for (const item of manager.listExtensions()) await manager.uninstallExtension(item.archive.manifest.id);
   return { vault, command, eventSeen, disposed, restarted, security, timeout, isolated, notifications, remaining: manager.listExtensions().length, frames: document.querySelectorAll("iframe").length } as Json;

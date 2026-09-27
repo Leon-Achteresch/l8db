@@ -10,9 +10,11 @@ export function SettingsAppearance() {
     uiScale,
     uiDensity,
     sidebarExtraCompact,
+    navInHeader,
     fitColumnsToHeader,
     monochromeCells,
     setSidebarExtraCompact,
+    setNavInHeader,
     setFitColumnsToHeader,
     setMonochromeCells,
     setUiScale,
@@ -86,6 +88,16 @@ export function SettingsAppearance() {
         />
       </SettingsRow>
       <SettingsRow
+        title="Navigation im Header"
+        description="Bereiche wie früher oben im Header statt in der Leiste am linken Rand anzeigen."
+      >
+        <Switch
+          aria-label="Navigation im Header"
+          checked={navInHeader}
+          onCheckedChange={setNavInHeader}
+        />
+      </SettingsRow>
+      <SettingsRow
         title="An Spaltentitel anpassen"
         description="Tabellenspalten automatisch so breit darstellen, dass der Spaltentitel vollständig sichtbar ist."
       >
@@ -116,6 +128,7 @@ export function SettingsAppearance() {
             uiScale === 100 &&
             uiDensity === "normal" &&
             !sidebarExtraCompact &&
+            !navInHeader &&
             fitColumnsToHeader &&
             !monochromeCells
           }

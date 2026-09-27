@@ -1180,7 +1180,9 @@ impl BatchWriter {
         self.session.rollback().await
     }
 
-    pub async fn finish(mut self) -> Result<(Counts, Box<dyn TxSession>), (Failure, Box<dyn TxSession>)> {
+    pub async fn finish(
+        mut self,
+    ) -> Result<(Counts, Box<dyn TxSession>), (Failure, Box<dyn TxSession>)> {
         if let Err(failure) = self.flush().await {
             return Err((failure, self.session));
         }

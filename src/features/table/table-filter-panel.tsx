@@ -22,10 +22,10 @@ import {
   type ParsedFilter,
   parseFilterExpression,
 } from "@/lib/filter-parser";
+import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
-
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
 import { createId, emptyCondition } from "./table-filter-panel/filter-conditions";
@@ -52,6 +52,7 @@ export function TableFilterPanel({
   onApply,
   onColumnSelect,
 }: TableFilterPanelProps) {
+  const listRef = useListAnimation<HTMLDivElement>();
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
   const json = caps.query_language === "json";
@@ -220,7 +221,7 @@ export function TableFilterPanel({
               className="h-36 font-mono text-xs"
             />
           ) : mode === "simple" ? (
-            <div className="space-y-2">
+            <div ref={listRef} className="space-y-2">
               {conditions.map((condition, index) => (
                 <FilterConditionRow
                   key={condition.id}
