@@ -317,15 +317,15 @@ pub async fn pocketbase_records(
     Ok(records)
 }
 
-#[tauri::command]
-pub async fn pocketbase_preview_file(
-    id: String,
-    collection_id: String,
-    record_id: String,
-    filename: String,
-) -> Result<crate::baas_file::BaasFilePreview, String> {
-    let collection_id = validate_id(&collection_id)?;
-    let record_id = validate_id(&record_id)?;
+async fn file_response(
+    id: &str,
+    collection_id: &str,
+    record_id: &str,
+    filename: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    let collection_id = validate_id(collection_id)?;
+    let record_id = validate_id(record_id)?;
     if filename.is_empty()
         || filename.len() > 255
         || filename == "."
@@ -335,7 +335,7 @@ pub async fn pocketbase_preview_file(
     {
         return Err("Ungültiger Dateiname.".into());
     }
-    let (profile, token) = profile_and_token(&id).await?;
+    let (profile, token) = profile_and_token(id).await?;
     let collection: PocketBaseCollection = get(
         &profile.endpoint,
         &token,
@@ -353,7 +353,7 @@ pub async fn pocketbase_preview_file(
         None,
     )
     .await?;
-    if !file_is_visible(&collection, &record, &filename) {
+    if !file_is_visible(&collection, &record, filename) {
         return Err("Datei ist in diesem Datensatz nicht sichtbar.".into());
     }
     let response = client()
@@ -378,15 +378,50 @@ pub async fn pocketbase_preview_file(
         .map_err(|_| "Ungültige PocketBase-Datei-URL.".to_string())?
         .push(collection_id)
         .push(record_id)
-        .push(&filename);
+        .push(filename);
     url.query_pairs_mut()
         .append_pair("token", &file_token.token);
-    let response = client()
+    http_client
         .get(url)
         .send()
         .await
-        .map_err(|_| "PocketBase-Datei ist nicht erreichbar.".to_string())?;
-    crate::baas_file::preview_response(response).await
+        .map_err(|_| "PocketBase-Datei ist nicht erreichbar.".to_string())
+}
+
+#[tauri::command]
+pub async fn pocketbase_preview_file(
+    id: String,
+    collection_id: String,
+    record_id: String,
+    filename: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    crate::baas_file::preview_response(
+        file_response(&id, &collection_id, &record_id, &filename, client()).await?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn pocketbase_download_file(
+    app: tauri::AppHandle,
+    id: String,
+    collection_id: String,
+    record_id: String,
+    filename: String,
+) -> Result<bool, String> {
+    let Some(path) = crate::baas_file::pick_save_path(app, &filename).await? else {
+        return Ok(false);
+    };
+    let response = file_response(
+        &id,
+        &collection_id,
+        &record_id,
+        &filename,
+        crate::baas_file::download_client(),
+    )
+    .await?;
+    crate::baas_file::save_response(response, path).await?;
+    Ok(true)
 }
 
 #[cfg(test)]

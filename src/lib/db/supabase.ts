@@ -79,5 +79,7 @@ export const supabaseObjects = (
 ) => invoke<SupabaseObject[]>("supabase_objects", { reference, bucket, prefix, offset });
 export const supabasePreviewObject = (reference: string, bucket: string, objectKey: string) =>
   invoke<BaasFilePreview>("supabase_preview_object", { reference, bucket, objectKey });
+export const supabaseDownloadObject = (reference: string, bucket: string, objectKey: string) =>
+  invoke<boolean>("supabase_download_object", { reference, bucket, objectKey });
 export const supabaseAuthUsers = (reference: string, page: number) =>
   invoke<SupabaseAuthUsersPage>("supabase_auth_users", { reference, page });

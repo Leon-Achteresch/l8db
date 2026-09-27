@@ -317,13 +317,13 @@ pub async fn supabase_objects(
     response_json(response).await
 }
 
-#[tauri::command]
-pub async fn supabase_preview_object(
-    reference: String,
-    bucket: String,
-    object_key: String,
-) -> Result<crate::baas_file::BaasFilePreview, String> {
-    let reference = validate_ref(&reference)?;
+async fn object_response(
+    reference: &str,
+    bucket: &str,
+    object_key: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    let reference = validate_ref(reference)?;
     if bucket.is_empty()
         || bucket.len() > 256
         || bucket.contains('/')
@@ -333,7 +333,7 @@ pub async fn supabase_preview_object(
     {
         return Err("Ungültiger Bucket-Name.".into());
     }
-    let object_key = validate_object_key(&object_key)?;
+    let object_key = validate_object_key(object_key)?;
     let api_key = crate::db::secrets::load_secret(project_key_account(reference))
         .await?
         .ok_or_else(|| {
@@ -345,16 +345,48 @@ pub async fn supabase_preview_object(
     .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
     url.path_segments_mut()
         .map_err(|_| "Ungültige Supabase-URL.".to_string())?
-        .push(&bucket)
+        .push(bucket)
         .extend(object_key.split('/'));
-    let response = client()
+    http_client
         .get(url)
         .header("apikey", &api_key)
         .bearer_auth(&api_key)
         .send()
         .await
-        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
-    crate::baas_file::preview_response(response).await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())
+}
+
+#[tauri::command]
+pub async fn supabase_preview_object(
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    crate::baas_file::preview_response(
+        object_response(&reference, &bucket, &object_key, client()).await?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_download_object(
+    app: tauri::AppHandle,
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<bool, String> {
+    let Some(path) = crate::baas_file::pick_save_path(app, &object_key).await? else {
+        return Ok(false);
+    };
+    let response = object_response(
+        &reference,
+        &bucket,
+        &object_key,
+        crate::baas_file::download_client(),
+    )
+    .await?;
+    crate::baas_file::save_response(response, path).await?;
+    Ok(true)
 }
 
 #[tauri::command]

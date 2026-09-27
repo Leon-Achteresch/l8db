@@ -54,6 +54,8 @@ export const appwriteFiles = (id: string, bucketId: string, offset: number) =>
   invoke<AppwritePage<AppwriteFile>>("appwrite_files", { id, bucketId, offset });
 export const appwritePreviewFile = (id: string, bucketId: string, fileId: string) =>
   invoke<BaasFilePreview>("appwrite_preview_file", { id, bucketId, fileId });
+export const appwriteDownloadFile = (id: string, bucketId: string, fileId: string, name: string) =>
+  invoke<boolean>("appwrite_download_file", { id, bucketId, fileId, name });
 export const appwriteDatabases = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteNamedResource>>("appwrite_databases", { id, offset });
 export const appwriteTables = (id: string, databaseId: string, offset: number) =>

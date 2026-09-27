@@ -336,16 +336,16 @@ pub async fn appwrite_files(
     })
 }
 
-#[tauri::command]
-pub async fn appwrite_preview_file(
-    id: String,
-    bucket_id: String,
-    file_id: String,
-) -> Result<crate::baas_file::BaasFilePreview, String> {
-    let bucket_id = validate_id(&bucket_id)?;
-    let file_id = validate_id(&file_id)?;
-    let (profile, key) = profile_and_key(&id).await?;
-    let response = client()
+async fn file_response(
+    id: &str,
+    bucket_id: &str,
+    file_id: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    let bucket_id = validate_id(bucket_id)?;
+    let file_id = validate_id(file_id)?;
+    let (profile, key) = profile_and_key(id).await?;
+    http_client
         .get(format!(
             "{}/storage/buckets/{bucket_id}/files/{file_id}/download",
             profile.endpoint
@@ -355,8 +355,39 @@ pub async fn appwrite_preview_file(
         .header("X-Appwrite-Response-Format", "2.3.0")
         .send()
         .await
-        .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
-    crate::baas_file::preview_response(response).await
+        .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())
+}
+
+#[tauri::command]
+pub async fn appwrite_preview_file(
+    id: String,
+    bucket_id: String,
+    file_id: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    crate::baas_file::preview_response(file_response(&id, &bucket_id, &file_id, client()).await?)
+        .await
+}
+
+#[tauri::command]
+pub async fn appwrite_download_file(
+    app: tauri::AppHandle,
+    id: String,
+    bucket_id: String,
+    file_id: String,
+    name: String,
+) -> Result<bool, String> {
+    let Some(path) = crate::baas_file::pick_save_path(app, &name).await? else {
+        return Ok(false);
+    };
+    let response = file_response(
+        &id,
+        &bucket_id,
+        &file_id,
+        crate::baas_file::download_client(),
+    )
+    .await?;
+    crate::baas_file::save_response(response, path).await?;
+    Ok(true)
 }
 
 #[tauri::command]

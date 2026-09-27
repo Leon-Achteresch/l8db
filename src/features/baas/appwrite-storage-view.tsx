@@ -2,7 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, File, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { appwriteBuckets, appwriteFiles, appwritePreviewFile } from "@/lib/db";
+import {
+  appwriteBuckets,
+  appwriteDownloadFile,
+  appwriteFiles,
+  appwritePreviewFile,
+} from "@/lib/db";
 import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: number | null): string {
@@ -185,6 +190,9 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 name={preview.name}
                 queryKey={["appwrite", id, "preview", preview.bucketId, preview.fileId]}
                 load={() => appwritePreviewFile(id, preview.bucketId, preview.fileId)}
+                download={() =>
+                  appwriteDownloadFile(id, preview.bucketId, preview.fileId, preview.name)
+                }
                 onClose={() => setPreview(null)}
               />
             )}

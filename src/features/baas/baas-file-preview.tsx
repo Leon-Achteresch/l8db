@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { BaasFilePreview as BaasFilePreviewData } from "@/lib/db";
 import { base64ToBytes } from "@/lib/value-viewers/binary";
-import { saveBytesToFile } from "@/lib/value-viewers/binary-file";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
@@ -12,14 +11,17 @@ export function BaasFilePreview({
   name,
   queryKey,
   load,
+  download,
   onClose,
 }: {
   name: string;
   queryKey: readonly (string | number)[];
   load: () => Promise<BaasFilePreviewData>;
+  download: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const preview = useQuery({ queryKey, queryFn: load, staleTime: 60_000 });
   const bytes = useMemo(
@@ -33,11 +35,11 @@ export function BaasFilePreview({
       : null;
 
   async function save() {
-    if (!bytes) return;
     setSaving(true);
     setSaveError(null);
+    setSaved(false);
     try {
-      await saveBytesToFile(bytes, name.split(/[\\/]/).pop() || "Datei");
+      setSaved(await download());
     } catch (reason) {
       setSaveError(String(reason));
     } finally {
@@ -93,16 +95,19 @@ export function BaasFilePreview({
           Für diesen Dateityp gibt es keine integrierte Vorschau.
         </p>
       )}
-      {bytes && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          onClick={() => void save()}
-          disabled={saving}
-        >
-          <Download className="size-3.5" /> {saving ? "Speichere…" : "Datei speichern"}
-        </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-4"
+        onClick={() => void save()}
+        disabled={saving}
+      >
+        <Download className="size-3.5" /> {saving ? "Speichere…" : "Datei speichern"}
+      </Button>
+      {saved && (
+        <p role="status" className="mt-2 text-xs text-primary">
+          Datei gespeichert.
+        </p>
       )}
       {saveError && (
         <p role="alert" className="mt-2 text-xs text-destructive">

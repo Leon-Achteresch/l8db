@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   supabaseBuckets,
+  supabaseDownloadObject,
   supabaseHasProjectKey,
   supabaseObjects,
   supabasePreviewObject,
@@ -230,6 +231,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                     name={preview.name}
                     queryKey={["supabase", reference, "preview", preview.bucket, preview.key]}
                     load={() => supabasePreviewObject(reference, preview.bucket, preview.key)}
+                    download={() => supabaseDownloadObject(reference, preview.bucket, preview.key)}
                     onClose={() => setPreview(null)}
                   />
                 )}

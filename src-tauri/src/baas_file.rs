@@ -1,5 +1,10 @@
 use base64::Engine;
 use serde::Serialize;
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::time::Duration;
+use tauri_plugin_dialog::DialogExt;
+use tokio::io::AsyncWriteExt;
 
 const MAX_PREVIEW_BYTES: usize = 4 * 1024 * 1024;
 
@@ -8,6 +13,81 @@ pub struct BaasFilePreview {
     pub mime_type: String,
     pub base64: String,
     pub size: usize,
+}
+
+pub fn download_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(20))
+            .read_timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("BaaS download HTTP client")
+    })
+}
+
+pub async fn pick_save_path(app: tauri::AppHandle, name: &str) -> Result<Option<PathBuf>, String> {
+    let filename = name
+        .replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty() && *value != "." && *value != "..")
+        .unwrap_or("download")
+        .to_string();
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(filename)
+        .save_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let picked = receiver
+        .await
+        .map_err(|_| "Speicherdialog wurde unterbrochen.".to_string())?;
+    picked
+        .map(|path| {
+            path.into_path()
+                .map_err(|_| "Dateipfad konnte nicht gelesen werden.".to_string())
+        })
+        .transpose()
+}
+
+pub async fn save_response(mut response: reqwest::Response, path: PathBuf) -> Result<(), String> {
+    if !response.status().is_success() {
+        return Err(format!(
+            "HTTP {}: Datei konnte nicht geladen werden.",
+            response.status().as_u16()
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Ungültiger Zielpfad.".to_string())?;
+    let temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|_| "Temporäre Datei konnte nicht erstellt werden.".to_string())?;
+    let file = temporary
+        .reopen()
+        .map_err(|_| "Temporäre Datei konnte nicht geöffnet werden.".to_string())?;
+    let mut writer = tokio::fs::File::from_std(file);
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "Datei konnte nicht vollständig geladen werden.".to_string())?
+    {
+        writer
+            .write_all(&chunk)
+            .await
+            .map_err(|_| "Datei konnte nicht geschrieben werden.".to_string())?;
+    }
+    writer
+        .flush()
+        .await
+        .map_err(|_| "Datei konnte nicht abgeschlossen werden.".to_string())?;
+    drop(writer);
+    temporary
+        .persist(path)
+        .map_err(|_| "Datei konnte nicht gespeichert werden.".to_string())?;
+    Ok(())
 }
 
 pub async fn preview_response(mut response: reqwest::Response) -> Result<BaasFilePreview, String> {
@@ -57,7 +137,7 @@ pub async fn preview_response(mut response: reqwest::Response) -> Result<BaasFil
 
 #[cfg(test)]
 mod tests {
-    use super::preview_response;
+    use super::{preview_response, save_response};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -98,6 +178,49 @@ mod tests {
         let response = reqwest::get(format!("http://{address}")).await.unwrap();
         let error = preview_response(response).await.err().unwrap();
         assert!(error.contains("4 MB"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_streams_to_selected_path() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 2048];
+            stream.read(&mut buffer).await.unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+                .await
+                .unwrap();
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("download.txt");
+        let response = reqwest::get(format!("http://{address}")).await.unwrap();
+        save_response(response, path.clone()).await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"hello");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_download_preserves_existing_file() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 2048];
+            stream.read(&mut buffer).await.unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nabc")
+                .await
+                .unwrap();
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("download.txt");
+        std::fs::write(&path, b"original").unwrap();
+        let response = reqwest::get(format!("http://{address}")).await.unwrap();
+        assert!(save_response(response, path.clone()).await.is_err());
+        assert_eq!(std::fs::read(path).unwrap(), b"original");
         server.await.unwrap();
     }
 }
