@@ -6,14 +6,11 @@ import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
 import { initAppearance } from "@/lib/appearance";
-import { initAutoUpdater } from "@/lib/auto-updater";
 import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
-import { initMcpDashboardSync } from "@/lib/dashboards/mcp-sync";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
-import { initMcpSync } from "@/lib/mcp";
 import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
@@ -49,21 +46,34 @@ function render() {
   );
 }
 
+let startupReady = false;
+
 Promise.all([executionSettings.ready, loadProviders(), initConnectionSecrets()])
   .then(restoreSshTunnel)
   .then(() => {
-    initMcpDashboardSync();
-    return initMcpSync();
+    startupReady = true;
   })
   .catch(() => undefined)
   .finally(() => {
     render();
+    if (startupReady)
+      requestAnimationFrame(() => {
+        void import("@/lib/dashboards/mcp-sync")
+          .then(({ initMcpDashboardSync }) => initMcpDashboardSync())
+          .catch(() => undefined);
+        void import("@/lib/mcp").then(({ initMcpSync }) => initMcpSync()).catch(() => undefined);
+      });
     void extensionHost
       .start()
       .catch((error) => extensionHost.manager.log("host", "error", String(error)));
   });
 
 if (!import.meta.env.DEV && isMainWindow) {
-  if (document.readyState === "complete") initAutoUpdater();
-  else window.addEventListener("load", () => initAutoUpdater(), { once: true });
+  const startUpdater = () => {
+    void import("@/lib/auto-updater")
+      .then(({ initAutoUpdater }) => initAutoUpdater())
+      .catch(() => undefined);
+  };
+  if (document.readyState === "complete") startUpdater();
+  else window.addEventListener("load", startUpdater, { once: true });
 }

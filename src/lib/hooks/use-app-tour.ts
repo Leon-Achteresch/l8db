@@ -12,7 +12,7 @@ import {
   waitForSelector,
 } from "@/lib/tour/conditions";
 import { destroySpotlight, showSpotlight } from "@/lib/tour/spotlight";
-import { currentTour, useTourStore } from "@/lib/tour/store";
+import { useTourStore } from "@/lib/tour/store";
 import type { TourStep } from "@/lib/tour/types";
 import { useTransactionStore } from "@/lib/transactions";
 
@@ -29,6 +29,13 @@ async function goToStepRoute(step: TourStep, navigate: ReturnType<typeof useNavi
   if (step.route) {
     await navigate({ to: step.route as never });
   }
+}
+
+function currentTour() {
+  const { chapterIndex, stepIndex } = useTourStore.getState();
+  const chapter = TOUR_CHAPTERS[chapterIndex];
+  const step = chapter?.steps[stepIndex];
+  return { chapter, step, chapterIndex, stepIndex };
 }
 
 export function useAppTour() {

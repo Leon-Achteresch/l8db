@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useSettingsStore } from "@/lib/settings";
-import { TOUR_CHAPTERS } from "@/lib/tour/chapters";
 
 interface TourState {
   active: boolean;
@@ -129,10 +128,3 @@ export const useTourStore = create<TourState>()(
     },
   ),
 );
-
-export function currentTour() {
-  const { chapterIndex, stepIndex } = useTourStore.getState();
-  const chapter = TOUR_CHAPTERS[chapterIndex];
-  const step = chapter?.steps[stepIndex];
-  return { chapter, step, chapterIndex, stepIndex };
-}
