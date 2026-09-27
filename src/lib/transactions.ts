@@ -15,6 +15,8 @@ export interface TransactionChange {
   rowValues?: Record<string, unknown>;
   sql?: string;
   rowsAffected?: number | null;
+  fromSql?: boolean;
+  detailsUnavailable?: boolean;
 }
 
 export interface ActiveTransaction {

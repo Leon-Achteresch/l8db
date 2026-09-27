@@ -3,6 +3,7 @@ import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
   "settings.data.transfer": "0.7.0",
+  "query.transaction.changes": "0.7.0",
 } as const;
 
 export type NewFeatureId = keyof typeof NEW_FEATURES;
