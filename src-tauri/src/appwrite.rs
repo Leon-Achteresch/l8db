@@ -38,6 +38,18 @@ pub struct AppwriteBucket {
     pub enabled: bool,
     #[serde(rename = "totalSize")]
     pub total_size: Option<u64>,
+    #[serde(rename = "maximumFileSize")]
+    pub maximum_file_size: Option<u64>,
+    #[serde(rename = "allowedFileExtensions")]
+    pub allowed_file_extensions: Option<Vec<String>>,
+    #[serde(rename = "fileSecurity")]
+    pub file_security: Option<bool>,
+    pub compression: Option<String>,
+    pub encryption: Option<bool>,
+    pub antivirus: Option<bool>,
+    pub transformations: Option<bool>,
+    #[serde(rename = "$permissions")]
+    pub permissions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -45,6 +57,8 @@ pub struct AppwriteFile {
     #[serde(rename = "$id")]
     pub id: String,
     pub name: String,
+    pub key: Option<String>,
+    pub folder: Option<String>,
     #[serde(rename = "sizeOriginal")]
     pub size_original: Option<u64>,
     #[serde(rename = "mimeType")]
@@ -660,7 +674,8 @@ pub async fn appwrite_sites(
 #[cfg(test)]
 mod tests {
     use super::{
-        client, get, profile_id, upload_path, validate_endpoint, validate_id, AppwriteProfile,
+        client, get, profile_id, upload_path, validate_endpoint, validate_id, AppwriteBucket,
+        AppwriteFile, AppwriteProfile,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -685,6 +700,44 @@ mod tests {
             profile_id("https://a/v1", "p"),
             profile_id("https://b/v1", "p")
         );
+    }
+
+    #[test]
+    fn storage_models_keep_bucket_rules_and_file_paths() {
+        let bucket: AppwriteBucket = serde_json::from_value(serde_json::json!({
+            "$id": "media",
+            "name": "Media",
+            "enabled": true,
+            "totalSize": 12345,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": ["png", "jpg"],
+            "fileSecurity": true,
+            "compression": "gzip",
+            "encryption": true,
+            "antivirus": false,
+            "transformations": true,
+            "$permissions": ["read(\"any\")"]
+        }))
+        .unwrap();
+        assert_eq!(bucket.maximum_file_size, Some(10 * 1024 * 1024));
+        assert_eq!(bucket.allowed_file_extensions.unwrap(), ["png", "jpg"]);
+        assert_eq!(bucket.permissions.unwrap(), ["read(\"any\")"]);
+        let file: AppwriteFile = serde_json::from_value(serde_json::json!({
+            "$id": "file_1",
+            "name": "logo.png",
+            "folder": "brand/",
+            "key": "brand/logo.png",
+            "sizeOriginal": 123,
+            "mimeType": "image/png",
+            "$createdAt": "2026-09-27T12:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(file.key.as_deref(), Some("brand/logo.png"));
+        let older: AppwriteBucket = serde_json::from_value(serde_json::json!({
+            "$id": "old", "name": "Old", "enabled": true
+        }))
+        .unwrap();
+        assert!(older.maximum_file_size.is_none());
     }
 
     #[tokio::test]
