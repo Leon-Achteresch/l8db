@@ -296,7 +296,7 @@ function harness(
   provider: string,
   clis: Record<string, Cli>,
   local: VaultConnection[],
-  options: { autoSync?: boolean; pickTarget?: number } = {},
+  options: { autoSync?: boolean } = {},
 ) {
   const handlers = new Map<string, (payload?: Json) => Promise<unknown>>();
   const messages: string[] = [];
@@ -358,10 +358,8 @@ function harness(
       },
     },
     window: {
-      showQuickPick: async (items: { picked?: boolean }[], pick?: { canPickMany?: boolean }) =>
-        pick?.canPickMany || options.pickTarget === undefined
-          ? items.filter((item) => item.picked).map((item) => ({ ...item }))
-          : [{ ...items[options.pickTarget] }],
+      showQuickPick: async (items: { picked?: boolean }[]) =>
+        items.filter((item) => item.picked).map((item) => ({ ...item })),
       showInputBox: async () => "master",
       showInformationMessage: async (message: string) => {
         messages.push(message);
@@ -411,15 +409,16 @@ describe.each([
     const fake = create();
     const vault = harness(provider, { [binary]: fake.cli }, local);
     await vault.run("vault.export");
-    expect(vault.messages.at(-1)).toMatch(/2 angelegt( in „Private“)?, 0 aktualisiert/);
+    expect(vault.messages.at(-1)).toContain("2 angelegt, 0 aktualisiert");
     const store = "records" in fake ? fake.records : fake.items;
     expect(store.size).toBe(2);
     await vault.run("vault.export");
     expect(vault.messages.at(-1)).toContain("0 angelegt, 2 aktualisiert");
     expect(store.size).toBe(2);
-    await vault.run("vault.import");
-    expect(vault.messages.at(-1)).not.toContain("ERROR");
-    const loaded = vault.savedBatches[0].sort((a, b) => a.name.localeCompare(b.name));
+    const fresh = harness(provider, { [binary]: fake.cli }, []);
+    await fresh.run("vault.import");
+    expect(fresh.messages.at(-1)).not.toContain("ERROR");
+    const loaded = fresh.savedBatches[0].sort((a, b) => a.name.localeCompare(b.name));
     const expected = [...local].sort((a, b) => a.name.localeCompare(b.name));
     expect(loaded).toEqual(expected);
     expect(loaded.map((entry) => entry.password)).toEqual(["p=a;ss$w0rd\\n", "s3cr@t pw"]);
@@ -436,8 +435,9 @@ describe.each([
     const store: Map<string, unknown> = "records" in fake ? fake.records : fake.items;
     const [first] = [...store.values()];
     store.set("duplicate", structuredClone(first));
-    await vault.run("vault.import");
-    expect(vault.savedBatches[0].map((entry) => entry.id)).toEqual([local[0].id]);
+    const fresh = harness(provider, { [binary]: fake.cli }, []);
+    await fresh.run("vault.import");
+    expect(fresh.savedBatches[0].map((entry) => entry.id)).toEqual([local[0].id]);
   });
 
   test("reports CLI failures instead of throwing", async () => {
@@ -452,28 +452,59 @@ describe.each([
 });
 
 describe.each([
-  ["keeper", () => fakeKeeper(), "keeper", "SF1"],
-  ["bitwarden", () => fakeBitwarden(), "bw", "col-1"],
-  ["1password", () => fakeOnePassword(), "op", "v-team"],
-] as const)("%s team sharing", (provider, create, binary, shared) => {
-  test("shares connections into a team target with a readable address", async () => {
+  ["keeper", () => fakeKeeper(), "keeper"],
+  ["bitwarden", () => fakeBitwarden(), "bw"],
+  ["1password", () => fakeOnePassword(), "op"],
+] as const)("%s as connection store", (provider, create, binary) => {
+  const entries = (fake: ReturnType<typeof create>) =>
+    [...("records" in fake ? fake.records : fake.items).values()] as Record<string, unknown>[];
+
+  test("saves into the personal vault without asking for a target", async () => {
     const fake = create();
-    const admin = harness(provider, { [binary]: fake.cli }, [local[0]], { pickTarget: 1 });
-    await admin.run("vault.export");
-    const [entry] = [...("records" in fake ? fake.records : fake.items).values()] as Record<
-      string,
-      unknown
-    >[];
-    const where = entry.folder ?? entry.vault ?? (entry.collectionIds as string[] | undefined)?.[0];
-    expect(where).toBe(shared);
-    if (provider === "bitwarden") expect(entry.organizationId).toBe("org-1");
+    const own = harness(provider, { [binary]: fake.cli }, [local[0]]);
+    await own.run("vault.save", { id: local[0].id });
+    const [entry] = entries(fake);
+    expect(entry.folder ?? entry.vault ?? entry.collectionIds ?? entry.organizationId).toBe(
+      undefined,
+    );
     const url = entry.url ?? (entry.login as { uris: { uri: string }[] } | undefined)?.uris[0]?.uri;
     expect(url).toBe(local[0].connectionString);
+    own.connections[0] = { ...local[0], name: "Prod umbenannt" };
+    await own.run("vault.save", { id: local[0].id });
+    expect(entries(fake)).toHaveLength(1);
+    expect(entries(fake)[0].title ?? entries(fake)[0].name).toBe("l8db: Prod umbenannt");
+    await expect(own.run("vault.save", { id: "missing" })).rejects.toThrow("nicht gespeichert");
+  });
+
+  test("removing a vault connection only hides it and never touches the vault", async () => {
+    const fake = create();
+    const admin = harness(provider, { [binary]: fake.cli }, local);
+    await admin.run("vault.export");
+    const user = harness(provider, { [binary]: fake.cli }, []);
+    expect(await user.run("vault.sync", { quiet: true })).toMatchObject({ total: 2, added: 2 });
+    user.connections.splice(0, 1);
+    const hidden = (await user.run("vault.sync", { quiet: true })) as Record<string, number>;
+    expect(hidden).toMatchObject({ total: 1, added: 0, hidden: 1, removed: 0 });
+    expect(user.connections).toHaveLength(1);
+    expect(entries(fake)).toHaveLength(2);
+    await user.run("vault.import");
+    expect(user.connections).toHaveLength(2);
+    expect(await user.run("vault.sync", { quiet: true })).toMatchObject({ total: 2, hidden: 0 });
+  });
+
+  test("a connection saved from l8db and removed right away stays hidden", async () => {
+    const fake = create();
+    const own = harness(provider, { [binary]: fake.cli }, [local[0]]);
+    await own.run("vault.sync", { quiet: true });
+    await own.run("vault.save", { id: local[0].id });
+    own.connections.splice(0, 1);
+    expect(await own.run("vault.sync", { quiet: true })).toMatchObject({ total: 0, hidden: 1 });
+    expect(own.connections).toHaveLength(0);
   });
 
   test("employees receive shared connections on startup and lose revoked ones", async () => {
     const fake = create();
-    const admin = harness(provider, { [binary]: fake.cli }, local, { pickTarget: 1 });
+    const admin = harness(provider, { [binary]: fake.cli }, local);
     await admin.run("vault.export");
     const employee = harness(provider, { [binary]: fake.cli }, [], { autoSync: true });
     const first = (await employee.run("vault.sync", { quiet: true })) as Record<string, number>;
@@ -568,7 +599,7 @@ test("the host removes connections together with their secrets", async () => {
   expect(useConnectionsStore.getState().connections.map((entry) => entry.id)).toEqual(["tmp"]);
 });
 
-test("host saves into the connection store and keychain and lists them back", async () => {
+test("host keeps vault passwords out of the keychain and lists them back", async () => {
   const { createExtensionHost } = await import("../src/lib/extensions/host");
   const { useConnectionsStore } = await import("../src/lib/connections");
   const core = (
@@ -588,8 +619,9 @@ test("host saves into the connection store and keychain and lists them back", as
   expect(connections).toHaveLength(2);
   expect(connections[0].readOnly).toBe(true);
   expect(connections[0].connectionString).toContain("app:rotated@");
-  expect(keychain.get(saved.id)).toBe("rotated");
-  expect(keychain.get(local[1].id)).toBe("new-secret");
+  expect(connections.every((entry) => entry.vault)).toBe(true);
+  expect(keychain.has(saved.id)).toBe(false);
+  expect(keychain.has(local[1].id)).toBe(false);
   expect(
     JSON.parse(storage.get("l8db.connections") ?? "{}").state.connections[0].connectionString,
   ).not.toContain("rotated");

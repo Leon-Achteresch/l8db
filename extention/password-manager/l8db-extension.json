@@ -1,8 +1,8 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.2.0",
-  "description": "Stellt Datenbank-Zugänge aus Bitwarden, 1Password oder Keeper direkt in l8db bereit – auch für ganze Teams über geteilte Sammlungen, Tresore und Ordner.",
+  "version": "1.3.0",
+  "description": "Speichert deine l8db-Verbindungen in Bitwarden, 1Password oder Keeper und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern.",
   "publisher": "l8db",
   "engines": {
     "l8db": ">=0.7.0 <1.0.0",
@@ -12,6 +12,7 @@
   "activationEvents": [
     "onStartup",
     "onCommand:vault.sync",
+    "onCommand:vault.save",
     "onCommand:vault.import",
     "onCommand:vault.export",
     "onCommand:vault.install",
@@ -47,12 +48,16 @@
         "icon": "refresh-cw"
       },
       {
+        "id": "vault.save",
+        "title": "Passwortmanager: Verbindung speichern"
+      },
+      {
         "id": "vault.export",
-        "title": "Passwortmanager: Verbindungen freigeben"
+        "title": "Passwortmanager: Bestehende Verbindungen speichern"
       },
       {
         "id": "vault.import",
-        "title": "Passwortmanager: Einzelne Verbindungen laden"
+        "title": "Passwortmanager: Ausgeblendete Verbindungen einblenden"
       },
       {
         "id": "vault.install",

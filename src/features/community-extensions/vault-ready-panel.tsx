@@ -1,4 +1,4 @@
-import { ChevronDownIcon, RefreshCwIcon, UploadIcon, UsersIcon } from "lucide-react";
+import { ChevronDownIcon, EyeIcon, KeyRoundIcon, RefreshCwIcon, UploadIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,12 @@ import {
 import { VaultManualEntry } from "./vault-manual-entry";
 
 function summary(result: VaultSyncResult, name: string) {
-  if (!result.total && !result.removed && !result.skipped.length)
+  if (!result.total && !result.removed && !result.hidden && !result.skipped.length)
     return `In ${name} sind noch keine Datenbank-Zugänge für l8db hinterlegt.`;
   const changes = [
     result.added && `${result.added} neu`,
     result.removed && `${result.removed} entfernt`,
+    result.hidden && `${result.hidden} ausgeblendet`,
   ].filter(Boolean);
   return `${result.total === 1 ? "1 Datenbank-Zugang ist" : `${result.total} Datenbank-Zugänge sind`} in l8db verfügbar${changes.length ? ` (${changes.join(", ")})` : ""}.`;
 }
@@ -70,9 +71,9 @@ export function VaultReadyPanel({
       })
       .catch((cause) => toast.error(errorText(cause)));
 
-  const share = () =>
+  const run = (command: string) =>
     void host
-      .executeCommand("vault.export")
+      .executeCommand(command)
       .then(() => sync())
       .catch((cause) => toast.error(errorText(cause)));
 
@@ -95,7 +96,7 @@ export function VaultReadyPanel({
                   ? error
                   : result
                     ? summary(result, provider.name)
-                    : `Alle Einträge in ${provider.name}, deren Name mit „l8db:“ beginnt, erscheinen automatisch als Verbindung in l8db. Wird ein Eintrag gelöscht oder dir entzogen, verschwindet auch die Verbindung.`}
+                    : `Alle Einträge in ${provider.name}, deren Name mit „l8db:“ beginnt, erscheinen automatisch als Verbindung in l8db, auch aus geteilten Bereichen deines Teams.`}
             </p>
           </div>
           <Button size="sm" variant="outline" disabled={syncing} onClick={() => void sync()}>
@@ -115,18 +116,25 @@ export function VaultReadyPanel({
             aria-hidden
             className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
           >
-            <UsersIcon className="size-4" />
+            <KeyRoundIcon className="size-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Zugänge fürs Team bereitstellen</p>
+            <p className="text-sm font-medium">Verbindungen in {provider.name} speichern</p>
             <p className="text-xs text-pretty text-muted-foreground">
-              {provider.teamHint} Speichere dann deine Verbindungen dort: Alle mit Zugriff bekommen
-              sie beim nächsten Start von l8db automatisch.
+              Beim Anlegen oder Bearbeiten einer Verbindung entscheidest du per Häkchen, ob sie in{" "}
+              {provider.name} landet. Entfernst du eine Verbindung in l8db, wird sie nur
+              ausgeblendet, in {provider.name} bleibt sie erhalten.
             </p>
           </div>
-          <Button size="sm" onClick={share}>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => run("vault.export")}>
             <UploadIcon />
-            Verbindungen freigeben
+            Bestehende übernehmen
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => run("vault.import")}>
+            <EyeIcon />
+            Ausgeblendete einblenden
           </Button>
         </div>
         <Collapsible open={guide} onOpenChange={setGuide}>

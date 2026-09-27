@@ -21,18 +21,12 @@ export interface VaultEntry {
   urls?: unknown[];
 }
 
-export interface VaultTarget {
-  id: string | null;
-  label: string;
-  description: string;
-  organization?: string;
-}
-
 export interface SyncResult {
   total: number;
   added: number;
   updated: number;
   removed: number;
+  hidden: number;
   skipped: string[];
 }
 
@@ -67,8 +61,7 @@ export interface VaultSession {
 
 export interface VaultBackend {
   list(): Promise<VaultRecord[]>;
-  targets(): Promise<VaultTarget[]>;
-  create(connection: VaultConnection, target?: VaultTarget): Promise<void>;
+  create(connection: VaultConnection): Promise<void>;
   update(ref: string, connection: VaultConnection): Promise<void>;
 }
 
@@ -93,12 +86,6 @@ const SCHEMES: Record<string, string> = {
   influxdb: "influxdb",
   libsql: "sqlite_http",
   snowflake: "snowflake",
-};
-
-const PERSONAL: VaultTarget = {
-  id: null,
-  label: "Nur für mich",
-  description: "Persönlicher Tresor, niemand sonst sieht die Zugänge",
 };
 
 function encode(text: string): string {
@@ -255,24 +242,7 @@ export function keeper(api: L8dbApi): VaultBackend {
       }
       return records;
     },
-    async targets() {
-      try {
-        const found = json(await call("list-sf", "--format", "json"));
-        return [
-          PERSONAL,
-          ...(Array.isArray(found) ? found : [])
-            .filter((entry) => typeof entry?.shared_folder_uid === "string")
-            .map((entry) => ({
-              id: entry.shared_folder_uid as string,
-              label: String(entry.name ?? entry.shared_folder_uid),
-              description: "Geteilter Ordner, alle Mitglieder erhalten die Zugänge",
-            })),
-        ];
-      } catch {
-        return [PERSONAL];
-      }
-    },
-    async create(connection, target) {
+    async create(connection) {
       await call(
         "record-add",
         "-f",
@@ -280,7 +250,6 @@ export function keeper(api: L8dbApi): VaultBackend {
         title(connection),
         "-rt",
         "login",
-        ...(target?.id ? ["--folder", target.id] : []),
         "-n",
         toNotes(connection),
         ...fields(connection),
@@ -326,18 +295,13 @@ export function bitwarden(api: L8dbApi, auth: VaultSession = { bw: null, op: nul
   };
   const call = async (...args: string[]) => run(api, "bw", [...args, "--session", await unlock()]);
   const items = new Map<string, Record<string, unknown>>();
-  const body = (
-    connection: VaultConnection,
-    base: Record<string, unknown> = {},
-    target?: VaultTarget,
-  ) => {
+  const body = (connection: VaultConnection, base: Record<string, unknown> = {}) => {
     const login = (base.login as Record<string, unknown>) ?? {};
     const url = link(connection);
     return encode(
       JSON.stringify({
         type: 1,
         ...base,
-        ...(target?.id ? { organizationId: target.organization, collectionIds: [target.id] } : {}),
         name: title(connection),
         notes: toNotes(connection),
         login: {
@@ -370,31 +334,8 @@ export function bitwarden(api: L8dbApi, auth: VaultSession = { bw: null, op: nul
       }
       return records;
     },
-    async targets() {
-      const organizations = json(await call("list", "organizations"));
-      const collections = json(await call("list", "collections"));
-      const names = new Map<string, string>(
-        (Array.isArray(organizations) ? organizations : []).map((entry) => [
-          String(entry?.id),
-          String(entry?.name ?? ""),
-        ]),
-      );
-      return [
-        PERSONAL,
-        ...(Array.isArray(collections) ? collections : [])
-          .filter(
-            (entry) => typeof entry?.id === "string" && typeof entry?.organizationId === "string",
-          )
-          .map((entry) => ({
-            id: entry.id as string,
-            organization: entry.organizationId as string,
-            label: [names.get(entry.organizationId), entry.name].filter(Boolean).join(" › "),
-            description: "Sammlung, alle Mitglieder erhalten die Zugänge",
-          })),
-      ];
-    },
-    async create(connection, target) {
-      await call("create", "item", body(connection, {}, target));
+    async create(connection) {
+      await call("create", "item", body(connection));
     },
     async update(ref, connection) {
       await call("edit", "item", ref, body(connection, items.get(ref)));
@@ -444,27 +385,7 @@ export function onePassword(
       }
       return records;
     },
-    async targets() {
-      const found = json((await call("vault", "list", "--format", "json")) || "[]");
-      const vaults = (Array.isArray(found) ? found : [])
-        .filter((entry) => typeof entry?.id === "string")
-        .map((entry) => {
-          const own = /^(private|personal|employee|privat)$/i.test(String(entry.name));
-          return {
-            id: entry.id as string,
-            label: String(entry.name ?? entry.id),
-            description: own
-              ? "Persönlicher Tresor, niemand sonst sieht die Zugänge"
-              : "Tresor, alle mit Zugriff erhalten die Zugänge",
-            own,
-          };
-        })
-        .sort((a, b) => Number(b.own) - Number(a.own) || a.label.localeCompare(b.label));
-      return vaults.length
-        ? vaults.map(({ own: _own, ...target }) => target)
-        : [{ ...PERSONAL, label: "Privat" }];
-    },
-    async create(connection, target) {
+    async create(connection) {
       await call(
         "item",
         "create",
@@ -474,7 +395,6 @@ export function onePassword(
         title(connection),
         "--tags",
         "l8db",
-        ...(target?.id ? ["--vault", target.id] : []),
         ...assignments(connection),
       );
     },
@@ -513,70 +433,8 @@ function unique(records: VaultRecord[]) {
   return [...new Map(records.map((record) => [record.connection.id, record.connection])).values()];
 }
 
-export async function importConnections(api: L8dbApi, backend: VaultBackend, name: string) {
-  const records = await backend.list();
-  if (!records.length) {
-    await api.window.showInformationMessage(`Keine l8db-Verbindungen in ${name} gefunden.`);
-    return { added: 0, updated: 0, skipped: [] };
-  }
-  const selected = await pick(api, unique(records), `Aus ${name} laden`);
-  if (!selected.length) return { added: 0, updated: 0, skipped: [] };
-  const result = await api.connections.save(selected);
-  await api.window.showInformationMessage(
-    `${name}: ${result.added} neu, ${result.updated} aktualisiert${result.skipped.length ? `, übersprungen: ${result.skipped.join(", ")}` : ""}.`,
-  );
-  return result;
-}
-
-async function chooseTarget(api: L8dbApi, targets: VaultTarget[], name: string) {
-  if (targets.length < 2) return targets[0];
-  const items = targets.map((target, index) => ({
-    label: target.label,
-    description: target.description,
-    picked: index === 0,
-  }));
-  const chosen = await api.window.showQuickPick(items, {
-    title: `Wo in ${name} speichern?`,
-  });
-  const entry = chosen?.[0];
-  if (!entry) return undefined;
-  return targets.find((target, index) =>
-    typeof entry === "string"
-      ? target.label === entry
-      : items[index].label === entry.label && items[index].description === entry.description,
-  );
-}
-
-export async function exportConnections(api: L8dbApi, backend: VaultBackend, name: string) {
-  const connections = await api.connections.list();
-  if (!connections.length) {
-    await api.window.showInformationMessage("Keine gespeicherten Verbindungen vorhanden.");
-    return { created: 0, updated: 0 };
-  }
-  const selected = await pick(api, connections, `In ${name} speichern`);
-  if (!selected.length) return { created: 0, updated: 0 };
-  const existing = new Map(
-    (await backend.list()).map((record) => [record.connection.id, record.ref]),
-  );
-  const fresh = selected.filter((connection) => !existing.has(connection.id));
-  const target = fresh.length ? await chooseTarget(api, await backend.targets(), name) : undefined;
-  if (fresh.length && !target) return { created: 0, updated: 0 };
-  let created = 0;
-  let updated = 0;
-  for (const connection of selected) {
-    const ref = existing.get(connection.id);
-    if (ref) {
-      await backend.update(ref, connection);
-      updated++;
-    } else {
-      await backend.create(connection, target);
-      created++;
-    }
-  }
-  await api.window.showInformationMessage(
-    `${name}: ${created} angelegt${target?.id ? ` in „${target.label}“` : ""}, ${updated} aktualisiert.`,
-  );
-  return { created, updated };
+function slug(provider: string) {
+  return provider.replace(/[^a-zA-Z0-9_-]/g, "");
 }
 
 async function tracked(api: L8dbApi, key: string): Promise<string[] | null> {
@@ -588,17 +446,97 @@ async function tracked(api: L8dbApi, key: string): Promise<string[] | null> {
   }
 }
 
+async function remember(api: L8dbApi, provider: string, ids: string[]) {
+  const key = `known_${slug(provider)}`;
+  const known = await tracked(api, key);
+  if (known) await api.storage.set(key, [...new Set([...known, ...ids])]).catch(() => undefined);
+}
+
+export async function importConnections(api: L8dbApi, backend: VaultBackend, name: string) {
+  const local = new Set((await api.connections.list()).map((connection) => connection.id));
+  const hidden = unique(await backend.list()).filter((connection) => !local.has(connection.id));
+  if (!hidden.length) {
+    await api.window.showInformationMessage(`Keine ausgeblendeten Verbindungen in ${name}.`);
+    return { added: 0, updated: 0, skipped: [] };
+  }
+  const selected = await pick(api, hidden, "Wieder einblenden");
+  if (!selected.length) return { added: 0, updated: 0, skipped: [] };
+  const result = await api.connections.save(selected);
+  await api.window.showInformationMessage(
+    `${name}: ${result.added} wieder eingeblendet${result.skipped.length ? `, übersprungen: ${result.skipped.join(", ")}` : ""}.`,
+  );
+  return result;
+}
+
+async function store(backend: VaultBackend, connections: VaultConnection[]) {
+  const existing = new Map(
+    (await backend.list()).map((record) => [record.connection.id, record.ref]),
+  );
+  let created = 0;
+  for (const connection of connections) {
+    const ref = existing.get(connection.id);
+    if (ref) await backend.update(ref, connection);
+    else {
+      await backend.create(connection);
+      created++;
+    }
+  }
+  return { created, updated: connections.length - created };
+}
+
+export async function saveConnection(
+  api: L8dbApi,
+  backend: VaultBackend,
+  provider: string,
+  id: string,
+) {
+  const connection = (await api.connections.list()).find((entry) => entry.id === id);
+  if (!connection) throw new Error("Die Verbindung ist in l8db nicht gespeichert.");
+  const result = await store(backend, [connection]);
+  await remember(api, provider, [id]);
+  return result;
+}
+
+export async function exportConnections(
+  api: L8dbApi,
+  backend: VaultBackend,
+  name: string,
+  provider: string,
+) {
+  const connections = await api.connections.list();
+  if (!connections.length) {
+    await api.window.showInformationMessage("Keine gespeicherten Verbindungen vorhanden.");
+    return { created: 0, updated: 0 };
+  }
+  const selected = await pick(api, connections, `In ${name} speichern`);
+  if (!selected.length) return { created: 0, updated: 0 };
+  const result = await store(backend, selected);
+  await remember(
+    api,
+    provider,
+    selected.map((connection) => connection.id),
+  );
+  await api.window.showInformationMessage(
+    `${name}: ${result.created} angelegt, ${result.updated} aktualisiert.`,
+  );
+  return result;
+}
+
 export async function syncConnections(
   api: L8dbApi,
   backend: VaultBackend,
   provider: string,
 ): Promise<SyncResult> {
   const connections = unique(await backend.list());
-  const key = `synced_${provider.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const key = `synced_${slug(provider)}`;
+  const knownKey = `known_${slug(provider)}`;
   const before = await tracked(api, key);
+  const known = await tracked(api, knownKey);
   const local = new Set((await api.connections.list()).map((connection) => connection.id));
-  const saved = connections.length
-    ? await api.connections.save(connections)
+  const hidden = new Set((known ?? []).filter((id) => !local.has(id)));
+  const visible = connections.filter((connection) => !hidden.has(connection.id));
+  const saved = visible.length
+    ? await api.connections.save(visible)
     : { added: 0, updated: 0, skipped: [] };
   const ids = new Set(connections.map((connection) => connection.id));
   const stale = (before ?? []).filter((id) => !ids.has(id) && local.has(id));
@@ -615,21 +553,24 @@ export async function syncConnections(
       )
       .catch(() => undefined);
   }
+  if (known) await api.storage.set(knownKey, [...ids]).catch(() => undefined);
   return {
-    total: connections.length - saved.skipped.length,
+    total: visible.length - saved.skipped.length,
     added: saved.added,
     updated: saved.updated,
     removed,
+    hidden: connections.length - visible.length,
     skipped: saved.skipped,
   };
 }
 
 export function syncSummary(result: SyncResult, name: string) {
-  if (!result.total && !result.removed && !result.skipped.length)
+  if (!result.total && !result.removed && !result.hidden && !result.skipped.length)
     return `In ${name} sind noch keine Datenbank-Zugänge für l8db hinterlegt.`;
   const changes = [
     result.added && `${result.added} neu`,
     result.removed && `${result.removed} entfernt`,
+    result.hidden && `${result.hidden} ausgeblendet`,
     result.skipped.length && `nicht lesbar: ${result.skipped.join(", ")}`,
   ].filter(Boolean);
   return `${result.total === 1 ? "1 Datenbank-Zugang" : `${result.total} Datenbank-Zugänge`} aus ${name} bereit${changes.length ? ` (${changes.join(", ")})` : ""}.`;
@@ -962,10 +903,10 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
     }
     await sync(true);
   };
-  const guard = (action: typeof importConnections | typeof exportConnections) => async () => {
+  const guard = (action: typeof exportConnections) => async () => {
     try {
-      const { backend, name } = await resolve();
-      await action(api, backend, name);
+      const { backend, name, provider } = await resolve();
+      await action(api, backend, name, provider);
     } catch (error) {
       await api.window.showErrorMessage(message(error));
     }
@@ -1002,6 +943,13 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
       } catch (error) {
         await api.window.showErrorMessage(message(error));
       }
+    }),
+    api.commands.registerCommand("vault.save", async (payload) => {
+      const id =
+        payload && typeof payload === "object" && !Array.isArray(payload) ? payload.id : null;
+      if (typeof id !== "string") throw new Error("Verbindungs-ID fehlt.");
+      const { backend, provider } = await resolve();
+      return await saveConnection(api, backend, provider, id);
     }),
     api.commands.registerCommand("vault.import", guard(importConnections)),
     api.commands.registerCommand("vault.export", guard(exportConnections)),
