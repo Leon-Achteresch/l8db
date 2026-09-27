@@ -61,7 +61,9 @@ export function FirebaseView() {
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">Firebase</h1>
             {feature.isNew && <NewBadge />}
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">Projekte, Cloud Storage und Auth.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Projekte, Cloud Storage, Firestore und Auth.
+          </p>
         </div>
         {selected && (
           <Button variant="outline" size="sm" onClick={() => setAdding((value) => !value)}>
@@ -86,8 +88,8 @@ export function FirebaseView() {
               <h2 className="text-lg font-semibold">Firebase-Projekt verbinden</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Wähle eine Service-Account-JSON-Datei aus dem Firebase-Projekt. l8db liest sie nur
-                im Backend und speichert den Schlüssel im OS-Schlüsselbund. Die IAM-Rolle muss
-                Projekt und Storage lesen dürfen.
+                im Backend und speichert den Schlüssel im OS-Schlüsselbund. Die IAM-Rolle muss die
+                gewünschten Projektdienste lesen dürfen.
               </p>
               <Button className="mt-5" disabled={busy} onClick={() => void connect()}>
                 {busy ? "Verbinde…" : "Service-Account-Datei auswählen"}

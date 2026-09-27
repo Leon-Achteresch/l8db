@@ -60,6 +60,60 @@ fn validate_page_token(token: &str) -> Result<&str, String> {
     Ok(token)
 }
 
+fn validate_database_id(id: &str) -> Result<&str, String> {
+    if id.is_empty()
+        || id.len() > 64
+        || id.contains('/')
+        || id.contains('\\')
+        || id.chars().any(char::is_control)
+        || id == "."
+        || id == ".."
+    {
+        return Err("Ungültige Firestore-Datenbank-ID.".into());
+    }
+    Ok(id)
+}
+
+fn validate_firestore_path(path: &str, document: bool) -> Result<Vec<&str>, String> {
+    if path.is_empty() || path.len() > 2048 {
+        return Err("Ungültiger Firestore-Pfad.".into());
+    }
+    let segments = path.split('/').collect::<Vec<_>>();
+    if segments.len() % 2 != usize::from(!document)
+        || segments.iter().any(|segment| {
+            segment.is_empty()
+                || *segment == "."
+                || *segment == ".."
+                || segment.chars().any(char::is_control)
+        })
+    {
+        return Err("Ungültiger Firestore-Pfad.".into());
+    }
+    Ok(segments)
+}
+
+fn firestore_url(project_id: &str, database_id: &str, path: &str) -> Result<reqwest::Url, String> {
+    let project_id = validate_project_id(project_id)?;
+    let database_id = validate_database_id(database_id)?;
+    let mut url = reqwest::Url::parse("https://firestore.googleapis.com/v1/projects")
+        .map_err(|_| "Ungültige Firestore-URL.".to_string())?;
+    let mut segments = url
+        .path_segments_mut()
+        .map_err(|_| "Ungültige Firestore-URL.".to_string())?;
+    segments
+        .push(project_id)
+        .push("databases")
+        .push(database_id)
+        .push("documents");
+    if !path.is_empty() {
+        for segment in path.split('/') {
+            segments.push(segment);
+        }
+    }
+    drop(segments);
+    Ok(url)
+}
+
 fn credential_account(project_id: &str) -> String {
     format!("baas:firebase:{project_id}:service-account")
 }
@@ -242,6 +296,51 @@ pub struct FirebaseAuthUser {
 pub struct FirebaseAuthPage {
     #[serde(default)]
     pub users: Vec<FirebaseAuthUser>,
+    pub next_page_token: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFirestoreDatabase {
+    pub name: String,
+    pub location_id: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub point_in_time_recovery_enablement: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFirestoreDatabases {
+    #[serde(default)]
+    pub databases: Vec<FirebaseFirestoreDatabase>,
+    #[serde(default)]
+    pub unreachable: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFirestoreCollections {
+    #[serde(default)]
+    pub collection_ids: Vec<String>,
+    pub next_page_token: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFirestoreDocument {
+    pub name: String,
+    #[serde(default)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
+    pub create_time: Option<String>,
+    pub update_time: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirebaseFirestoreDocuments {
+    #[serde(default)]
+    pub documents: Vec<FirebaseFirestoreDocument>,
     pub next_page_token: Option<String>,
 }
 
@@ -535,6 +634,81 @@ pub async fn firebase_auth_users(
     .await
 }
 
+#[tauri::command]
+pub async fn firebase_firestore_databases(
+    project_id: String,
+) -> Result<FirebaseFirestoreDatabases, String> {
+    let project_id = validate_project_id(&project_id)?;
+    let token = access_token(project_id).await?;
+    response_json(
+        client()
+            .get(format!(
+                "https://firestore.googleapis.com/v1/projects/{project_id}/databases"
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| "Firestore ist nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn firebase_firestore_collections(
+    project_id: String,
+    database_id: String,
+    parent_path: String,
+    page_token: Option<String>,
+) -> Result<FirebaseFirestoreCollections, String> {
+    if !parent_path.is_empty() {
+        validate_firestore_path(&parent_path, true)?;
+    }
+    let mut url = firestore_url(&project_id, &database_id, &parent_path)?;
+    url.set_path(&format!("{}:listCollectionIds", url.path()));
+    let token = access_token(&project_id).await?;
+    let page_token = page_token.filter(|value| !value.is_empty());
+    let mut body = serde_json::json!({"pageSize": 100});
+    if let Some(page_token) = page_token {
+        body["pageToken"] = validate_page_token(&page_token)?.into();
+    }
+    response_json(
+        client()
+            .post(url)
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| "Firestore-Kollektionen sind nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn firebase_firestore_documents(
+    project_id: String,
+    database_id: String,
+    collection_path: String,
+    page_token: Option<String>,
+) -> Result<FirebaseFirestoreDocuments, String> {
+    validate_firestore_path(&collection_path, false)?;
+    let url = firestore_url(&project_id, &database_id, &collection_path)?;
+    let token = access_token(&project_id).await?;
+    let mut request = client()
+        .get(url)
+        .bearer_auth(token)
+        .query(&[("pageSize", "50"), ("showMissing", "true")]);
+    if let Some(page_token) = page_token.filter(|value| !value.is_empty()) {
+        request = request.query(&[("pageToken", validate_page_token(&page_token)?)]);
+    }
+    response_json(
+        request
+            .send()
+            .await
+            .map_err(|_| "Firestore-Dokumente sind nicht erreichbar.".to_string())?,
+    )
+    .await
+}
+
 async fn object_response(
     project_id: &str,
     bucket: &str,
@@ -587,8 +761,10 @@ pub async fn firebase_download_object(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_service_account, storage_url, upload_file, upload_url, validate_project_id,
-        FirebaseAuthPage, FirebaseBucketPage, FirebaseObjectPage,
+        firestore_url, parse_service_account, storage_url, upload_file, upload_url,
+        validate_firestore_path, validate_project_id, FirebaseAuthPage, FirebaseBucketPage,
+        FirebaseFirestoreCollections, FirebaseFirestoreDatabases, FirebaseFirestoreDocuments,
+        FirebaseObjectPage,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -710,5 +886,39 @@ mod tests {
         ] {
             assert!(!frontend.contains(secret));
         }
+    }
+
+    #[test]
+    fn firestore_paths_encode_segments_and_reject_wrong_parent_type() {
+        assert!(validate_firestore_path("users/user 1", true).is_ok());
+        assert!(validate_firestore_path("users/user 1/posts", false).is_ok());
+        assert!(validate_firestore_path("users", true).is_err());
+        assert!(validate_firestore_path("users/user 1", false).is_err());
+        assert!(validate_firestore_path("users//posts", false).is_err());
+        assert!(validate_firestore_path("users/../posts", false).is_err());
+        let url = firestore_url("example-project", "(default)", "users/user 1/posts").unwrap();
+        assert_eq!(url.host_str(), Some("firestore.googleapis.com"));
+        assert!(url
+            .as_str()
+            .ends_with("/databases/(default)/documents/users/user%201/posts"));
+        let mut operation = firestore_url("example-project", "(default)", "users/é #").unwrap();
+        operation.set_path(&format!("{}:listCollectionIds", operation.path()));
+        assert!(operation
+            .as_str()
+            .ends_with("/documents/users/%C3%A9%20%23:listCollectionIds"));
+    }
+
+    #[test]
+    fn firestore_pages_decode_without_losing_typed_fields() {
+        let databases: FirebaseFirestoreDatabases = serde_json::from_str(r#"{"databases":[{"name":"projects/example-project/databases/(default)","locationId":"eur3","type":"FIRESTORE_NATIVE"}],"unreachable":[]}"#).unwrap();
+        assert_eq!(databases.databases[0].location_id.as_deref(), Some("eur3"));
+        let collections: FirebaseFirestoreCollections =
+            serde_json::from_str(r#"{"collectionIds":["users"],"nextPageToken":"more"}"#).unwrap();
+        assert_eq!(collections.collection_ids, ["users"]);
+        let documents: FirebaseFirestoreDocuments = serde_json::from_str(r#"{"documents":[{"name":"projects/example-project/databases/(default)/documents/users/user-1","fields":{"name":{"stringValue":"Ada"},"active":{"booleanValue":true}}}],"nextPageToken":"more"}"#).unwrap();
+        assert_eq!(documents.documents[0].fields["name"]["stringValue"], "Ada");
+        let missing: FirebaseFirestoreDocuments = serde_json::from_str(r#"{"documents":[{"name":"projects/example-project/databases/(default)/documents/users/missing"}]}"#).unwrap();
+        assert!(missing.documents[0].fields.is_empty());
+        assert!(missing.documents[0].create_time.is_none());
     }
 }
