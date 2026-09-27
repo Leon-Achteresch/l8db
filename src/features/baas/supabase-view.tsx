@@ -90,9 +90,9 @@ export function SupabaseView() {
           <h2 className="text-lg font-semibold">Supabase verbinden</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Erstelle in Supabase einen persönlichen Zugangstoken mit Leserechten für Projekte,
-            Storage und Edge Functions. Für die Übernahme eines vorhandenen Secret API Keys werden
-            zusätzlich API Keys: Read und API Key Secrets: Read benötigt. Der Token wird im
-            OS-Schlüsselbund gespeichert.
+            Storage und Edge Functions. Für die Datenbankvorschau wird Database: Read benötigt; für
+            die Übernahme eines vorhandenen Secret API Keys zusätzlich API Keys: Read und API Key
+            Secrets: Read. Der Token wird im OS-Schlüsselbund gespeichert.
           </p>
           <form
             onSubmit={(event) => {

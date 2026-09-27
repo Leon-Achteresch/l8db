@@ -54,6 +54,28 @@ export interface SupabaseAuthUsersPage {
   users: SupabaseAuthUser[];
 }
 
+export interface SupabaseTable {
+  schema: string;
+  name: string;
+  kind: string;
+}
+
+export interface SupabaseColumn {
+  name: string;
+  data_type: string;
+  is_nullable: string;
+}
+
+export interface SupabaseTablesPage {
+  tables: SupabaseTable[];
+  has_more: boolean;
+}
+
+export interface SupabaseRowsPage {
+  rows: { ordinal: number; values: Record<string, unknown> }[];
+  has_more: boolean;
+}
+
 export const supabaseIsConnected = () => invoke<boolean>("supabase_is_connected");
 export const supabaseConnect = (accessToken: string) =>
   invoke<SupabaseProject[]>("supabase_connect", { accessToken });
@@ -65,6 +87,16 @@ export const supabaseFunctions = (reference: string) =>
   invoke<SupabaseFunction[]>("supabase_functions", { reference });
 export const supabaseHealth = (reference: string) =>
   invoke<SupabaseServiceHealth[]>("supabase_health", { reference });
+export const supabaseTables = (reference: string, offset: number) =>
+  invoke<SupabaseTablesPage>("supabase_tables", { reference, offset });
+export const supabaseTableColumns = (reference: string, schema: string, table: string) =>
+  invoke<SupabaseColumn[]>("supabase_table_columns", { reference, schema, table });
+export const supabaseTableRows = (
+  reference: string,
+  schema: string,
+  table: string,
+  offset: number,
+) => invoke<SupabaseRowsPage>("supabase_table_rows", { reference, schema, table, offset });
 export const supabaseHasProjectKey = (reference: string) =>
   invoke<boolean>("supabase_has_project_key", { reference });
 export const supabaseSetProjectKey = (reference: string, apiKey: string) =>

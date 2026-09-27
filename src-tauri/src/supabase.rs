@@ -134,6 +134,46 @@ async fn management_get<T: serde::de::DeserializeOwned>(
     response_json(response).await
 }
 
+async fn management_query<T: serde::de::DeserializeOwned>(
+    reference: &str,
+    query: &str,
+    parameters: &[serde_json::Value],
+) -> Result<Vec<T>, String> {
+    let reference = validate_ref(reference)?;
+    let response = client()
+        .post(format!(
+            "https://api.supabase.com/v1/projects/{reference}/database/query"
+        ))
+        .bearer_auth(token().await?)
+        .json(&serde_json::json!({
+            "query": query,
+            "parameters": parameters,
+            "read_only": true
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+fn quote_identifier(value: &str) -> Result<String, String> {
+    if value.is_empty() || value.len() > 128 || value.contains('\0') {
+        return Err("Ungültiger Datenbankname.".into());
+    }
+    Ok(format!("\"{}\"", value.replace('"', "\"\"")))
+}
+
+fn table_rows_sql(schema: &str, table: &str, offset: u32) -> Result<String, String> {
+    if offset > 1_000_000 {
+        return Err("Ungültiger Zeilen-Offset.".into());
+    }
+    Ok(format!(
+        "SELECT * FROM {}.{} LIMIT 51 OFFSET {offset}",
+        quote_identifier(schema)?,
+        quote_identifier(table)?
+    ))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseDatabase {
     pub host: Option<String>,
@@ -199,6 +239,38 @@ pub struct SupabaseAuthUser {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseAuthUsersPage {
     pub users: Vec<SupabaseAuthUser>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseTable {
+    pub schema: String,
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseColumn {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: String,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseTablesPage {
+    pub tables: Vec<SupabaseTable>,
+    pub has_more: bool,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseRowsPage {
+    pub rows: Vec<SupabaseRow>,
+    pub has_more: bool,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseRow {
+    pub ordinal: u32,
+    pub values: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -295,6 +367,58 @@ pub async fn supabase_health(reference: String) -> Result<Vec<SupabaseServiceHea
         &format!("projects/{reference}/health?services=auth&services=db&services=pooler&services=realtime&services=rest&services=storage"),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn supabase_tables(reference: String, offset: u32) -> Result<SupabaseTablesPage, String> {
+    if offset > 100_000 {
+        return Err("Ungültiger Tabellen-Offset.".into());
+    }
+    let query = format!(
+        "SELECT table_schema AS schema, table_name AS name, table_type AS kind FROM information_schema.tables WHERE table_schema <> 'information_schema' AND left(table_schema, 3) <> 'pg_' ORDER BY table_schema, table_name LIMIT 101 OFFSET {offset}"
+    );
+    let mut tables = management_query(&reference, &query, &[]).await?;
+    let has_more = tables.len() > 100;
+    tables.truncate(100);
+    Ok(SupabaseTablesPage { tables, has_more })
+}
+
+#[tauri::command]
+pub async fn supabase_table_columns(
+    reference: String,
+    schema: String,
+    table: String,
+) -> Result<Vec<SupabaseColumn>, String> {
+    quote_identifier(&schema)?;
+    quote_identifier(&table)?;
+    management_query(
+        &reference,
+        "SELECT column_name AS name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+        &[serde_json::json!(schema), serde_json::json!(table)],
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_table_rows(
+    reference: String,
+    schema: String,
+    table: String,
+    offset: u32,
+) -> Result<SupabaseRowsPage, String> {
+    let query = table_rows_sql(&schema, &table, offset)?;
+    let mut rows = management_query(&reference, &query, &[]).await?;
+    let has_more = rows.len() > 50;
+    rows.truncate(50);
+    let rows = rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, values)| SupabaseRow {
+            ordinal: offset + index as u32 + 1,
+            values,
+        })
+        .collect();
+    Ok(SupabaseRowsPage { rows, has_more })
 }
 
 #[tauri::command]
@@ -491,10 +615,20 @@ pub async fn supabase_auth_users(
 #[cfg(test)]
 mod tests {
     use super::{
-        client, project_api_auth, select_project_key, validate_object_key,
+        client, project_api_auth, select_project_key, table_rows_sql, validate_object_key,
         validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
         SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject, SupabaseServiceHealth,
     };
+
+    #[test]
+    fn table_row_queries_quote_names_and_cap_offsets() {
+        assert_eq!(
+            table_rows_sql("public", "a\"; DROP TABLE users; --", 50).unwrap(),
+            "SELECT * FROM \"public\".\"a\"\"; DROP TABLE users; --\" LIMIT 51 OFFSET 50"
+        );
+        assert!(table_rows_sql("public", "items", 1_000_001).is_err());
+        assert!(table_rows_sql("public", "a\0b", 0).is_err());
+    }
 
     #[test]
     fn project_key_selection_prefers_default_secret_and_rejects_ambiguity() {
