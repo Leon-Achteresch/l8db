@@ -10,7 +10,7 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
   "Passwortmanager lädt geteilte Zugänge und speichert Verbindungen im persönlichen Tresor",
   async () => {
     const archive = await readFile(
-      "extention/password-manager/l8db.password-manager-1.4.0.l8db-extension",
+      "extention/password-manager/l8db.password-manager-1.4.1.l8db-extension",
       "utf8",
     );
     const output = await bundleFixture("tests/fixtures/password-manager-browser.tsx");

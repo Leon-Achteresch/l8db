@@ -10,6 +10,8 @@ Einrichtung: In den Einstellungen unter „Erweiterungen“ zeigt die Karte nach
 - 1Password: Anmeldung über die Desktop-App („Mit 1Password CLI integrieren“); bei mehreren Konten wird eines ausgewählt.
 - Keeper: Region, E-Mail und Master-Passwort richten eine dauerhafte Anmeldung für das Gerät ein (`this-device register`, `persistent-login on`, `timeout 30d`). Verlangt Keeper eine Gerätefreigabe oder 2FA, fragt der Assistent sie direkt ab (Link per E-Mail, Keeper Push, Code per 2FA oder Bestätigungscode, danach die 2FA-Methode und den Code). Dafür läuft `keeper` über `process.start` in einem Pseudo-Terminal (Payload `{ action: "answer", method | channel | code }`). Nur bei Schritten wie SSO zeigt er die einmaligen Terminal-Befehle an.
 
+Meldet Keeper bei der Anmeldung „Client Restricted“, muss die Keeper-Administration unter Rollen → betroffene Rolle → Enforcement Policies → Platform Restrictions den Zugriff auf **Commander SDK** prüfen. Bei mehreren Rollen kann die restriktivste Einstellung gelten. l8db kann diese Vorgabe nicht selbst ändern.
+
 Danach direkt im Assistenten, über die Statusleiste oder in der Befehlspalette:
 
 - `Passwortmanager: Zugänge abgleichen` (`vault.sync`, Payload `{ quiet: true }` liefert `{ total, added, updated, removed, hidden, skipped }` statt einer Meldung) übernimmt alle Einträge, deren Titel mit `l8db:` beginnt, auch aus geteilten Sammlungen, Tresoren und Ordnern. Läuft mit `vault.autoSync` (Standard an) auch beim Start (`onStartup`); ist der Tresor gesperrt, zeigt die Statusleiste einen Hinweis zum Entsperren. Verbindungen, die ein früherer Abgleich angelegt hat und die im Tresor fehlen, werden entfernt. Verbindungen, die schon vorher lokal existierten, bleiben immer erhalten. Wer eine Verbindung in l8db entfernt, blendet sie nur aus (`known_<anbieter>` in der Extension-Ablage); der Abgleich legt sie nicht erneut an. Passwörter landen nur im Sitzungsspeicher, nicht im Schlüsselbund.
@@ -28,7 +30,7 @@ CLI-Installation: Der Assistent zeigt die installierte CLI-Version oder „Jetzt
 
 Schlägt alles fehl, verweist die Meldung auf die offizielle Installationsanleitung.
 
-Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.4.0.l8db-extension`
+Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.4.1.l8db-extension`
 
 Browser-Test des ganzen Firmen-Ablaufs in der echten Sandbox: `L8DB_EXTENSION_BROWSER=1 bun test tests/password-manager-browser.test.ts`.
 
