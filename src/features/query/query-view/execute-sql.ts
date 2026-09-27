@@ -38,7 +38,7 @@ export async function executeSqlWithTransactions({
 
   if (existingTx) {
     const { result: res, changes } = await runManagedOperation(existingTx.txId, () =>
-      executeWithTransactionChanges(connection, existingTx.txId, bound ? "" : sql, () =>
+      executeWithTransactionChanges(connection, database, existingTx.txId, bound ? "" : sql, () =>
         bound
           ? executeInTransactionWithParams(
               existingTx.txId,
@@ -54,7 +54,8 @@ export async function executeSqlWithTransactions({
         {
           type: "query" as const,
           sql,
-          rowsAffected: res.rows_affected,
+          rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
+          planned: connection.kind === "dynamodb",
           detailsUnavailable:
             /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
         },
@@ -79,7 +80,7 @@ export async function executeSqlWithTransactions({
       type: "query",
     });
     const { result: res, changes } = await runManagedOperation(txId, () =>
-      executeWithTransactionChanges(connection, txId, bound ? "" : sql, () =>
+      executeWithTransactionChanges(connection, database, txId, bound ? "" : sql, () =>
         bound
           ? executeInTransactionWithParams(txId, bound.sql, bound.values, executionOptions)
           : executeInTransaction(txId, sql, executionOptions),
@@ -89,7 +90,8 @@ export async function executeSqlWithTransactions({
       {
         type: "query" as const,
         sql,
-        rowsAffected: res.rows_affected,
+        rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
+        planned: connection.kind === "dynamodb",
         detailsUnavailable:
           /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
       },

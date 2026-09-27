@@ -119,7 +119,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         const activeTxId = txId;
         const tracked = activeTxId
           ? await runManagedOperation(activeTxId, () =>
-              executeWithTransactionChanges(connection, activeTxId, entry.sql, () =>
+              executeWithTransactionChanges(connection, database, activeTxId, entry.sql, () =>
                 executeInTransaction(activeTxId, entry.sql, options),
               ),
             )
@@ -144,7 +144,8 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
             {
               type: "query" as const,
               sql: entry.sql,
-              rowsAffected: result.rows_affected,
+              rowsAffected: connection.kind === "dynamodb" ? null : result.rows_affected,
+              planned: connection.kind === "dynamodb",
               detailsUnavailable:
                 /^\s*(INSERT|UPDATE)\b/i.test(entry.sql) &&
                 !tracked.changes.length &&

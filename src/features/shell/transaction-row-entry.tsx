@@ -32,6 +32,7 @@ export function DiffRowEntry({ change }: { change: TransactionChange }) {
         {isNew && <NewBadge />}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           {isInsert ? "INSERT" : "DELETE"}
+          {change.planned ? " · geplant" : ""}
           {change.ctid ? ` · ctid ${change.ctid}` : ""}
         </span>
       </div>

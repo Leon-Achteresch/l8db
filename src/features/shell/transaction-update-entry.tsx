@@ -21,6 +21,11 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
           {[change.schema, change.table].filter(Boolean).join(".")}
         </span>
         {isNew && <NewBadge />}
+        {change.planned && (
+          <span className="text-[10px] text-muted-foreground">
+            Geplant · Ausführung beim Commit
+          </span>
+        )}
         {change.ctid && (
           <span className="ml-auto font-mono text-[10px] text-muted-foreground">
             ctid {change.ctid}
