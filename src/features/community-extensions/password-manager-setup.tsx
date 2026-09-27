@@ -79,6 +79,7 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
   const onLogin = (input: Record<string, Json>) => void call("login", input);
   const onRefresh = () => void call("status");
   const onLogout = () => void call("logout");
+  const onAnswer = (input: Record<string, Json>) => void call("answer", input);
 
   if (!hasCommand(extension, "vault.setup"))
     return (
@@ -191,7 +192,14 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
             />
           )}
           {live && provider?.id === "keeper" && (
-            <KeeperLoginForm status={live} busy={!!busy} onLogin={onLogin} onRefresh={onRefresh} />
+            <KeeperLoginForm
+              status={live}
+              busy={!!busy}
+              onLogin={onLogin}
+              onAnswer={onAnswer}
+              onCancel={onLogout}
+              onRefresh={onRefresh}
+            />
           )}
         </SetupStep>
       </ol>

@@ -238,6 +238,7 @@ Die vollständigen Verträge stehen in [packages/extension-api/src/index.ts](pac
 | `workspace.showOpenDialog/showSaveDialog` | Dateidialog öffnen und den gewählten Pfad für diese Sitzung freigeben; benötigt `filesystem`. |
 | `workspace.readTextFile/writeTextFile` | Datei lesen oder schreiben, nur für per Dialog freigegebene Pfade; benötigt `filesystem`. |
 | `process.run(command, options?)` | Erlaubt gelistetes Programm ohne Shell starten, mit Timeout und Ausgabelimit; benötigt `process:execute` und einen Eintrag in `capabilities.process.commands`. |
+| `process.start(command, options?)` | Startet ein gelistetes Programm in einem Pseudo-Terminal für interaktive Abfragen. Die Sitzung bietet `write(data)`, `read(timeoutMs?)` (liefert `{ output, exited, status }`) und `stop()`; `timeoutMs` begrenzt die Laufzeit (höchstens 10 Minuten). Gleiche Freigaben wie `process.run`. |
 | `window.showQuickPick(items, options?)` | Auswahl- oder Mehrfachauswahldialog anzeigen. |
 | `window.showInputBox(options?)` | Texteingabedialog anzeigen, optional als Passwortfeld. |
 | `window.showInformationMessage/showWarningMessage/showErrorMessage(message, ...actions)` | Meldung mit Aktionsknöpfen anzeigen; liefert die gewählte Aktion. |

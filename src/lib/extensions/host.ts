@@ -16,6 +16,7 @@ import type {
   DatabaseInfo,
   FetchOptions,
   ProcessOptions,
+  ProcessOutput,
   ProcessResult,
   PromptKind,
   PromptRequest,
@@ -163,6 +164,30 @@ export function createExtensionHost() {
       } catch (error) {
         throw new ExtensionError("ProcessError", String(error));
       }
+    },
+    async startProcess(request) {
+      try {
+        return await tauriInvoke<number>("extension_process_start", request);
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async writeProcess(id, data) {
+      try {
+        await tauriInvoke("extension_process_write", { id, data });
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async readProcess(id, timeoutMs) {
+      try {
+        return await tauriInvoke<ProcessOutput>("extension_process_read", { id, timeoutMs });
+      } catch (error) {
+        throw new ExtensionError("ProcessError", String(error));
+      }
+    },
+    async stopProcess(id) {
+      await tauriInvoke("extension_process_stop", { id }).catch(() => undefined);
     },
     prompt<T extends PromptKind>(request: PromptRequest & { kind: T }): Promise<PromptResult<T>> {
       return useExtensionPrompts.getState().request(request);
