@@ -66,7 +66,7 @@ export function AppwriteView() {
             {feature.isNew && <NewBadge />}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            Projekte, Storage, TablesDB, Funktionen, Nutzer und Sites.
+            Projekte, Storage, TablesDB mit Zeilen, Funktionen, Nutzer und Sites.
           </p>
         </div>
         {selected && (

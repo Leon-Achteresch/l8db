@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEW_FEATURES = {
   "baas.supabase": "0.7.0",
   "baas.appwrite": "0.7.0",
+  "baas.appwrite.rows": "0.7.0",
   "baas.pocketbase": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
