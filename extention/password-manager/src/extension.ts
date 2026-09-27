@@ -903,7 +903,10 @@ export const accounts: Record<string, VaultAccount> = {
         line = input.channel as string;
       else if (pending.needs === "code" && code) line = code;
       else throw new Error("Bitte gib den Code ein.");
-      await pending.session.write(`${line}\n`);
+      await pending.session.write(`${line}\n`).catch(async () => {
+        await keeperStop(auth);
+        throw new Error(KEEPER_EXPIRED);
+      });
       const prompt = await keeperPrompt(api, auth);
       if (prompt?.needs === "device" && !line && !prompt.detail)
         return { ...prompt, detail: "Das Gerät ist noch nicht freigegeben." };
