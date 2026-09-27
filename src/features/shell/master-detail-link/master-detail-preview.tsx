@@ -1,8 +1,14 @@
 import { XIcon } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { MasterDetailResult } from "@/features/shell/master-detail-result";
 import { ConnectionScopeContext } from "@/lib/connections";
 import { MasterSelectionContext } from "@/lib/master-detail";
+
+const MasterDetailResult = lazy(() =>
+  import("@/features/shell/master-detail-result").then((module) => ({
+    default: module.MasterDetailResult,
+  })),
+);
 
 interface MasterDetailPreviewProps {
   previewSql: string;
@@ -43,7 +49,15 @@ export function MasterDetailPreview({
       </div>
       <ConnectionScopeContext.Provider value={targetConnectionId}>
         <MasterSelectionContext.Provider value={null}>
-          <MasterDetailResult key={previewId} source={source} sql={previewSql} preview />
+          <Suspense
+            fallback={
+              <p role="status" className="p-4 text-sm text-muted-foreground">
+                Vorschau wird geladen…
+              </p>
+            }
+          >
+            <MasterDetailResult key={previewId} source={source} sql={previewSql} preview />
+          </Suspense>
         </MasterSelectionContext.Provider>
       </ConnectionScopeContext.Provider>
     </section>

@@ -2,7 +2,6 @@ import { toast } from "sonner";
 import { type ConnectionInput, useConnectionsStore } from "@/lib/connections";
 import type { OpenFileAction } from "@/lib/db";
 import { openSqlPathAsTab } from "@/lib/hooks/use-query-file";
-import { openNotebook } from "@/lib/notebook/actions";
 import { providerForKind } from "@/lib/providers";
 import { sqlFileTitle } from "@/lib/sql-file";
 import { activateConnectionWithToast } from "@/lib/ssh";
@@ -50,6 +49,7 @@ export async function runOpenFileActions(actions: OpenFileAction[]): Promise<Ope
       const id = await openSqlPathAsTab(action.path);
       if (id) target = { to: "/query/$id", id };
     } else if (action.action === "notebook") {
+      const { openNotebook } = await import("@/lib/notebook/actions");
       if (await openNotebook(action.path)) target = { to: "/notebook" };
     } else if (action.action === "connection") {
       if (await openConnection(action)) target = { to: "/" };

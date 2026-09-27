@@ -1,6 +1,7 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ColumnsIcon, EyeIcon, TableIcon } from "lucide-react";
+import { useCallback, useMemo, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { MatchedEntity } from "./types";
 
@@ -17,8 +18,52 @@ export function EntityResultList({
   onSelect,
   onOpenDirect,
 }: EntityResultListProps) {
-  const tableResults = filteredEntities.filter((e) => e.type === "table");
-  const viewResults = filteredEntities.filter((e) => e.type === "view");
+  const counts = useMemo(() => {
+    let tables = 0;
+    for (const entity of filteredEntities) if (entity.type === "table") tables++;
+    return { tables, views: filteredEntities.length - tables };
+  }, [filteredEntities]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const estimateSize = useCallback(
+    (index: number) => {
+      const count = filteredEntities[index]?.matchingColumns.length ?? 0;
+      return 28 + (count > 0 ? 4 + Math.min(count, 3) * 19 + (count > 3 ? 19 : 0) : 0);
+    },
+    [filteredEntities],
+  );
+  const getItemKey = useCallback(
+    (index: number) => {
+      const entity = filteredEntities[index];
+      return `${entity.type}:${entity.schema}.${entity.name}`;
+    },
+    [filteredEntities],
+  );
+  const virtualizer = useVirtualizer({
+    count: filteredEntities.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    getItemKey,
+    overscan: 8,
+    useAnimationFrameWithResizeObserver: true,
+    useFlushSync: false,
+  });
+  const focusResult = (index: number) => {
+    if (index < 0 || index >= filteredEntities.length) return;
+    const focus = (attempts: number) => {
+      const button = scrollRef.current?.querySelector<HTMLButtonElement>(
+        `[data-index="${index}"] button`,
+      );
+      if (button) button.focus();
+      else if (attempts > 0) requestAnimationFrame(() => focus(attempts - 1));
+    };
+    const visible = scrollRef.current?.querySelector(`[data-index="${index}"]`);
+    if (visible) {
+      focus(0);
+      return;
+    }
+    virtualizer.scrollToIndex(index, { align: "auto" });
+    requestAnimationFrame(() => focus(20));
+  };
 
   return (
     <div className="flex min-h-0 w-1/2 flex-col border-r">
@@ -26,35 +71,62 @@ export function EntityResultList({
         <span className="text-xs font-medium text-muted-foreground">
           {filteredEntities.length} Ergebnis{filteredEntities.length !== 1 ? "se" : ""}
         </span>
-        {tableResults.length > 0 && (
+        {counts.tables > 0 && (
           <Badge variant="secondary" className="text-[10px]">
             <TableIcon className="size-2.5" />
-            {tableResults.length}
+            {counts.tables}
           </Badge>
         )}
-        {viewResults.length > 0 && (
+        {counts.views > 0 && (
           <Badge variant="secondary" className="text-[10px]">
             <EyeIcon className="size-2.5" />
-            {viewResults.length}
+            {counts.views}
           </Badge>
         )}
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="py-1">
-          {filteredEntities.length === 0 ? (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">Keine Treffer</p>
-          ) : (
-            filteredEntities.map((entity) => {
+      <section
+        ref={scrollRef}
+        aria-label="Suchergebnisse"
+        className="min-h-0 flex-1 overflow-auto"
+        style={{ contain: "strict" }}
+      >
+        {filteredEntities.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">Keine Treffer</p>
+        ) : (
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const entity = filteredEntities[item.index];
               const isSelected =
                 selectedEntity?.schema === entity.schema &&
                 selectedEntity?.name === entity.name &&
                 selectedEntity?.type === entity.type;
               return (
-                <div key={`${entity.type}:${entity.schema}.${entity.name}`}>
+                <div
+                  key={item.key}
+                  ref={entity.matchingColumns.length > 0 ? virtualizer.measureElement : undefined}
+                  data-index={item.index}
+                  className="absolute left-0 w-full"
+                  style={{ top: item.start }}
+                >
                   <button
                     type="button"
                     onClick={() => onSelect(entity)}
                     onDoubleClick={() => onOpenDirect(entity)}
+                    onKeyDown={(event) => {
+                      const next =
+                        event.key === "ArrowDown"
+                          ? item.index + 1
+                          : event.key === "ArrowUp"
+                            ? item.index - 1
+                            : event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? filteredEntities.length - 1
+                                : null;
+                      if (next === null) return;
+                      event.preventDefault();
+                      focusResult(next);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/80",
                       isSelected && "bg-muted",
@@ -90,10 +162,10 @@ export function EntityResultList({
                   )}
                 </div>
               );
-            })
-          )}
-        </div>
-      </ScrollArea>
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

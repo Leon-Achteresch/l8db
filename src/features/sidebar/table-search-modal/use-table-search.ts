@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { compileSearchPatterns } from "@/lib/regex-search";
@@ -15,6 +15,7 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
 
   const [searchMode, setSearchMode] = useState<SearchMode>("objects");
   const [nameQuery, setNameQuery] = useState("");
+  const deferredNameQuery = useDeferredValue(nameQuery);
   const [useRegex, setUseRegex] = useState(false);
   const [regexError, setRegexError] = useState<string | null>(null);
 
@@ -75,12 +76,18 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
     return map;
   }, [tableColumns, viewColumns]);
 
-  const filteredEntities = useMemo<MatchedEntity[]>(() => {
-    const matchers = parsePatterns(nameQuery, useRegex);
-    const allEntities: { schema: string; name: string; type: "table" | "view" }[] = [
+  const allEntities = useMemo(
+    () => [
       ...(tables ?? []).map((t) => ({ ...t, type: "table" as const })),
       ...(views ?? []).map((v) => ({ ...v, type: "view" as const })),
-    ];
+    ],
+    [tables, views],
+  );
+  const matchers = useMemo(
+    () => parsePatterns(deferredNameQuery, useRegex),
+    [deferredNameQuery, useRegex],
+  );
+  const filteredEntities = useMemo<MatchedEntity[]>(() => {
     if (matchers.length === 0) {
       return allEntities.map((e) => ({ ...e, matchingColumns: [] }));
     }
@@ -102,7 +109,7 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
       }
     }
     return results;
-  }, [tables, views, nameQuery, useRegex, columnsByTable, searchIncludeColumns]);
+  }, [allEntities, matchers, columnsByTable, searchIncludeColumns]);
 
   const selectedColumns = useMemo(() => {
     if (!selectedEntity) return [];
