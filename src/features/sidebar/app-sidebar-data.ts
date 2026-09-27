@@ -1,5 +1,4 @@
 import {
-  ArrowRightLeftIcon,
   GaugeIcon,
   GitCompare,
   GitCompareArrows,
@@ -60,12 +59,6 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       url: "/schema-compare",
       icon: GitCompareArrows,
       available: (caps) => caps.schema_object_copy,
-    },
-    {
-      title: "Transfer",
-      url: "/transfer",
-      icon: ArrowRightLeftIcon,
-      available: (caps) => caps.table_copy,
     },
     {
       title: "Gespeicherte Pläne",
