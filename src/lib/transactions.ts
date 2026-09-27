@@ -16,6 +16,7 @@ export interface TransactionChange {
   sql?: string;
   rowsAffected?: number | null;
   fromSql?: boolean;
+  planned?: boolean;
   detailsUnavailable?: boolean;
 }
 
