@@ -212,6 +212,12 @@ describe("layout", () => {
     const b = { ...a, id: "b" };
     expect(overlaps(a, b)).toBe(true);
     expect(settle(b, [a]).y).toBe(3);
+    expect(
+      settle(b, [
+        { ...a, id: "tall", h: 100_000 },
+        { ...a, id: "after-gap", y: 100_003, h: 2 },
+      ]).y,
+    ).toBe(100_000);
   });
 });
 
