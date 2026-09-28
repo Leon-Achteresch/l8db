@@ -27,6 +27,7 @@ export type DataTableRowProps = {
   table: Table<TableRow>;
   visibleColumns: Column<TableRow>[];
   customCellColumns: Set<string>;
+  monochromeCells: boolean;
   isMarked: boolean;
   isContextMenuTarget?: boolean;
   toggleRowMarker: (row: TableRow) => void;
@@ -65,6 +66,7 @@ export const DataTableRow = memo(function DataTableRow({
   table,
   visibleColumns,
   customCellColumns,
+  monochromeCells,
   isMarked,
   isContextMenuTarget,
   toggleRowMarker,
@@ -159,6 +161,7 @@ export const DataTableRow = memo(function DataTableRow({
             table={table}
             column={column}
             hasCustomContent={customCellColumns.has(columnId)}
+            monochromeCells={monochromeCells}
             cellIndex={cellIndex}
             width={column.getSize()}
             previewWidth={column.getSize() * columnScale}
