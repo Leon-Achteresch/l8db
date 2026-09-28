@@ -42,6 +42,7 @@ export const NEW_FEATURES = {
   "baas.pocketbase.auth-manage": "0.7.0",
   "baas.convex": "0.7.0",
   "baas.convex.environment": "0.7.0",
+  "baas.file-preview": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
 } as const;

@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Download, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import type { BaasFilePreview as BaasFilePreviewData } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { base64ToBytes } from "@/lib/value-viewers/binary";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -20,6 +22,7 @@ export function BaasFilePreview({
   download: () => Promise<boolean>;
   onClose: () => void;
 }) {
+  const feature = useNewFeatureVisibility<HTMLDivElement>("baas.file-preview");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -48,11 +51,12 @@ export function BaasFilePreview({
   }
 
   return (
-    <div className="mt-4 rounded-xl border bg-background/70 p-4">
+    <div ref={feature.ref} className="mt-4 rounded-xl border bg-background/70 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold" title={name}>
-            {name}
+          <p className="flex items-center gap-2 truncate text-xs font-semibold" title={name}>
+            <span className="truncate">{name}</span>
+            {feature.isNew && <NewBadge />}
           </p>
           {preview.data && (
             <p className="mt-1 text-[11px] text-muted-foreground">
