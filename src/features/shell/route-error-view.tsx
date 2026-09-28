@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
+import { reportCrash } from "@/lib/crash-reporting";
 import { recordDiagnosticError } from "@/lib/diagnostics";
 import { errorMessageOf, errorStackOf, isChunkFailure } from "@/lib/error-details";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,8 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
 
   useEffect(() => {
     recordDiagnosticError("route.error", message);
-  }, [message]);
+    if (!isChunkFailure(message)) reportCrash(error);
+  }, [message, error]);
 
   async function copyDetails() {
     const payload = [message, stack].filter(Boolean).join("\n\n");
