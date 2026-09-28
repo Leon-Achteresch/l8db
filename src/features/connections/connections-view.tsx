@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
+import { supabaseReferenceOf } from "@/features/baas/use-supabase-database";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import {
   groupByServer,
@@ -65,8 +66,16 @@ export function ConnectionsView() {
   const selected = connections.find((connection) => connection.id === editorId);
   const deleting = connections.find((connection) => connection.id === deleteId);
   const activeConnection = connections.find((connection) => connection.id === activeId);
+  const allBaasConnections = useBaasConnections();
+  const supabaseProjects = new Set(
+    allBaasConnections.filter((item) => item.provider === "supabase").map((item) => item.id),
+  );
+  const listed = connections.filter((connection) => {
+    const reference = supabaseReferenceOf(connection);
+    return !reference || !supabaseProjects.has(reference);
+  });
   const filtered = sortConnectionsByName(
-    connections.filter((connection) => {
+    listed.filter((connection) => {
       if (
         favoritesOnly &&
         !connection.favorite &&
@@ -77,7 +86,7 @@ export function ConnectionsView() {
     }),
   );
   const allGroups = sortServerGroups(
-    groupByServer(sortConnectionsByName(connections), hostGroupRules),
+    groupByServer(sortConnectionsByName(listed), hostGroupRules),
     favoriteServerKeys,
     serverOrder,
   );
@@ -96,15 +105,18 @@ export function ConnectionsView() {
       ? groups.filter((group) => group.key === effectiveKey)
       : groups;
   const needle = query.trim().toLowerCase();
-  const allBaasConnections = useBaasConnections();
-  const totalConnections = connections.length + allBaasConnections.length;
+  const totalConnections = listed.length + allBaasConnections.length;
   const baasConnections = allBaasConnections.filter(
     (item) =>
       !favoritesOnly &&
       [item.name, item.detail, item.provider].some((value) => value.toLowerCase().includes(needle)),
   );
   const baasCards = baasConnections.map((item) => (
-    <BaasConnectionCard key={`${item.provider}:${item.id}`} connection={item} />
+    <BaasConnectionCard
+      key={`${item.provider}:${item.id}`}
+      connection={item}
+      onEditDatabase={(id) => openEditor(id)}
+    />
   ));
   const activeGroupKey = activeConnection ? groupKey(activeConnection, hostGroupRules) : null;
 
@@ -252,7 +264,7 @@ export function ConnectionsView() {
               onSaved={() => openEditor(null)}
               onCancel={() => openEditor(null)}
             />
-          ) : connections.length === 0 && allBaasConnections.length === 0 ? (
+          ) : totalConnections === 0 ? (
             <ConnectionsEmptyState openEditor={openEditor} setImportOpen={setImportOpen} />
           ) : favoritesOnly && filtered.length === 0 ? (
             <ConnectionsNoFavoritesState setFavoritesOnly={setFavoritesOnly} />

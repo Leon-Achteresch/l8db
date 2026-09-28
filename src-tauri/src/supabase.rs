@@ -388,6 +388,68 @@ pub async fn supabase_projects() -> Result<Vec<SupabaseProject>, String> {
     management_get(&token().await?, "projects").await
 }
 
+#[derive(Deserialize)]
+struct SupabasePoolerConfig {
+    db_host: String,
+    db_user: String,
+    db_name: String,
+    database_type: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct SupabaseDatabaseEndpoint {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub database: String,
+}
+
+fn database_endpoint(
+    reference: &str,
+    configs: Vec<SupabasePoolerConfig>,
+) -> SupabaseDatabaseEndpoint {
+    let valid = |value: &str| {
+        !value.is_empty()
+            && value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+    };
+    configs
+        .into_iter()
+        .find(|config| {
+            config.database_type.as_deref().unwrap_or("PRIMARY") == "PRIMARY"
+                && valid(&config.db_host)
+                && valid(&config.db_user)
+                && valid(&config.db_name)
+        })
+        .map(|config| SupabaseDatabaseEndpoint {
+            host: config.db_host,
+            port: 5432,
+            user: config.db_user,
+            database: config.db_name,
+        })
+        .unwrap_or_else(|| SupabaseDatabaseEndpoint {
+            host: format!("db.{reference}.supabase.co"),
+            port: 5432,
+            user: "postgres".into(),
+            database: "postgres".into(),
+        })
+}
+
+#[tauri::command]
+pub async fn supabase_database_endpoint(
+    reference: String,
+) -> Result<SupabaseDatabaseEndpoint, String> {
+    let reference = validate_ref(&reference)?;
+    let configs = management_get(
+        &token().await?,
+        &format!("projects/{reference}/config/database/pooler"),
+    )
+    .await
+    .unwrap_or_default();
+    Ok(database_endpoint(reference, configs))
+}
+
 #[tauri::command]
 pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, String> {
     let reference = validate_ref(&reference)?;
@@ -1054,11 +1116,11 @@ pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Re
 #[cfg(test)]
 mod tests {
     use super::{
-        bucket_details_url, client, project_api_auth, select_project_key, table_rows_sql,
-        upload_file, validate_auth_email, validate_auth_user_id, validate_object_key,
-        validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
-        SupabaseBackups, SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject,
-        SupabaseServiceHealth,
+        bucket_details_url, client, database_endpoint, project_api_auth, select_project_key,
+        table_rows_sql, upload_file, validate_auth_email, validate_auth_user_id,
+        validate_object_key, validate_project_secret_key, validate_ref, SupabaseApiKey,
+        SupabaseAuthUsersPage, SupabaseBackups, SupabaseBucket, SupabaseFunction, SupabaseObject,
+        SupabasePoolerConfig, SupabaseProject, SupabaseServiceHealth,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -1250,6 +1312,26 @@ mod tests {
         assert_eq!(url.path(), "/storage/v1/bucket/photos%20&%20files");
         assert!(bucket_details_url("example.com", "photos").is_err());
         assert!(bucket_details_url("abcdefghijklmnopqrst", "../auth").is_err());
+    }
+
+    #[test]
+    fn database_endpoint_prefers_session_pooler() {
+        let configs: Vec<SupabasePoolerConfig> = serde_json::from_str(
+            r#"[{"db_host":"aws-1-eu-central-1.pooler.supabase.com","db_user":"postgres.abcdefghijklmnopqrst","db_name":"postgres","db_port":6543,"database_type":"PRIMARY"}]"#,
+        )
+        .unwrap();
+        let endpoint = database_endpoint("abcdefghijklmnopqrst", configs);
+        assert_eq!(endpoint.host, "aws-1-eu-central-1.pooler.supabase.com");
+        assert_eq!(endpoint.port, 5432);
+        assert_eq!(endpoint.user, "postgres.abcdefghijklmnopqrst");
+        let unsafe_host: Vec<SupabasePoolerConfig> = serde_json::from_str(
+            r#"[{"db_host":"evil.com/x@y","db_user":"postgres","db_name":"postgres"}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            database_endpoint("abcdefghijklmnopqrst", unsafe_host).host,
+            "db.abcdefghijklmnopqrst.supabase.co"
+        );
     }
 
     #[test]

@@ -190,7 +190,9 @@ export function PocketBaseView({ initialId }: { initialId?: string }) {
                   </Button>
                 </div>
               </section>
-              <PocketBaseCollectionsView key={selected.id} id={selected.id} />
+              <div data-baas-section="database auth" className="scroll-mt-6">
+                <PocketBaseCollectionsView key={selected.id} id={selected.id} />
+              </div>
             </>
           )}
           {error && (
