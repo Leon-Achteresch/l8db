@@ -57,7 +57,7 @@ export function QueryToolsMenu({
   onClearEditor,
 }: QueryToolsMenuProps) {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           size="icon-sm"

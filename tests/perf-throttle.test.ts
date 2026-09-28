@@ -415,6 +415,55 @@ test.skipIf(!ENABLED)(
   60000,
 );
 
+test.skipIf(!ENABLED)(
+  "SQL-Werkzeugmenü: erster Klick und erneutes Öffnen",
+  async () => {
+    await navigate("/query");
+    await page.locator(".monaco-editor .view-lines").first().click();
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      const clicks: number[] = [];
+      Object.assign(window, { __editorClickDurations: clicks });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === "click") clicks.push(entry.duration);
+        }
+      }).observe({ type: "event", durationThreshold: 16 });
+    });
+    await page.keyboard.type("select 1", { delay: 5 });
+    const result = await sample(async () => {
+      await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+      await page.waitForTimeout(500);
+    });
+    report("SQL-Werkzeugmenü öffnen", result);
+    expect(await page.getByRole("menuitem", { name: "Bibliothek" }).isVisible()).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Bibliothek" }).waitFor({ state: "hidden" });
+    expect(
+      await page
+        .getByRole("button", { name: "Weitere Werkzeuge" })
+        .evaluate((element) => element === document.activeElement),
+    ).toBe(true);
+    await page.waitForTimeout(300);
+    const second = await sample(async () => {
+      await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+      await page.waitForTimeout(500);
+    });
+    report("SQL-Werkzeugmenü erneut öffnen", second);
+    const durations = await page.evaluate(
+      () => (window as unknown as { __editorClickDurations: number[] }).__editorClickDurations,
+    );
+    console.log(`perf-throttle SQL-Werkzeugmenü Klicks: ${durations.join(", ")} ms`);
+    expect(Math.max(0, ...durations)).toBeLessThanOrEqual(Math.max(96, RATE * 18));
+    await page.getByRole("menuitem", { name: "Bibliothek" }).hover();
+    await page.getByRole("menuitem", { name: "Snippets verwalten…" }).click();
+    await page.getByRole("dialog", { name: "SQL-Snippets" }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Bibliothek" }).waitFor({ state: "hidden" });
+  },
+  30000,
+);
+
 test.skipIf(!ENABLED)("Speicher und Fehler", async () => {
   const heapMb = await page.evaluate(
     () =>
