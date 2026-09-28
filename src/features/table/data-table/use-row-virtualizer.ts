@@ -27,7 +27,7 @@ export function useRowVirtualizer(
       if (!IS_CHROMIUM) return defaultRangeExtractor(range);
       const backward = direction.current === "backward";
       const behind = Math.ceil(64 / estimatedRowHeight);
-      const ahead = Math.ceil(384 / estimatedRowHeight);
+      const ahead = Math.ceil(256 / estimatedRowHeight);
       const first = Math.max(0, range.startIndex - (backward ? ahead : behind));
       const last = Math.min(range.count - 1, range.endIndex + (backward ? behind : ahead));
       return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index);
