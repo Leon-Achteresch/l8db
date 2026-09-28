@@ -9,12 +9,12 @@ import { pocketbaseConnect, pocketbaseDisconnect, pocketbaseProfiles } from "@/l
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { PocketBaseCollectionsView } from "./pocketbase-collections-view";
 
-export function PocketBaseView() {
+export function PocketBaseView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
   const profiles = useQuery({ queryKey: ["pocketbase", "profiles"], queryFn: pocketbaseProfiles });
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

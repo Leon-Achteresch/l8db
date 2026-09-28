@@ -12,6 +12,7 @@ export function ConnectionsGroupedLayout({
   setSelectedKey,
   displayGroups,
   renderGroup,
+  extra,
 }: {
   groups: ServerGroup[];
   effectiveKey: string;
@@ -21,6 +22,7 @@ export function ConnectionsGroupedLayout({
   setSelectedKey: (value: string) => void;
   displayGroups: ServerGroup[];
   renderGroup: (group: ServerGroup) => ReactNode;
+  extra?: ReactNode;
 }) {
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/70 bg-card/20 shadow-xs">
@@ -45,7 +47,10 @@ export function ConnectionsGroupedLayout({
             onSelect={setSelectedKey}
           />
         </div>
-        <div className="flex flex-col gap-8">{displayGroups.map(renderGroup)}</div>
+        <div className="flex flex-col gap-8">
+          {displayGroups.map(renderGroup)}
+          {effectiveKey === "all" && extra}
+        </div>
       </div>
     </div>
   );

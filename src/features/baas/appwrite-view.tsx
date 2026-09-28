@@ -9,13 +9,13 @@ import { appwriteConnect, appwriteDisconnect, appwriteProfiles } from "@/lib/db"
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AppwriteProjectView } from "./appwrite-project-view";
 
-export function AppwriteView() {
+export function AppwriteView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
   const profiles = useQuery({ queryKey: ["appwrite", "profiles"], queryFn: appwriteProfiles });
   const [endpoint, setEndpoint] = useState("");
   const [projectId, setProjectId] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
