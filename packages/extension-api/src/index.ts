@@ -23,7 +23,7 @@ export interface StatusBarContribution {
   alignment?: "left" | "right";
   priority?: number;
 }
-export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar";
+export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar" | "editor/plan";
 export interface MenuContribution {
   command: string;
   location: MenuLocation;

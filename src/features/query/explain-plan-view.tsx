@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { IndexAdvisorPanel } from "@/features/explain/index-advisor-panel";
 import { PlanVisualizer } from "@/features/explain/plan-visualizer";
 import type { ExplainNode } from "@/lib/db";
 import {
@@ -36,6 +37,8 @@ interface ExplainPlanViewProps {
   connectionName: string;
   databaseKind: string;
   database?: string | null;
+  connectionString?: string;
+  onExtensionResult?: (result: unknown) => void;
   onClose: () => void;
 }
 
@@ -46,6 +49,8 @@ export function ExplainPlanView({
   connectionName,
   databaseKind,
   database,
+  connectionString,
+  onExtensionResult,
   onClose,
 }: ExplainPlanViewProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -113,6 +118,9 @@ export function ExplainPlanView({
             onClick={() =>
               void host
                 .executeCommand(action.id, summarizeExplainPlan(plan, analyzed) as unknown as Json)
+                .then((result) => {
+                  if (result !== undefined) onExtensionResult?.(result);
+                })
                 .catch((error) => toast.error(String(error)))
             }
           >
@@ -142,6 +150,15 @@ export function ExplainPlanView({
       </div>
       <div className="min-h-0 px-3 pb-2">
         <PlanVisualizer plan={plan} />
+        {databaseKind === "postgres" && connectionString && (
+          <div className="mt-2">
+            <IndexAdvisorPanel
+              plan={plan}
+              connectionString={connectionString}
+              database={database ?? null}
+            />
+          </div>
+        )}
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

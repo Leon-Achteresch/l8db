@@ -14,6 +14,7 @@ export interface QueryEditorApi {
   revealMatch: (line: number, column?: number, length?: number) => void;
   toggleBookmark: () => void;
   gotoBookmark: (direction: "next" | "previous") => void;
+  showAssessment: (sql: string, assessment: unknown) => boolean;
 }
 
 export interface EditorPosition {

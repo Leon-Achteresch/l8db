@@ -2,6 +2,7 @@ import type { ExtensionContext, Json, L8dbApi } from "@l8db/extension-api";
 
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 const KEY_NAME = "apiKey";
+const AUTO_KEY = "autoAnalyze";
 const KINDS = new Set([
   "sequential_scan",
   "index_scan",
@@ -24,6 +25,11 @@ const LABELS: Record<string, string> = {
   join: "Join-Verarbeitung",
   estimate: "Abweichende Zeilenschätzung",
   unclear: "Keine klare Ursache aus diesen Merkmalen",
+};
+const VERDICTS: Record<string, string> = {
+  optimal: "Query ist optimal",
+  improvable: "Query ist verbesserungswürdig",
+  poor: "Query ist nicht optimal",
 };
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -96,6 +102,17 @@ export function jevRequest(summary: Json): Json {
           unclear: "The available plan features do not support a clear diagnosis.",
         },
       },
+      verdict: {
+        type: "choice",
+        instructions:
+          "How efficient is this execution plan overall? Use only the structural node categories and precomputed buckets.",
+        criteria: {
+          optimal: "The plan uses appropriate access paths and does no avoidable work.",
+          improvable:
+            "The plan works but shows avoidable work such as a broad scan, a large sort or a notable estimate mismatch.",
+          poor: "The plan does clearly excessive work that dominates runtime or reads.",
+        },
+      },
     },
   };
 }
@@ -112,20 +129,41 @@ async function configureKey(api: L8dbApi): Promise<void> {
   await api.notifications.showInfo("TypeSafe API-Schlüssel gespeichert.");
 }
 
-async function analyze(api: L8dbApi, payload?: Json): Promise<void> {
-  const summary = validatePlanSummary(payload);
-  let key = await api.secrets.get(KEY_NAME);
-  if (!key) {
-    await configureKey(api);
-    key = await api.secrets.get(KEY_NAME);
-    if (!key) return;
-  }
-  const request = jevRequest(summary);
-  const approved = await api.window.showInformationMessage(
-    `Diese Anfrage geht direkt an TypeSafe.ai. Es werden keine SQL-Texte, Namen oder Zeilen übertragen.\n\n${JSON.stringify(request, null, 2)}`,
-    "An TypeSafe senden",
+async function ensureKey(api: L8dbApi): Promise<string | null> {
+  const key = await api.secrets.get(KEY_NAME);
+  if (key) return key;
+  await configureKey(api);
+  return api.secrets.get(KEY_NAME);
+}
+
+async function autoAllowed(api: L8dbApi): Promise<boolean> {
+  const stored = await api.storage.get(AUTO_KEY);
+  if (typeof stored === "boolean") return stored;
+  const choice = await api.window.showInformationMessage(
+    "Jev kann Queries beim Schreiben automatisch prüfen. Dabei gehen ohne weitere Rückfrage anonymisierte Planmerkmale an TypeSafe.ai; SQL-Texte, Namen und Zeilen werden nicht übertragen.",
+    "Automatisch prüfen",
+    "Nicht automatisch",
   );
-  if (approved !== "An TypeSafe senden") return;
+  if (choice === undefined) return false;
+  const allowed = choice === "Automatisch prüfen";
+  await api.storage.set(AUTO_KEY, allowed);
+  return allowed;
+}
+
+async function analyze(api: L8dbApi, payload?: Json): Promise<Json | undefined> {
+  const summary = validatePlanSummary(payload);
+  const auto = object(payload) && payload.auto === true;
+  if (auto && !(await autoAllowed(api))) return;
+  const key = auto ? await api.secrets.get(KEY_NAME) : await ensureKey(api);
+  if (!key) return;
+  const request = jevRequest(summary);
+  if (!auto) {
+    const approved = await api.window.showInformationMessage(
+      `Diese Anfrage geht direkt an TypeSafe.ai. Es werden keine SQL-Texte, Namen oder Zeilen übertragen.\n\n${JSON.stringify(request, null, 2)}`,
+      "An TypeSafe senden",
+    );
+    if (approved !== "An TypeSafe senden") return;
+  }
   const response = await api.network.fetch(ENDPOINT, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -135,22 +173,36 @@ async function analyze(api: L8dbApi, payload?: Json): Promise<void> {
   if (response.status < 200 || response.status >= 300)
     throw new Error(`TypeSafe-Anfrage fehlgeschlagen (HTTP ${response.status}).`);
   const body: unknown = JSON.parse(response.body);
-  const answer = object(body) && object(body.answers) ? body.answers.bottleneck : null;
+  const answers = object(body) && object(body.answers) ? body.answers : {};
+  const bottleneck = choice(answers.bottleneck, LABELS);
+  const verdict = choice(answers.verdict, VERDICTS);
+  if (!bottleneck || !verdict) throw new Error("TypeSafe hat keine gültige Diagnose geliefert.");
+  const cause = bottleneck.confidence < 0.55 ? LABELS.unclear : LABELS[bottleneck.choice];
+  const message = `Jev: ${VERDICTS[verdict.choice]} (Konfidenz ${Math.round(verdict.confidence * 100)} %). Hauptursache: ${cause}.`;
+  return {
+    verdict: verdict.choice,
+    confidence: verdict.confidence,
+    bottleneck: bottleneck.choice,
+    message,
+  };
+}
+
+function choice(
+  answer: unknown,
+  allowed: Record<string, string>,
+): { choice: string; confidence: number } | null {
   if (
     !object(answer) ||
     answer.type !== "choice" ||
     typeof answer.choice !== "string" ||
-    !Object.hasOwn(LABELS, answer.choice) ||
+    !Object.hasOwn(allowed, answer.choice) ||
     typeof answer.confidence !== "number" ||
     !Number.isFinite(answer.confidence) ||
     answer.confidence < 0 ||
     answer.confidence > 1
   )
-    throw new Error("TypeSafe hat keine gültige Diagnose geliefert.");
-  const label = answer.confidence < 0.55 ? LABELS.unclear : LABELS[answer.choice];
-  await api.window.showInformationMessage(
-    `Jev-Hinweis: ${label}\nKonfidenz: ${Math.round(answer.confidence * 100)} %. Die Einschätzung ist keine automatische Änderung am SQL-Plan.`,
-  );
+    return null;
+  return { choice: answer.choice, confidence: answer.confidence };
 }
 
 export function activate(context: ExtensionContext, api: L8dbApi): void {
@@ -161,5 +213,12 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
       await api.notifications.showInfo("TypeSafe API-Schlüssel gelöscht.");
     }),
     api.commands.registerCommand("jev.analyze", (payload) => analyze(api, payload)),
+    api.commands.registerCommand("jev.toggleAuto", async () => {
+      const next = (await api.storage.get(AUTO_KEY)) !== true;
+      await api.storage.set(AUTO_KEY, next);
+      await api.notifications.showInfo(
+        next ? "Automatische Jev-Prüfung aktiviert." : "Automatische Jev-Prüfung deaktiviert.",
+      );
+    }),
   );
 }
