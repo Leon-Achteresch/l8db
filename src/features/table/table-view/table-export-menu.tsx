@@ -27,7 +27,7 @@ export function TableExportMenu({
   onExport: (format: "json" | "sql") => void;
 }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>

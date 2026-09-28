@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
   "query workspace: layouts, schema, execution, results and custom shortcuts",
   async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await (process.env.L8DB_QUERY_BROWSER_ENGINE === "webkit"
+      ? webkit
+      : chromium
+    ).launch({
+      headless: true,
+    });
     const page = await browser.newPage({ viewport: { width: 1440, height: 940 } });
     page.setDefaultTimeout(10000);
     const errors: string[] = [];
