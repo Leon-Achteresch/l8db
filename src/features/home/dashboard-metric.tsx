@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import { AnimatedNumber } from "@/components/animated-number";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const metricFormatter = new Intl.NumberFormat("de-DE");
 
 interface Props {
   label: string;
@@ -24,7 +25,7 @@ export function DashboardMetric({ label, value, loading, error, icon: Icon }: Pr
           className="mt-2 text-3xl font-medium tracking-tight"
           title={error ? "Konnte nicht geladen werden" : undefined}
         >
-          {error ? "—" : <AnimatedNumber value={value ?? 0} />}
+          {error ? "—" : metricFormatter.format(value ?? 0)}
         </p>
       )}
     </div>

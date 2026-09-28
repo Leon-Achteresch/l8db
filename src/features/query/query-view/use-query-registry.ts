@@ -3,7 +3,7 @@ import { useMemo } from "react";
 
 import { listAllColumns, listMaterializedViews, listTables, listViews } from "@/lib/db";
 import { useSchemasQuery } from "@/lib/queries";
-import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format";
+import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format-options";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { QueryViewCapabilities, QueryViewConnection } from "./types";

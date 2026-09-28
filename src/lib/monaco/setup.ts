@@ -8,8 +8,6 @@ import "monaco-editor/features/codicon/register";
 import "monaco-editor/features/comment/register";
 import "monaco-editor/features/contextmenu/register";
 import "monaco-editor/features/cursorUndo/register";
-import "monaco-editor/features/diffEditor/register";
-import "monaco-editor/features/diffEditorBreadcrumbs/register";
 import "monaco-editor/features/dnd/register";
 import "monaco-editor/features/dropOrPasteInto/register";
 import "monaco-editor/features/find/register";
