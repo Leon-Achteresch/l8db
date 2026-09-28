@@ -89,3 +89,50 @@ export function attachPlsqlLint(editor: monaco.editor.IStandaloneCodeEditor): mo
     },
   };
 }
+
+const ASSESSMENT_SEVERITY = {
+  optimal: monaco.MarkerSeverity.Info,
+  improvable: monaco.MarkerSeverity.Warning,
+  poor: monaco.MarkerSeverity.Error,
+} as const;
+
+export function showQueryAssessment(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  sql: string,
+  assessment: unknown,
+): boolean {
+  const model = editor.getModel();
+  if (!model) return false;
+  if (
+    typeof assessment !== "object" ||
+    assessment === null ||
+    !("verdict" in assessment) ||
+    !("message" in assessment) ||
+    typeof assessment.verdict !== "string" ||
+    !Object.hasOwn(ASSESSMENT_SEVERITY, assessment.verdict) ||
+    typeof assessment.message !== "string"
+  ) {
+    monaco.editor.setModelMarkers(model, "l8db-query-assessment", []);
+    return false;
+  }
+  const target = sql.trim();
+  const found = target ? model.getValue().indexOf(target) : -1;
+  if (found < 0) {
+    monaco.editor.setModelMarkers(model, "l8db-query-assessment", []);
+    return false;
+  }
+  const start = model.getPositionAt(found);
+  const end = model.getPositionAt(found + target.length);
+  monaco.editor.setModelMarkers(model, "l8db-query-assessment", [
+    {
+      severity: ASSESSMENT_SEVERITY[assessment.verdict as keyof typeof ASSESSMENT_SEVERITY],
+      message: assessment.message,
+      startLineNumber: start.lineNumber,
+      startColumn: start.column,
+      endLineNumber: end.lineNumber,
+      endColumn: end.column,
+    },
+  ]);
+  editor.revealLineInCenterIfOutsideViewport(start.lineNumber);
+  return true;
+}

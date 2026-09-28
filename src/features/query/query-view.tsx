@@ -22,6 +22,7 @@ import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
+import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
 import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
@@ -137,6 +138,16 @@ export function QueryView({ tabId }: QueryViewProps) {
     connection,
     database,
     workspace,
+  });
+
+  useAutoAssessment({
+    sql,
+    selectedSql: cursor.selectedSql,
+    cursorOffset: cursor.cursorOffset,
+    connection,
+    database,
+    workspace,
+    editorApiRef,
   });
 
   const runLabel = runLabelFor(workspace.runTarget, hasSelection);
