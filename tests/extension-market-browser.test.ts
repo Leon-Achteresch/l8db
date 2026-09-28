@@ -9,7 +9,7 @@ import { bundleFixture } from "./fixtures/browser-bundle";
 test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
   "Markt installiert und aktiviert Jev im echten Extension-Sandbox-Flow",
   async () => {
-    const packageBytes = await readFile("extention/l8db.jev-1.0.0.l8db-extension");
+    const packageBytes = await readFile("extention/l8db.jev-1.1.0.l8db-extension");
     const catalog = JSON.stringify({
       schemaVersion: 1,
       extensions: [
@@ -17,9 +17,9 @@ test.skipIf(!process.env.L8DB_EXTENSION_BROWSER)(
           id: "l8db.jev",
           name: "Jev Plan-Diagnose",
           description: "Optionale BYOK-Diagnose",
-          version: "1.0.0",
+          version: "1.1.0",
           publisher: "l8db",
-          package: "packages/l8db.jev-1.0.0.l8db-extension",
+          package: "packages/l8db.jev-1.1.0.l8db-extension",
           sha256: createHash("sha256").update(packageBytes).digest("hex"),
         },
       ],

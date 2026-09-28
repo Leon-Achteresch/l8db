@@ -1,7 +1,7 @@
 {
   "id": "l8db.jev",
   "name": "Jev Plan-Diagnose",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Optionale BYOK-Diagnose für EXPLAIN-Pläne mit TypeSafe Jev. Überträgt nur freigegebene Strukturmerkmale.",
   "publisher": "l8db",
   "engines": {

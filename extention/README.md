@@ -6,6 +6,6 @@ Diese offizielle l8db-Extension ergänzt die EXPLAIN-Ansicht um eine optionale T
 
 Die Extension klassifiziert den Plan als optimal, verbesserungswürdig oder nicht optimal; l8db zeigt das Ergebnis als Marker direkt am Statement im Editor. Sie ändert oder startet keine Abfrage. Der Schlüssel lässt sich über `Jev: API-Schlüssel löschen` entfernen und wird bei der Deinstallation aus dem OS-Schlüsselbund gelöscht.
 
-Build: `bun run extension pack extention extention/l8db.jev-1.0.0.l8db-extension`
+Build: `bun run extension pack extention extention/l8db.jev-1.1.0.l8db-extension`
 
 Beim Schreiben im Query-Editor prüft l8db das aktuelle Statement nach kurzer Pause automatisch (EXPLAIN ohne ANALYZE) und übergibt die Planmerkmale an Jev. Vor der ersten automatischen Prüfung fragt die Extension einmalig um Erlaubnis; danach entfällt die Einzelbestätigung. Umschalten über `Jev: Automatische Prüfung umschalten`.
