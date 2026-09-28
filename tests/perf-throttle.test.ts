@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { type Browser, chromium, type Page } from "playwright";
+import { type Browser, chromium, type Page, webkit } from "playwright";
 import { seedApp } from "./fixtures/perf-app";
 
 const ENABLED = Boolean(process.env.L8DB_PERF_THROTTLE);
+const WEBKIT = process.env.L8DB_PERF_ENGINE === "webkit";
 const DIST = process.env.L8DB_PERF_DIST ?? "dist";
-const RATE = Number(process.env.L8DB_PERF_CPU_RATE ?? 8);
+const RATE = WEBKIT ? 1 : Number(process.env.L8DB_PERF_CPU_RATE ?? 8);
 const HEAP_LIMIT_MB = Number(process.env.L8DB_PERF_HEAP_LIMIT_MB ?? 512);
 const HEAP_BUDGET_MB = Number(process.env.L8DB_PERF_HEAP_BUDGET_MB ?? 160);
 const GRID_ROWS = Number(process.env.L8DB_PERF_GRID_ROWS ?? 2000);
@@ -134,9 +135,11 @@ beforeAll(async () => {
       });
     },
   });
-  browser = await chromium.launch({
+  browser = await (WEBKIT ? webkit : chromium).launch({
     headless: true,
-    args: [`--js-flags=--max-old-space-size=${HEAP_LIMIT_MB}`, "--enable-precise-memory-info"],
+    args: WEBKIT
+      ? []
+      : [`--js-flags=--max-old-space-size=${HEAP_LIMIT_MB}`, "--enable-precise-memory-info"],
   });
   page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   page.on("pageerror", (error) => errors.push(error.message));
@@ -154,8 +157,10 @@ beforeAll(async () => {
   }
   await navigate("/");
   await page.waitForTimeout(1500);
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+  if (!WEBKIT) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+  }
 }, 300000);
 
 afterAll(async () => {
@@ -540,3 +545,91 @@ test.skipIf(!ENABLED)("Speicher und Fehler", async () => {
   expect(heapMb).toBeLessThanOrEqual(HEAP_BUDGET_MB);
   expect(errors).toEqual([]);
 });
+
+test.skipIf(!ENABLED)(
+  "Breite SQL-Ergebnisse: Suchen, JSON und Scrollen",
+  async () => {
+    await navigate("/query");
+    await page.locator(".monaco-editor .view-lines").first().click();
+    await page.keyboard.type("select perf wide", { delay: 5 });
+    await page
+      .getByRole("button", { name: /Ausführen/ })
+      .first()
+      .click();
+    const search = page.getByRole("textbox", { name: "Ergebnisse durchsuchen" });
+    await search.waitFor();
+    await page.waitForTimeout(1000);
+    const searchFrames = await sample(async () => {
+      await search.pressSequentially("nomatch", { delay: 120 });
+      await page.waitForTimeout(900);
+    });
+    if (WEBKIT) report("Breite SQL-Ergebnisse suchen", searchFrames);
+    else expectSmooth("Breite SQL-Ergebnisse suchen", searchFrames);
+    await search.fill("");
+    await page.waitForTimeout(300);
+    const jsonFrames = await sample(async () => {
+      await page.getByRole("button", { name: "JSON", exact: true }).click();
+      await page.waitForTimeout(900);
+    });
+    report("Breite SQL-Ergebnisse JSON", jsonFrames);
+    if (!WEBKIT) {
+      expect(jsonFrames.p95).toBeLessThanOrEqual(FRAME_P95_MS);
+      expect(jsonFrames.worst).toBeLessThanOrEqual(Math.max(67, RATE * 9));
+    }
+    const json = page.locator('[data-slot="query-json-rows"]');
+    expect(await json.locator("[data-index]").count()).toBeLessThan(20);
+    expect((await json.textContent())?.startsWith("[\n")).toBe(true);
+    await search.fill("nomatch");
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-slot="query-json-rows"] [data-index]').length === 2,
+    );
+    expect(await json.textContent()).not.toContain('"id":');
+    await search.fill("");
+    await json.locator('[data-index="1"]').waitFor();
+    await page.waitForFunction(
+      (minimumHeight) => {
+        const element = document.querySelector<HTMLElement>('[data-slot="query-json-rows"]');
+        return element && element.scrollHeight > minimumHeight;
+      },
+      GRID_ROWS * GRID_COLUMNS * 10,
+    );
+    await json.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await json.locator(`[data-index="${GRID_ROWS}"]`).waitFor();
+    expect(await json.textContent()).toContain(`"id": ${GRID_ROWS - 1}`);
+    expect((await json.textContent())?.endsWith("]")).toBe(true);
+    await json.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    let coverage = { samples: 0, gaps: 0 };
+    const scrollFrames = await sample(async () => {
+      coverage = await page.evaluate(async () => {
+        const element = document.querySelector<HTMLElement>('[data-slot="query-json-rows"]');
+        if (!element) throw new Error("JSON-Ansicht fehlt.");
+        const max = element.scrollHeight - element.clientHeight;
+        const coverage = { samples: 0, gaps: 0 };
+        let start = 0;
+        await new Promise<void>((done) => {
+          const step = (now: number) => {
+            if (!start) start = now;
+            const rect = element.getBoundingClientRect();
+            const node = document.elementFromPoint(rect.left + 40, rect.top + rect.height / 2);
+            coverage.samples++;
+            if (!node?.closest("[data-index]")) coverage.gaps++;
+            element.scrollTop = Math.min(1, (now - start) / 3000) * max;
+            if (now - start < 3000) requestAnimationFrame(step);
+            else done();
+          };
+          requestAnimationFrame(step);
+        });
+        return coverage;
+      });
+    });
+    if (WEBKIT) report("Breite SQL-Ergebnisse JSON scrollen", scrollFrames);
+    else expectSmooth("Breite SQL-Ergebnisse JSON scrollen", scrollFrames);
+    expect(coverage.samples).toBeGreaterThan(100);
+    expect(coverage.gaps).toBe(0);
+  },
+  30000,
+);

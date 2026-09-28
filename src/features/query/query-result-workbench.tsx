@@ -1,4 +1,5 @@
-import { lazy, type ReactNode, Suspense, useDeferredValue, useMemo, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { lazy, type ReactNode, Suspense, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,13 +43,14 @@ export function QueryResultWorkbench({
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
   const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(null);
+  const jsonScrollRef = useRef<HTMLPreElement>(null);
   const [lastResult, setLastResult] = useState(result);
   if (lastResult !== result) {
     setLastResult(result);
     setSearch("");
     setCell(null);
   }
-  const term = useDeferredValue(search).trim().toLocaleLowerCase();
+  const term = useDeferredValue(search).trim().toLowerCase();
   const filtered = useMemo(
     () =>
       !result || !term
@@ -58,25 +60,24 @@ export function QueryResultWorkbench({
             rows: result.rows.filter((row) =>
               result.columns.some((column) =>
                 gridCellText(row[column] ?? "NULL")
-                  .toLocaleLowerCase()
+                  .toLowerCase()
                   .includes(term),
               ),
             ),
           },
     [result, term],
   );
-  const jsonRows = useMemo(
-    () =>
-      workspace.resultView === "json"
-        ? (filtered?.rows ?? []).map((row) =>
-            JSON.stringify(row, null, 2)
-              .split("\n")
-              .map((line) => `  ${line}`)
-              .join("\n"),
-          )
-        : [],
-    [filtered, workspace.resultView],
-  );
+  const visibleRows = filtered?.rows ?? [];
+  const jsonVirtualizer = useVirtualizer({
+    count: workspace.resultView === "json" && filtered ? visibleRows.length + 2 : 0,
+    getScrollElement: () => jsonScrollRef.current,
+    estimateSize: (index) =>
+      (index === 0 || index === visibleRows.length + 1 ? 1 : (filtered?.columns.length ?? 0) + 3) *
+      workspace.resultFontSize *
+      1.5,
+    overscan: 3,
+    initialRect: { width: 700, height: 700 },
+  });
   const handleCopy = async (format: CopyFormat) => {
     try {
       await copyText(serializeRows(result?.columns ?? [], filtered?.rows ?? [], format));
@@ -204,20 +205,41 @@ export function QueryResultWorkbench({
         </div>
       ) : workspace.resultView === "json" ? (
         <pre
+          ref={jsonScrollRef}
           className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
-          style={{ fontSize: `${workspace.resultFontSize / 16}rem`, contain: "strict" }}
+          style={{
+            fontSize: `${workspace.resultFontSize / 16}rem`,
+            lineHeight: 1.5,
+            contain: "strict",
+          }}
+          data-slot="query-json-rows"
         >
-          {"[\n"}
-          {jsonRows.map((text, index) => (
-            <div
-              key={index}
-              style={{ contentVisibility: "auto", containIntrinsicSize: "auto 200px" }}
-            >
-              {text}
-              {index < jsonRows.length - 1 ? ",\n" : "\n"}
-            </div>
-          ))}
-          {"]"}
+          <div className="relative" style={{ height: jsonVirtualizer.getTotalSize() }}>
+            {jsonVirtualizer.getVirtualItems().map((virtualRow) => {
+              const index = virtualRow.index;
+              const row = visibleRows[index - 1];
+              const text =
+                index === 0
+                  ? "[\n"
+                  : index === visibleRows.length + 1
+                    ? "]"
+                    : `${JSON.stringify(row, null, 2)
+                        .split("\n")
+                        .map((line) => `  ${line}`)
+                        .join("\n")}${index < visibleRows.length ? ",\n" : "\n"}`;
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={index}
+                  ref={jsonVirtualizer.measureElement}
+                  className="absolute top-0 left-0"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  {text}
+                </div>
+              );
+            })}
+          </div>
         </pre>
       ) : (
         <div className="min-h-0 flex-1">
