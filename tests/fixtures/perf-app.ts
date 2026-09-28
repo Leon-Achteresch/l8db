@@ -102,6 +102,16 @@ export async function seedApp(
                 data_type: column.data_type,
               })),
             );
+          case "list_proxy_users":
+            return [
+              { name: "reader", category: "role", bypasses_rls: false },
+              { name: "writer", category: "role", bypasses_rls: false },
+              ...Array.from({ length: 3000 }, (_, index) => ({
+                name: `role_${String(index).padStart(4, "0")}`,
+                category: "role",
+                bypasses_rls: false,
+              })),
+            ];
           case "list_table_columns_detailed":
             return columns;
           case "fetch_table_rows":

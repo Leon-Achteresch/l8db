@@ -1,24 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CornerDownLeft, UserRoundCog, X } from "lucide-react";
+import { UserRoundCog } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { connectionError } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
-import { listProxyUsers, type ProxyUserInfo, testConnectionString } from "@/lib/db";
+import { listProxyUsers, testConnectionString } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useCapabilities } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { ProxyUserSwitchOptions } from "./proxy-user-switch-options";
 
 const HINTS: Partial<Record<string, string>> = {
   postgres:
@@ -30,15 +23,6 @@ const HINTS: Partial<Record<string, string>> = {
   snowflake:
     "Wechselt die aktive Rolle für alle Abfragen dieser Verbindung. Die Rolle muss dem Benutzer gewährt sein.",
 };
-
-const GROUP_LABELS: Record<string, Record<ProxyUserInfo["category"], string>> = {
-  postgres: { login: "Logins", user: "Benutzer", role: "Rollen" },
-  mssql: { login: "Logins", user: "Datenbank-Benutzer", role: "Rollen" },
-  oracle: { login: "Logins", user: "Freigegebene Benutzer", role: "Rollen" },
-  snowflake: { login: "Logins", user: "Benutzer", role: "Rollen" },
-};
-
-const CATEGORIES: ProxyUserInfo["category"][] = ["login", "user", "role"];
 
 export function ProxyUserSwitch() {
   const connection = useActiveConnection();
@@ -62,9 +46,6 @@ export function ProxyUserSwitch() {
 
   if (!connection || !caps.proxy_user) return null;
   const active = connection.proxyUser?.trim() || null;
-  const typed = search.trim();
-  const users = candidates.data ?? [];
-  const labels = GROUP_LABELS[connection.kind] ?? GROUP_LABELS.postgres;
   const roleSwitch = connection.kind === "snowflake";
   const title = active
     ? roleSwitch
@@ -138,75 +119,19 @@ export function ProxyUserSwitch() {
           <p className="font-medium">{roleSwitch ? "Rolle wechseln" : "Als Benutzer ansehen"}</p>
           <p className="text-xs text-muted-foreground">{HINTS[connection.kind]}</p>
         </div>
-        <Command>
-          <CommandInput
-            autoFocus
-            value={search}
-            onValueChange={setSearch}
-            placeholder="Benutzer oder Rolle suchen…"
-            aria-label="Proxy-Benutzer suchen"
-            disabled={busy}
+        {open && (
+          <ProxyUserSwitchOptions
+            kind={connection.kind}
+            active={active}
+            search={search}
+            onSearch={setSearch}
+            busy={busy}
+            users={candidates.data ?? []}
+            loading={candidates.isLoading}
+            error={candidates.isError ? candidates.error : null}
+            onApply={(user) => void apply(user)}
           />
-          <CommandList className="max-h-72">
-            {active && (
-              <CommandGroup>
-                <CommandItem
-                  value="__reset"
-                  keywords={["beenden"]}
-                  onSelect={() => void apply(null)}
-                >
-                  <X />
-                  {roleSwitch ? `Rolle ${active} verlassen` : `Als ${active} beenden`}
-                </CommandItem>
-              </CommandGroup>
-            )}
-            {candidates.isLoading && (
-              <p className="py-4 text-center text-xs text-muted-foreground">Lade Benutzer…</p>
-            )}
-            {candidates.isError && (
-              <p className="px-3 py-2 text-xs text-muted-foreground">
-                Liste nicht verfügbar: {connectionError(candidates.error)}
-              </p>
-            )}
-            <CommandEmpty>Keine Treffer.</CommandEmpty>
-            {CATEGORIES.map((category) => {
-              const entries = users.filter((user) => user.category === category);
-              if (!entries.length) return null;
-              return (
-                <CommandGroup key={category} heading={labels[category]}>
-                  {entries.map((user) => (
-                    <CommandItem
-                      key={user.name}
-                      value={user.name}
-                      data-checked={user.name === active}
-                      disabled={busy}
-                      onSelect={() => void apply(user.name)}
-                    >
-                      <span className="truncate">{user.name}</span>
-                      {user.bypasses_rls && (
-                        <span className="ml-auto shrink-0 rounded bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-400">
-                          umgeht RLS
-                        </span>
-                      )}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              );
-            })}
-            {typed && !users.some((user) => user.name === typed) && (
-              <CommandGroup heading="Eigene Eingabe">
-                <CommandItem
-                  forceMount
-                  value={`__custom ${typed}`}
-                  disabled={busy}
-                  onSelect={() => void apply(typed)}
-                >
-                  <CornerDownLeft />„{typed}“ übernehmen
-                </CommandItem>
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
+        )}
       </PopoverContent>
     </Popover>
   );
