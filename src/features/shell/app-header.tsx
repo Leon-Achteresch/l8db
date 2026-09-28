@@ -64,25 +64,37 @@ export function AppHeader() {
     const actions = actionsRef.current;
     if (!header || !leading || !actions) return;
 
-    const updateSearchWidth = () => {
-      const headerBounds = header.getBoundingClientRect();
-      const leadingBounds = leading.getBoundingClientRect();
-      const actionsBounds = actions.getBoundingClientRect();
-      const leadingWidth = leadingBounds.right - headerBounds.left;
-      const trailingWidth = headerBounds.right - actionsBounds.left;
-      setSearchWidth(
-        Math.max(
-          28,
-          Math.min(460, headerBounds.width - 2 * Math.max(leadingWidth, trailingWidth) - 16),
-        ),
-      );
-    };
-
-    const observer = new ResizeObserver(updateSearchWidth);
+    let headerWidth = 0;
+    let leadingWidth = 0;
+    let actionsWidth = 0;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width =
+          entry.borderBoxSize[0]?.inlineSize ?? entry.target.getBoundingClientRect().width;
+        if (entry.target === header) headerWidth = width;
+        if (entry.target === leading) leadingWidth = width;
+        if (entry.target === actions) actionsWidth = width;
+      }
+      if (headerWidth && leadingWidth && actionsWidth)
+        setSearchWidth(
+          Math.max(
+            28,
+            Math.min(
+              460,
+              headerWidth -
+                2 *
+                  Math.max(
+                    leadingWidth + (IS_MAC ? 72 : 0),
+                    actionsWidth + (USE_CUSTOM_WINDOW_CONTROLS ? 140 : 0),
+                  ) -
+                16,
+            ),
+          ),
+        );
+    });
     observer.observe(header);
     observer.observe(leading);
     observer.observe(actions);
-    updateSearchWidth();
     return () => observer.disconnect();
   }, [section]);
 
