@@ -3,6 +3,45 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.7.8] - 2026-09-25
+
+### Features
+- connection RPC for extensions and password-manager vault extension
+- book layout for notebook cells
+- validate Oracle sequences, types, tables and drops via temp objects; trim apply dialog text
+- beginner-friendly walkthrough with explicit next actions and full app coverage
+- label generator settings and explain test data options
+- open database, CSV/Parquet, SQL and notebook files via association, CLI and drag and drop
+- ship DuckDB and statically linked ODBC in default builds
+- BigQuery and Snowflake editor fields and dialects
+- native BigQuery and Snowflake adapters
+- add Elasticsearch/OpenSearch, InfluxDB and HTTP SQLite (D1, libSQL) families
+- AWS editor fields and PartiQL/Athena filters
+- native DynamoDB and Athena families with SigV4 client
+- test data generator, masking rules and production guardrails
+- streamed row snapshots and dialect sync scripts for MySQL, SQL Server and SQLite
+- file import formats, Parquet/XML/HTML export and copy-table dialog
+- shared multi-family import pipeline, file sources, typed exports and table copy
+- MySQL, SQL Server and SQLite catalogs and dialect sync scripts
+- SQL notebooks with markdown, SQL and variable cells
+- vim keymap, status line and SQL folding
+- chart view for query results
+- SSH-Agent, Sprung-Hosts, SOCKS5/HTTP-Proxy und ~/.ssh/config-Import
+- constraint designer for create and alter table
+- backup, restore and dumps via native tools
+- graph and flame views with normalized plans for all SQL families
+- enable EXPLAIN via PLAN_TABLE and ALLSTATS runtime statistics
+- type-aware value viewers for binary, images, geometry, XML and vectors
+- deliver Oracle binaries as hex and write hex binaries as dialect literals
+
+### Fixes
+- vendor unixODBC only on non-Windows targets
+- tolerate partial MCP config in masking and isolate providers reload test
+- mark auto-shown video as offered immediately so it never reappears
+- widen search modal and stop content-search rows from overflowing
+- open view editor tab when selecting a view from the command palette
+- label chart actions menu distinctly from the view toggle
+
 ## [0.6.162] - 2026-09-24
 
 ### Features
