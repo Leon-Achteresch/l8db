@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import type { ProviderInfo } from "@/lib/db";
+import { BaasOptions } from "../provider-picker/baas-options";
 import { SmartPicker } from "../provider-picker/smart-picker";
 
 export function ConnectionProviderStep({
@@ -21,6 +22,7 @@ export function ConnectionProviderStep({
         onSelect={selectProvider}
         onPaste={pasteConnectionString}
       />
+      <BaasOptions />
       <Button
         type="button"
         variant="ghost"

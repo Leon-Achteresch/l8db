@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { getRouteApi, Link } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppwriteView } from "./appwrite-view";
 import { ConvexView } from "./convex-view";
@@ -7,38 +7,19 @@ import { FirebaseView } from "./firebase-view";
 import { PocketBaseView } from "./pocketbase-view";
 import { SupabaseView } from "./supabase-view";
 
+const route = getRouteApi("/baas");
+
 export function BaasView() {
-  const [provider, setProvider] = useState<
-    "supabase" | "appwrite" | "pocketbase" | "convex" | "firebase"
-  >("supabase");
+  const { provider } = route.useSearch();
 
   return (
     <main className="h-full min-h-0 flex-1 overflow-auto bg-background">
-      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-6 pt-8 pb-6 lg:px-9">
-        <div className="flex gap-2" role="tablist" aria-label="BaaS-Anbieter">
-          {(["supabase", "appwrite", "pocketbase", "convex", "firebase"] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={provider === item}
-              onClick={() => setProvider(item)}
-              className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${provider === item ? "border-primary/50 bg-primary/10 text-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
-            >
-              {item === "supabase"
-                ? "Supabase"
-                : item === "appwrite"
-                  ? "Appwrite"
-                  : item === "pocketbase"
-                    ? "PocketBase"
-                    : item === "convex"
-                      ? "Convex"
-                      : "Firebase"}
-            </button>
-          ))}
-        </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link to="/connections">Datenbankverbindungen</Link>
+      <div className="mx-auto max-w-[1400px] px-6 pt-8 pb-6 lg:px-9">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/connections">
+            <ArrowLeft className="size-3.5" />
+            Verbindungen
+          </Link>
         </Button>
       </div>
       {provider === "supabase" ? (
