@@ -38,8 +38,12 @@ export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
         <p className="mt-4 break-all text-xs text-muted-foreground">{profile.endpoint}</p>
       </section>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
-        <AppwriteStorageView id={profile.id} />
-        <AppwriteDatabasesView id={profile.id} />
+        <div data-baas-section="storage" className="scroll-mt-6">
+          <AppwriteStorageView id={profile.id} />
+        </div>
+        <div data-baas-section="database" className="scroll-mt-6">
+          <AppwriteDatabasesView id={profile.id} />
+        </div>
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <AppwriteResourceCard
