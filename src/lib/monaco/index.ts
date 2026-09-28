@@ -8,7 +8,6 @@ export {
   activeConnectionKind,
   activeSqlDialect,
   addSqlFormatAction,
-  formatSql,
   isSqlFormattingAvailable,
 } from "./format";
 export type { SqlErrorSource } from "./markers";

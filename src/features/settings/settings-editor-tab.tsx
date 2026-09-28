@@ -3,7 +3,7 @@ import { SettingsSqlPreview } from "@/features/settings/settings-sql-preview";
 import { useActiveConnection } from "@/lib/connections";
 import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
-import { sqlDialectForKind, supportsSqlFormatting } from "@/lib/sql-format";
+import { sqlDialectForKind, supportsSqlFormatting } from "@/lib/sql-format-options";
 
 export function SettingsEditorTab() {
   const store = useSettingsStore();
