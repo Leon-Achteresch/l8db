@@ -14,7 +14,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,9 +55,16 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   const overview = useDatabaseOverviewQuery();
   const { refresh, isRefreshing } = useRefreshConnection();
   const history = useQueryHistoryStore((state) => state.entries);
-  const recent = history
-    .filter((entry) => entry.connectionId === connection.id && entry.database === database)
-    .slice(0, 4);
+  const recent = useMemo(() => {
+    const entries: typeof history = [];
+    for (const entry of history) {
+      if (entry.connectionId === connection.id && entry.database === database) {
+        entries.push(entry);
+        if (entries.length === 4) break;
+      }
+    }
+    return entries;
+  }, [history, connection.id, database]);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
   const reduce = useReducedMotion();
@@ -74,8 +81,12 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
     1,
     ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
   );
-  const matching =
-    tables.data?.filter((table) => table.name.toLowerCase().includes(search.toLowerCase())) ?? [];
+  const matching = useMemo(() => {
+    if (!tables.data) return [];
+    if (!search) return tables.data;
+    const needle = search.toLowerCase();
+    return tables.data.filter((table) => table.name.toLowerCase().includes(needle));
+  }, [tables.data, search]);
   const filtered = matching.slice(0, TABLE_LIST_LIMIT);
   const metrics = [
     { label: "Tabellen", query: tables, icon: Database, enabled: true },
