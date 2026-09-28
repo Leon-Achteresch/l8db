@@ -39,30 +39,56 @@ const ORACLE_HINTS = [
 ];
 
 const PROVIDERS = [
-  provider("postgres", "postgres", { type: "builtin" }, {
-    available: true,
-    detail: "Eingebetteter Treiber",
-    install: [],
-    install_command: null,
-  }),
-  provider("oracle", "oracle", { type: "runtime_library", library: "Oracle Instant Client" }, {
-    available: false,
-    detail: "Oracle Instant Client nicht gefunden",
-    install: ORACLE_HINTS,
-    install_command: ORACLE_HINTS[0]?.command ?? null,
-  }),
-  provider("duckdb", "duckdb", { type: "cargo_feature", feature: "duckdb" }, {
-    available: false,
-    detail: "Nicht in diesem Build enthalten",
-    install: [{ os: "all", command: "bun run tauri build -- --features duckdb", url: "https://duckdb.org" }],
-    install_command: null,
-  }),
-  provider("odbc", "odbc", { type: "odbc", driver: "" }, {
-    available: false,
-    detail: "ODBC-Treibermanager nicht verfügbar",
-    install: [{ os: "macos", command: "brew install unixodbc", url: "https://www.unixodbc.org" }],
-    install_command: "brew install unixodbc",
-  }),
+  provider(
+    "postgres",
+    "postgres",
+    { type: "builtin" },
+    {
+      available: true,
+      detail: "Eingebetteter Treiber",
+      install: [],
+      install_command: null,
+    },
+  ),
+  provider(
+    "oracle",
+    "oracle",
+    { type: "runtime_library", library: "Oracle Instant Client" },
+    {
+      available: false,
+      detail: "Oracle Instant Client nicht gefunden",
+      install: ORACLE_HINTS,
+      install_command: ORACLE_HINTS[0]?.command ?? null,
+    },
+  ),
+  provider(
+    "duckdb",
+    "duckdb",
+    { type: "cargo_feature", feature: "duckdb" },
+    {
+      available: false,
+      detail: "Nicht in diesem Build enthalten",
+      install: [
+        {
+          os: "all",
+          command: "bun run tauri build -- --features duckdb",
+          url: "https://duckdb.org",
+        },
+      ],
+      install_command: null,
+    },
+  ),
+  provider(
+    "odbc",
+    "odbc",
+    { type: "odbc", driver: "" },
+    {
+      available: false,
+      detail: "ODBC-Treibermanager nicht verfügbar",
+      install: [{ os: "macos", command: "brew install unixodbc", url: "https://www.unixodbc.org" }],
+      install_command: "brew install unixodbc",
+    },
+  ),
 ];
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -74,20 +100,42 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { summarizeDrivers, hintForPlatform, driverTypeLabel, platformOs } = await import(
-  "../src/lib/drivers"
-);
+const { summarizeDrivers, missingDrivers, hintForPlatform, driverTypeLabel, platformOs } =
+  await import("../src/lib/drivers");
 const { installDriver } = await import("../src/lib/db");
 
 describe("drivers", () => {
+  test("shows missing ODBC manufacturer drivers even when the manager is ready", () => {
+    const providers = [
+      provider(
+        "odbc",
+        "odbc",
+        { type: "odbc", driver: "" },
+        {
+          available: true,
+          detail: "ODBC-Treibermanager bereit",
+          install: [],
+          install_command: null,
+        },
+      ),
+      provider(
+        "db2",
+        "odbc",
+        { type: "odbc", driver: "IBM DB2 ODBC DRIVER" },
+        {
+          available: false,
+          detail: "IBM DB2 ODBC DRIVER fehlt",
+          install: [],
+          install_command: null,
+        },
+      ),
+    ];
+    expect(missingDrivers(providers as never).map((entry) => entry.id)).toEqual(["db2"]);
+  });
+
   test("groups providers by family in first-seen order", () => {
     const summaries = summarizeDrivers(PROVIDERS as never, "macos");
-    expect(summaries.map((entry) => entry.kind)).toEqual([
-      "postgres",
-      "oracle",
-      "duckdb",
-      "odbc",
-    ]);
+    expect(summaries.map((entry) => entry.kind)).toEqual(["postgres", "oracle", "duckdb", "odbc"]);
     expect(summaries[1]?.title).toBe("Oracle");
     expect(summaries[1]?.providers.map((entry) => entry.id)).toEqual(["oracle"]);
   });
@@ -110,7 +158,10 @@ describe("drivers", () => {
     const duckdb = macSummaries.find((entry) => entry.kind === "duckdb");
     expect(duckdb?.hint?.os).toBe("all");
     expect(
-      hintForPlatform({ available: false, detail: "", install: [], install_command: null }, "macos"),
+      hintForPlatform(
+        { available: false, detail: "", install: [], install_command: null },
+        "macos",
+      ),
     ).toBeUndefined();
   });
 
@@ -118,7 +169,9 @@ describe("drivers", () => {
     expect(driverTypeLabel({ type: "builtin" })).toBe("Eingebettet");
     expect(driverTypeLabel({ type: "runtime_library", library: "x" })).toBe("System-Bibliothek");
     expect(driverTypeLabel({ type: "odbc", driver: "" })).toBe("ODBC");
-    expect(driverTypeLabel({ type: "cargo_feature", feature: "duckdb" })).toBe("Eingebettet (Build-Feature)");
+    expect(driverTypeLabel({ type: "cargo_feature", feature: "duckdb" })).toBe(
+      "Eingebettet (Build-Feature)",
+    );
     expect(platformOs("MacIntel")).toBe("macos");
     expect(platformOs("Win32")).toBe("windows");
     expect(platformOs("Linux x86_64")).toBe("linux");

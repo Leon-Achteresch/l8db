@@ -94,3 +94,7 @@ export function summarizeDrivers(
   }
   return summaries;
 }
+
+export function missingDrivers(providers: ProviderInfo[]): ProviderInfo[] {
+  return providers.filter((provider) => !provider.driver_status.available);
+}
