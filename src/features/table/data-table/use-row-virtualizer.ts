@@ -20,7 +20,7 @@ export function useRowVirtualizer(
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
   const estimatedRowHeight =
-    ((uiDensity === "compact" ? 25 : uiDensity === "spacious" ? 41 : 33) * uiScale) / 100;
+    ((uiDensity === "compact" ? 24 : uiDensity === "spacious" ? 40 : 32) * uiScale) / 100 + 1;
   const direction = useRef<"forward" | "backward" | null>(null);
   const rangeExtractor = useCallback(
     (range: Range) => {
@@ -39,6 +39,11 @@ export function useRowVirtualizer(
     scrollMargin: draftHeight,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
+    measureElement: (element, entry) => {
+      if (!element.hasAttribute("data-dynamic-height")) return estimatedRowHeight;
+      const box = entry?.borderBoxSize[0];
+      return box ? Math.round(box.blockSize) : (element as HTMLElement).offsetHeight;
+    },
     overscan: IS_CHROMIUM ? 0 : Math.ceil(128 / estimatedRowHeight),
     rangeExtractor,
     useAnimationFrameWithResizeObserver: true,

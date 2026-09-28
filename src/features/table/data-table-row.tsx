@@ -103,6 +103,7 @@ export const DataTableRow = memo(function DataTableRow({
       data-ctid={rowCtid}
       data-marked={isMarked || undefined}
       data-context-menu-target={isContextMenuTarget || undefined}
+      data-dynamic-height={isRowEditing || customCellColumns.size > 0 || undefined}
       className={cn(
         "group/row",
         isMarked
