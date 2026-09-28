@@ -11,6 +11,7 @@ export interface PocketBaseField {
   name: string;
   kind: string;
   hidden: boolean;
+  maxSelect: number | null;
 }
 
 export interface PocketBaseCollection {
@@ -44,6 +45,32 @@ export const pocketbaseCollections = (id: string, page: number) =>
   invoke<PocketBasePage<PocketBaseCollection>>("pocketbase_collections", { id, page });
 export const pocketbaseRecords = (id: string, collectionId: string, page: number) =>
   invoke<PocketBasePage<PocketBaseRecord>>("pocketbase_records", { id, collectionId, page });
+export const pocketbaseCreateRecord = (
+  id: string,
+  collectionId: string,
+  data: Record<string, unknown>,
+) => invoke<PocketBaseRecord>("pocketbase_create_record", { id, collectionId, data });
+export const pocketbaseUpdateRecord = (
+  id: string,
+  collectionId: string,
+  recordId: string,
+  data: Record<string, unknown>,
+) => invoke<PocketBaseRecord>("pocketbase_update_record", { id, collectionId, recordId, data });
+export const pocketbaseDeleteRecord = (id: string, collectionId: string, recordId: string) =>
+  invoke<void>("pocketbase_delete_record", { id, collectionId, recordId });
+export const pocketbaseUploadFile = (
+  id: string,
+  collectionId: string,
+  recordId: string,
+  fieldName: string,
+) => invoke<boolean>("pocketbase_upload_file", { id, collectionId, recordId, fieldName });
+export const pocketbaseDeleteFile = (
+  id: string,
+  collectionId: string,
+  recordId: string,
+  fieldName: string,
+  filename: string,
+) => invoke<void>("pocketbase_delete_file", { id, collectionId, recordId, fieldName, filename });
 export const pocketbasePreviewFile = (
   id: string,
   collectionId: string,

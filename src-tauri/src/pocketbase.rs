@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio_util::io::ReaderStream;
 use url::Url;
 
 const PROFILES_ACCOUNT: &str = "baas:pocketbase:profiles";
@@ -37,6 +38,8 @@ pub struct PocketBaseField {
     pub kind: String,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(rename = "maxSelect")]
+    pub max_select: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -142,6 +145,48 @@ fn remove_hidden_fields(
             .data
             .retain(|name, _| visible.contains(name.as_str()));
     }
+}
+
+fn visible_record(
+    collection: &PocketBaseCollection,
+    mut record: PocketBaseRecord,
+) -> PocketBaseRecord {
+    let visible = collection
+        .fields
+        .iter()
+        .filter(|field| !field.hidden)
+        .map(|field| field.name.as_str())
+        .collect::<HashSet<_>>();
+    record
+        .data
+        .retain(|name, _| visible.contains(name.as_str()));
+    record
+}
+
+fn validate_record_data(
+    collection: &PocketBaseCollection,
+    data: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    if collection.system || collection.name == "_superusers" || data.len() > 100 {
+        return Err("PocketBase-Collection oder Datensatz nicht freigegeben.".into());
+    }
+    for name in data.keys() {
+        if !collection
+            .fields
+            .iter()
+            .any(|field| field.name == *name && !field.hidden && field.kind != "file")
+        {
+            return Err(format!("Feld {name} darf nicht bearbeitet werden."));
+        }
+    }
+    if serde_json::to_vec(data)
+        .map_err(|_| "Datensatz konnte nicht gelesen werden.".to_string())?
+        .len()
+        > 128 * 1024
+    {
+        return Err("Datensatz ist zu groß.".into());
+    }
+    Ok(())
 }
 
 fn file_is_visible(
@@ -339,6 +384,124 @@ async fn records_for(
     Ok(records)
 }
 
+async fn editable_collection(
+    endpoint: &str,
+    token: &str,
+    collection_id: &str,
+) -> Result<PocketBaseCollection, String> {
+    let collection_id = validate_id(collection_id)?;
+    let collection: PocketBaseCollection = get(
+        endpoint,
+        token,
+        &format!("collections/{collection_id}"),
+        None,
+    )
+    .await?;
+    if collection.system || collection.name == "_superusers" {
+        return Err("PocketBase-Collection nicht freigegeben.".into());
+    }
+    Ok(collection)
+}
+
+#[tauri::command]
+pub async fn pocketbase_create_record(
+    id: String,
+    collection_id: String,
+    data: serde_json::Map<String, serde_json::Value>,
+) -> Result<PocketBaseRecord, String> {
+    let collection_id = validate_id(&collection_id)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection = editable_collection(&profile.endpoint, &token, collection_id).await?;
+    validate_record_data(&collection, &data)?;
+    let response = client()
+        .post(format!(
+            "{}/api/collections/{collection_id}/records",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .json(&data)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Datensatz konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let record = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Datensatzdaten geliefert.".to_string())?;
+    Ok(visible_record(&collection, record))
+}
+
+#[tauri::command]
+pub async fn pocketbase_update_record(
+    id: String,
+    collection_id: String,
+    record_id: String,
+    data: serde_json::Map<String, serde_json::Value>,
+) -> Result<PocketBaseRecord, String> {
+    let collection_id = validate_id(&collection_id)?;
+    let record_id = validate_id(&record_id)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection = editable_collection(&profile.endpoint, &token, collection_id).await?;
+    validate_record_data(&collection, &data)?;
+    let response = client()
+        .patch(format!(
+            "{}/api/collections/{collection_id}/records/{record_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .json(&data)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Datensatz konnte nicht bearbeitet werden.",
+            response.status().as_u16()
+        ));
+    }
+    let record: PocketBaseRecord = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Datensatzdaten geliefert.".to_string())?;
+    if record.id != record_id {
+        return Err("PocketBase hat eine andere Datensatz-ID zurückgegeben.".into());
+    }
+    Ok(visible_record(&collection, record))
+}
+
+#[tauri::command]
+pub async fn pocketbase_delete_record(
+    id: String,
+    collection_id: String,
+    record_id: String,
+) -> Result<(), String> {
+    let collection_id = validate_id(&collection_id)?;
+    let record_id = validate_id(&record_id)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    editable_collection(&profile.endpoint, &token, collection_id).await?;
+    let response = client()
+        .delete(format!(
+            "{}/api/collections/{collection_id}/records/{record_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Datensatz konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
 fn validate_file_request(
     collection_id: &str,
     record_id: &str,
@@ -354,6 +517,139 @@ fn validate_file_request(
         || filename.contains('\\')
     {
         return Err("Ungültiger Dateiname.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pocketbase_upload_file(
+    app: tauri::AppHandle,
+    id: String,
+    collection_id: String,
+    record_id: String,
+    field_name: String,
+) -> Result<bool, String> {
+    let collection_id = validate_id(&collection_id)?;
+    let record_id = validate_id(&record_id)?;
+    validate_id(&field_name)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection = editable_collection(&profile.endpoint, &token, collection_id).await?;
+    let field = collection
+        .fields
+        .iter()
+        .find(|field| field.name == field_name && field.kind == "file" && !field.hidden)
+        .ok_or_else(|| "Dateifeld nicht freigegeben.".to_string())?;
+    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
+        return Ok(false);
+    };
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
+    validate_file_request(collection_id, record_id, name)?;
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| "Datei konnte nicht gelesen werden.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Bitte eine Datei auswählen.".into());
+    }
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|_| "Datei konnte nicht geöffnet werden.".to_string())?;
+    let mime_type = mime_guess::from_path(&path).first_or_octet_stream();
+    let part = reqwest::multipart::Part::stream_with_length(
+        reqwest::Body::wrap_stream(ReaderStream::new(file)),
+        metadata.len(),
+    )
+    .file_name(name.to_string())
+    .mime_str(mime_type.as_ref())
+    .map_err(|_| "Ungültiger Dateityp.".to_string())?;
+    let upload_field = if field.max_select.unwrap_or(1) > 1 {
+        format!("{field_name}+")
+    } else {
+        field_name.clone()
+    };
+    let response = crate::baas_file::upload_client()
+        .patch(format!(
+            "{}/api/collections/{collection_id}/records/{record_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .multipart(reqwest::multipart::Form::new().part(upload_field, part))
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist beim Upload nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Datei konnte nicht hochgeladen werden.",
+            response.status().as_u16()
+        ));
+    }
+    let record: PocketBaseRecord = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Datensatzdaten geliefert.".to_string())?;
+    if record.id != record_id {
+        return Err("PocketBase hat eine andere Datensatz-ID zurückgegeben.".into());
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn pocketbase_delete_file(
+    id: String,
+    collection_id: String,
+    record_id: String,
+    field_name: String,
+    filename: String,
+) -> Result<(), String> {
+    validate_file_request(&collection_id, &record_id, &filename)?;
+    validate_id(&field_name)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection = editable_collection(&profile.endpoint, &token, &collection_id).await?;
+    let field = collection
+        .fields
+        .iter()
+        .find(|field| field.name == field_name && field.kind == "file" && !field.hidden)
+        .ok_or_else(|| "Dateifeld nicht freigegeben.".to_string())?;
+    let record: PocketBaseRecord = get(
+        &profile.endpoint,
+        &token,
+        &format!("collections/{collection_id}/records/{record_id}"),
+        None,
+    )
+    .await?;
+    let belongs_to_field = match record.data.get(&field_name) {
+        Some(serde_json::Value::String(value)) => value == &filename,
+        Some(serde_json::Value::Array(values)) => {
+            values.iter().any(|value| value.as_str() == Some(&filename))
+        }
+        _ => false,
+    };
+    if !belongs_to_field {
+        return Err("Datei gehört nicht zu diesem Dateifeld.".into());
+    }
+    let mut payload = serde_json::Map::new();
+    if field.max_select.unwrap_or(1) > 1 {
+        payload.insert(format!("{field_name}-"), serde_json::json!([filename]));
+    } else {
+        payload.insert(field_name, serde_json::json!(""));
+    }
+    let response = client()
+        .patch(format!(
+            "{}/api/collections/{collection_id}/records/{record_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Datei konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
     }
     Ok(())
 }
@@ -480,6 +776,7 @@ pub async fn pocketbase_download_file(
 mod tests {
     use super::{
         file_is_visible, get, profile_id, remove_hidden_fields, validate_endpoint, validate_id,
+        validate_record_data,
     };
     use base64::Engine;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -546,6 +843,29 @@ mod tests {
         .unwrap();
         assert!(file_is_visible(&collection, &record, "hero.webp"));
         assert!(!file_is_visible(&collection, &record, "secret.webp"));
+    }
+
+    #[test]
+    fn record_edits_accept_only_visible_non_file_fields() {
+        let collection = serde_json::from_value(serde_json::json!({
+            "id": "posts", "name": "posts", "type": "base", "system": false,
+            "fields": [
+                {"name": "title", "type": "text", "hidden": false},
+                {"name": "image", "type": "file", "hidden": false},
+                {"name": "secret", "type": "text", "hidden": true}
+            ]
+        }))
+        .unwrap();
+        for (field, allowed) in [
+            ("title", true),
+            ("image", false),
+            ("secret", false),
+            ("id", false),
+        ] {
+            let mut data = serde_json::Map::new();
+            data.insert(field.to_string(), serde_json::json!("value"));
+            assert_eq!(validate_record_data(&collection, &data).is_ok(), allowed);
+        }
     }
 
     #[tokio::test]
