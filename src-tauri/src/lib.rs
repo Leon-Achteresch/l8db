@@ -1,6 +1,7 @@
 mod appwrite;
 mod baas_file;
 mod community_extensions;
+mod convex;
 mod db;
 mod extension_process;
 mod file_open;
@@ -79,6 +80,14 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            convex::convex_connect,
+            convex::convex_profiles,
+            convex::convex_disconnect,
+            convex::convex_projects,
+            convex::convex_deployments,
+            convex::convex_environment_variables,
+            convex::convex_set_environment_variable,
+            convex::convex_delete_environment_variable,
             pocketbase::pocketbase_connect,
             pocketbase::pocketbase_profiles,
             pocketbase::pocketbase_disconnect,
@@ -95,6 +104,9 @@ pub fn run() {
             appwrite::appwrite_profiles,
             appwrite::appwrite_disconnect,
             appwrite::appwrite_buckets,
+            appwrite::appwrite_create_bucket,
+            appwrite::appwrite_rename_bucket,
+            appwrite::appwrite_delete_bucket,
             appwrite::appwrite_files,
             appwrite::appwrite_upload_file,
             appwrite::appwrite_rename_file,
@@ -107,6 +119,10 @@ pub fn run() {
             appwrite::appwrite_columns,
             appwrite::appwrite_functions,
             appwrite::appwrite_users,
+            appwrite::appwrite_create_user,
+            appwrite::appwrite_update_user_email,
+            appwrite::appwrite_delete_user,
+            appwrite::appwrite_delete_function,
             appwrite::appwrite_sites,
             supabase::supabase_connect,
             supabase::supabase_disconnect,
@@ -114,7 +130,11 @@ pub fn run() {
             supabase::supabase_projects,
             supabase::supabase_buckets,
             supabase::supabase_bucket_details,
+            supabase::supabase_create_bucket,
+            supabase::supabase_update_bucket_public,
+            supabase::supabase_delete_bucket,
             supabase::supabase_functions,
+            supabase::supabase_delete_function,
             supabase::supabase_health,
             supabase::supabase_backups,
             supabase::supabase_tables,
@@ -131,6 +151,9 @@ pub fn run() {
             supabase::supabase_preview_object,
             supabase::supabase_download_object,
             supabase::supabase_auth_users,
+            supabase::supabase_create_auth_user,
+            supabase::supabase_update_auth_user_email,
+            supabase::supabase_delete_auth_user,
             firebase::firebase_connect,
             firebase::firebase_profiles,
             firebase::firebase_disconnect,

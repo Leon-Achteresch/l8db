@@ -101,6 +101,12 @@ export const appwriteProfiles = () => invoke<AppwriteProfile[]>("appwrite_profil
 export const appwriteDisconnect = (id: string) => invoke<void>("appwrite_disconnect", { id });
 export const appwriteBuckets = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteBucket>>("appwrite_buckets", { id, offset });
+export const appwriteCreateBucket = (id: string, bucketId: string, name: string) =>
+  invoke<AppwriteBucket>("appwrite_create_bucket", { id, bucketId, name });
+export const appwriteRenameBucket = (id: string, bucketId: string, name: string) =>
+  invoke<void>("appwrite_rename_bucket", { id, bucketId, name });
+export const appwriteDeleteBucket = (id: string, bucketId: string) =>
+  invoke<void>("appwrite_delete_bucket", { id, bucketId });
 export const appwriteFiles = (id: string, bucketId: string, offset: number) =>
   invoke<AppwritePage<AppwriteFile>>("appwrite_files", { id, bucketId, offset });
 export const appwriteUploadFile = (id: string, bucketId: string) =>
@@ -125,5 +131,13 @@ export const appwriteFunctions = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteFunction>>("appwrite_functions", { id, offset });
 export const appwriteUsers = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteUser>>("appwrite_users", { id, offset });
+export const appwriteCreateUser = (id: string, email: string, password: string, name: string) =>
+  invoke<AppwriteUser>("appwrite_create_user", { id, email, password, name });
+export const appwriteUpdateUserEmail = (id: string, userId: string, email: string) =>
+  invoke<void>("appwrite_update_user_email", { id, userId, email });
+export const appwriteDeleteUser = (id: string, userId: string) =>
+  invoke<void>("appwrite_delete_user", { id, userId });
+export const appwriteDeleteFunction = (id: string, functionId: string) =>
+  invoke<void>("appwrite_delete_function", { id, functionId });
 export const appwriteSites = (id: string, offset: number) =>
   invoke<AppwritePage<AppwriteSite>>("appwrite_sites", { id, offset });

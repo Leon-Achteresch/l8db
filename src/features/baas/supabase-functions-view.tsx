@@ -1,19 +1,53 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ChevronDown, ExternalLink, FunctionSquare } from "lucide-react";
+import { ChevronDown, ExternalLink, FunctionSquare, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { supabaseFunctions } from "@/lib/db";
+import { supabaseDeleteFunction, supabaseFunctions } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function SupabaseFunctionsView({ reference }: { reference: string }) {
+  const queryClient = useQueryClient();
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.function-details");
+  const manageFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.function-manage");
   const functions = useQuery({
     queryKey: ["supabase", reference, "functions"],
     queryFn: () => supabaseFunctions(reference),
   });
+
+  async function remove() {
+    if (!deleteTarget) return;
+    const slug = deleteTarget;
+    setBusy(true);
+    setError(null);
+    try {
+      await supabaseDeleteFunction(reference, slug);
+      setDeleteTarget(null);
+      setExpandedSlug(null);
+      setSuccess(`${slug} gelöscht.`);
+      await queryClient.invalidateQueries({ queryKey: ["supabase", reference, "functions"] });
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <section className="min-w-0 rounded-2xl border bg-card p-5">
@@ -24,6 +58,16 @@ export function SupabaseFunctionsView({ reference }: { reference: string }) {
           <span className="ml-auto text-xs text-muted-foreground">{functions.data.length}</span>
         )}
       </div>
+      {error && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+      {success && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {success}
+        </p>
+      )}
       {functions.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Wird geladen…</p>
       ) : functions.isError ? (
@@ -63,6 +107,18 @@ export function SupabaseFunctionsView({ reference }: { reference: string }) {
                 >
                   <ExternalLink className="size-3.5" />
                 </Button>
+                <div ref={index === 0 ? manageFeature.ref : undefined}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${item.slug} löschen`}
+                    onClick={() => setDeleteTarget(item.slug)}
+                    disabled={busy}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                  {manageFeature.isNew && index === 0 && <NewBadge />}
+                </div>
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {item.status ?? "Status unbekannt"}
@@ -110,6 +166,35 @@ export function SupabaseFunctionsView({ reference }: { reference: string }) {
           ))}
         </div>
       )}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edge Function löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget} wird endgültig aus diesem Projekt gelöscht. Der Vorgang kann nicht
+              rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void remove();
+              }}
+            >
+              {busy ? "Löscht…" : "Löschen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

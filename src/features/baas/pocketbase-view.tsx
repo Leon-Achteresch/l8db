@@ -91,7 +91,7 @@ export function PocketBaseView() {
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Gib die Instanz-URL und einen Superuser-Impersonation-Token ein. Dieser Token hat
                 vollständigen Zugriff auf die Instanz. l8db prüft ihn und speichert ihn im
-                OS-Schlüsselbund; diese Ansicht liest Daten und ändert sie nicht.
+                OS-Schlüsselbund. Über diese Ansicht kannst du Datensätze und Dateien verwalten.
               </p>
               <form
                 onSubmit={(event) => {

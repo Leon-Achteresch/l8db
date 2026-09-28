@@ -4,6 +4,7 @@ export * from "./baas-file";
 export * from "./backup";
 export * from "./catalog";
 export * from "./columns";
+export * from "./convex";
 export type { QueryExecutionOptions } from "./core";
 export {
   cancelExecution,

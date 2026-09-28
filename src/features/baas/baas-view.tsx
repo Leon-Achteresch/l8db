@@ -2,20 +2,21 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppwriteView } from "./appwrite-view";
+import { ConvexView } from "./convex-view";
 import { FirebaseView } from "./firebase-view";
 import { PocketBaseView } from "./pocketbase-view";
 import { SupabaseView } from "./supabase-view";
 
 export function BaasView() {
-  const [provider, setProvider] = useState<"supabase" | "appwrite" | "pocketbase" | "firebase">(
-    "supabase",
-  );
+  const [provider, setProvider] = useState<
+    "supabase" | "appwrite" | "pocketbase" | "convex" | "firebase"
+  >("supabase");
 
   return (
     <main className="h-full min-h-0 flex-1 overflow-auto bg-background">
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-6 pt-8 pb-6 lg:px-9">
         <div className="flex gap-2" role="tablist" aria-label="BaaS-Anbieter">
-          {(["supabase", "appwrite", "pocketbase", "firebase"] as const).map((item) => (
+          {(["supabase", "appwrite", "pocketbase", "convex", "firebase"] as const).map((item) => (
             <button
               key={item}
               type="button"
@@ -30,7 +31,9 @@ export function BaasView() {
                   ? "Appwrite"
                   : item === "pocketbase"
                     ? "PocketBase"
-                    : "Firebase"}
+                    : item === "convex"
+                      ? "Convex"
+                      : "Firebase"}
             </button>
           ))}
         </div>
@@ -44,6 +47,8 @@ export function BaasView() {
         <AppwriteView />
       ) : provider === "pocketbase" ? (
         <PocketBaseView />
+      ) : provider === "convex" ? (
+        <ConvexView />
       ) : (
         <FirebaseView />
       )}

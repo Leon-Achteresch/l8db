@@ -20,6 +20,8 @@ export function AppwriteResourceCard<T extends ResourceItem>({
   renderDetails,
   detailsRef,
   detailsNew,
+  headerAction,
+  renderActions,
 }: {
   id: string;
   kind: string;
@@ -30,6 +32,8 @@ export function AppwriteResourceCard<T extends ResourceItem>({
   renderDetails?: (item: T) => ReactNode;
   detailsRef?: Ref<HTMLDivElement>;
   detailsNew?: boolean;
+  headerAction?: ReactNode;
+  renderActions?: (item: T, index: number) => ReactNode;
 }) {
   const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -56,6 +60,7 @@ export function AppwriteResourceCard<T extends ResourceItem>({
           <RefreshCw className={`size-3.5 ${resources.isFetching ? "animate-spin" : ""}`} />
         </Button>
       </div>
+      {headerAction}
       {resources.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Wird geladen…</p>
       ) : resources.isError ? (
@@ -91,6 +96,7 @@ export function AppwriteResourceCard<T extends ResourceItem>({
               <p className="mt-1 truncate text-[11px] text-muted-foreground" title={detail(item)}>
                 {detail(item)}
               </p>
+              {renderActions?.(item, index)}
               {renderDetails && expandedId === item.id && (
                 <div ref={detailsRef} className="mt-3 rounded-lg bg-muted/40 p-3">
                   {renderDetails(item)}
