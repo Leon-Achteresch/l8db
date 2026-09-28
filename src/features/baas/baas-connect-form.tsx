@@ -1,4 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,13 +31,53 @@ const FIELDS: Record<BaasProvider, { key: string; label: string; secret?: boolea
   firebase: [],
 };
 
-const HINTS: Record<BaasProvider, string> = {
-  supabase:
-    "Persönlicher Zugangstoken aus supabase.com/dashboard/account/tokens. Für die Datenbankvorschau wird Database: Read benötigt.",
-  appwrite: "API-Schlüssel mit Leserechten für die gewünschten Dienste.",
-  pocketbase: "Superuser-Token der PocketBase-Instanz.",
-  convex: "Team-ID und Team Access Token aus den Convex-Team-Einstellungen.",
-  firebase: "Wähle eine Service-Account-JSON-Datei aus dem Firebase-Projekt.",
+const GUIDES: Record<BaasProvider, { steps: string[]; link: { label: string; url: string } }> = {
+  supabase: {
+    steps: [
+      "Im Supabase-Dashboard oben rechts auf dein Konto → Account preferences → Access Tokens.",
+      "„Generate new token“ wählen, einen Namen vergeben und die Leserechte für Projekte, Storage, Auth und Edge Functions setzen. Für die Datenbankvorschau zusätzlich Database: Read.",
+      "Den Token sofort kopieren, er wird nur einmal angezeigt.",
+    ],
+    link: { label: "Access Tokens öffnen", url: "https://supabase.com/dashboard/account/tokens" },
+  },
+  appwrite: {
+    steps: [
+      "In der Appwrite-Konsole das Projekt öffnen.",
+      "Unter Settings stehen API-Endpunkt und Projekt-ID, beide kopieren.",
+      "Unter Overview → Integrations → API keys einen Schlüssel anlegen und die Scopes für Datenbanken, Storage, Users und Functions vergeben.",
+    ],
+    link: { label: "Appwrite-Konsole öffnen", url: "https://cloud.appwrite.io/console" },
+  },
+  pocketbase: {
+    steps: [
+      "Die URL ist die Adresse deiner Instanz ohne /_/, z. B. https://pb.example.com.",
+      "Im Admin-Dashboard (/_/) unter Collections → _superusers deinen Superuser öffnen.",
+      "Über das Menü des Datensatzes „Impersonate“ wählen, eine Gültigkeitsdauer setzen und den erzeugten Token kopieren.",
+    ],
+    link: {
+      label: "PocketBase-Doku zur Authentifizierung",
+      url: "https://pocketbase.io/docs/authentication/",
+    },
+  },
+  convex: {
+    steps: [
+      "Im Convex-Dashboard oben links das Team wählen und die Team Settings öffnen.",
+      "Die Team-ID steht in den allgemeinen Team-Einstellungen.",
+      "Unter Access Tokens einen neuen Token erstellen und kopieren.",
+    ],
+    link: { label: "Convex-Dashboard öffnen", url: "https://dashboard.convex.dev" },
+  },
+  firebase: {
+    steps: [
+      "In der Firebase-Konsole das Projekt öffnen und auf das Zahnrad → Projekteinstellungen klicken.",
+      "Den Tab Dienstkonten öffnen und „Neuen privaten Schlüssel generieren“ wählen.",
+      "Die heruntergeladene JSON-Datei hier auswählen. Das Dienstkonto braucht Leserechte für die gewünschten Dienste.",
+    ],
+    link: {
+      label: "Firebase-Konsole öffnen",
+      url: "https://console.firebase.google.com/project/_/settings/serviceaccounts/adminsdk",
+    },
+  },
 };
 
 export function BaasConnectForm({
@@ -85,7 +127,21 @@ export function BaasConnectForm({
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-2">
-        <p className="text-sm text-muted-foreground">{HINTS[provider]}</p>
+        <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+          <p className="mb-2 font-medium">So bekommst du die Zugangsdaten</p>
+          <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
+            {GUIDES[provider].steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            onClick={() => void openUrl(GUIDES[provider].link.url)}
+            className="mt-2 inline-flex items-center gap-1 text-primary underline"
+          >
+            {GUIDES[provider].link.label} <ExternalLink className="size-3" />
+          </button>
+        </div>
         {fields.map((field) => (
           <div key={field.key} className="flex flex-col gap-1.5">
             <label htmlFor={`baas-${field.key}`} className="text-xs font-medium">
