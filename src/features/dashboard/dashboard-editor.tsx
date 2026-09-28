@@ -9,7 +9,7 @@ import {
   RefreshCwIcon,
   TimerIcon,
 } from "lucide-react";
-import { lazy, Suspense, startTransition, useEffect, useState } from "react";
+import { lazy, Suspense, startTransition, useCallback, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,7 +78,7 @@ export function DashboardEditor({
 
   const reloadFile = useDashboardFileReload(dashboard.id, path);
 
-  const startNewChart = () => {
+  const startNewChart = useCallback(() => {
     const index = dashboard.widgets.length;
     const dataset = emptyDataset(`Chart ${index + 1}`);
     const previous = dashboard.datasets.find((d) => d.mode === "simple" && d.simple.table);
@@ -109,20 +109,23 @@ export function DashboardEditor({
       setDialogMounted(true);
       setDialogOpen(true);
     });
-  };
+  }, [dashboard.datasets, dashboard.widgets]);
 
-  const startEdit = (widgetId: string) => {
-    const widget = dashboard.widgets.find((w) => w.id === widgetId);
-    if (!widget) return;
-    const dataset =
-      dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
-    startTransition(() => {
-      setDraft({ widget, dataset });
-      setDraftIsNew(false);
-      setDialogMounted(true);
-      setDialogOpen(true);
-    });
-  };
+  const startEdit = useCallback(
+    (widgetId: string) => {
+      const widget = dashboard.widgets.find((w) => w.id === widgetId);
+      if (!widget) return;
+      const dataset =
+        dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
+      startTransition(() => {
+        setDraft({ widget, dataset });
+        setDraftIsNew(false);
+        setDialogMounted(true);
+        setDialogOpen(true);
+      });
+    },
+    [dashboard.datasets, dashboard.widgets],
+  );
 
   const saveDraft = (next: ChartDraft) => {
     if (draftIsNew) {
@@ -313,9 +316,7 @@ export function DashboardEditor({
       <div className="workspace-canvas relative min-h-0 flex-1 overflow-y-auto">
         <DashboardCanvas
           dashboardId={dashboard.id}
-          onEdit={(id) => {
-            if (editing) startEdit(id);
-          }}
+          onEdit={editing ? startEdit : undefined}
           onAdd={editing ? startNewChart : undefined}
         />
       </div>
