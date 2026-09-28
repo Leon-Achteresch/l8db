@@ -59,7 +59,12 @@ async function wheel(page: Page, x: number, y: number, steps: number, distance: 
   }
 }
 
-async function open(path: string, ready: string, grid?: { rows: number; columns: number }) {
+async function open(
+  path: string,
+  ready: string,
+  grid?: { rows: number; columns: number },
+  overviewSchemas = 8,
+) {
   if (!(await Bun.file("dist/index.html").exists()))
     throw new Error("dist fehlt – vor dem Perf-Test 'bun run build' ausführen.");
   const server = Bun.serve({
@@ -79,7 +84,7 @@ async function open(path: string, ready: string, grid?: { rows: number; columns:
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await seedApp(page, TABLES, grid);
+  await seedApp(page, TABLES, grid, null, overviewSchemas);
   if (grid)
     await page.addInitScript((rowLimit) => {
       const saved = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
@@ -100,6 +105,33 @@ async function open(path: string, ready: string, grid?: { rows: number; columns:
     },
   };
 }
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Übersicht mit 1000 Schemas bleibt begrenzt und erlaubt die Auswahl des letzten Schemas",
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]', undefined, 1000);
+    try {
+      const schemas = app.page.locator('section[aria-label="Schemas"]');
+      await schemas.locator("button").first().waitFor();
+      expect(await schemas.locator("button").count()).toBeLessThan(30);
+      await schemas.locator("button").first().focus();
+      await app.page.keyboard.press("End");
+      await app.page.waitForFunction(() =>
+        document.activeElement?.textContent?.includes("schema_999"),
+      );
+      await schemas.getByRole("button", { name: /schema_999/ }).click();
+      await app.page.waitForFunction(() =>
+        document
+          .querySelector('section[aria-label="Schemas"] button[aria-current="true"]')
+          ?.textContent?.includes("schema_999"),
+      );
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
   `Übersicht und Sidebar bleiben bei ${TABLES} Tabellen flüssig`,
