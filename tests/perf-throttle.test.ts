@@ -464,6 +464,71 @@ test.skipIf(!ENABLED)(
   30000,
 );
 
+test.skipIf(!ENABLED)(
+  "SQL- und Tabellenmenüs reagieren beim ersten Klick",
+  async () => {
+    await navigate("/query");
+    await page.locator(".monaco-editor .view-lines").first().click();
+    await page.keyboard.type("select 1", { delay: 5 });
+    await page.waitForTimeout(800);
+    await page.evaluate(() => {
+      const clicks: number[] = [];
+      Object.assign(window, { __moreMenuClicks: clicks });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === "click") clicks.push(entry.duration);
+        }
+      }).observe({ type: "event", durationThreshold: 16 });
+    });
+    const measureClick = async (name: string, action: () => Promise<void>) => {
+      await page.evaluate(() => {
+        (window as unknown as { __moreMenuClicks: number[] }).__moreMenuClicks.length = 0;
+      });
+      const frames = await sample(async () => {
+        await action();
+        await page.waitForTimeout(500);
+      });
+      report(name, frames);
+      const clicks = await page.evaluate(
+        () => (window as unknown as { __moreMenuClicks: number[] }).__moreMenuClicks,
+      );
+      console.log(`perf-throttle ${name} Klick: ${clicks.join(", ")} ms`);
+      return Math.max(0, ...clicks);
+    };
+
+    const runClick = await measureClick("SQL-Ausführungsarten", () =>
+      page.getByRole("button", { name: "Weitere Ausführungsarten" }).click(),
+    );
+    expect(runClick).toBeLessThanOrEqual(Math.max(72, RATE * 18));
+    await page.getByRole("menuitem", { name: /Statement unter Cursor/ }).waitFor();
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("menuitem", { name: /Statement unter Cursor/ })
+      .waitFor({ state: "hidden" });
+
+    const settingsClick = await measureClick("SQL-Anpassen", () =>
+      page.getByRole("button", { name: "Anpassen" }).click(),
+    );
+    expect(settingsClick).toBeLessThanOrEqual(Math.max(104, RATE * 26));
+    const settingsDialog = page.getByRole("dialog", { name: "Query Editor anpassen" });
+    await settingsDialog.getByRole("switch", { name: "Schema-Navigator" }).waitFor();
+    await page.keyboard.press("Escape");
+    await settingsDialog.waitFor({ state: "hidden" });
+
+    await navigate("/tables/public/table_0000");
+    await page.waitForSelector('tbody tr[data-index="0"]');
+    await page.waitForTimeout(700);
+    const exportClick = await measureClick("Tabellen-Export", () =>
+      page.locator('[data-tour="table-toolbar"]').getByRole("button", { name: "Export" }).click(),
+    );
+    expect(exportClick).toBeLessThanOrEqual(Math.max(72, RATE * 18));
+    await page.getByRole("menuitem", { name: "Als CSV exportieren…" }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Als CSV exportieren…" }).waitFor({ state: "hidden" });
+  },
+  30000,
+);
+
 test.skipIf(!ENABLED)("Speicher und Fehler", async () => {
   const heapMb = await page.evaluate(
     () =>

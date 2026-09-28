@@ -56,7 +56,7 @@ export function RunControls({
           <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
           {runLabel}
         </Button>
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               size="sm"
