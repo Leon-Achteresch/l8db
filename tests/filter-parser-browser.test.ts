@@ -24,7 +24,7 @@ for (const engine of [chromium, webkit]) {
         await page.goto(`${url}/tests/fixtures/filter-list.html`);
         await page.getByRole("button", { name: "Filter", exact: true }).click();
         const apply = page.getByRole("button", { name: "Filter anwenden", exact: true });
-        const editor = page.locator(".monaco-editor .view-lines");
+        const editor = page.locator(".cm-editor .cm-content");
         const replaceEditorText = async (text: string) => {
           await editor.click();
           await page.keyboard.press("ControlOrMeta+a");

@@ -111,7 +111,7 @@ test.skipIf(!process.env.L8DB_FILTER_E2E)(
       await page.goto(`${BASE}/tables/public/kunde`);
       await page.getByText("k1", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Filter", exact: true }).click();
-      const editor = page.locator(".monaco-editor .view-lines");
+      const editor = page.locator(".cm-editor .cm-content");
       const apply = page.getByRole("button", { name: "Filter anwenden", exact: true });
       const run = async (expression: string) => {
         await page.getByRole("tab", { name: "SQL", exact: true }).click();
