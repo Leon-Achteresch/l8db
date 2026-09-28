@@ -553,6 +553,84 @@ pub async fn appwrite_upload_file(
     Ok(Some(file_id))
 }
 
+#[tauri::command]
+pub async fn appwrite_rename_file(
+    id: String,
+    bucket_id: String,
+    file_id: String,
+    name: String,
+) -> Result<(), String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let file_id = validate_id(&file_id)?;
+    let name = name.trim();
+    if name.is_empty()
+        || name.len() > 255
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(char::is_control)
+    {
+        return Err("Ungültiger Appwrite-Dateiname.".into());
+    }
+    let (profile, api_key) = profile_and_key(&id).await?;
+    let response = client()
+        .put(format!(
+            "{}/storage/buckets/{bucket_id}/files/{file_id}",
+            profile.endpoint
+        ))
+        .header("X-Appwrite-Project", &profile.project_id)
+        .header("X-Appwrite-Key", api_key)
+        .header("X-Appwrite-Response-Format", "2.3.0")
+        .json(&serde_json::json!({ "name": name }))
+        .send()
+        .await
+        .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Datei konnte nicht umbenannt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let remote: AppwriteFile = response
+        .json()
+        .await
+        .map_err(|_| "Appwrite hat unerwartete Dateidaten geliefert.".to_string())?;
+    if remote.id != file_id || remote.name != name {
+        return Err("Appwrite hat die Dateiumbenennung nicht bestätigt.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn appwrite_delete_file(
+    id: String,
+    bucket_id: String,
+    file_id: String,
+) -> Result<(), String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let file_id = validate_id(&file_id)?;
+    let (profile, api_key) = profile_and_key(&id).await?;
+    let response = client()
+        .delete(format!(
+            "{}/storage/buckets/{bucket_id}/files/{file_id}",
+            profile.endpoint
+        ))
+        .header("X-Appwrite-Project", &profile.project_id)
+        .header("X-Appwrite-Key", api_key)
+        .header("X-Appwrite-Response-Format", "2.3.0")
+        .send()
+        .await
+        .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Datei konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
 async fn file_response(
     id: &str,
     bucket_id: &str,

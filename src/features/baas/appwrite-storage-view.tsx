@@ -1,13 +1,35 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, File, RefreshCw, Upload } from "lucide-react";
+import {
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  File,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   appwriteBuckets,
+  appwriteDeleteFile,
   appwriteDownloadFile,
   appwriteFiles,
   appwritePreviewFile,
+  appwriteRenameFile,
   appwriteUploadFile,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -42,7 +64,14 @@ export function AppwriteStorageView({ id }: { id: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<typeof preview>(null);
+  const [mutating, setMutating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-upload");
+  const manageFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-manage");
   const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.storage-details");
   const buckets = useQuery({
     queryKey: ["appwrite", id, "buckets", bucketOffset],
@@ -77,6 +106,54 @@ export function AppwriteStorageView({ id }: { id: string }) {
       setUploadError(String(reason));
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function renameFile() {
+    if (!preview || mutating) return;
+    const name = newName.trim();
+    if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      setActionError("Bitte einen gültigen Dateinamen ohne Schrägstrich eingeben.");
+      return;
+    }
+    if (name === preview.name) {
+      setRenaming(false);
+      return;
+    }
+    setMutating(true);
+    setActionError(null);
+    try {
+      await appwriteRenameFile(id, preview.bucketId, preview.fileId, name);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${preview.name} wurde in ${name} umbenannt.`);
+      await queryClient.invalidateQueries({
+        queryKey: ["appwrite", id, "files", preview.bucketId],
+      });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  async function deleteFile() {
+    if (!deleteTarget || mutating) return;
+    const target = deleteTarget;
+    setMutating(true);
+    setActionError(null);
+    try {
+      await appwriteDeleteFile(id, target.bucketId, target.fileId);
+      setDeleteTarget(null);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${target.name} wurde gelöscht.`);
+      await queryClient.invalidateQueries({ queryKey: ["appwrite", id, "files", target.bucketId] });
+      await queryClient.invalidateQueries({ queryKey: ["appwrite", id, "buckets"] });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
     }
   }
 
@@ -122,6 +199,16 @@ export function AppwriteStorageView({ id }: { id: string }) {
       {uploaded && (
         <p role="status" className="mt-3 text-xs text-muted-foreground">
           {uploaded}
+        </p>
+      )}
+      {actionError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {actionError}
+        </p>
+      )}
+      {actionSuccess && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {actionSuccess}
         </p>
       )}
       {buckets.isPending ? (
@@ -264,8 +351,12 @@ export function AppwriteStorageView({ id }: { id: string }) {
                       className="min-w-0 flex-1 text-left hover:text-primary"
                       title={file.key || `${file.folder ?? ""}${file.name}`}
                       onClick={() => {
-                        if (selected)
+                        if (selected) {
                           setPreview({ bucketId: selected.id, fileId: file.id, name: file.name });
+                          setNewName(file.name);
+                          setRenaming(false);
+                          setActionError(null);
+                        }
                       }}
                     >
                       <span className="block truncate">
@@ -319,20 +410,85 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 </div>
               )}
             {preview && preview.bucketId === selected?.id && (
-              <BaasFilePreview
-                key={`${preview.bucketId}:${preview.fileId}`}
-                name={preview.name}
-                queryKey={["appwrite", id, "preview", preview.bucketId, preview.fileId]}
-                load={() => appwritePreviewFile(id, preview.bucketId, preview.fileId)}
-                download={() =>
-                  appwriteDownloadFile(id, preview.bucketId, preview.fileId, preview.name)
-                }
-                onClose={() => setPreview(null)}
-              />
+              <>
+                <div ref={manageFeature.ref} className="mt-4 flex flex-wrap items-center gap-2">
+                  {renaming ? (
+                    <>
+                      <Input
+                        aria-label="Neuer Dateiname"
+                        value={newName}
+                        onChange={(event) => setNewName(event.target.value)}
+                        className="h-8 max-w-xs text-xs"
+                        disabled={mutating}
+                      />
+                      <Button size="sm" onClick={() => void renameFile()} disabled={mutating}>
+                        Speichern
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setRenaming(false)}
+                        disabled={mutating}
+                      >
+                        Abbrechen
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => setRenaming(true)}>
+                        <Pencil className="size-3.5" /> Umbenennen
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setDeleteTarget(preview)}>
+                        <Trash2 className="size-3.5" /> Löschen
+                      </Button>
+                    </>
+                  )}
+                  {manageFeature.isNew && <NewBadge />}
+                </div>
+                <BaasFilePreview
+                  key={`${preview.bucketId}:${preview.fileId}`}
+                  name={preview.name}
+                  queryKey={["appwrite", id, "preview", preview.bucketId, preview.fileId]}
+                  load={() => appwritePreviewFile(id, preview.bucketId, preview.fileId)}
+                  download={() =>
+                    appwriteDownloadFile(id, preview.bucketId, preview.fileId, preview.name)
+                  }
+                  onClose={() => setPreview(null)}
+                />
+              </>
             )}
           </div>
         </>
       )}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !mutating) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Datei endgültig löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.name} wird aus dem Bucket gelöscht. Dieser Vorgang kann nicht
+              rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={mutating}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={mutating}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteFile();
+              }}
+            >
+              {mutating ? "Löscht…" : "Datei löschen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

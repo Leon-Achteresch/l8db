@@ -140,6 +140,14 @@ export const supabaseObjects = (
 ) => invoke<SupabaseObject[]>("supabase_objects", { reference, bucket, prefix, offset });
 export const supabaseUploadObject = (reference: string, bucket: string, prefix: string) =>
   invoke<string | null>("supabase_upload_object", { reference, bucket, prefix });
+export const supabaseDeleteObject = (reference: string, bucket: string, objectKey: string) =>
+  invoke<void>("supabase_delete_object", { reference, bucket, objectKey });
+export const supabaseMoveObject = (
+  reference: string,
+  bucket: string,
+  sourceKey: string,
+  destinationKey: string,
+) => invoke<void>("supabase_move_object", { reference, bucket, sourceKey, destinationKey });
 export const supabasePreviewObject = (reference: string, bucket: string, objectKey: string) =>
   invoke<BaasFilePreview>("supabase_preview_object", { reference, bucket, objectKey });
 export const supabaseDownloadObject = (reference: string, bucket: string, objectKey: string) =>

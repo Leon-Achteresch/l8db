@@ -1,14 +1,37 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, File, Folder, RefreshCw, Upload } from "lucide-react";
+import {
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  File,
+  Folder,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   type SupabaseObject,
   supabaseBucketDetails,
   supabaseBuckets,
+  supabaseDeleteObject,
   supabaseDownloadObject,
   supabaseHasProjectKey,
+  supabaseMoveObject,
   supabaseObjects,
   supabasePreviewObject,
   supabaseUploadObject,
@@ -42,7 +65,14 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ bucket: string; key: string } | null>(null);
+  const [mutating, setMutating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-upload");
+  const manageFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-manage");
   const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-details");
   const fileDetailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.file-details");
   const buckets = useQuery({
@@ -102,6 +132,56 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     }
   }
 
+  async function renameObject() {
+    if (!preview || mutating) return;
+    const name = newName.trim();
+    if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      setActionError("Bitte einen gültigen Dateinamen ohne Schrägstrich eingeben.");
+      return;
+    }
+    const destinationKey = `${prefix}${name}`;
+    if (destinationKey === preview.key) {
+      setRenaming(false);
+      return;
+    }
+    setMutating(true);
+    setActionError(null);
+    try {
+      await supabaseMoveObject(reference, preview.bucket, preview.key, destinationKey);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${preview.object.name} wurde in ${name} umbenannt.`);
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "objects", preview.bucket],
+      });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  async function deleteObject() {
+    if (!deleteTarget || mutating) return;
+    const target = deleteTarget;
+    setMutating(true);
+    setActionError(null);
+    try {
+      await supabaseDeleteObject(reference, target.bucket, target.key);
+      setDeleteTarget(null);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${target.key.split("/").at(-1)} wurde gelöscht.`);
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "objects", target.bucket],
+      });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
+    }
+  }
+
   function up() {
     setPreview(null);
     setPrefix((current) => {
@@ -153,6 +233,16 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
       {uploaded && (
         <p role="status" className="mt-3 text-xs text-muted-foreground">
           {uploaded}
+        </p>
+      )}
+      {actionError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {actionError}
+        </p>
+      )}
+      {actionSuccess && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {actionSuccess}
         </p>
       )}
       {buckets.isPending ? (
@@ -307,13 +397,16 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                               type="button"
                               className="min-w-0 flex-1 truncate text-left hover:text-primary"
                               title={entry.name}
-                              onClick={() =>
+                              onClick={() => {
                                 setPreview({
                                   bucket: selected.id,
                                   key: `${prefix}${entry.name}`,
                                   object: entry,
-                                })
-                              }
+                                });
+                                setNewName(entry.name);
+                                setRenaming(false);
+                                setActionError(null);
+                              }}
                             >
                               {entry.name}
                             </button>
@@ -404,6 +497,46 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
                         </div>
                       </dl>
                     </div>
+                    <div ref={manageFeature.ref} className="mt-3 flex flex-wrap items-center gap-2">
+                      {renaming ? (
+                        <>
+                          <Input
+                            aria-label="Neuer Dateiname"
+                            value={newName}
+                            onChange={(event) => setNewName(event.target.value)}
+                            className="h-8 max-w-xs text-xs"
+                            disabled={mutating}
+                          />
+                          <Button size="sm" onClick={() => void renameObject()} disabled={mutating}>
+                            Speichern
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setRenaming(false)}
+                            disabled={mutating}
+                          >
+                            Abbrechen
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setRenaming(true)}>
+                            <Pencil className="size-3.5" /> Umbenennen
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setDeleteTarget({ bucket: preview.bucket, key: preview.key })
+                            }
+                          >
+                            <Trash2 className="size-3.5" /> Löschen
+                          </Button>
+                        </>
+                      )}
+                      {manageFeature.isNew && <NewBadge />}
+                    </div>
                     <BaasFilePreview
                       key={`${preview.bucket}:${preview.key}`}
                       name={preview.object.name}
@@ -421,6 +554,35 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
           </div>
         </>
       )}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !mutating) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Datei endgültig löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.key} wird aus dem Bucket gelöscht. Dieser Vorgang kann nicht rückgängig
+              gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={mutating}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={mutating}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteObject();
+              }}
+            >
+              {mutating ? "Löscht…" : "Datei löschen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
