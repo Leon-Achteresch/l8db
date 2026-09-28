@@ -4,6 +4,7 @@ export {
   recentDiagnosticErrors,
   recordDiagnosticError,
 } from "./errors";
+export { readRecentLogLines } from "./logs";
 export type { DiagnosticsInput } from "./package";
 export { buildDiagnosticsPackage, collectSystemInfo, serializeDiagnostics } from "./package";
 export {

@@ -117,6 +117,7 @@ export function AppHeaderSearch() {
 
   useEffect(() => onHotkeyAction("objects.search", () => setObjectSearchOpen(true)), []);
   useEffect(() => onHotkeyAction("app.focusSearch", () => setOpen(true)), []);
+  useEffect(() => onHotkeyAction("shortcuts.open", () => setShortcutsOpen(true)), []);
 
   const onSelectConnection = useCallback(
     async (id: string) => {
