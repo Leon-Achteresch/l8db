@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "baas.supabase": "0.7.0",
   "baas.supabase.project-key-import": "0.7.0",
