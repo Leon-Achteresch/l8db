@@ -191,6 +191,16 @@ test.skipIf(!ENABLED)(
     await navigate("/");
     await page.waitForTimeout(2500);
     expectSmooth("Sidebar scrollen", await sample(() => wheel(150, 500, 40, 200)));
+    const sidebarScroller = page.locator("[data-slot=sidebar-content]").first();
+    await sidebarScroller.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await page.locator('a[data-name="table_2999"]').waitFor();
+    await sidebarScroller.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await page.locator('a[data-name="table_0000"]').first().waitFor();
+    await page.waitForTimeout(300);
     const search = page.locator("[data-tour=sidebar-search] input").first();
     await search.click();
     expectStep(
