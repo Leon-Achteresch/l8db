@@ -1,0 +1,596 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  File,
+  Folder,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  type SupabaseObject,
+  supabaseBucketDetails,
+  supabaseBuckets,
+  supabaseDeleteObject,
+  supabaseDownloadObject,
+  supabaseHasProjectKey,
+  supabaseMoveObject,
+  supabaseObjects,
+  supabasePreviewObject,
+  supabaseUploadObject,
+} from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasFilePreview } from "./baas-file-preview";
+import { SupabaseBucketManageView } from "./supabase-bucket-manage-view";
+
+function formatBytes(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  if (value < 1024) return `${value} B`;
+  const unit = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 3);
+  return `${(value / 1024 ** unit).toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${["B", "KB", "MB", "GB"][unit]}`;
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "Nicht angegeben";
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString("de-DE") : value;
+}
+
+export function SupabaseStorageView({ reference }: { reference: string }) {
+  const queryClient = useQueryClient();
+  const [bucket, setBucket] = useState<string | null>(null);
+  const [prefix, setPrefix] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [preview, setPreview] = useState<{
+    bucket: string;
+    key: string;
+    object: SupabaseObject;
+  } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ bucket: string; key: string } | null>(null);
+  const [mutating, setMutating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const uploadFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-upload");
+  const manageFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-manage");
+  const detailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.storage-details");
+  const fileDetailsFeature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase.file-details");
+  const buckets = useQuery({
+    queryKey: ["supabase", reference, "buckets"],
+    queryFn: () => supabaseBuckets(reference),
+  });
+  const hasKey = useQuery({
+    queryKey: ["supabase", reference, "has-project-key"],
+    queryFn: () => supabaseHasProjectKey(reference),
+  });
+  const selected = buckets.data?.find((entry) => entry.id === bucket) ?? buckets.data?.[0];
+  const details = useQuery({
+    queryKey: ["supabase", reference, "bucket-details", selected?.id],
+    queryFn: () => {
+      if (!selected) throw new Error("Kein Bucket gewählt.");
+      return supabaseBucketDetails(reference, selected.id);
+    },
+    enabled: Boolean(selected && hasKey.data),
+  });
+  const objects = useQuery({
+    queryKey: ["supabase", reference, "objects", selected?.id, prefix, offset],
+    queryFn: () => {
+      if (!selected) throw new Error("Kein Bucket gewählt.");
+      return supabaseObjects(reference, selected.id, prefix, offset);
+    },
+    enabled: Boolean(selected && hasKey.data),
+  });
+
+  function openBucket(id: string | null) {
+    setBucket(id);
+    setPrefix("");
+    setOffset(0);
+    setPreview(null);
+    setUploadError(null);
+    setUploaded(null);
+  }
+
+  async function upload() {
+    if (!selected) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploaded(null);
+    try {
+      const key = await supabaseUploadObject(reference, selected.id, prefix);
+      if (key) {
+        setOffset(0);
+        setPreview(null);
+        setUploaded(`${key.split("/").at(-1)} wurde hochgeladen.`);
+        await queryClient.invalidateQueries({
+          queryKey: ["supabase", reference, "objects", selected.id],
+        });
+      }
+    } catch (reason) {
+      setUploadError(String(reason));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function renameObject() {
+    if (!preview || mutating) return;
+    const name = newName.trim();
+    if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      setActionError("Bitte einen gültigen Dateinamen ohne Schrägstrich eingeben.");
+      return;
+    }
+    const destinationKey = `${prefix}${name}`;
+    if (destinationKey === preview.key) {
+      setRenaming(false);
+      return;
+    }
+    setMutating(true);
+    setActionError(null);
+    try {
+      await supabaseMoveObject(reference, preview.bucket, preview.key, destinationKey);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${preview.object.name} wurde in ${name} umbenannt.`);
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "objects", preview.bucket],
+      });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  async function deleteObject() {
+    if (!deleteTarget || mutating) return;
+    const target = deleteTarget;
+    setMutating(true);
+    setActionError(null);
+    try {
+      await supabaseDeleteObject(reference, target.bucket, target.key);
+      setDeleteTarget(null);
+      setPreview(null);
+      setRenaming(false);
+      setActionSuccess(`${target.key.split("/").at(-1)} wurde gelöscht.`);
+      await queryClient.invalidateQueries({
+        queryKey: ["supabase", reference, "objects", target.bucket],
+      });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setMutating(false);
+    }
+  }
+
+  function up() {
+    setPreview(null);
+    setPrefix((current) => {
+      const parent = current.split("/").filter(Boolean).slice(0, -1).join("/");
+      return parent ? `${parent}/` : "";
+    });
+    setOffset(0);
+  }
+
+  return (
+    <section className="min-w-0 rounded-2xl border bg-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Archive className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Storage</h3>
+          {buckets.data && (
+            <span className="text-xs text-muted-foreground">{buckets.data.length} Buckets</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div ref={uploadFeature.ref} className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void upload()}
+              disabled={!selected || !hasKey.data || uploading}
+              title={!hasKey.data ? "Projekt API Key für Upload benötigt" : undefined}
+            >
+              <Upload className="size-3.5" /> {uploading ? "Lädt hoch…" : "Datei hochladen"}
+            </Button>
+            {uploadFeature.isNew && <NewBadge />}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Storage aktualisieren"
+            onClick={() => void buckets.refetch()}
+            disabled={buckets.isFetching}
+          >
+            <RefreshCw className={`size-3.5 ${buckets.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
+      {uploadError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {uploadError}
+        </p>
+      )}
+      {uploaded && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {uploaded}
+        </p>
+      )}
+      {actionError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {actionError}
+        </p>
+      )}
+      {actionSuccess && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {actionSuccess}
+        </p>
+      )}
+      {buckets.isPending ? (
+        <p className="mt-5 text-xs text-muted-foreground">Buckets werden geladen…</p>
+      ) : buckets.isError ? (
+        <p role="alert" className="mt-5 text-xs text-destructive">
+          {String(buckets.error)}
+        </p>
+      ) : (
+        <>
+          {buckets.data.length === 0 && (
+            <p className="mt-5 text-xs text-muted-foreground">Keine Buckets vorhanden.</p>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {buckets.data.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => openBucket(entry.id)}
+                aria-pressed={selected?.id === entry.id}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === entry.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
+              >
+                {entry.name}{" "}
+                <span className="ml-1 text-muted-foreground">
+                  {entry.public ? "öffentlich" : "privat"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <SupabaseBucketManageView
+            reference={reference}
+            selected={selected}
+            enabled={hasKey.data === true}
+            onCreated={openBucket}
+            onDeleted={() => openBucket(null)}
+          />
+          {selected && hasKey.data && (
+            <div ref={detailsFeature.ref} className="mt-4 rounded-xl border bg-background/50 p-3">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-medium">Bucket-Details</h4>
+                {detailsFeature.isNew && <NewBadge />}
+              </div>
+              {details.isPending ? (
+                <p className="mt-3 text-xs text-muted-foreground">Details werden geladen…</p>
+              ) : details.isError ? (
+                <p role="alert" className="mt-3 text-xs text-destructive">
+                  {String(details.error)}
+                </p>
+              ) : (
+                <dl className="mt-3 grid gap-x-4 gap-y-3 text-xs sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">Bucket-ID</dt>
+                    <dd className="mt-0.5 break-all font-mono">{details.data.id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Zugriff</dt>
+                    <dd className="mt-0.5">{details.data.public ? "Öffentlich" : "Privat"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Typ</dt>
+                    <dd className="mt-0.5">{details.data.kind ?? "Nicht angegeben"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Maximale Dateigröße</dt>
+                    <dd className="mt-0.5">
+                      {details.data.file_size_limit == null
+                        ? "Kein Bucket-Limit"
+                        : formatBytes(details.data.file_size_limit)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Erlaubte MIME-Typen</dt>
+                    <dd className="mt-0.5 break-words">
+                      {details.data.allowed_mime_types?.length
+                        ? details.data.allowed_mime_types.join(", ")
+                        : "Alle"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Erstellt</dt>
+                    <dd className="mt-0.5">{formatDate(details.data.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Aktualisiert</dt>
+                    <dd className="mt-0.5">{formatDate(details.data.updated_at)}</dd>
+                  </div>
+                </dl>
+              )}
+            </div>
+          )}
+          <div className="mt-5 border-t pt-4">
+            {hasKey.isPending ? (
+              <p className="text-xs text-muted-foreground">API-Zugriff wird geprüft…</p>
+            ) : hasKey.isError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {String(hasKey.error)}
+              </p>
+            ) : !hasKey.data ? (
+              <p className="text-xs text-muted-foreground">
+                Hinterlege den Projekt API Key oben, um Dateien zu sehen.
+              </p>
+            ) : !selected ? (
+              <p className="text-xs text-muted-foreground">Keine Bucket-Dateien zum Anzeigen.</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {prefix && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Übergeordneten Ordner öffnen"
+                        onClick={up}
+                      >
+                        <ChevronLeft className="size-4" />
+                      </Button>
+                    )}
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      /{selected.id}/{prefix}
+                    </p>
+                  </div>
+                </div>
+                {objects.isPending ? (
+                  <p className="mt-4 text-xs text-muted-foreground">Dateien werden geladen…</p>
+                ) : objects.isError ? (
+                  <p role="alert" className="mt-4 text-xs text-destructive">
+                    {String(objects.error)}
+                  </p>
+                ) : objects.data.length === 0 ? (
+                  <p className="mt-4 text-xs text-muted-foreground">Dieser Ordner ist leer.</p>
+                ) : (
+                  <div className="mt-3 divide-y">
+                    {objects.data.map((entry) => {
+                      const folder = entry.id === null;
+                      return (
+                        <div
+                          key={`${entry.id ?? "folder"}:${entry.name}`}
+                          className="flex items-center gap-2 py-2 text-xs"
+                        >
+                          {folder ? (
+                            <Folder className="size-3.5 shrink-0 text-primary" />
+                          ) : (
+                            <File className="size-3.5 shrink-0 text-muted-foreground" />
+                          )}
+                          {folder ? (
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 truncate text-left hover:text-primary"
+                              onClick={() => {
+                                setPrefix(`${prefix}${entry.name}/`);
+                                setOffset(0);
+                                setPreview(null);
+                              }}
+                            >
+                              {entry.name}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 truncate text-left hover:text-primary"
+                              title={entry.name}
+                              onClick={() => {
+                                setPreview({
+                                  bucket: selected.id,
+                                  key: `${prefix}${entry.name}`,
+                                  object: entry,
+                                });
+                                setNewName(entry.name);
+                                setRenaming(false);
+                                setActionError(null);
+                              }}
+                            >
+                              {entry.name}
+                            </button>
+                          )}
+                          <span className="shrink-0 text-muted-foreground">
+                            {formatBytes(entry.metadata?.size)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {(offset > 0 || (objects.data?.length ?? 0) === 100) && (
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={offset === 0}
+                      onClick={() => {
+                        setOffset((value) => Math.max(0, value - 100));
+                        setPreview(null);
+                      }}
+                    >
+                      Zurück
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {offset + 1}–{offset + (objects.data?.length ?? 0)}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={(objects.data?.length ?? 0) < 100}
+                      onClick={() => {
+                        setOffset((value) => value + 100);
+                        setPreview(null);
+                      }}
+                    >
+                      Weiter <ChevronRight className="size-3" />
+                    </Button>
+                  </div>
+                )}
+                {preview && preview.bucket === selected.id && (
+                  <>
+                    <div
+                      ref={fileDetailsFeature.ref}
+                      className="mt-4 rounded-xl border bg-background/50 p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-medium">Datei-Details</h4>
+                        {fileDetailsFeature.isNew && <NewBadge />}
+                      </div>
+                      <dl className="mt-3 grid gap-x-4 gap-y-3 text-xs sm:grid-cols-2">
+                        <div>
+                          <dt className="text-muted-foreground">Pfad</dt>
+                          <dd className="mt-0.5 break-all font-mono">
+                            /{preview.bucket}/{preview.key}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Datei-ID</dt>
+                          <dd className="mt-0.5 break-all font-mono">{preview.object.id}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Größe</dt>
+                          <dd className="mt-0.5">
+                            {formatBytes(preview.object.metadata?.size) || "Nicht angegeben"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">MIME-Typ</dt>
+                          <dd className="mt-0.5 break-all">
+                            {typeof preview.object.metadata?.mimetype === "string"
+                              ? preview.object.metadata.mimetype
+                              : "Nicht angegeben"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Erstellt</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.created_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Aktualisiert</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.updated_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Letzter Zugriff</dt>
+                          <dd className="mt-0.5">{formatDate(preview.object.last_accessed_at)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <div ref={manageFeature.ref} className="mt-3 flex flex-wrap items-center gap-2">
+                      {renaming ? (
+                        <>
+                          <Input
+                            aria-label="Neuer Dateiname"
+                            value={newName}
+                            onChange={(event) => setNewName(event.target.value)}
+                            className="h-8 max-w-xs text-xs"
+                            disabled={mutating}
+                          />
+                          <Button size="sm" onClick={() => void renameObject()} disabled={mutating}>
+                            Speichern
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setRenaming(false)}
+                            disabled={mutating}
+                          >
+                            Abbrechen
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setRenaming(true)}>
+                            <Pencil className="size-3.5" /> Umbenennen
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setDeleteTarget({ bucket: preview.bucket, key: preview.key })
+                            }
+                          >
+                            <Trash2 className="size-3.5" /> Löschen
+                          </Button>
+                        </>
+                      )}
+                      {manageFeature.isNew && <NewBadge />}
+                    </div>
+                    <BaasFilePreview
+                      key={`${preview.bucket}:${preview.key}`}
+                      name={preview.object.name}
+                      queryKey={["supabase", reference, "preview", preview.bucket, preview.key]}
+                      load={() => supabasePreviewObject(reference, preview.bucket, preview.key)}
+                      download={() =>
+                        supabaseDownloadObject(reference, preview.bucket, preview.key)
+                      }
+                      onClose={() => setPreview(null)}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !mutating) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Datei endgültig löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.key} wird aus dem Bucket gelöscht. Dieser Vorgang kann nicht rückgängig
+              gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={mutating}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={mutating}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteObject();
+              }}
+            >
+              {mutating ? "Löscht…" : "Datei löschen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}

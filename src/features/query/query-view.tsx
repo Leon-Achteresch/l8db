@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useRef, useState } from "react";
+import { startTransition, useDeferredValue, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
@@ -22,6 +22,7 @@ import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
+import { useAutoAssessment } from "./query-view/use-auto-assessment";
 import { useEditorCursorState } from "./query-view/use-editor-cursor-state";
 import { useEditorStateSync } from "./query-view/use-editor-state-sync";
 import { useExplainPlan } from "./query-view/use-explain-plan";
@@ -46,6 +47,7 @@ interface QueryViewProps {
 
 export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace();
+  const deferredNavigatorVisible = useDeferredValue(workspace.navigatorVisible, false);
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
   useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus);
@@ -114,7 +116,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     connected: connection !== null,
     editorApiRef,
     handleFileSave: file.handleFileSave,
-    toggleHistory: () => setHistoryOpen((open) => !open),
+    toggleHistory: () => startTransition(() => setHistoryOpen((open) => !open)),
     openCsvExport: exportState.openCsvExport,
   });
 
@@ -136,6 +138,16 @@ export function QueryView({ tabId }: QueryViewProps) {
     connection,
     database,
     workspace,
+  });
+
+  useAutoAssessment({
+    sql,
+    selectedSql: cursor.selectedSql,
+    cursorOffset: cursor.cursorOffset,
+    connection,
+    database,
+    workspace,
+    editorApiRef,
   });
 
   const runLabel = runLabelFor(workspace.runTarget, hasSelection);
@@ -196,7 +208,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
                 isRunning={exec.isRunning}
-                onOpenHistory={() => setHistoryOpen(true)}
+                onOpenHistory={() => startTransition(() => setHistoryOpen(true))}
                 onOpenOutput={() => output.setOutputOpen(true)}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
@@ -229,6 +241,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           editorFocus={editorFocus}
           navigator={
             workspace.navigatorVisible &&
+            deferredNavigatorVisible &&
             isSql &&
             connection && (
               <QuerySchemaBrowser

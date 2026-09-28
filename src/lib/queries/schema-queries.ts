@@ -189,7 +189,7 @@ export function useColumnsQuery(tableType: "BASE TABLE" | "VIEW", enabled = true
   });
 }
 
-export function useViewDefinitionQuery(schema: string, view: string) {
+export function useViewDefinitionQuery(schema: string, view: string, enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -202,6 +202,6 @@ export function useViewDefinitionQuery(schema: string, view: string) {
         view,
         database ?? undefined,
       ),
-    enabled: supports(connection, "view_editor") && Boolean(schema) && Boolean(view),
+    enabled: enabled && supports(connection, "view_editor") && Boolean(schema) && Boolean(view),
   });
 }

@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { editorFontStack, editorLineHeightPx } from "@/lib/editor-options";
 import { useSettingsStore } from "@/lib/settings";
-import { formatSqlWith, type SqlDialect, sqlDialectLabel } from "@/lib/sql-format";
+import { type SqlDialect, sqlDialectLabel } from "@/lib/sql-format-options";
+import { formatSqlInWorker } from "@/lib/sql-format-runner";
 import { cn } from "@/lib/utils";
 
 const SAMPLE_SQL =
@@ -9,17 +10,30 @@ const SAMPLE_SQL =
 
 export function SettingsSqlPreview({ dialect }: { dialect: SqlDialect }) {
   const store = useSettingsStore();
+  const [formattedSql, setFormattedSql] = useState(SAMPLE_SQL);
 
-  const formattedSql = useMemo(() => {
-    const result = formatSqlWith(SAMPLE_SQL, {
+  useEffect(() => {
+    let current = true;
+    void formatSqlInWorker(SAMPLE_SQL, {
       dialect,
       tabWidth: store.editorTabSize,
       keywordCase: store.editorKeywordCase,
       linesBetweenQueries: store.editorFormatLinesBetweenQueries,
       denseOperators: store.editorFormatDenseOperators,
       newlineBeforeSemicolon: store.editorFormatNewlineBeforeSemicolon,
-    });
-    return result.ok ? result.sql : `${SAMPLE_SQL}\n-- ${result.reason}`;
+    })
+      .then((result) => {
+        if (current) setFormattedSql(result.ok ? result.sql : `${SAMPLE_SQL}\n-- ${result.reason}`);
+      })
+      .catch((error: unknown) => {
+        if (current)
+          setFormattedSql(
+            `${SAMPLE_SQL}\n-- ${error instanceof Error ? error.message : String(error)}`,
+          );
+      });
+    return () => {
+      current = false;
+    };
   }, [
     dialect,
     store.editorTabSize,

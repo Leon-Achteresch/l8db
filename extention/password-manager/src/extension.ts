@@ -738,6 +738,10 @@ async function keeperPrompt(api: L8dbApi, auth: VaultSession): Promise<VaultProm
       auth.keeper = null;
       const status = await run(api, "keeper", ["--batch-mode", "login-status"]).catch(() => "");
       if (!/^Logged in$/m.test(status)) {
+        if (/client restricted|restricted_client_type/i.test(log))
+          throw new Error(
+            "Keeper blockiert Commander für dein Konto (Client Restricted). Bitte wende dich an die Keeper-Administration. Sie muss unter Rollen → Enforcement Policies → Platform Restrictions prüfen, ob Commander SDK für deine Rollen erlaubt ist.",
+          );
         const reason = log.trim().split("\n").pop()?.trim().slice(0, 300);
         throw new Error(`Keeper-Anmeldung fehlgeschlagen${reason ? `: ${reason}` : "."}`);
       }

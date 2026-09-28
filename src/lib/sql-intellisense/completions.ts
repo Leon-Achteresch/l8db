@@ -43,6 +43,7 @@ function relationSuggestions(
   filter: (t: TableInfo) => boolean,
   qualified: boolean,
   afterDot: boolean,
+  sortPrefix = afterDot ? 0 : 2,
 ): Suggestion[] {
   const out: Suggestion[] = [];
   const push = (table: TableInfo, kind: "table" | "view") => {
@@ -51,7 +52,7 @@ function relationSuggestions(
       kind,
       detail: `${kind} · ${table.schema}`,
       insertText: quoteIdent(table.name),
-      sortText: `${afterDot ? 0 : 2}_${table.name}`,
+      sortText: `${sortPrefix}_${table.name}`,
       afterDot,
     });
     if (qualified) {
@@ -64,8 +65,8 @@ function relationSuggestions(
       });
     }
   };
-  for (const table of registry.tables.filter(filter)) push(table, "table");
-  for (const view of registry.views.filter(filter)) push(view, "view");
+  for (const table of registry.tables) if (filter(table)) push(table, "table");
+  for (const view of registry.views) if (filter(view)) push(view, "view");
   return out;
 }
 
@@ -98,8 +99,8 @@ function routineSuggestions(
       afterDot,
     });
   };
-  for (const fn of registry.functions.filter(filter)) push(fn, "function");
-  for (const proc of registry.procedures.filter(filter)) push(proc, "procedure");
+  for (const fn of registry.functions) if (filter(fn)) push(fn, "function");
+  for (const proc of registry.procedures) if (filter(proc)) push(proc, "procedure");
   return out;
 }
 
@@ -125,16 +126,16 @@ function columnSuggestions(
 function sharedColumnSuggestion(columns: ColumnInfo[]): Suggestion {
   const [first] = columns;
   if (columns.length === 1) return columnSuggestion(first, `3_${first.name}`, false);
-  const types = [...new Set(columns.map((column) => column.data_type))].join(" | ");
-  const tables = columns.map((column) => `${column.schema}.${column.table}`);
+  const types = new Set<string>();
+  for (const column of columns) types.add(column.data_type);
+  const tables = columns.slice(0, 40).map((column) => `${column.schema}.${column.table}`);
+  const remaining = columns.length - tables.length;
   return {
     label: first.name,
     kind: "column",
-    detail: `${types} · ${columns.length} Tabellen`,
+    detail: `${[...types].join(" | ")} · ${columns.length} Tabellen`,
     documentation:
-      tables.length > 40
-        ? `${tables.slice(0, 40).join("\n")}\n… ${tables.length - 40} weitere`
-        : tables.join("\n"),
+      remaining > 0 ? `${tables.join("\n")}\n… ${remaining} weitere` : tables.join("\n"),
     insertText: quoteIdent(first.name),
     sortText: `3_${first.name}`,
     afterDot: false,
@@ -184,10 +185,7 @@ function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
       ...relationSuggestions(registry, () => true, true, false),
     ],
     generalRelations: [
-      ...relationSuggestions(registry, () => true, false, false).map((s) => ({
-        ...s,
-        sortText: `1_${s.label}`,
-      })),
+      ...relationSuggestions(registry, () => true, false, false, 1),
       ...routineSuggestions(registry, () => true, false),
       ...schemaSuggestion("2"),
     ],

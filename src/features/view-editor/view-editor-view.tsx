@@ -9,11 +9,11 @@ import {
   TableIcon,
 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OpenInQueryEditorButton } from "@/features/functions/use-sql-object-edit";
-import { QueryEditorPane } from "@/features/query/query-editor-pane";
 import { DataTable } from "@/features/table/data-table";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDataError } from "@/features/table/table-data-error";
@@ -25,6 +25,12 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
 import { useViewEditor } from "./view-editor-view/use-view-editor";
+
+const QueryEditorPane = lazy(() =>
+  import("@/features/query/query-editor-pane").then((module) => ({
+    default: module.QueryEditorPane,
+  })),
+);
 
 interface ViewEditorViewProps {
   schema: string;
@@ -252,12 +258,20 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
             </div>
 
             <div className="min-h-0 flex-1">
-              <QueryEditorPane
-                value={currentValue}
-                onChange={handleChange}
-                onRun={handleExecute}
-                registry={registry}
-              />
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner />
+                  </div>
+                }
+              >
+                <QueryEditorPane
+                  value={currentValue}
+                  onChange={handleChange}
+                  onRun={handleExecute}
+                  registry={registry}
+                />
+              </Suspense>
             </div>
 
             {compileError && (

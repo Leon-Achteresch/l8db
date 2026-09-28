@@ -5,13 +5,14 @@ import type { DatabaseKind } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
 import { plsqlBlockPairs } from "@/lib/sql-diagnostics";
+import type { SqlFormatResult } from "@/lib/sql-format";
 import {
-  formatSqlWith,
   type SqlDialect,
   type SqlFormatOptions,
   sqlDialectForKind,
   supportsSqlFormatting,
-} from "@/lib/sql-format";
+} from "@/lib/sql-format-options";
+import { formatSqlInWorker } from "@/lib/sql-format-runner";
 
 export function activeConnectionKind(): DatabaseKind | null {
   const { connections, activeId } = useConnectionsStore.getState();
@@ -46,21 +47,25 @@ function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
   };
 }
 
-export function formatSql(sql: string, dialect?: SqlDialect): string {
-  const result = formatSqlWith(sql, currentFormatOptions(dialect));
-  if (!result.ok) throw new Error(result.reason);
-  return result.sql;
-}
-
 function reportFormatError(reason: string): void {
   toast.error("SQL-Formatierung fehlgeschlagen", { description: reason });
 }
 
 for (const lang of ["sql", "plsql"]) {
   monaco.languages.registerDocumentFormattingEditProvider(lang, {
-    provideDocumentFormattingEdits(model) {
+    async provideDocumentFormattingEdits(model, _options, token) {
       if (!isSqlFormattingAvailable()) return [];
-      const result = formatSqlWith(model.getValue(), currentFormatOptions());
+      const version = model.getVersionId();
+      let result: SqlFormatResult;
+      try {
+        result = await formatSqlInWorker(model.getValue(), currentFormatOptions());
+      } catch (error) {
+        if (!token.isCancellationRequested)
+          reportFormatError(error instanceof Error ? error.message : String(error));
+        return [];
+      }
+      if (token.isCancellationRequested || model.isDisposed() || model.getVersionId() !== version)
+        return [];
       if (!result.ok) {
         reportFormatError(result.reason);
         return [];
@@ -70,9 +75,19 @@ for (const lang of ["sql", "plsql"]) {
   });
 
   monaco.languages.registerDocumentRangeFormattingEditProvider(lang, {
-    provideDocumentRangeFormattingEdits(model, range) {
+    async provideDocumentRangeFormattingEdits(model, range, _options, token) {
       if (!isSqlFormattingAvailable()) return [];
-      const result = formatSqlWith(model.getValueInRange(range), currentFormatOptions());
+      const version = model.getVersionId();
+      let result: SqlFormatResult;
+      try {
+        result = await formatSqlInWorker(model.getValueInRange(range), currentFormatOptions());
+      } catch (error) {
+        if (!token.isCancellationRequested)
+          reportFormatError(error instanceof Error ? error.message : String(error));
+        return [];
+      }
+      if (token.isCancellationRequested || model.isDisposed() || model.getVersionId() !== version)
+        return [];
       if (!result.ok) {
         reportFormatError(result.reason);
         return [];

@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 import { OnboardingChoice } from "@/features/onboarding/onboarding-choice";
+import { OnboardingDrivers } from "@/features/onboarding/onboarding-drivers";
 import { OnboardingExtensions } from "@/features/onboarding/onboarding-extensions";
 import { OnboardingIntro } from "@/features/onboarding/onboarding-intro";
 import { OnboardingThemePreview } from "@/features/onboarding/onboarding-theme-preview";
@@ -85,6 +86,13 @@ export function Onboarding() {
           ),
         },
       ],
+    },
+    {
+      id: "drivers",
+      title: "Welche Treiber brauchst du?",
+      subtitle:
+        "l8db prüft, welche Treiber auf diesem Gerät fehlen. Installiere nur die, die du verwenden möchtest.",
+      content: <OnboardingDrivers />,
     },
     {
       id: "extensions",

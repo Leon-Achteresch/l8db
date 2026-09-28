@@ -5,15 +5,19 @@ import {
   RotateCcwIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { SqlEditor } from "@/features/table/sql-editor";
 import { FilterConditionsEditor } from "./filter-conditions-editor";
 import type { FilterMode } from "./types";
 import type { useTableSearch } from "./use-table-search";
+
+const SqlEditor = lazy(() =>
+  import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
+);
 
 type EntityFilterPanelProps = Pick<
   ReturnType<typeof useTableSearch>,
@@ -118,14 +122,33 @@ export function EntityFilterPanel({
                   className="font-mono text-xs"
                 />
               ) : (
-                <SqlEditor
-                  value={sql}
-                  onChange={setSql}
-                  onSubmit={handleOpen}
-                  columns={selectedColumns}
-                  placeholder="z.B. status = 'active' AND id > 100"
-                  className="h-32"
-                />
+                <Suspense
+                  fallback={
+                    <Textarea
+                      value={sql}
+                      onChange={(event) => setSql(event.target.value)}
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                          event.preventDefault();
+                          handleOpen();
+                        }
+                      }}
+                      aria-label="SQL-Filter"
+                      placeholder="z.B. status = 'active' AND id > 100"
+                      className="h-32 font-mono text-xs"
+                    />
+                  }
+                >
+                  <SqlEditor
+                    value={sql}
+                    autoFocus
+                    onChange={setSql}
+                    onSubmit={handleOpen}
+                    columns={selectedColumns}
+                    placeholder="z.B. status = 'active' AND id > 100"
+                    className="h-32"
+                  />
+                </Suspense>
               )}
             </div>
           </ScrollArea>

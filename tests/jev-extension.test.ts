@@ -62,7 +62,10 @@ function harness(approve: boolean) {
           status: 200,
           headers: {},
           body: JSON.stringify({
-            answers: { bottleneck: { type: "choice", choice: "scan", confidence: 0.82 } },
+            answers: {
+              bottleneck: { type: "choice", choice: "scan", confidence: 0.82 },
+              verdict: { type: "choice", choice: "improvable", confidence: 0.7 },
+            },
           }),
         };
       },
@@ -91,7 +94,7 @@ describe("Jev-Extension", () => {
   test("fragt Zustimmung ab, sendet nur geprüfte Merkmale und unterstützt BYOK-Löschung", async () => {
     const { handlers, secrets, requests, messages } = harness(true);
     const summary = summarizeExplainPlan(plan, true) as unknown as Json;
-    await handlers.get("jev.analyze")?.(summary);
+    const result = await handlers.get("jev.analyze")?.(summary);
     expect(secrets.get("apiKey")).toBe("test-byok-key");
     expect(requests).toHaveLength(1);
     const { url, options } = requests[0];
@@ -101,7 +104,7 @@ describe("Jev-Extension", () => {
     expect(body).not.toContain("private@example.com");
     expect(body).toContain("jev-latest");
     expect(messages[0]).toContain("sequential_scan");
-    expect(messages.at(-1)).toContain("Breiter Tabellenscan");
+    expect(JSON.stringify(result)).toContain("Breiter Tabellenscan");
     await handlers.get("jev.removeKey")?.();
     expect(secrets.has("apiKey")).toBe(false);
   });

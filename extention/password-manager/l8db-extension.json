@@ -1,7 +1,7 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Speichert deine l8db-Verbindungen in Bitwarden, 1Password oder Keeper und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern.",
   "publisher": "l8db",
   "engines": {

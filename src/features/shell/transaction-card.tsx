@@ -69,7 +69,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           </p>
           <p className="text-[10px] text-muted-foreground">
             {new Date(tx.startedAt).toLocaleTimeString("de-DE")} · {tx.changes.length}{" "}
-            {tx.changes.length === 1 ? "Änderung" : "Änderungen"}
+            {tx.changes.length === 1 ? "Eintrag" : "Einträge"}
           </p>
         </div>
       </div>

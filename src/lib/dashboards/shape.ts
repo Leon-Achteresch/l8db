@@ -104,7 +104,15 @@ export function overlaps(a: Widget, b: Widget): boolean {
 
 export function settle(widget: Widget, others: Widget[]): Widget {
   const w = { ...widget };
-  while (others.some((o) => o.id !== w.id && overlaps(w, o))) w.y += 1;
+  for (;;) {
+    let nextY = w.y;
+    for (const other of others) {
+      if (other.id !== w.id && overlaps(w, other))
+        nextY = Math.max(nextY, w.y + Math.ceil(other.y + other.h - w.y));
+    }
+    if (nextY === w.y) break;
+    w.y = nextY;
+  }
   return w;
 }
 

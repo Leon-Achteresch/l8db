@@ -21,6 +21,7 @@ export type AppSidebarNavItem = {
   url: FileRouteTypes["to"];
   icon: LucideIcon;
   available?: (caps: Capabilities) => boolean;
+  featureScope?: string;
 };
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {

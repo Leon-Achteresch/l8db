@@ -35,17 +35,24 @@ export function limitMatches<T extends { label: string; filterText?: string }>(
   word: string,
   limit: number,
 ): { items: T[]; truncated: boolean } {
-  const matching = items.filter((item) => mayMatchWord(item.filterText ?? item.label, word));
-  if (matching.length <= limit) return { items: matching, truncated: false };
+  const cap = Math.max(0, limit);
+  if (!word) return { items: items.slice(0, cap), truncated: items.length > cap };
   const prefix = word.toLowerCase();
-  const startsWith = (item: T) =>
-    (item.filterText ?? item.label).toLowerCase().startsWith(prefix) ? 0 : 1;
+  const matching: T[] = [];
+  const prefixMatches: T[] = [];
+  const otherMatches: T[] = [];
+  let count = 0;
+  for (const item of items) {
+    const candidate = item.filterText ?? item.label;
+    if (!mayMatchWord(candidate, word)) continue;
+    count++;
+    if (matching.length < cap) matching.push(item);
+    const bucket = candidate.toLowerCase().startsWith(prefix) ? prefixMatches : otherMatches;
+    if (bucket.length < cap) bucket.push(item);
+  }
+  if (count <= cap) return { items: matching, truncated: false };
   return {
-    items: matching
-      .map((item, index) => ({ item, index, rank: startsWith(item) }))
-      .sort((a, b) => a.rank - b.rank || a.index - b.index)
-      .slice(0, limit)
-      .map((entry) => entry.item),
+    items: [...prefixMatches, ...otherMatches].slice(0, cap),
     truncated: true,
   };
 }

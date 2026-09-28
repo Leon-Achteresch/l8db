@@ -8,9 +8,8 @@ export {
   activeConnectionKind,
   activeSqlDialect,
   addSqlFormatAction,
-  formatSql,
   isSqlFormattingAvailable,
 } from "./format";
 export type { SqlErrorSource } from "./markers";
-export { attachPlsqlLint, showSqlError } from "./markers";
+export { attachPlsqlLint, showQueryAssessment, showSqlError } from "./markers";
 export { overflowWidgetsDomNode } from "./overflow";

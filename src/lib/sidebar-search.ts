@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useActiveConnection } from "@/lib/connections";
 
 interface SidebarSearchState {
@@ -19,7 +20,10 @@ const useSidebarSearchStore = create<SidebarSearchState>()(
           return { searches };
         }),
     }),
-    { name: "l8db.sidebar-search" },
+    {
+      name: "l8db.sidebar-search",
+      storage: createBufferedJsonStorage(() => window.localStorage),
+    },
   ),
 );
 

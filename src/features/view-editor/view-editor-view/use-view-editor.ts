@@ -63,7 +63,11 @@ export function useViewEditor(schema: string, view: string) {
   const { data: columnDetails } = useDetailedColumnsQuery(schema, view);
   const stateKey = tableViewStateKey(connection?.id, database, schema, view);
 
-  const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(schema, view);
+  const { data: definition, isLoading: defLoading } = useViewDefinitionQuery(
+    schema,
+    view,
+    activeTab === "definition",
+  );
 
   const [draft, setDraft, clearSavedDraft] = useObjectDraft(
     `view-editor:${schema}.${view}`,
@@ -98,7 +102,7 @@ export function useViewEditor(schema: string, view: string) {
     queryKey: ["all-tables", connection?.id, database],
     queryFn: () =>
       listTables(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection),
+    enabled: activeTab === "definition" && Boolean(connection),
   });
 
   const { data: columns } = useQuery({
@@ -109,15 +113,14 @@ export function useViewEditor(schema: string, view: string) {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled: activeTab === "definition" && Boolean(connection),
     staleTime: 60_000,
   });
 
-  const registry = {
-    schemas: schemas ?? [],
-    tables: tables ?? [],
-    columns: columns ?? [],
-  };
+  const registry = useMemo(
+    () => ({ schemas: schemas ?? [], tables: tables ?? [], columns: columns ?? [] }),
+    [schemas, tables, columns],
+  );
 
   const handleFilterChange = (newFilter: string, raw = false) => {
     setFilter(newFilter);

@@ -1,8 +1,10 @@
 import type { Row } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { type RefObject, startTransition, useEffect, useRef, useState } from "react";
+import { defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
+import { type RefObject, startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
+import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
+import { IS_CHROMIUM } from "@/lib/platform";
 import { useSettingsStore } from "@/lib/settings";
 import type { TableRow } from "../data-table-types";
 
@@ -18,17 +20,41 @@ export function useRowVirtualizer(
   const uiScale = useSettingsStore((state) => state.uiScale);
   const uiDensity = useSettingsStore((state) => state.uiDensity);
   const estimatedRowHeight =
-    ((uiDensity === "compact" ? 25 : uiDensity === "spacious" ? 41 : 33) * uiScale) / 100;
-  const rowVirtualizer = useVirtualizer({
+    ((uiDensity === "compact" ? 24 : uiDensity === "spacious" ? 40 : 32) * uiScale) / 100 + 1;
+  const direction = useRef<"forward" | "backward" | null>(null);
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      if (!IS_CHROMIUM) return defaultRangeExtractor(range);
+      const backward = direction.current === "backward";
+      const behind = Math.ceil(64 / estimatedRowHeight);
+      const ahead = Math.ceil(256 / estimatedRowHeight);
+      const first = Math.max(0, range.startIndex - (backward ? ahead : behind));
+      const last = Math.min(range.count - 1, range.endIndex + (backward ? behind : ahead));
+      return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index);
+    },
+    [estimatedRowHeight],
+  );
+  const rowVirtualizer = useGridVirtualizer({
     count: rows.length,
     scrollMargin: draftHeight,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
-    overscan: Math.ceil(256 / estimatedRowHeight),
+    measureElement: (element, entry) => {
+      if (!element.hasAttribute("data-dynamic-height")) return estimatedRowHeight;
+      const box = entry?.borderBoxSize[0];
+      return box ? Math.round(box.blockSize) : (element as HTMLElement).offsetHeight;
+    },
+    overscan: IS_CHROMIUM ? 0 : Math.ceil(128 / estimatedRowHeight),
+    rangeExtractor,
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
     initialRect: { ...lastGridRect },
-    onChange: rememberGridRect,
+    onChange: IS_CHROMIUM
+      ? (instance) => {
+          direction.current = instance.scrollDirection;
+          rememberGridRect(instance);
+        }
+      : rememberGridRect,
   });
   const measuredRowHeight = useRef(estimatedRowHeight);
   useEffect(() => {

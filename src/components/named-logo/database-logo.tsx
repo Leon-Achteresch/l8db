@@ -3,8 +3,8 @@ import type { DatabaseKind } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { ProviderLogo } from "../provider-logo";
 import { ThesvgIcon } from "../provider-logo/thesvg-icon";
-import { brandSvgForName } from "./brand-icons";
 import { SystemIconForName } from "./system-icon-for-name";
+import { useBrandSvg } from "./use-brand-svg";
 
 export function DatabaseLogo({
   name,
@@ -17,7 +17,7 @@ export function DatabaseLogo({
   providerId?: string | null;
   className?: string;
 }) {
-  const svg = brandSvgForName(name);
+  const svg = useBrandSvg(name);
   if (svg) return <ThesvgIcon svg={svg} className={className} />;
   const system = SystemIconForName({ name, className });
   if (system) return system;

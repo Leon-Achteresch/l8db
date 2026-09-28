@@ -5,6 +5,12 @@ import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSettingsStore } from "@/lib/settings";
 import { useSidebarSearch } from "@/lib/sidebar-search";
 
+export interface SidebarEntityMatch {
+  schema: string;
+  name: string;
+  matchingColumns?: string[];
+}
+
 export function useSidebarEntityFilter(
   items: { schema: string; name: string }[] | undefined,
   type: "table" | "view",
@@ -43,38 +49,29 @@ export function useSidebarEntityFilter(
     [regexEnabled, deferredSearch],
   );
   const regexError = compiled && !compiled.ok ? compiled.error : null;
-  const filtered = useMemo(() => {
+  const filtered = useMemo<SidebarEntityMatch[] | undefined>(() => {
     if (!items) return undefined;
     const patterns = splitSearchPatterns(deferredSearch);
-    if (patterns.length === 0)
-      return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
-    if (compiled && !compiled.ok) {
-      return items.map((item) => ({ ...item, matchingColumns: [] as string[] }));
-    }
+    if (patterns.length === 0 || (compiled && !compiled.ok)) return items;
+    const lowerPatterns = patterns.map((pattern) => pattern.toLowerCase());
     const matches = compiled?.ok
       ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
       : (value: string) => {
           const lower = value.toLowerCase();
-          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+          return lowerPatterns.some((pattern) => lower.includes(pattern));
         };
-    return items
-      .map((item) => {
-        const nameMatch = matches(item.name);
-        if (!searchIncludeColumns) {
-          return nameMatch ? { ...item, matchingColumns: [] as string[] } : null;
-        }
-        const key = `${item.schema}.${item.name}`;
-        const cols = columnsByTable.get(key) ?? [];
-        const matchingColumns = cols.filter(matches);
-        if (nameMatch || matchingColumns.length > 0) {
-          return { ...item, matchingColumns };
-        }
-        return null;
-      })
-      .filter(
-        (item): item is { schema: string; name: string; matchingColumns: string[] } =>
-          item !== null,
-      );
+    const result: SidebarEntityMatch[] = [];
+    for (const item of items) {
+      const nameMatch = matches(item.name);
+      if (!searchIncludeColumns) {
+        if (nameMatch) result.push(item);
+        continue;
+      }
+      const cols = columnsByTable.get(`${item.schema}.${item.name}`) ?? [];
+      const matchingColumns = cols.filter(matches);
+      if (nameMatch || matchingColumns.length > 0) result.push({ ...item, matchingColumns });
+    }
+    return result;
   }, [items, deferredSearch, columnsByTable, searchIncludeColumns, compiled]);
 
   return {

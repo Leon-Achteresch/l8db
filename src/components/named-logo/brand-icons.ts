@@ -25,6 +25,7 @@ import stripe from "thesvg/stripe";
 import typesense from "thesvg/typesense";
 import vercel from "thesvg/vercel";
 import { thesvgSvgForSlug } from "../provider-logo/icons";
+import { candidateKeys } from "./name-keys";
 
 type IconModule = { svg: string };
 
@@ -152,22 +153,6 @@ const NAME_TO_TECH: Record<string, string> = {
   documentdb: "aws-amazon-documentdb",
   cosmosdb: "azure-azure-cosmos-db",
 };
-
-export function candidateKeys(name: string): string[] {
-  const base = name
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_.-]+/g, "")
-    .replace(/[^a-z0-9]/g, "");
-  if (!base) return [];
-  const keys = [base];
-  for (const suffix of ["database", "db"]) {
-    if (base.endsWith(suffix) && base.length > suffix.length + 1) {
-      keys.push(base.slice(0, -suffix.length));
-    }
-  }
-  return keys;
-}
 
 export function brandSvgForName(name: string): string | null {
   for (const key of candidateKeys(name)) {

@@ -1,16 +1,23 @@
 import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Database, Keyboard, Plug, Puzzle, Search, Sparkles, TextSearch } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { type CommandItem, CommandPalette } from "@/components/motion/command-palette";
-import { ObjectSearchDialog } from "@/features/objects/object-search-dialog";
 import {
   buildHotkeyItems,
   buildNotebookItems,
   buildObjectItems,
 } from "@/features/shell/app-header-search/command-items";
-import { ShortcutsDialog } from "@/features/shell/shortcuts-dialog";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
@@ -30,6 +37,16 @@ import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_RESULTS = 60;
 const NO_ITEMS: CommandItem[] = [];
+const ObjectSearchDialog = lazy(() =>
+  import("@/features/objects/object-search-dialog").then(({ ObjectSearchDialog }) => ({
+    default: ObjectSearchDialog,
+  })),
+);
+const ShortcutsDialog = lazy(() =>
+  import("@/features/shell/shortcuts-dialog").then(({ ShortcutsDialog }) => ({
+    default: ShortcutsDialog,
+  })),
+);
 
 export function AppHeaderSearch() {
   const easyMode = useSettingsStore((state) => state.easyMode);
@@ -43,6 +60,10 @@ export function AppHeaderSearch() {
   const switchTargetId = useConnectionSwitch((state) => state.targetId);
   const [objectSearchOpen, setObjectSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const objectSearchMounted = useRef(false);
+  const shortcutsMounted = useRef(false);
+  if (objectSearchOpen) objectSearchMounted.current = true;
+  if (shortcutsOpen) shortcutsMounted.current = true;
   const { data: objects } = useAllSchemaObjectsQuery(open);
   const canSearchColumns = supports(activeConnection, "column_search");
   const canSearchSource = supports(activeConnection, "source_search");
@@ -240,17 +261,17 @@ export function AppHeaderSearch() {
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         className={cn(
           "inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
-          "border border-border/70 bg-muted/40 px-3 @max-[14rem]/header-search:gap-0 @max-[14rem]/header-search:px-1.5",
+          "border border-border/70 bg-muted/40 px-3 @max-[8rem]/header-search:gap-0 @max-[8rem]/header-search:px-1.5",
           "text-xs text-muted-foreground transition-colors",
           "cursor-pointer select-none",
           "hover:border-primary/35 hover:bg-card",
         )}
       >
         <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
-        <span className="min-w-0 flex-1 truncate text-left @max-[14rem]/header-search:hidden">
+        <span className="min-w-0 flex-1 truncate text-left @max-[8rem]/header-search:hidden">
           Suchen
         </span>
-        <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[14rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
+        <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
           {formatHotkeyDisplay(paletteHotkey)}
         </kbd>
       </button>
@@ -262,8 +283,16 @@ export function AppHeaderSearch() {
         emptyMessage="Keine Treffer"
         maxVisible={MAX_VISIBLE_RESULTS}
       />
-      <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {objectSearchMounted.current && (
+        <Suspense fallback={null}>
+          <ObjectSearchDialog open={objectSearchOpen} onOpenChange={setObjectSearchOpen} />
+        </Suspense>
+      )}
+      {shortcutsMounted.current && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        </Suspense>
+      )}
     </>
   );
 }

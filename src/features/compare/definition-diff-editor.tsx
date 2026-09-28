@@ -1,5 +1,7 @@
 import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import "monaco-editor/features/diffEditor/register";
+import "monaco-editor/features/diffEditorBreadcrumbs/register";
 
 import { monaco } from "@/lib/monaco";
 import "./definition-diff-editor.css";

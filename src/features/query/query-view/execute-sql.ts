@@ -11,6 +11,7 @@ import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-tra
 import { useSettingsStore } from "@/lib/settings";
 import { isTransactionalStatement, opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { executeWithTransactionChanges } from "@/lib/transaction-sql-changes";
 import { getQueryTransaction, useTransactionStore } from "@/lib/transactions";
 
 interface ExecuteSqlOptions {
@@ -36,26 +37,36 @@ export async function executeSqlWithTransactions({
   const isDml = isTransactionalStatement(sql, connection.kind);
 
   if (existingTx) {
-    const res = bound
-      ? await runManagedOperation(existingTx.txId, () =>
-          executeInTransactionWithParams(
-            existingTx.txId,
-            bound.sql,
-            bound.values,
-            executionOptions,
-          ),
-        )
-      : await runManagedOperation(existingTx.txId, () =>
-          executeInTransaction(existingTx.txId, sql, executionOptions),
-        );
+    const { result: res, changes } = await runManagedOperation(existingTx.txId, () =>
+      executeWithTransactionChanges(connection, database, existingTx.txId, bound ? "" : sql, () =>
+        bound
+          ? executeInTransactionWithParams(
+              existingTx.txId,
+              bound.sql,
+              bound.values,
+              executionOptions,
+            )
+          : executeInTransaction(existingTx.txId, sql, executionOptions),
+      ),
+    );
     if (isDml) {
-      store.addChange(existingTx.txId, {
-        id: crypto.randomUUID(),
-        type: "query",
-        timestamp: Date.now(),
-        sql,
-        rowsAffected: res.rows_affected,
-      });
+      for (const change of [
+        {
+          type: "query" as const,
+          sql,
+          rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
+          planned: connection.kind === "dynamodb",
+          detailsUnavailable:
+            /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
+        },
+        ...changes,
+      ]) {
+        store.addChange(existingTx.txId, {
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          ...change,
+        });
+      }
       store.setPanelOpen(true);
     }
     return res;
@@ -68,18 +79,26 @@ export async function executeSqlWithTransactions({
     const { txId } = await ensureManagedTransaction(connection, database ?? null, {
       type: "query",
     });
-    const res = bound
-      ? await runManagedOperation(txId, () =>
-          executeInTransactionWithParams(txId, bound.sql, bound.values, executionOptions),
-        )
-      : await runManagedOperation(txId, () => executeInTransaction(txId, sql, executionOptions));
-    store.addChange(txId, {
-      id: crypto.randomUUID(),
-      type: "query",
-      timestamp: Date.now(),
-      sql,
-      rowsAffected: res.rows_affected,
-    });
+    const { result: res, changes } = await runManagedOperation(txId, () =>
+      executeWithTransactionChanges(connection, database, txId, bound ? "" : sql, () =>
+        bound
+          ? executeInTransactionWithParams(txId, bound.sql, bound.values, executionOptions)
+          : executeInTransaction(txId, sql, executionOptions),
+      ),
+    );
+    for (const change of [
+      {
+        type: "query" as const,
+        sql,
+        rowsAffected: connection.kind === "dynamodb" ? null : res.rows_affected,
+        planned: connection.kind === "dynamodb",
+        detailsUnavailable:
+          /^\s*(INSERT|UPDATE)\b/i.test(sql) && !changes.length && Number(res.rows_affected) > 0,
+      },
+      ...changes,
+    ]) {
+      store.addChange(txId, { id: crypto.randomUUID(), timestamp: Date.now(), ...change });
+    }
     store.setPanelOpen(true);
     return res;
   }

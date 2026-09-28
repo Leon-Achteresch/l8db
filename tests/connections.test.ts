@@ -5,6 +5,8 @@ let rejectConnection = false;
 let keychainUnavailable = false;
 let sequence = 6000;
 const keychain = new Map<string, string>();
+let pausedSecretAccount: string | null = null;
+let resumeSecretLoad: (() => void) | null = null;
 
 function provider(
   id: string,
@@ -67,7 +69,13 @@ mock.module("@tauri-apps/api/core", () => ({
     if (command.endsWith("secret")) {
       if (keychainUnavailable) throw new Error("Keychain unavailable");
       if (command === "store_secret") keychain.set(String(args.account), String(args.secret));
-      if (command === "load_secret") return keychain.get(String(args.account)) ?? null;
+      if (command === "load_secret") {
+        if (args.account === pausedSecretAccount)
+          await new Promise<void>((resolve) => {
+            resumeSecretLoad = resolve;
+          });
+        return keychain.get(String(args.account)) ?? null;
+      }
       if (command === "delete_secret") keychain.delete(String(args.account));
     }
   },
@@ -91,7 +99,9 @@ Object.defineProperty(globalThis, "localStorage", {
 
 const { loadProviders } = await import("../src/lib/providers");
 await loadProviders();
-const { useConnectionsStore, visibleSchemas } = await import("../src/lib/connections");
+const { initConnectionSecrets, useConnectionsStore, visibleSchemas } = await import(
+  "../src/lib/connections"
+);
 const { restorableActiveId } = await import("../src/lib/connections/store");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { useTransactionStore } = await import("../src/lib/transactions");
@@ -115,9 +125,8 @@ const {
   loadSecret,
   deleteSecret,
 } = await import("../src/lib/secrets");
-const { effectiveConnectionString, activateConnection, tunneledConnectionString } = await import(
-  "../src/lib/ssh"
-);
+const { effectiveConnectionString, activateConnection, restoreSshTunnel, tunneledConnectionString } =
+  await import("../src/lib/ssh");
 const { truncateTable, executeQuery } = await import("../src/lib/db");
 
 const direct = {
@@ -145,6 +154,8 @@ beforeEach(() => {
   calls.length = 0;
   rejectConnection = false;
   keychainUnavailable = false;
+  pausedSecretAccount = null;
+  resumeSecretLoad = null;
   useConnectionsStore.setState({
     connections: [direct, tunneled],
     activeId: null,
@@ -453,6 +464,31 @@ describe("Connection lifecycle", () => {
       useConnectionsStore.getState().connections.find((entry) => entry.id === "ssh")?.tunnelPort,
     ).toBeGreaterThan(0);
     expect(storage.get("l8db.connections")).toContain('"tunnelPort":null');
+  });
+  test("restores an SSH tunnel while the database password is still loading", async () => {
+    const connection = {
+      ...tunneled,
+      id: "startup-pw",
+      connectionString: "postgresql://user@localhost:5432/app?sslmode=disable",
+    };
+    keychain.set(connection.id, "saved-password");
+    pausedSecretAccount = connection.id;
+    useConnectionsStore.setState({ connections: [connection], activeId: connection.id });
+    const secretsReady = initConnectionSecrets();
+    try {
+      await restoreSshTunnel();
+      expect(resumeSecretLoad).toBeTruthy();
+      expect(useConnectionsStore.getState().connections[0].tunnelPort).toBeGreaterThan(0);
+      resumeSecretLoad?.();
+      await secretsReady;
+      const restored = useConnectionsStore.getState().connections[0];
+      expect(restored.tunnelPort).toBeGreaterThan(0);
+      expect(extractUrlPassword(restored.connectionString)).toBe("saved-password");
+      expect(effectiveConnectionString(restored)).toContain("127.0.0.1");
+    } finally {
+      resumeSecretLoad?.();
+      pausedSecretAccount = null;
+    }
   });
   test("open transactions prevent a disconnect", async () => {
     useConnectionsStore.setState({ activeId: "direct" });

@@ -145,8 +145,8 @@ export function QueryEditorPane({
     let lintTimer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = editor.onDidChangeModelContent(() => {
       onChangeRef.current(editor.getValue());
-      publishSlots();
-      publishBookmarks();
+      if (Object.keys(slotsRef.current).length > 0) publishSlots();
+      if (bookmarksRef.current.length > 0) publishBookmarks();
       if (lintTimer) clearTimeout(lintTimer);
       lintTimer = setTimeout(() => {
         const current = editorRef.current;

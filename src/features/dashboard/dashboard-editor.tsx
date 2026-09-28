@@ -9,7 +9,7 @@ import {
   RefreshCwIcon,
   TimerIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, startTransition, useCallback, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,11 +38,15 @@ import {
   undoDashboards,
   useDashboardsStore,
 } from "@/lib/dashboards";
-import { ChartDialog, type ChartDraft } from "./chart-dialog";
+import type { ChartDraft } from "./chart-dialog";
 import { ChartLibraryDrawer } from "./chart-library-drawer";
 import { DashboardCanvas } from "./dashboard-canvas";
 import { useDashboardFileReload } from "./dashboard-editor/use-dashboard-file-reload";
 import { DashboardLibraryDrawer } from "./dashboard-library-drawer";
+
+const ChartDialog = lazy(() =>
+  import("./chart-dialog").then((module) => ({ default: module.ChartDialog })),
+);
 
 export function DashboardEditor({
   dashboard,
@@ -61,6 +65,7 @@ export function DashboardEditor({
   const [draft, setDraft] = useState<ChartDraft | null>(null);
   const [draftIsNew, setDraftIsNew] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMounted, setDialogMounted] = useState(false);
   const editing = !dashboard.locked;
   const canUndo = useStore(useDashboardsStore.temporal, (state) => state.pastStates.length > 0);
   const canRedo = useStore(useDashboardsStore.temporal, (state) => state.futureStates.length > 0);
@@ -73,7 +78,7 @@ export function DashboardEditor({
 
   const reloadFile = useDashboardFileReload(dashboard.id, path);
 
-  const startNewChart = () => {
+  const startNewChart = useCallback(() => {
     const index = dashboard.widgets.length;
     const dataset = emptyDataset(`Chart ${index + 1}`);
     const previous = dashboard.datasets.find((d) => d.mode === "simple" && d.simple.table);
@@ -98,20 +103,29 @@ export function DashboardEditor({
       },
       dashboard.widgets,
     );
-    setDraft({ widget, dataset });
-    setDraftIsNew(true);
-    setDialogOpen(true);
-  };
+    startTransition(() => {
+      setDraft({ widget, dataset });
+      setDraftIsNew(true);
+      setDialogMounted(true);
+      setDialogOpen(true);
+    });
+  }, [dashboard.datasets, dashboard.widgets]);
 
-  const startEdit = (widgetId: string) => {
-    const widget = dashboard.widgets.find((w) => w.id === widgetId);
-    if (!widget) return;
-    const dataset =
-      dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
-    setDraft({ widget, dataset });
-    setDraftIsNew(false);
-    setDialogOpen(true);
-  };
+  const startEdit = useCallback(
+    (widgetId: string) => {
+      const widget = dashboard.widgets.find((w) => w.id === widgetId);
+      if (!widget) return;
+      const dataset =
+        dashboard.datasets.find((d) => d.id === widget.datasetId) ?? emptyDataset(widget.title);
+      startTransition(() => {
+        setDraft({ widget, dataset });
+        setDraftIsNew(false);
+        setDialogMounted(true);
+        setDialogOpen(true);
+      });
+    },
+    [dashboard.datasets, dashboard.widgets],
+  );
 
   const saveDraft = (next: ChartDraft) => {
     if (draftIsNew) {
@@ -286,21 +300,23 @@ export function DashboardEditor({
           startEdit(id);
         }}
       />
-      <ChartDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        draft={draft}
-        isNew={draftIsNew}
-        onSave={saveDraft}
-        onDelete={draftIsNew ? undefined : deleteDraft}
-        onDuplicate={draftIsNew ? undefined : duplicateDraft}
-      />
+      {dialogMounted && (
+        <Suspense fallback={null}>
+          <ChartDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            draft={draft}
+            isNew={draftIsNew}
+            onSave={saveDraft}
+            onDelete={draftIsNew ? undefined : deleteDraft}
+            onDuplicate={draftIsNew ? undefined : duplicateDraft}
+          />
+        </Suspense>
+      )}
       <div className="workspace-canvas relative min-h-0 flex-1 overflow-y-auto">
         <DashboardCanvas
           dashboardId={dashboard.id}
-          onEdit={(id) => {
-            if (editing) startEdit(id);
-          }}
+          onEdit={editing ? startEdit : undefined}
           onAdd={editing ? startNewChart : undefined}
         />
       </div>

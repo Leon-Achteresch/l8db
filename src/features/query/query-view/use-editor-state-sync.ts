@@ -37,7 +37,10 @@ function createEditorStateSync(apply: (snapshot: EditorStateSnapshot) => void): 
     pending = { ...pending, ...patch };
     if (timer) clearTimeout(timer);
     const elapsed = performance.now() - since;
-    timer = setTimeout(() => flush(), Math.max(0, Math.min(IDLE_DELAY_MS, MAX_DELAY_MS - elapsed)));
+    timer = setTimeout(
+      () => flush(false),
+      Math.max(0, Math.min(IDLE_DELAY_MS, MAX_DELAY_MS - elapsed)),
+    );
   };
 
   return { schedule, flush };

@@ -59,7 +59,12 @@ async function wheel(page: Page, x: number, y: number, steps: number, distance: 
   }
 }
 
-async function open(path: string, ready: string, grid?: { rows: number; columns: number }) {
+async function open(
+  path: string,
+  ready: string,
+  grid?: { rows: number; columns: number },
+  overviewSchemas = 8,
+) {
   if (!(await Bun.file("dist/index.html").exists()))
     throw new Error("dist fehlt – vor dem Perf-Test 'bun run build' ausführen.");
   const server = Bun.serve({
@@ -79,7 +84,7 @@ async function open(path: string, ready: string, grid?: { rows: number; columns:
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await seedApp(page, TABLES, grid);
+  await seedApp(page, TABLES, grid, null, overviewSchemas);
   if (grid)
     await page.addInitScript((rowLimit) => {
       const saved = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
@@ -102,6 +107,33 @@ async function open(path: string, ready: string, grid?: { rows: number; columns:
 }
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Übersicht mit 1000 Schemas bleibt begrenzt und erlaubt die Auswahl des letzten Schemas",
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]', undefined, 1000);
+    try {
+      const schemas = app.page.locator('section[aria-label="Schemas"]');
+      await schemas.locator("button").first().waitFor();
+      expect(await schemas.locator("button").count()).toBeLessThan(30);
+      await schemas.locator("button").first().focus();
+      await app.page.keyboard.press("End");
+      await app.page.waitForFunction(() =>
+        document.activeElement?.textContent?.includes("schema_999"),
+      );
+      await schemas.getByRole("button", { name: /schema_999/ }).click();
+      await app.page.waitForFunction(() =>
+        document
+          .querySelector('section[aria-label="Schemas"] button[aria-current="true"]')
+          ?.textContent?.includes("schema_999"),
+      );
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   `Übersicht und Sidebar bleiben bei ${TABLES} Tabellen flüssig`,
   async () => {
     const app = await open("/", 'a[data-name="table_0000"]');
@@ -119,6 +151,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(dom.overviewRows).toBeGreaterThan(0);
       expect(dom.overviewRows).toBeLessThan(60);
       expect(dom.nodes).toBeLessThan(6000);
+      await app.page
+        .locator('button[data-tour="sidebar-connection"] span[aria-hidden] svg')
+        .waitFor();
 
       const sidebarScroll = await measure("sidebar-scroll", app.page, () =>
         wheel(app.page, 150, 500, 40, 200),
@@ -150,6 +185,18 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(tabSwitch.fps).toBeGreaterThan(MIN_FPS);
       expect(tabSwitch.p95).toBeLessThan(MAX_P95_MS);
       expect(tabSwitch.worst).toBeLessThan(200);
+      await app.page.getByRole("tab", { name: /Views/i }).first().click();
+      await app.page
+        .getByRole("tab", { name: /Tabellen/i })
+        .first()
+        .click();
+      await app.page.waitForFunction(
+        () =>
+          document
+            .querySelector('[role="tab"][aria-label="Tabellen"]')
+            ?.getAttribute("aria-selected") === "true",
+      );
+      await app.page.locator('a[data-name="table_0000"]').waitFor();
 
       expect(app.errors).toEqual([]);
     } finally {
@@ -197,6 +244,230 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Dashboard lädt Monaco erst für eine eigene SQL-Abfrage",
+  async () => {
+    const app = await open("/dashboard", ".react-grid-item");
+    try {
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
+      await app.page.getByRole("button", { name: "Chart", exact: true }).first().click();
+      await app.page.getByRole("dialog", { name: "Neuer Chart" }).waitFor();
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      await app.page.getByRole("button", { name: "Erweitert" }).click();
+      await app.page.getByRole("tab", { name: "Quelle & SQL" }).click();
+      await app.page.getByRole("button", { name: "Ich möchte selbst SQL schreiben" }).click();
+      await app.page.locator('.monaco-editor[role="code"]').waitFor();
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Monitor lädt das Latenzdiagramm nur mit Laufzeitdaten",
+  async () => {
+    const app = await open("/monitor", '[data-tour="monitor"]');
+    try {
+      expect(await app.page.getByText("Noch keine Laufzeitdaten vorhanden.").count()).toBe(1);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("monitor-latency-chart")),
+        ),
+      ).toBe(false);
+      await app.page.evaluate(() => {
+        localStorage.setItem(
+          "l8db.query-history",
+          JSON.stringify({
+            state: {
+              retentionLimit: 500,
+              entries: [
+                {
+                  id: "perf-monitor-latency",
+                  connectionId: "perf",
+                  database: "l8db_perf",
+                  sql: "SELECT 1",
+                  ranAt: Date.now(),
+                  durationMs: 15,
+                  rowCount: 1,
+                  error: null,
+                },
+              ],
+            },
+            version: 0,
+          }),
+        );
+      });
+      await app.page.reload();
+      await app.page.locator('[data-slot="chart"]').waitFor();
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("monitor-latency-chart")),
+        ),
+      ).toBe(true);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  `Erweiterte Suche bleibt bei ${TABLES} Tabellen begrenzt und bedienbar`,
+  async () => {
+    const app = await open("/", 'a[data-name="table_0000"]');
+    try {
+      await app.page.getByRole("button", { name: "Erweiterte Suche" }).click();
+      const results = app.page.getByRole("region", { name: "Suchergebnisse" });
+      await results.waitFor();
+      await app.page.waitForTimeout(250);
+      expect(await results.locator("[data-index]").count()).toBeGreaterThan(0);
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+      expect(await app.page.getByText(`${TABLES + Math.min(TABLES, 400)} Ergebnisse`).count()).toBe(
+        1,
+      );
+      const lastView = `v_table_${String(Math.min(TABLES, 400) - 1).padStart(4, "0")}`;
+      await results.locator("button").first().focus();
+      await app.page.keyboard.press("End");
+      await app.page.waitForFunction((name) => {
+        const active = document.activeElement;
+        return Boolean(
+          active?.tagName === "BUTTON" &&
+            active.closest('[aria-label="Suchergebnisse"]') &&
+            active.textContent?.includes(name),
+        );
+      }, lastView);
+      await app.page.keyboard.press("Home");
+      await app.page.waitForFunction(() => {
+        const active = document.activeElement;
+        return Boolean(
+          active?.tagName === "BUTTON" &&
+            active.closest('[aria-label="Suchergebnisse"]') &&
+            active.textContent?.includes("table_0000"),
+        );
+      });
+      const scroll = await measure("advanced-search-scroll", app.page, async () => {
+        await results.evaluate(async (element) => {
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              element.scrollTop += now - start < 2500 ? 120 : -120;
+              if (now - start < 5000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        });
+      });
+      expect(scroll.fps).toBeGreaterThan(59);
+      expect(scroll.p95).toBeLessThan(21);
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await app.page.waitForFunction(
+        (lastView) =>
+          document.querySelector('[aria-label="Suchergebnisse"]')?.textContent?.includes(lastView),
+        lastView,
+      );
+      const lastTable = `table_${String(TABLES - 1).padStart(4, "0")}`;
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill(`public.${lastTable}`);
+      await app.page.waitForFunction(
+        (name) =>
+          document.querySelector('[aria-label="Suchergebnisse"]')?.textContent?.includes(name),
+        lastTable,
+      );
+      expect(await results.locator("[data-index]").count()).toBe(1);
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill("col_1");
+      await app.page.getByText(`${Math.min(TABLES, 500)} Ergebnisse`).waitFor();
+      expect(await results.locator("[data-index]").count()).toBeLessThan(80);
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await app.page.waitForFunction(
+        (lastColumnTable) =>
+          document
+            .querySelector('[aria-label="Suchergebnisse"]')
+            ?.textContent?.includes(lastColumnTable),
+        `table_${String(Math.min(TABLES, 500) - 1).padStart(4, "0")}`,
+      );
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      await app.page.locator('input[placeholder*="mehrere mit"]').fill("table_0000");
+      await results.locator('[data-index="0"] button').click();
+      await app.page.route(/\/assets\/sql-editor-[^/]+\.js$/, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        await route.continue();
+      });
+      await app.page.getByRole("tab", { name: "SQL", exact: true }).click();
+      await app.page.getByRole("textbox", { name: "SQL-Filter" }).fill("status = 'active'");
+      const sqlEditor = app.page.locator(".cm-editor");
+      await sqlEditor.waitFor();
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
+      await app.page.waitForFunction(() =>
+        document
+          .querySelector(".cm-editor .cm-content")
+          ?.textContent?.replace(/\u00a0/g, " ")
+          .includes("status = 'active'"),
+      );
+      expect(await sqlEditor.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      );
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "View Editor lädt Monaco erst für die Definition",
+  async () => {
+    const app = await open(
+      "/view-editor/public/v_table_0000",
+      '[data-slot="tabs-content"][data-state="active"]',
+    );
+    try {
+      await app.page.getByRole("tab", { name: "Daten" }).waitFor();
+      expect(await app.page.locator(".monaco-editor").count()).toBe(0);
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
+      await app.page.getByRole("tab", { name: "Definition" }).click();
+      await app.page.locator('.monaco-editor[role="code"]').waitFor();
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
   "Tabellenscrollen im vollständigen Workspace mit 5000 Zeilen und 120 Spalten",
   async () => {
     const app = await open("/tables/public/table_0000", 'tbody tr[data-index="0"]', {
@@ -206,15 +477,17 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       const sample = await measure("workspace-table-scroll", app.page, async () => {
         await app.page.evaluate(async () => {
-          let scroller = document.querySelector("tbody")!.parentElement as HTMLElement;
+          let scroller = document.querySelector("tbody")?.parentElement ?? null;
           while (scroller && getComputedStyle(scroller).overflowY !== "auto")
-            scroller = scroller.parentElement!;
+            scroller = scroller.parentElement;
+          if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
+          const target = scroller;
           let start = 0;
           await new Promise<void>((resolve) => {
             const step = (now: number) => {
               if (!start) start = now;
-              scroller.scrollTop += 120;
-              scroller.scrollLeft += now - start < 5000 ? 120 : -120;
+              target.scrollTop += 120;
+              target.scrollLeft += now - start < 5000 ? 120 : -120;
               if (now - start < 10000) requestAnimationFrame(step);
               else resolve();
             };
@@ -225,6 +498,46 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(sample.fps).toBeGreaterThan(59);
       expect(sample.p95).toBeLessThan(21);
       expect(sample.worst).toBeLessThan(50);
+      expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  60000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Breites SQL-Ergebnis bleibt beim Scrollen vollständig und flüssig",
+  async () => {
+    const app = await open("/query", ".monaco-editor", { rows: 5000, columns: 120 });
+    try {
+      await app.page.locator(".monaco-editor .view-lines").first().click();
+      await app.page.keyboard.type("select 'perf wide'");
+      await app.page.getByRole("button", { name: "Ausführen", exact: true }).first().click();
+      await app.page.waitForSelector('tbody tr[data-index="0"]');
+      const scroll = await measure("wide-query-result-scroll", app.page, () =>
+        app.page.evaluate(async () => {
+          let scroller = document.querySelector("tbody")?.parentElement ?? null;
+          while (scroller && getComputedStyle(scroller).overflowY !== "auto")
+            scroller = scroller.parentElement;
+          if (!scroller) throw new Error("Kein Scroll-Container gefunden.");
+          const target = scroller;
+          let start = 0;
+          await new Promise<void>((resolve) => {
+            const step = (now: number) => {
+              if (!start) start = now;
+              target.scrollTop += now - start < 2500 ? 90 : -90;
+              target.scrollLeft += now - start < 2500 ? 90 : -90;
+              if (now - start < 5000) requestAnimationFrame(step);
+              else resolve();
+            };
+            requestAnimationFrame(step);
+          });
+        }),
+      );
+      expect(scroll.fps).toBeGreaterThan(55);
+      expect(scroll.p95).toBeLessThan(28);
       expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
       expect(app.errors).toEqual([]);
     } finally {

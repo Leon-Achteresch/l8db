@@ -1,10 +1,8 @@
 import { PlayIcon, Trash2Icon } from "lucide-react";
-import { motion } from "motion/react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { firstLine, formatTime } from "@/features/query/query-history-panel/format";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import type { QueryHistoryEntry } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 
@@ -16,11 +14,7 @@ interface HistoryEntryItemProps {
 
 export function HistoryEntryItem({ entry, onLoad, undoableRemove }: HistoryEntryItemProps) {
   return (
-    <motion.div
-      layout
-      transition={{ layout: SPRING_LAYOUT }}
-      className="group px-3 py-2 hover:bg-muted/40"
-    >
+    <div className="group px-3 py-2 hover:bg-muted/40">
       <button
         type="button"
         className="block w-full text-left"
@@ -80,6 +74,6 @@ export function HistoryEntryItem({ entry, onLoad, undoableRemove }: HistoryEntry
           Löschen
         </Button>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 
-import { monaco } from "@/lib/monaco";
+import { monaco, showQueryAssessment } from "@/lib/monaco";
 import { toMonacoSnippet } from "@/lib/snippets";
 
 import type { QueryEditorApi } from "./types";
@@ -53,5 +53,9 @@ export function createEditorApi(
     },
     toggleBookmark: () => toggleBookmarkAtCursor(),
     gotoBookmark: (direction: "next" | "previous") => gotoBookmarkLine(direction),
+    showAssessment: (sql: string, assessment: unknown) => {
+      const editor = editorRef.current;
+      return editor ? showQueryAssessment(editor, sql, assessment) : false;
+    },
   };
 }

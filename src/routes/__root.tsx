@@ -1,13 +1,14 @@
 import { createRootRoute } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
+import { lazy, Suspense, startTransition, useEffect, useState } from "react";
 import { WindowCloseGuard } from "@/features/shell/window-close-guard";
 import "../index.css";
 
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { Toaster } from "@/components/ui/sonner";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
-import { Onboarding } from "@/features/onboarding/onboarding";
+import { OnboardingHost } from "@/features/onboarding/onboarding-host";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
 import { AppFrame } from "@/features/shell/app-frame";
 import { AppHeader } from "@/features/shell/app-header";
@@ -16,11 +17,25 @@ import { RouteErrorView } from "@/features/shell/route-error-view";
 import { RouteNotFoundView } from "@/features/shell/route-not-found-view";
 import { SqlFileDrop } from "@/features/shell/sql-file-drop";
 import { TasksDialog } from "@/features/shell/tasks-dialog";
-import { AppTour } from "@/features/tour/app-tour";
-import { FeatureVideoHost } from "@/features/updates/feature-video-host";
+import { AppTourHost } from "@/features/tour/app-tour-host";
 import { UpdateAvailableDialog } from "@/features/updates/update-available-dialog";
+import { useFeatureVideoStore } from "@/lib/feature-videos/store";
+
+const FeatureVideoHost = lazy(() =>
+  import("@/features/updates/feature-video-host").then(({ FeatureVideoHost }) => ({
+    default: FeatureVideoHost,
+  })),
+);
 
 function RootComponent() {
+  const activeFeatureVideo = useFeatureVideoStore((state) => state.activeId);
+  const [backgroundReady, setBackgroundReady] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => startTransition(() => setBackgroundReady(true)), 1000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <MotionConfig reducedMotion="user">
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
@@ -35,9 +50,13 @@ function RootComponent() {
         <SqlConfirmationDialog />
         <TasksDialog />
         <WindowCloseGuard />
-        <AppTour />
-        <Onboarding />
-        <FeatureVideoHost />
+        <AppTourHost />
+        <OnboardingHost />
+        {(backgroundReady || activeFeatureVideo) && (
+          <Suspense fallback={null}>
+            <FeatureVideoHost />
+          </Suspense>
+        )}
         <Toaster />
       </ThemeProvider>
     </MotionConfig>

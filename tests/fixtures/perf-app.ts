@@ -19,9 +19,11 @@ export async function seedApp(
   page: Page,
   tables: number,
   grid = { rows: 500, columns: 24 },
+  password: string | null = null,
+  overviewSchemas = 8,
 ): Promise<void> {
   await page.addInitScript(
-    ({ count, rowCount, columnCount }) => {
+    ({ count, rowCount, columnCount, password, overviewSchemas }) => {
       const names = Array.from({ length: count }, (_, i) => `table_${String(i).padStart(4, "0")}`);
       const columns = Array.from({ length: columnCount }, (_, i) => ({
         name: i === 0 ? "id" : `col_${i}`,
@@ -43,7 +45,7 @@ export async function seedApp(
           case "list_databases":
             return ["l8db_perf"];
           case "list_schemas":
-            return ["public"];
+            return ["public", ...Array.from({ length: overviewSchemas }, (_, i) => `schema_${i}`)];
           case "list_tables":
             return names.map((name) => ({ schema: "public", name }));
           case "list_views":
@@ -100,6 +102,16 @@ export async function seedApp(
                 data_type: column.data_type,
               })),
             );
+          case "list_proxy_users":
+            return [
+              { name: "reader", category: "role", bypasses_rls: false },
+              { name: "writer", category: "role", bypasses_rls: false },
+              ...Array.from({ length: 3000 }, (_, index) => ({
+                name: `role_${String(index).padStart(4, "0")}`,
+                category: "role",
+                bypasses_rls: false,
+              })),
+            ];
           case "list_table_columns_detailed":
             return columns;
           case "fetch_table_rows":
@@ -110,20 +122,23 @@ export async function seedApp(
             return { count: rows.length, exact: true, estimate: null };
           case "get_database_overview":
             return {
+              database: "l8db_perf",
               size_bytes: 123456789,
-              schemas: Array.from({ length: 8 }, (_, i) => ({
-                name: `schema_${i}`,
-                size_bytes: 10000000 - i * 900000,
+              size_pretty: "118 MB",
+              schemas: Array.from({ length: overviewSchemas }, (_, i) => ({
+                schema: `schema_${i}`,
+                size_bytes: 10000000 - i * 9000,
                 table_count: 40,
-              })),
-              tables: names.map((name, i) => ({
-                schema: "public",
-                name,
-                size_bytes: 5000000 - i * 100,
-                row_estimate: 100000 - i,
               })),
             };
           case "execute_query":
+            if (String(args?.sql ?? "").includes("perf wide"))
+              return {
+                columns: columns.map((column) => column.name),
+                rows,
+                rows_affected: rows.length,
+                execution_time_ms: 4,
+              };
             return String(args?.sql ?? "").includes("perf")
               ? {
                   columns: ["label", "value", "value2"],
@@ -183,7 +198,7 @@ export async function seedApp(
             };
           }
           case "load_secret":
-            return null;
+            return args?.account === "perf" ? password : null;
           default:
             return [];
         }
@@ -204,7 +219,7 @@ export async function seedApp(
         },
       });
     },
-    { count: tables, rowCount: grid.rows, columnCount: grid.columns },
+    { count: tables, rowCount: grid.rows, columnCount: grid.columns, password, overviewSchemas },
   );
 
   await page.addInitScript((charts: string[]) => {

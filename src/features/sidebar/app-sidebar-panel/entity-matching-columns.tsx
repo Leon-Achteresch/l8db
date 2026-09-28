@@ -3,13 +3,13 @@ import { ColumnsIcon } from "lucide-react";
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from "@/components/ui/sidebar";
 
 interface EntityMatchingColumnsProps {
-  item: { schema: string; name: string; matchingColumns: string[] };
+  item: { schema: string; name: string; matchingColumns?: string[] };
   type: "table" | "view";
   onOpenView: () => void;
 }
 
 export function EntityMatchingColumns({ item, type, onOpenView }: EntityMatchingColumnsProps) {
-  if (item.matchingColumns.length === 0) return null;
+  if (!item.matchingColumns?.length) return null;
   return (
     <SidebarMenuSub>
       {item.matchingColumns.map((col) => (

@@ -1,7 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { SidebarMenu } from "@/components/ui/sidebar";
 
-const OVERSCAN = 10;
+const OVERSCAN = 26;
+const EDGE_MARGIN = 2;
 const MIN_COUNT = 60;
 const ESTIMATED_PITCH = 36;
 
@@ -38,19 +39,24 @@ export function SidebarWindow({
     }
     const pitch = pitchRef.current;
     const offset = scroller.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    const visibleStart = Math.max(0, Math.floor(offset / pitch));
+    const visibleEnd = Math.min(count, Math.ceil((offset + scroller.clientHeight) / pitch));
     const start = Math.min(
       Math.max(0, count - Math.ceil(scroller.clientHeight / pitch)),
-      Math.max(0, Math.floor(offset / pitch) - OVERSCAN),
+      Math.max(0, visibleStart - OVERSCAN),
     );
-    const end = Math.min(
-      count,
-      Math.max(start + 1, Math.ceil((offset + scroller.clientHeight) / pitch) + OVERSCAN),
-    );
-    setRange((previous) =>
-      previous.start === start && previous.end === end && previous.pitch === pitch
-        ? previous
-        : { start, end, pitch },
-    );
+    const end = Math.min(count, Math.max(start + 1, visibleEnd + OVERSCAN));
+    setRange((previous) => {
+      if (
+        previous.pitch === pitch &&
+        (previous.start === 0 || visibleStart - previous.start >= EDGE_MARGIN) &&
+        (previous.end === count || previous.end - visibleEnd >= EDGE_MARGIN)
+      )
+        return previous;
+      if (previous.start === start && previous.end === end && previous.pitch === pitch)
+        return previous;
+      return { start, end, pitch };
+    });
   }, [count]);
 
   useEffect(() => {

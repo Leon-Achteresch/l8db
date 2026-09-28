@@ -1,5 +1,5 @@
 import { Settings2Icon } from "lucide-react";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -17,8 +17,10 @@ import { useSettingsStore } from "@/lib/settings";
 export function QueryEditorSettingsPopover() {
   const store = useSettingsStore();
   const [tab, setTab] = useState("workspace");
+  const [open, setOpen] = useState(false);
+  const contentReady = useDeferredValue(open, false);
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
           size="sm"
@@ -65,7 +67,7 @@ export function QueryEditorSettingsPopover() {
           aria-labelledby={`settings-${tab}`}
           className="min-h-0 flex-1 overflow-y-auto p-6"
         >
-          {tab === "workspace" ? (
+          {!contentReady ? null : tab === "workspace" ? (
             <QueryWorkspaceSettings />
           ) : tab === "hotkeys" ? (
             <SettingsHotkeysTab />

@@ -71,7 +71,7 @@ test("script mode leaves successful writes in a reviewable transaction and skips
   expect(outcome.entries.map((entry) => entry.status)).toEqual(["success", "error", "skipped"]);
   expect(outcome.txId).toBe("qol-tx");
   expect(calls.some((call) => call.command === "commit_transaction")).toBe(false);
-  expect(useTransactionStore.getState().transactions[0].changes).toHaveLength(1);
+  expect(useTransactionStore.getState().transactions[0].changes.map((change) => change.type)).toEqual(["query", "insert"]);
 });
 
 test("autocommit continues only when explicitly selected", async () => {

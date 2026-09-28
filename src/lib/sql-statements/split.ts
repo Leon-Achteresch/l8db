@@ -11,7 +11,8 @@ export interface SqlSplitResult {
 
 const WORD_CHAR = /[A-Za-z0-9_]/;
 
-const DOLLAR_TAG_ASCII = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/;
+const DOLLAR_TAG_ASCII = /\$([A-Za-z_][A-Za-z0-9_]*)?\$/y;
+const DOLLAR_TAG_START = /[A-Za-z_$]/;
 
 function isWordChar(ch: string | undefined): boolean {
   return ch !== undefined && WORD_CHAR.test(ch);
@@ -221,8 +222,14 @@ export function splitSqlStatements(sql: string, dialect?: string): SqlSplitResul
       continue;
     }
 
-    if (dialect !== "oracle" && ch === "$" && !isWordChar(sql[index - 1])) {
-      const match = DOLLAR_TAG_ASCII.exec(sql.slice(index));
+    if (
+      dialect !== "oracle" &&
+      ch === "$" &&
+      DOLLAR_TAG_START.test(sql[index + 1] ?? "") &&
+      !isWordChar(sql[index - 1])
+    ) {
+      DOLLAR_TAG_ASCII.lastIndex = index;
+      const match = DOLLAR_TAG_ASCII.exec(sql);
       if (match) {
         hasCode = true;
         const tag = match[0];
