@@ -18,7 +18,7 @@ pub struct AppwriteProfile {
 
 #[derive(Deserialize)]
 struct RemoteProject {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     id: String,
     name: String,
     region: Option<String>,
@@ -32,62 +32,62 @@ pub struct AppwritePage<T> {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteBucket {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub enabled: bool,
-    #[serde(rename = "totalSize")]
+    #[serde(rename(deserialize = "totalSize"))]
     pub total_size: Option<u64>,
-    #[serde(rename = "maximumFileSize")]
+    #[serde(rename(deserialize = "maximumFileSize"))]
     pub maximum_file_size: Option<u64>,
-    #[serde(rename = "allowedFileExtensions")]
+    #[serde(rename(deserialize = "allowedFileExtensions"))]
     pub allowed_file_extensions: Option<Vec<String>>,
-    #[serde(rename = "fileSecurity")]
+    #[serde(rename(deserialize = "fileSecurity"))]
     pub file_security: Option<bool>,
     pub compression: Option<String>,
     pub encryption: Option<bool>,
     pub antivirus: Option<bool>,
     pub transformations: Option<bool>,
-    #[serde(rename = "$permissions")]
+    #[serde(rename(deserialize = "$permissions"))]
     pub permissions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteFile {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub key: Option<String>,
     pub folder: Option<String>,
-    #[serde(rename = "sizeOriginal")]
+    #[serde(rename(deserialize = "sizeOriginal"))]
     pub size_original: Option<u64>,
-    #[serde(rename = "mimeType")]
+    #[serde(rename(deserialize = "mimeType"))]
     pub mime_type: Option<String>,
-    #[serde(rename = "$createdAt")]
+    #[serde(rename(deserialize = "$createdAt"))]
     pub created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteNamedResource {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub enabled: Option<bool>,
-    #[serde(rename = "$createdAt")]
+    #[serde(rename(deserialize = "$createdAt"))]
     pub created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteFunction {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub enabled: Option<bool>,
     pub live: Option<bool>,
     pub runtime: Option<String>,
-    #[serde(rename = "latestDeploymentStatus")]
+    #[serde(rename(deserialize = "latestDeploymentStatus"))]
     pub latest_deployment_status: Option<String>,
-    #[serde(rename = "deploymentId")]
+    #[serde(rename(deserialize = "deploymentId"))]
     pub deployment_id: Option<String>,
     pub events: Option<Vec<String>>,
     pub schedule: Option<String>,
@@ -97,32 +97,32 @@ pub struct AppwriteFunction {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteSite {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub enabled: Option<bool>,
     pub live: Option<bool>,
     pub framework: Option<String>,
-    #[serde(rename = "latestDeploymentStatus")]
+    #[serde(rename(deserialize = "latestDeploymentStatus"))]
     pub latest_deployment_status: Option<String>,
-    #[serde(rename = "deploymentId")]
+    #[serde(rename(deserialize = "deploymentId"))]
     pub deployment_id: Option<String>,
-    #[serde(rename = "buildRuntime")]
+    #[serde(rename(deserialize = "buildRuntime"))]
     pub build_runtime: Option<String>,
     pub adapter: Option<String>,
-    #[serde(rename = "outputDirectory")]
+    #[serde(rename(deserialize = "outputDirectory"))]
     pub output_directory: Option<String>,
     pub timeout: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteUser {
-    #[serde(rename = "$id")]
+    #[serde(rename(deserialize = "$id"))]
     pub id: String,
     pub name: String,
     pub email: Option<String>,
     pub status: Option<bool>,
-    #[serde(rename = "$createdAt")]
+    #[serde(rename(deserialize = "$createdAt"))]
     pub created_at: Option<String>,
 }
 
@@ -137,7 +137,7 @@ pub struct AppwriteRow {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AppwriteColumn {
     pub key: String,
-    #[serde(rename = "type")]
+    #[serde(rename(deserialize = "type"))]
     pub kind: String,
     #[serde(default)]
     pub required: bool,
@@ -343,6 +343,18 @@ async fn get<T: serde::de::DeserializeOwned>(
         .map_err(|_| "Appwrite hat unerwartete Daten geliefert.".into())
 }
 
+async fn verify_key(endpoint: &str, project_id: &str, api_key: &str) -> Result<(), String> {
+    let mut last = String::new();
+    for path in ["tablesdb", "storage/buckets", "users", "functions"] {
+        match get::<serde_json::Value>(endpoint, project_id, api_key, path, Some(0)).await {
+            Ok(_) => return Ok(()),
+            Err(error) if error.starts_with("Appwrite HTTP 401") => return Err(error),
+            Err(error) => last = error,
+        }
+    }
+    Err(last)
+}
+
 async fn project_get<T: serde::de::DeserializeOwned>(
     id: &str,
     path: &str,
@@ -364,7 +376,19 @@ pub async fn appwrite_connect(
     if api_key.is_empty() {
         return Err("Appwrite API-Schlüssel fehlt.".into());
     }
-    let remote: RemoteProject = get(&endpoint, &project_id, api_key, "project", None).await?;
+    let remote = match get::<RemoteProject>(&endpoint, &project_id, api_key, "project", None).await
+    {
+        Ok(remote) => remote,
+        Err(error) if error.starts_with("Appwrite HTTP 404") => {
+            verify_key(&endpoint, &project_id, api_key).await?;
+            RemoteProject {
+                id: project_id.clone(),
+                name: project_id.clone(),
+                region: None,
+            }
+        }
+        Err(error) => return Err(error),
+    };
     if remote.id != project_id {
         return Err("Appwrite hat eine andere Projekt-ID zurückgegeben.".into());
     }
@@ -1099,6 +1123,7 @@ mod tests {
         .unwrap();
         assert_eq!(function.runtime.as_deref(), Some("node-22"));
         assert_eq!(function.events.as_ref().unwrap()[0], "users.*.create");
+        assert_eq!(serde_json::to_value(&function).unwrap()["id"], function.id);
         assert!(!serde_json::to_string(&function)
             .unwrap()
             .contains("private-example"));

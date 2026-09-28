@@ -97,6 +97,7 @@ export function ConnectionsView() {
       : groups;
   const needle = query.trim().toLowerCase();
   const allBaasConnections = useBaasConnections();
+  const totalConnections = connections.length + allBaasConnections.length;
   const baasConnections = allBaasConnections.filter(
     (item) =>
       !favoritesOnly &&
@@ -200,9 +201,9 @@ export function ConnectionsView() {
             </h1>
             {!editorId && (
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {connections.length === 0
+                {totalConnections === 0
                   ? "Starte mit einer neuen Verbindung oder importiere bestehende Profile."
-                  : `${connections.length} ${connections.length === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` auf ${allGroups.length} ${allGroups.length === 1 ? "Host" : "Hosts"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
+                  : `${totalConnections} ${totalConnections === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` auf ${allGroups.length} ${allGroups.length === 1 ? "Host" : "Hosts"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
               </p>
             )}
           </div>
