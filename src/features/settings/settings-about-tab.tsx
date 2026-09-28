@@ -17,6 +17,8 @@ export function SettingsAboutTab() {
   const [reportOpen, setReportOpen] = useState(false);
   const crashReports = useSettingsStore((s) => s.crashReports);
   const setCrashReports = useSettingsStore((s) => s.setCrashReports);
+  const usageMetrics = useSettingsStore((s) => s.usageMetrics);
+  const setUsageMetrics = useSettingsStore((s) => s.setUsageMetrics);
 
   const copyDiagnosticInfo = async () => {
     const info = await collectDiagnosticText();
@@ -88,6 +90,17 @@ export function SettingsAboutTab() {
             checked={crashReports}
             onCheckedChange={setCrashReports}
             aria-label="Absturzberichte senden"
+          />
+        </SettingsRow>
+        <SettingsRow
+          title="Nutzungs- und Leistungsdaten senden"
+          description="Startzeit, Dauer von Datenbankbefehlen je DB-Typ, geöffnete Bereiche und Sitzungen an Sentry (EU) senden. Nie SQL, Tabellennamen oder Verbindungsdaten."
+          featureId="settings.about.usage-metrics"
+        >
+          <Switch
+            checked={usageMetrics}
+            onCheckedChange={setUsageMetrics}
+            aria-label="Nutzungs- und Leistungsdaten senden"
           />
         </SettingsRow>
         <SettingsRow

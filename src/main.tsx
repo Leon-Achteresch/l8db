@@ -16,6 +16,7 @@ import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { restoreSshTunnel } from "@/lib/ssh";
+import { recordCount, recordDuration } from "@/lib/telemetry";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
@@ -27,6 +28,11 @@ if (import.meta.hot) import.meta.hot.dispose(executionSettings.dispose);
 if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
 const disposeCrashReporting = initCrashReporting();
 if (import.meta.hot) import.meta.hot.dispose(disposeCrashReporting);
+
+router.subscribe("onResolved", () => {
+  const route = router.state.matches.at(-1)?.routeId;
+  if (route) recordCount("view.open", { route });
+});
 
 const queryClient = createAppQueryClient();
 const extensionHost = createExtensionHost();
@@ -62,6 +68,7 @@ Promise.all([
   .catch(() => undefined)
   .finally(() => {
     render();
+    recordDuration("app.startup", performance.now(), { ready: String(startupReady) });
     if (startupReady)
       requestAnimationFrame(() => {
         void import("@/lib/dashboards/mcp-sync")
