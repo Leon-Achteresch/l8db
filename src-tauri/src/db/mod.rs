@@ -54,7 +54,7 @@ pub mod ssh;
 pub mod table_copy;
 pub mod transaction;
 pub mod transfer;
-mod warehouse_auth;
+pub(crate) mod warehouse_auth;
 
 use async_trait::async_trait;
 use pool::PoolState;

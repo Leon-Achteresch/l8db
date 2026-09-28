@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AboutRouteImport } from './routes/about'
+import { Route as BaasRouteImport } from './routes/baas'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DevRouteImport } from './routes/dev'
@@ -63,6 +64,11 @@ const AppRoute = AppRouteImport.update({
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BaasRoute = BaasRouteImport.update({
+  id: '/baas',
+  path: '/baas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -302,6 +308,7 @@ const AppWorkspaceTriggersSchemaTableTriggerRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
+  '/baas': typeof BaasRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -347,6 +354,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
+  '/baas': typeof BaasRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -392,6 +400,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
+  '/baas': typeof BaasRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -442,6 +451,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/baas'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -487,6 +497,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/baas'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -531,6 +542,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/about'
+    | '/baas'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -580,6 +592,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
+  BaasRoute: typeof BaasRoute
   ConnectionsRoute: typeof ConnectionsRoute
   DashboardRoute: typeof DashboardRoute
   DevRoute: typeof DevRoute
@@ -604,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/about'
       fullPath: '/about'
       preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/baas': {
+      id: '/baas'
+      path: '/baas'
+      fullPath: '/baas'
+      preLoaderRoute: typeof BaasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -1032,6 +1052,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
+  BaasRoute: BaasRoute,
   ConnectionsRoute: ConnectionsRoute,
   DashboardRoute: DashboardRoute,
   DevRoute: DevRoute,

@@ -14,6 +14,7 @@ import { SnippetManagerDialog } from "@/features/query/snippet-manager-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import type { QueryResult } from "@/lib/db";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { AnalysisSection, QueryViewCapabilities, QueryViewConnection } from "./types";
 import type { ExplainPlanState } from "./use-explain-plan";
@@ -164,6 +165,11 @@ export function QueryViewDialogs({
               connectionName={connection?.name ?? ""}
               databaseKind={connection?.kind ?? ""}
               database={database}
+              connectionString={connection ? effectiveConnectionString(connection) : undefined}
+              onExtensionResult={(result) => {
+                const sqlText = explain.plan?.sql ?? "";
+                editorApiRef.current?.showAssessment(sqlText, result);
+              }}
               onClose={() => explain.setPlan(null)}
             />
           ) : null

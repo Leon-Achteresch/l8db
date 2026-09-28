@@ -70,7 +70,7 @@ try {
       route.fulfill({ status: 404, body: "{}" }),
     );
     if (item.id === "extension-market") {
-      const packageBytes = await readFile(resolve("extention/l8db.jev-1.0.0.l8db-extension"));
+      const packageBytes = await readFile(resolve("extention/l8db.jev-1.1.0.l8db-extension"));
       const manifest = JSON.parse(packageBytes.toString("utf8")).manifest as {
         id: string;
         name: string;
@@ -87,7 +87,7 @@ try {
             description: manifest.description,
             version: manifest.version,
             publisher: manifest.publisher,
-            package: "packages/l8db.jev-1.0.0.l8db-extension",
+            package: "packages/l8db.jev-1.1.0.l8db-extension",
             sha256: createHash("sha256").update(packageBytes).digest("hex"),
           },
         ],

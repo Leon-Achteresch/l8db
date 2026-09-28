@@ -1,0 +1,1325 @@
+use base64::Engine;
+use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use std::time::Duration;
+use tokio_util::io::ReaderStream;
+
+const TOKEN_ACCOUNT: &str = "baas:supabase:access-token";
+const KEY_INDEX_ACCOUNT: &str = "baas:supabase:project-key-index";
+
+fn client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("Supabase HTTP client")
+    })
+}
+
+fn project_api_auth(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+    let request = request.header("apikey", api_key);
+    if api_key.starts_with("eyJ") && api_key.split('.').count() == 3 {
+        request.bearer_auth(api_key)
+    } else {
+        request
+    }
+}
+
+fn validate_project_secret_key(api_key: &str) -> Result<(), String> {
+    if api_key.starts_with("sb_secret_") && api_key.len() > "sb_secret_".len() {
+        return Ok(());
+    }
+    let parts = api_key.split('.').collect::<Vec<_>>();
+    if parts.len() != 3 || !parts[0].starts_with("eyJ") || parts[2].is_empty() {
+        return Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into());
+    }
+    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    if claims.as_ref().and_then(|value| value["role"].as_str()) == Some("service_role") {
+        Ok(())
+    } else {
+        Err("Ein Supabase Secret API Key oder service_role Key wird benötigt.".into())
+    }
+}
+
+fn validate_ref(reference: &str) -> Result<&str, String> {
+    if reference.is_empty()
+        || reference.len() > 80
+        || !reference
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err("Ungültige Supabase-Projektreferenz.".into());
+    }
+    Ok(reference)
+}
+
+fn project_key_account(reference: &str) -> String {
+    format!("baas:supabase:{reference}:project-key")
+}
+
+fn validate_object_key(key: &str) -> Result<&str, String> {
+    if key.is_empty()
+        || key.len() > 1024
+        || key.contains('\\')
+        || key
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("Ungültiger Storage-Dateipfad.".into());
+    }
+    Ok(key)
+}
+
+fn validate_bucket(bucket: &str) -> Result<&str, String> {
+    if bucket.is_empty()
+        || bucket.len() > 256
+        || bucket.contains('/')
+        || bucket.contains('\\')
+        || bucket == "."
+        || bucket == ".."
+    {
+        return Err("Ungültiger Bucket-Name.".into());
+    }
+    Ok(bucket)
+}
+
+async fn project_key_index() -> Result<Vec<String>, String> {
+    let raw = crate::db::secrets::load_secret(KEY_INDEX_ACCOUNT.to_string()).await?;
+    match raw {
+        Some(raw) => {
+            serde_json::from_str(&raw).map_err(|_| "Ungültiger Supabase-Schlüsselindex.".into())
+        }
+        None => Ok(Vec::new()),
+    }
+}
+
+async fn save_project_key_index(references: &[String]) -> Result<(), String> {
+    crate::db::secrets::store_secret(
+        KEY_INDEX_ACCOUNT.to_string(),
+        serde_json::to_string(references)
+            .map_err(|_| "Schlüsselindex konnte nicht gespeichert werden.")?,
+    )
+    .await
+}
+
+async fn token() -> Result<String, String> {
+    crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
+        .await?
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Supabase ist noch nicht verbunden.".to_string())
+}
+
+async fn response_json<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<T, String> {
+    let status = response.status();
+    if !status.is_success() {
+        let hint = match status.as_u16() {
+            401 => "Zugangstoken oder API-Schlüssel ungültig.",
+            403 => "Für diese Ressource fehlen Berechtigungen.",
+            404 => "Ressource nicht gefunden.",
+            429 => "Supabase-Limit erreicht. Bitte später erneut versuchen.",
+            _ => "Anfrage fehlgeschlagen.",
+        };
+        return Err(format!("Supabase HTTP {}: {hint}", status.as_u16()));
+    }
+    response
+        .json::<T>()
+        .await
+        .map_err(|_| "Supabase hat unerwartete Daten geliefert.".into())
+}
+
+async fn management_get<T: serde::de::DeserializeOwned>(
+    access_token: &str,
+    path: &str,
+) -> Result<T, String> {
+    let url = format!("https://api.supabase.com/v1/{path}");
+    let response = client()
+        .get(url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+async fn management_query<T: serde::de::DeserializeOwned>(
+    reference: &str,
+    query: &str,
+    parameters: &[serde_json::Value],
+) -> Result<Vec<T>, String> {
+    let reference = validate_ref(reference)?;
+    let response = client()
+        .post(format!(
+            "https://api.supabase.com/v1/projects/{reference}/database/query"
+        ))
+        .bearer_auth(token().await?)
+        .json(&serde_json::json!({
+            "query": query,
+            "parameters": parameters,
+            "read_only": true
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+fn quote_identifier(value: &str) -> Result<String, String> {
+    if value.is_empty() || value.len() > 128 || value.contains('\0') {
+        return Err("Ungültiger Datenbankname.".into());
+    }
+    Ok(format!("\"{}\"", value.replace('"', "\"\"")))
+}
+
+fn table_rows_sql(schema: &str, table: &str, offset: u32) -> Result<String, String> {
+    if offset > 1_000_000 {
+        return Err("Ungültiger Zeilen-Offset.".into());
+    }
+    Ok(format!(
+        "SELECT * FROM {}.{} LIMIT 51 OFFSET {offset}",
+        quote_identifier(schema)?,
+        quote_identifier(table)?
+    ))
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseDatabase {
+    pub host: Option<String>,
+    pub version: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseProject {
+    pub id: String,
+    #[serde(rename(deserialize = "ref"))]
+    pub reference: String,
+    pub name: String,
+    pub region: Option<String>,
+    pub status: Option<String>,
+    pub organization_id: Option<String>,
+    pub database: Option<SupabaseDatabase>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseBucket {
+    pub id: String,
+    pub name: String,
+    pub public: bool,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    #[serde(rename(deserialize = "type"))]
+    pub kind: Option<String>,
+    pub file_size_limit: Option<u64>,
+    pub allowed_mime_types: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseFunction {
+    pub id: Option<String>,
+    pub slug: String,
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub version: Option<i64>,
+    pub verify_jwt: Option<bool>,
+    pub entrypoint_path: Option<String>,
+    pub import_map_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseObject {
+    pub name: String,
+    pub id: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub last_accessed_at: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseServiceHealth {
+    pub name: String,
+    pub healthy: bool,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseBackup {
+    pub id: Option<i64>,
+    pub is_physical_backup: Option<bool>,
+    pub status: Option<String>,
+    pub inserted_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabasePhysicalBackupData {
+    pub earliest_physical_backup_date_unix: Option<i64>,
+    pub latest_physical_backup_date_unix: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseBackups {
+    pub pitr_enabled: Option<bool>,
+    pub backups: Vec<SupabaseBackup>,
+    pub physical_backup_data: Option<SupabasePhysicalBackupData>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseAuthUser {
+    pub id: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub created_at: Option<String>,
+    pub last_sign_in_at: Option<String>,
+    pub email_confirmed_at: Option<String>,
+    pub phone_confirmed_at: Option<String>,
+    pub is_anonymous: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseAuthUsersPage {
+    pub users: Vec<SupabaseAuthUser>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseTable {
+    pub schema: String,
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SupabaseColumn {
+    pub name: String,
+    pub data_type: String,
+    pub is_nullable: String,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseTablesPage {
+    pub tables: Vec<SupabaseTable>,
+    pub has_more: bool,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseRowsPage {
+    pub rows: Vec<SupabaseRow>,
+    pub has_more: bool,
+}
+
+#[derive(Serialize)]
+pub struct SupabaseRow {
+    pub ordinal: u32,
+    pub values: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct SupabaseApiKey {
+    api_key: Option<String>,
+    #[serde(rename(deserialize = "type"))]
+    kind: String,
+    name: Option<String>,
+}
+
+fn select_project_key(keys: &[SupabaseApiKey]) -> Result<&str, String> {
+    let modern = keys
+        .iter()
+        .filter(|key| key.kind == "secret")
+        .filter_map(|key| {
+            key.api_key
+                .as_deref()
+                .filter(|value| value.starts_with("sb_secret_"))
+                .map(|value| (key.name.as_deref(), value))
+        })
+        .collect::<Vec<_>>();
+    if let Some((_, value)) = modern.iter().find(|(name, _)| *name == Some("default")) {
+        return Ok(value);
+    }
+    if modern.len() == 1 {
+        return Ok(modern[0].1);
+    }
+    if modern.len() > 1 {
+        return Err(
+            "Mehrere Secret API Keys vorhanden. Bitte den gewünschten Schlüssel manuell eingeben."
+                .into(),
+        );
+    }
+    keys.iter()
+        .find(|key| key.kind == "legacy" && key.name.as_deref() == Some("service_role"))
+        .and_then(|key| key.api_key.as_deref())
+        .filter(|value| validate_project_secret_key(value).is_ok())
+        .ok_or_else(|| "Kein verwendbarer Secret API Key gefunden. Das Zugangstoken benötigt API Keys: Read und API Key Secrets: Read; alternativ den Schlüssel manuell eingeben.".into())
+}
+
+#[tauri::command]
+pub async fn supabase_connect(access_token: String) -> Result<Vec<SupabaseProject>, String> {
+    let access_token = access_token.trim();
+    if access_token.is_empty() {
+        return Err("Zugangstoken fehlt.".into());
+    }
+    let projects = management_get(access_token, "projects").await?;
+    crate::db::secrets::store_secret(TOKEN_ACCOUNT.to_string(), access_token.to_string()).await?;
+    Ok(projects)
+}
+
+#[tauri::command]
+pub async fn supabase_disconnect() -> Result<(), String> {
+    for reference in project_key_index().await? {
+        crate::db::secrets::delete_secret(project_key_account(&reference)).await?;
+    }
+    crate::db::secrets::delete_secret(KEY_INDEX_ACCOUNT.to_string()).await?;
+    crate::db::secrets::delete_secret(TOKEN_ACCOUNT.to_string()).await
+}
+
+#[tauri::command]
+pub async fn supabase_is_connected() -> Result<bool, String> {
+    Ok(crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
+        .await?
+        .is_some())
+}
+
+#[tauri::command]
+pub async fn supabase_projects() -> Result<Vec<SupabaseProject>, String> {
+    management_get(&token().await?, "projects").await
+}
+
+#[tauri::command]
+pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, String> {
+    let reference = validate_ref(&reference)?;
+    management_get(
+        &token().await?,
+        &format!("projects/{reference}/storage/buckets"),
+    )
+    .await
+}
+
+fn bucket_details_url(reference: &str, bucket: &str) -> Result<reqwest::Url, String> {
+    let reference = validate_ref(reference)?;
+    let bucket = validate_bucket(bucket)?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/bucket"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket);
+    Ok(url)
+}
+
+#[tauri::command]
+pub async fn supabase_bucket_details(
+    reference: String,
+    bucket: String,
+) -> Result<SupabaseBucket, String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für Bucket-Details wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let response = project_api_auth(
+        client().get(bucket_details_url(reference, bucket)?),
+        &api_key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let details: SupabaseBucket = response_json(response).await?;
+    if details.id != bucket {
+        return Err("Supabase hat einen anderen Bucket zurückgegeben.".into());
+    }
+    Ok(details)
+}
+
+async fn project_secret_key(reference: &str) -> Result<String, String> {
+    crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für diese Aktion wird ein Supabase Secret API Key benötigt.".into())
+}
+
+#[tauri::command]
+pub async fn supabase_create_bucket(
+    reference: String,
+    name: String,
+    public: bool,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let name = validate_bucket(&name)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().post(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        &key,
+    )
+    .json(&serde_json::json!({"name": name, "id": name, "public": public}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_update_bucket_public(
+    reference: String,
+    bucket: String,
+    public: bool,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(client().put(bucket_details_url(reference, bucket)?), &key)
+        .json(&serde_json::json!({"public": public}))
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht geändert werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_delete_bucket(reference: String, bucket: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().delete(bucket_details_url(reference, bucket)?),
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht gelöscht werden. Er muss leer sein.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_functions(reference: String) -> Result<Vec<SupabaseFunction>, String> {
+    let reference = validate_ref(&reference)?;
+    management_get(&token().await?, &format!("projects/{reference}/functions")).await
+}
+
+#[tauri::command]
+pub async fn supabase_delete_function(reference: String, slug: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    if slug.is_empty()
+        || slug.len() > 128
+        || !slug
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("Ungültiger Supabase-Function-Slug.".into());
+    }
+    let response = client()
+        .delete(format!(
+            "https://api.supabase.com/v1/projects/{reference}/functions/{slug}"
+        ))
+        .bearer_auth(token().await?)
+        .send()
+        .await
+        .map_err(|_| "Supabase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Edge Function konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_health(reference: String) -> Result<Vec<SupabaseServiceHealth>, String> {
+    let reference = validate_ref(&reference)?;
+    management_get(
+        &token().await?,
+        &format!("projects/{reference}/health?services=auth&services=db&services=pooler&services=realtime&services=rest&services=storage"),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_backups(reference: String) -> Result<SupabaseBackups, String> {
+    let reference = validate_ref(&reference)?;
+    management_get(
+        &token().await?,
+        &format!("projects/{reference}/database/backups"),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_tables(reference: String, offset: u32) -> Result<SupabaseTablesPage, String> {
+    if offset > 100_000 {
+        return Err("Ungültiger Tabellen-Offset.".into());
+    }
+    let query = format!(
+        "SELECT table_schema AS schema, table_name AS name, table_type AS kind FROM information_schema.tables WHERE table_schema <> 'information_schema' AND left(table_schema, 3) <> 'pg_' ORDER BY table_schema, table_name LIMIT 101 OFFSET {offset}"
+    );
+    let mut tables = management_query(&reference, &query, &[]).await?;
+    let has_more = tables.len() > 100;
+    tables.truncate(100);
+    Ok(SupabaseTablesPage { tables, has_more })
+}
+
+#[tauri::command]
+pub async fn supabase_table_columns(
+    reference: String,
+    schema: String,
+    table: String,
+) -> Result<Vec<SupabaseColumn>, String> {
+    quote_identifier(&schema)?;
+    quote_identifier(&table)?;
+    management_query(
+        &reference,
+        "SELECT column_name AS name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+        &[serde_json::json!(schema), serde_json::json!(table)],
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_table_rows(
+    reference: String,
+    schema: String,
+    table: String,
+    offset: u32,
+) -> Result<SupabaseRowsPage, String> {
+    let query = table_rows_sql(&schema, &table, offset)?;
+    let mut rows = management_query(&reference, &query, &[]).await?;
+    let has_more = rows.len() > 50;
+    rows.truncate(50);
+    let rows = rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, values)| SupabaseRow {
+            ordinal: offset + index as u32 + 1,
+            values,
+        })
+        .collect();
+    Ok(SupabaseRowsPage { rows, has_more })
+}
+
+#[tauri::command]
+pub async fn supabase_has_project_key(reference: String) -> Result<bool, String> {
+    let reference = validate_ref(&reference)?;
+    Ok(
+        crate::db::secrets::load_secret(project_key_account(reference))
+            .await?
+            .is_some(),
+    )
+}
+
+#[tauri::command]
+pub async fn supabase_set_project_key(reference: String, api_key: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("API-Schlüssel fehlt.".into());
+    }
+    validate_project_secret_key(api_key)?;
+    let response = project_api_auth(
+        client().get(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        api_key,
+    )
+    .send()
+    .await
+    .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
+    let _: serde_json::Value = response_json(response).await?;
+    crate::db::secrets::store_secret(project_key_account(reference), api_key.to_string()).await?;
+    let mut references = project_key_index().await?;
+    if !references.iter().any(|entry| entry == reference) {
+        references.push(reference.to_string());
+        save_project_key_index(&references).await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_import_project_key(reference: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let keys: Vec<SupabaseApiKey> = management_get(
+        &token().await?,
+        &format!("projects/{reference}/api-keys?reveal=true"),
+    )
+    .await?;
+    let api_key = select_project_key(&keys)?;
+    supabase_set_project_key(reference.to_string(), api_key.to_string()).await
+}
+
+#[tauri::command]
+pub async fn supabase_delete_project_key(reference: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    crate::db::secrets::delete_secret(project_key_account(reference)).await?;
+    let references = project_key_index().await?;
+    save_project_key_index(
+        &references
+            .into_iter()
+            .filter(|entry| entry != reference)
+            .collect::<Vec<_>>(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_objects(
+    reference: String,
+    bucket: String,
+    prefix: String,
+    offset: u32,
+) -> Result<Vec<SupabaseObject>, String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für die Dateiliste wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object/list"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket);
+    let response = project_api_auth(client().post(url), &api_key)
+        .json(&serde_json::json!({
+            "prefix": prefix,
+            "limit": 100,
+            "offset": offset,
+            "sortBy": {"column": "name", "order": "asc"}
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+async fn object_response(
+    reference: &str,
+    bucket: &str,
+    object_key: &str,
+    http_client: &reqwest::Client,
+) -> Result<reqwest::Response, String> {
+    let reference = validate_ref(reference)?;
+    let bucket = validate_bucket(bucket)?;
+    let object_key = validate_object_key(object_key)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für die Dateivorschau wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object/authenticated"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket)
+        .extend(object_key.split('/'));
+    project_api_auth(http_client.get(url), &api_key)
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())
+}
+
+async fn upload_file(
+    path: &std::path::Path,
+    url: reqwest::Url,
+    api_key: &str,
+    http_client: &reqwest::Client,
+) -> Result<(), String> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|_| "Datei konnte nicht gelesen werden.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Bitte eine Datei auswählen.".into());
+    }
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| "Datei konnte nicht geöffnet werden.".to_string())?;
+    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
+    let response = project_api_auth(http_client.post(url), api_key)
+        .header(reqwest::header::CONTENT_TYPE, mime_type.as_ref())
+        .header(reqwest::header::CONTENT_LENGTH, metadata.len())
+        .header("x-upsert", "false")
+        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)))
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist beim Upload nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        let hint = match response.status().as_u16() {
+            400 => "Datei existiert bereits oder wird von den Bucket-Regeln abgelehnt.",
+            401 => "API-Schlüssel ungültig.",
+            403 => "Für den Upload fehlt die Berechtigung.",
+            409 => "Datei existiert bereits.",
+            413 => "Datei überschreitet das Größenlimit des Buckets.",
+            _ => "Upload fehlgeschlagen.",
+        };
+        return Err(format!(
+            "Supabase HTTP {}: {hint}",
+            response.status().as_u16()
+        ));
+    }
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_upload_object(
+    app: tauri::AppHandle,
+    reference: String,
+    bucket: String,
+    prefix: String,
+) -> Result<Option<String>, String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    if !prefix.is_empty() && !prefix.ends_with('/') {
+        return Err("Ungültiger Storage-Ordner.".into());
+    }
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für den Upload wird ein Supabase Secret API Key benötigt.".to_string())?;
+    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
+        return Ok(None);
+    };
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
+    let object_key = validate_object_key(&format!("{prefix}{name}"))?.to_string();
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket)
+        .extend(object_key.split('/'));
+    upload_file(&path, url, &api_key, crate::baas_file::upload_client()).await?;
+    Ok(Some(object_key))
+}
+
+#[tauri::command]
+pub async fn supabase_delete_object(
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let object_key = validate_object_key(&object_key)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für das Löschen wird ein Supabase Secret API Key benötigt.".to_string())?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket)
+        .extend(object_key.split('/'));
+    let response = project_api_auth(client().delete(url), &api_key)
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_move_object(
+    reference: String,
+    bucket: String,
+    source_key: String,
+    destination_key: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let source_key = validate_object_key(&source_key)?;
+    let destination_key = validate_object_key(&destination_key)?;
+    if source_key == destination_key {
+        return Err("Der neue Dateipfad muss sich unterscheiden.".into());
+    }
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für das Verschieben wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let response = project_api_auth(
+        client().post(format!(
+            "https://{reference}.supabase.co/storage/v1/object/move"
+        )),
+        &api_key,
+    )
+    .json(&serde_json::json!({
+        "bucketId": bucket,
+        "sourceKey": source_key,
+        "destinationKey": destination_key
+    }))
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_preview_object(
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<crate::baas_file::BaasFilePreview, String> {
+    crate::baas_file::preview_response(
+        object_response(&reference, &bucket, &object_key, client()).await?,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn supabase_download_object(
+    app: tauri::AppHandle,
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<bool, String> {
+    let Some(path) = crate::baas_file::pick_save_path(app, &object_key).await? else {
+        return Ok(false);
+    };
+    let response = object_response(
+        &reference,
+        &bucket,
+        &object_key,
+        crate::baas_file::download_client(),
+    )
+    .await?;
+    crate::baas_file::save_response(response, path).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn supabase_auth_users(
+    reference: String,
+    page: u32,
+) -> Result<SupabaseAuthUsersPage, String> {
+    let reference = validate_ref(&reference)?;
+    if page == 0 || page > 10_000 {
+        return Err("Ungültige Seitennummer.".into());
+    }
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für Auth wird ein Supabase Secret API Key benötigt.".to_string())?;
+    let response = project_api_auth(
+        client().get(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users"
+        )),
+        &api_key,
+    )
+    .query(&[("page", page), ("per_page", 50)])
+    .send()
+    .await
+    .map_err(|error| format!("Supabase Auth ist nicht erreichbar: {error}"))?;
+    response_json(response).await
+}
+
+fn validate_auth_user_id(id: &str) -> Result<&str, String> {
+    if id.len() != 36
+        || !id.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+    {
+        return Err("Ungültige Supabase-Benutzer-ID.".into());
+    }
+    Ok(id)
+}
+
+fn validate_auth_email(email: &str) -> Result<&str, String> {
+    if email.is_empty()
+        || email.len() > 320
+        || email.contains(char::is_whitespace)
+        || !email.contains('@')
+    {
+        return Err("Ungültige E-Mail-Adresse.".into());
+    }
+    Ok(email)
+}
+
+#[tauri::command]
+pub async fn supabase_create_auth_user(
+    reference: String,
+    email: String,
+    password: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let email = validate_auth_email(email.trim())?;
+    if password.len() < 6 || password.len() > 1024 {
+        return Err("Passwort muss zwischen 6 und 1024 Zeichen lang sein.".into());
+    }
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().post(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users"
+        )),
+        &key,
+    )
+    .json(&serde_json::json!({"email": email, "password": password}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_update_auth_user_email(
+    reference: String,
+    user_id: String,
+    email: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let user_id = validate_auth_user_id(&user_id)?;
+    let email = validate_auth_email(email.trim())?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().put(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
+        )),
+        &key,
+    )
+    .json(&serde_json::json!({"email": email}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht geändert werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let user_id = validate_auth_user_id(&user_id)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().delete(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
+        )),
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bucket_details_url, client, project_api_auth, select_project_key, table_rows_sql,
+        upload_file, validate_auth_email, validate_auth_user_id, validate_object_key,
+        validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
+        SupabaseBackups, SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject,
+        SupabaseServiceHealth,
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn upload_streams_file_without_overwriting_or_exposing_key_as_bearer() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut buffer).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+                if let Some(headers_end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    if request.len() >= headers_end + 4 + 5 {
+                        break;
+                    }
+                }
+            }
+            let headers_end = request
+                .windows(4)
+                .position(|part| part == b"\r\n\r\n")
+                .unwrap();
+            let headers = String::from_utf8_lossy(&request[..headers_end]).to_ascii_lowercase();
+            assert!(headers.starts_with("post /storage/v1/object/bucket/folder/hello.txt "));
+            assert!(headers.contains("apikey: sb_secret_example"));
+            assert!(!headers.contains("authorization:"));
+            assert!(headers.contains("x-upsert: false"));
+            assert!(headers.contains("content-type: text/plain"));
+            assert!(headers.contains("content-length: 5"));
+            assert_eq!(&request[headers_end + 4..], b"hello");
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+                .await
+                .unwrap();
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("hello.txt");
+        std::fs::write(&path, b"hello").unwrap();
+        let url = reqwest::Url::parse(&format!(
+            "http://{address}/storage/v1/object/bucket/folder/hello.txt"
+        ))
+        .unwrap();
+        upload_file(&path, url, "sb_secret_example", client())
+            .await
+            .unwrap();
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn table_row_queries_quote_names_and_cap_offsets() {
+        assert_eq!(
+            table_rows_sql("public", "a\"; DROP TABLE users; --", 50).unwrap(),
+            "SELECT * FROM \"public\".\"a\"\"; DROP TABLE users; --\" LIMIT 51 OFFSET 50"
+        );
+        assert!(table_rows_sql("public", "items", 1_000_001).is_err());
+        assert!(table_rows_sql("public", "a\0b", 0).is_err());
+    }
+
+    #[test]
+    fn project_key_selection_prefers_default_secret_and_rejects_ambiguity() {
+        let keys = vec![
+            SupabaseApiKey {
+                kind: "legacy".into(),
+                name: Some("service_role".into()),
+                api_key: Some(
+                    "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature".into(),
+                ),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("other".into()),
+                api_key: Some("sb_secret_other".into()),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("default".into()),
+                api_key: Some("sb_secret_default".into()),
+            },
+        ];
+        assert_eq!(select_project_key(&keys).unwrap(), "sb_secret_default");
+        assert_eq!(select_project_key(&keys[..2]).unwrap(), "sb_secret_other");
+        let more = vec![
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("one".into()),
+                api_key: Some("sb_secret_one".into()),
+            },
+            SupabaseApiKey {
+                kind: "secret".into(),
+                name: Some("two".into()),
+                api_key: Some("sb_secret_two".into()),
+            },
+        ];
+        assert!(select_project_key(&more).is_err());
+        assert_eq!(
+            select_project_key(&keys[..1]).unwrap(),
+            "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature"
+        );
+        let hidden: Vec<SupabaseApiKey> = serde_json::from_str(
+            r#"[{"type":"secret","name":"default","api_key":null},{"type":"publishable","name":"default","api_key":"sb_publishable_example"}]"#,
+        )
+        .unwrap();
+        assert!(select_project_key(&hidden).is_err());
+    }
+
+    #[test]
+    fn project_key_validation_rejects_public_keys() {
+        assert!(validate_project_secret_key("sb_secret_example").is_ok());
+        assert!(validate_project_secret_key("sb_publishable_example").is_err());
+        assert!(validate_project_secret_key(
+            "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature"
+        )
+        .is_ok());
+        assert!(
+            validate_project_secret_key("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.signature")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn project_api_uses_bearer_only_for_legacy_jwt_keys() {
+        let secret = project_api_auth(
+            client().get("https://example.supabase.co/storage/v1/bucket"),
+            "sb_secret_example",
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            secret.headers().get("apikey").unwrap().to_str().unwrap(),
+            "sb_secret_example"
+        );
+        assert!(secret.headers().get("authorization").is_none());
+
+        let legacy_key = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature";
+        let legacy = project_api_auth(
+            client().get("https://example.supabase.co/storage/v1/bucket"),
+            legacy_key,
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            legacy.headers().get("apikey").unwrap().to_str().unwrap(),
+            legacy_key
+        );
+        assert_eq!(
+            legacy
+                .headers()
+                .get("authorization")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            format!("Bearer {legacy_key}")
+        );
+    }
+
+    #[test]
+    fn project_refs_are_restricted_to_supabase_hosts() {
+        assert!(validate_ref("abcdefghijklmnopqrst").is_ok());
+        assert!(validate_ref("x-y1").is_ok());
+        for invalid in ["", "../other", "a.b", "a/b", "A", "x?redirect=evil"] {
+            assert!(validate_ref(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn auth_user_inputs_cannot_escape_admin_path() {
+        assert!(validate_auth_user_id("12345678-1234-1234-1234-123456789abc").is_ok());
+        assert!(validate_auth_user_id("../settings").is_err());
+        assert!(validate_auth_email("ada@example.com").is_ok());
+        assert!(validate_auth_email("ada@example.com\nX-Test: value").is_err());
+    }
+
+    #[test]
+    fn object_keys_cannot_escape_storage_path() {
+        assert!(validate_object_key("folder/image.png").is_ok());
+        assert!(validate_object_key("../auth/users").is_err());
+        assert!(validate_object_key("folder//image.png").is_err());
+        assert!(validate_object_key("folder\\image.png").is_err());
+    }
+
+    #[test]
+    fn bucket_details_use_project_host_and_encode_bucket_id() {
+        let url = bucket_details_url("abcdefghijklmnopqrst", "photos & files").unwrap();
+        assert_eq!(url.host_str(), Some("abcdefghijklmnopqrst.supabase.co"));
+        assert_eq!(url.path(), "/storage/v1/bucket/photos%20&%20files");
+        assert!(bucket_details_url("example.com", "photos").is_err());
+        assert!(bucket_details_url("abcdefghijklmnopqrst", "../auth").is_err());
+    }
+
+    #[test]
+    fn management_and_project_api_payloads_decode() {
+        let projects: Vec<SupabaseProject> = serde_json::from_str(
+            r#"[{"id":"1","ref":"abcdefghijklmnopqrst","name":"Demo","region":"eu-central-1","status":"ACTIVE_HEALTHY","database":{"host":"db.example.supabase.co","version":"17"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(projects[0].reference, "abcdefghijklmnopqrst");
+        assert_eq!(
+            serde_json::to_value(&projects[0]).unwrap()["reference"],
+            "abcdefghijklmnopqrst"
+        );
+        let buckets: Vec<SupabaseBucket> =
+            serde_json::from_str(r#"[{"id":"avatars","name":"avatars","public":true}]"#).unwrap();
+        assert!(buckets[0].public);
+        let details: SupabaseBucket = serde_json::from_str(
+            r#"{"id":"photos","name":"Photos","public":false,"type":"STANDARD","file_size_limit":1048576,"allowed_mime_types":["image/png"]}"#,
+        )
+        .unwrap();
+        assert_eq!(details.file_size_limit, Some(1024 * 1024));
+        assert_eq!(details.allowed_mime_types.unwrap(), ["image/png"]);
+        let functions: Vec<SupabaseFunction> = serde_json::from_str(
+            r#"[{"slug":"send-mail","status":"ACTIVE","version":2,"verify_jwt":true,"entrypoint_path":"index.ts","import_map_path":"import_map.json"}]"#,
+        )
+        .unwrap();
+        assert_eq!(functions[0].slug, "send-mail");
+        assert_eq!(functions[0].verify_jwt, Some(true));
+        assert_eq!(functions[0].entrypoint_path.as_deref(), Some("index.ts"));
+        assert_eq!(
+            functions[0].import_map_path.as_deref(),
+            Some("import_map.json")
+        );
+        let health: Vec<SupabaseServiceHealth> = serde_json::from_str(
+            r#"[{"name":"storage","healthy":true,"status":"ACTIVE_HEALTHY"}]"#,
+        )
+        .unwrap();
+        assert!(health[0].healthy);
+        let backups: SupabaseBackups = serde_json::from_str(
+            r#"{"region":"eu-central-1","walg_enabled":true,"pitr_enabled":true,"backups":[{"id":42,"is_physical_backup":true,"status":"COMPLETED","inserted_at":"2026-09-27T12:00:00Z"}],"physical_backup_data":{"earliest_physical_backup_date_unix":1790500000,"latest_physical_backup_date_unix":1790510000}}"#,
+        )
+        .unwrap();
+        assert_eq!(backups.pitr_enabled, Some(true));
+        assert_eq!(backups.backups[0].status.as_deref(), Some("COMPLETED"));
+        assert_eq!(
+            backups
+                .physical_backup_data
+                .unwrap()
+                .latest_physical_backup_date_unix,
+            Some(1790510000)
+        );
+        let objects: Vec<SupabaseObject> = serde_json::from_str(
+            r#"[{"name":"photo.png","id":"1","created_at":"2026-09-27T12:00:00Z","updated_at":"2026-09-27T13:00:00Z","last_accessed_at":"2026-09-27T14:00:00Z","metadata":{"size":512,"mimetype":"image/png"}},{"name":"photos","id":null,"metadata":null}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            objects[0].last_accessed_at.as_deref(),
+            Some("2026-09-27T14:00:00Z")
+        );
+        assert!(objects[1].id.is_none());
+        let users: SupabaseAuthUsersPage = serde_json::from_str(
+            r#"{"users":[{"id":"a","email":"user@example.com","email_confirmed_at":"2026-09-27T12:00:00Z","phone_confirmed_at":null,"is_anonymous":false}],"total":1}"#,
+        )
+        .unwrap();
+        assert_eq!(users.users[0].email.as_deref(), Some("user@example.com"));
+        assert_eq!(
+            users.users[0].email_confirmed_at.as_deref(),
+            Some("2026-09-27T12:00:00Z")
+        );
+        assert_eq!(users.users[0].phone_confirmed_at, None);
+        assert_eq!(users.users[0].is_anonymous, Some(false));
+    }
+}

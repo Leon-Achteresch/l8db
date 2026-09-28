@@ -1,8 +1,9 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { columnWindowRange } from "@/lib/column-window";
 import { lastGridRect, rememberGridRect } from "@/lib/grid-rect";
+import { IS_CHROMIUM } from "@/lib/platform";
+import { useGridVirtualizer } from "./use-transition-virtualizer";
 
 export type ColumnWindowItem = { index: number; span: number; width: number; spacer: boolean };
 
@@ -12,31 +13,49 @@ export function useColumnWindow(
   pinned: number[],
 ) {
   const enabled = widths.length > 20;
-  const rangeExtractor = useCallback(
-    (range: Parameters<typeof columnWindowRange>[0]) => columnWindowRange(range, pinned),
-    [pinned],
-  );
-  const overscan = useMemo(() => {
+  const direction = useRef<"forward" | "backward" | null>(null);
+  const narrowest = useMemo(() => {
     const pinnedSet = new Set(pinned);
-    const narrowest = widths.reduce(
+    return widths.reduce(
       (min, width, index) => (pinnedSet.has(index) ? min : Math.min(min, width)),
       Number.POSITIVE_INFINITY,
     );
-    return Number.isFinite(narrowest) ? Math.ceil(256 / Math.max(1, narrowest)) : 2;
   }, [widths, pinned]);
-  const virtualizer = useVirtualizer({
+  const overscan = Number.isFinite(narrowest)
+    ? Math.ceil((IS_CHROMIUM ? 512 : 256) / Math.max(1, narrowest))
+    : 2;
+  const behind = Number.isFinite(narrowest) ? Math.ceil(64 / Math.max(1, narrowest)) : 1;
+  const rangeExtractor = useCallback(
+    (range: Parameters<typeof columnWindowRange>[0]) => {
+      if (!IS_CHROMIUM) return columnWindowRange(range, pinned);
+      const backward = direction.current === "backward";
+      return columnWindowRange(
+        range,
+        pinned,
+        backward ? overscan : behind,
+        backward ? behind : overscan,
+      );
+    },
+    [pinned, overscan, behind],
+  );
+  const virtualizer = useGridVirtualizer({
     horizontal: true,
     useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
     count: widths.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => widths[index],
-    overscan,
+    overscan: IS_CHROMIUM ? 0 : overscan,
     rangeExtractor,
     enabled,
     scrollPaddingStart: pinned.reduce((sum, index) => sum + widths[index], 0),
     initialRect: { ...lastGridRect },
-    onChange: rememberGridRect,
+    onChange: IS_CHROMIUM
+      ? (instance) => {
+          direction.current = instance.scrollDirection;
+          rememberGridRect(instance);
+        }
+      : rememberGridRect,
   });
   const measuredWidths = useRef(widths);
   useEffect(() => {

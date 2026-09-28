@@ -55,7 +55,7 @@ export function TableTabs() {
   const activeTab = tabs.find(isTabActive) ?? activeWorkspaceTab;
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
     pendingTab ? tabKey(pendingTab) : activeTab ? tabKey(activeTab) : undefined,
-    tabs,
+    tabs.map(tabKey).join("\0"),
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
 

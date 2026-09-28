@@ -1,6 +1,7 @@
 import apacheCassandra from "thesvg/apache-cassandra";
 import apacheDoris from "thesvg/apache-doris";
 import apacheHive from "thesvg/apache-hive";
+import appwrite from "thesvg/appwrite";
 import athena from "thesvg/aws-amazon-athena";
 import documentdb from "thesvg/aws-amazon-documentdb";
 import dynamodb from "thesvg/aws-amazon-dynamodb";
@@ -11,12 +12,14 @@ import backblaze from "thesvg/backblaze";
 import clickhouse from "thesvg/clickhouse";
 import cloudflare from "thesvg/cloudflare";
 import cockroach from "thesvg/cockroach-labs";
+import convex from "thesvg/convex";
 import cratedb from "thesvg/cratedb";
 import databricks from "thesvg/databricks";
 import digitalocean from "thesvg/digitalocean";
 import duckdb from "thesvg/duckdb";
 import elasticsearch from "thesvg/elasticsearch";
 import ferretdb from "thesvg/ferretdb";
+import firebase from "thesvg/firebase";
 import firebird from "thesvg/firebird";
 import bigquery from "thesvg/google-bigquery";
 import googleCloudStorage from "thesvg/google-cloud-storage";
@@ -32,6 +35,7 @@ import neon from "thesvg/neon";
 import opensearch from "thesvg/opensearch";
 import oracle from "thesvg/oracle";
 import planetscale from "thesvg/planetscale";
+import pocketbase from "thesvg/pocketbase";
 import postgresql from "thesvg/postgresql";
 import redis from "thesvg/redis";
 import sap from "thesvg/sap";
@@ -53,6 +57,10 @@ type IconModule = { svg: string };
 
 const ICONS: Record<string, IconModule> = {
   "apache-cassandra": apacheCassandra,
+  appwrite,
+  convex,
+  firebase,
+  pocketbase,
   "apache-doris": apacheDoris,
   "apache-hive": apacheHive,
   "aws-amazon-athena": athena,

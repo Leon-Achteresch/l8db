@@ -1,8 +1,16 @@
+mod appwrite;
+mod baas_file;
+mod check_cli;
 mod community_extensions;
+mod convex;
 mod db;
 mod extension_process;
 mod file_open;
+mod firebase;
+mod index_advisor;
 mod mcp;
+mod pocketbase;
+mod supabase;
 mod versioning;
 
 #[cfg(target_os = "windows")]
@@ -39,6 +47,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--check") {
+        std::process::exit(check_cli::cli(&args));
+    }
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
@@ -74,6 +85,99 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            convex::convex_connect,
+            convex::convex_profiles,
+            convex::convex_disconnect,
+            convex::convex_projects,
+            convex::convex_deployments,
+            convex::convex_environment_variables,
+            convex::convex_set_environment_variable,
+            convex::convex_delete_environment_variable,
+            pocketbase::pocketbase_connect,
+            pocketbase::pocketbase_profiles,
+            pocketbase::pocketbase_disconnect,
+            pocketbase::pocketbase_collections,
+            pocketbase::pocketbase_records,
+            pocketbase::pocketbase_create_collection,
+            pocketbase::pocketbase_rename_collection,
+            pocketbase::pocketbase_delete_collection,
+            pocketbase::pocketbase_create_auth_user,
+            pocketbase::pocketbase_create_record,
+            pocketbase::pocketbase_update_record,
+            pocketbase::pocketbase_delete_record,
+            pocketbase::pocketbase_upload_file,
+            pocketbase::pocketbase_delete_file,
+            pocketbase::pocketbase_preview_file,
+            pocketbase::pocketbase_download_file,
+            appwrite::appwrite_connect,
+            appwrite::appwrite_profiles,
+            appwrite::appwrite_disconnect,
+            appwrite::appwrite_buckets,
+            appwrite::appwrite_create_bucket,
+            appwrite::appwrite_rename_bucket,
+            appwrite::appwrite_delete_bucket,
+            appwrite::appwrite_files,
+            appwrite::appwrite_upload_file,
+            appwrite::appwrite_rename_file,
+            appwrite::appwrite_delete_file,
+            appwrite::appwrite_preview_file,
+            appwrite::appwrite_download_file,
+            appwrite::appwrite_databases,
+            appwrite::appwrite_tables,
+            appwrite::appwrite_rows,
+            appwrite::appwrite_columns,
+            appwrite::appwrite_functions,
+            appwrite::appwrite_users,
+            appwrite::appwrite_create_user,
+            appwrite::appwrite_update_user_email,
+            appwrite::appwrite_delete_user,
+            appwrite::appwrite_delete_function,
+            appwrite::appwrite_sites,
+            supabase::supabase_connect,
+            supabase::supabase_disconnect,
+            supabase::supabase_is_connected,
+            supabase::supabase_projects,
+            supabase::supabase_buckets,
+            supabase::supabase_bucket_details,
+            supabase::supabase_create_bucket,
+            supabase::supabase_update_bucket_public,
+            supabase::supabase_delete_bucket,
+            supabase::supabase_functions,
+            supabase::supabase_delete_function,
+            supabase::supabase_health,
+            supabase::supabase_backups,
+            supabase::supabase_tables,
+            supabase::supabase_table_columns,
+            supabase::supabase_table_rows,
+            supabase::supabase_has_project_key,
+            supabase::supabase_set_project_key,
+            supabase::supabase_import_project_key,
+            supabase::supabase_delete_project_key,
+            supabase::supabase_objects,
+            supabase::supabase_upload_object,
+            supabase::supabase_delete_object,
+            supabase::supabase_move_object,
+            supabase::supabase_preview_object,
+            supabase::supabase_download_object,
+            supabase::supabase_auth_users,
+            supabase::supabase_create_auth_user,
+            supabase::supabase_update_auth_user_email,
+            supabase::supabase_delete_auth_user,
+            firebase::firebase_connect,
+            firebase::firebase_profiles,
+            firebase::firebase_disconnect,
+            firebase::firebase_buckets,
+            firebase::firebase_objects,
+            firebase::firebase_upload_object,
+            firebase::firebase_auth_users,
+            firebase::firebase_firestore_databases,
+            firebase::firebase_firestore_collections,
+            firebase::firebase_firestore_documents,
+            firebase::firebase_functions,
+            firebase::firebase_hosting_sites,
+            firebase::firebase_hosting_releases,
+            firebase::firebase_preview_object,
+            firebase::firebase_download_object,
             versioning::versioning_repository,
             versioning::metadata::versioning_metadata,
             versioning::control::versioning_control,
@@ -254,6 +358,7 @@ pub fn run() {
             db::ssh::close_ssh_tunnel,
             db::ssh::list_ssh_tunnels,
             db::commands::explain_query,
+            index_advisor::advise_indexes,
             db::commands::list_materialized_views,
             db::commands::refresh_materialized_view,
             db::commands::drop_materialized_view,

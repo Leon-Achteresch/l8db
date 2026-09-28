@@ -14,7 +14,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatedBadge } from "@/components/motion/animated-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 import { RecentQueries } from "./connected-dashboard/recent-queries";
 import { StorageOverview } from "./connected-dashboard/storage-overview";
 import { DashboardMetric } from "./dashboard-metric";
+import { DashboardTableList } from "./dashboard-table-list";
 
 const TABLE_LIST_LIMIT = 50;
 const MIN_OVERVIEW_SIZE_BYTES = 1024;
@@ -55,9 +56,16 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   const overview = useDatabaseOverviewQuery();
   const { refresh, isRefreshing } = useRefreshConnection();
   const history = useQueryHistoryStore((state) => state.entries);
-  const recent = history
-    .filter((entry) => entry.connectionId === connection.id && entry.database === database)
-    .slice(0, 4);
+  const recent = useMemo(() => {
+    const entries: typeof history = [];
+    for (const entry of history) {
+      if (entry.connectionId === connection.id && entry.database === database) {
+        entries.push(entry);
+        if (entries.length === 4) break;
+      }
+    }
+    return entries;
+  }, [history, connection.id, database]);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
   const reduce = useReducedMotion();
@@ -74,8 +82,12 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
     1,
     ...(overview.data?.schemas.map((entry) => entry.size_bytes) ?? []),
   );
-  const matching =
-    tables.data?.filter((table) => table.name.toLowerCase().includes(search.toLowerCase())) ?? [];
+  const matching = useMemo(() => {
+    if (!tables.data) return [];
+    if (!search) return tables.data;
+    const needle = search.toLowerCase();
+    return tables.data.filter((table) => table.name.toLowerCase().includes(needle));
+  }, [tables.data, search]);
   const filtered = matching.slice(0, TABLE_LIST_LIMIT);
   const metrics = [
     { label: "Tabellen", query: tables, icon: Database, enabled: true },
@@ -208,34 +220,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                   </Button>
                 </div>
               ) : filtered.length ? (
-                <div className="max-h-80 overflow-auto divide-y divide-border/60">
-                  {filtered.map((table) => (
-                    <div key={`${table.schema}.${table.name}`}>
-                      <Link
-                        to="/tables/$schema/$table"
-                        params={{ schema: table.schema, table: table.name }}
-                        onClick={() =>
-                          useTableTabs
-                            .getState()
-                            .openTab({ schema: table.schema, table: table.name })
-                        }
-                        className="group flex items-center gap-3 px-5 py-3 hover:bg-muted/60"
-                      >
-                        <Table2 className="size-4 text-primary/80" />
-                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                          {table.name}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">{table.schema}</span>
-                        <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                      </Link>
-                    </div>
-                  ))}
-                  {matching.length > filtered.length ? (
-                    <p className="px-5 py-3 text-[11px] text-muted-foreground">
-                      {`… und ${matching.length - filtered.length} weitere. Suche eingrenzen oder Sidebar nutzen.`}
-                    </p>
-                  ) : null}
-                </div>
+                <DashboardTableList tables={filtered} hidden={matching.length - filtered.length} />
               ) : (
                 <div className="p-8 text-center">
                   <Table2 className="mx-auto mb-3 size-6 text-muted-foreground/50" />

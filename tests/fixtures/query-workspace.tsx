@@ -8,6 +8,9 @@ import { useConnectionsStore } from "../../src/lib/connections";
 import { useTableTabs } from "../../src/lib/table-tabs";
 import { useQueryWorkspace } from "../../src/lib/query-workspace";
 import { useHotkeysStore } from "../../src/lib/hotkeys";
+import { ExtensionManager } from "../../src/lib/extensions/manager";
+import { ExtensionHostContext } from "../../src/lib/extensions/react-context";
+import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
 import "../../src/index.css";
 
 useConnectionsStore.setState({
@@ -34,15 +37,23 @@ useTableTabs.setState({
 });
 useQueryWorkspace.getState().update({ navigatorVisible: true });
 useHotkeysStore.setState({ overrides: { "query.run": "Mod+Shift+Y" } });
+const extensions = new ExtensionManager(
+  { list: async () => [] } as unknown as ConstructorParameters<typeof ExtensionManager>[0],
+  new SandboxRuntime(),
+  {} as ConstructorParameters<typeof ExtensionManager>[2],
+  "0.7.0",
+);
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const rootRoute = createRootRoute({ component: () => <QueryView tabId="test" /> });
 const router = createRouter({ routeTree: rootRoute });
 createRoot(document.getElementById("root")!).render(
-  <ThemeProvider attribute="class" defaultTheme="dark">
-    <HotkeysProvider>
-      <QueryClientProvider client={client}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </HotkeysProvider>
-  </ThemeProvider>,
+  <ExtensionHostContext.Provider value={extensions}>
+    <ThemeProvider attribute="class" defaultTheme="dark">
+      <HotkeysProvider>
+        <QueryClientProvider client={client}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </HotkeysProvider>
+    </ThemeProvider>
+  </ExtensionHostContext.Provider>,
 );

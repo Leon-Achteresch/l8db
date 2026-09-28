@@ -12,7 +12,7 @@ function revealTabElement(nav: HTMLElement, track: HTMLElement, key: string | un
   }
 }
 
-export function useTabOverflow(activeKey: string | undefined, tabs: readonly unknown[]) {
+export function useTabOverflow(activeKey: string | undefined, tabOrder: string) {
   const containerRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -58,7 +58,7 @@ export function useTabOverflow(activeKey: string | undefined, tabs: readonly unk
       observer.disconnect();
       nav.removeEventListener("scroll", measure);
     };
-  }, [activeKey, tabs]);
+  }, [activeKey, tabOrder]);
 
   const revealTab = (key: string) => {
     if (navRef.current && trackRef.current) revealTabElement(navRef.current, trackRef.current, key);

@@ -1,4 +1,5 @@
 import { SearchIcon, SquareTerminal, TerminalIcon } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,9 +28,12 @@ import {
   formatTime,
   levelVariant,
 } from "@/features/monitor/monitor-view/format";
+import { LogPagination } from "@/features/monitor/monitor-view/log-pagination";
 import type { HistoryFilter, HistoryRange } from "@/features/monitor/monitor-view/types";
 import type { MonitorViewState } from "@/features/monitor/monitor-view/use-monitor-view";
 import type { ServerOutputEntry } from "@/lib/server-output";
+
+const LOG_PAGE_SIZE = 100;
 
 export function LogsTab({
   m,
@@ -38,6 +42,10 @@ export function LogsTab({
   m: MonitorViewState;
   connection: NonNullable<MonitorViewState["connection"]>;
 }) {
+  const [historyPage, setHistoryPage] = useState(0);
+  const [outputPage, setOutputPage] = useState(0);
+  const historyListRef = useRef<HTMLDivElement>(null);
+  const outputListRef = useRef<HTMLDivElement>(null);
   const {
     capabilities,
     clearHistory,
@@ -57,6 +65,26 @@ export function LogsTab({
     scopedServerOutput,
     toggleServerOutput,
   } = m;
+  const historyPageCount = Math.max(1, Math.ceil(filteredHistory.length / LOG_PAGE_SIZE));
+  const visibleHistoryPage = Math.min(historyPage, historyPageCount - 1);
+  const visibleHistory = filteredHistory.slice(
+    visibleHistoryPage * LOG_PAGE_SIZE,
+    (visibleHistoryPage + 1) * LOG_PAGE_SIZE,
+  );
+  const outputPageCount = Math.max(1, Math.ceil(scopedServerOutput.length / LOG_PAGE_SIZE));
+  const visibleOutputPage = Math.min(outputPage, outputPageCount - 1);
+  const outputEnd = scopedServerOutput.length - visibleOutputPage * LOG_PAGE_SIZE;
+  const visibleOutput = scopedServerOutput
+    .slice(Math.max(0, outputEnd - LOG_PAGE_SIZE), outputEnd)
+    .reverse();
+  const changeHistoryPage = (page: number) => {
+    setHistoryPage(page);
+    requestAnimationFrame(() => historyListRef.current?.scrollIntoView({ block: "start" }));
+  };
+  const changeOutputPage = (page: number) => {
+    setOutputPage(page);
+    outputListRef.current?.scrollTo({ top: 0 });
+  };
   return (
     <TabsContent value="logs" className="mt-5 space-y-5">
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
@@ -100,7 +128,7 @@ export function LogsTab({
                 Leeren
               </Button>
             </div>
-            <div className="max-h-[520px] overflow-auto">
+            <div ref={outputListRef} className="max-h-[520px] overflow-auto">
               {scopedServerOutput.length === 0 ? (
                 <p className="px-5 py-8 text-center text-xs text-muted-foreground">
                   {capabilities.server_output
@@ -111,7 +139,7 @@ export function LogsTab({
                 </p>
               ) : (
                 <ul className="divide-y divide-border/60">
-                  {[...scopedServerOutput].reverse().map((entry: ServerOutputEntry) => (
+                  {visibleOutput.map((entry: ServerOutputEntry) => (
                     <li key={entry.id} className="flex items-start gap-2 px-4 py-2.5 text-xs">
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                         {formatTime(entry.at)}
@@ -133,6 +161,14 @@ export function LogsTab({
                 </ul>
               )}
             </div>
+            <LogPagination
+              label="Server-Ausgabe"
+              page={visibleOutputPage}
+              pageCount={outputPageCount}
+              pageSize={LOG_PAGE_SIZE}
+              total={scopedServerOutput.length}
+              onPageChange={changeOutputPage}
+            />
           </CardContent>
         </Card>
 
@@ -162,7 +198,10 @@ export function LogsTab({
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={historySearch}
-                onChange={(event) => setHistorySearch(event.target.value)}
+                onChange={(event) => {
+                  setHistorySearch(event.target.value);
+                  setHistoryPage(0);
+                }}
                 placeholder="Query durchsuchen…"
                 className="h-8 pl-8 text-xs"
                 aria-label="Query-Log durchsuchen"
@@ -170,7 +209,10 @@ export function LogsTab({
             </div>
             <Select
               value={historyFilter}
-              onValueChange={(value) => setHistoryFilter(value as HistoryFilter)}
+              onValueChange={(value) => {
+                setHistoryFilter(value as HistoryFilter);
+                setHistoryPage(0);
+              }}
             >
               <SelectTrigger size="sm" className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -181,7 +223,13 @@ export function LogsTab({
                 <SelectItem value="error">Fehler</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={range} onValueChange={(value) => setRange(value as HistoryRange)}>
+            <Select
+              value={range}
+              onValueChange={(value) => {
+                setRange(value as HistoryRange);
+                setHistoryPage(0);
+              }}
+            >
               <SelectTrigger size="sm" className="h-8 w-40 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -198,8 +246,8 @@ export function LogsTab({
                 Keine Log-Einträge für die aktuelle Auswahl.
               </p>
             ) : (
-              <div className="divide-y divide-border/60">
-                {filteredHistory.map((entry) => {
+              <div ref={historyListRef} className="divide-y divide-border/60">
+                {visibleHistory.map((entry) => {
                   const expanded = expandedHistoryId === entry.id;
                   return (
                     <div key={entry.id} className="text-xs">
@@ -256,6 +304,14 @@ export function LogsTab({
                 })}
               </div>
             )}
+            <LogPagination
+              label="Query-Log"
+              page={visibleHistoryPage}
+              pageCount={historyPageCount}
+              pageSize={LOG_PAGE_SIZE}
+              total={filteredHistory.length}
+              onPageChange={changeHistoryPage}
+            />
           </CardContent>
         </Card>
       </div>
