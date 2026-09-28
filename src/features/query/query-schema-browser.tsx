@@ -38,6 +38,7 @@ export function QuerySchemaBrowser({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const schemaScrollRef = useRef<HTMLDivElement>(null);
   const statementScrollRef = useRef<HTMLDivElement>(null);
+  const memberScrollRef = useRef<HTMLDivElement>(null);
   const [memberQuery, setMemberQuery] = useState("");
   const [activeMember, setActiveMember] = useState<string | undefined>(undefined);
   const members = useMemo(() => parsePlsqlMembers(sql), [sql]);
@@ -46,6 +47,17 @@ export function QuerySchemaBrowser({
     if (!needle) return members;
     return members.filter((m) => m.name.includes(needle));
   }, [members, memberQuery]);
+  const memberVirtualizer = useVirtualizer({
+    count: visibleMembers.length,
+    getScrollElement: () => memberScrollRef.current,
+    estimateSize: () => 28,
+    getItemKey: (index) => {
+      const member = visibleMembers[index];
+      return `${member.kind}:${member.name}:${member.line}`;
+    },
+    overscan: 10,
+    initialRect: { width: 300, height: 600 },
+  });
   const term = useDeferredValue(search).trim().toLocaleLowerCase();
   const style = identifierStyleForKind(kind);
   const quote = (name: string) => quoteIdentifier(name, style);
@@ -130,41 +142,58 @@ export function QuerySchemaBrowser({
           <div className="border-b p-2">
             <Input
               value={memberQuery}
-              onChange={(e) => setMemberQuery(e.target.value)}
+              onChange={(event) => {
+                setMemberQuery(event.target.value);
+                memberScrollRef.current?.scrollTo({ top: 0 });
+              }}
               placeholder="Filtern…"
               aria-label="Mitglieder filtern"
               className="h-7 min-w-0 text-xs"
             />
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-auto p-1.5">
+        <div
+          ref={memberScrollRef}
+          className="min-h-0 flex-1 overflow-auto p-1.5"
+          data-slot="query-member-list"
+        >
           {visibleMembers.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">Keine Treffer.</p>
           ) : (
-            visibleMembers.map((member) => {
-              const active = member.name === activeMember;
-              return (
-                <button
-                  type="button"
-                  key={`${member.kind}:${member.name}`}
-                  onClick={() => {
-                    setActiveMember(member.name);
-                    onJump(member.line, 1);
-                  }}
-                  title={`${member.kind} ${member.name} · Zeile ${member.line}`}
-                  className={
-                    active
-                      ? "flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md bg-accent px-2 py-1 text-left text-accent-foreground"
-                      : "flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md px-2 py-1 text-left text-foreground/80 hover:bg-accent/60 hover:text-foreground"
-                  }
-                >
-                  <span className="w-6 shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {member.kind === "FUNCTION" ? "fn" : "pr"}
-                  </span>
-                  <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
-                </button>
-              );
-            })
+            <div className="relative" style={{ height: memberVirtualizer.getTotalSize() }}>
+              {memberVirtualizer.getVirtualItems().map((virtualRow) => {
+                const member = visibleMembers[virtualRow.index];
+                const active = member.name === activeMember;
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={memberVirtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveMember(member.name);
+                        onJump(member.line, 1);
+                      }}
+                      title={`${member.kind} ${member.name} · Zeile ${member.line}`}
+                      className={
+                        active
+                          ? "flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md bg-accent px-2 py-1 text-left text-accent-foreground"
+                          : "flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md px-2 py-1 text-left text-foreground/80 hover:bg-accent/60 hover:text-foreground"
+                      }
+                    >
+                      <span className="w-6 shrink-0 font-mono text-[10px] text-muted-foreground">
+                        {member.kind === "FUNCTION" ? "fn" : "pr"}
+                      </span>
+                      <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </aside>
