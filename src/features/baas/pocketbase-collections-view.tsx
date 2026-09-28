@@ -25,15 +25,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   pocketbaseCollections,
+  pocketbaseCreateAuthUser,
+  pocketbaseCreateCollection,
   pocketbaseCreateRecord,
+  pocketbaseDeleteCollection,
   pocketbaseDeleteFile,
   pocketbaseDeleteRecord,
   pocketbaseDownloadFile,
   pocketbasePreviewFile,
   pocketbaseRecords,
+  pocketbaseRenameCollection,
   pocketbaseUpdateRecord,
   pocketbaseUploadFile,
 } from "@/lib/db";
@@ -50,6 +55,10 @@ function displayValue(value: unknown): string {
 export function PocketBaseCollectionsView({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const manageFeature = useNewFeatureVisibility<HTMLDivElement>("baas.pocketbase.manage");
+  const collectionFeature = useNewFeatureVisibility<HTMLDivElement>(
+    "baas.pocketbase.collection-manage",
+  );
+  const authFeature = useNewFeatureVisibility<HTMLDivElement>("baas.pocketbase.auth-manage");
   const [collectionPage, setCollectionPage] = useState(1);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [recordPage, setRecordPage] = useState(1);
@@ -59,6 +68,18 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
     name: string;
   } | null>(null);
   const [editor, setEditor] = useState<{ recordId: string | null; draft: string } | null>(null);
+  const [collectionEditor, setCollectionEditor] = useState<{
+    collectionId: string | null;
+    name: string;
+  } | null>(null);
+  const [collectionDeleteTarget, setCollectionDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [authEditor, setAuthEditor] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authData, setAuthData] = useState("{}");
   const [deleteTarget, setDeleteTarget] = useState<{
     collectionId: string;
     recordId: string;
@@ -88,6 +109,84 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
   });
   const fileFields =
     selected?.fields.filter((field) => field.kind === "file" && !field.hidden) ?? [];
+
+  async function saveCollection() {
+    if (!collectionEditor || busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      if (collectionEditor.collectionId) {
+        await pocketbaseRenameCollection(id, collectionEditor.collectionId, collectionEditor.name);
+        setActionSuccess("Collection umbenannt.");
+      } else {
+        const created = await pocketbaseCreateCollection(id, collectionEditor.name);
+        setCollectionPage(1);
+        setCollectionId(created.id);
+        setActionSuccess("Collection erstellt.");
+      }
+      setCollectionEditor(null);
+      await queryClient.invalidateQueries({ queryKey: ["pocketbase", id, "collections"] });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCollection() {
+    if (!collectionDeleteTarget || busy) return;
+    const target = collectionDeleteTarget;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await pocketbaseDeleteCollection(id, target.id);
+      setCollectionDeleteTarget(null);
+      setCollectionEditor(null);
+      setCollectionId(null);
+      setCollectionPage(1);
+      setRecordPage(1);
+      setPreview(null);
+      setEditor(null);
+      setAuthEditor(false);
+      setActionSuccess("Collection gelöscht.");
+      await queryClient.invalidateQueries({ queryKey: ["pocketbase", id] });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createAuthUser() {
+    if (selected?.kind !== "auth" || busy) return;
+    let data: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(authData);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON-Objekt erwartet.");
+      }
+      data = parsed as Record<string, unknown>;
+    } catch (reason) {
+      setActionError(`Ungültiges JSON: ${String(reason)}`);
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await pocketbaseCreateAuthUser(id, selected.id, authEmail, authPassword, data);
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthData("{}");
+      setAuthEditor(false);
+      setActionSuccess("Auth-Nutzer erstellt.");
+      setRecordPage(1);
+      await queryClient.invalidateQueries({ queryKey: ["pocketbase", id, "records", selected.id] });
+    } catch (reason) {
+      setActionError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function saveRecord() {
     if (!selected || !editor || busy) return;
@@ -220,6 +319,48 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
           {actionSuccess}
         </p>
       )}
+      <div ref={collectionFeature.ref} className="mt-4 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setCollectionEditor({ collectionId: null, name: "" });
+            setActionError(null);
+          }}
+        >
+          <Plus className="size-3.5" /> Collection erstellen
+        </Button>
+        {collectionFeature.isNew && <NewBadge />}
+      </div>
+      {collectionEditor && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border bg-background/60 p-3">
+          <Input
+            aria-label="Collection-Name"
+            placeholder="Collection-Name"
+            className="h-8 w-52 text-xs"
+            value={collectionEditor.name}
+            onChange={(event) =>
+              setCollectionEditor({ ...collectionEditor, name: event.target.value })
+            }
+            disabled={busy}
+          />
+          <Button
+            size="sm"
+            disabled={busy || !collectionEditor.name.trim()}
+            onClick={() => void saveCollection()}
+          >
+            {busy ? "Speichert…" : "Speichern"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setCollectionEditor(null)}
+          >
+            Abbrechen
+          </Button>
+        </div>
+      )}
       {collections.isPending ? (
         <p className="mt-5 text-xs text-muted-foreground">Collections werden geladen…</p>
       ) : collections.isError ? (
@@ -241,6 +382,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   setRecordPage(1);
                   setPreview(null);
                   setEditor(null);
+                  setAuthEditor(false);
                 }}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs ${selected?.id === item.id ? "border-primary/50 bg-primary/10" : "bg-background hover:bg-muted"}`}
               >
@@ -264,6 +406,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   setRecordPage(1);
                   setPreview(null);
                   setEditor(null);
+                  setAuthEditor(false);
                 }}
               >
                 <ChevronLeft className="size-3.5" />
@@ -282,6 +425,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   setRecordPage(1);
                   setPreview(null);
                   setEditor(null);
+                  setAuthEditor(false);
                 }}
               >
                 <ChevronRight className="size-3.5" />
@@ -307,22 +451,108 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                   {records.data.total_items} Datensätze
                 </span>
               )}
+              {selected && !selected.system && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Collection umbenennen"
+                    onClick={() =>
+                      setCollectionEditor({ collectionId: selected.id, name: selected.name })
+                    }
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Collection löschen"
+                    onClick={() =>
+                      setCollectionDeleteTarget({ id: selected.id, name: selected.name })
+                    }
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              )}
               {selected && (
                 <div ref={manageFeature.ref} className="ml-auto flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setEditor({ recordId: null, draft: "{}" });
+                      if (selected.kind === "auth") {
+                        setAuthEditor(true);
+                        setEditor(null);
+                      } else {
+                        setEditor({ recordId: null, draft: "{}" });
+                        setAuthEditor(false);
+                      }
                       setActionError(null);
                     }}
                   >
-                    <Plus className="size-3.5" /> Datensatz erstellen
+                    <Plus className="size-3.5" />{" "}
+                    {selected.kind === "auth" ? "Auth-Nutzer erstellen" : "Datensatz erstellen"}
                   </Button>
-                  {manageFeature.isNew && <NewBadge />}
+                  {(selected.kind === "auth" ? authFeature.isNew : manageFeature.isNew) && (
+                    <NewBadge />
+                  )}
                 </div>
               )}
             </div>
+            {selected?.kind === "auth" && authEditor && (
+              <div
+                ref={authFeature.ref}
+                className="mt-4 grid gap-3 rounded-xl border bg-background/60 p-3"
+              >
+                <p className="text-xs font-medium">Auth-Nutzer erstellen</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input
+                    type="email"
+                    aria-label="E-Mail-Adresse"
+                    placeholder="E-Mail-Adresse"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    disabled={busy}
+                  />
+                  <Input
+                    type="password"
+                    aria-label="Passwort"
+                    placeholder="Passwort (mindestens 8 Zeichen)"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    disabled={busy}
+                  />
+                </div>
+                <Textarea
+                  aria-label="Weitere Nutzerfelder als JSON"
+                  className="min-h-24 font-mono text-xs"
+                  value={authData}
+                  onChange={(event) => setAuthData(event.target.value)}
+                  disabled={busy}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busy || !authEmail.trim() || authPassword.length < 8}
+                    onClick={() => void createAuthUser()}
+                  >
+                    {busy ? "Erstellt…" : "Erstellen"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setAuthEditor(false);
+                      setAuthPassword("");
+                    }}
+                  >
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
             {editor && (
               <div className="mt-4 rounded-xl border bg-background/60 p-3">
                 <p className="text-xs font-medium">
@@ -557,23 +787,30 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
         </>
       )}
       <AlertDialog
-        open={deleteTarget !== null || fileDeleteTarget !== null}
+        open={deleteTarget !== null || fileDeleteTarget !== null || collectionDeleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !busy) {
             setDeleteTarget(null);
             setFileDeleteTarget(null);
+            setCollectionDeleteTarget(null);
           }
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {fileDeleteTarget ? "Datei endgültig löschen?" : "Datensatz endgültig löschen?"}
+              {collectionDeleteTarget
+                ? "Collection endgültig löschen?"
+                : fileDeleteTarget
+                  ? "Datei endgültig löschen?"
+                  : "Datensatz endgültig löschen?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {fileDeleteTarget
-                ? `${fileDeleteTarget.filename} wird aus dem Datensatz entfernt.`
-                : `Datensatz ${deleteTarget?.recordId} und seine Dateien werden gelöscht.`}{" "}
+              {collectionDeleteTarget
+                ? `Collection ${collectionDeleteTarget.name} und alle ihre Datensätze werden gelöscht.`
+                : fileDeleteTarget
+                  ? `${fileDeleteTarget.filename} wird aus dem Datensatz entfernt.`
+                  : `Datensatz ${deleteTarget?.recordId} und seine Dateien werden gelöscht.`}{" "}
               Dieser Vorgang kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -584,7 +821,11 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
               disabled={busy}
               onClick={(event) => {
                 event.preventDefault();
-                void (fileDeleteTarget ? deleteFile() : deleteRecord());
+                void (collectionDeleteTarget
+                  ? deleteCollection()
+                  : fileDeleteTarget
+                    ? deleteFile()
+                    : deleteRecord());
               }}
             >
               {busy ? "Löscht…" : "Löschen"}
