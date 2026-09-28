@@ -176,7 +176,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buffer = [0_u8; 2048];
-            stream.read(&mut buffer).await.unwrap();
+            let _ = stream.read(&mut buffer).await.unwrap();
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\nhello")
                 .await
@@ -197,7 +197,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buffer = [0_u8; 2048];
-            stream.read(&mut buffer).await.unwrap();
+            let _ = stream.read(&mut buffer).await.unwrap();
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4194305\r\n\r\n")
                 .await
@@ -216,7 +216,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buffer = [0_u8; 2048];
-            stream.read(&mut buffer).await.unwrap();
+            let _ = stream.read(&mut buffer).await.unwrap();
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
                 .await
@@ -237,7 +237,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buffer = [0_u8; 2048];
-            stream.read(&mut buffer).await.unwrap();
+            let _ = stream.read(&mut buffer).await.unwrap();
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nabc")
                 .await
