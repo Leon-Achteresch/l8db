@@ -38,6 +38,7 @@ import {
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasFilePreview } from "./baas-file-preview";
+import { SupabaseBucketManageView } from "./supabase-bucket-manage-view";
 
 function formatBytes(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "";
@@ -101,7 +102,7 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
     enabled: Boolean(selected && hasKey.data),
   });
 
-  function openBucket(id: string) {
+  function openBucket(id: string | null) {
     setBucket(id);
     setPrefix("");
     setOffset(0);
@@ -272,6 +273,13 @@ export function SupabaseStorageView({ reference }: { reference: string }) {
               </button>
             ))}
           </div>
+          <SupabaseBucketManageView
+            reference={reference}
+            selected={selected}
+            enabled={hasKey.data === true}
+            onCreated={openBucket}
+            onDeleted={() => openBucket(null)}
+          />
           {selected && hasKey.data && (
             <div ref={detailsFeature.ref} className="mt-4 rounded-xl border bg-background/50 p-3">
               <div className="flex items-center gap-2">

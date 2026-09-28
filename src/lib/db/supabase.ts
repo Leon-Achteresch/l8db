@@ -33,6 +33,9 @@ export interface SupabaseFunction {
   import_map_path: string | null;
 }
 
+export const supabaseDeleteFunction = (reference: string, slug: string) =>
+  invoke<void>("supabase_delete_function", { reference, slug });
+
 export interface SupabaseObject {
   name: string;
   id: string | null;
@@ -77,6 +80,13 @@ export interface SupabaseAuthUsersPage {
   users: SupabaseAuthUser[];
 }
 
+export const supabaseCreateAuthUser = (reference: string, email: string, password: string) =>
+  invoke<void>("supabase_create_auth_user", { reference, email, password });
+export const supabaseUpdateAuthUserEmail = (reference: string, userId: string, email: string) =>
+  invoke<void>("supabase_update_auth_user_email", { reference, userId, email });
+export const supabaseDeleteAuthUser = (reference: string, userId: string) =>
+  invoke<void>("supabase_delete_auth_user", { reference, userId });
+
 export interface SupabaseTable {
   schema: string;
   name: string;
@@ -108,6 +118,12 @@ export const supabaseBuckets = (reference: string) =>
   invoke<SupabaseBucket[]>("supabase_buckets", { reference });
 export const supabaseBucketDetails = (reference: string, bucket: string) =>
   invoke<SupabaseBucket>("supabase_bucket_details", { reference, bucket });
+export const supabaseCreateBucket = (reference: string, name: string, isPublic: boolean) =>
+  invoke<void>("supabase_create_bucket", { reference, name, public: isPublic });
+export const supabaseUpdateBucketPublic = (reference: string, bucket: string, isPublic: boolean) =>
+  invoke<void>("supabase_update_bucket_public", { reference, bucket, public: isPublic });
+export const supabaseDeleteBucket = (reference: string, bucket: string) =>
+  invoke<void>("supabase_delete_bucket", { reference, bucket });
 export const supabaseFunctions = (reference: string) =>
   invoke<SupabaseFunction[]>("supabase_functions", { reference });
 export const supabaseHealth = (reference: string) =>

@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { type AppwriteProfile, appwriteFunctions, appwriteSites, appwriteUsers } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AppwriteDatabasesView } from "./appwrite-databases-view";
+import { AppwriteFunctionActions } from "./appwrite-function-actions";
 import { AppwriteResourceCard } from "./appwrite-resource-card";
 import { AppwriteStorageView } from "./appwrite-storage-view";
+import { AppwriteUserActions } from "./appwrite-user-actions";
+import { AppwriteUserCreateView } from "./appwrite-user-create-view";
 
 export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
   const functionDetails = useNewFeatureVisibility<HTMLDivElement>("baas.appwrite.function-details");
@@ -50,6 +53,9 @@ export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
           }
           detailsRef={functionDetails.ref}
           detailsNew={functionDetails.isNew}
+          renderActions={(item, index) => (
+            <AppwriteFunctionActions id={profile.id} item={item} showNew={index === 0} />
+          )}
           renderDetails={(item) => (
             <dl className="grid gap-3 text-xs">
               <div>
@@ -114,6 +120,10 @@ export function AppwriteProjectView({ profile }: { profile: AppwriteProfile }) {
           icon={<Users className="size-4 text-muted-foreground" />}
           load={appwriteUsers}
           detail={(item) => item.email || item.id}
+          headerAction={<AppwriteUserCreateView id={profile.id} />}
+          renderActions={(item) => (
+            <AppwriteUserActions key={`${item.id}:${item.email}`} id={profile.id} user={item} />
+          )}
         />
         <AppwriteResourceCard
           id={profile.id}

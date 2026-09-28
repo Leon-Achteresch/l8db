@@ -412,6 +412,112 @@ pub async fn appwrite_buckets(
     })
 }
 
+fn write_auth(
+    request: reqwest::RequestBuilder,
+    profile: &AppwriteProfile,
+    key: &str,
+) -> reqwest::RequestBuilder {
+    request
+        .header("X-Appwrite-Project", &profile.project_id)
+        .header("X-Appwrite-Key", key)
+        .header("X-Appwrite-Response-Format", "2.3.0")
+}
+
+#[tauri::command]
+pub async fn appwrite_create_bucket(
+    id: String,
+    bucket_id: String,
+    name: String,
+) -> Result<AppwriteBucket, String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let name = name.trim();
+    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err("Ungültiger Appwrite-Bucket-Name.".into());
+    }
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().post(format!("{}/storage/buckets", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .json(&serde_json::json!({"bucketId": bucket_id, "name": name}))
+    .send()
+    .await
+    .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Bucket konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let bucket: AppwriteBucket = response
+        .json()
+        .await
+        .map_err(|_| "Appwrite hat unerwartete Bucket-Daten geliefert.".to_string())?;
+    if bucket.id != bucket_id {
+        return Err("Appwrite hat eine andere Bucket-ID zurückgegeben.".into());
+    }
+    Ok(bucket)
+}
+
+#[tauri::command]
+pub async fn appwrite_rename_bucket(
+    id: String,
+    bucket_id: String,
+    name: String,
+) -> Result<(), String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let name = name.trim();
+    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err("Ungültiger Appwrite-Bucket-Name.".into());
+    }
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().put(format!("{}/storage/buckets/{bucket_id}", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .json(&serde_json::json!({"name": name}))
+    .send()
+    .await
+    .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Bucket konnte nicht umbenannt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let bucket: AppwriteBucket = response
+        .json()
+        .await
+        .map_err(|_| "Appwrite hat unerwartete Bucket-Daten geliefert.".to_string())?;
+    if bucket.id != bucket_id || bucket.name != name {
+        return Err("Appwrite hat die Bucket-Umbenennung nicht bestätigt.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn appwrite_delete_bucket(id: String, bucket_id: String) -> Result<(), String> {
+    let bucket_id = validate_id(&bucket_id)?;
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().delete(format!("{}/storage/buckets/{bucket_id}", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Bucket konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn appwrite_files(
     id: String,
@@ -773,6 +879,127 @@ pub async fn appwrite_users(id: String, offset: u32) -> Result<AppwritePage<Appw
         total: page.total,
         items: page.users,
     })
+}
+
+#[tauri::command]
+pub async fn appwrite_create_user(
+    id: String,
+    email: String,
+    password: String,
+    name: String,
+) -> Result<AppwriteUser, String> {
+    let email = email.trim();
+    let name = name.trim();
+    if email.is_empty()
+        || email.len() > 320
+        || !email.contains('@')
+        || email.contains(char::is_whitespace)
+        || name.len() > 128
+        || name.chars().any(char::is_control)
+        || password.len() < 8
+        || password.len() > 1024
+    {
+        return Err("Ungültige Appwrite-Benutzerdaten.".into());
+    }
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(client().post(format!("{}/users", profile.endpoint)), &profile, &key)
+        .json(&serde_json::json!({"userId": "unique()", "email": email, "password": password, "name": name}))
+        .send().await.map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Benutzer konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let user: AppwriteUser = response
+        .json()
+        .await
+        .map_err(|_| "Appwrite hat unerwartete Benutzerdaten geliefert.".to_string())?;
+    validate_id(&user.id)?;
+    Ok(user)
+}
+
+#[tauri::command]
+pub async fn appwrite_update_user_email(
+    id: String,
+    user_id: String,
+    email: String,
+) -> Result<(), String> {
+    let user_id = validate_id(&user_id)?;
+    let email = email.trim();
+    if email.is_empty()
+        || email.len() > 320
+        || !email.contains('@')
+        || email.contains(char::is_whitespace)
+    {
+        return Err("Ungültige E-Mail-Adresse.".into());
+    }
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().patch(format!("{}/users/{user_id}/email", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .json(&serde_json::json!({"email": email}))
+    .send()
+    .await
+    .map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Benutzer konnte nicht geändert werden.",
+            response.status().as_u16()
+        ));
+    }
+    let user: AppwriteUser = response
+        .json()
+        .await
+        .map_err(|_| "Appwrite hat unerwartete Benutzerdaten geliefert.".to_string())?;
+    if user.id != user_id || user.email.as_deref() != Some(email) {
+        return Err("Appwrite hat die E-Mail-Änderung nicht bestätigt.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn appwrite_delete_user(id: String, user_id: String) -> Result<(), String> {
+    let user_id = validate_id(&user_id)?;
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().delete(format!("{}/users/{user_id}", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Benutzer konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn appwrite_delete_function(id: String, function_id: String) -> Result<(), String> {
+    let function_id = validate_id(&function_id)?;
+    let (profile, key) = profile_and_key(&id).await?;
+    let response = write_auth(
+        client().delete(format!("{}/functions/{function_id}", profile.endpoint)),
+        &profile,
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Appwrite Functions ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Appwrite HTTP {}: Function konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]

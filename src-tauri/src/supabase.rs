@@ -437,10 +437,114 @@ pub async fn supabase_bucket_details(
     Ok(details)
 }
 
+async fn project_secret_key(reference: &str) -> Result<String, String> {
+    crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für diese Aktion wird ein Supabase Secret API Key benötigt.".into())
+}
+
+#[tauri::command]
+pub async fn supabase_create_bucket(
+    reference: String,
+    name: String,
+    public: bool,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let name = validate_bucket(&name)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().post(format!("https://{reference}.supabase.co/storage/v1/bucket")),
+        &key,
+    )
+    .json(&serde_json::json!({"name": name, "id": name, "public": public}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_update_bucket_public(
+    reference: String,
+    bucket: String,
+    public: bool,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(client().put(bucket_details_url(reference, bucket)?), &key)
+        .json(&serde_json::json!({"public": public}))
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht geändert werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_delete_bucket(reference: String, bucket: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().delete(bucket_details_url(reference, bucket)?),
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Bucket konnte nicht gelöscht werden. Er muss leer sein.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn supabase_functions(reference: String) -> Result<Vec<SupabaseFunction>, String> {
     let reference = validate_ref(&reference)?;
     management_get(&token().await?, &format!("projects/{reference}/functions")).await
+}
+
+#[tauri::command]
+pub async fn supabase_delete_function(reference: String, slug: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    if slug.is_empty()
+        || slug.len() > 128
+        || !slug
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("Ungültiger Supabase-Function-Slug.".into());
+    }
+    let response = client()
+        .delete(format!(
+            "https://api.supabase.com/v1/projects/{reference}/functions/{slug}"
+        ))
+        .bearer_auth(token().await?)
+        .send()
+        .await
+        .map_err(|_| "Supabase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Edge Function konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -838,13 +942,123 @@ pub async fn supabase_auth_users(
     response_json(response).await
 }
 
+fn validate_auth_user_id(id: &str) -> Result<&str, String> {
+    if id.len() != 36
+        || !id.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+    {
+        return Err("Ungültige Supabase-Benutzer-ID.".into());
+    }
+    Ok(id)
+}
+
+fn validate_auth_email(email: &str) -> Result<&str, String> {
+    if email.is_empty()
+        || email.len() > 320
+        || email.contains(char::is_whitespace)
+        || !email.contains('@')
+    {
+        return Err("Ungültige E-Mail-Adresse.".into());
+    }
+    Ok(email)
+}
+
+#[tauri::command]
+pub async fn supabase_create_auth_user(
+    reference: String,
+    email: String,
+    password: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let email = validate_auth_email(email.trim())?;
+    if password.len() < 6 || password.len() > 1024 {
+        return Err("Passwort muss zwischen 6 und 1024 Zeichen lang sein.".into());
+    }
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().post(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users"
+        )),
+        &key,
+    )
+    .json(&serde_json::json!({"email": email, "password": password}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_update_auth_user_email(
+    reference: String,
+    user_id: String,
+    email: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let user_id = validate_auth_user_id(&user_id)?;
+    let email = validate_auth_email(email.trim())?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().put(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
+        )),
+        &key,
+    )
+    .json(&serde_json::json!({"email": email}))
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht geändert werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let user_id = validate_auth_user_id(&user_id)?;
+    let key = project_secret_key(reference).await?;
+    let response = project_api_auth(
+        client().delete(format!(
+            "https://{reference}.supabase.co/auth/v1/admin/users/{user_id}"
+        )),
+        &key,
+    )
+    .send()
+    .await
+    .map_err(|_| "Supabase Auth ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Supabase HTTP {}: Benutzer konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         bucket_details_url, client, project_api_auth, select_project_key, table_rows_sql,
-        upload_file, validate_object_key, validate_project_secret_key, validate_ref,
-        SupabaseApiKey, SupabaseAuthUsersPage, SupabaseBackups, SupabaseBucket, SupabaseFunction,
-        SupabaseObject, SupabaseProject, SupabaseServiceHealth,
+        upload_file, validate_auth_email, validate_auth_user_id, validate_object_key,
+        validate_project_secret_key, validate_ref, SupabaseApiKey, SupabaseAuthUsersPage,
+        SupabaseBackups, SupabaseBucket, SupabaseFunction, SupabaseObject, SupabaseProject,
+        SupabaseServiceHealth,
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -1011,6 +1225,14 @@ mod tests {
         for invalid in ["", "../other", "a.b", "a/b", "A", "x?redirect=evil"] {
             assert!(validate_ref(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn auth_user_inputs_cannot_escape_admin_path() {
+        assert!(validate_auth_user_id("12345678-1234-1234-1234-123456789abc").is_ok());
+        assert!(validate_auth_user_id("../settings").is_err());
+        assert!(validate_auth_email("ada@example.com").is_ok());
+        assert!(validate_auth_email("ada@example.com\nX-Test: value").is_err());
     }
 
     #[test]

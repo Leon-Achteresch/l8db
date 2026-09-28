@@ -33,6 +33,7 @@ import {
   appwriteUploadFile,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AppwriteBucketManageView } from "./appwrite-bucket-manage-view";
 import { BaasFilePreview } from "./baas-file-preview";
 
 function formatBytes(value: number | null): string {
@@ -191,6 +192,21 @@ export function AppwriteStorageView({ id }: { id: string }) {
           </Button>
         </div>
       </div>
+      <AppwriteBucketManageView
+        id={id}
+        selected={selected}
+        onCreated={(newId) => {
+          setBucketOffset(0);
+          setBucketId(newId);
+          setFileOffset(0);
+          setPreview(null);
+        }}
+        onDeleted={() => {
+          setBucketId(null);
+          setFileOffset(0);
+          setPreview(null);
+        }}
+      />
       {uploadError && (
         <p role="alert" className="mt-3 text-xs text-destructive">
           {uploadError}
