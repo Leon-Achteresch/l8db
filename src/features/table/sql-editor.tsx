@@ -1,6 +1,6 @@
 import { autocompletion, type Completion, completionKeymap } from "@codemirror/autocomplete";
 import { sql } from "@codemirror/lang-sql";
-import { Compartment, EditorState, Transaction } from "@codemirror/state";
+import { Compartment, EditorState, type StateEffect, Transaction } from "@codemirror/state";
 import { EditorView, placeholder as editorPlaceholder, keymap } from "@codemirror/view";
 import { minimalSetup } from "codemirror";
 import { useTheme } from "next-themes";
@@ -79,6 +79,15 @@ export function SqlEditor({
     editorLineHeight,
     resolvedTheme,
   });
+  const applied = useRef({
+    columnSignature,
+    editorFontFamily,
+    editorFontSize,
+    editorLineHeight,
+    resolvedTheme,
+    readOnly,
+    placeholder,
+  });
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
@@ -153,41 +162,60 @@ export function SqlEditor({
   }, [value]);
 
   useEffect(() => {
-    editorRef.current?.dispatch({
-      effects: language.reconfigure(
-        sql({ schema: columnCompletions(JSON.parse(columnSignature) as string[]) }),
-      ),
-    });
-  }, [columnSignature]);
-
-  useEffect(() => {
-    const size = Math.min(editorFontSize, 14);
-    editorRef.current?.dispatch({
-      effects: appearance.reconfigure(
-        editorAppearance(
-          editorFontStack(editorFontFamily),
-          size,
-          editorLineHeightPx(size, editorLineHeight),
-          resolvedTheme === "dark",
+    const previous = applied.current;
+    const effects: StateEffect<unknown>[] = [];
+    if (columnSignature !== previous.columnSignature)
+      effects.push(
+        language.reconfigure(
+          sql({ schema: columnCompletions(JSON.parse(columnSignature) as string[]) }),
         ),
-      ),
-    });
-  }, [editorFontFamily, editorFontSize, editorLineHeight, resolvedTheme]);
-
-  useEffect(() => {
-    editorRef.current?.dispatch({
-      effects: editable.reconfigure([
-        EditorView.editable.of(!readOnly),
-        EditorState.readOnly.of(readOnly),
-      ]),
-    });
-  }, [readOnly]);
-
-  useEffect(() => {
-    editorRef.current?.dispatch({
-      effects: hint.reconfigure(placeholder ? editorPlaceholder(placeholder) : []),
-    });
-  }, [placeholder]);
+      );
+    if (
+      editorFontFamily !== previous.editorFontFamily ||
+      editorFontSize !== previous.editorFontSize ||
+      editorLineHeight !== previous.editorLineHeight ||
+      resolvedTheme !== previous.resolvedTheme
+    ) {
+      const size = Math.min(editorFontSize, 14);
+      effects.push(
+        appearance.reconfigure(
+          editorAppearance(
+            editorFontStack(editorFontFamily),
+            size,
+            editorLineHeightPx(size, editorLineHeight),
+            resolvedTheme === "dark",
+          ),
+        ),
+      );
+    }
+    if (readOnly !== previous.readOnly)
+      effects.push(
+        editable.reconfigure([
+          EditorView.editable.of(!readOnly),
+          EditorState.readOnly.of(readOnly),
+        ]),
+      );
+    if (placeholder !== previous.placeholder)
+      effects.push(hint.reconfigure(placeholder ? editorPlaceholder(placeholder) : []));
+    if (effects.length) editorRef.current?.dispatch({ effects });
+    applied.current = {
+      columnSignature,
+      editorFontFamily,
+      editorFontSize,
+      editorLineHeight,
+      resolvedTheme,
+      readOnly,
+      placeholder,
+    };
+  }, [
+    columnSignature,
+    editorFontFamily,
+    editorFontSize,
+    editorLineHeight,
+    resolvedTheme,
+    readOnly,
+    placeholder,
+  ]);
 
   useEffect(() => {
     if (autoFocus) editorRef.current?.focus();
