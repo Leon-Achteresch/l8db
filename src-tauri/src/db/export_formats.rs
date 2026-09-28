@@ -281,21 +281,12 @@ impl ParquetSink {
             .map(|(name, kind)| {
                 let (physical, logical) = match kind {
                     ParquetKind::Bool => (Physical::BOOLEAN, None),
-                    ParquetKind::Int64 => (
-                        Physical::INT64,
-                        Some(LogicalType::Integer {
-                            bit_width: 64,
-                            is_signed: true,
-                        }),
-                    ),
+                    ParquetKind::Int64 => (Physical::INT64, Some(LogicalType::integer(64, true))),
                     ParquetKind::Double => (Physical::DOUBLE, None),
                     ParquetKind::Date => (Physical::INT32, Some(LogicalType::Date)),
                     ParquetKind::Timestamp { utc } => (
                         Physical::INT64,
-                        Some(LogicalType::Timestamp {
-                            is_adjusted_to_u_t_c: *utc,
-                            unit: TimeUnit::MICROS,
-                        }),
+                        Some(LogicalType::timestamp(*utc, TimeUnit::MICROS)),
                     ),
                     ParquetKind::Text => (Physical::BYTE_ARRAY, Some(LogicalType::String)),
                 };
