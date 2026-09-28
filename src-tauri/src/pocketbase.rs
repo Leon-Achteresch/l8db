@@ -118,6 +118,19 @@ fn validate_id(value: &str) -> Result<&str, String> {
     Ok(value)
 }
 
+fn validate_collection_name(name: &str) -> Result<&str, String> {
+    if name.is_empty()
+        || name.len() > 64
+        || !name.as_bytes()[0].is_ascii_alphabetic()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return Err("Ungültiger PocketBase-Collection-Name.".into());
+    }
+    Ok(name)
+}
+
 fn profile_id(endpoint: &str) -> String {
     let digest = Sha256::digest(endpoint.as_bytes());
     digest[..16]
@@ -401,6 +414,147 @@ async fn editable_collection(
         return Err("PocketBase-Collection nicht freigegeben.".into());
     }
     Ok(collection)
+}
+
+#[tauri::command]
+pub async fn pocketbase_create_collection(
+    id: String,
+    name: String,
+) -> Result<PocketBaseCollection, String> {
+    let name = validate_collection_name(name.trim())?;
+    let (profile, token) = profile_and_token(&id).await?;
+    let response = client()
+        .post(format!("{}/api/collections", profile.endpoint))
+        .header("Authorization", token)
+        .json(&serde_json::json!({"name": name, "type": "base", "fields": []}))
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Collection konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let collection: PocketBaseCollection = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Collection-Daten geliefert.".to_string())?;
+    if collection.name != name || collection.system {
+        return Err("PocketBase hat eine andere Collection zurückgegeben.".into());
+    }
+    Ok(collection)
+}
+
+#[tauri::command]
+pub async fn pocketbase_rename_collection(
+    id: String,
+    collection_id: String,
+    name: String,
+) -> Result<(), String> {
+    let collection_id = validate_id(&collection_id)?;
+    let name = validate_collection_name(name.trim())?;
+    let (profile, token) = profile_and_token(&id).await?;
+    editable_collection(&profile.endpoint, &token, collection_id).await?;
+    let response = client()
+        .patch(format!(
+            "{}/api/collections/{collection_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .json(&serde_json::json!({"name": name}))
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Collection konnte nicht umbenannt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let collection: PocketBaseCollection = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Collection-Daten geliefert.".to_string())?;
+    if collection.id != collection_id || collection.name != name {
+        return Err("PocketBase hat die Umbenennung nicht bestätigt.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pocketbase_delete_collection(id: String, collection_id: String) -> Result<(), String> {
+    let collection_id = validate_id(&collection_id)?;
+    let (profile, token) = profile_and_token(&id).await?;
+    editable_collection(&profile.endpoint, &token, collection_id).await?;
+    let response = client()
+        .delete(format!(
+            "{}/api/collections/{collection_id}",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Collection konnte nicht gelöscht werden.",
+            response.status().as_u16()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pocketbase_create_auth_user(
+    id: String,
+    collection_id: String,
+    email: String,
+    password: String,
+    mut data: serde_json::Map<String, serde_json::Value>,
+) -> Result<PocketBaseRecord, String> {
+    let collection_id = validate_id(&collection_id)?;
+    let email = email.trim();
+    if email.is_empty()
+        || email.len() > 320
+        || !email.contains('@')
+        || email.contains(char::is_whitespace)
+        || password.len() < 8
+        || password.len() > 1024
+        || data.contains_key("email")
+    {
+        return Err("Ungültige PocketBase-Auth-Benutzerdaten.".into());
+    }
+    let (profile, token) = profile_and_token(&id).await?;
+    let collection = editable_collection(&profile.endpoint, &token, collection_id).await?;
+    if collection.kind != "auth" {
+        return Err("Collection ist keine Auth-Collection.".into());
+    }
+    validate_record_data(&collection, &data)?;
+    data.insert("email".into(), serde_json::json!(email));
+    data.insert("password".into(), serde_json::json!(password));
+    data.insert("passwordConfirm".into(), serde_json::json!(password));
+    let response = client()
+        .post(format!(
+            "{}/api/collections/{collection_id}/records",
+            profile.endpoint
+        ))
+        .header("Authorization", token)
+        .json(&data)
+        .send()
+        .await
+        .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "PocketBase HTTP {}: Auth-Benutzer konnte nicht erstellt werden.",
+            response.status().as_u16()
+        ));
+    }
+    let record = response
+        .json()
+        .await
+        .map_err(|_| "PocketBase hat unerwartete Datensatzdaten geliefert.".to_string())?;
+    Ok(visible_record(&collection, record))
 }
 
 #[tauri::command]
@@ -775,8 +929,8 @@ pub async fn pocketbase_download_file(
 #[cfg(test)]
 mod tests {
     use super::{
-        file_is_visible, get, profile_id, remove_hidden_fields, validate_endpoint, validate_id,
-        validate_record_data,
+        file_is_visible, get, profile_id, remove_hidden_fields, validate_collection_name,
+        validate_endpoint, validate_id, validate_record_data,
     };
     use base64::Engine;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -799,6 +953,14 @@ mod tests {
         assert!(validate_id("../settings").is_err());
         assert!(validate_id("..").is_err());
         assert!(validate_id("a/b").is_err());
+    }
+
+    #[test]
+    fn collection_names_accept_identifiers_only() {
+        assert!(validate_collection_name("posts_2026").is_ok());
+        assert!(validate_collection_name("_system").is_err());
+        assert!(validate_collection_name("posts/records").is_err());
+        assert!(validate_collection_name("posts?x=1").is_err());
     }
 
     #[test]

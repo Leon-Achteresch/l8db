@@ -43,6 +43,26 @@ export const pocketbaseProfiles = () => invoke<PocketBaseProfile[]>("pocketbase_
 export const pocketbaseDisconnect = (id: string) => invoke<void>("pocketbase_disconnect", { id });
 export const pocketbaseCollections = (id: string, page: number) =>
   invoke<PocketBasePage<PocketBaseCollection>>("pocketbase_collections", { id, page });
+export const pocketbaseCreateCollection = (id: string, name: string) =>
+  invoke<PocketBaseCollection>("pocketbase_create_collection", { id, name });
+export const pocketbaseRenameCollection = (id: string, collectionId: string, name: string) =>
+  invoke<void>("pocketbase_rename_collection", { id, collectionId, name });
+export const pocketbaseDeleteCollection = (id: string, collectionId: string) =>
+  invoke<void>("pocketbase_delete_collection", { id, collectionId });
+export const pocketbaseCreateAuthUser = (
+  id: string,
+  collectionId: string,
+  email: string,
+  password: string,
+  data: Record<string, unknown>,
+) =>
+  invoke<PocketBaseRecord>("pocketbase_create_auth_user", {
+    id,
+    collectionId,
+    email,
+    password,
+    data,
+  });
 export const pocketbaseRecords = (id: string, collectionId: string, page: number) =>
   invoke<PocketBasePage<PocketBaseRecord>>("pocketbase_records", { id, collectionId, page });
 export const pocketbaseCreateRecord = (

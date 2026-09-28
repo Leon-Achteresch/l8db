@@ -36,6 +36,8 @@ export const NEW_FEATURES = {
   "baas.appwrite.columns": "0.7.0",
   "baas.pocketbase": "0.7.0",
   "baas.pocketbase.manage": "0.7.0",
+  "baas.pocketbase.collection-manage": "0.7.0",
+  "baas.pocketbase.auth-manage": "0.7.0",
   "baas.convex": "0.7.0",
   "baas.convex.environment": "0.7.0",
   "settings.data.transfer": "0.7.0",
