@@ -1,7 +1,11 @@
+import { autocompletion, type Completion, completionKeymap } from "@codemirror/autocomplete";
+import { sql } from "@codemirror/lang-sql";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
+import { EditorView, placeholder as editorPlaceholder, keymap } from "@codemirror/view";
+import { minimalSetup } from "codemirror";
 import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 import { editorFontStack, editorLineHeightPx } from "@/lib/editor-options";
-import { addSqlFormatAction, monaco, overflowWidgetsDomNode } from "@/lib/monaco";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -16,145 +20,178 @@ interface SqlEditorProps {
   autoFocus?: boolean;
 }
 
-function themeFor(resolved: string | undefined): string {
-  return resolved === "dark" ? "l8db-dark" : "l8db-light";
+const language = new Compartment();
+const appearance = new Compartment();
+const editable = new Compartment();
+const hint = new Compartment();
+const EMPTY_COLUMNS: string[] = [];
+
+function columnCompletions(columns: string[]): Completion[] {
+  return columns.map((name) => ({
+    label: name,
+    type: "property",
+    detail: "Spalte",
+    apply: /^[a-z_][a-z0-9_]*$/i.test(name) ? name : `"${name.replace(/"/g, '""')}"`,
+  }));
+}
+
+function editorAppearance(family: string, size: number, lineHeight: number, dark: boolean) {
+  return EditorView.theme(
+    {
+      "&": { height: "100%", backgroundColor: "transparent", color: "var(--foreground)" },
+      "&.cm-focused": { outline: "none" },
+      ".cm-scroller": { overflow: "auto", fontFamily: family, fontSize: `${size}px` },
+      ".cm-content": { minHeight: "100%", lineHeight: `${lineHeight}px`, padding: "8px 0" },
+      ".cm-gutters": { backgroundColor: "transparent", border: "none" },
+      ".cm-activeLine": { backgroundColor: "transparent" },
+    },
+    { dark },
+  );
 }
 
 export function SqlEditor({
   value,
   onChange,
   onSubmit,
-  columns = [],
+  columns = EMPTY_COLUMNS,
   placeholder,
   className,
   readOnly = false,
   autoFocus = false,
 }: SqlEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSubmitRef = useRef(onSubmit);
-  const columnsRef = useRef(columns);
+  const suppressChangeRef = useRef(false);
+  const columnSignature = JSON.stringify(columns);
   const { resolvedTheme } = useTheme();
-  const editorFontFamily = useSettingsStore((s) => s.editorFontFamily);
-  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
-  const editorLineHeight = useSettingsStore((s) => s.editorLineHeight);
+  const editorFontFamily = useSettingsStore((state) => state.editorFontFamily);
+  const editorFontSize = useSettingsStore((state) => state.editorFontSize);
+  const editorLineHeight = useSettingsStore((state) => state.editorLineHeight);
+  const initial = useRef({
+    value,
+    columns,
+    placeholder,
+    readOnly,
+    editorFontFamily,
+    editorFontSize,
+    editorLineHeight,
+    resolvedTheme,
+  });
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
-  columnsRef.current = columns;
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const editor = monaco.editor.create(container, {
-      value,
-      language: "sql",
-      theme: themeFor(resolvedTheme),
-      automaticLayout: true,
-      minimap: { enabled: false },
-      lineNumbers: "off",
-      glyphMargin: false,
-      folding: false,
-      lineDecorationsWidth: 6,
-      lineNumbersMinChars: 0,
-      scrollBeyondLastLine: false,
-      wordWrap: "on",
-      fontFamily: editorFontStack(editorFontFamily),
-      fontSize: Math.min(editorFontSize, 14),
-      lineHeight: editorLineHeightPx(Math.min(editorFontSize, 14), editorLineHeight),
-      padding: { top: 8, bottom: 8 },
-      renderLineHighlight: "none",
-      overviewRulerLanes: 0,
-      hideCursorInOverviewRuler: true,
-      overviewRulerBorder: false,
-      scrollbar: {
-        vertical: "auto",
-        horizontal: "hidden",
-        useShadows: false,
-        verticalScrollbarSize: 8,
-      },
-      contextmenu: false,
-      tabSize: 2,
-      fixedOverflowWidgets: true,
-      overflowWidgetsDomNode,
-      placeholder,
-      readOnly,
-      domReadOnly: readOnly,
+    if (!container) return;
+    const settings = initial.current;
+    const size = Math.min(settings.editorFontSize, 14);
+    const editor = new EditorView({
+      doc: settings.value,
+      parent: container,
+      extensions: [
+        keymap.of([
+          {
+            key: "Mod-Enter",
+            run: () => {
+              onSubmitRef.current?.();
+              return true;
+            },
+          },
+          {
+            key: "Shift-Alt-f",
+            run: (view) => {
+              void import("./sql-editor-format").then(({ formatEditorSql }) =>
+                formatEditorSql(view),
+              );
+              return true;
+            },
+          },
+          ...completionKeymap,
+        ]),
+        minimalSetup,
+        autocompletion(),
+        language.of(sql({ schema: columnCompletions(settings.columns) })),
+        appearance.of(
+          editorAppearance(
+            editorFontStack(settings.editorFontFamily),
+            size,
+            editorLineHeightPx(size, settings.editorLineHeight),
+            settings.resolvedTheme === "dark",
+          ),
+        ),
+        editable.of([
+          EditorView.editable.of(!settings.readOnly),
+          EditorState.readOnly.of(settings.readOnly),
+        ]),
+        hint.of(settings.placeholder ? editorPlaceholder(settings.placeholder) : []),
+        EditorView.lineWrapping,
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && !suppressChangeRef.current)
+            onChangeRef.current?.(update.state.doc.toString());
+        }),
+      ],
     });
     editorRef.current = editor;
-
-    const changeSub = editor.onDidChangeModelContent(() => {
-      onChangeRef.current?.(editor.getValue());
-    });
-
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      onSubmitRef.current?.();
-    });
-
-    const formatAction = addSqlFormatAction(editor);
-
-    const completion = monaco.languages.registerCompletionItemProvider("sql", {
-      provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position) {
-        if (model !== editor.getModel()) return { suggestions: [] };
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-        return {
-          suggestions: columnsRef.current.map((column) => ({
-            label: column,
-            kind: monaco.languages.CompletionItemKind.Field,
-            detail: "Spalte",
-            insertText: /^[a-z_][a-z0-9_]*$/i.test(column)
-              ? column
-              : `"${column.replace(/"/g, '""')}"`,
-            range,
-          })),
-        };
-      },
-    });
-
     return () => {
-      changeSub.dispose();
-      completion.dispose();
-      formatAction.dispose();
-      editor.dispose();
+      editor.destroy();
       editorRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (autoFocus) editorRef.current?.focus();
-  }, [autoFocus]);
-
-  useEffect(() => {
     const editor = editorRef.current;
-    if (editor && editor.getValue() !== value) {
-      editor.setValue(value);
-    }
+    if (!editor || editor.state.doc.toString() === value) return;
+    suppressChangeRef.current = true;
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: value },
+      annotations: Transaction.addToHistory.of(false),
+    });
+    suppressChangeRef.current = false;
   }, [value]);
 
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    const size = Math.min(editorFontSize, 14);
-    editor.updateOptions({
-      fontFamily: editorFontStack(editorFontFamily),
-      fontSize: size,
-      lineHeight: editorLineHeightPx(size, editorLineHeight),
+    editorRef.current?.dispatch({
+      effects: language.reconfigure(
+        sql({ schema: columnCompletions(JSON.parse(columnSignature) as string[]) }),
+      ),
     });
-  }, [editorFontFamily, editorFontSize, editorLineHeight]);
+  }, [columnSignature]);
 
   useEffect(() => {
-    monaco.editor.setTheme(themeFor(resolvedTheme));
-  }, [resolvedTheme]);
+    const size = Math.min(editorFontSize, 14);
+    editorRef.current?.dispatch({
+      effects: appearance.reconfigure(
+        editorAppearance(
+          editorFontStack(editorFontFamily),
+          size,
+          editorLineHeightPx(size, editorLineHeight),
+          resolvedTheme === "dark",
+        ),
+      ),
+    });
+  }, [editorFontFamily, editorFontSize, editorLineHeight, resolvedTheme]);
+
+  useEffect(() => {
+    editorRef.current?.dispatch({
+      effects: editable.reconfigure([
+        EditorView.editable.of(!readOnly),
+        EditorState.readOnly.of(readOnly),
+      ]),
+    });
+  }, [readOnly]);
+
+  useEffect(() => {
+    editorRef.current?.dispatch({
+      effects: hint.reconfigure(placeholder ? editorPlaceholder(placeholder) : []),
+    });
+  }, [placeholder]);
+
+  useEffect(() => {
+    if (autoFocus) editorRef.current?.focus();
+  }, [autoFocus]);
 
   return (
     <div

@@ -59,6 +59,21 @@ test.skipIf(!process.env.L8DB_PRODUCTION_BROWSER)(
           () => (window as unknown as { productionViolations: string[] }).productionViolations,
         ),
       ).toEqual([]);
+      await page.goto(`http://localhost:${server.port}/tables/public/table_0000`);
+      await page.getByRole("button", { name: "Filter", exact: true }).click();
+      await page.getByRole("tab", { name: "SQL", exact: true }).click();
+      const compactEditor = page.locator(".cm-editor .cm-content");
+      await compactEditor.click();
+      await page.keyboard.insertText("select id from users");
+      await page.keyboard.press("Alt+Shift+f");
+      await page.waitForFunction(() =>
+        document.querySelector(".cm-editor .cm-content")?.textContent?.startsWith("SELECT"),
+      );
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { productionViolations: string[] }).productionViolations,
+        ),
+      ).toEqual([]);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

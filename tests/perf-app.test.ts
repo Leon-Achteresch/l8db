@@ -414,11 +414,18 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       });
       await app.page.getByRole("tab", { name: "SQL", exact: true }).click();
       await app.page.getByRole("textbox", { name: "SQL-Filter" }).fill("status = 'active'");
-      const sqlEditor = app.page.locator('.monaco-editor[role="code"]');
+      const sqlEditor = app.page.locator(".cm-editor");
       await sqlEditor.waitFor();
+      expect(
+        await app.page.evaluate(() =>
+          performance
+            .getEntriesByType("resource")
+            .some((entry) => entry.name.includes("editor.api")),
+        ),
+      ).toBe(false);
       await app.page.waitForFunction(() =>
         document
-          .querySelector('.monaco-editor[role="code"] .view-lines')
+          .querySelector(".cm-editor .cm-content")
           ?.textContent?.replace(/\u00a0/g, " ")
           .includes("status = 'active'"),
       );
