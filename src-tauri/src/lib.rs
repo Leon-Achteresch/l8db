@@ -1,11 +1,13 @@
 mod appwrite;
 mod baas_file;
+mod check_cli;
 mod community_extensions;
 mod convex;
 mod db;
 mod extension_process;
 mod file_open;
 mod firebase;
+mod index_advisor;
 mod mcp;
 mod pocketbase;
 mod supabase;
@@ -45,6 +47,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--check") {
+        std::process::exit(check_cli::cli(&args));
+    }
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
@@ -353,6 +358,7 @@ pub fn run() {
             db::ssh::close_ssh_tunnel,
             db::ssh::list_ssh_tunnels,
             db::commands::explain_query,
+            index_advisor::advise_indexes,
             db::commands::list_materialized_views,
             db::commands::refresh_materialized_view,
             db::commands::drop_materialized_view,
