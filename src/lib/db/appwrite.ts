@@ -105,6 +105,10 @@ export const appwriteFiles = (id: string, bucketId: string, offset: number) =>
   invoke<AppwritePage<AppwriteFile>>("appwrite_files", { id, bucketId, offset });
 export const appwriteUploadFile = (id: string, bucketId: string) =>
   invoke<string | null>("appwrite_upload_file", { id, bucketId });
+export const appwriteRenameFile = (id: string, bucketId: string, fileId: string, name: string) =>
+  invoke<void>("appwrite_rename_file", { id, bucketId, fileId, name });
+export const appwriteDeleteFile = (id: string, bucketId: string, fileId: string) =>
+  invoke<void>("appwrite_delete_file", { id, bucketId, fileId });
 export const appwritePreviewFile = (id: string, bucketId: string, fileId: string) =>
   invoke<BaasFilePreview>("appwrite_preview_file", { id, bucketId, fileId });
 export const appwriteDownloadFile = (id: string, bucketId: string, fileId: string, name: string) =>

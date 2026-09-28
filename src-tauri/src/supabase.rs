@@ -716,6 +716,71 @@ pub async fn supabase_upload_object(
 }
 
 #[tauri::command]
+pub async fn supabase_delete_object(
+    reference: String,
+    bucket: String,
+    object_key: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let object_key = validate_object_key(&object_key)?;
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| "Für das Löschen wird ein Supabase Secret API Key benötigt.".to_string())?;
+    let mut url = reqwest::Url::parse(&format!(
+        "https://{reference}.supabase.co/storage/v1/object"
+    ))
+    .map_err(|_| "Ungültige Supabase-URL.".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
+        .push(bucket)
+        .extend(object_key.split('/'));
+    let response = project_api_auth(client().delete(url), &api_key)
+        .send()
+        .await
+        .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn supabase_move_object(
+    reference: String,
+    bucket: String,
+    source_key: String,
+    destination_key: String,
+) -> Result<(), String> {
+    let reference = validate_ref(&reference)?;
+    let bucket = validate_bucket(&bucket)?;
+    let source_key = validate_object_key(&source_key)?;
+    let destination_key = validate_object_key(&destination_key)?;
+    if source_key == destination_key {
+        return Err("Der neue Dateipfad muss sich unterscheiden.".into());
+    }
+    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
+        .await?
+        .ok_or_else(|| {
+            "Für das Verschieben wird ein Supabase Secret API Key benötigt.".to_string()
+        })?;
+    let response = project_api_auth(
+        client().post(format!(
+            "https://{reference}.supabase.co/storage/v1/object/move"
+        )),
+        &api_key,
+    )
+    .json(&serde_json::json!({
+        "bucketId": bucket,
+        "sourceKey": source_key,
+        "destinationKey": destination_key
+    }))
+    .send()
+    .await
+    .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())?;
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn supabase_preview_object(
     reference: String,
     bucket: String,
