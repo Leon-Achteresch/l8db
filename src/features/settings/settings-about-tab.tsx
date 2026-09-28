@@ -5,14 +5,18 @@ import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { BugReportDialog, collectDiagnosticText } from "@/features/settings/bug-report-dialog";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { copyText } from "@/lib/clipboard";
+import { useSettingsStore } from "@/lib/settings";
 
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const crashReports = useSettingsStore((s) => s.crashReports);
+  const setCrashReports = useSettingsStore((s) => s.setCrashReports);
 
   const copyDiagnosticInfo = async () => {
     const info = await collectDiagnosticText();
@@ -74,6 +78,17 @@ export function SettingsAboutTab() {
             />
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
           </Button>
+        </SettingsRow>
+        <SettingsRow
+          title="Absturzberichte senden"
+          description="Abstürze mit Fehlermeldung, Stacktrace, Version und Betriebssystem an Sentry (EU) senden. Verbindungsdaten werden entfernt, SQL und Ergebnisdaten nie gesendet."
+          featureId="settings.about.crash-reports"
+        >
+          <Switch
+            checked={crashReports}
+            onCheckedChange={setCrashReports}
+            aria-label="Absturzberichte senden"
+          />
         </SettingsRow>
         <SettingsRow
           title="Bug melden"

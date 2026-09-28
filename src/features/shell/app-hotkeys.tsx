@@ -1,5 +1,7 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
 import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
@@ -7,10 +9,26 @@ import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
 import { useRefreshConnection } from "@/lib/queries";
-import { useSettingsStore } from "@/lib/settings";
+import { UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { checkForUpdates, presentUpdate } from "@/lib/updater";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
+
+async function checkUpdatesFromMenu() {
+  try {
+    const update = await checkForUpdates();
+    if (!update) {
+      toast.success("l8db ist auf dem neuesten Stand");
+      return;
+    }
+    const { skippedUpdateVersion, setSkippedUpdateVersion } = useSettingsStore.getState();
+    if (skippedUpdateVersion === update.version) setSkippedUpdateVersion(null);
+    presentUpdate(update);
+  } catch {
+    toast.error("Update-Prüfung fehlgeschlagen");
+  }
+}
 
 export function AppHotkeys() {
   const easyMode = useSettingsStore((state) => state.easyMode);
@@ -93,6 +111,11 @@ export function AppHotkeys() {
     void refresh();
   }, [refresh]);
 
+  const zoom = useCallback((delta: number | null) => {
+    const { uiScale, setUiScale } = useSettingsStore.getState();
+    setUiScale(delta === null ? 100 : uiScale + delta);
+  }, []);
+
   const definitions = [
     { id: "tab.newQuery", action: newQueryTab },
     { id: "tab.close", action: closeActiveTab },
@@ -114,6 +137,17 @@ export function AppHotkeys() {
     { id: "go.forward", action: () => router.history.forward() },
     { id: "go.connections", action: () => void navigate({ to: "/connections" }) },
     { id: "settings.open", action: () => void navigate({ to: "/settings" }) },
+    { id: "view.zoomIn", action: () => zoom(UI_SCALE_STEP) },
+    { id: "view.zoomOut", action: () => zoom(-UI_SCALE_STEP) },
+    { id: "view.zoomReset", action: () => zoom(null) },
+    { id: "menu.about", action: () => void navigate({ to: "/about" }) },
+    { id: "menu.docs", action: () => void navigate({ to: "/docs" }) },
+    { id: "menu.releaseNotes", action: () => void navigate({ to: "/release-notes" }) },
+    {
+      id: "menu.bugReport",
+      action: () => void navigate({ to: "/settings", search: { tab: "about" } }),
+    },
+    { id: "menu.updates", action: () => void checkUpdatesFromMenu() },
     {
       id: "view.split",
       action: () => {
@@ -153,6 +187,15 @@ export function AppHotkeys() {
     window.addEventListener(HOTKEY_ACTION_EVENT, listener);
     return () => window.removeEventListener(HOTKEY_ACTION_EVENT, listener);
   }, [run]);
+
+  useEffect(() => {
+    const unlisten = listen<string>("menu-action", (event) =>
+      emitHotkeyAction(event.payload),
+    ).catch(() => null);
+    return () => {
+      void unlisten.then((stop) => stop?.());
+    };
+  }, []);
 
   return (
     <AppHotkeyBindings
