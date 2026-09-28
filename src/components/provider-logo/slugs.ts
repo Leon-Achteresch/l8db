@@ -3,6 +3,10 @@ import type { DatabaseKind } from "@/lib/db";
 export const PROVIDER_SLUG: Record<string, string | null> = {
   postgres: "postgresql",
   supabase: "supabase",
+  appwrite: "appwrite",
+  pocketbase: "pocketbase",
+  convex: "convex",
+  firebase: "firebase",
   neon: "neon",
   cockroachdb: "cockroach-labs",
   redshift: "aws-amazon-redshift",
