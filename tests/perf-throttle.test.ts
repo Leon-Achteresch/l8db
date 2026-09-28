@@ -547,6 +547,67 @@ test.skipIf(!ENABLED)("Speicher und Fehler", async () => {
 });
 
 test.skipIf(!ENABLED)(
+  "Proxy-Benutzer-Menü öffnet beim ersten Klick und übernimmt eine Rolle",
+  async () => {
+    await navigate("/");
+    errors.length = 0;
+    const trigger = page.getByRole("button", { name: "Als Benutzer ansehen" });
+    await trigger.waitFor();
+    await trigger.evaluate((element) => {
+      const state = window as unknown as { __proxyClickAt: number; __proxyReadyAt: number };
+      element.addEventListener("click", () => (state.__proxyClickAt = performance.now()), {
+        once: true,
+      });
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('[aria-label="Proxy-Benutzer suchen"]')) return;
+        state.__proxyReadyAt = performance.now();
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    const frames = await sample(async () => {
+      await trigger.click();
+      await page.getByRole("combobox", { name: "Proxy-Benutzer suchen" }).waitFor();
+      await page.waitForTimeout(1200);
+    });
+    if (WEBKIT) {
+      report("Proxy-Benutzer-Menü erster Klick", frames);
+      expect(frames.worst).toBeLessThanOrEqual(STEP_WORST_MS);
+    } else expectStep("Proxy-Benutzer-Menü erster Klick", frames);
+    const readyMs = await page.evaluate(() => {
+      const state = window as unknown as { __proxyClickAt: number; __proxyReadyAt: number };
+      return state.__proxyReadyAt - state.__proxyClickAt;
+    });
+    console.log(`perf-throttle Proxy-Benutzer-Menü Eingabe sichtbar: ${readyMs.toFixed(0)} ms`);
+    expect(readyMs).toBeLessThanOrEqual(Math.max(80, RATE * 20));
+    const search = page.getByRole("combobox", { name: "Proxy-Benutzer suchen" });
+    expect(await search.evaluate((input) => document.activeElement === input)).toBe(true);
+    expect(await page.getByRole("option").count()).toBeLessThanOrEqual(100);
+    expect(await page.getByText("… und 2902 weitere. Suche eingrenzen.").count()).toBe(1);
+    await page.getByRole("option", { name: "reader" }).click();
+    const activeTrigger = page.getByRole("button", { name: "Ansicht als reader" });
+    await activeTrigger.waitFor();
+    await activeTrigger.click();
+    await search.fill("w");
+    await search.press("ArrowDown");
+    await search.press("ArrowUp");
+    await search.press("Enter");
+    const writerTrigger = page.getByRole("button", { name: "Ansicht als writer" });
+    await writerTrigger.waitFor();
+    await writerTrigger.click();
+    await search.fill("analyst");
+    await search.press("Enter");
+    const analystTrigger = page.getByRole("button", { name: "Ansicht als analyst" });
+    await analystTrigger.waitFor();
+    await analystTrigger.click();
+    await page.getByRole("option", { name: "Als analyst beenden" }).click();
+    await trigger.waitFor();
+    expect(errors).toEqual([]);
+  },
+  30000,
+);
+
+test.skipIf(!ENABLED)(
   "Breite SQL-Ergebnisse: Suchen, JSON und Scrollen",
   async () => {
     await navigate("/query");
