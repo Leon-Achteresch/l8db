@@ -29,6 +29,7 @@ export const NEW_FEATURES = {
   "baas.appwrite.rows": "0.7.0",
   "baas.appwrite.columns": "0.7.0",
   "baas.pocketbase": "0.7.0",
+  "baas.pocketbase.manage": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
 } as const;
