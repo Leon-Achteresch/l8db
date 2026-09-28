@@ -16,16 +16,16 @@ function entry(bytes: string) {
     id: "l8db.jev",
     name: "Jev Plan-Diagnose",
     description: "BYOK-Diagnose",
-    version: "1.0.0",
+    version: "1.1.0",
     publisher: "l8db",
-    package: "packages/l8db.jev-1.0.0.l8db-extension",
+    package: "packages/l8db.jev-1.1.0.l8db-extension",
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
 }
 
 describe("offizieller Extension-Markt", () => {
   test("validiert Katalog und lehnt doppelte oder fremde Pakete ab", async () => {
-    const bytes = await readFile("extention/l8db.jev-1.0.0.l8db-extension", "utf8");
+    const bytes = await readFile("extention/l8db.jev-1.1.0.l8db-extension", "utf8");
     const item = entry(bytes);
     expect(validateMarketCatalog({ schemaVersion: 1, extensions: [item] }).extensions).toHaveLength(
       1,
@@ -41,7 +41,7 @@ describe("offizieller Extension-Markt", () => {
   });
 
   test("lädt Katalog und Paket, prüft Hash und installiert deaktiviert", async () => {
-    const bytes = await readFile("extention/l8db.jev-1.0.0.l8db-extension", "utf8");
+    const bytes = await readFile("extention/l8db.jev-1.1.0.l8db-extension", "utf8");
     const item = entry(bytes);
     const called: string[] = [];
     const fetcher: typeof fetch = async (input) => {
@@ -55,7 +55,7 @@ describe("offizieller Extension-Markt", () => {
     const archive = await downloadMarketExtension(catalog.extensions[0], fetcher, CATALOG_URL);
     expect(called).toEqual([
       CATALOG_URL,
-      "https://example.com/market/packages/l8db.jev-1.0.0.l8db-extension",
+      "https://example.com/market/packages/l8db.jev-1.1.0.l8db-extension",
     ]);
     const stored = new Map<
       string,
@@ -124,7 +124,7 @@ describe("offizieller Extension-Markt", () => {
   });
 
   test("weist manipulierte und nicht passende Pakete zurück", async () => {
-    const bytes = await readFile("extention/l8db.jev-1.0.0.l8db-extension", "utf8");
+    const bytes = await readFile("extention/l8db.jev-1.1.0.l8db-extension", "utf8");
     const item = entry(bytes);
     const fetcher: typeof fetch = async () => new Response(`${bytes} `);
     await expect(downloadMarketExtension(item, fetcher, CATALOG_URL)).rejects.toThrow("Hash");
