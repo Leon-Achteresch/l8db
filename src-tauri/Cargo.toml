@@ -70,6 +70,10 @@ pkcs8 = { version = "0.11", features = ["pem", "encryption", "3des"] }
 flate2 = "1"
 quick-xml = "0.42"
 md-5 = "0.11"
+tauri-plugin-log = "2"
+tauri-plugin-window-state = "2"
+log = "0.4"
+sentry = { version = "0.49", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "native-tls"] }
 
 [dev-dependencies]
 rand = "0.10"

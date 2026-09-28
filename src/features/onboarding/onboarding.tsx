@@ -1,4 +1,4 @@
-import { Feather, Layers } from "lucide-react";
+import { Feather, Layers, ShieldCheck, ShieldOff } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useCallback, useState } from "react";
@@ -18,6 +18,8 @@ export function Onboarding() {
   const setDone = useSettingsStore((s) => s.setOnboardingDone);
   const easyMode = useSettingsStore((s) => s.easyMode);
   const setEasyMode = useSettingsStore((s) => s.setEasyMode);
+  const crashReports = useSettingsStore((s) => s.crashReports);
+  const setCrashReports = useSettingsStore((s) => s.setCrashReports);
   const { theme, setTheme } = useTheme();
   const [step, setStep] = useState(0);
   const [shownDone, setShownDone] = useState(done);
@@ -93,6 +95,38 @@ export function Onboarding() {
       subtitle:
         "l8db prüft, welche Treiber auf diesem Gerät fehlen. Installiere nur die, die du verwenden möchtest.",
       content: <OnboardingDrivers />,
+    },
+    {
+      id: "crash-reports",
+      title: "Absturzberichte senden?",
+      subtitle:
+        "Hilft, Fehler schneller zu beheben. Du kannst das jederzeit in den Einstellungen unter Über & Updates ändern.",
+      value: crashReports ? "on" : "off",
+      select: (value: string) => setCrashReports(value === "on"),
+      options: [
+        {
+          value: "on",
+          label: "Berichte senden",
+          description:
+            "Fehlermeldung, Stacktrace, App-Version und Betriebssystem gehen an Sentry (EU). Verbindungsdaten werden entfernt, SQL und Ergebnisdaten nie gesendet.",
+          preview: (
+            <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
+              <ShieldCheck className="size-9 text-primary" />
+            </div>
+          ),
+        },
+        {
+          value: "off",
+          label: "Nicht senden",
+          description:
+            "Fehler bleiben lokal in der Log-Datei und lassen sich bei Bedarf als Diagnosepaket exportieren.",
+          preview: (
+            <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
+              <ShieldOff className="size-9 text-primary" />
+            </div>
+          ),
+        },
+      ],
     },
     {
       id: "extensions",

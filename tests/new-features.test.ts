@@ -17,7 +17,9 @@ function memoryStorage() {
 
 describe("new feature discovery", () => {
   test("only current release features propagate through their navigation path", () => {
-    const seen = new Set<"settings.data.transfer">();
+    const seen = new Set<"settings.data.transfer" | "settings.about.crash-reports">([
+      "settings.about.crash-reports",
+    ]);
     expect(hasNewFeatures("settings.data.transfer", seen, "0.7.0")).toBe(true);
     expect(hasNewFeatures("settings.data", seen, "0.7.0")).toBe(true);
     expect(hasNewFeatures("settings", seen, "0.7.0")).toBe(true);

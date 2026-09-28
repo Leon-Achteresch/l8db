@@ -2,7 +2,7 @@ import { useHotkey } from "@tanstack/react-hotkeys";
 import * as React from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useResolvedHotkey } from "@/lib/hotkeys";
+import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_COOKIE_MAX_AGE,
@@ -52,6 +52,8 @@ export function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
   }, [isMobile, setOpen, setOpenMobile]);
+
+  React.useEffect(() => onHotkeyAction("sidebar.toggle", toggleSidebar), [toggleSidebar]);
 
   const sidebarHotkey = useResolvedHotkey("sidebar.toggle");
   useHotkey(sidebarHotkey, () => toggleSidebar(), {
