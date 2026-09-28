@@ -10,7 +10,7 @@ import { SupabaseView } from "./supabase-view";
 const route = getRouteApi("/baas");
 
 export function BaasView() {
-  const { provider } = route.useSearch();
+  const { provider, id } = route.useSearch();
 
   return (
     <main className="h-full min-h-0 flex-1 overflow-auto bg-background">
@@ -25,13 +25,13 @@ export function BaasView() {
       {provider === "supabase" ? (
         <SupabaseView />
       ) : provider === "appwrite" ? (
-        <AppwriteView />
+        <AppwriteView key={id} initialId={id} />
       ) : provider === "pocketbase" ? (
-        <PocketBaseView />
+        <PocketBaseView key={id} initialId={id} />
       ) : provider === "convex" ? (
-        <ConvexView />
+        <ConvexView key={id} initialId={id} />
       ) : (
-        <FirebaseView />
+        <FirebaseView key={id} initialId={id} />
       )}
     </main>
   );

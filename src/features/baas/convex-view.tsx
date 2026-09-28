@@ -8,11 +8,11 @@ import { convexConnect, convexDisconnect, convexProfiles, convexProjects } from 
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { ConvexProjectView } from "./convex-project-view";
 
-export function ConvexView() {
+export function ConvexView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.convex");
   const profiles = useQuery({ queryKey: ["convex", "profiles"], queryFn: convexProfiles });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null);
   const [adding, setAdding] = useState(false);
   const [teamId, setTeamId] = useState("");
   const [token, setToken] = useState("");

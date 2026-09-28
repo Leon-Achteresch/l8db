@@ -12,11 +12,13 @@ export function SmartPicker({
   selected,
   onSelect,
   onPaste,
+  hiddenIds = [],
 }: {
   providers: ProviderInfo[];
   selected: string;
   onSelect: (id: string) => void;
   onPaste?: (url: string) => void;
+  hiddenIds?: string[];
 }) {
   const [value, setValue] = useState("");
   const kind = value.trim().length > 2 ? kindFromUrl(value) : undefined;
@@ -89,7 +91,10 @@ export function SmartPicker({
       ) : (
         <div className="space-y-3">
           {CATEGORIES.map((category) => {
-            const members = filtered.filter((provider) => categoryOf(provider) === category.id);
+            const members = filtered.filter(
+              (provider) =>
+                categoryOf(provider) === category.id && !hiddenIds.includes(provider.id),
+            );
             if (!members.length) return null;
             return (
               <div key={category.id} className="space-y-1.5">

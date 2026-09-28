@@ -3,6 +3,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
+import { useBaasConnections } from "@/features/baas/use-baas-connections";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import {
   groupByServer,
@@ -93,6 +95,16 @@ export function ConnectionsView() {
     grouped && effectiveKey !== "all"
       ? groups.filter((group) => group.key === effectiveKey)
       : groups;
+  const needle = query.trim().toLowerCase();
+  const allBaasConnections = useBaasConnections();
+  const baasConnections = allBaasConnections.filter(
+    (item) =>
+      !favoritesOnly &&
+      [item.name, item.detail, item.provider].some((value) => value.toLowerCase().includes(needle)),
+  );
+  const baasCards = baasConnections.map((item) => (
+    <BaasConnectionCard key={`${item.provider}:${item.id}`} connection={item} />
+  ));
   const activeGroupKey = activeConnection ? groupKey(activeConnection, hostGroupRules) : null;
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
@@ -239,11 +251,11 @@ export function ConnectionsView() {
               onSaved={() => openEditor(null)}
               onCancel={() => openEditor(null)}
             />
-          ) : connections.length === 0 ? (
+          ) : connections.length === 0 && allBaasConnections.length === 0 ? (
             <ConnectionsEmptyState openEditor={openEditor} setImportOpen={setImportOpen} />
           ) : favoritesOnly && filtered.length === 0 ? (
             <ConnectionsNoFavoritesState setFavoritesOnly={setFavoritesOnly} />
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && baasCards.length === 0 ? (
             <ConnectionsNoResultsState query={query} setQuery={setQuery} />
           ) : grouped ? (
             <ConnectionsGroupedLayout
@@ -255,11 +267,19 @@ export function ConnectionsView() {
               setSelectedKey={setSelectedKey}
               displayGroups={displayGroups}
               renderGroup={renderGroup}
+              extra={
+                baasCards.length > 0 && (
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {baasCards}
+                  </div>
+                )
+              }
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border/70 bg-card/20 p-4 md:p-6 shadow-xs">
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filtered.map(renderCard)}
+                {baasCards}
               </div>
             </div>
           )}

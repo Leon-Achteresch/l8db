@@ -8,10 +8,10 @@ import { firebaseConnect, firebaseDisconnect, firebaseProfiles } from "@/lib/db"
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { FirebaseProjectView } from "./firebase-project-view";
 
-export function FirebaseView() {
+export function FirebaseView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
   const profiles = useQuery({ queryKey: ["firebase", "profiles"], queryFn: firebaseProfiles });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
