@@ -1,5 +1,6 @@
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
+import { useSettingsStore } from "@/lib/settings";
 import { DataTableRow } from "../data-table-row";
 import type { DataTableProps } from "../data-table-types";
 import { copyCellValue } from "./copy-cell-value";
@@ -115,6 +116,8 @@ export function DataTableBody({
   onDeleteRow,
   columnDetails,
 }: Props) {
+  const monochromeCells = useSettingsStore((state) => state.monochromeCells);
+
   return (
     <ContextMenu onOpenChange={(open) => !open && setMenuRow(null)}>
       <ContextMenuTrigger asChild highlight={false}>
@@ -158,6 +161,7 @@ export function DataTableBody({
                     table={table}
                     visibleColumns={visibleColumns}
                     customCellColumns={customCellColumns}
+                    monochromeCells={monochromeCells}
                     isMarked={markedRows.has(row.original)}
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}

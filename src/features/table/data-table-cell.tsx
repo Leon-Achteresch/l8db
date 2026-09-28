@@ -2,7 +2,6 @@ import { type Column, createCell, flexRender } from "@tanstack/react-table";
 import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { memo, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
-import { useSettingsStore } from "@/lib/settings";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
@@ -35,6 +34,7 @@ type DataTableCellProps = Pick<
 > & {
   column: Column<TableRow>;
   hasCustomContent: boolean;
+  monochromeCells: boolean;
   cellIndex: number;
   width: number;
   previewWidth: number;
@@ -67,6 +67,7 @@ export const DataTableCell = memo(function DataTableCell({
   table,
   column,
   hasCustomContent,
+  monochromeCells,
   cellIndex,
   width,
   previewWidth,
@@ -86,7 +87,6 @@ export const DataTableCell = memo(function DataTableCell({
   const columnId = column.id;
   const editable = !!onSaveRow && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
-  const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const dataType = column.columnDef.meta?.dataType;
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
