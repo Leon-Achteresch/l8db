@@ -197,7 +197,7 @@ pub struct SupabaseDatabase {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseProject {
     pub id: String,
-    #[serde(rename = "ref")]
+    #[serde(rename(deserialize = "ref"))]
     pub reference: String,
     pub name: String,
     pub region: Option<String>,
@@ -213,7 +213,7 @@ pub struct SupabaseBucket {
     pub public: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
-    #[serde(rename = "type")]
+    #[serde(rename(deserialize = "type"))]
     pub kind: Option<String>,
     pub file_size_limit: Option<u64>,
     pub allowed_mime_types: Option<Vec<String>>,
@@ -321,7 +321,7 @@ pub struct SupabaseRow {
 #[derive(Deserialize)]
 struct SupabaseApiKey {
     api_key: Option<String>,
-    #[serde(rename = "type")]
+    #[serde(rename(deserialize = "type"))]
     kind: String,
     name: Option<String>,
 }
@@ -1259,6 +1259,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(projects[0].reference, "abcdefghijklmnopqrst");
+        assert_eq!(
+            serde_json::to_value(&projects[0]).unwrap()["reference"],
+            "abcdefghijklmnopqrst"
+        );
         let buckets: Vec<SupabaseBucket> =
             serde_json::from_str(r#"[{"id":"avatars","name":"avatars","public":true}]"#).unwrap();
         assert!(buckets[0].public);

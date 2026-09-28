@@ -22,7 +22,7 @@ struct PocketBaseSettings {
 
 #[derive(Deserialize)]
 struct PocketBaseMeta {
-    #[serde(rename = "appName")]
+    #[serde(rename(deserialize = "appName"))]
     app_name: String,
 }
 
@@ -34,11 +34,11 @@ struct PocketBaseFileToken {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PocketBaseField {
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename(deserialize = "type"))]
     pub kind: String,
     #[serde(default)]
     pub hidden: bool,
-    #[serde(rename = "maxSelect")]
+    #[serde(rename(deserialize = "maxSelect"))]
     pub max_select: Option<u32>,
 }
 
@@ -46,7 +46,7 @@ pub struct PocketBaseField {
 pub struct PocketBaseCollection {
     pub id: String,
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename(deserialize = "type"))]
     pub kind: String,
     pub system: bool,
     pub fields: Vec<PocketBaseField>,
@@ -64,11 +64,11 @@ pub struct PocketBaseRecord {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PocketBasePage<T> {
     pub page: u32,
-    #[serde(rename = "perPage")]
+    #[serde(rename(deserialize = "perPage"))]
     pub per_page: u32,
-    #[serde(rename = "totalItems")]
+    #[serde(rename(deserialize = "totalItems"))]
     pub total_items: u64,
-    #[serde(rename = "totalPages")]
+    #[serde(rename(deserialize = "totalPages"))]
     pub total_pages: u32,
     pub items: Vec<T>,
 }
