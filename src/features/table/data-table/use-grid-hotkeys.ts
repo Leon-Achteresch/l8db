@@ -22,6 +22,8 @@ type Options = {
   onPageChange: ((page: number) => void) | undefined;
   hasNextPage: boolean;
   page: number;
+  totalPages: number | undefined;
+  isFetching: boolean;
 };
 
 export function useGridHotkeys({
@@ -37,12 +39,17 @@ export function useGridHotkeys({
   onPageChange,
   hasNextPage,
   page,
+  totalPages,
+  isFetching,
 }: Options) {
   const pane = useWorkspacePane();
   const gridSearchHotkey = useResolvedHotkey("grid.search");
   const gridCopyHotkey = useResolvedHotkey("grid.copy");
   const gridNextPageHotkey = useResolvedHotkey("grid.nextPage");
   const gridPrevPageHotkey = useResolvedHotkey("grid.prevPage");
+
+  const gridFirstPageHotkey = useResolvedHotkey("grid.firstPage");
+  const gridLastPageHotkey = useResolvedHotkey("grid.lastPage");
 
   useHotkey(
     gridSearchHotkey,
@@ -89,28 +96,44 @@ export function useGridHotkeys({
     { ignoreInputs: false, preventDefault: false, stopPropagation: false },
   );
 
-  useHotkey(
-    gridNextPageHotkey,
-    (event) => {
-      if (!onPageChange || !hasNextPage) return;
-      const root = rootRef.current;
-      if (!(root?.contains(document.activeElement) ?? false)) return;
-      event.preventDefault();
-      onPageChange(page + 1);
-    },
-    { ignoreInputs: false },
-  );
+  const changePage = (event: KeyboardEvent, nextPage: number | undefined) => {
+    if (!onPageChange || editingCell || isFetching) return;
+    const root = rootRef.current;
+    if (!root?.contains(document.activeElement)) return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        target.closest(
+          'input, textarea, select, [role="textbox"], [role="combobox"], [role="slider"], [role="spinbutton"], [role="menu"], [role="listbox"], [data-draft-row], [data-draft-controls]',
+        ))
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (nextPage !== undefined && nextPage >= 0 && nextPage !== page) onPageChange(nextPage);
+  };
+  const paginationOptions = {
+    ignoreInputs: true,
+    preventDefault: false,
+    stopPropagation: false,
+  };
 
   useHotkey(
+    gridNextPageHotkey,
+    (event) => changePage(event, hasNextPage ? page + 1 : undefined),
+    paginationOptions,
+  );
+  useHotkey(
     gridPrevPageHotkey,
-    (event) => {
-      if (!onPageChange) return;
-      const root = rootRef.current;
-      if (!(root?.contains(document.activeElement) ?? false)) return;
-      if (page <= 0) return;
-      event.preventDefault();
-      onPageChange(page - 1);
-    },
-    { ignoreInputs: false },
+    (event) => changePage(event, page > 0 ? page - 1 : undefined),
+    paginationOptions,
+  );
+  useHotkey(gridFirstPageHotkey, (event) => changePage(event, 0), paginationOptions);
+  useHotkey(
+    gridLastPageHotkey,
+    (event) =>
+      changePage(event, totalPages === undefined ? undefined : Math.max(0, totalPages - 1)),
+    paginationOptions,
   );
 }

@@ -47,6 +47,8 @@ describe("filterShortcuts", () => {
     expect(result.map((entry) => entry.id).sort()).toEqual([
       "grid.copy",
       "grid.export",
+      "grid.firstPage",
+      "grid.lastPage",
       "grid.nextPage",
       "grid.prevPage",
       "grid.search",

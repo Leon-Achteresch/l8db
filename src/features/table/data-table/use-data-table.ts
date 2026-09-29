@@ -190,6 +190,8 @@ export function useDataTable(props: DataTableProps) {
     onPageChange,
     hasNextPage,
     page,
+    totalPages: totalCount == null ? undefined : Math.ceil(totalCount / pageSize),
+    isFetching,
   });
   const waveRefs = usePageFlip(scrollRef, page, hasNextPage, onPageChange);
   useGridKeyboard({

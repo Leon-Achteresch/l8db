@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "table.pagination.keyboard": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
