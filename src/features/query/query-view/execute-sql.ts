@@ -8,6 +8,8 @@ import {
   type QueryResult,
 } from "@/lib/db";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
+import { useQueryWorkspace } from "@/lib/query-workspace";
+import { applySelectRowLimit } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
 import { isTransactionalStatement, opensManagedTransaction } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -31,6 +33,9 @@ export async function executeSqlWithTransactions({
   transactionsCapable,
   onJob,
 }: ExecuteSqlOptions): Promise<QueryResult> {
+  const limit = useQueryWorkspace.getState().selectRowLimit;
+  sql = applySelectRowLimit(sql, connection.kind, limit);
+  if (bound) bound = { ...bound, sql: applySelectRowLimit(bound.sql, connection.kind, limit) };
   const executionOptions = { onJob, confirmed: true };
   const store = useTransactionStore.getState();
   const existingTx = getQueryTransaction(connection.id, database);
