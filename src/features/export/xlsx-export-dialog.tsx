@@ -70,8 +70,12 @@ export function XlsxExportDialog({
       const kept = prev.filter((m) => columns.includes(m.column));
       return kept.length ? kept : ruleMasks;
     });
+  }, [open, columns, ruleMasks]);
+
+  useEffect(() => {
+    if (!open) return;
     setSheetName(defaultSheetName ?? DEFAULT_SHEET_NAME);
-  }, [open, columns, defaultSheetName, ruleMasks]);
+  }, [open, defaultSheetName]);
 
   const exportColumns = useMemo(
     () => columns.filter((c) => selected.includes(c)),
