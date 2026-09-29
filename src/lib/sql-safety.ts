@@ -3,13 +3,15 @@ import { splitSqlStatements } from "@/lib/sql-statements";
 interface Token {
   word: string;
   depth: number;
+  start: number;
 }
 
-function tokens(sql: string, dialect?: string): Token[] {
+export function sqlTokens(sql: string, dialect?: string): Token[] {
   const result: Token[] = [];
   let depth = 0;
   let i = 0;
   while (i < sql.length) {
+    const tokenStart = i;
     const c = sql[i];
     if (sql.startsWith("--", i) || (dialect === "mysql" && c === "#")) {
       const end = sql.indexOf("\n", i);
@@ -52,20 +54,20 @@ function tokens(sql: string, dialect?: string): Token[] {
         } else if (sql[i] === "\\" && backslashEscapes) i += 2;
         else i++;
       }
-      result.push({ word: "identifier", depth });
+      result.push({ word: "identifier", depth, start: tokenStart });
     } else if (c === "(") {
       depth++;
       i++;
     } else if (c === ")") {
       depth = Math.max(0, depth - 1);
-      result.push({ word: ")", depth });
+      result.push({ word: ")", depth, start: tokenStart });
       i++;
     } else if (/[A-Za-z_]/.test(c)) {
       const start = i++;
       while (i < sql.length && /[\w$]/.test(sql[i])) i++;
-      result.push({ word: sql.slice(start, i).toUpperCase(), depth });
+      result.push({ word: sql.slice(start, i).toUpperCase(), depth, start });
     } else {
-      if (c === ";") result.push({ word: ";", depth });
+      if (c === ";") result.push({ word: ";", depth, start: tokenStart });
       i++;
     }
   }
@@ -102,7 +104,7 @@ export function destructiveStatements(
 ): DestructiveStatement[] {
   if (dialect === "redis" || dialect === "mongodb") return [];
   return splitSqlStatements(sql, dialect).statements.flatMap((statement) => {
-    const words = tokens(statement.text, dialect);
+    const words = sqlTokens(statement.text, dialect);
     let reason: string | null = null;
     if (["GRANT", "REVOKE"].includes(words[0]?.word)) return [];
     for (let i = 0; i < words.length; i++) {
@@ -185,7 +187,7 @@ export function writesData(sql: string, dialect?: string): boolean {
       .map((line) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "")
       .some((word) => word && !REDIS_READ.has(word));
   return splitSqlStatements(text, dialect).statements.some((statement) => {
-    const words = tokens(statement.text, dialect);
+    const words = sqlTokens(statement.text, dialect);
     const first = words[0]?.word;
     if (!first) return false;
     if (first === "WITH" || first === "SELECT")
@@ -196,7 +198,7 @@ export function writesData(sql: string, dialect?: string): boolean {
 
 export function scriptPolicyIssue(sql: string, dialect: string, managed: boolean): string | null {
   for (const statement of splitSqlStatements(sql, dialect).statements) {
-    const words = tokens(statement.text, dialect);
+    const words = sqlTokens(statement.text, dialect);
     const first = words[0]?.word;
     if (
       ["COMMIT", "ROLLBACK", "ABORT"].includes(first) ||

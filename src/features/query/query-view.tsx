@@ -20,6 +20,7 @@ import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
+import { SelectRowLimit } from "./query-view/select-row-limit";
 import { ToolbarViewControls } from "./query-view/toolbar-view-controls";
 import { useAnalysisSheet } from "./query-view/use-analysis-sheet";
 import { useAutoAssessment } from "./query-view/use-auto-assessment";
@@ -190,6 +191,7 @@ export function QueryView({ tabId }: QueryViewProps) {
             onOpenScript={script.handleOpenScriptDialog}
             shortcutLabel={shortcutLabel}
           />
+          {isSql && <SelectRowLimit disabled={exec.isRunning} />}
           <ToolbarViewControls
             workspace={workspace}
             isSql={isSql}
