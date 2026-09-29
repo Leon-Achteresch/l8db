@@ -79,14 +79,15 @@ export function McpConnectionsSection({
               checked={mcp.exposed}
               disabledReason={mcpConnectionUnsupported(mcp)}
               onCheckedChange={(exposed) => onUpdateConnection(connection.id, { exposed })}
-            >
-              {mcp.exposed ? (
-                <McpConnectionSettings
-                  connection={mcp}
-                  onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
-                />
-              ) : null}
-            </ConnectionSelectCard>
+              actions={
+                mcp.exposed ? (
+                  <McpConnectionSettings
+                    connection={mcp}
+                    onUpdate={(patch) => onUpdateConnection(connection.id, patch)}
+                  />
+                ) : null
+              }
+            />
           );
         })}
       </ServerGroupSection>
