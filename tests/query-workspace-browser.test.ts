@@ -3,7 +3,7 @@ import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
-  "query workspace: layouts, schema, execution, results and custom shortcuts",
+  "query workspace: layouts, schema, execution, result exports and custom shortcuts",
   async () => {
     const browser = await (process.env.L8DB_QUERY_BROWSER_ENGINE === "webkit"
       ? webkit
@@ -65,6 +65,37 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.screenshot({ path: "/tmp/l8db-query-before.png" });
       await page.getByRole("button", { name: "Ausführen", exact: true }).click();
       await page.getByText("mara@example.test", { exact: true }).waitFor();
+      for (const [format, title] of [
+        ["CSV", "CSV exportieren"],
+        ["XLSX", "XLSX exportieren"],
+        ["Parquet", "Als Parquet exportieren"],
+        ["XML", "Als XML exportieren"],
+        ["HTML", "Als HTML exportieren"],
+      ]) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await page.getByRole("button", { name: "Export", exact: true }).click();
+          await page
+            .getByRole("menuitem", { name: `Als ${format} exportieren…`, exact: true })
+            .click();
+          const dialog = page.getByRole("dialog", { name: title, exact: true });
+          await dialog.waitFor();
+          if (format === "CSV") {
+            expect(await dialog.locator("pre").innerText()).toContain("mara@example.test");
+          }
+          if (format === "XLSX") {
+            await dialog.getByLabel("Blattname", { exact: true }).fill("SELECT Export");
+            expect(await dialog.getByLabel("Blattname", { exact: true }).inputValue()).toBe(
+              "SELECT Export",
+            );
+          }
+          expect(
+            await dialog.getByRole("button", { name: "Exportieren", exact: true }).isEnabled(),
+          ).toBe(true);
+          await dialog.getByRole("button", { name: "Schließen", exact: true }).click();
+          await dialog.waitFor({ state: "hidden" });
+          expect(errors).toEqual([]);
+        }
+      }
       await page.getByRole("button", { name: "JSON", exact: true }).click();
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("elio");
       if (
@@ -127,7 +158,7 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.screenshot({ path: "/tmp/l8db-query-settings.png" });
       expect(errors).toEqual([]);
       console.log(
-        "PASS: run, filtered JSON, presets, navigator insertion, undo, remapped shortcuts, compact viewport.",
+        "PASS: run, result export dialogs, filtered JSON, presets, navigator insertion, undo, remapped shortcuts, compact viewport.",
       );
     } finally {
       await saveBrowserArtifacts(browser, "query-workspace");

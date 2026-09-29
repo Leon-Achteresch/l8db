@@ -68,6 +68,7 @@ export function XlsxExportDialog({
     setSelected(columns);
     setMasks((prev) => {
       const kept = prev.filter((m) => columns.includes(m.column));
+      if (kept.length === prev.length && (kept.length > 0 || ruleMasks.length === 0)) return prev;
       return kept.length ? kept : ruleMasks;
     });
   }, [open, columns, ruleMasks]);
