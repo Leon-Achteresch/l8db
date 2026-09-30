@@ -1,13 +1,20 @@
 import { Cloud } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { BAAS_PROVIDERS, type BaasProvider } from "@/features/baas/baas-providers";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) => void }) {
+  const feature = useNewFeatureVisibility<HTMLParagraphElement>("connections.baas");
   return (
     <div className="space-y-1.5">
-      <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+      <p
+        ref={feature.ref}
+        className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+      >
         <Cloud className="size-3" />
         Backend-as-a-Service
+        {feature.isNew && <NewBadge />}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {BAAS_PROVIDERS.map((provider) => (
