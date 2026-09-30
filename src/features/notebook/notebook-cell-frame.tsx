@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, SeparatorHorizontalIcon, Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/icon-button";
 import type { NotebookCellType } from "@/lib/notebook";
@@ -15,6 +15,8 @@ export function NotebookCellFrame({
   type,
   first,
   last,
+  pageBreak,
+  onTogglePageBreak,
   onMove,
   onRemove,
   onAdd,
@@ -23,6 +25,8 @@ export function NotebookCellFrame({
   type: NotebookCellType;
   first: boolean;
   last: boolean;
+  pageBreak: boolean;
+  onTogglePageBreak: () => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
   onAdd: (type: NotebookCellType) => void;
@@ -36,6 +40,18 @@ export function NotebookCellFrame({
             {TYPE_LABEL[type]}
           </span>
           <div className="ml-auto flex items-center">
+            {!first && (
+              <IconButton
+                variant="ghost"
+                size="icon-xs"
+                aria-label={pageBreak ? "Seitenumbruch entfernen" : "Auf neuer Seite beginnen"}
+                aria-pressed={pageBreak}
+                className={cn(pageBreak && "text-primary")}
+                onClick={onTogglePageBreak}
+              >
+                <SeparatorHorizontalIcon />
+              </IconButton>
+            )}
             <IconButton
               variant="ghost"
               size="icon-xs"
