@@ -127,7 +127,7 @@ pub async fn extension_process_run(
     options: ProcessOptions,
 ) -> Result<ProcessResult, String> {
     let timeout = validate(&command, &options)?;
-    let mut child = tokio::process::Command::new(resolve(&command));
+    let mut child = crate::db::backup_tools::command(std::path::Path::new(&resolve(&command)));
     child
         .args(&options.args)
         .env("PATH", child_path())

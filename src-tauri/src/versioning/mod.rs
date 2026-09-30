@@ -32,8 +32,12 @@ pub struct Request {
     pub incoming: Option<String>,
 }
 
+fn git_command() -> Command {
+    crate::db::backup_tools::command(Path::new("git"))
+}
+
 async fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
+    let mut command = git_command();
     command
         .current_dir(root)
         .args(["--no-pager", "--literal-pathspecs"])
@@ -497,7 +501,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 }
                 let output = tokio::time::timeout(
                     Duration::from_secs(30),
-                    Command::new("git")
+                    git_command()
                         .current_dir(&dir)
                         .args([
                             "merge-file",

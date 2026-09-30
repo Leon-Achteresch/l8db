@@ -545,7 +545,7 @@ async fn credential_process(command: &str) -> Result<(Credentials, Option<i64>),
     #[cfg(windows)]
     let mut process = {
         let mut p = tokio::process::Command::new("cmd");
-        p.arg("/C").arg(command);
+        p.arg("/C").arg(command).creation_flags(0x0800_0000);
         p
     };
     #[cfg(not(windows))]
