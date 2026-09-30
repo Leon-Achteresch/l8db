@@ -9,11 +9,13 @@ import {
   ServerIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
 import { listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { control } from "@/lib/versioning/control";
@@ -21,14 +23,20 @@ import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versio
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
 import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
+import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningPopover } from "./versioning-popover";
 import { VersioningSelect } from "./versioning-select";
+import { VersioningTargetDetails } from "./versioning-target-details";
 import { VersioningTargetPolicy } from "./versioning-target-policy";
 
 export function VersioningTargets({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, releases, targets, run, refresh } = workspace;
   const connections = useConnectionsStore((state) => state.connections);
+  const feature = useNewFeatureVisibility<HTMLDivElement>("versioning.targets.customers");
+  const [customer, setCustomer] = useState("");
+  const [environment, setEnvironment] = useState("Produktion");
+  const [search, setSearch] = useState("");
   const [name, setName] = useState("");
   const [connectionId, setConnectionId] = useState("");
   const [database, setDatabase] = useState("");
@@ -58,6 +66,18 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       releases.some((release) => release.id === current) ? current : (latest?.id ?? ""),
     );
   }, [releases]);
+  useEffect(() => {
+    if (
+      workspace.requestedReleaseId &&
+      releases.some((release) => release.id === workspace.requestedReleaseId)
+    ) {
+      setReleaseId(workspace.requestedReleaseId);
+      setPlans([]);
+      setPreflight([]);
+      setConfirmation("");
+      workspace.setRequestedReleaseId("");
+    }
+  }, [workspace.requestedReleaseId, workspace.setRequestedReleaseId, releases]);
   useEffect(() => {
     if (!setupOpen || !selectedConnection) {
       setAvailableSchemas([]);
@@ -101,7 +121,9 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const add = async () => {
     if (!project) throw new Error("Projekt fehlt.");
     const created = await addTarget(repo, project, connections, {
-      name,
+      name: name.trim() || `${customer.trim()} · ${environment.trim()}`,
+      customer,
+      environment,
       connectionId,
       database,
       schema,
@@ -155,12 +177,15 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   };
   if (!project || !targets) return null;
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div ref={feature.ref} className="flex min-w-0 flex-col gap-5">
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <h2 className="text-xs font-semibold">Kundenziele</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            Kunden & Umgebungen{feature.isNew && <NewBadge />}
+          </h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {targets.targets.length} Datenbank-Schema-Zuordnungen · unabhängig versioniert
+            {customerGroups(targets.targets).length} Kunden · {targets.targets.length} Umgebungen ·
+            ein gemeinsames Produkt
           </p>
         </div>
         <Button
@@ -176,20 +201,40 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       {setupOpen && (
         <div className="space-y-4 rounded-xl bg-muted/35 p-4">
           <div>
-            <h3 className="text-xs font-semibold">Kundenschema zuordnen</h3>
+            <h3 className="text-xs font-semibold">Kundenumgebung zuordnen</h3>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
               Die Zuordnung speichert nur das Ziel. Eine Baseline wird erst nach Prüfung des
               vorhandenen Schemas gesetzt.
             </p>
           </div>
           <label htmlFor="vcs-target-name" className="space-y-1.5 text-xs font-medium">
-            Kunde / Umgebung
+            Kunde
             <Input
               id="vcs-target-name"
               aria-label="Kundenname"
-              placeholder="Kunde / Umgebung"
+              placeholder="Kundenname"
+              value={customer}
+              onChange={(event) => setCustomer(event.target.value)}
+            />
+          </label>
+          <label htmlFor="vcs-target-environment" className="space-y-1.5 text-xs font-medium">
+            Umgebung
+            <Input
+              id="vcs-target-environment"
+              aria-label="Umgebung"
+              value={environment}
+              onChange={(event) => setEnvironment(event.target.value)}
+              placeholder="Produktion, Staging oder Development"
+            />
+          </label>
+          <label htmlFor="vcs-target-label" className="space-y-1.5 text-xs font-medium">
+            Zielname (optional)
+            <Input
+              id="vcs-target-label"
+              aria-label="Zielname"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              placeholder={`${customer || "Kunde"} · ${environment}`}
             />
           </label>
           <VersioningSelect
@@ -264,7 +309,8 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           <Button
             size="sm"
             disabled={
-              !name.trim() ||
+              !customer.trim() ||
+              !environment.trim() ||
               !connectionId ||
               !schema.trim() ||
               loadingSchemas ||
@@ -307,156 +353,269 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           </Button>
         </div>
       )}
-      <ul className="space-y-1">
-        {targets.targets.map((target) => {
-          const unresolved = target.history.some(
-            (event) => event.status === "running" || event.status === "failed",
-          );
-          return (
-            <li
-              key={target.id}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg px-2 py-3 transition-colors hover:bg-muted/30",
-                selection.includes(target.id) && "bg-muted/40",
-              )}
+      {targets.targets.length > 0 && (
+        <div className="space-y-2">
+          <Input
+            aria-label="Kunden und Ziele suchen"
+            placeholder="Kunde, Umgebung, Datenbank oder Schema suchen…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSelection(
+                targets.targets
+                  .filter(
+                    (target) =>
+                      targetProgress(target, releases, workspace.status).state === "pending",
+                  )
+                  .map((target) => target.id),
+              );
+              setPlans([]);
+              setPreflight([]);
+            }}
+          >
+            Alle Ziele mit offenen Updates auswählen
+          </Button>
+        </div>
+      )}
+      <div className="space-y-5">
+        {customerGroups(targets.targets)
+          .map((group) => ({
+            ...group,
+            targets: group.targets.filter((target) =>
+              [
+                group.customer,
+                target.name,
+                target.environment,
+                target.database,
+                target.schema,
+                connections.find((connection) => connection.id === target.connectionId)?.name,
+              ]
+                .join(" ")
+                .toLocaleLowerCase()
+                .includes(search.toLocaleLowerCase()),
+            ),
+          }))
+          .filter((group) => group.targets.length)
+          .map((group) => (
+            <section
+              key={group.customer}
+              aria-label={`Kunde: ${group.customer}`}
+              className="rounded-xl bg-muted/15 p-2"
             >
-              <input
-                type="checkbox"
-                className="size-3.5 shrink-0"
-                aria-label={`Ziel auswählen: ${target.name}`}
-                checked={selection.includes(target.id)}
-                onChange={(event) => {
-                  setSelection((items) =>
-                    event.target.checked
-                      ? [...items, target.id]
-                      : items.filter((item) => item !== target.id),
-                  );
-                  setPlans([]);
-                  setPreflight([]);
-                }}
-              />
-              <ServerIcon className="size-4 shrink-0 text-muted-foreground/60" />
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1.5 text-xs font-medium">
-                  <span className="truncate">{target.name}</span>
-                  {target.production && (
-                    <span
-                      className="size-1 shrink-0 rounded-full bg-amber-500"
-                      title="Produktion"
-                    />
-                  )}
-                </p>
-                <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                  {connections.find((entry) => entry.id === target.connectionId)?.name ??
-                    "Verbindung fehlt"}
-                  {target.database ? ` · ${target.database}` : ""}
-                  {target.schema ? ` / ${target.schema}` : ""} ·{" "}
-                  {target.production ? "Produktion" : "Test"}
-                </p>
-                {unresolved && (
-                  <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
-                    <CircleAlertIcon className="size-3" />
-                    Stand abgleichen
-                  </p>
-                )}
-                {(target.paused || target.pinnedRelease || target.track) && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {target.track ?? "main"}
-                    {target.paused ? " · Pausiert" : ""}
-                    {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
-                  </p>
-                )}
-                {!target.release && releaseId && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="mt-2 h-7 px-2 text-[11px]"
-                    onClick={() =>
-                      void run(async () => {
-                        await baselineTarget(
-                          repo,
-                          project,
-                          target.id,
-                          connectionFor(target),
-                          releaseId,
-                          false,
-                          connections,
-                        );
-                        await refresh();
-                      }, "Baseline geprüft und zugeordnet")
-                    }
-                  >
-                    Baseline {releaseId} prüfen
-                  </Button>
-                )}
-              </div>
-              <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                {target.release?.id ?? "Ohne Baseline"}
-              </span>
-              <VersioningPopover
-                icon={EllipsisIcon}
-                label={`Aktionen: ${target.name}`}
-                disabled={workspace.busy}
-                className="w-64"
-              >
-                <button
-                  type="button"
-                  disabled={!target.release}
-                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
-                  onClick={() =>
-                    void run(async () => {
-                      const result = await inspectTarget(
-                        repo,
-                        project,
-                        target,
-                        connectionFor(target),
-                      );
-                      setDifferenceName(target.name);
-                      setDifferences(result.differences);
-                      workspace.setMessage(`Stand geprüft: ${target.name}`);
-                    })
-                  }
-                >
-                  <ScanSearchIcon className="size-4 text-muted-foreground" />
-                  Stand prüfen
-                </button>
-                <button
-                  type="button"
-                  disabled={!releaseId}
-                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
-                  onClick={() => {
-                    setRecovery(target);
-                    setRecoveryConfirmation("");
-                  }}
-                >
-                  <RefreshCwIcon className="size-4 text-muted-foreground" />
-                  Stand abgleichen
-                </button>
-                <p className="text-[10px] leading-relaxed text-muted-foreground">
-                  {releaseId
-                    ? `Gewählter Release: ${releaseId}`
-                    : "Für den Abgleich zuerst einen Zielrelease auswählen."}
-                </p>
-                <VersioningTargetPolicy
-                  workspace={workspace}
-                  target={target}
-                  onSaved={() => {
+              <header className="flex items-center gap-2 px-2 py-2">
+                <input
+                  type="checkbox"
+                  aria-label={`Alle Ziele auswählen: ${group.customer}`}
+                  checked={group.targets.every((target) => selection.includes(target.id))}
+                  onChange={(event) => {
+                    const ids = group.targets.map((target) => target.id);
+                    setSelection((current) =>
+                      event.target.checked
+                        ? [...new Set([...current, ...ids])]
+                        : current.filter((id) => !ids.includes(id)),
+                    );
                     setPlans([]);
                     setPreflight([]);
                   }}
                 />
-              </VersioningPopover>
-            </li>
-          );
-        })}
-      </ul>
+                <h3 className="flex-1 text-xs font-semibold">{group.customer}</h3>
+                <span className="text-[10px] text-muted-foreground">
+                  {group.targets.length} Umgebungen
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCustomer(group.customer);
+                    setName("");
+                    setSetupOpen(true);
+                  }}
+                >
+                  Umgebung hinzufügen
+                </Button>
+              </header>
+              <ul className="space-y-1">
+                {group.targets.map((target) => {
+                  const unresolved = target.history.some(
+                    (event) => event.status === "running" || event.status === "failed",
+                  );
+                  return (
+                    <li
+                      key={target.id}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg px-2 py-3 transition-colors hover:bg-muted/30",
+                        selection.includes(target.id) && "bg-muted/40",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-3.5 shrink-0"
+                        aria-label={`Ziel auswählen: ${target.name}`}
+                        checked={selection.includes(target.id)}
+                        onChange={(event) => {
+                          setSelection((items) =>
+                            event.target.checked
+                              ? [...items, target.id]
+                              : items.filter((item) => item !== target.id),
+                          );
+                          setPlans([]);
+                          setPreflight([]);
+                        }}
+                      />
+                      <ServerIcon className="size-4 shrink-0 text-muted-foreground/60" />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 text-xs font-medium">
+                          <span className="truncate">{target.environment || target.name}</span>
+                          {target.production && (
+                            <span
+                              className="size-1 shrink-0 rounded-full bg-amber-500"
+                              title="Produktion"
+                            />
+                          )}
+                        </p>
+                        <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                          {connections.find((entry) => entry.id === target.connectionId)?.name ??
+                            "Verbindung fehlt"}
+                          {connectionServerLabel(
+                            connections.find((entry) => entry.id === target.connectionId)
+                              ?.connectionString,
+                          )
+                            ? ` · ${connectionServerLabel(connections.find((entry) => entry.id === target.connectionId)?.connectionString)}`
+                            : ""}
+                          {target.database ? ` · ${target.database}` : ""}
+                          {target.schema ? ` / ${target.schema}` : ""} ·{" "}
+                          {target.production ? "Produktion" : "Test"}
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-1 text-[10px]",
+                            targetProgress(target, releases, workspace.status).state === "pending"
+                              ? "text-primary"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {targetProgress(target, releases, workspace.status).label}
+                        </p>
+                        {unresolved && (
+                          <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                            <CircleAlertIcon className="size-3" />
+                            Stand abgleichen
+                          </p>
+                        )}
+                        {(target.paused || target.pinnedRelease || target.track) && (
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            {target.track ?? "main"}
+                            {target.paused ? " · Pausiert" : ""}
+                            {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
+                          </p>
+                        )}
+                        {!target.release && releaseId && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-2 h-7 px-2 text-[11px]"
+                            onClick={() =>
+                              void run(async () => {
+                                await baselineTarget(
+                                  repo,
+                                  project,
+                                  target.id,
+                                  connectionFor(target),
+                                  releaseId,
+                                  false,
+                                  connections,
+                                );
+                                await refresh();
+                              }, "Baseline geprüft und zugeordnet")
+                            }
+                          >
+                            Baseline {releaseId} prüfen
+                          </Button>
+                        )}
+                      </div>
+                      <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                        {target.release?.id ?? "Ohne Baseline"}
+                      </span>
+                      <VersioningPopover
+                        icon={EllipsisIcon}
+                        label={`Aktionen: ${target.name}`}
+                        disabled={workspace.busy}
+                        className="w-64"
+                      >
+                        <button
+                          type="button"
+                          disabled={!target.release}
+                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
+                          onClick={() =>
+                            void run(async () => {
+                              const result = await inspectTarget(
+                                repo,
+                                project,
+                                target,
+                                connectionFor(target),
+                              );
+                              setDifferenceName(target.name);
+                              setDifferences(result.differences);
+                              workspace.setMessage(`Stand geprüft: ${target.name}`);
+                            })
+                          }
+                        >
+                          <ScanSearchIcon className="size-4 text-muted-foreground" />
+                          Stand prüfen
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!releaseId}
+                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted disabled:opacity-40"
+                          onClick={() => {
+                            setRecovery(target);
+                            setRecoveryConfirmation("");
+                          }}
+                        >
+                          <RefreshCwIcon className="size-4 text-muted-foreground" />
+                          Stand abgleichen
+                        </button>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground">
+                          {releaseId
+                            ? `Gewählter Release: ${releaseId}`
+                            : "Für den Abgleich zuerst einen Zielrelease auswählen."}
+                        </p>
+                        <VersioningTargetDetails
+                          workspace={workspace}
+                          target={target}
+                          onSaved={() => {
+                            setPlans([]);
+                            setPreflight([]);
+                          }}
+                        />
+                        <VersioningTargetPolicy
+                          workspace={workspace}
+                          target={target}
+                          onSaved={() => {
+                            setPlans([]);
+                            setPreflight([]);
+                          }}
+                        />
+                      </VersioningPopover>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+      </div>
       {!targets.targets.length && (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <DatabaseIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
-          <p className="text-xs font-medium">Jedes Kundenschema auf seinem Stand</p>
+          <p className="text-xs font-medium">Ein Produkt, mehrere Kundenstände</p>
           <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
-            Wähle für jeden Kunden die Connection, Datenbank und das vorhandene Schema. Danach wird
-            der Ausgangsstand geprüft.
+            Ordne jedem Kunden seine Umgebungen mit Serververbindung, Datenbank und Schema zu. Ein
+            gemeinsamer Release aktualisiert die ausgewählten Ziele auf ihren jeweiligen
+            Ausgangsständen.
           </p>
         </div>
       )}

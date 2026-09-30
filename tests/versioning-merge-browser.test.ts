@@ -93,6 +93,7 @@ test.skipIf(!process.env.L8DB_VERSIONING_BROWSER)(
       await page.goto(
         `${process.env.L8DB_VERSIONING_BROWSER_URL ?? "http://127.0.0.1:1422"}/versioning`,
       );
+      await page.getByRole("tab", { name: /^Änderungen/ }).click();
       await page.getByRole("button", { name: "Alle Dateien" }).click();
       await page.getByText("orders", { exact: true }).click();
       await page.getByRole("button", { name: "Aus Branch zusammenführen" }).click();

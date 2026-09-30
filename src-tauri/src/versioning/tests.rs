@@ -370,3 +370,158 @@ async fn local_target_state_is_shared_by_worktrees_and_remote_sync_is_fast_forwa
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(remote).unwrap();
 }
+
+#[tokio::test]
+async fn branch_graph_and_merge_preserve_forks_and_abort_conflicts() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Versioning Test"])
+        .await
+        .unwrap();
+    fs::create_dir_all(root.join("database/objects")).unwrap();
+    fs::write(root.join("database/objects/view.sql"), "SELECT 1\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Baseline"]).await.unwrap();
+    let base = git(&root, &["symbolic-ref", "--short", "HEAD"])
+        .await
+        .unwrap()
+        .trim()
+        .to_string();
+    let mut branch = request(&root, "branch");
+    branch.name = Some("feature/billing".into());
+    handle(branch).await.unwrap();
+    fs::write(root.join("database/objects/billing.sql"), "SELECT 2\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Billing"]).await.unwrap();
+    let mut checkout = request(&root, "checkout");
+    checkout.name = Some(base.clone());
+    handle(checkout).await.unwrap();
+    fs::write(root.join("database/objects/other.sql"), "SELECT 3\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Other"]).await.unwrap();
+    let mut merge = request(&root, "merge-branch");
+    merge.name = Some("feature/billing".into());
+    handle(merge).await.unwrap();
+    let graph = handle(request(&root, "graph")).await.unwrap();
+    assert!(graph.as_str().unwrap().contains("feature/billing"));
+    assert_eq!(
+        graph
+            .as_str()
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .split('\t')
+            .nth(1)
+            .unwrap()
+            .split(' ')
+            .count(),
+        2
+    );
+    let merged = revision(&root, "HEAD").await.unwrap();
+    let mut delete = request(&root, "delete-branch");
+    delete.name = Some("feature/billing".into());
+    handle(delete).await.unwrap();
+    let mut branch = request(&root, "branch");
+    branch.name = Some("feature/from-baseline".into());
+    branch.revision = Some(format!("{merged}~1"));
+    handle(branch).await.unwrap();
+    assert!(!root.join("database/objects/billing.sql").exists());
+    let mut checkout = request(&root, "checkout");
+    checkout.name = Some(base.clone());
+    handle(checkout).await.unwrap();
+    let mut delete = request(&root, "delete-branch");
+    delete.name = Some("main".into());
+    assert!(handle(delete).await.is_err());
+    let mut branch = request(&root, "branch");
+    branch.name = Some("feature/conflict".into());
+    handle(branch).await.unwrap();
+    fs::write(root.join("database/objects/view.sql"), "SELECT 4\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Feature edit"]).await.unwrap();
+    let mut checkout = request(&root, "checkout");
+    checkout.name = Some(base);
+    handle(checkout).await.unwrap();
+    fs::write(root.join("database/objects/view.sql"), "SELECT 5\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Base edit"]).await.unwrap();
+    let head = revision(&root, "HEAD").await.unwrap();
+    let mut merge = request(&root, "merge-branch");
+    merge.name = Some("feature/conflict".into());
+    assert!(handle(merge).await.unwrap_err().contains("Konflikte"));
+    assert_eq!(revision(&root, "HEAD").await.unwrap(), head);
+    assert!(git(&root, &["status", "--porcelain"])
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        fs::read_to_string(root.join("database/objects/view.sql")).unwrap(),
+        "SELECT 5\n"
+    );
+    let mut delete = request(&root, "delete-branch");
+    delete.name = Some("feature/conflict".into());
+    assert!(handle(delete).await.is_err());
+    fs::write(root.join("database/objects/view.sql"), "unsaved\n").unwrap();
+    let mut merge = request(&root, "merge-branch");
+    merge.name = Some("feature/billing".into());
+    assert!(handle(merge).await.is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn branch_merge_cannot_modify_or_delete_published_releases() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Versioning Test"])
+        .await
+        .unwrap();
+    fs::create_dir_all(root.join("database/releases")).unwrap();
+    fs::write(root.join("database/releases/v1.json"), "{}\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Baseline"]).await.unwrap();
+    let base = git(&root, &["symbolic-ref", "--short", "HEAD"])
+        .await
+        .unwrap()
+        .trim()
+        .to_string();
+    for (name, deleted) in [("feature/modified", false), ("feature/deleted", true)] {
+        let mut branch = request(&root, "branch");
+        branch.name = Some(name.into());
+        handle(branch).await.unwrap();
+        if deleted {
+            fs::remove_file(root.join("database/releases/v1.json")).unwrap();
+        } else {
+            fs::write(
+                root.join("database/releases/v1.json"),
+                "{\"changed\":true}\n",
+            )
+            .unwrap();
+        }
+        git(&root, &["add", "."]).await.unwrap();
+        git(&root, &["commit", "-m", "Change existing release"])
+            .await
+            .unwrap();
+        let mut checkout = request(&root, "checkout");
+        checkout.name = Some(base.clone());
+        handle(checkout).await.unwrap();
+        let head = revision(&root, "HEAD").await.unwrap();
+        let mut merge = request(&root, "merge-branch");
+        merge.name = Some(name.into());
+        assert!(handle(merge)
+            .await
+            .unwrap_err()
+            .contains("commitete Releases"));
+        assert_eq!(revision(&root, "HEAD").await.unwrap(), head);
+        assert_eq!(
+            fs::read_to_string(root.join("database/releases/v1.json")).unwrap(),
+            "{}\n"
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}

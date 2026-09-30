@@ -2,6 +2,12 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "versioning.overview": "0.7.0",
+  "versioning.branches.swimlanes": "0.7.0",
+  "versioning.releases.generate": "0.7.0",
+  "versioning.targets.customers": "0.7.0",
+  "versioning.seeds": "0.7.0",
+  "versioning.tab-view": "0.7.0",
   "table.pagination.keyboard": "0.7.0",
   "query.select-row-limit": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",

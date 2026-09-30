@@ -15,7 +15,7 @@ const VIEW_HEADER = new RegExp(
   "i",
 );
 
-function columns(definition: string): { columns: SnapshotColumn[]; rest: string } {
+export function parseTableColumns(definition: string): { columns: SnapshotColumn[]; rest: string } {
   const match = /^TABLE [^\n]+\nCOLUMNS\n([\s\S]*?)(?=\n(?:CONSTRAINTS|INDEXES|TRIGGERS)\n|$)/.exec(
     definition,
   );
@@ -102,8 +102,8 @@ function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: 
     throw new Error(
       "Tabellenänderungen können hier derzeit nur für PostgreSQL und Oracle sicher erzeugt und geprüft werden.",
     );
-  const before = columns(baseline);
-  const after = columns(draft);
+  const before = parseTableColumns(baseline);
+  const after = parseTableColumns(draft);
   const structure = kind === "oracle" ? oracleStructure : (rest: string) => rest;
   if (structure(before.rest) !== structure(after.rest))
     throw new Error(

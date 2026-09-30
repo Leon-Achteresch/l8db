@@ -47,7 +47,7 @@ export async function scanDrift(
   for (const objectType of supportedCompareObjectTypes(connection)) {
     const listed = await listCompareObjects(connection, { ...source, objectType });
     for (const item of listed) {
-      if (item.name === "L8DB_VERSIONING_STATE") continue;
+      if (item.name.toUpperCase().startsWith("L8DB_VERSIONING_")) continue;
       if (seen.size >= 5000)
         throw new Error("Mehr als 5000 Objekte. Bitte ein kleineres Schema wählen.");
       progress(item.name);
