@@ -3,6 +3,115 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.7.167] - 2026-09-30
+
+### Features
+- stack multiple cells per page with explicit page breaks
+- add persistent SELECT row limit control
+- add first and last page table keyboard shortcuts
+
+### Fixes
+- update vulnerable transitive dependencies
+- default SELECTs to 1000 rows with native SQL overrides
+- avoid redundant mask updates in result export dialogs
+- preserve edited XLSX sheet name
+- explain Keeper client restriction
+- time out stalled S3 downloads
+
+### Performance
+- reduce forward grid row overscan
+- avoid redundant compact SQL editor reconfiguration
+- use lightweight editor for table SQL fields
+- smooth sidebar scrolling and filtering
+- virtualize dashboard table list
+- move SQL formatting off the main thread
+- streamline proxy user picker and bound role list
+- virtualize JSON query results
+- streamline frequent SQL and table controls
+- open SQL tools without modal focus handling
+- virtualize database schema overview
+- skip dollar quote parsing for SQL parameters
+- avoid repeated dashboard table and history scans
+- skip dashboard canvas renders when opening chart dialog
+- share grid appearance subscription across cells
+- defer feature video host until after startup
+- avoid forced header layout during startup
+- defer view editor metadata until definition opens
+- avoid measuring fixed-height grid rows
+- virtualize SQL package members
+- virtualize SQL statement navigator
+- virtualize SQL schema navigator
+- virtualize query history and saved queries
+- paginate monitor logs and transition tab switches
+- load monitor latency chart when data exists
+- defer dashboard chart editor until needed
+- load view definition editor on demand
+- defer advanced search rendering after click
+- keep sidebar clicks responsive and defer search editor
+- reduce SQL completion work while typing
+- keep wide grids responsive during Chromium scrolling
+- defer updater initialization until after app render
+- overlap tunnel restoration with secret loading
+- preload safe routes on navigation intent
+- load search dialogs on first use
+- defer onboarding and background startup modules
+- reduce table row overscan for smoother WebKit scrolling
+- trim unused Monaco registrations and stabilize stress tests
+- reduce editor and tab strip work during typing
+- defer brand SVGs until after initial render
+- virtualize advanced search and defer startup imports
+
+### Weitere Änderungen
+- Complete definition comparison and development secret handling
+- Keep transaction commit and rollback buttons sticky
+- Remove connection card layout animation
+- Move MCP connection settings into overflow popover
+- Add opt-in usage and performance metrics via Sentry
+- Add log file, window state, native macOS menu, zoom hotkeys and opt-in crash reports
+- Fix CI: Jev test mock, query fixture extension host, clippy read amount
+- Mark BaaS file preview as new in 0.7.0
+- Add PR check reports, headless CLI and index advisor
+- Show BaaS projects as connection cards with linked database
+- Release Jev extension 1.1.0
+- Fix BaaS payload field names and Appwrite self-hosted connect
+- Show Jev query assessment as editor markers while typing
+- Explain how to obtain BaaS credentials
+- Save BaaS connections alongside database connections
+- Move BaaS providers into the new-connection picker
+- Add missing driver choices to onboarding
+- Manage PocketBase collections and auth users
+- Add Convex team dashboard and BaaS administration
+- Manage PocketBase records and files
+- Manage Supabase and Appwrite storage files
+- Browse Firebase Hosting releases
+- Show Firebase Functions and Hosting sites
+- Browse Firebase Firestore databases and documents
+- Show Firebase Auth users without exposing hashes
+- Upload Firebase Storage files without overwriting
+- Connect Firebase projects and browse Cloud Storage
+- Show Supabase database backups and PITR window
+- Show Supabase Storage file metadata
+- Show Supabase Function and Auth user details
+- Show Appwrite Function and Site configuration
+- Show Supabase Storage bucket details by bucket ID
+- Show Appwrite Storage bucket rules and file paths
+- Add chunked Appwrite Storage uploads
+- Add Supabase Storage upload from native file picker
+- Show Supabase database tables in project dashboard
+- Import Supabase project secret keys and fix API auth
+- Verify PocketBase BaaS reads against a live lab
+- Show Appwrite TablesDB columns in BaaS dashboard
+- Show Appwrite TablesDB rows in BaaS dashboard
+- Stream BaaS file downloads through native save dialog
+- Preview BaaS storage files in app
+- Add PocketBase BaaS collection dashboard
+- Add Appwrite BaaS project dashboard
+- Add Supabase BaaS project dashboard
+- Keep header search centered across layouts
+- Analyze transaction SQL changes across providers
+- Show SQL row changes in transaction panel
+- Revert "fix: time out stalled S3 downloads"
+
 ## [0.7.48] - 2026-09-28
 
 ### Weitere Änderungen
