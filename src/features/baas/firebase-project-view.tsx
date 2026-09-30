@@ -46,11 +46,21 @@ export function FirebaseProjectView({ profile }: { profile: FirebaseProfile }) {
           </div>
         </div>
       </section>
-      <FirebaseStorageView projectId={profile.projectId} />
-      <FirebaseFirestoreView projectId={profile.projectId} />
-      <FirebaseAuthView projectId={profile.projectId} />
-      <FirebaseFunctionsView projectId={profile.projectId} />
-      <FirebaseHostingView projectId={profile.projectId} />
+      <div data-baas-section="storage" className="scroll-mt-6">
+        <FirebaseStorageView projectId={profile.projectId} />
+      </div>
+      <div data-baas-section="database" className="scroll-mt-6">
+        <FirebaseFirestoreView projectId={profile.projectId} />
+      </div>
+      <div data-baas-section="auth" className="scroll-mt-6">
+        <FirebaseAuthView projectId={profile.projectId} />
+      </div>
+      <div data-baas-section="functions" className="scroll-mt-6">
+        <FirebaseFunctionsView projectId={profile.projectId} />
+      </div>
+      <div data-baas-section="hosting" className="scroll-mt-6">
+        <FirebaseHostingView projectId={profile.projectId} />
+      </div>
     </div>
   );
 }

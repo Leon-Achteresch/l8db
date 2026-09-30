@@ -105,7 +105,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-border/50 px-3 py-2">
+      <div className="sticky bottom-0 z-10 flex items-center gap-2 rounded-b-lg border-t border-border/50 bg-card px-3 py-2">
         <Button
           size="sm"
           variant="default"

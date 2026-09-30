@@ -54,7 +54,10 @@ export function useDataExport({
 
   useEffect(() => {
     if (!format) return;
-    setMasks((previous) => previous.filter((mask) => columns.includes(mask.column)));
+    setMasks((previous) => {
+      const kept = previous.filter((mask) => columns.includes(mask.column));
+      return kept.length === previous.length ? previous : kept;
+    });
   }, [format, columns]);
 
   useEffect(() => {

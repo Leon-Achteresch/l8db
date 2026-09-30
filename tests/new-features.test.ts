@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createNewFeatureStore,
-  featureStorageKey,
-  hasNewFeatures,
-} from "../src/lib/new-features";
+import { createNewFeatureStore, featureStorageKey, hasNewFeatures } from "../src/lib/new-features";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -17,7 +13,9 @@ function memoryStorage() {
 
 describe("new feature discovery", () => {
   test("only current release features propagate through their navigation path", () => {
-    const seen = new Set<"settings.data.transfer">();
+    const seen = new Set<
+      "settings.data.transfer" | "settings.about.crash-reports" | "settings.about.usage-metrics"
+    >(["settings.about.crash-reports", "settings.about.usage-metrics"]);
     expect(hasNewFeatures("settings.data.transfer", seen, "0.7.0")).toBe(true);
     expect(hasNewFeatures("settings.data", seen, "0.7.0")).toBe(true);
     expect(hasNewFeatures("settings", seen, "0.7.0")).toBe(true);
@@ -38,8 +36,9 @@ describe("new feature discovery", () => {
 
     expect(notifications).toBe(1);
     expect(storage.getItem(featureStorageKey("settings.data.transfer"))).toBe("1");
-    expect(createNewFeatureStore(storage, "0.7.0").getSnapshot().has("settings.data.transfer"))
-      .toBe(true);
+    expect(
+      createNewFeatureStore(storage, "0.7.0").getSnapshot().has("settings.data.transfer"),
+    ).toBe(true);
 
     unsubscribe();
   });

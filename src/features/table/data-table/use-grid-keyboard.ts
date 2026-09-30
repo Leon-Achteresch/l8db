@@ -44,6 +44,7 @@ export function useGridKeyboard({
 }: Options) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest("[data-draft-row], [data-draft-controls]")) return;
       if (editingCell) {

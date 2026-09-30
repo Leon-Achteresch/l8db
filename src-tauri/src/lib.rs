@@ -4,6 +4,7 @@ mod check_cli;
 mod community_extensions;
 mod convex;
 mod db;
+mod desktop;
 mod extension_process;
 mod file_open;
 mod firebase;
@@ -53,6 +54,7 @@ pub fn run() {
     if args.iter().any(|arg| arg == "--benchmark") {
         std::process::exit(mcp::benchmark::cli(&args));
     }
+    desktop::install_panic_hook();
     let initial_files = std::env::current_dir()
         .map(|cwd| file_open::actions_from_args(&args, &cwd))
         .unwrap_or_default();
@@ -66,7 +68,30 @@ pub fn run() {
             file_open::enqueue(app, actions);
         }));
     }
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.menu(desktop::app_menu).on_menu_event(|app, event| {
+            use tauri::{Emitter, Manager};
+            let label = app
+                .webview_windows()
+                .into_iter()
+                .find(|(_, window)| window.is_focused().unwrap_or(false))
+                .map(|(label, _)| label)
+                .unwrap_or_else(|| "main".to_string());
+            let _ = app.emit_to(label.as_str(), "menu-action", event.id().0.clone());
+        });
+    }
     builder
+        .plugin(desktop::log_plugin())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -85,6 +110,7 @@ pub fn run() {
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .invoke_handler(tauri::generate_handler![
+            desktop::set_crash_reporting,
             convex::convex_connect,
             convex::convex_profiles,
             convex::convex_disconnect,
@@ -137,6 +163,7 @@ pub fn run() {
             supabase::supabase_disconnect,
             supabase::supabase_is_connected,
             supabase::supabase_projects,
+            supabase::supabase_database_endpoint,
             supabase::supabase_buckets,
             supabase::supabase_bucket_details,
             supabase::supabase_create_bucket,

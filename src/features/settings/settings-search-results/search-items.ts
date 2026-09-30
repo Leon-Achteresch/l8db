@@ -336,6 +336,23 @@ export const SEARCH_ITEMS: SearchItem[] = [
     keywords: ["release", "notes", "changelog", "änderungen", "versionen"],
   },
   {
+    id: "crash-reports",
+    tabId: "about",
+    tabLabel: "Über & Updates",
+    title: "Absturzberichte senden",
+    description: "Abstürze bereinigt an Sentry (EU) senden, standardmäßig aus.",
+    keywords: ["absturz", "crash", "sentry", "telemetrie", "datenschutz", "fehlerbericht"],
+  },
+  {
+    id: "usage-metrics",
+    tabId: "about",
+    tabLabel: "Über & Updates",
+    title: "Nutzungs- und Leistungsdaten senden",
+    description:
+      "Startzeit, Befehlsdauer und geöffnete Bereiche an Sentry (EU), standardmäßig aus.",
+    keywords: ["metriken", "metrics", "nutzung", "leistung", "performance", "telemetrie", "sentry"],
+  },
+  {
     id: "diagnostics",
     tabId: "about",
     tabLabel: "Über & Updates",

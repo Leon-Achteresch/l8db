@@ -11,7 +11,8 @@ export type DiagnosticsSectionId =
   | "providers"
   | "connections"
   | "settings"
-  | "errors";
+  | "errors"
+  | "logs";
 
 export const DIAGNOSTICS_SECTIONS: {
   id: DiagnosticsSectionId;
@@ -29,6 +30,7 @@ export const DIAGNOSTICS_SECTIONS: {
   },
   { id: "settings", label: "Einstellungen", description: "Bereinigte Anwendungseinstellungen" },
   { id: "errors", label: "Letzte Fehler", description: "Zuletzt aufgetretene Fehlermeldungen" },
+  { id: "logs", label: "Protokoll", description: "Letzte Zeilen der Log-Datei, bereinigt" },
 ];
 
 export interface DiagnosticsApp {
@@ -89,4 +91,5 @@ export interface DiagnosticsPackage {
   connections?: DiagnosticsConnection[];
   settings?: Record<string, unknown>;
   errors?: DiagnosticsError[];
+  logs?: string[];
 }

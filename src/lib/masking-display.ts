@@ -10,6 +10,8 @@ interface MaskingDisplayState {
   toggle: (connectionId: string) => void;
 }
 
+const EMPTY_MASKS: ReturnType<typeof resolveMasks> = [];
+
 export const useMaskingDisplay = create<MaskingDisplayState>((set) => ({
   enabled: {},
   toggle: (connectionId) =>
@@ -55,5 +57,5 @@ export function useActiveMasks(columns: string[]) {
     const { rules, replacement } = connectionMaskRules(connection, config);
     return resolveMasks(key ? key.split("\u0001") : [], rules, replacement);
   }, [connection, config, key]);
-  return { enabled, masks, active: enabled ? masks : [] };
+  return { enabled, masks, active: enabled ? masks : EMPTY_MASKS };
 }

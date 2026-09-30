@@ -30,7 +30,7 @@ interface NotebookState {
   reset: (connectionId: string | null) => void;
   patchDoc: (patch: Partial<NotebookDoc>) => void;
   updateCell: (id: string, update: (cell: NotebookCell) => NotebookCell) => void;
-  addCell: (type: NotebookCellType, index: number) => string;
+  addCell: (type: NotebookCellType, index: number, pageBreak?: boolean) => string;
   removeCell: (id: string) => void;
   moveCell: (id: string, delta: number) => void;
   setOutput: (id: string, output: NotebookOutput | null) => void;
@@ -82,8 +82,8 @@ export const useNotebookStore = create<NotebookState>()(
           doc: { ...s.doc, cells: s.doc.cells.map((c) => (c.id === id ? update(c) : c)) },
           dirty: true,
         })),
-      addCell: (type, index) => {
-        const cell = newCell(type);
+      addCell: (type, index, pageBreak) => {
+        const cell: NotebookCell = pageBreak ? { ...newCell(type), pageBreak } : newCell(type);
         set((s) => {
           const cells = [...s.doc.cells];
           cells.splice(Math.max(0, Math.min(index, cells.length)), 0, cell);

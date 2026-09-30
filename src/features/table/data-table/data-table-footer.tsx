@@ -6,9 +6,12 @@ import {
   ChevronRightIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import type { autoRefreshPauseReason } from "@/lib/auto-refresh";
 import { describeSelectionStats, type summarizeCells } from "@/lib/grid-selection";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { formatHotkeyDisplay, useResolvedHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -48,6 +51,11 @@ export function DataTableFooter({
   onAutoRefreshChange,
   onPageChange,
 }: Props) {
+  const firstPageHotkey = useResolvedHotkey("grid.firstPage");
+  const lastPageHotkey = useResolvedHotkey("grid.lastPage");
+  const nextPageHotkey = useResolvedHotkey("grid.nextPage");
+  const prevPageHotkey = useResolvedHotkey("grid.prevPage");
+  const paginationFeature = useNewFeatureVisibility<HTMLDivElement>("table.pagination.keyboard");
   const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
   const openEnded = totalPages == null && countLabel !== undefined;
   const rangeStart = page * pageSize + 1;
@@ -111,7 +119,11 @@ export function DataTableFooter({
           />
         )}
         {onPageChange && (openEnded || (totalPages != null && totalPages > 1)) && (
-          <div className="flex items-center gap-1 border-l border-border/70 pl-3">
+          <div
+            ref={paginationFeature.ref}
+            className="flex items-center gap-1 border-l border-border/70 pl-3"
+          >
+            {paginationFeature.isNew && <NewBadge />}
             <span className="mr-1 whitespace-nowrap">
               Seite {page + 1}
               {totalPages != null && ` / ${totalPages}`}
@@ -119,6 +131,7 @@ export function DataTableFooter({
             <button
               type="button"
               aria-label="Erste Seite"
+              title={`Erste Seite (${formatHotkeyDisplay(firstPageHotkey)})`}
               disabled={page === 0}
               onClick={() => onPageChange(0)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -128,6 +141,7 @@ export function DataTableFooter({
             <button
               type="button"
               aria-label="Vorherige Seite"
+              title={`Vorherige Seite (${formatHotkeyDisplay(prevPageHotkey)})`}
               disabled={page === 0}
               onClick={() => onPageChange(page - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -137,6 +151,7 @@ export function DataTableFooter({
             <button
               type="button"
               aria-label="Nächste Seite"
+              title={`Nächste Seite (${formatHotkeyDisplay(nextPageHotkey)})`}
               disabled={!hasNextPage}
               onClick={() => onPageChange(page + 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
@@ -146,6 +161,7 @@ export function DataTableFooter({
             <button
               type="button"
               aria-label="Letzte Seite"
+              title={`Letzte Seite (${formatHotkeyDisplay(lastPageHotkey)})`}
               disabled={totalPages == null || page >= totalPages - 1}
               onClick={() => totalPages != null && onPageChange(totalPages - 1)}
               className="inline-flex items-center justify-center size-6 rounded hover:bg-accent disabled:opacity-30 disabled:pointer-events-none cursor-pointer"

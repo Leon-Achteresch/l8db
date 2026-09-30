@@ -35,6 +35,10 @@ export interface SettingsState {
   autoFeatureVideos: boolean;
   setAutoFeatureVideos: (value: boolean) => void;
   autoUpdateCheck: boolean;
+  crashReports: boolean;
+  setCrashReports: (value: boolean) => void;
+  usageMetrics: boolean;
+  setUsageMetrics: (value: boolean) => void;
   autoUpdateInstall: boolean;
   skippedUpdateVersion: string | null;
   tourFinished: boolean;
@@ -167,6 +171,8 @@ const DEFAULT_SETTINGS = {
   transactionsPerTable: true,
   autoFeatureVideos: true,
   autoUpdateCheck: true,
+  crashReports: false,
+  usageMetrics: false,
   autoUpdateInstall: false,
   skippedUpdateVersion: null,
   tourFinished: false,
@@ -241,6 +247,8 @@ export const useSettingsStore = create<SettingsState>()(
           autoUpdateInstall: autoUpdateCheck ? state.autoUpdateInstall : false,
         })),
       setAutoUpdateInstall: (autoUpdateInstall) => set({ autoUpdateInstall }),
+      setCrashReports: (crashReports) => set({ crashReports }),
+      setUsageMetrics: (usageMetrics) => set({ usageMetrics }),
       setSkippedUpdateVersion: (skippedUpdateVersion) => set({ skippedUpdateVersion }),
       setTourFinished: (tourFinished) => set({ tourFinished }),
       setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
@@ -325,6 +333,8 @@ export const useSettingsStore = create<SettingsState>()(
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
           onboardingDone: saved?.onboardingDone === true,
+          crashReports: saved?.crashReports === true,
+          usageMetrics: saved?.usageMetrics === true,
           translateFilterOperators: saved?.translateFilterOperators !== false,
           uiScale: normalizeUiScale(saved?.uiScale),
           uiDensity: normalizeUiDensity(saved?.uiDensity),

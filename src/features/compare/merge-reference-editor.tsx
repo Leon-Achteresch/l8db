@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { applyDefinitionHunk, type DefinitionHunk, definitionHunks } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
+import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
 import "./merge-reference-editor.css";
 
 function hunkLine(hunk: DefinitionHunk, source: string): number {
@@ -18,6 +19,7 @@ interface Props {
   selected: boolean;
   onSelect: () => void;
   onDraftChange: (value: string) => void;
+  scrollSync?: ScrollSyncGroup;
 }
 
 export function MergeReferenceEditor({
@@ -28,6 +30,7 @@ export function MergeReferenceEditor({
   selected,
   onSelect,
   onDraftChange,
+  scrollSync,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -75,9 +78,11 @@ export function MergeReferenceEditor({
       )
         applyAtLine.current(event.target.position.lineNumber);
     });
+    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance);
     editor.current = instance;
     decorations.current = instance.createDecorationsCollection();
     return () => {
+      leaveScrollSync?.();
       click.dispose();
       decorations.current?.clear();
       decorations.current = null;
@@ -85,7 +90,7 @@ export function MergeReferenceEditor({
       model.dispose();
       editor.current = null;
     };
-  }, []);
+  }, [scrollSync]);
 
   useEffect(() => {
     const model = editor.current?.getModel();

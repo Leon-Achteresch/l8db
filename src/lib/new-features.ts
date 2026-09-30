@@ -2,8 +2,13 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
+  "table.pagination.keyboard": "0.7.0",
+  "query.select-row-limit": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
+  "settings.about.crash-reports": "0.7.0",
+  "settings.about.usage-metrics": "0.7.0",
+  "connections.baas": "0.7.0",
   "baas.supabase": "0.7.0",
   "baas.supabase.project-key-import": "0.7.0",
   "baas.supabase.database": "0.7.0",
@@ -45,6 +50,7 @@ export const NEW_FEATURES = {
   "baas.file-preview": "0.7.0",
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
+  "compare.scroll-sync": "0.7.0",
 } as const;
 
 export type NewFeatureId = keyof typeof NEW_FEATURES;

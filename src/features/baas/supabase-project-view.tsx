@@ -1,34 +1,24 @@
 import { useNavigate } from "@tanstack/react-router";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowUpRight, Database, ExternalLink, Globe2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { providerFor } from "@/lib/connection-url";
-import { useConnectionsStore } from "@/lib/connections";
 import type { SupabaseProject } from "@/lib/db";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { SupabaseAuthView } from "./supabase-auth-view";
 import { SupabaseBackupsView } from "./supabase-backups-view";
+import { SupabaseDatabaseConnectDialog } from "./supabase-database-connect-dialog";
 import { SupabaseDatabaseView } from "./supabase-database-view";
 import { SupabaseFunctionsView } from "./supabase-functions-view";
 import { SupabaseProjectKey } from "./supabase-project-key";
 import { SupabaseServiceHealth } from "./supabase-service-health";
 import { SupabaseStorageView } from "./supabase-storage-view";
+import { useSupabaseDatabase } from "./use-supabase-database";
 
 export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
   const navigate = useNavigate();
-  const connections = useConnectionsStore((state) => state.connections);
-  const database = connections.find((connection) => {
-    if (providerFor(connection).id !== "supabase") return false;
-    try {
-      const url = new URL(connection.connectionString);
-      return (
-        url.hostname === `db.${project.reference}.supabase.co` ||
-        decodeURIComponent(url.username).endsWith(`.${project.reference}`)
-      );
-    } catch {
-      return false;
-    }
-  });
+  const database = useSupabaseDatabase(project.reference);
+  const [connecting, setConnecting] = useState(false);
 
   async function openDatabase() {
     if (!database) return;
@@ -86,22 +76,42 @@ export function SupabaseProjectView({ project }: { project: SupabaseProject }) {
                 {database.name} öffnen
               </button>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">Noch nicht verbunden</p>
+              <button
+                type="button"
+                className="mt-2 text-left text-sm font-medium text-primary hover:underline"
+                onClick={() => setConnecting(true)}
+              >
+                Datenbank verbinden
+              </button>
             )}
           </div>
         </div>
       </section>
 
+      <SupabaseDatabaseConnectDialog
+        reference={project.reference}
+        name={project.name}
+        open={connecting}
+        onOpenChange={setConnecting}
+      />
       <SupabaseServiceHealth reference={project.reference} />
       <SupabaseProjectKey key={project.reference} reference={project.reference} />
-      <SupabaseDatabaseView key={project.reference} reference={project.reference} />
+      <div data-baas-section="database" className="scroll-mt-6">
+        <SupabaseDatabaseView key={project.reference} reference={project.reference} />
+      </div>
       <SupabaseBackupsView key={project.reference} reference={project.reference} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
-        <SupabaseStorageView key={project.reference} reference={project.reference} />
+        <div data-baas-section="storage" className="scroll-mt-6">
+          <SupabaseStorageView key={project.reference} reference={project.reference} />
+        </div>
         <div className="space-y-6">
-          <SupabaseFunctionsView key={project.reference} reference={project.reference} />
-          <SupabaseAuthView key={project.reference} reference={project.reference} />
+          <div data-baas-section="functions" className="scroll-mt-6">
+            <SupabaseFunctionsView key={project.reference} reference={project.reference} />
+          </div>
+          <div data-baas-section="auth" className="scroll-mt-6">
+            <SupabaseAuthView key={project.reference} reference={project.reference} />
+          </div>
         </div>
       </div>
     </div>
