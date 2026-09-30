@@ -15,6 +15,10 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
     page.setDefaultTimeout(10000);
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("Maximum update depth"))
+        errors.push(message.text());
+    });
     await page.addInitScript(() => {
       window.testRuns = [];
       window.__TAURI_INTERNALS__ = {
