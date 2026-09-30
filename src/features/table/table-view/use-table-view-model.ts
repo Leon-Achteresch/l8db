@@ -1,9 +1,9 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useActiveConnection } from "@/lib/connections";
+import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
-import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
+import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { applyMasks } from "@/lib/masking";
@@ -43,6 +43,7 @@ export function useTableViewModel({
   const routeNavigate = routeApi.useNavigate();
   const appNavigate = useNavigate();
   const pane = useWorkspacePane();
+  const scopedId = useContext(ConnectionScopeContext);
   const inDrawer = drawerId !== undefined;
   const { data: views } = useViewsQuery();
   const { data: foreignKeys } = useForeignKeysQuery(schema, table);
@@ -183,12 +184,19 @@ export function useTableViewModel({
   const handleNavigateToTable = useMemo(() => {
     return (targetSchema: string, targetTable: string, filterWhere?: string, inTab?: boolean) => {
       if (!inTab) {
-        useFkDrawerStack
-          .getState()
-          .push({ schema: targetSchema, table: targetTable, filter: filterWhere });
+        useFkDrawerStack.getState().push({
+          schema: targetSchema,
+          table: targetTable,
+          filter: filterWhere,
+          connectionId: scopedId,
+        });
         return;
       }
       useFkDrawerStack.getState().clear();
+      if (scopedId) {
+        openScopedTable(scopedId, targetSchema, targetTable, filterWhere);
+        return;
+      }
       openTab({ schema: targetSchema, table: targetTable, entityType: "table" });
       void appNavigate({
         to: "/tables/$schema/$table",
@@ -196,7 +204,7 @@ export function useTableViewModel({
         search: filterWhere ? { fkFilter: filterWhere } : {},
       });
     };
-  }, [openTab, appNavigate]);
+  }, [openTab, appNavigate, scopedId]);
 
   useEffect(() => {
     if (inDrawer || pane) return;
@@ -205,12 +213,12 @@ export function useTableViewModel({
 
   useEffect(() => {
     if (inDrawer) return;
-    if (!isView || type === "view" || (pane && !pane.focused)) return;
+    if (!isView || type === "view" || scopedId || (pane && !pane.focused)) return;
     void routeNavigate({
       search: { type: "view" },
       replace: true,
     });
-  }, [isView, type, routeNavigate, pane, inDrawer]);
+  }, [isView, type, routeNavigate, pane, inDrawer, scopedId]);
 
   useEffect(() => {
     if (fkFilter === undefined) return;

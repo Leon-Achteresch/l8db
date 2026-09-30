@@ -7,6 +7,7 @@ export type TableTab = {
   schema: string;
   table: string;
   entityType?: "table" | "view";
+  connectionId?: string;
 };
 export type QueryTab = {
   kind: "query";

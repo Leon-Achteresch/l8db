@@ -57,6 +57,7 @@ export const NEW_FEATURES = {
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
+  "split.pane-tables": "0.7.0",
 } as const;
 
 export type NewFeatureId = keyof typeof NEW_FEATURES;

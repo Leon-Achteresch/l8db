@@ -2,8 +2,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { SplitPane } from "@/features/shell/split-pane";
 import { MasterDetailLinks } from "@/features/shell/split-workspace/master-detail-links";
 import { NewPaneDropZone } from "@/features/shell/split-workspace/new-pane-drop-zone";
-import { useSplitView } from "@/lib/split-view";
-import { tabKey, useTableTabs } from "@/lib/table-tabs";
+import { usePaneTabs, useSplitView } from "@/lib/split-view";
 
 export function SplitWorkspace() {
   const orientation = useSplitView((state) => state.orientation);
@@ -11,22 +10,19 @@ export function SplitWorkspace() {
   const focusedPane = useSplitView((state) => state.focusedPane);
   const focusPane = useSplitView((state) => state.focusPane);
   const closePane = useSplitView((state) => state.closePane);
-  const tabs = useTableTabs((state) => state.tabs);
+  const paneTabs = usePaneTabs();
 
-  const pane = (index: number) => {
-    const key = panes[index];
-    return (
-      <ResizablePanel id={`split-${index}`} minSize="18%" className="min-h-0 min-w-0">
-        <SplitPane
-          index={index}
-          focused={focusedPane === index}
-          tab={key ? tabs.find((item) => tabKey(item) === key) : undefined}
-          onFocus={() => focusPane(index)}
-          onClose={() => closePane(index)}
-        />
-      </ResizablePanel>
-    );
-  };
+  const pane = (index: number) => (
+    <ResizablePanel id={`split-${index}`} minSize="18%" className="min-h-0 min-w-0">
+      <SplitPane
+        index={index}
+        focused={focusedPane === index}
+        tab={paneTabs[index]}
+        onFocus={() => focusPane(index)}
+        onClose={() => closePane(index)}
+      />
+    </ResizablePanel>
+  );
 
   const layout =
     panes.length === 2 ? (

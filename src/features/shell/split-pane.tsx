@@ -17,7 +17,7 @@ import { ensurePassword } from "@/lib/password-prompt";
 import { usePaneConnectionId, useSplitView } from "@/lib/split-view";
 import { ensureSshTunnel } from "@/lib/ssh";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
-import { type Tab, tabKey } from "@/lib/table-tabs";
+import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { WorkspacePaneContext } from "@/lib/workspace-pane";
 
@@ -46,6 +46,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const navigate = useNavigate();
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
+  const setPaneTable = useSplitView((state) => state.setPaneTable);
+  const openTab = useTableTabs((state) => state.openTab);
+  const remote = tab?.kind === "table" && Boolean(tab.connectionId);
   const key = tab ? tabKey(tab) : `split-detail:${index}`;
   const masterKey = useSplitView((state) => {
     const master = state.masters[index];
@@ -73,25 +76,31 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   });
 
   const selectConnection = async (value: string) => {
-    if (!key) return;
-    if (value === ACTIVE_VALUE) {
-      setPaneConnection(key, null);
-      return;
-    }
-    const connection = connections.find((entry) => entry.id === value);
-    if (!connection) return;
-    if (!(await ensurePassword(value))) return;
-    if (usesTunnel(connection) && !connection.tunnelPort) {
-      const outcome = await ensureSshTunnel(
-        useConnectionsStore.getState().connections.find((entry) => entry.id === value) ??
-          connection,
-      );
-      if (!outcome.ok) {
-        toast.error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
-        return;
+    const id =
+      value === ACTIVE_VALUE || value === useConnectionsStore.getState().activeId ? null : value;
+    if (id) {
+      const connection = connections.find((entry) => entry.id === id);
+      if (!connection) return;
+      if (!(await ensurePassword(id))) return;
+      if (usesTunnel(connection) && !connection.tunnelPort) {
+        const outcome = await ensureSshTunnel(
+          useConnectionsStore.getState().connections.find((entry) => entry.id === id) ?? connection,
+        );
+        if (!outcome.ok) {
+          toast.error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
+          return;
+        }
       }
     }
-    setPaneConnection(key, value);
+    if (tab?.kind !== "table") {
+      setPaneConnection(key, id);
+      if (!focused && tab) navigateToTab(navigate, tab);
+      onFocus();
+      return;
+    }
+    if (!id) openTab(tab);
+    setPaneTable(index, id, tab);
+    if (!id) navigateToTab(navigate, { ...tab, connectionId: undefined });
   };
 
   return (
@@ -100,7 +109,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
         ref={dropRef}
         data-split-pane={index}
         onMouseDown={() => {
-          if (!focused && tab) navigateToTab(navigate, tab);
+          if (!focused && tab && !remote) navigateToTab(navigate, tab);
           onFocus();
         }}
         className={cn(
@@ -138,34 +147,32 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
             {tab ? tabLabel(tab) : detailSql ? "SQL-Abfrage" : "Leer"}
           </span>
           <MasterSelect index={index} />
-          {tab || detailSql ? (
-            <Select value={overrideId ?? ACTIVE_VALUE} onValueChange={selectConnection}>
-              <SelectTrigger
-                size="sm"
-                onMouseDown={(event) => event.stopPropagation()}
-                aria-label="Verbindung für diesen Bereich"
-                className="h-5 max-w-36 gap-1 border-0 px-1 py-0 text-xs shadow-none dark:bg-transparent dark:hover:bg-foreground/10"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <ColorDot color={override?.color} />
-                  <span className="truncate">{override ? override.name : "Aktive Verbindung"}</span>
-                </span>
-              </SelectTrigger>
-              <SelectContent searchable onMouseDown={(event) => event.stopPropagation()}>
-                <SelectItem value={ACTIVE_VALUE} className="text-xs">
-                  Aktive Verbindung
+          <Select value={overrideId ?? ACTIVE_VALUE} onValueChange={selectConnection}>
+            <SelectTrigger
+              size="sm"
+              onMouseDown={(event) => event.stopPropagation()}
+              aria-label="Verbindung für diesen Bereich"
+              className="h-5 max-w-36 gap-1 border-0 px-1 py-0 text-xs shadow-none dark:bg-transparent dark:hover:bg-foreground/10"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ColorDot color={override?.color} />
+                <span className="truncate">{override ? override.name : "Aktive Verbindung"}</span>
+              </span>
+            </SelectTrigger>
+            <SelectContent searchable onMouseDown={(event) => event.stopPropagation()}>
+              <SelectItem value={ACTIVE_VALUE} className="text-xs">
+                Aktive Verbindung
+              </SelectItem>
+              {connections.map((connection) => (
+                <SelectItem key={connection.id} value={connection.id} className="text-xs">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <ColorDot color={connection.color} />
+                    <span className="truncate">{connection.name}</span>
+                  </span>
                 </SelectItem>
-                {connections.map((connection) => (
-                  <SelectItem key={connection.id} value={connection.id} className="text-xs">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <ColorDot color={connection.color} />
-                      <span className="truncate">{connection.name}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
+              ))}
+            </SelectContent>
+          </Select>
           <button
             type="button"
             onMouseDown={(event) => event.stopPropagation()}
@@ -216,7 +223,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
           ) : (
             <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
               <p className="max-w-56 text-center text-sm text-muted-foreground">
-                Tab hierher ziehen oder in der Sidebar öffnen.
+                {override
+                  ? `Tabelle von ${override.name} in der Sidebar wählen.`
+                  : "Tab hierher ziehen oder in der Sidebar öffnen."}
               </p>
             </div>
           )}
