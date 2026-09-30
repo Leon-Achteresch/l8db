@@ -6,6 +6,10 @@ import {
 } from "../src/lib/query-workspace";
 
 describe("query workspace persistence", () => {
+  test("discards obsolete configurable SELECT limits", () => {
+    expect(sanitizeWorkspace({ selectRowLimit: 0 })).toEqual({});
+    expect(sanitizeWorkspace({ selectRowLimit: 250 })).toEqual({});
+  });
   test("ignores corrupted values and never restores actions from storage", () => {
     expect(
       sanitizeWorkspace({

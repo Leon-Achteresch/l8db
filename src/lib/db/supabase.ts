@@ -113,6 +113,14 @@ export const supabaseIsConnected = () => invoke<boolean>("supabase_is_connected"
 export const supabaseConnect = (accessToken: string) =>
   invoke<SupabaseProject[]>("supabase_connect", { accessToken });
 export const supabaseDisconnect = () => invoke<void>("supabase_disconnect");
+export interface SupabaseDatabaseEndpoint {
+  host: string;
+  port: number;
+  user: string;
+  database: string;
+}
+export const supabaseDatabaseEndpoint = (reference: string) =>
+  invoke<SupabaseDatabaseEndpoint>("supabase_database_endpoint", { reference });
 export const supabaseProjects = () => invoke<SupabaseProject[]>("supabase_projects");
 export const supabaseBuckets = (reference: string) =>
   invoke<SupabaseBucket[]>("supabase_buckets", { reference });

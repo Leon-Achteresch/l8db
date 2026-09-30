@@ -151,6 +151,7 @@ describe("Paketaufbau", () => {
     connections: asAny([connection()]),
     settings: asAny({ rowLimit: 100, setRowLimit: () => undefined }),
     errors: [{ at: "2026-01-01T00:00:00.000Z", source: "test", message: "boom" }],
+    logs: ["[ERROR] panic: boom"],
     warnings: ["Treiberstatus nicht lesbar"],
   };
 
@@ -164,6 +165,11 @@ describe("Paketaufbau", () => {
     expect(pkg.settings).toBeUndefined();
     expect(pkg.errors).toBeUndefined();
     expect(pkg.warnings).toEqual(["Treiberstatus nicht lesbar"]);
+  });
+
+  test("Log-Zeilen nur im Abschnitt Protokoll", () => {
+    expect(buildDiagnosticsPackage(input, ["logs"]).logs).toEqual(["[ERROR] panic: boom"]);
+    expect(buildDiagnosticsPackage(input, ["errors"]).logs).toBeUndefined();
   });
 
   test("Treiber werden je Familie zusammengefasst", () => {

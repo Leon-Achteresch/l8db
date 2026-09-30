@@ -1,4 +1,4 @@
-import { Feather, Layers } from "lucide-react";
+import { ChartNoAxesColumn, Feather, Layers, ShieldCheck, ShieldOff } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { useCallback, useState } from "react";
@@ -18,6 +18,10 @@ export function Onboarding() {
   const setDone = useSettingsStore((s) => s.setOnboardingDone);
   const easyMode = useSettingsStore((s) => s.easyMode);
   const setEasyMode = useSettingsStore((s) => s.setEasyMode);
+  const crashReports = useSettingsStore((s) => s.crashReports);
+  const setCrashReports = useSettingsStore((s) => s.setCrashReports);
+  const usageMetrics = useSettingsStore((s) => s.usageMetrics);
+  const setUsageMetrics = useSettingsStore((s) => s.setUsageMetrics);
   const { theme, setTheme } = useTheme();
   const [step, setStep] = useState(0);
   const [shownDone, setShownDone] = useState(done);
@@ -93,6 +97,52 @@ export function Onboarding() {
       subtitle:
         "l8db prüft, welche Treiber auf diesem Gerät fehlen. Installiere nur die, die du verwenden möchtest.",
       content: <OnboardingDrivers />,
+    },
+    {
+      id: "crash-reports",
+      title: "Diagnosedaten teilen?",
+      subtitle:
+        "Hilft, Fehler schneller zu beheben und l8db gezielt zu verbessern. Du kannst das jederzeit in den Einstellungen unter Über & Updates ändern.",
+      value: usageMetrics ? "all" : crashReports ? "crash" : "off",
+      select: (value: string) => {
+        setCrashReports(value !== "off");
+        setUsageMetrics(value === "all");
+      },
+      options: [
+        {
+          value: "all",
+          label: "Abstürze und Nutzung",
+          description:
+            "Zusätzlich Startzeit, Dauer von Datenbankbefehlen und geöffnete Bereiche. Nie SQL, Tabellennamen oder Verbindungsdaten.",
+          preview: (
+            <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
+              <ChartNoAxesColumn className="size-9 text-primary" />
+            </div>
+          ),
+        },
+        {
+          value: "crash",
+          label: "Nur Abstürze",
+          description:
+            "Fehlermeldung, Stacktrace, App-Version und Betriebssystem gehen an Sentry (EU). Verbindungsdaten werden entfernt.",
+          preview: (
+            <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
+              <ShieldCheck className="size-9 text-primary" />
+            </div>
+          ),
+        },
+        {
+          value: "off",
+          label: "Nichts senden",
+          description:
+            "Fehler bleiben lokal in der Log-Datei und lassen sich bei Bedarf als Diagnosepaket exportieren.",
+          preview: (
+            <div className="flex h-28 items-center justify-center rounded-lg bg-muted">
+              <ShieldOff className="size-9 text-primary" />
+            </div>
+          ),
+        },
+      ],
     },
     {
       id: "extensions",

@@ -7,6 +7,7 @@ import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
 import { initAppearance } from "@/lib/appearance";
 import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
+import { initCrashReporting } from "@/lib/crash-reporting";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
 import { createExtensionHost } from "@/lib/extensions/host";
@@ -15,6 +16,7 @@ import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { restoreSshTunnel } from "@/lib/ssh";
+import { recordCount, recordDuration } from "@/lib/telemetry";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
@@ -24,6 +26,13 @@ const disposeAppearance = initAppearance();
 const executionSettings = initExecutionSettings();
 if (import.meta.hot) import.meta.hot.dispose(executionSettings.dispose);
 if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
+const disposeCrashReporting = initCrashReporting();
+if (import.meta.hot) import.meta.hot.dispose(disposeCrashReporting);
+
+router.subscribe("onResolved", () => {
+  const route = router.state.matches.at(-1)?.routeId;
+  if (route) recordCount("view.open", { route });
+});
 
 const queryClient = createAppQueryClient();
 const extensionHost = createExtensionHost();
@@ -59,6 +68,7 @@ Promise.all([
   .catch(() => undefined)
   .finally(() => {
     render();
+    recordDuration("app.startup", performance.now(), { ready: String(startupReady) });
     if (startupReady)
       requestAnimationFrame(() => {
         void import("@/lib/dashboards/mcp-sync")

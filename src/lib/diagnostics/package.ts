@@ -21,6 +21,7 @@ export interface DiagnosticsInput {
   connections: SavedConnection[];
   settings: SettingsState;
   errors: DiagnosticsError[];
+  logs: string[];
   warnings: string[];
 }
 
@@ -48,6 +49,7 @@ export function buildDiagnosticsPackage(
     pkg.connections = input.connections.map((connection) => redactConnection(connection));
   if (enabled.has("settings")) pkg.settings = redactSettings(input.settings);
   if (enabled.has("errors")) pkg.errors = input.errors;
+  if (enabled.has("logs")) pkg.logs = input.logs;
   return pkg;
 }
 

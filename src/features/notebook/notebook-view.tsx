@@ -2,7 +2,12 @@ import { useState } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Button } from "@/components/ui/button";
 import { useActiveConnection } from "@/lib/connections";
-import { type NotebookCell, type NotebookCellType, useNotebookStore } from "@/lib/notebook";
+import {
+  type NotebookCell,
+  type NotebookCellType,
+  notebookPages,
+  useNotebookStore,
+} from "@/lib/notebook";
 import { saveNotebook } from "@/lib/notebook/actions";
 import { MarkdownCell } from "./markdown-cell";
 import { NotebookAddCell } from "./notebook-add-cell";
@@ -25,10 +30,12 @@ export function NotebookView() {
   const busy = Object.keys(running).length > 0;
 
   const [target, setTarget] = useState<{ index: number } | null>(null);
-  const add = (type: NotebookCellType, index: number) => {
-    store().addCell(type, index);
-    setTarget({ index });
-  };
+  const reveal = (id: string) =>
+    setTarget({
+      index: notebookPages(store().doc.cells).findIndex((page) => page.some((c) => c.id === id)),
+    });
+  const add = (type: NotebookCellType, index: number, pageBreak?: boolean) =>
+    reveal(store().addCell(type, index, pageBreak));
   const update = (id: string, next: (cell: NotebookCell) => NotebookCell) =>
     store().updateCell(id, next);
 
@@ -64,57 +71,71 @@ export function NotebookView() {
         <NotebookBook
           target={target}
           pages={[
-            ...cells.map((cell, index) => (
-              <NotebookCellFrame
-                key={cell.id}
-                type={cell.type}
-                first={index === 0}
-                last={index === cells.length - 1}
-                onMove={(delta) => {
-                  store().moveCell(cell.id, delta);
-                  setTarget({ index: index + delta });
-                }}
-                onRemove={() => store().removeCell(cell.id)}
-                onAdd={(type) => add(type, index + 1)}
-              >
-                <PanelErrorBoundary
-                  label="Die Zelle"
-                  source="notebook-cell"
-                  resetKeys={[cell, outputs[cell.id]]}
-                >
-                  {cell.type === "markdown" ? (
-                    <MarkdownCell
-                      source={cell.source}
-                      onChange={(source) =>
-                        update(cell.id, (c) => (c.type === "markdown" ? { ...c, source } : c))
-                      }
-                    />
-                  ) : cell.type === "variables" ? (
-                    <VariablesCell
-                      variables={cell.variables}
-                      onChange={(variables) =>
-                        update(cell.id, (c) => (c.type === "variables" ? { ...c, variables } : c))
-                      }
-                    />
-                  ) : (
-                    <SqlCell
-                      cell={cell}
-                      connectionId={defaultConnection}
-                      output={outputs[cell.id]}
-                      running={Boolean(running[cell.id])}
-                      onRun={() => void runner.runCell(cell.id)}
-                      onRunFrom={() => void runner.runFrom(cell.id)}
-                      onCancel={runner.cancel}
-                    />
-                  )}
-                </PanelErrorBoundary>
-              </NotebookCellFrame>
+            ...notebookPages(cells).map((page) => (
+              <div key={page[0].id} className="flex flex-col gap-4">
+                {page.map((cell) => {
+                  const index = cells.indexOf(cell);
+                  return (
+                    <NotebookCellFrame
+                      key={cell.id}
+                      type={cell.type}
+                      first={index === 0}
+                      last={index === cells.length - 1}
+                      pageBreak={Boolean(cell.pageBreak)}
+                      onTogglePageBreak={() => {
+                        update(cell.id, (c) => ({ ...c, pageBreak: !c.pageBreak }));
+                        reveal(cell.id);
+                      }}
+                      onMove={(delta) => {
+                        store().moveCell(cell.id, delta);
+                        reveal(cell.id);
+                      }}
+                      onRemove={() => store().removeCell(cell.id)}
+                      onAdd={(type) => add(type, index + 1)}
+                    >
+                      <PanelErrorBoundary
+                        label="Die Zelle"
+                        source="notebook-cell"
+                        resetKeys={[cell, outputs[cell.id]]}
+                      >
+                        {cell.type === "markdown" ? (
+                          <MarkdownCell
+                            source={cell.source}
+                            onChange={(source) =>
+                              update(cell.id, (c) => (c.type === "markdown" ? { ...c, source } : c))
+                            }
+                          />
+                        ) : cell.type === "variables" ? (
+                          <VariablesCell
+                            variables={cell.variables}
+                            onChange={(variables) =>
+                              update(cell.id, (c) =>
+                                c.type === "variables" ? { ...c, variables } : c,
+                              )
+                            }
+                          />
+                        ) : (
+                          <SqlCell
+                            cell={cell}
+                            connectionId={defaultConnection}
+                            output={outputs[cell.id]}
+                            running={Boolean(running[cell.id])}
+                            onRun={() => void runner.runCell(cell.id)}
+                            onRunFrom={() => void runner.runFrom(cell.id)}
+                            onCancel={runner.cancel}
+                          />
+                        )}
+                      </PanelErrorBoundary>
+                    </NotebookCellFrame>
+                  );
+                })}
+              </div>
             )),
             <div key="new" className="flex h-full flex-col items-center justify-center gap-2">
               <p className="text-sm text-muted-foreground">
                 {cells.length === 0 ? "Das Notebook ist leer." : "Neue Seite"}
               </p>
-              <NotebookAddCell onAdd={(type) => add(type, cells.length)} />
+              <NotebookAddCell onAdd={(type) => add(type, cells.length, cells.length > 0)} />
             </div>,
           ]}
         />

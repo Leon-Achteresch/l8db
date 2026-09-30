@@ -22,6 +22,7 @@ import {
   DIAGNOSTICS_SECTIONS,
   type DiagnosticsInput,
   type DiagnosticsSectionId,
+  readRecentLogLines,
   recentDiagnosticErrors,
   serializeDiagnostics,
 } from "@/lib/diagnostics";
@@ -65,6 +66,12 @@ export function DiagnosticsDialog({ open, onOpenChange }: Props) {
       warnings.push("Verbindungsprofile nicht lesbar.");
       connections = [];
     }
+    let logs: string[] = [];
+    try {
+      logs = await readRecentLogLines();
+    } catch (error) {
+      warnings.push(`Log-Datei nicht lesbar: ${error instanceof Error ? error.message : error}`);
+    }
     setInput({
       app: { name: "l8db", version },
       system: collectSystemInfo(),
@@ -72,6 +79,7 @@ export function DiagnosticsDialog({ open, onOpenChange }: Props) {
       connections,
       settings: useSettingsStore.getState(),
       errors: recentDiagnosticErrors(),
+      logs,
       warnings,
     });
     setLoading(false);

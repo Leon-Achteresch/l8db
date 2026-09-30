@@ -190,7 +190,10 @@ export function ConvexView({ initialId }: { initialId?: string }) {
               ) : projects.data.items.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Keine Projekte vorhanden.</p>
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div
+                  data-baas-section="deployments"
+                  className="grid scroll-mt-6 gap-4 lg:grid-cols-2"
+                >
                   {projects.data.items.map((project) => (
                     <ConvexProjectView key={project.id} id={selected.id} project={project} />
                   ))}

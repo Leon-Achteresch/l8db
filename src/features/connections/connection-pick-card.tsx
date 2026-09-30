@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -220,12 +219,14 @@ export function ConnectionSelectCard({
   disabledReason,
   onCheckedChange,
   children,
+  actions,
 }: {
   connection: SavedConnection;
   checked: boolean;
   disabledReason?: string | null;
   onCheckedChange: (checked: boolean) => void;
   children?: ReactNode;
+  actions?: ReactNode;
 }) {
   const disabled = Boolean(disabledReason);
 
@@ -240,14 +241,17 @@ export function ConnectionSelectCard({
       className={disabled ? "opacity-60" : "cursor-pointer"}
       title={disabledReason ?? undefined}
       actions={
-        <Checkbox
-          checked={checked}
-          disabled={disabled}
-          onCheckedChange={(value) => onCheckedChange(value === true)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`${connection.name} aktivieren`}
-          className="m-1.5"
-        />
+        <div data-no-toggle className="flex shrink-0 items-center gap-0.5">
+          {actions}
+          <Checkbox
+            checked={checked}
+            disabled={disabled}
+            onCheckedChange={(value) => onCheckedChange(value === true)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`${connection.name} aktivieren`}
+            className="m-1.5"
+          />
+        </div>
       }
       footer={children}
     />
@@ -276,13 +280,11 @@ function ConnectionCardShell({
 
   return (
     <motion.article
-      layout
       initial={reduce ? false : { opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ layout: SPRING_LAYOUT }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-all duration-200 hover:border-foreground/25 hover:shadow-md",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-foreground/25 hover:shadow-md",
         active
           ? "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/30 shadow-xs"
           : "border-border/80",

@@ -6,6 +6,7 @@ import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import { invalidateTableReads } from "@/lib/query-client";
 import { runSqlScript } from "@/lib/script-runner";
+import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { getQueryTransaction } from "@/lib/transactions";
@@ -89,6 +90,7 @@ export function useScriptRun({
           sql,
           mode,
           stopOnError,
+          selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,
           onProgress: setScriptEntries,
         });

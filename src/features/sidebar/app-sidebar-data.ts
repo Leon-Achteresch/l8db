@@ -54,7 +54,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       icon: Network,
       available: (caps) => caps.foreign_keys,
     },
-    { title: "Vergleich", url: "/compare", icon: GitCompare },
+    { title: "Vergleich", url: "/compare", icon: GitCompare, featureScope: "compare" },
     {
       title: "Schema-Vergleich",
       url: "/schema-compare",

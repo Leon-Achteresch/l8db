@@ -32,6 +32,7 @@
     "fs:allow-write-file",
     "updater:default",
     "process:default",
+    "log:default",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text"
   ]

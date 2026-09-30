@@ -11,6 +11,7 @@ import {
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { applySelectRowLimit } from "@/lib/select-row-limit";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -24,6 +25,7 @@ export interface ScriptRequest {
   sql: string;
   mode: ScriptRunMode;
   stopOnError?: boolean;
+  selectRowLimit?: number;
   title?: string;
   onJob?: (id: string) => void;
   onProgress?: (entries: ScriptRunEntry[]) => void;
@@ -116,18 +118,23 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         },
       };
       try {
+        const executionSql = applySelectRowLimit(
+          entry.sql,
+          connection.kind,
+          request.selectRowLimit ?? 0,
+        );
         const activeTxId = txId;
         const tracked = activeTxId
           ? await runManagedOperation(activeTxId, () =>
               executeWithTransactionChanges(connection, database, activeTxId, entry.sql, () =>
-                executeInTransaction(activeTxId, entry.sql, options),
+                executeInTransaction(activeTxId, executionSql, options),
               ),
             )
           : {
               result: await executeQuery(
                 connection.kind,
                 url,
-                entry.sql,
+                executionSql,
                 database ?? undefined,
                 options,
               ),
