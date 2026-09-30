@@ -19,7 +19,7 @@ export interface NotebookOutput {
   totalRows?: number;
 }
 
-export type NotebookCell =
+export type NotebookCell = (
   | { id: string; type: "markdown"; source: string }
   | {
       id: string;
@@ -28,7 +28,8 @@ export type NotebookCell =
       connectionId?: string | null;
       chart?: ResultChartState;
     }
-  | { id: string; type: "variables"; variables: NotebookVariable[] };
+  | { id: string; type: "variables"; variables: NotebookVariable[] }
+) & { pageBreak?: boolean };
 
 export type NotebookCellType = NotebookCell["type"];
 
@@ -61,6 +62,14 @@ export function newCell(type: NotebookCellType): NotebookCell {
   if (type === "variables")
     return { id: cellId(), type, variables: [{ name: "", type: "text", value: "" }] };
   return { id: cellId(), type, source: "" };
+}
+
+export function notebookPages(cells: NotebookCell[]): NotebookCell[][] {
+  const pages: NotebookCell[][] = [];
+  for (const cell of cells)
+    if (cell.pageBreak || pages.length === 0) pages.push([cell]);
+    else pages[pages.length - 1].push(cell);
+  return pages;
 }
 
 export function newNotebook(connectionId: string | null = null): NotebookDoc {

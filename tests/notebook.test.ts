@@ -9,6 +9,7 @@ import {
   type NotebookOutput,
   newNotebook,
   notebookToHtml,
+  notebookPages,
   notebookToMarkdown,
   notebookVariables,
   parseNotebook,
@@ -135,4 +136,18 @@ describe("Notebook-Export", () => {
     expect(safeHref("data:text/html,x")).toBeNull();
     expect(parseInline("[a](javascript:x)")[0]).toMatchObject({ t: "link" });
   });
+});
+
+test("notebookPages groups cells until the next page break", () => {
+  const pages = notebookPages([
+    { id: "a", type: "markdown", source: "", pageBreak: true },
+    { id: "b", type: "sql", source: "" },
+    { id: "c", type: "sql", source: "", pageBreak: true },
+    { id: "d", type: "markdown", source: "" },
+  ]);
+  expect(pages.map((page) => page.map((cell) => cell.id))).toEqual([
+    ["a", "b"],
+    ["c", "d"],
+  ]);
+  expect(notebookPages([])).toEqual([]);
 });
