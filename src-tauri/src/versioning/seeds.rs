@@ -22,6 +22,10 @@ pub fn allowed_branch(branch: &str) -> bool {
             .any(|name| name.eq_ignore_ascii_case(branch))
 }
 
+fn checksum(script: &str) -> String {
+    control::hash(script.replace("\r\n", "\n").replace('\r', "\n").trim_end())
+}
+
 fn identifier(value: &str, kind: DatabaseKind) -> String {
     if value.starts_with('"') {
         value[1..value.len() - 1].replace("\"\"", "\"")
@@ -106,7 +110,7 @@ pub fn validate_seed(sql: &str, schema: &str, kind: DatabaseKind) -> Result<Vec<
     Ok(statements)
 }
 
-fn physical_key(kind: DatabaseKind, schema: &str, row: &Value) -> String {
+pub(super) fn physical_key(kind: DatabaseKind, schema: &str, row: &Value) -> String {
     let text = format!(
         "{{\"kind\":{},\"database\":{},\"server\":{},\"port\":{},\"schema\":{},\"edition\":{}}}",
         json!(kind),
@@ -184,7 +188,7 @@ pub async fn run(
     }
     let script = super::read(&super::safe_file(&root, "database/seeds/seed.sql")?)?
         .ok_or("Seed-Datei zuerst speichern.")?;
-    if control::hash(&script) != request.checksum {
+    if checksum(&script) != request.checksum {
         return Err("Seed-Datei wurde geändert. Vorschau neu laden.".into());
     }
     let project: Value = serde_json::from_str(
@@ -206,6 +210,30 @@ pub async fn run(
         .iter()
         .find(|target| target["id"] == request.target_id)
         .ok_or("Seed-Ziel fehlt.")?;
+    let team = super::team::committed(&root)
+        .await?
+        .map(|content| super::team::parse(&content))
+        .transpose()?;
+    let shared_target = team
+        .as_ref()
+        .map(|team| {
+            team.targets
+                .iter()
+                .find(|target| target.id == request.target_id)
+                .ok_or("Seed-Ziel fehlt in der Git-Teamkonfiguration.")
+        })
+        .transpose()?;
+    if let Some(shared) = shared_target {
+        if team
+            .as_ref()
+            .is_none_or(|team| team.project_id != request.connection.project_id)
+            || shared.production
+            || shared.database != request.connection.database
+            || shared.schema != request.connection.schema
+        {
+            return Err("Seeds benötigen eine passende Development-Zuordnung in Git.".into());
+        }
+    }
     if store["projectId"] != request.connection.project_id
         || target["production"] != false
         || target["database"] != json!(request.connection.database)
@@ -238,6 +266,12 @@ pub async fn run(
         let identity = transactions.execute(&tx, context).await?;
         let row = identity.rows.first().ok_or("Datenbankidentität fehlt.")?;
         let key = physical_key(c.kind, &c.schema, row);
+        if let Some(shared) = shared_target {
+            if shared.expected_physical_key.as_deref() != Some(key.as_str())
+                || team.as_ref().is_some_and(|team| team.targets.iter().any(|other| other.production && other.expected_physical_key.as_deref() == Some(key.as_str()))) {
+                return Err("Seed-Ziel widerspricht der Datenbankidentität oder dem Produktionsschutz in Git.".into());
+            }
+        }
         if target["binding"]["physicalKey"] != key || targets.iter().any(|other| other["production"] == true && other["binding"]["physicalKey"] == key) { return Err("Seed-Ziel ist verändert oder als Produktion registriert.".into()); }
         let state = transactions.execute(&tx, &format!("SELECT \"STATUS\", \"LEASE\" FROM {} WHERE \"PROJECT_ID\"={} FOR UPDATE NOWAIT", control::table(&c.schema, "STATE"), control::literal(&c.project_id))).await?;
         if !state.rows.first().is_some_and(|row| row["STATUS"] == "ready" && row["LEASE"].is_null()) { return Err("Development-Ziel ist nicht bereit oder ein Deployment läuft.".into()); }
@@ -279,6 +313,17 @@ pub async fn versioning_run_seed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seed_checksum_matches_frontend_normalization_and_preserves_literal_changes() {
+        let sql = "INSERT INTO public.people (name) VALUES ('Test');";
+        assert_eq!(checksum(&format!("{sql}\r\n")), control::hash(sql));
+        assert_eq!(checksum(&format!("{sql}\n")), checksum(sql));
+        assert_ne!(
+            checksum(sql),
+            checksum("INSERT INTO public.people (name) VALUES ('Test ');")
+        );
+    }
 
     #[test]
     fn seed_branches_exclude_production_and_detached_head() {

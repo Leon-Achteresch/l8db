@@ -62,6 +62,153 @@ fn detects_incomplete_merge_markers() {
     assert!(!has_conflict_markers("SELECT '<<<<<<<' AS sample;\n"));
 }
 
+fn team_fixture() -> Value {
+    json!({"format":1,"projectId":"team-project","connections":[{"id":"shared-server","name":"Server","kind":"postgres","host":"db.example.invalid","port":"5432","service":null,"sslMode":"verify-full","requiresTunnel":true}],"targets":[{"id":"customer-a","name":"Customer A","connectionRef":"shared-server","database":"app","schema":"customer_a","production":true,"requireApproval":true}],"branches":{"feature/test":{"targetId":"customer-a"}}})
+}
+
+#[test]
+fn team_configuration_rejects_secrets_and_local_profile_fields() {
+    let fixture = team_fixture();
+    assert!(team::parse(&fixture.to_string()).is_ok());
+    let mut secret = fixture.clone();
+    secret["connections"][0]["password"] = json!("must-not-be-written");
+    assert!(team::parse(&secret.to_string()).is_err());
+    let mut local = fixture.clone();
+    local["targets"][0]["connectionId"] = json!("private-profile");
+    assert!(team::parse(&local.to_string()).is_err());
+    let mut missing = fixture;
+    missing["targets"][0]["connectionRef"] = json!("missing-server");
+    assert!(team::parse(&missing.to_string()).is_err());
+}
+
+#[tokio::test]
+async fn team_configuration_is_cloneable_and_runtime_updates_leave_git_clean() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Team Test"])
+        .await
+        .unwrap();
+    let team = team_fixture().to_string();
+    let local = json!({"format":1,"projectId":"team-project","targets":[{"id":"customer-a","connectionId":"private-profile","release":null,"history":[]}]}).to_string();
+    let mut write = request(&root, "targets-write");
+    write.content = Some(json!({"local":local,"team":team}).to_string());
+    write.expected = Some(json!({"local":null,"team":null}).to_string());
+    handle(write).await.unwrap();
+    let mut commit = request(&root, "commit");
+    commit.paths = Some(vec![team::PATH.into()]);
+    commit.name = Some("Share team configuration".into());
+    handle(commit).await.unwrap();
+    let exported = git(&root, &["show", "HEAD:database/team.json"])
+        .await
+        .unwrap();
+    assert!(!exported.contains("private-profile"));
+    assert_eq!(
+        team::committed(&root).await.unwrap(),
+        Some(exported.clone())
+    );
+    fs::write(root.join(team::PATH), format!("{exported}\n")).unwrap();
+    assert!(team::committed(&root)
+        .await
+        .unwrap_err()
+        .contains("offene Git"));
+    fs::write(root.join(team::PATH), &exported).unwrap();
+    let clone = temp();
+    git(&clone, &["clone", "--quiet", root.to_str().unwrap(), "."])
+        .await
+        .unwrap();
+    assert!(handle(request(&clone, "local-read"))
+        .await
+        .unwrap()
+        .is_null());
+    assert_eq!(
+        team::parse(&read(&clone.join(team::PATH)).unwrap().unwrap())
+            .unwrap()
+            .project_id,
+        "team-project"
+    );
+    let updated =
+        json!({"format":1,"projectId":"team-project","targets":[],"runtime":"changed"}).to_string();
+    let mut write = request(&root, "targets-write");
+    write.content = Some(json!({"local":updated,"team":team}).to_string());
+    write.expected = Some(json!({"local":local,"team":team}).to_string());
+    handle(write).await.unwrap();
+    assert!(git(&root, &["status", "--porcelain"])
+        .await
+        .unwrap()
+        .is_empty());
+    let mut stale = request(&root, "targets-write");
+    stale.content = Some(json!({"local":local,"team":team}).to_string());
+    stale.expected = Some(json!({"local":local,"team":team}).to_string());
+    assert!(handle(stale)
+        .await
+        .unwrap_err()
+        .contains("inzwischen geändert"));
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(clone).unwrap();
+}
+
+#[tokio::test]
+async fn rollout_review_is_bound_to_committed_team_and_database_identity() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Team Test"])
+        .await
+        .unwrap();
+    let context = json!({"database":"app","server":"127.0.0.1","port":5432,"edition":null});
+    let mut team = team_fixture();
+    team["targets"][0]["expectedPhysicalKey"] = json!(seeds::physical_key(
+        crate::db::provider::DatabaseKind::Postgres,
+        "customer_a",
+        &context
+    ));
+    let content = format!("{}\n", serde_json::to_string_pretty(&team).unwrap());
+    fs::create_dir_all(root.join("database")).unwrap();
+    fs::write(root.join(team::PATH), &content).unwrap();
+    git(&root, &["add", team::PATH]).await.unwrap();
+    git(&root, &["commit", "-m", "Team configuration"])
+        .await
+        .unwrap();
+    let artifact =
+        json!({"teamHash":control::hash(content.trim_end()),"execution":{"context":context}});
+    let mut execution: runner::Request = serde_json::from_value(json!({"connection":{"kind":"postgres","connectionString":"postgres://example.invalid/app","database":"app","schema":"customer_a","projectId":"team-project"},"repo":root.to_str().unwrap(),"targetId":"customer-a","runId":"review-test","artifact":artifact.to_string()})).unwrap();
+    assert!(team::verify_request(&execution).await.unwrap().is_some());
+    execution.connection.schema = "customer_b".into();
+    assert!(team::verify_request(&execution).await.is_err());
+    execution.connection.schema = "customer_a".into();
+    let mut altered = artifact;
+    altered["teamHash"] = json!("0".repeat(64));
+    execution.artifact = altered.to_string();
+    assert!(team::verify_request(&execution).await.is_err());
+    fs::write(root.join(team::PATH), format!("{content}\n")).unwrap();
+    assert!(team::verify_request(&execution)
+        .await
+        .err()
+        .unwrap()
+        .contains("offene Git"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn shared_policy_cannot_silently_diverge_from_git() {
+    let target = team::parse(&team_fixture().to_string())
+        .unwrap()
+        .targets
+        .remove(0);
+    let mut policy = json!({"production":true,"pinnedRelease":null,"requireApproval":true});
+    assert!(team::verify_policy(&target, &policy).is_ok());
+    policy["requireApproval"] = json!(false);
+    assert!(team::verify_policy(&target, &policy).is_err());
+    policy["requireApproval"] = json!(true);
+    policy["production"] = json!(false);
+    assert!(team::verify_policy(&target, &policy).is_err());
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symlinks() {

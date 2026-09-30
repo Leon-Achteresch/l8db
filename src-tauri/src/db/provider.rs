@@ -719,23 +719,21 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             install: vec![],
             install_command,
         },
-        Driver::RuntimeLibrary { .. } => {
-            super::oracle::ensure_client_lib();
-            match oracle::Version::client() {
-                Ok(version) => DriverStatus {
-                    available: true,
-                    detail: format!("Oracle Client {version}"),
-                    install: vec![],
-                    install_command,
-                },
-                Err(e) => DriverStatus {
-                    available: false,
-                    detail: format!("Oracle Instant Client nicht gefunden: {e}"),
-                    install: oracle_hints(),
-                    install_command,
-                },
-            }
-        }
+        Driver::RuntimeLibrary { .. } => match super::oracle::find_client_lib_dir() {
+            Some(_) => DriverStatus {
+                available: true,
+                detail: "Oracle Instant Client gefunden; Prüfung beim Verbindungsaufbau"
+                    .to_string(),
+                install: vec![],
+                install_command,
+            },
+            None => DriverStatus {
+                available: false,
+                detail: "Oracle Instant Client nicht gefunden".to_string(),
+                install: oracle_hints(),
+                install_command,
+            },
+        },
         Driver::Odbc { driver } => {
             let status = odbc_environment_status();
             let mut install = odbc_driver_hints(driver);
@@ -989,6 +987,16 @@ mod tests {
             if matches!(p.driver, Driver::Builtin) {
                 assert!(p.driver_status.available, "{}", p.id);
             }
+        }
+    }
+
+    #[test]
+    fn oracle_driver_detection_does_not_initialize_runtime() {
+        let initialized = oracle::InitParams::is_initialized();
+        let status = kind_driver_status(DatabaseKind::Oracle);
+        assert_eq!(oracle::InitParams::is_initialized(), initialized);
+        if status.available {
+            assert!(status.detail.contains("Prüfung beim Verbindungsaufbau"));
         }
     }
 

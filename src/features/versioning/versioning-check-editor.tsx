@@ -1,5 +1,6 @@
 import { PlusIcon, XIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ReleaseCheck } from "@/lib/versioning/types";
 import { VersioningIconButton } from "./versioning-icon-button";
 
@@ -49,9 +50,9 @@ export function VersioningCheckEditor({
               onClick={() => onChange(value.filter((item) => item.id !== check.id))}
             />
           </div>
-          <textarea
+          <Textarea
             aria-label={`${label} ${index + 1}: SQL`}
-            className="min-h-24 w-full resize-y rounded-lg bg-muted/40 p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-24 resize-y font-mono text-xs"
             placeholder="SELECT COUNT(*) FROM … WHERE …"
             value={check.sql}
             onChange={(event) => update(check.id, "sql", event.target.value)}

@@ -6,6 +6,7 @@ export const NEW_FEATURES = {
   "versioning.branches.swimlanes": "0.7.0",
   "versioning.releases.generate": "0.7.0",
   "versioning.targets.customers": "0.7.0",
+  "versioning.targets.team": "0.7.0",
   "versioning.seeds": "0.7.0",
   "versioning.tab-view": "0.7.0",
   "table.pagination.keyboard": "0.7.0",

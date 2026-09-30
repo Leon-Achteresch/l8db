@@ -893,16 +893,20 @@ impl OracleAdapter {
     }
 
     async fn open_raw(&self) -> Result<Connection, String> {
-        ensure_client_lib();
         self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
             self.password.clone(),
             self.connect_string.clone(),
         );
-        tokio::task::spawn_blocking(move || connect_sync(&user, &password, &connect_string))
-            .await
-            .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+        tokio::task::spawn_blocking(move || {
+            ensure_client_lib();
+            oracle::Version::client()
+                .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
+            connect_sync(&user, &password, &connect_string)
+        })
+        .await
+        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
     async fn conn(&self) -> Result<Arc<Mutex<(Connection, Instant)>>, String> {
@@ -1319,9 +1323,6 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
 #[async_trait]
 impl DatabaseAdapter for OracleAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        ensure_client_lib();
-        oracle::Version::client()
-            .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
         self.rows("SELECT 1 FROM dual".to_string())
             .await
             .map(|_| ())
@@ -2726,7 +2727,7 @@ fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn client_lib_candidates() -> Vec<PathBuf> {
+fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
     let mut dirs = Vec::new();
     if let Some(home) = std::env::var_os("ORACLE_HOME") {
         dirs.push(PathBuf::from(&home).join("lib"));
@@ -2750,6 +2751,17 @@ fn client_lib_candidates() -> Vec<PathBuf> {
         .map(PathBuf::from)
     {
         dirs.push(home.join("lib"));
+    }
+    dirs.into_iter()
+        .chain(std::iter::once_with(discovered_client_lib_candidates).flatten())
+}
+
+fn discovered_client_lib_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
         dirs.extend(instant_client_dirs(&home));
         dirs.extend(instant_client_dirs(&home.join("Downloads")));
     }
@@ -2766,9 +2778,10 @@ fn client_lib_candidates() -> Vec<PathBuf> {
 }
 
 pub fn find_client_lib_dir() -> Option<PathBuf> {
-    find_client_lib_in(&client_lib_candidates())
+    client_lib_candidates().find(|dir| has_client_lib(dir))
 }
 
+#[cfg(test)]
 fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|dir| has_client_lib(dir)).cloned()
 }

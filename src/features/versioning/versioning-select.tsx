@@ -29,10 +29,7 @@ export function VersioningSelect({
       onValueChange={(next) => onChange(next.slice(10))}
       disabled={disabled}
     >
-      <SelectTrigger
-        aria-label={label}
-        className="h-9 w-full min-w-0 rounded-lg border-0 bg-muted/50 text-xs shadow-none dark:bg-muted/40"
-      >
+      <SelectTrigger aria-label={label} className="h-9 w-full min-w-0 text-xs">
         <SelectValue placeholder={placeholder ?? label} />
       </SelectTrigger>
       <SelectContent searchable className="rounded-xl shadow-lg shadow-black/5">

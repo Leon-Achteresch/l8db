@@ -203,6 +203,7 @@ async fn authorize(
     pool: db::pool::PoolState,
     transactions: db::transaction::TransactionState,
 ) -> Result<(), String> {
+    let shared = super::team::verify_request(request).await?;
     let control = control::Request {
         connection: request.connection.clone(),
         action: "authorize".into(),
@@ -215,9 +216,11 @@ async fn authorize(
         schemas: vec![],
         tx_id: None,
     };
-    control::handle(control, pool, transactions)
-        .await
-        .map(|_| ())
+    let current = control::handle(control, pool, transactions).await?;
+    if let Some(target) = shared {
+        super::team::verify_policy(&target, &current["policy"])?;
+    }
+    Ok(())
 }
 #[cfg(test)]
 pub static LOST_COMMIT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);

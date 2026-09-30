@@ -18,6 +18,8 @@ export function targetProgress(
 ) {
   if (target.history.some((event) => event.status === "running" || event.status === "failed"))
     return { label: "Stand abgleichen", pending: 0, state: "blocked" as const };
+  if (!target.connectionId)
+    return { label: "Lokales Profil zuordnen", pending: 0, state: "blocked" as const };
   if (!target.release) return { label: "Baseline prüfen", pending: 0, state: "baseline" as const };
   if (target.paused) return { label: "Updates pausiert", pending: 0, state: "paused" as const };
   const changes = changedFiles(status?.changes ?? "");
