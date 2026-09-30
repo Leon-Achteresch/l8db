@@ -29,6 +29,7 @@ import { VersioningPopover } from "./versioning-popover";
 import { VersioningSelect } from "./versioning-select";
 import { VersioningTargetDetails } from "./versioning-target-details";
 import { VersioningTargetPolicy } from "./versioning-target-policy";
+import { VersioningTeamSettings } from "./versioning-team-settings";
 
 export function VersioningTargets({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, releases, targets, run, refresh } = workspace;
@@ -178,6 +179,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   if (!project || !targets) return null;
   return (
     <div ref={feature.ref} className="flex min-w-0 flex-col gap-5">
+      <VersioningTeamSettings workspace={workspace} />
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -518,6 +520,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                             size="sm"
                             variant="ghost"
                             className="mt-2 h-7 px-2 text-[11px]"
+                            disabled={!target.connectionId}
                             onClick={() =>
                               void run(async () => {
                                 await baselineTarget(

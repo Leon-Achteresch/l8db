@@ -4,6 +4,8 @@ Die Ansicht **Versionierung** verbindet ein lokales Git-Repository mit SQL-Daten
 
 Die [Erweiterung für den produktiven Betrieb](database-versioning-operations.md) beschreibt Release-Linien, Update-Regeln, Datenprüfungen, Sitzungs- und Zeitlimits, Oracle-Metadaten sowie die zugrunde liegende Web-Recherche und verbleibende Grenzen.
 
+Die [Sicherheitsbewertung für den Unternehmenseinsatz](database-versioning-enterprise-review.md) nennt verbindliche offene Punkte und die tatsächlich durchgeführten nativen Labortests. Für einen regulierten Unternehmenseinsatz besteht noch keine Produktionsfreigabe.
+
 Das Git-Symbol oben rechts öffnet die zuletzt verwendete Ansicht. Der Umschalter im Kopf der Versionierung wechselt zwischen Seitenpanel und einem eigenen Tab im Arbeitsbereich. Entwürfe, Zielauswahl und geprüfte Rollout-Pläne bleiben dabei erhalten. Im Panel bleibt der bisherige Arbeitsbereich sichtbar; Transaktionspanel und Versionierung wechseln sich ab. Die Tabs **Übersicht**, **Branches**, **Änderungen**, **Releases**, **Kunden**, **Seeds** und **Aktivität** trennen den nächsten Arbeitsschritt, Git-Verlauf, Dateien, Release-Erstellung, Rollouts und Beispieldaten. Alle Auswahllisten sind durchsuchbar und per Tastatur bedienbar.
 
 Die **Übersicht** zeigt offene Git-Dateien, Release-Entwürfe und Ziele mit Aufgaben. Sie führt von der Schema-Aufnahme über Baseline und Migration zu Kundenzuordnung und Rollout. Fehlende Baselines und ungeklärte Deployments werden als konkrete Aufgaben aufgeführt. Nur commitete Releases derselben Vorgängerkette zählen als verfügbare Updates.
@@ -14,7 +16,7 @@ Das Badge zählt geänderte Git-Dateien, einen ungespeicherten Entwurf sowie Zie
 
 1. Repository öffnen oder Git im gewählten Ordner initialisieren. Git muss installiert und `user.name`/`user.email` eingerichtet sein.
 2. Mit der aktiven SQL-Verbindung ein Projekt anlegen.
-3. In **Änderungen** eine Entwicklungsdatenbank (Verbindung, Datenbank, Schema) verknüpfen. Die Verknüpfung gilt pro Git-Branch auf diesem Rechner (`localStorage`), weil Verbindungs-IDs lokal sind. Ein unter **Branches** zugeordnetes Development-Ziel wird als Quelle angeboten.
+3. In **Änderungen** eine Entwicklungsdatenbank (Verbindung, Datenbank, Schema) verknüpfen. Mit **Verknüpfung in Git speichern** wird die Quelle pro Git-Branch in `database/team.json` geteilt. Verbindungsreferenzen werden auf jedem Rechner ausdrücklich einem lokalen Profil zugeordnet. Ein unter **Branches** zugeordnetes Development-Ziel wird als Quelle angeboten.
 4. **Vergleichen** liest alle unterstützten Objekte des Schemas und zeigt pro Objekt, ob es in der Datenbank abweicht, neu ist oder fehlt, jeweils mit Diff Repository ↔ Datenbank. Ausgewählte Objekte mit **Ins Repository übernehmen** speichern: Neue Objekte werden in `project.json` aufgenommen, in der Datenbank fehlende Objekte samt Datei entfernt. Für die Gegenrichtung öffnet **Repository-Stand im Editor** die gespeicherte Definition als SQL-Tab; ausgeführt wird dabei nichts automatisch.
 5. Unter **Repository** die Dateien prüfen, bearbeiten und gezielt oder mit **Alle für Commit** committen. Oracle-Packages liegen getrennt als `.pks` und `.pkb` vor.
 
@@ -33,7 +35,7 @@ Fetch, Fast-forward-Pull und Push verwenden `origin` und die vorhandene Git-Auth
 
 **Branches** zeigt die letzten 120 Commits aller lokalen und bereits abgerufenen Remote-Branches als Swimlanes mit Verzweigungen und Merge-Verbindungen. Branches können gewechselt und von einer gewählten lokalen Basis angelegt werden. Ein echter Git-Merge übernimmt den Quell-Branch in den aktiven Branch. Er verlangt einen sauberen Arbeitsbaum und bricht bei Konflikten ab; danach bleibt der vorherige Stand erhalten. Der vorhandene Drei-Wege-Dateieditor dient zur gezielten Konfliktauflösung. Ein Merge darf bestehende Release-Manifeste aus der gemeinsamen Basis nicht verändern oder entfernen.
 
-Zusammengeführte lokale Branches lassen sich ohne Force-Delete löschen. Aktiver Branch, Hauptbranches, bekannter `origin`-Standardbranch und Branches mit nicht übernommenen Commits bleiben geschützt. Das Development-Ziel eines Branches wird lokal pro Projekt und Branch gespeichert. Diese Zuordnung verknüpft eine vorhandene Datenbank oder ein vorhandenes Schema; Git legt keine Datenbankkopie an.
+Zusammengeführte lokale Branches lassen sich ohne Force-Delete löschen. Aktiver Branch, Hauptbranches, bekannter `origin`-Standardbranch und Branches mit nicht übernommenen Commits bleiben geschützt. Das Development-Ziel eines Branches wird in `database/team.json` pro Projekt und Branch versioniert. Diese Zuordnung verknüpft eine vorhandene Datenbank oder ein vorhandenes Schema; Git legt keine Datenbankkopie an.
 
 ## Development-Seeds
 
@@ -49,7 +51,7 @@ Zulässig sind ausschließlich schemaqualifizierte `INSERT INTO … VALUES` mit 
 
 Ein Repository enthält die Releases eines Produkts. Beispielsweise kann Kunde A auf `v1`, Kunde B auf `v2` und Kunde C weiterhin auf `v1` stehen. Beim Zielrelease `v3` plant l8db für A die Schritte `v2 → v3` und für B nur `v3`. Nicht ausgewählte Kunden bleiben auf ihrem bisherigen Stand.
 
-Ein Kunde bündelt mehrere Umgebungen, beispielsweise Development, Test und Produktion. Jede Umgebung verweist auf eine eigene Verbindung, Datenbank oder ein abweichendes Schema, auch auf unterschiedlichen Servern. Die Kundenansicht zeigt Server, Datenbank/Schema, aktuellen Release, offene Updates und Blockaden und erlaubt Auswahl pro Kunde oder Ziel. Bestehende Ziele bleiben kompatibel und werden anhand ihres Namens gruppiert. Kunde, Umgebung und Anzeigename können nachträglich bearbeitet werden; das Entfernen einer lokalen Zuordnung löscht keine Datenbank.
+Ein Kunde bündelt mehrere Umgebungen, beispielsweise Development, Test und Produktion. Jede Umgebung verweist auf eine eigene Verbindung, Datenbank oder ein abweichendes Schema, auch auf unterschiedlichen Servern. Die Kundenansicht zeigt Server, Datenbank/Schema, aktuellen Release, offene Updates und Blockaden und erlaubt Auswahl pro Kunde oder Ziel. Bestehende Ziele bleiben kompatibel und werden anhand ihres Namens gruppiert. Kunde, Umgebung und Anzeigename können nachträglich bearbeitet werden; das Entfernen eines gemeinsamen Ziels wird in Git sichtbar und löscht keine Datenbank.
 
 Über **Update-Regeln** lassen sich eine Release-Linie, ein maximal freigegebener Release und eine Pause setzen. Die Vorschau zeigt die Schritte und das SQL jedes Ziels. Vor dem ersten Schreibzugriff werden alle ausgewählten Ziele erneut geprüft. Mehrere ausgewählte Ziele werden nacheinander aktualisiert; beim ersten Fehler endet der Rollout. Bereits erfolgreiche Ziele und Releases behalten ihren neuen Stand.
 
@@ -63,8 +65,11 @@ Für solche Varianten unterstützt der Dateieditor einen Drei-Wege-Merge: gemein
 - `database/objects/`: lesbare Definitionen; Packages mit separater Specification und Body.
 - `database/releases/<id>.json`: vollständiger erwarteter Objektstand, Vorgänger und Migrationen mit SHA-256-Prüfsummen.
 - `database/seeds/seed.sql`: separat versionierte Development-Daten mit INSERT-Anweisungen.
-- Git-Common-Directory, `l8db-targets.json`: lokale Verbindungszuordnungen und detaillierte Deployment-Ereignisse, gemeinsam für Worktrees. Zugangsdaten werden nicht exportiert.
+- `database/team.json`: Kunden, Umgebungen, logische Verbindungen, TLS-/Tunnelanforderungen, Update-Regeln, geprüfte Datenbankidentitäten und Branch-Zuordnungen. Keine Zugangsdaten, lokalen Profil-IDs oder Laufzeit-Historie.
+- Git-Common-Directory, `l8db-targets.json`: private Profilzuordnungen, Baselines und Deployment-Ereignisse, gemeinsam für Worktrees. Zugangsdaten bleiben im OS-Schlüsselbund.
 - Im Zielschema, `L8DB_VERSIONING_STATE`: gemeinsamer Release-Hash, Status und Deployment-Sperre pro Projekt. Die Baseline-Zuordnung legt diese Tabelle an und benötigt entsprechende Rechte.
+
+Unter **Kunden → Teamkonfiguration in Git** können bestehende Zuordnungen übernommen werden. Ein frischer Clone zeigt dieselben Kunden und Regeln, verlangt aber eine ausdrücklich geprüfte lokale Profilzuordnung und den Abgleich der tatsächlichen Baseline. Veränderte Datenbank-/Schema-Identitäten verwerfen den alten lokalen Ausführungsstand. Offene Änderungen an `database/team.json` blockieren Rollouts und Seed-Ausführung. Abweichende Git- und Datenbankregeln blockieren den Rollout ebenfalls; die Datenbank bleibt für die aktuelle Berechtigung maßgeblich. Teamänderungen werden gezielt committet und über den normalen Git-Review geteilt.
 
 Ein gespeicherter Zielrelease verweist auf einen konkreten Git-Commit. Bereits commitete Release-Dateien können über die Oberfläche nicht überschrieben werden. Extern manipulierte Manifest-Prüfsummen, veränderte Ausgangsreleases, fehlende Vorgänger und Zyklen werden abgewiesen.
 

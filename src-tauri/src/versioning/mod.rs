@@ -3,6 +3,7 @@ pub mod metadata;
 pub mod runner;
 pub mod seeds;
 pub mod snapshot;
+mod team;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -632,7 +633,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             let _ = fs::remove_dir_all(dir);
             result
         }
-        "local-read" | "local-write" => {
+        "local-read" | "local-write" | "targets-write" => {
             let common = PathBuf::from(
                 git(
                     &root,
@@ -642,6 +643,15 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 .trim(),
             );
             let file = common.join("l8db-targets.json");
+            if request.action == "targets-write" {
+                team::write(
+                    &root,
+                    &common,
+                    &request.content.ok_or("Inhalt fehlt")?,
+                    request.expected.as_deref(),
+                )?;
+                return Ok(Value::Null);
+            }
             if request.action == "local-read" {
                 return Ok(json!(read(&file)?));
             }

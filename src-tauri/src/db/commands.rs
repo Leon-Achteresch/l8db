@@ -18,7 +18,7 @@ use super::{
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
     super::provider::list_providers()
 }

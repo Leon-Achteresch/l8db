@@ -63,7 +63,9 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
       <VersioningSelect
         label="Development-Ziel dieses Branches"
         value={workspace.branchTargetId}
-        onChange={workspace.setBranchTargetId}
+        onChange={(value) =>
+          void run(() => workspace.setBranchTargetId(value), "Branch-Zuordnung in Git gespeichert")
+        }
         placeholder="Eigene Entwicklungsumgebung zuordnen"
         options={(workspace.targets?.targets ?? [])
           .filter((target) => !target.production)
@@ -73,8 +75,8 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
           }))}
       />
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Der Branchwechsel verändert nur Git-Dateien. Diese lokale Zuordnung wählt die isolierte
-        Datenbank für Schema-Vergleich und Seeds.
+        Der Branchwechsel verändert nur Git-Dateien. Die Zuordnung der Entwicklungsdatenbank wird im
+        Repository geteilt. Jedes Teammitglied verknüpft sein lokales Verbindungsprofil.
       </p>
       <div className="flex items-end gap-2">
         <label

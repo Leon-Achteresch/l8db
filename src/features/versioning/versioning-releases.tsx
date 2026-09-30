@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { versioningRepository } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
@@ -353,10 +354,10 @@ export function VersioningReleases({
               <VersioningSafetyEditor value={safety} onChange={setSafety} />
             </div>
           </details>
-          <textarea
+          <Textarea
             id="vcs-migration-sql"
             aria-label="Migrations-SQL"
-            className="min-h-64 w-full resize-y rounded-lg bg-muted/35 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-64 resize-y font-mono text-xs leading-relaxed"
             value={sql}
             onChange={(event) => {
               setSql(event.target.value);

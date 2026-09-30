@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { DatagenColumnRow } from "@/features/datagen/datagen-column-row";
 import { useConnectionsStore } from "@/lib/connections";
 import { type DatagenPlan, datagenPlan, datagenSeedScript, versioningRunSeed } from "@/lib/db";
@@ -157,7 +158,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
               });
               return;
             }
-            setBranchTargetId(id);
+            void run(() => setBranchTargetId(id), "Branch-Zuordnung in Git gespeichert");
           }}
           placeholder="Development-Umgebung zuordnen"
           options={targets.map((target) => ({
@@ -252,10 +253,10 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
         <label htmlFor="vcs-seed-sql" className="block text-xs font-medium">
           Seed-SQL · <span className="font-mono text-muted-foreground">{SEED_PATH}</span>
         </label>
-        <textarea
+        <Textarea
           id="vcs-seed-sql"
           aria-label="Seed-SQL"
-          className="min-h-64 w-full rounded-lg bg-muted/30 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-h-64 font-mono text-xs leading-relaxed"
           value={sql}
           onChange={(event) => {
             setSql(event.target.value);

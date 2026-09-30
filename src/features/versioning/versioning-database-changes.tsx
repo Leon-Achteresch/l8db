@@ -57,6 +57,14 @@ export function VersioningDatabaseChanges({ workspace }: { workspace: Versioning
         database: target.database,
         schema: target.schema ?? null,
       };
+    const shared = workspace.targets?.branches?.[workspace.status?.branch ?? ""]?.source;
+    if (shared)
+      return {
+        ...EMPTY_COMPARE_SIDE,
+        connectionId: workspace.targets?.connectionBindings?.[shared.connectionRef] ?? null,
+        database: shared.database,
+        schema: shared.schema,
+      };
     const stored =
       project &&
       (localStorage.getItem(sourceKey(project.id, workspace.status?.branch)) ||
@@ -152,9 +160,21 @@ export function VersioningDatabaseChanges({ workspace }: { workspace: Versioning
             className="border-0 bg-transparent p-0"
           />
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Die Verknüpfung gilt nur auf diesem Rechner. Verglichen werden Definitionen, keine
-            Datenzeilen.
+            Teile die Verbindung, Datenbank und das Schema für diesen Branch in Git. Das lokale
+            Profil und seine Zugangsdaten bleiben auf diesem Rechner.
           </p>
+          <Button
+            size="sm"
+            disabled={!ready}
+            onClick={() =>
+              void run(
+                () => workspace.setDevelopmentSource(source),
+                "Entwicklungsverknüpfung in Git gespeichert",
+              )
+            }
+          >
+            Verknüpfung in Git speichern
+          </Button>
         </VersioningPopover>
         <Button size="sm" variant="outline" disabled={!ready} onClick={() => void scan()}>
           <RefreshCwIcon className="size-3.5" />

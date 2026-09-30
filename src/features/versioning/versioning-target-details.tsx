@@ -60,8 +60,8 @@ export function VersioningTargetDetails({
         {removing ? (
           <div className="space-y-2">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Entfernt die lokale Zuordnung samt lokalem Verlauf. Die Datenbank und ihr Journal
-              bleiben erhalten.
+              Entfernt das Ziel aus der gemeinsamen Git-Konfiguration. Die Datenbank und ihr Journal
+              bleiben erhalten. Die Änderung kann in Git geprüft und zurückgenommen werden.
             </p>
             <Button
               size="sm"
@@ -72,7 +72,7 @@ export function VersioningTargetDetails({
                   await removeTarget(workspace.repo, workspace.project.id, target.id);
                   onSaved();
                   await workspace.refresh();
-                }, "Lokale Zuordnung entfernt")
+                }, "Zuordnung aus Git-Konfiguration entfernt")
               }
             >
               Zuordnung entfernen
