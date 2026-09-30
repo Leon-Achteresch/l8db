@@ -5,8 +5,8 @@ import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
 import { invalidateTableReads } from "@/lib/query-client";
-import { useQueryWorkspace } from "@/lib/query-workspace";
 import { runSqlScript } from "@/lib/script-runner";
+import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { useSettingsStore } from "@/lib/settings";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { getQueryTransaction } from "@/lib/transactions";
@@ -90,7 +90,7 @@ export function useScriptRun({
           sql,
           mode,
           stopOnError,
-          selectRowLimit: useQueryWorkspace.getState().selectRowLimit,
+          selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,
           onProgress: setScriptEntries,
         });

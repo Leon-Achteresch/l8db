@@ -191,7 +191,7 @@ export function QueryView({ tabId }: QueryViewProps) {
             onOpenScript={script.handleOpenScriptDialog}
             shortcutLabel={shortcutLabel}
           />
-          {isSql && <SelectRowLimit disabled={exec.isRunning} />}
+          {isSql && <SelectRowLimit />}
           <ToolbarViewControls
             workspace={workspace}
             isSql={isSql}
