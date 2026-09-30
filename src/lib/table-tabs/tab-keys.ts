@@ -1,7 +1,12 @@
-import type { Tab } from "./types";
+import type { Tab, TableTab } from "./types";
+
+const REMOTE_PREFIX = "remote:";
 
 export function tabKey(tab: Tab): string {
-  if (tab.kind === "table") return `table:${tab.schema}.${tab.table}`;
+  if (tab.kind === "table")
+    return tab.connectionId
+      ? `${REMOTE_PREFIX}${JSON.stringify([tab.connectionId, tab.schema, tab.table, tab.entityType ?? "table"])}`
+      : `table:${tab.schema}.${tab.table}`;
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
   if (tab.kind === "procedure") return `procedure:${tab.oid}`;
@@ -14,6 +19,16 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "tool") return `tool:${tab.tool}${tab.id ? `:${tab.id}` : ""}`;
   if (tab.kind === "extension-panel") return `extension-panel:${tab.extensionId}:${tab.panelId}`;
   return `extension:${tab.name}`;
+}
+
+export function remoteTableTab(key: string | null | undefined): TableTab | null {
+  if (!key?.startsWith(REMOTE_PREFIX)) return null;
+  try {
+    const [connectionId, schema, table, entityType] = JSON.parse(key.slice(REMOTE_PREFIX.length));
+    return { kind: "table", schema, table, entityType, connectionId };
+  } catch {
+    return null;
+  }
 }
 
 const NONE_KEY = "__none__";

@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { useConnectionsStore } = await import("../src/lib/connections");
-const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
+const { remoteTableTab, tabKey, useTableTabs } = await import("../src/lib/table-tabs");
 const { MAX_SPLIT_PANES, useSplitView } = await import("../src/lib/split-view");
 
 await useConnectionsStore.persist.rehydrate();
@@ -38,6 +38,7 @@ function reset() {
     masters: [],
     focusedPane: 0,
     byConnection: {},
+    paneConnections: {},
     orientation: "horizontal",
   });
 }
@@ -205,6 +206,50 @@ describe("Verbindung pro Bereich", () => {
     useSplitView.getState().setPaneConnection("table:public.t", b.id);
     useSplitView.getState().clearForConnection(b.id);
     expect(useSplitView.getState().paneConnections).toEqual({});
+  });
+
+  test("Bereich einer anderen Verbindung wählt eigene Tabellen unabhängig von den Tabs", () => {
+    const a = addConnection("A");
+    const b = addConnection("B");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    useTableTabs.getState().openTab({ schema: "public", table: "orders" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    const orders = tabKey({ kind: "table", schema: "public", table: "orders" });
+    const remoteUsers = tabKey({
+      kind: "table",
+      schema: "public",
+      table: "users",
+      connectionId: b.id,
+    });
+    expect(remoteTableTab(users)).toBeNull();
+    expect(remoteTableTab(remoteUsers)).toEqual({
+      kind: "table",
+      schema: "public",
+      table: "users",
+      entityType: "table",
+      connectionId: b.id,
+    });
+
+    useSplitView.getState().addPane(users);
+    useSplitView.getState().setPaneConnection("split-detail:1", b.id);
+    useSplitView.getState().setPaneTable(1, b.id, { schema: "public", table: "users" });
+    expect(useSplitView.getState().panes).toEqual([users, remoteUsers]);
+    expect(useSplitView.getState().paneConnections).toEqual({});
+
+    useTableTabs.getState().closeTab(orders);
+    expect(useSplitView.getState().panes).toEqual([users, remoteUsers]);
+
+    useSplitView.getState().reveal(orders);
+    expect(useSplitView.getState().panes).toEqual([orders, remoteUsers]);
+    expect(useSplitView.getState().focusedPane).toBe(0);
+
+    useSplitView.getState().setPaneTable(0, b.id, { schema: "public", table: "users" });
+    expect(useSplitView.getState().panes).toEqual([orders, remoteUsers]);
+    expect(useSplitView.getState().focusedPane).toBe(1);
+
+    useSplitView.getState().setPaneTable(1, null, { schema: "public", table: "users" });
+    expect(useSplitView.getState().panes).toEqual([orders, users]);
   });
 });
 

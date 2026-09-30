@@ -9,7 +9,7 @@ import {
   removeMaster,
   swapMasters,
 } from "@/lib/split-links";
-import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { remoteTableTab, type Tab, type TableTab, tabKey, useTableTabs } from "@/lib/table-tabs";
 
 export const MAX_SPLIT_PANES = 4;
 
@@ -44,6 +44,11 @@ interface SplitState {
   focusPane: (index: number) => void;
   reveal: (key: string) => void;
   setPane: (index: number, key: string) => void;
+  setPaneTable: (
+    index: number,
+    connectionId: string | null,
+    table: Pick<TableTab, "schema" | "table" | "entityType">,
+  ) => void;
   swapPanes: (from: number, to: number) => void;
   prune: (validKeys: Set<string>) => void;
   clearForConnection: (connectionId: string) => void;
@@ -181,9 +186,14 @@ export const useSplitView = create<SplitState>()(
           if (index !== -1) {
             return index === state.focusedPane ? state : snapshot(state.panes, index, state);
           }
+          const local = state.panes.findIndex((pane) => !remoteTableTab(pane));
+          const target =
+            local !== -1 && remoteTableTab(state.panes[state.focusedPane])
+              ? local
+              : state.focusedPane;
           const panes = [...state.panes];
-          panes[state.focusedPane] = key;
-          return snapshot(panes, state.focusedPane, state);
+          panes[target] = key;
+          return snapshot(panes, target, state);
         }),
 
       setPane: (index, key) =>
@@ -204,6 +214,28 @@ export const useSplitView = create<SplitState>()(
           );
         }),
 
+      setPaneTable: (index, connectionId, table) =>
+        set((state) => {
+          if (index < 0 || index >= state.panes.length) return state;
+          const key = tabKey({
+            kind: "table",
+            schema: table.schema,
+            table: table.table,
+            entityType: table.entityType,
+            connectionId: connectionId ?? undefined,
+          });
+          const existing = state.panes.indexOf(key);
+          if (existing !== -1 && existing !== index) return snapshot(state.panes, existing, state);
+          const scope = keyForConnection(useConnectionsStore.getState().activeId);
+          const paneConnections = { ...state.paneConnections };
+          for (const stale of [key, state.panes[index], `split-detail:${index}`]) {
+            delete paneConnections[`${scope}|${stale}`];
+          }
+          const panes = [...state.panes];
+          panes[index] = key;
+          return { ...snapshot(panes, index, state), paneConnections };
+        }),
+
       swapPanes: (from, to) =>
         set((state) => {
           const max = state.panes.length;
@@ -216,7 +248,9 @@ export const useSplitView = create<SplitState>()(
       prune: (validKeys) =>
         set((state) => {
           if (state.panes.length <= 1) return state;
-          const panes = state.panes.map((key) => (key && validKeys.has(key) ? key : null));
+          const panes = state.panes.map((key) =>
+            key && (validKeys.has(key) || remoteTableTab(key)) ? key : null,
+          );
           if (panes.every((key) => key == null)) return snapshot([], 0, state, []);
           if (panes.every((key, i) => key === state.panes[i])) return state;
           return snapshot(panes, state.focusedPane, state);
@@ -268,17 +302,35 @@ export const useSplitView = create<SplitState>()(
 export function usePaneTabs(): (Tab | undefined)[] {
   const panes = useSplitView((state) => state.panes);
   const tabs = useTableTabs((state) => state.tabs);
-  return panes.map((key) => tabs.find((tab) => tabKey(tab) === key));
+  const connections = useConnectionsStore((state) => state.connections);
+  return panes.map((key) => {
+    const remote = remoteTableTab(key);
+    if (!remote) return tabs.find((tab) => tabKey(tab) === key);
+    return connections.some((entry) => entry.id === remote.connectionId) ? remote : undefined;
+  });
 }
 
 export function usePaneConnectionId(key: string | null): string | null {
   const activeId = useConnectionsStore((state) => state.activeId);
   const connections = useConnectionsStore((state) => state.connections);
   const override = useSplitView((state) =>
-    key ? (state.paneConnections[`${keyForConnection(activeId)}|${key}`] ?? null) : null,
+    key
+      ? (remoteTableTab(key)?.connectionId ??
+        state.paneConnections[`${keyForConnection(activeId)}|${key}`] ??
+        null)
+      : null,
   );
   if (!override || override === activeId) return null;
   return connections.some((entry) => entry.id === override) ? override : null;
+}
+
+export function useFocusedPaneScope(): { index: number; connectionId: string } | null {
+  const index = useSplitView((state) => (state.panes.length > 1 ? state.focusedPane : -1));
+  const tab = usePaneTabs()[index];
+  const connectionId = usePaneConnectionId(
+    index === -1 ? null : tab ? tabKey(tab) : `split-detail:${index}`,
+  );
+  return connectionId ? { index, connectionId } : null;
 }
 
 let splitConnectionId = useConnectionsStore.getState().activeId;
