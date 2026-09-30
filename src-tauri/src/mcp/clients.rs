@@ -45,6 +45,14 @@ const CLIENTS: &[ClientSpec] = &[
         format: Format::Toml,
     },
     ClientSpec {
+        id: "copilot",
+        name: "GitHub Copilot CLI",
+        marker: ".copilot",
+        config: ".copilot/mcp-config.json",
+        app_support: false,
+        format: Format::Json("mcpServers"),
+    },
+    ClientSpec {
         id: "gemini",
         name: "Gemini CLI",
         marker: ".gemini",
@@ -219,6 +227,10 @@ pub fn register(paths: &Paths, id: &str, on: bool, exe: &Path) -> Result<(), Str
                 if spec.id == "vscode" {
                     entry["type"] = json!("stdio");
                 }
+                if spec.id == "copilot" {
+                    entry["type"] = json!("local");
+                    entry["tools"] = json!(["*"]);
+                }
                 servers.insert(SERVER_KEY.into(), entry);
             } else {
                 servers.remove(SERVER_KEY);
@@ -369,6 +381,15 @@ mod tests {
                 .find(|c| c.id == "opencode")
                 .unwrap()
                 .registered
+        );
+        register(&paths, "copilot", true, Path::new("/opt/l8db")).unwrap();
+        let root: Value = serde_json::from_str(
+            &std::fs::read_to_string(paths.home.join(".copilot/mcp-config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            root["mcpServers"]["l8db"],
+            json!({"type": "local", "command": "/opt/l8db", "args": ["--mcp"], "tools": ["*"]})
         );
         register(&paths, "cursor", true, Path::new("/x")).unwrap();
         assert!(paths.home.join(".cursor/mcp.json").exists());
