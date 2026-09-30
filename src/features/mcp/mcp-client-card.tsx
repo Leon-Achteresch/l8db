@@ -1,6 +1,8 @@
 import { Check, FolderCode, MinusCircle, PlusCircle, Terminal } from "lucide-react";
+import { ThesvgIcon } from "@/components/provider-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { mcpClientSvg } from "@/features/mcp/mcp-client-icons";
 import type { McpClient } from "@/lib/mcp";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +12,7 @@ interface McpClientCardProps {
 }
 
 export function McpClientCard({ client, onToggle }: McpClientCardProps) {
+  const logo = mcpClientSvg(client.id);
   return (
     <div
       className={cn(
@@ -30,7 +33,11 @@ export function McpClientCard({ client, onToggle }: McpClientCardProps) {
                   : "bg-background/80 text-muted-foreground",
               )}
             >
-              <Terminal className="size-5" />
+              {logo ? (
+                <ThesvgIcon svg={logo} className="size-5" />
+              ) : (
+                <Terminal className="size-5" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
