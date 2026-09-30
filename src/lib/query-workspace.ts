@@ -8,7 +8,6 @@ export interface QueryWorkspaceOptions {
   navigatorVisible: boolean;
   navigatorShare: number;
   runTarget: QueryRunTarget;
-  selectRowLimit: number;
   statusVisible: boolean;
   folding: boolean;
   stickyScroll: boolean;
@@ -31,7 +30,6 @@ export const QUERY_WORKSPACE_DEFAULTS: QueryWorkspaceOptions = {
   navigatorVisible: false,
   navigatorShare: 22,
   runTarget: "selection-or-all",
-  selectRowLimit: 0,
   statusVisible: true,
   folding: true,
   stickyScroll: false,
@@ -66,7 +64,6 @@ export function sanitizeWorkspace(value: unknown): Partial<QueryWorkspaceOptions
     resultView: ["table", "json"],
   };
   const limits: Record<string, [number, number]> = {
-    selectRowLimit: [0, 100000],
     editorShare: [20, 80],
     navigatorShare: [15, 40],
     resultFontSize: [10, 20],
@@ -79,10 +76,7 @@ export function sanitizeWorkspace(value: unknown): Partial<QueryWorkspaceOptions
     else if (choices[key] && typeof candidate === "string" && choices[key].includes(candidate))
       output[key] = candidate;
     else if (limits[key] && typeof candidate === "number" && Number.isFinite(candidate)) {
-      output[key] = Math.min(
-        limits[key][1],
-        Math.max(limits[key][0], key === "selectRowLimit" ? Math.floor(candidate) : candidate),
-      );
+      output[key] = Math.min(limits[key][1], Math.max(limits[key][0], candidate));
     }
   }
   return output as Partial<QueryWorkspaceOptions>;
