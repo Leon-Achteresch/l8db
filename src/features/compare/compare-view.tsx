@@ -159,6 +159,8 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         onDiscard={() => update({ draft: null, draftBase: null, sourceBase: null })}
         onlyDifferences={workspace.onlyDifferences}
         onOnlyDifferencesChange={(onlyDifferences) => update({ onlyDifferences })}
+        syncScroll={workspace.syncScroll ?? false}
+        onSyncScrollChange={(syncScroll) => update({ syncScroll })}
       />
     </div>
   );

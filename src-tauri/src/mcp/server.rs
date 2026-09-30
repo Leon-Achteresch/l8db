@@ -601,17 +601,6 @@ pub(super) fn find_connection<'a>(
         })
 }
 
-fn keychain_password(id: &str) -> Result<Option<String>, String> {
-    match keyring::Entry::new(config::KEYCHAIN_SERVICE, id)
-        .map_err(|e| format!("Keychain: {e}"))?
-        .get_password()
-    {
-        Ok(secret) => Ok(Some(secret)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Keychain: {e}")),
-    }
-}
-
 pub fn with_password(connection: &McpConnection, password: Option<&str>) -> String {
     let raw = &connection.connection_string;
     if !raw.contains("://") {
@@ -646,7 +635,7 @@ pub(super) fn adapter(
 ) -> Result<Box<dyn db::DatabaseAdapter>, String> {
     let password = match connection.kind {
         DatabaseKind::Sqlite | DatabaseKind::Duckdb => None,
-        _ => keychain_password(&connection.id)?,
+        _ => crate::db::secrets::read_secret(&connection.id)?,
     };
     let url = with_password(connection, password.as_deref());
     db::create_adapter_from_string(

@@ -49,6 +49,7 @@ export interface CompareWorkspace {
   draftBase?: string | null;
   sourceBase?: string | null;
   onlyDifferences: boolean;
+  syncScroll?: boolean;
 }
 export type ToolTab = {
   kind: "tool";

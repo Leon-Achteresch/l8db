@@ -5,6 +5,8 @@ export interface DefinitionHunk {
   draftEnd: number;
 }
 
+const MAX_EDITS = 4_000;
+
 export function definitionHunks(source: string, draft: string): DefinitionHunk[] {
   const a = source.split("\n");
   const b = draft.split("\n");
@@ -17,52 +19,58 @@ export function definitionHunks(source: string, draft: string): DefinitionHunk[]
     bEnd--;
   }
   if (start === aEnd && start === bEnd) return [];
-  if ((aEnd - start) * (bEnd - start) > 300_000)
-    return [{ sourceStart: start, sourceEnd: aEnd, draftStart: start, draftEnd: bEnd }];
-
-  const width = bEnd - start + 1;
-  const lengths = new Uint32Array((aEnd - start + 1) * width);
-  for (let i = aEnd - start - 1; i >= 0; i--) {
-    for (let j = bEnd - start - 1; j >= 0; j--) {
-      const offset = i * width + j;
-      lengths[offset] =
-        a[start + i] === b[start + j]
-          ? lengths[(i + 1) * width + j + 1] + 1
-          : Math.max(lengths[(i + 1) * width + j], lengths[offset + 1]);
+  const n = aEnd - start;
+  const m = bEnd - start;
+  const maxEdits = Math.min(n + m, MAX_EDITS);
+  const v = new Int32Array(2 * maxEdits + 3);
+  const trace: Int32Array[] = [];
+  const x0 = (k: number) => v[k + maxEdits + 1];
+  for (let d = 0; d <= maxEdits; d++) {
+    trace.push(v.slice(maxEdits + 1 - d, maxEdits + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && x0(k - 1) < x0(k + 1)) ? x0(k + 1) : x0(k - 1) + 1;
+      let y = x - k;
+      while (x < n && y < m && a[start + x] === b[start + y]) {
+        x++;
+        y++;
+      }
+      v[k + maxEdits + 1] = x;
+      if (x >= n && y >= m) return backtrack(trace, n, m, start);
     }
   }
+  return [{ sourceStart: start, sourceEnd: aEnd, draftStart: start, draftEnd: bEnd }];
+}
 
+function backtrack(trace: Int32Array[], n: number, m: number, offset: number): DefinitionHunk[] {
   const hunks: DefinitionHunk[] = [];
-  let i = start;
-  let j = start;
-  let current: DefinitionHunk | null = null;
-  const flush = () => {
-    if (current) hunks.push(current);
-    current = null;
-  };
-  while (i < aEnd || j < bEnd) {
-    if (i < aEnd && j < bEnd && a[i] === b[j]) {
-      flush();
-      i++;
-      j++;
-      continue;
-    }
-    current ??= { sourceStart: i, sourceEnd: i, draftStart: j, draftEnd: j };
-    if (
-      i < aEnd &&
-      (j === bEnd ||
-        lengths[(i + 1 - start) * width + j - start] >=
-          lengths[(i - start) * width + j + 1 - start])
-    ) {
-      i++;
-      current.sourceEnd = i;
+  let x = n;
+  let y = m;
+  for (let d = trace.length - 1; d > 0; d--) {
+    const v = trace[d];
+    const at = (k: number) => v[k + d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const prevX = at(prevK);
+    const prevY = prevX - prevK;
+    const insert = prevK === k + 1;
+    const editX = insert ? prevX : prevX + 1;
+    const editY = insert ? prevY + 1 : prevY;
+    x = prevX;
+    y = prevY;
+    const last = hunks.at(-1);
+    if (last && last.sourceStart === editX + offset && last.draftStart === editY + offset) {
+      last.sourceStart = x + offset;
+      last.draftStart = y + offset;
     } else {
-      j++;
-      current.draftEnd = j;
+      hunks.push({
+        sourceStart: x + offset,
+        sourceEnd: editX + offset,
+        draftStart: y + offset,
+        draftEnd: editY + offset,
+      });
     }
   }
-  flush();
-  return hunks;
+  return hunks.reverse();
 }
 
 export function applyDefinitionHunk(source: string, draft: string, hunk: DefinitionHunk): string {

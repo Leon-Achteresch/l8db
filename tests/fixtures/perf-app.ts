@@ -204,6 +204,9 @@ export async function seedApp(
         }
       };
       Object.assign(window, {
+        __TAURI_EVENT_PLUGIN_INTERNALS__: {
+          unregisterListener: () => {},
+        },
         __TAURI_INTERNALS__: {
           metadata: {
             currentWindow: { label: "main" },
