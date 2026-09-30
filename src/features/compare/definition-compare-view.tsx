@@ -1,5 +1,6 @@
 import {
   ArrowDownIcon,
+  ArrowUpDownIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   EllipsisIcon,
@@ -8,6 +9,7 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,6 +31,8 @@ import {
 } from "@/lib/compare-definition";
 import { useConnectionsStore } from "@/lib/connections";
 import { definitionHunks, draftLineOrigins } from "@/lib/definition-merge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { createScrollSyncGroup } from "@/lib/monaco/scroll-sync";
 
 interface SideState {
   definition: string;
@@ -58,6 +62,8 @@ type DefinitionCompareViewProps = Extract<CompareSetupProps, { mode: "definition
   onDiscard: () => void;
   onlyDifferences: boolean;
   onOnlyDifferencesChange: (value: boolean) => void;
+  syncScroll: boolean;
+  onSyncScrollChange: (value: boolean) => void;
 };
 
 export function DefinitionCompareView(props: DefinitionCompareViewProps) {
@@ -69,6 +75,9 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const [transferSide, setTransferSide] = useState<"left" | "right">("left");
   const draftRef = useRef<MergeDraftApi>(null);
+  const [scrollSync] = useState(createScrollSyncGroup);
+  scrollSync.enabled = props.syncScroll;
+  const syncScrollFeature = useNewFeatureVisibility<HTMLButtonElement>("compare.scroll-sync");
   const changeIndex = useRef(-1);
   const draft = props.draft ?? rightState.definition;
   const transferState = transferSide === "left" ? leftState : rightState;
@@ -194,6 +203,19 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
         >
           <ChevronDownIcon className="size-3" />
         </Button>
+        <Button
+          ref={syncScrollFeature.ref}
+          size="sm"
+          variant={props.syncScroll ? "secondary" : "ghost"}
+          className="h-7 gap-1.5 px-2 text-xs"
+          aria-pressed={props.syncScroll}
+          title="Quelle, Ziel und Entwurf gemeinsam scrollen"
+          onClick={() => props.onSyncScrollChange(!props.syncScroll)}
+        >
+          <ArrowUpDownIcon className="size-3" />
+          Synchron scrollen
+          {syncScrollFeature.isNew && <NewBadge />}
+        </Button>
         <div className="ml-auto flex items-center gap-1">
           {props.workspaceActions}
           <DropdownMenu>
@@ -297,6 +319,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   selected={transferSide === "left"}
                   onSelect={() => setTransferSide("left")}
                   onDraftChange={changeDraft}
+                  scrollSync={scrollSync}
                 />
               </div>
               <div className="min-w-0 flex-1">
@@ -308,6 +331,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   selected={transferSide === "right"}
                   onSelect={() => setTransferSide("right")}
                   onDraftChange={changeDraft}
+                  scrollSync={scrollSync}
                 />
               </div>
             </div>
@@ -339,6 +363,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                   value={draft}
                   origins={origins}
                   onChange={changeDraft}
+                  scrollSync={scrollSync}
                 />
                 <div className="pointer-events-none absolute top-2 right-4 z-10 flex items-center gap-3 rounded-md border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
                   <span className="flex items-center gap-1.5">

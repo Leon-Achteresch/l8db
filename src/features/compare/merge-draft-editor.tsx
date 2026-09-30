@@ -2,6 +2,7 @@ import { useTheme } from "next-themes";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import type { DraftLineOrigin } from "@/lib/definition-merge";
 import { monaco } from "@/lib/monaco";
+import { joinScrollSyncGroup, type ScrollSyncGroup } from "@/lib/monaco/scroll-sync";
 import "./merge-reference-editor.css";
 
 export interface MergeDraftApi {
@@ -13,9 +14,10 @@ interface Props {
   origins: (DraftLineOrigin | null)[];
   onChange: (value: string) => void;
   ref?: Ref<MergeDraftApi>;
+  scrollSync?: ScrollSyncGroup;
 }
 
-export function MergeDraftEditor({ value, origins, onChange, ref }: Props) {
+export function MergeDraftEditor({ value, origins, onChange, ref, scrollSync }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
@@ -48,16 +50,18 @@ export function MergeDraftEditor({ value, origins, onChange, ref }: Props) {
     const subscription = model.onDidChangeContent(() => {
       if (!syncing.current) callback.current(model.getValue());
     });
+    const leaveScrollSync = scrollSync && joinScrollSyncGroup(scrollSync, instance);
     editor.current = instance;
     decorations.current = instance.createDecorationsCollection();
     return () => {
+      leaveScrollSync?.();
       decorations.current = null;
       subscription.dispose();
       instance.dispose();
       model.dispose();
       editor.current = null;
     };
-  }, []);
+  }, [scrollSync]);
 
   useEffect(() => {
     const model = editor.current?.getModel();

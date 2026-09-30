@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use crate::db::DatabaseKind;
 
 pub const APP_IDENTIFIER: &str = "com.leon.l8db";
-pub const KEYCHAIN_SERVICE: &str = "l8db";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
