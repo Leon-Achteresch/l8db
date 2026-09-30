@@ -8,6 +8,7 @@ import { FontLab } from "./font-lab";
 import { ProviderPickerLab } from "./provider-picker-lab";
 import { SettingsDesignLab } from "./settings-design-lab";
 import { TabPreview } from "./tab-preview";
+import { ToastDropLab } from "./toast-drop-lab";
 
 const variants = [
   {
@@ -73,6 +74,9 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="settings-design" className="flex-none px-4">
               Einstellungen
+            </TabsTrigger>
+            <TabsTrigger value="toast" className="flex-none px-4">
+              Toast
             </TabsTrigger>
           </TabsList>
         </div>
@@ -179,6 +183,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="settings-design">
           <SettingsDesignLab />
+        </TabsContent>
+        <TabsContent value="toast">
+          <ToastDropLab />
         </TabsContent>
       </Tabs>
     </main>

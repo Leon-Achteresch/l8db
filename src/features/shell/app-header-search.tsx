@@ -257,6 +257,7 @@ export function AppHeaderSearch() {
         type="button"
         ref={searchButtonRef}
         data-tour="header-search"
+        data-toast-origin
         aria-label="Suchen"
         onClick={() => setOpen(true)}
         style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
