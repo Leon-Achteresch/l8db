@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -281,13 +280,11 @@ function ConnectionCardShell({
 
   return (
     <motion.article
-      layout
       initial={reduce ? false : { opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ layout: SPRING_LAYOUT }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-all duration-200 hover:border-foreground/25 hover:shadow-md",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-foreground/25 hover:shadow-md",
         active
           ? "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/30 shadow-xs"
           : "border-border/80",
