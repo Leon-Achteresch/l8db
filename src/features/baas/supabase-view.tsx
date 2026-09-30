@@ -14,7 +14,7 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { SupabaseProjectView } from "./supabase-project-view";
 
-export function SupabaseView() {
+export function SupabaseView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
   const connected = useQuery({ queryKey: ["supabase", "connected"], queryFn: supabaseIsConnected });
   const projects = useQuery({
@@ -23,7 +23,7 @@ export function SupabaseView() {
     enabled: connected.data === true,
   });
   const [token, setToken] = useState("");
-  const [selectedRef, setSelectedRef] = useState<string | null>(null);
+  const [selectedRef, setSelectedRef] = useState<string | null>(initialId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase");

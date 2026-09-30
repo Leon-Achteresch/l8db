@@ -1,10 +1,11 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   appwriteProfiles,
   convexProfiles,
   firebaseProfiles,
   pocketbaseProfiles,
   supabaseIsConnected,
+  supabaseProjects,
 } from "@/lib/db";
 import type { BaasProvider } from "./baas-providers";
 
@@ -16,26 +17,38 @@ export interface BaasConnection {
 }
 
 export function useBaasConnections(): BaasConnection[] {
-  const [supabase, appwrite, pocketbase, convex, firebase] = useQueries({
+  const supabase = useQuery({ queryKey: ["supabase", "connected"], queryFn: supabaseIsConnected });
+  const [projects, appwrite, pocketbase, convex, firebase] = useQueries({
     queries: [
-      { queryKey: ["supabase", "connected"], queryFn: supabaseIsConnected },
+      {
+        queryKey: ["supabase", "projects"],
+        queryFn: supabaseProjects,
+        enabled: supabase.data === true,
+      },
       { queryKey: ["appwrite", "profiles"], queryFn: appwriteProfiles },
       { queryKey: ["pocketbase", "profiles"], queryFn: pocketbaseProfiles },
       { queryKey: ["convex", "profiles"], queryFn: convexProfiles },
       { queryKey: ["firebase", "profiles"], queryFn: firebaseProfiles },
     ],
   });
+  const supabaseEmpty = supabase.data === true && projects.data?.length === 0;
   return [
-    ...(supabase.data
+    ...(supabaseEmpty
       ? [
           {
             provider: "supabase" as const,
-            id: "supabase",
+            id: "",
             name: "Supabase",
-            detail: "Alle Projekte des Zugangstokens",
+            detail: "Keine Projekte sichtbar",
           },
         ]
       : []),
+    ...(supabase.data ? (projects.data ?? []) : []).map((item) => ({
+      provider: "supabase" as const,
+      id: item.reference,
+      name: item.name,
+      detail: item.region ?? item.reference,
+    })),
     ...(appwrite.data ?? []).map((item) => ({
       provider: "appwrite" as const,
       id: item.id,
@@ -51,7 +64,7 @@ export function useBaasConnections(): BaasConnection[] {
     ...(convex.data ?? []).map((item) => ({
       provider: "convex" as const,
       id: item.id,
-      name: "Convex",
+      name: `Convex-Team ${item.team_id}`,
       detail: `Team ${item.team_id}`,
     })),
     ...(firebase.data ?? []).map((item) => ({

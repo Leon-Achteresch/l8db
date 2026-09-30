@@ -43,7 +43,10 @@ export function AppwriteResourceCard<T extends ResourceItem>({
   });
 
   return (
-    <section className="min-w-0 rounded-2xl border bg-card p-5">
+    <section
+      data-baas-section={kind === "users" ? "auth" : kind}
+      className="min-w-0 scroll-mt-6 rounded-2xl border bg-card p-5"
+    >
       <div className="flex items-center gap-2">
         {icon}
         <h3 className="text-sm font-semibold">{title}</h3>

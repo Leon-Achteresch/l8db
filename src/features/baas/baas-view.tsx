@@ -1,5 +1,6 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { AppwriteView } from "./appwrite-view";
 import { ConvexView } from "./convex-view";
@@ -10,7 +11,18 @@ import { SupabaseView } from "./supabase-view";
 const route = getRouteApi("/baas");
 
 export function BaasView() {
-  const { provider, id } = route.useSearch();
+  const { provider, id, section } = route.useSearch();
+
+  useEffect(() => {
+    if (!section) return;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const target = document.querySelector(`[data-baas-section~="${section}"]`);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (target || Date.now() - started > 8000) clearInterval(timer);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [section]);
 
   return (
     <main className="h-full min-h-0 flex-1 overflow-auto bg-background">
@@ -23,7 +35,7 @@ export function BaasView() {
         </Button>
       </div>
       {provider === "supabase" ? (
-        <SupabaseView />
+        <SupabaseView key={id} initialId={id} />
       ) : provider === "appwrite" ? (
         <AppwriteView key={id} initialId={id} />
       ) : provider === "pocketbase" ? (
