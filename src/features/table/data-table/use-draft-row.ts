@@ -3,14 +3,23 @@ import { toast } from "sonner";
 import { type DuplicatePrefill, describeInsertError } from "@/lib/row-duplicate";
 import type { DataTableProps } from "../data-table-types";
 
-export function useDraftRow(onInsertRow: DataTableProps["onInsertRow"]) {
-  const [draft, setDraft] = useState<DuplicatePrefill | null>(null);
+const savedDrafts = new Map<string, DuplicatePrefill>();
+
+export function useDraftRow(onInsertRow: DataTableProps["onInsertRow"], key: string) {
+  const [draft, setDraft] = useState<DuplicatePrefill | null>(() =>
+    onInsertRow ? (savedDrafts.get(key) ?? null) : null,
+  );
   const [insertError, setInsertError] = useState<string | null>(null);
   const [isInserting, setIsInserting] = useState(false);
   const insertInFlight = useRef(false);
   const draftRef = useRef<HTMLTableSectionElement>(null);
   const [draftHeight, setDraftHeight] = useState(0);
   const hasDraft = draft !== null;
+
+  useEffect(() => {
+    if (draft) savedDrafts.set(key, draft);
+    else savedDrafts.delete(key);
+  }, [draft, key]);
 
   useEffect(() => {
     const element = draftRef.current;
