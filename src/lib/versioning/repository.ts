@@ -109,6 +109,9 @@ export async function readTargets(
         !t.id ||
         !t.name ||
         !t.connectionId ||
+        (t.customer !== undefined && (typeof t.customer !== "string" || !t.customer.trim())) ||
+        (t.environment !== undefined &&
+          (typeof t.environment !== "string" || !t.environment.trim())) ||
         !Array.isArray(t.history) ||
         (t.track !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(t.track)) ||
         (t.paused !== undefined && typeof t.paused !== "boolean") ||

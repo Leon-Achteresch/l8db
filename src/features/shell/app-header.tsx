@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Bot, GitBranchIcon, GitPullRequestIcon, PlugZap, RefreshCw, Settings } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/motion/theme-toggle";
@@ -19,6 +19,7 @@ import { useHasNewFeatures } from "@/lib/new-features";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { useRefreshConnection } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
+import { useTableTabs } from "@/lib/table-tabs";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { useVersioningPanel } from "@/lib/versioning/panel";
@@ -34,6 +35,7 @@ function headerSection(pathname: string) {
 }
 
 export function AppHeader() {
+  const navigate = useNavigate();
   const headerRef = useRef<HTMLElement>(null);
   const leadingRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLElement>(null);
@@ -50,6 +52,7 @@ export function AppHeader() {
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
   const update = useVisibleUpdate();
   const hasNewSettingsFeatures = useHasNewFeatures("settings");
+  const hasNewVersioningFeatures = useHasNewFeatures("versioning");
 
   useWindowTitle();
 
@@ -196,8 +199,14 @@ export function AppHeader() {
               }
               aria-expanded={versioning.open}
               aria-controls="versioning-panel"
-              aria-description="Beta"
-              onClick={() => versioning.setOpen(!versioning.open)}
+              aria-description={hasNewVersioningFeatures ? "Neue Funktionen" : "Beta"}
+              onClick={() => {
+                if (versioning.mode === "tab") {
+                  useTableTabs.getState().openToolTab("versioning");
+                  versioning.setOpen(true);
+                  void navigate({ to: "/versioning" });
+                } else versioning.setOpen(!versioning.open);
+              }}
               className={cn(
                 "relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                 versioning.open && "bg-primary/12 text-foreground",
@@ -205,7 +214,7 @@ export function AppHeader() {
             >
               <GitPullRequestIcon className="size-4" strokeWidth={2} />
               <span className="pointer-events-none absolute -right-2 -top-0.5 rounded-full bg-primary px-1 font-medium text-[8px] text-primary-foreground leading-[1.3]">
-                Beta
+                {hasNewVersioningFeatures ? "NEW" : "Beta"}
               </span>
               {versioning.pending > 0 ? (
                 <span

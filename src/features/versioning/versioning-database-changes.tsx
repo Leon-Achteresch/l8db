@@ -38,7 +38,8 @@ const STATUS: Record<DriftStatus, { label: string; className: string }> = {
   removed: { label: "Fehlt in DB", className: "text-destructive" },
 };
 
-const sourceKey = (projectId: string) => `l8db.versioning.source.${projectId}`;
+const sourceKey = (projectId: string, branch: string | null | undefined) =>
+  `l8db.versioning.source.${projectId}.${branch ?? "HEAD"}`;
 
 export function VersioningDatabaseChanges({ workspace }: { workspace: VersioningWorkspace }) {
   const { repo, project, projectText, run, refresh } = workspace;
@@ -46,7 +47,20 @@ export function VersioningDatabaseChanges({ workspace }: { workspace: Versioning
   const connections = useConnectionsStore((state) => state.connections);
   const active = useActiveConnection();
   const [source, setSourceState] = useState<CompareSideSelection>(() => {
-    const stored = project && localStorage.getItem(sourceKey(project.id));
+    const target = workspace.targets?.targets.find(
+      (target) => target.id === workspace.branchTargetId && !target.production,
+    );
+    if (target)
+      return {
+        ...EMPTY_COMPARE_SIDE,
+        connectionId: target.connectionId,
+        database: target.database,
+        schema: target.schema ?? null,
+      };
+    const stored =
+      project &&
+      (localStorage.getItem(sourceKey(project.id, workspace.status?.branch)) ||
+        localStorage.getItem(`l8db.versioning.source.${project.id}`));
     if (stored)
       try {
         return JSON.parse(stored) as CompareSideSelection;
@@ -67,7 +81,7 @@ export function VersioningDatabaseChanges({ workspace }: { workspace: Versioning
   const setSource = (next: CompareSideSelection) => {
     const scope = { ...next, objectName: null, objectOid: null };
     setSourceState(scope);
-    localStorage.setItem(sourceKey(project.id), JSON.stringify(scope));
+    localStorage.setItem(sourceKey(project.id, workspace.status?.branch), JSON.stringify(scope));
     setEntries(null);
   };
   const scan = () =>

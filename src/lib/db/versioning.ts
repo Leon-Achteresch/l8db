@@ -51,6 +51,18 @@ export function versioningRunStatus(id: string): Promise<VersioningRunStatus> {
   return invoke("versioning_run_status", { id });
 }
 
+export function versioningRunSeed(request: Record<string, unknown>): Promise<number> {
+  const connection = request.connection as
+    | { connectionString?: string; readOnly?: boolean }
+    | undefined;
+  if (connection?.readOnly || isReadOnlyActive(connection?.connectionString))
+    return Promise.reject(new Error(READ_ONLY_MESSAGE));
+  return invoke("versioning_run_seed", {
+    request,
+    connectionString: connection?.connectionString,
+  });
+}
+
 export function versioningRunFleet(requests: Record<string, unknown>[]): Promise<string> {
   for (const request of requests) {
     const connection = request.connection as

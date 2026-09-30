@@ -1944,6 +1944,81 @@ pub async fn datagen_preview(
     preview(adapter.as_ref(), kind, &request).await
 }
 
+pub async fn seed_script(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    request: &DatagenRequest,
+) -> Result<String, String> {
+    if request.rows == 0 || request.rows > 1000 || request.source.is_some() {
+        return Err("Seeds benötigen 1 bis 1000 synthetische Zeilen pro Tabelle.".into());
+    }
+    if request
+        .columns
+        .iter()
+        .any(|column| matches!(column.generator, Generator::Sql { .. }))
+    {
+        return Err("SQL-Ausdrücke sind im Seed-Generator nicht zulässig.".into());
+    }
+    validate(kind, request)?;
+    let mut source = RowSource::new(adapter, kind, request).await?;
+    let rows = source.batch(adapter, 0, request.rows).await?;
+    if rows.len() as u64 != request.rows {
+        return Err("Nicht alle Seed-Zeilen konnten erzeugt werden.".into());
+    }
+    if kind == DatabaseKind::Oracle {
+        let names = source
+            .columns()
+            .iter()
+            .map(|column| quote(kind, &column.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Ok(rows
+            .iter()
+            .map(|row| {
+                format!(
+                    "INSERT INTO {} ({names}) VALUES ({});",
+                    qualified(kind, &request.schema, &request.table),
+                    row.iter()
+                        .map(|value| literal(kind, value))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    rows.chunks(100)
+        .map(|batch| {
+            insert_statement(
+                kind,
+                &request.schema,
+                &request.table,
+                source.columns(),
+                batch,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|statements| statements.join(";\n\n") + ";\n")
+}
+
+#[tauri::command]
+pub async fn datagen_seed_script(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    request: DatagenRequest,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<String, String> {
+    let database = scoped_database(kind, database, &request.schema);
+    let adapter = super::create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?;
+    seed_script(adapter.as_ref(), kind, &request).await
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn datagen_run(
@@ -2309,6 +2384,79 @@ mod tests {
 
     fn cell(row: &Value, key: &str) -> String {
         row[key].to_string().trim_matches('"').to_string()
+    }
+
+    #[tokio::test]
+    async fn seed_script_exports_all_rows_reproducibly_without_inserting() {
+        let path =
+            std::env::temp_dir().join(format!("l8db-seed-export-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Sqlite,
+            &format!("sqlite://{}", path.display()),
+            None,
+            crate::db::pool::create_pool_state(),
+        )
+        .unwrap();
+        adapter
+            .execute_query(
+                "CREATE TABLE people (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE)",
+            )
+            .await
+            .unwrap();
+        let mut request = request(
+            vec![
+                column("id", "integer", Generator::Sequence { start: 1, step: 1 }),
+                column("email", "text", Generator::Email),
+            ],
+            vec![vec!["email".into()]],
+        );
+        request.schema = "main".into();
+        request.table = "people".into();
+        request.rows = 125;
+        let first = seed_script(adapter.as_ref(), DatabaseKind::Sqlite, &request)
+            .await
+            .unwrap();
+        let second = seed_script(adapter.as_ref(), DatabaseKind::Sqlite, &request)
+            .await
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            adapter
+                .execute_query("SELECT COUNT(*) AS count FROM people")
+                .await
+                .unwrap()
+                .rows[0]["count"],
+            0
+        );
+        for sql in super::super::split_statements(&first) {
+            adapter.execute_query(&sql).await.unwrap();
+        }
+        assert_eq!(
+            adapter
+                .execute_query("SELECT COUNT(*) AS count FROM people")
+                .await
+                .unwrap()
+                .rows[0]["count"],
+            125
+        );
+        request.rows = 1001;
+        assert!(
+            seed_script(adapter.as_ref(), DatabaseKind::Sqlite, &request)
+                .await
+                .is_err()
+        );
+        request.rows = 1;
+        request.columns[0].generator = Generator::Sql {
+            expression: "1".into(),
+        };
+        assert!(
+            seed_script(adapter.as_ref(), DatabaseKind::Sqlite, &request)
+                .await
+                .is_err()
+        );
+        drop(adapter);
+        let _ = std::fs::remove_file(path);
     }
 
     #[tokio::test]

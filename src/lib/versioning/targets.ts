@@ -49,7 +49,10 @@ export async function addTarget(
   repo: string,
   project: VersioningProject,
   connections: SavedConnection[],
-  input: Pick<DatabaseTarget, "name" | "connectionId" | "database" | "schema" | "production">,
+  input: Pick<
+    DatabaseTarget,
+    "name" | "connectionId" | "database" | "schema" | "production" | "customer" | "environment"
+  >,
 ) {
   const connection = connections.find((item) => item.id === input.connectionId);
   const schema = input.schema?.trim();
@@ -75,6 +78,8 @@ export async function addTarget(
   const candidate: DatabaseTarget = {
     id: crypto.randomUUID(),
     name: input.name.trim(),
+    customer: input.customer?.trim() || input.name.trim(),
+    environment: input.environment?.trim() || (input.production ? "Produktion" : "Development"),
     connectionId: connection.id,
     database,
     schema,
@@ -83,8 +88,43 @@ export async function addTarget(
     history: [],
   };
   const { store, text } = await readTargets(repo, project.id);
-  await assertDistinctTarget(candidate, connection, store.targets, connections, project);
+  candidate.binding = await assertDistinctTarget(
+    candidate,
+    connection,
+    store.targets,
+    connections,
+    project,
+  );
   store.targets.push(candidate);
   await saveTargets(repo, store, text);
   return candidate;
+}
+
+export async function updateTargetDetails(
+  repo: string,
+  projectId: string,
+  id: string,
+  details: Pick<DatabaseTarget, "name" | "customer" | "environment">,
+) {
+  if (!details.name.trim() || !details.customer?.trim() || !details.environment?.trim())
+    throw new Error("Kunde, Umgebung und Zielname ausfüllen.");
+  const { store, text } = await readTargets(repo, projectId);
+  const target = store.targets.find((item) => item.id === id);
+  if (!target) throw new Error("Zielzuordnung fehlt.");
+  Object.assign(target, {
+    name: details.name.trim(),
+    customer: details.customer.trim(),
+    environment: details.environment.trim(),
+  });
+  await saveTargets(repo, store, text);
+}
+
+export async function removeTarget(repo: string, projectId: string, id: string) {
+  const { store, text } = await readTargets(repo, projectId);
+  const target = store.targets.find((item) => item.id === id);
+  if (!target) throw new Error("Zielzuordnung fehlt.");
+  if (target.history.some((event) => event.status === "running" || event.status === "failed"))
+    throw new Error("Ungeklärte Deployments zuerst abgleichen.");
+  store.targets = store.targets.filter((item) => item.id !== id);
+  await saveTargets(repo, store, text);
 }

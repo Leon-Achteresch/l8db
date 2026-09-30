@@ -18,6 +18,8 @@ export function useVersioning() {
   const [projectText, setProjectText] = useState<string | null>(null);
   const [releases, setReleases] = useState<DatabaseRelease[]>([]);
   const [targets, setTargets] = useState<TargetStore | null>(null);
+  const [branchTargetId, updateBranchTargetId] = useState("");
+  const [requestedReleaseId, setRequestedReleaseId] = useState("");
   const [dirty, updateDirty] = useState(false);
   const dirtyRef = useRef(false);
   const setDirty = useCallback((value: boolean) => {
@@ -49,6 +51,13 @@ export function useVersioning() {
       setProjectText(loaded.projectText);
       setReleases(nextReleases);
       setTargets(nextTargets);
+      updateBranchTargetId(
+        loaded.project && loaded.status.branch
+          ? (localStorage.getItem(
+              `l8db.versioning.branch-target.${loaded.project.id}.${loaded.status.branch}`,
+            ) ?? "")
+          : "",
+      );
     },
     [repo],
   );
@@ -101,10 +110,20 @@ export function useVersioning() {
       setBusy(false);
     }
   };
-  const git = async (action: "branch" | "checkout" | "commit", name: string, paths?: string[]) => {
+  const git = async (
+    action: "branch" | "checkout" | "commit",
+    name: string,
+    paths?: string[],
+    revision?: string,
+  ) => {
     if (dirty) throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
-    await versioningRepository({ action, repo, name, paths });
+    await versioningRepository({ action, repo, name, paths, revision });
     await refresh();
+  };
+  const setBranchTargetId = (id: string) => {
+    if (!project || !status?.branch) return;
+    localStorage.setItem(`l8db.versioning.branch-target.${project.id}.${status.branch}`, id);
+    updateBranchTargetId(id);
   };
   return {
     repo,
@@ -116,6 +135,10 @@ export function useVersioning() {
     projectText,
     releases,
     targets,
+    branchTargetId,
+    setBranchTargetId,
+    requestedReleaseId,
+    setRequestedReleaseId,
     busy,
     error: error ?? statusError,
     message,

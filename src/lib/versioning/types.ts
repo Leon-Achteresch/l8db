@@ -94,6 +94,8 @@ export interface DeploymentEvent {
 export interface DatabaseTarget {
   id: string;
   name: string;
+  customer?: string;
+  environment?: string;
   connectionId: string;
   database: string | null;
   production: boolean;
@@ -131,6 +133,9 @@ export interface RepositoryStatus {
 
 export interface RepositoryRequest {
   action:
+    | "graph"
+    | "merge-branch"
+    | "delete-branch"
     | "fetch"
     | "pull"
     | "push"

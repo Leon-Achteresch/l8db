@@ -3,7 +3,7 @@ import type { SavedConnection } from "../src/lib/connections";
 import type { ManagedObject, VersioningProject } from "../src/lib/versioning/types";
 
 const files = new Map<string, string>();
-const database: Record<string, string> = { orders: "CREATE TABLE orders(id int)", fresh: "x" };
+const database: Record<string, string> = { orders: "CREATE TABLE orders(id int)", fresh: "x", L8DB_VERSIONING_POLICY: "internal", L8DB_VERSIONING_JOURNAL: "internal" };
 
 const repository = { ...(await import("../src/lib/versioning/repository")) };
 const definitions = { ...(await import("../src/lib/compare-definition")) };
