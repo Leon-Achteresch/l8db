@@ -15,7 +15,7 @@ export interface ManagedObject {
   id: string;
   path: string;
   bodyPath?: string;
-  metadataVersion?: 2;
+  metadataVersion?: 2 | 3;
   selection: Omit<CompareSideSelection, "connectionId" | "database">;
 }
 

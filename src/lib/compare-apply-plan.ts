@@ -43,6 +43,36 @@ export function parseTableColumns(definition: string): { columns: SnapshotColumn
   return { columns: parsed, rest: definition.slice(match[0].length) };
 }
 
+export function postgresTableStructure(
+  rest: string,
+  columns: SnapshotColumn[],
+  table: string,
+): string {
+  let constraints = false;
+  const lines = rest.split("\n").filter((line) => {
+    if (["CONSTRAINTS", "INDEXES", "TRIGGERS"].includes(line)) {
+      constraints = line === "CONSTRAINTS";
+      return true;
+    }
+    if (!constraints) return true;
+    const match = /^\s*(\S+) n \(([^)]+)\) NOT NULL (.+)$/.exec(line);
+    if (!match) return true;
+    const column = columns.find((entry) => entry.name === match[2]);
+    return !(
+      column &&
+      !column.is_nullable &&
+      match[1] === `${table}_${column.name}_not_null` &&
+      (match[3] === column.name || match[3] === quoteIdentifier(column.name, "double"))
+    );
+  });
+  return lines
+    .filter(
+      (line, index) =>
+        line !== "CONSTRAINTS" || !/^(INDEXES|TRIGGERS)?$/.test(lines[index + 1] ?? ""),
+    )
+    .join("\n");
+}
+
 function oracleStructure(rest: string): string {
   const lines = rest
     .split("\n")
@@ -68,7 +98,7 @@ function oracleTablePlan(
     if (!old) return [];
     if (
       old.column_default !== column.column_default &&
-      [old.column_default, column.column_default].includes("IDENTITY")
+      [old.column_default, column.column_default].some((value) => value?.startsWith("IDENTITY"))
     )
       throw new Error("Identitätsspalten bitte im Tabelleneditor ändern.");
     const parts = [
@@ -83,7 +113,7 @@ function oracleTablePlan(
   const add = after
     .filter((column) => !before.some((item) => item.name === column.name))
     .map((column) => {
-      if (column.column_default === "IDENTITY")
+      if (column.column_default?.startsWith("IDENTITY"))
         throw new Error("Identitätsspalten bitte im Tabelleneditor anlegen.");
       return `${name(column)} ${column.data_type}${column.column_default === null ? "" : ` DEFAULT ${column.column_default}`}${column.is_nullable ? "" : " NOT NULL"}`;
     });
@@ -97,15 +127,24 @@ function oracleTablePlan(
   ].filter(Boolean);
 }
 
-function tablePlan(kind: DatabaseKind, baseline: string, draft: string, target: string): string[] {
+function tablePlan(
+  kind: DatabaseKind,
+  baseline: string,
+  draft: string,
+  target: string,
+  table: string,
+): string[] {
   if (kind !== "postgres" && kind !== "oracle")
     throw new Error(
       "Tabellenänderungen können hier derzeit nur für PostgreSQL und Oracle sicher erzeugt und geprüft werden.",
     );
   const before = parseTableColumns(baseline);
   const after = parseTableColumns(draft);
-  const structure = kind === "oracle" ? oracleStructure : (rest: string) => rest;
-  if (structure(before.rest) !== structure(after.rest))
+  const structure = (value: ReturnType<typeof parseTableColumns>) =>
+    kind === "oracle"
+      ? oracleStructure(value.rest)
+      : postgresTableStructure(value.rest, value.columns, table);
+  if (structure(before) !== structure(after))
     throw new Error(
       "Änderungen an Constraints, Indizes und Triggern bitte im jeweiligen Objekteditor ausführen. Der Entwurf bleibt erhalten.",
     );
@@ -175,7 +214,7 @@ export function buildCompareApplyPlan(
     `${quoteIdentifier(side.schema ?? "", style)}.${quoteIdentifier(name, style)}`;
   let statements: string[];
   if (side.objectType === "table")
-    statements = tablePlan(kind, baseline, draft, qualified(side.objectName));
+    statements = tablePlan(kind, baseline, draft, qualified(side.objectName), side.objectName);
   else if (side.objectType === "view") {
     const body = splitSqlStatements(draft, kind);
     const text = body.statements[0]?.text.trim().replace(/;\s*$/, "") ?? "";
