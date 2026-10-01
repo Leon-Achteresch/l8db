@@ -77,7 +77,7 @@ export function OnboardingDrivers() {
           <Spinner /> Treiber werden geladen …
         </div>
       ) : (
-        <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+        <div className="relative max-h-[clamp(8rem,100vh-28rem,48vh)] space-y-2 overflow-y-auto pr-1">
           {missing.map((provider) => {
             const choice = needed[provider.id];
             const hint =

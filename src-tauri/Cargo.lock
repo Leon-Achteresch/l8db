@@ -3778,8 +3778,10 @@ dependencies = [
  "md-5",
  "mime_guess",
  "mongodb",
+ "muda",
  "mysql_async",
  "native-tls",
+ "objc2",
  "odbc-api",
  "oracle",
  "parquet",
@@ -3819,6 +3821,7 @@ dependencies = [
  "toml_edit 0.25.12+spec-1.1.0",
  "url",
  "webview2-com",
+ "windows 0.61.3",
  "windows-core 0.61.2",
 ]
 

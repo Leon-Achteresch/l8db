@@ -108,6 +108,7 @@ pub fn app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::m
         .quit_with_text("l8db beenden")
         .build()?;
     let file_menu = SubmenuBuilder::new(app, "Ablage")
+        .text("window.new", "Neues Fenster")
         .text("tab.newQuery", "Neue Abfrage")
         .text("query.openFile", "SQL-Datei öffnen …")
         .separator()

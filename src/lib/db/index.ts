@@ -32,3 +32,4 @@ export * from "./transactions";
 export * from "./transfer";
 export * from "./types";
 export * from "./versioning";
+export * from "./windows";

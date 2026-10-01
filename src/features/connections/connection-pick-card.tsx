@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   Archive,
   Copy,
   CopyPlus,
@@ -35,11 +36,13 @@ import {
 import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
+import { OpenInWindowMenuItem } from "./open-in-window-menu-item";
 
 interface Props {
   connection: SavedConnection;
   active: boolean;
   onOpen: () => void;
+  onOpenWindow?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -52,6 +55,7 @@ export function ConnectionPickCard({
   connection,
   active,
   onOpen,
+  onOpenWindow,
   onEdit,
   onDelete,
   onDuplicate,
@@ -106,6 +110,7 @@ export function ConnectionPickCard({
                     <Play className="size-3.5" />
                     {active ? "Trennen" : "Verbinden"}
                   </DropdownMenuItem>
+                  {onOpenWindow && <OpenInWindowMenuItem onSelect={onOpenWindow} />}
                   <DropdownMenuItem onSelect={onEdit}>
                     <Pencil className="size-3.5" />
                     Bearbeiten
@@ -135,7 +140,7 @@ export function ConnectionPickCard({
             </div>
           }
           footer={
-            <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/40 pt-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3">
               {connection.temporary ? (
                 <Button
                   variant="ghost"
@@ -184,6 +189,12 @@ export function ConnectionPickCard({
           <Play className="size-3.5" />
           {active ? "Trennen" : "Verbinden"}
         </ContextMenuItem>
+        {onOpenWindow && (
+          <ContextMenuItem onSelect={onOpenWindow}>
+            <AppWindow className="size-3.5" />
+            In neuem Fenster öffnen
+          </ContextMenuItem>
+        )}
         <ContextMenuItem onSelect={onEdit}>
           <Pencil className="size-3.5" />
           Bearbeiten

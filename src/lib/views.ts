@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { TableColumnPref } from "@/lib/table-column-prefs";
 import type { TableViewState } from "@/lib/table-view-state";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface SavedView {
   id: string;
@@ -109,3 +110,5 @@ export const useViewsStore = create<ViewsState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.views", () => void useViewsStore.persist.rehydrate());
