@@ -145,10 +145,10 @@ export function ConnectionAdvancedOptions({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper">
-                    <SelectItem value="prefer">Bevorzugen · für lokale Server</SelectItem>
-                    <SelectItem value="require">
-                      Erforderlich · System-Zertifikate prüfen
+                    <SelectItem value="prefer">
+                      Bevorzugen · verschlüsselt, falls verfügbar
                     </SelectItem>
+                    <SelectItem value="require">Erforderlich · ohne Zertifikatsprüfung</SelectItem>
                     <SelectItem value="verify-full">Zertifikat und Hostname prüfen</SelectItem>
                     <SelectItem value="verify-ca">Zertifizierungsstelle prüfen</SelectItem>
                     <SelectItem value="disable">Deaktiviert</SelectItem>

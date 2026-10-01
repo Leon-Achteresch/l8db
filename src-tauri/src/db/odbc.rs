@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use odbc_api::buffers::TextRowSet;
+use odbc_api::buffers::{Indicator, TextRowSet};
 use odbc_api::parameter::VarCharArray;
 use odbc_api::{Connection, ConnectionOptions, Cursor, Environment};
 
@@ -139,10 +139,9 @@ fn var<const N: usize>(value: &VarCharArray<N>) -> String {
     value.as_str().ok().flatten().unwrap_or("").to_string()
 }
 
-fn read_cursor(
-    mut cursor: impl Cursor,
-    max_rows: Option<usize>,
-) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+type CursorRows = (Vec<String>, Vec<Vec<serde_json::Value>>, bool);
+
+fn read_cursor(mut cursor: impl Cursor, max_rows: Option<usize>) -> Result<CursorRows, String> {
     let columns: Vec<String> = cursor
         .column_names()
         .map_err(map_err)?
@@ -152,23 +151,35 @@ fn read_cursor(
     let mut buffers = TextRowSet::for_cursor(500, &mut cursor, Some(65536)).map_err(map_err)?;
     let mut block = cursor.bind_buffer(&mut buffers).map_err(map_err)?;
     let mut rows = Vec::new();
+    let mut truncated = false;
     'outer: while let Some(batch) = block.fetch().map_err(map_err)? {
         for row_index in 0..batch.num_rows() {
+            if max_rows.is_some_and(|m| rows.len() >= m) {
+                truncated = true;
+                break 'outer;
+            }
             let values: Vec<serde_json::Value> = (0..batch.num_cols())
                 .map(|col| match batch.at(col, row_index) {
                     Some(bytes) => {
-                        serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned())
+                        let mut text = String::from_utf8_lossy(bytes).into_owned();
+                        let cut = match batch.indicator_at(col, row_index) {
+                            Indicator::NoTotal => true,
+                            Indicator::Length(total) => total > batch.max_len(col),
+                            Indicator::Null => false,
+                        };
+                        if cut {
+                            truncated = true;
+                            text.push('…');
+                        }
+                        serde_json::Value::String(text)
                     }
                     None => serde_json::Value::Null,
                 })
                 .collect();
             rows.push(values);
-            if max_rows.is_some_and(|m| rows.len() >= m) {
-                break 'outer;
-            }
         }
     }
-    Ok((columns, rows))
+    Ok((columns, rows, truncated))
 }
 
 fn text(v: &serde_json::Value) -> String {
@@ -220,7 +231,7 @@ impl OdbcAdapter {
     ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
         self.run(
             move |conn| match conn.execute(&sql, (), Some(30)).map_err(map_err)? {
-                Some(cursor) => read_cursor(cursor, max_rows),
+                Some(cursor) => read_cursor(cursor, max_rows).map(|(c, r, _)| (c, r)),
                 None => Ok((vec![], vec![])),
             },
         )
@@ -434,7 +445,7 @@ impl DatabaseAdapter for OdbcAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let sql = sql.trim().to_string();
-        let (columns, rows, affected) = self
+        let ((columns, rows, truncated), affected) = self
             .run(move |conn| {
                 let mut statement = conn.preallocate().map_err(map_err)?;
                 let fetched = match statement.execute(&sql, ()).map_err(map_err)? {
@@ -442,10 +453,10 @@ impl DatabaseAdapter for OdbcAdapter {
                     None => None,
                 };
                 match fetched {
-                    Some((columns, rows)) => Ok((columns, rows, None)),
+                    Some(result) => Ok((result, None)),
                     None => {
                         let affected = statement.row_count().map_err(map_err)?.map(|n| n as u64);
-                        Ok((vec![], vec![], affected))
+                        Ok(((vec![], vec![], false), affected))
                     }
                 }
             })
@@ -455,6 +466,7 @@ impl DatabaseAdapter for OdbcAdapter {
             columns,
             rows_affected: affected,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated,
         })
     }
 

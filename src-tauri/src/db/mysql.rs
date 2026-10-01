@@ -11,8 +11,12 @@ use super::{
     QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
+const NO_SERVER_TLS: &str =
+    "Der MySQL-Server unterstützt kein TLS. SSL-Modus „Bevorzugen“ oder „Deaktiviert“ wählen.";
+
 pub struct MysqlAdapter {
     opts: Opts,
+    plain: Option<Opts>,
     pool_state: PoolState,
     key: String,
 }
@@ -79,18 +83,29 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
     match value {
         Value::NULL => serde_json::Value::Null,
         Value::Bytes(bytes) => {
+            if column.column_type() == ColumnType::MYSQL_TYPE_BIT && bytes.len() <= 8 {
+                return super::exact_number::uint(
+                    bytes.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b)),
+                );
+            }
             if is_binary(column) {
                 return serde_json::Value::String(hex_blob(&bytes));
             }
             let text = String::from_utf8_lossy(&bytes).into_owned();
             if is_numeric(column) {
-                if let Ok(i) = text.parse::<i64>() {
-                    return serde_json::Value::from(i);
-                }
-                if let Ok(f) = text.parse::<f64>() {
-                    if let Some(n) = serde_json::Number::from_f64(f) {
+                if matches!(
+                    column.column_type(),
+                    ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE
+                ) {
+                    if let Some(n) = text
+                        .parse::<f64>()
+                        .ok()
+                        .and_then(serde_json::Number::from_f64)
+                    {
                         return serde_json::Value::Number(n);
                     }
+                } else {
+                    return super::exact_number::decimal(&text);
                 }
             }
             if column.column_type() == ColumnType::MYSQL_TYPE_JSON {
@@ -100,8 +115,8 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
             }
             serde_json::Value::String(text)
         }
-        Value::Int(i) => serde_json::Value::from(i),
-        Value::UInt(u) => serde_json::Value::from(u),
+        Value::Int(i) => super::exact_number::int(i),
+        Value::UInt(u) => super::exact_number::uint(u),
         Value::Float(f) => serde_json::Number::from_f64(f as f64)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
@@ -174,21 +189,22 @@ impl MysqlAdapter {
             return Err("Eine mysql:// URL ist erforderlich".to_string());
         }
         let mut ssl = SslMode::Prefer;
-        let mut explicit_ssl = false;
+        let mut root_cert = None;
+        let mut identity = None;
+        let mut identity_password = None;
         let pairs: Vec<(String, String)> = url
             .query_pairs()
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
         let mut kept = Vec::new();
         for (k, v) in pairs {
+            let flag = matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
             match k.as_str() {
                 "sslmode" => {
-                    explicit_ssl = true;
                     ssl = serde_json::from_value(serde_json::Value::String(v))
                         .map_err(|_| "Ungültiger SSL-Modus".to_string())?;
                 }
-                "ssl-mode" | "ssl_mode" => {
-                    explicit_ssl = true;
+                "ssl-mode" | "ssl_mode" | "sslMode" => {
                     ssl = match v.to_lowercase().as_str() {
                         "disabled" => SslMode::Disable,
                         "preferred" => SslMode::Prefer,
@@ -198,7 +214,40 @@ impl MysqlAdapter {
                         _ => return Err("Ungültiger SSL-Modus".to_string()),
                     };
                 }
-                _ => kept.push((k, v)),
+                "useSSL" | "useSsl" | "ssl" if !flag => ssl = SslMode::Disable,
+                "requireSSL" | "require_ssl" if flag => ssl = ssl.max(SslMode::Require),
+                "verifyServerCertificate" | "verify_ca" if flag => ssl = ssl.max(SslMode::VerifyCa),
+                "verify_identity" if flag => ssl = SslMode::VerifyFull,
+                "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" => {
+                    root_cert = Some(v).filter(|v| !v.is_empty())
+                }
+                "sslcert" | "ssl-cert" | "ssl_cert" | "clientCertificateKeyStoreUrl" => {
+                    identity =
+                        Some(v.trim_start_matches("file:").to_string()).filter(|v| !v.is_empty())
+                }
+                "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
+                    identity_password = Some(v)
+                }
+                "abs_conn_ttl"
+                | "abs_conn_ttl_jitter"
+                | "client_found_rows"
+                | "compression"
+                | "enable_cleartext_plugin"
+                | "max_allowed_packet"
+                | "prefer_socket"
+                | "reset_connection"
+                | "secure_auth"
+                | "socket"
+                | "stmt_cache_size"
+                | "tcp_keepalive"
+                | "tcp_nodelay"
+                | "wait_timeout"
+                | "pool_min"
+                | "pool_max"
+                | "inactive_connection_ttl"
+                | "ttl_check_interval"
+                | "conn_ttl" => kept.push((k, v)),
+                _ => {}
             }
         }
         url.set_scheme("mysql").ok();
@@ -216,40 +265,85 @@ impl MysqlAdapter {
         if let Some(db) = database.filter(|d| !d.is_empty()) {
             builder = builder.db_name(Some(db));
         }
-        if explicit_ssl
-            || url
-                .host_str()
-                .is_some_and(|h| !matches!(h, "localhost" | "127.0.0.1" | "::1"))
-        {
-            builder = builder.ssl_opts(match ssl {
-                SslMode::Disable => None,
-                SslMode::Prefer if !explicit_ssl => None,
-                SslMode::Prefer | SslMode::Require => {
-                    Some(SslOpts::default().with_danger_accept_invalid_certs(true))
+        let plain: Opts = builder.clone().ssl_opts(None::<SslOpts>).into();
+        let tls = (ssl != SslMode::Disable).then(|| {
+            let verify_chain = match ssl {
+                SslMode::VerifyCa | SslMode::VerifyFull => true,
+                SslMode::Require => root_cert.is_some(),
+                SslMode::Prefer | SslMode::Disable => false,
+            };
+            let mut tls = SslOpts::default()
+                .with_danger_accept_invalid_certs(!verify_chain)
+                .with_danger_skip_domain_validation(ssl != SslMode::VerifyFull);
+            if let Some(path) = &root_cert {
+                tls = tls
+                    .with_root_certs(vec![std::path::PathBuf::from(path).into()])
+                    .with_disable_built_in_roots(true);
+            }
+            if let Some(path) = &identity {
+                let mut client =
+                    mysql_async::ClientIdentity::new(std::path::PathBuf::from(path).into());
+                if let Some(password) = &identity_password {
+                    client = client.with_password(password.clone());
                 }
-                SslMode::VerifyCa => {
-                    Some(SslOpts::default().with_danger_skip_domain_validation(true))
-                }
-                SslMode::VerifyFull => Some(SslOpts::default()),
-            });
+                tls = tls.with_client_identity(Some(client));
+            }
+            tls
+        });
+        if identity.as_deref().is_some_and(|path| {
+            let lower = path.to_ascii_lowercase();
+            !lower.ends_with(".p12") && !lower.ends_with(".pfx")
+        }) {
+            return Err("MySQL-Client-Zertifikate werden als PKCS#12 (.p12/.pfx) mit sslpassword erwartet (openssl pkcs12 -export -inkey key.pem -in cert.pem -out client.p12).".into());
         }
         Ok(Self {
-            opts: builder.into(),
+            opts: builder.ssl_opts(tls).into(),
+            plain: (ssl == SslMode::Prefer).then_some(plain),
             pool_state,
             key,
         })
     }
 
+    async fn open_conn(&self) -> Result<Conn, String> {
+        super::execution::connect(async {
+            match Conn::new(self.opts.clone()).await {
+                Err(mysql_async::Error::Driver(
+                    mysql_async::DriverError::NoClientSslFlagFromServer,
+                )) => match &self.plain {
+                    Some(plain) => Conn::new(plain.clone()).await.map_err(map_err),
+                    None => Err(NO_SERVER_TLS.to_string()),
+                },
+                other => other.map_err(map_err),
+            }
+        })
+        .await
+    }
+
+    async fn pool(&self, key: String, opts: Opts) -> Result<std::sync::Arc<Pool>, String> {
+        self.pool_state
+            .shared(&key, || async move { Ok::<Pool, String>(Pool::new(opts)) })
+            .await
+    }
+
     async fn conn(&self) -> Result<Conn, String> {
-        let opts = self.opts.clone();
-        let pool = self
-            .pool_state
-            .shared(
-                &self.key,
-                || async move { Ok::<Pool, String>(Pool::new(opts)) },
-            )
-            .await?;
-        super::execution::connect(async { pool.get_conn().await.map_err(map_err) }).await
+        let pool = self.pool(self.key.clone(), self.opts.clone()).await?;
+        super::execution::connect(async {
+            match pool.get_conn().await {
+                Err(mysql_async::Error::Driver(
+                    mysql_async::DriverError::NoClientSslFlagFromServer,
+                )) => match &self.plain {
+                    Some(plain) => self
+                        .pool(format!("{}#plain", self.key), plain.clone())
+                        .await?
+                        .get_conn()
+                        .await
+                        .map_err(map_err),
+                    None => Err(NO_SERVER_TLS.to_string()),
+                },
+                other => other.map_err(map_err),
+            }
+        })
+        .await
     }
 
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
@@ -308,6 +402,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             columns,
             rows_affected,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     })
     .await
@@ -361,10 +456,7 @@ impl TxSession for MysqlTx {
 #[async_trait]
 impl DatabaseAdapter for MysqlAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let mut conn = super::execution::connect(async {
-            Conn::new(self.opts.clone()).await.map_err(map_err)
-        })
-        .await?;
+        let mut conn = self.open_conn().await?;
         conn.query_drop("SELECT 1").await.map_err(map_err)?;
         conn.disconnect().await.map_err(map_err)
     }
@@ -508,10 +600,7 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
-        let mut conn = super::execution::connect(async {
-            Conn::new(self.opts.clone()).await.map_err(map_err)
-        })
-        .await?;
+        let mut conn = self.open_conn().await?;
         conn.query_drop("START TRANSACTION")
             .await
             .map_err(map_err)?;
@@ -1045,6 +1134,59 @@ mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
 
+    #[tokio::test]
+    #[ignore]
+    async fn live_tls_modes_fallback_and_client_certificates() {
+        let dir = std::env::var("L8DB_E2E_PG_TLS_DIR").unwrap_or_else(|_| "/tmp/l8db-pgtls".into());
+        let cipher = |url: String| async move {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone())?;
+            adapter.test_connection().await?;
+            let result = adapter
+                .execute_query("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+                .await?;
+            Ok::<bool, String>(
+                result.rows[0]
+                    .as_object()
+                    .and_then(|row| row.values().nth(1))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|v| !v.is_empty()),
+            )
+        };
+        let plain = "mysql://root:testpw@127.0.0.1:53306/mysql";
+        assert_eq!(cipher(plain.into()).await, Ok(false));
+        assert_eq!(
+            cipher(format!("{plain}?serverTimezone=UTC&useUnicode=true")).await,
+            Ok(false)
+        );
+        assert!(cipher(format!("{plain}?sslmode=require"))
+            .await
+            .unwrap_err()
+            .contains("kein TLS"));
+        let tls = "mysql://root:testpw@127.0.0.1:53307/mysql";
+        assert_eq!(cipher(tls.into()).await, Ok(true));
+        assert_eq!(cipher(format!("{tls}?sslmode=require")).await, Ok(true));
+        assert_eq!(cipher(format!("{tls}?sslmode=disable")).await, Ok(false));
+        assert!(cipher(format!("{tls}?sslmode=verify-ca")).await.is_err());
+        assert_eq!(
+            cipher(format!("{tls}?sslmode=verify-ca&sslrootcert={dir}/ca.pem")).await,
+            Ok(true)
+        );
+        assert!(cipher(format!(
+            "{tls}?sslmode=verify-full&sslrootcert={dir}/ca.pem"
+        ))
+        .await
+        .is_err());
+        let cert = "mysql://certuser@127.0.0.1:53307/";
+        assert!(cipher(format!("{cert}?sslmode=require")).await.is_err());
+        assert_eq!(
+            cipher(format!(
+                "{cert}?ssl-mode=VERIFY_CA&ssl-ca={dir}/ca.pem&sslcert={dir}/client.p12&sslpassword=secret"
+            ))
+            .await,
+            Ok(true)
+        );
+    }
+
     #[test]
     fn translates_sslmode_and_database() {
         let adapter = MysqlAdapter::new(
@@ -1058,14 +1200,43 @@ mod tests {
         assert_eq!(adapter.opts.ip_or_hostname(), "db.example.com");
         assert_eq!(adapter.opts.tcp_port(), 3307);
         assert!(adapter.opts.ssl_opts().is_some());
-        let plain = MysqlAdapter::new(
-            "mysql://root@localhost/app",
+        assert!(adapter.plain.is_none());
+        let local = MysqlAdapter::new(
+            "mysql://root@localhost/app?useSSL=true&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true&enable_cleartext_plugin=true",
             None,
             create_pool_state(),
             "k".into(),
         )
         .unwrap();
-        assert!(plain.opts.ssl_opts().is_none());
+        assert!(local.opts.ssl_opts().is_some());
+        assert!(local.plain.as_ref().is_some_and(|p| p.ssl_opts().is_none()));
+        assert!(local.opts.enable_cleartext_plugin());
+        let disabled = MysqlAdapter::new(
+            "mysql://root@db/app?useSSL=false",
+            None,
+            create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        assert!(disabled.opts.ssl_opts().is_none());
+        let verified = MysqlAdapter::new(
+            "mysql://root@db/app?ssl-mode=VERIFY_IDENTITY&ssl-ca=/ca.pem&sslcert=/c.p12&sslpassword=pw",
+            None,
+            create_pool_state(),
+            "k".into(),
+        )
+        .unwrap();
+        let tls = verified.opts.ssl_opts().unwrap();
+        assert!(!tls.accept_invalid_certs() && !tls.skip_domain_validation());
+        assert_eq!(tls.root_certs().len(), 1);
+        assert!(tls.client_identity().is_some());
+        assert!(MysqlAdapter::new(
+            "mysql://root@db/app?sslcert=/c.pem",
+            None,
+            create_pool_state(),
+            "k".into()
+        )
+        .is_err());
         assert!(
             MysqlAdapter::new("postgres://x@y/z", None, create_pool_state(), "k".into()).is_err()
         );

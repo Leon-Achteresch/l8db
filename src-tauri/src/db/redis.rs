@@ -610,6 +610,7 @@ impl DatabaseAdapter for RedisAdapter {
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

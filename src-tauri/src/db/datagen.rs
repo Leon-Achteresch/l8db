@@ -2393,7 +2393,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let adapter = super::super::create_adapter_from_string(
             DatabaseKind::Sqlite,
-            &format!("sqlite://{}", path.display()),
+            &format!("sqlite://{}?mode=rwc", path.display()),
             None,
             crate::db::pool::create_pool_state(),
         )
@@ -2465,7 +2465,7 @@ mod tests {
         use crate::db::transaction::create_transaction_state;
         let path = std::env::temp_dir().join(format!("l8db-datagen-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&path);
-        let url = format!("sqlite://{}", path.display());
+        let url = format!("sqlite://{}?mode=rwc", path.display());
         let pool = create_pool_state();
         let adapter = super::super::create_adapter_from_string(
             DatabaseKind::Sqlite,
