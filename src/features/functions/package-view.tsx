@@ -29,6 +29,7 @@ import { type PackagePart, packageOid, parsePlsqlMembers } from "@/lib/plsql";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface PackageViewProps {
   schema: string;
@@ -47,6 +48,7 @@ function findSourceLine(source: string, needle: string): number | undefined {
 export function PackageView({ schema, name, part, member, highlight }: PackageViewProps) {
   const connection = useActiveConnection();
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
+  const pane = useWorkspacePane();
   const capabilities = useActiveCapabilities();
   const [activePart, setActivePart] = useState<PackagePart>(part ?? "body");
   const [activeMember, setActiveMember] = useState(member?.toUpperCase());
@@ -82,8 +84,8 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const setOutlineWidth = usePackageViewPrefs((state) => state.setWidth);
 
   useEffect(() => {
-    openPackageTab({ schema, name });
-  }, [schema, name, openPackageTab]);
+    if (!pane) openPackageTab({ schema, name });
+  }, [schema, name, openPackageTab, pane]);
 
   useEffect(() => {
     if (part) setActivePart(part);

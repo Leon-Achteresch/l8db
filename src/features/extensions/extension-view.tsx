@@ -11,6 +11,7 @@ import { useActiveDatabase } from "@/lib/db-selection";
 import { useExtensionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 import { FeedbackPanel } from "./extension-view/feedback-panel";
 import { SqlEditorPane } from "./extension-view/sql-editor-pane";
 
@@ -54,6 +55,7 @@ export function ExtensionView({ name }: { name: string }) {
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const openExtensionTab = useTableTabs((state) => state.openExtensionTab);
+  const pane = useWorkspacePane();
   const { data: extensions, isLoading, isError, error } = useExtensionsQuery();
 
   const ext = extensions?.find((e) => e.name === name);
@@ -64,8 +66,8 @@ export function ExtensionView({ name }: { name: string }) {
   const [execution, setExecution] = useState<ExecutionState>({ status: "idle" });
 
   useEffect(() => {
-    openExtensionTab({ name });
-  }, [name, openExtensionTab]);
+    if (!pane) openExtensionTab({ name });
+  }, [name, openExtensionTab, pane]);
 
   const displaySql = ext ? buildExtensionSql(ext) : "";
 

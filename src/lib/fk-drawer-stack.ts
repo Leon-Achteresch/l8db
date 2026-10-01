@@ -49,8 +49,8 @@ export function openScopedTable(
       detailTab: "data",
     });
   }
-  const { focusedPane, setPaneTable } = useSplitView.getState();
-  setPaneTable(focusedPane, connectionId, { schema, table, entityType: "table" });
+  const { focusedPane, setPaneTab } = useSplitView.getState();
+  setPaneTab(focusedPane, connectionId, { kind: "table", schema, table, entityType: "table" });
 }
 
 let counter = 0;

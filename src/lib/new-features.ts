@@ -61,6 +61,7 @@ export const NEW_FEATURES = {
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
   "split.pane-tables": "0.8.0",
+  "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
   "settings.extensions.extensions.openbao": "0.8.0",
 } as const;
