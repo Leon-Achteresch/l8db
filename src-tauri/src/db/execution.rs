@@ -246,7 +246,7 @@ impl PgSession {
 
 pub async fn connect_postgres(
     config: &tokio_postgres::Config,
-    ssl: super::SslMode,
+    ssl: &super::connection::PgTls,
 ) -> Result<tokio_postgres::Client, String> {
     let (client, connection) = connect(async {
         config
@@ -263,7 +263,7 @@ pub async fn connect_postgres(
 
 pub async fn postgres<T, F>(
     client: &tokio_postgres::Client,
-    ssl: super::SslMode,
+    ssl: &super::connection::PgTls,
     session: Option<&PgSession>,
     future: F,
 ) -> Result<T, String>
@@ -275,7 +275,7 @@ where
 
 pub async fn guarded<T, F>(
     token: tokio_postgres::CancelToken,
-    ssl: super::SslMode,
+    ssl: &super::connection::PgTls,
     session: Option<&PgSession>,
     future: F,
 ) -> Result<T, String>

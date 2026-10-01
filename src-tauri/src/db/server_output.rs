@@ -6,7 +6,7 @@ use serde::Serialize;
 use tokio_postgres::{AsyncMessage, Client, Config, SimpleQueryMessage};
 
 use super::connection::tls_connector;
-use super::{map_pg_err, QueryResult, SslMode};
+use super::{map_pg_err, QueryResult};
 
 const MAX_MESSAGES: usize = 2000;
 
@@ -71,7 +71,7 @@ pub fn take(key: &str) -> Vec<ServerMessage> {
 pub async fn pg_session(
     key: &str,
     config: &Config,
-    ssl: SslMode,
+    ssl: &super::connection::PgTls,
 ) -> Result<Option<Arc<super::execution::PgSession>>, String> {
     if !is_enabled(key) {
         return Ok(None);
