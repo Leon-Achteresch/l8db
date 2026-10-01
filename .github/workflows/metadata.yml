@@ -1,0 +1,45 @@
+name: Issue and pull request labels
+
+on:
+  issues:
+    types: [opened, edited, reopened, closed]
+  workflow_run:
+    workflows: [Pull request metadata]
+    types: [completed]
+  push:
+    branches: [main, development]
+    paths:
+      - .github/labels.json
+      - .github/scripts/metadata.mjs
+      - .github/workflows/metadata.yml
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: Apply labels to all open issues and pull requests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: metadata-${{ github.event.issue.number || github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const { run } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/metadata.mjs`);
+            await run({ github, context, core });

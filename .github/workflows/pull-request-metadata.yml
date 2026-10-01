@@ -1,0 +1,14 @@
+name: Pull request metadata
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: "true"
