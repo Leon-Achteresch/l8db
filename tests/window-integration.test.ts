@@ -1,8 +1,5 @@
 import { expect, mock, test } from "bun:test";
 
-type StorageListener = (event: { key: string | null; newValue: string | null }) => void;
-
-const listeners: StorageListener[] = [];
 const storage = new Map<string, string>();
 const keychain = new Map([["new", "s3cret"]]);
 
@@ -27,9 +24,7 @@ Object.defineProperty(globalThis, "window", {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     },
-    addEventListener: (type: string, listener: StorageListener) => {
-      if (type === "storage") listeners.push(listener);
-    },
+    addEventListener: () => {},
   },
 });
 Object.defineProperty(globalThis, "localStorage", {
@@ -37,15 +32,13 @@ Object.defineProperty(globalThis, "localStorage", {
   value: window.localStorage,
 });
 
-const { useConnectionsStore } = await import("../src/lib/connections");
+const { useConnectionsStore, syncConnectionsFromStorage } = await import(
+  "../src/lib/connections/store"
+);
 const { mergeWindowTabs } = await import("../src/lib/table-tabs");
 const { dockEntries } = await import("../src/lib/window-integration");
 
 const base = { kind: "postgres" as const, sslMode: "disable" as const, ssh: null };
-
-function emit(key: string) {
-  for (const listener of listeners) listener({ key, newValue: storage.get(key) ?? null });
-}
 
 test("another window's connection changes merge without losing local secrets", async () => {
   useConnectionsStore.setState({
@@ -76,7 +69,7 @@ test("another window's connection changes merge without losing local secrets", a
       version: 0,
     }),
   );
-  emit("l8db.connections");
+  syncConnectionsFromStorage();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const state = useConnectionsStore.getState();
