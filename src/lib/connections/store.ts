@@ -297,7 +297,7 @@ async function loadSyncedSecrets(previous: SavedConnection[]): Promise<void> {
   }
 }
 
-syncAcrossWindows("l8db.connections", () => {
+export function syncConnectionsFromStorage(): void {
   const previous = useConnectionsStore.getState().connections;
   syncingWindows = true;
   let rehydrated: Promise<void> | void;
@@ -307,4 +307,6 @@ syncAcrossWindows("l8db.connections", () => {
     syncingWindows = false;
   }
   void Promise.resolve(rehydrated).then(() => loadSyncedSecrets(previous));
-});
+}
+
+syncAcrossWindows("l8db.connections", syncConnectionsFromStorage);
