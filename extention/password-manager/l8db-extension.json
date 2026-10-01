@@ -1,8 +1,8 @@
 {
   "id": "l8db.password-manager",
   "name": "Passwortmanager-Sync",
-  "version": "1.5.0",
-  "description": "Speichert deine l8db-Verbindungen in Bitwarden, 1Password oder Keeper und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern.",
+  "version": "1.6.0",
+  "description": "Speichert deine l8db-Verbindungen in Bitwarden, 1Password, Keeper oder OpenBao und lädt sie von dort, inklusive Zugängen aus geteilten Sammlungen, Tresoren und Ordnern.",
   "publisher": "l8db",
   "engines": {
     "l8db": ">=0.7.0 <2.0.0",
@@ -30,6 +30,7 @@
         "keeper",
         "bw",
         "op",
+        "bao",
         "pipx",
         "python3",
         "py",
@@ -75,9 +76,10 @@
         "enum": [
           "keeper",
           "bitwarden",
-          "1password"
+          "1password",
+          "openbao"
         ],
-        "description": "Passwortmanager, dessen CLI verwendet wird (keeper, bw oder op)."
+        "description": "Passwortmanager, dessen CLI verwendet wird (keeper, bw, op oder bao)."
       },
       "vault.autoSync": {
         "type": "boolean",

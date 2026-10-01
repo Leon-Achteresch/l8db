@@ -4,6 +4,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { SidebarEntityResults } from "./sidebar-entity-results";
 import { SidebarPickResults } from "./sidebar-pick-results";
 import { useSidebarEntityFilter } from "./use-sidebar-entity-filter";
@@ -15,8 +16,6 @@ export interface SidebarEntityListProps {
   error: unknown;
   emptyMessage: string;
   type: "table" | "view";
-  activeItem?: string | null;
-  onPick?: (schema: string, name: string) => void;
 }
 
 export function SidebarEntityList({
@@ -26,9 +25,9 @@ export function SidebarEntityList({
   error,
   emptyMessage,
   type,
-  activeItem,
-  onPick,
 }: SidebarEntityListProps) {
+  const target = usePaneTabTarget();
+  const current = target?.current;
   const {
     search,
     setSearch,
@@ -92,12 +91,18 @@ export function SidebarEntityList({
           </TooltipContent>
         </Tooltip>
       </div>
-      {onPick ? (
+      {target ? (
         <SidebarPickResults
           filtered={filtered ?? []}
           type={type}
-          activeItem={activeItem}
-          onPick={onPick}
+          activeItem={
+            current?.kind === "table" && (current.entityType ?? "table") === type
+              ? `${current.schema}.${current.table}`
+              : null
+          }
+          onPick={(schema, table) =>
+            target.open({ kind: "table", schema, table, entityType: type })
+          }
         />
       ) : (
         <SidebarEntityResults filtered={filtered ?? []} type={type} />

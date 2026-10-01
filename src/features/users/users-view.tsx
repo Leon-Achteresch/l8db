@@ -39,12 +39,14 @@ import { useRolesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export function UsersView({ name }: { name: string }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const openRoleTab = useTableTabs((state) => state.openRoleTab);
+  const pane = useWorkspacePane();
   const navigate = useNavigate();
   const { data: roles, isLoading, isError, error } = useRolesQuery();
 
@@ -57,8 +59,8 @@ export function UsersView({ name }: { name: string }) {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    openRoleTab({ name });
-  }, [name, openRoleTab]);
+    if (!pane) openRoleTab({ name });
+  }, [name, openRoleTab, pane]);
 
   const handleEdit = useCallback(() => {
     if (!role) return;

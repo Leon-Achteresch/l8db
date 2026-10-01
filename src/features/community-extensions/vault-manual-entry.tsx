@@ -34,16 +34,34 @@ export function VaultManualEntry({ provider }: { provider: (typeof VAULT_PROVIDE
   return (
     <div className="space-y-3 text-xs">
       <ol className="list-decimal space-y-1.5 pl-4 text-muted-foreground marker:text-foreground">
-        <li>
-          Neuen Eintrag vom Typ <span className="text-foreground">{provider.entry}</span>{" "}
-          {provider.team} anlegen.
-        </li>
-        <li>
-          Name mit <span className="font-mono text-foreground">l8db:</span> beginnen, z. B.{" "}
-          <span className="text-foreground">„l8db: Buchhaltung“</span>. Der Rest wird zum Namen der
-          Verbindung.
-        </li>
-        <li>Benutzername und Passwort des Datenbank-Kontos eintragen.</li>
+        {provider.id === "openbao" ? (
+          <>
+            <li>
+              Ein Secret unter dem KV-Pfad aus der Einrichtung anlegen, z. B.{" "}
+              <span className="font-mono text-foreground">secret/l8db/buchhaltung</span>. Der letzte
+              Teil wird zum Namen der Verbindung, ein Feld{" "}
+              <span className="font-mono text-foreground">title</span> ersetzt ihn.
+            </li>
+            <li>
+              Die Felder <span className="font-mono text-foreground">username</span> und{" "}
+              <span className="font-mono text-foreground">password</span> mit dem Datenbank-Konto
+              füllen.
+            </li>
+          </>
+        ) : (
+          <>
+            <li>
+              Neuen Eintrag vom Typ <span className="text-foreground">{provider.entry}</span>{" "}
+              {provider.team} anlegen.
+            </li>
+            <li>
+              Name mit <span className="font-mono text-foreground">l8db:</span> beginnen, z. B.{" "}
+              <span className="text-foreground">„l8db: Buchhaltung“</span>. Der Rest wird zum Namen
+              der Verbindung.
+            </li>
+            <li>Benutzername und Passwort des Datenbank-Kontos eintragen.</li>
+          </>
+        )}
         <li>
           Unter <span className="text-foreground">{provider.website}</span> die Adresse der
           Datenbank eintragen. Die kannst du hier zusammenstellen:

@@ -18,6 +18,7 @@ import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -36,6 +37,7 @@ export function SidebarProcedureList({
 }: SidebarProcedureListProps) {
   const navigate = useNavigate();
   const openProcedureTab = useTableTabs((state) => state.openProcedureTab);
+  const target = usePaneTabTarget();
   const capabilities = useActiveCapabilities();
   const { compile } = useCompileObject();
   const [copyTarget, setCopyTarget] = useState<{
@@ -62,6 +64,10 @@ export function SidebarProcedureList({
   }
 
   const open = (item: { schema: string; name: string; oid: string }) => {
+    if (target) {
+      target.open({ kind: "procedure", schema: item.schema, name: item.name, oid: item.oid });
+      return;
+    }
     openProcedureTab({ schema: item.schema, name: item.name, oid: item.oid });
     void navigate({
       to: "/procedures/$schema/$name",

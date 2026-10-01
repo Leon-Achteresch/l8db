@@ -6,6 +6,7 @@ export type LinkAnchor = { x: number; y: number; angle: number };
 
 const EDGE = 4;
 const SHARED = 40;
+const HEADER_CENTER = 14;
 
 export function chainMasters(count: number): PaneMasters {
   return Array.from({ length: count }, (_, index) => (index > 0 ? index - 1 : null));
@@ -71,6 +72,23 @@ export function linkAnchor(master: PaneBox, detail: PaneBox): LinkAnchor {
           : 90
         : (Math.atan2(y.step, x.step) * 180) / Math.PI;
   return { x: x.mid, y: y.mid, angle };
+}
+
+export function syncAnchor(a: PaneBox, b: PaneBox): LinkAnchor {
+  const anchor = linkAnchor(a, b);
+  return anchor.angle % 180 === 0
+    ? { ...anchor, y: Math.max(a.top, b.top) + HEADER_CENTER }
+    : { ...anchor, angle: 90 };
+}
+
+export function sameTable(a: Tab | undefined, b: Tab | undefined): boolean {
+  return (
+    a?.kind === "table" &&
+    b?.kind === "table" &&
+    a.schema === b.schema &&
+    a.table === b.table &&
+    (a.entityType ?? "table") === (b.entityType ?? "table")
+  );
 }
 
 export function spreadAnchors(anchors: LinkAnchor[], gap = 28): LinkAnchor[] {

@@ -1,5 +1,4 @@
-import { EyeIcon, TableIcon } from "lucide-react";
-import { useState } from "react";
+import { startTransition, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
@@ -16,33 +15,33 @@ import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { useTablesQuery, useViewsQuery } from "@/lib/queries";
+import { PaneTabTargetContext } from "@/lib/pane-tab-target";
 import { useSplitView } from "@/lib/split-view";
-import { remoteTableTab } from "@/lib/table-tabs";
+import { remoteTab } from "@/lib/table-tabs";
 
-import { SidebarEntityList } from "./app-sidebar-panel/sidebar-entity-list";
 import { SidebarScopeSelects } from "./app-sidebar-panel/sidebar-scope-selects";
+import { type SidebarTabValue, sidebarTabLabel } from "./app-sidebar-panel/sidebar-tab";
+import { SidebarTabContent } from "./app-sidebar-panel/sidebar-tab-content";
+import { useSidebarObjectQueries } from "./app-sidebar-panel/use-sidebar-object-queries";
 import { useSidebarScope } from "./app-sidebar-panel/use-sidebar-scope";
+import { useSidebarTabs } from "./app-sidebar-panel/use-sidebar-tabs";
 
 const NO_CONNECTIONS: never[] = [];
-
-const OBJECT_TABS = [
-  { value: "table", label: "Tabellen", icon: TableIcon },
-  { value: "view", label: "Views", icon: EyeIcon },
-];
 
 export function PaneSidebarPanel({ index }: { index: number }) {
   const connection = useActiveConnection();
   const caps = useActiveCapabilities();
   const scope = useSidebarScope(NO_CONNECTIONS, connection);
-  const [selected, setSelected] = useState<"table" | "view">("table");
-  const type = caps.views ? selected : "table";
-  const tables = useTablesQuery();
-  const views = useViewsQuery(type === "view");
-  const query = type === "view" ? views : tables;
-  const current = remoteTableTab(useSplitView((state) => state.panes[index]));
-  const setPaneTable = useSplitView((state) => state.setPaneTable);
+  const [selectedTab, setSelectedTab] = useState<SidebarTabValue>("tables");
+  const q = useSidebarObjectQueries(selectedTab);
+  const packages = q.functions?.filter((f) => f.return_type === "PACKAGE");
+  const plainFunctions = q.functions?.filter((f) => f.return_type !== "PACKAGE");
+  const tabs = useSidebarTabs(Boolean(packages?.length)).filter((tab) => tab.value !== "queries");
+  const sidebarTab = tabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
+  const current = remoteTab(useSplitView((state) => state.panes[index]));
+  const setPaneTab = useSplitView((state) => state.setPaneTab);
   const feature = useNewFeatureVisibility<HTMLDivElement>("split.pane-tables");
+  const objectsFeature = useNewFeatureVisibility<HTMLDivElement>("split.pane-objects");
 
   if (!connection) return null;
 
@@ -79,35 +78,43 @@ export function PaneSidebarPanel({ index }: { index: number }) {
           scope={scope}
         />
       </SidebarHeader>
-      {caps.views ? (
-        <div className="shrink-0 border-b px-2 py-2">
-          <SidebarObjectTabs
-            tabs={OBJECT_TABS}
-            value={type}
-            onValueChange={(value) => setSelected(value === "view" ? "view" : "table")}
-          />
+      {tabs.length > 1 ? (
+        <div
+          ref={objectsFeature.ref}
+          className="flex shrink-0 items-center gap-1 border-b px-2 py-2"
+        >
+          <div className="min-w-0 flex-1">
+            <SidebarObjectTabs
+              tabs={tabs}
+              value={sidebarTab}
+              onValueChange={(value) =>
+                startTransition(() => setSelectedTab(value as SidebarTabValue))
+              }
+            />
+          </div>
+          {objectsFeature.isNew && <NewBadge />}
         </div>
       ) : null}
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>{type === "view" ? "Views" : "Tabellen"}</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {caps.object_storage && sidebarTab === "tables"
+              ? "Buckets"
+              : sidebarTabLabel(sidebarTab)}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarEntityList
-              items={query.data}
-              isLoading={query.isLoading}
-              isError={query.isError}
-              error={query.error}
-              emptyMessage={type === "view" ? "Keine Views gefunden." : "Keine Tabellen gefunden."}
-              type={type}
-              activeItem={
-                current && (current.entityType ?? "table") === type
-                  ? `${current.schema}.${current.table}`
-                  : null
-              }
-              onPick={(schema, table) =>
-                setPaneTable(index, connection.id, { schema, table, entityType: type })
-              }
-            />
+            <PaneTabTargetContext.Provider
+              value={{ current, open: (tab) => setPaneTab(index, connection.id, tab) }}
+            >
+              <SidebarTabContent
+                hasConnection
+                objectStorage={caps.object_storage}
+                sidebarTab={sidebarTab}
+                q={q}
+                packages={packages}
+                plainFunctions={plainFunctions}
+              />
+            </PaneTabTargetContext.Provider>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

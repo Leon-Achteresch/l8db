@@ -1,6 +1,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { MasterDetailLink } from "@/features/shell/master-detail-link";
-import { canLink, linkAnchor, type PaneBox, spreadAnchors } from "@/lib/split-links";
+import { ScrollSyncButton } from "@/features/shell/split-workspace/scroll-sync-button";
+import {
+  canLink,
+  linkAnchor,
+  type PaneBox,
+  sameTable,
+  spreadAnchors,
+  syncAnchor,
+} from "@/lib/split-links";
 import { usePaneTabs, useSplitView } from "@/lib/split-view";
 
 export function MasterDetailLinks() {
@@ -43,9 +51,17 @@ export function MasterDetailLinks() {
       ? [{ master, detail, id: `${master}>${detail}` }]
       : [],
   );
-  const anchors = spreadAnchors(
-    links.map((link) => linkAnchor(boxes[link.master], boxes[link.detail])),
+  const syncs = paneTabs.flatMap((tab, first) =>
+    paneTabs.flatMap((other, second) =>
+      second > first && boxes[first] && boxes[second] && sameTable(tab, other)
+        ? [{ first, second }]
+        : [],
+    ),
   );
+  const anchors = spreadAnchors([
+    ...links.map((link) => linkAnchor(boxes[link.master], boxes[link.detail])),
+    ...syncs.map((sync) => syncAnchor(boxes[sync.first], boxes[sync.second])),
+  ]);
   const active = links.find((link) => link.id === hovered);
 
   return (
@@ -74,6 +90,14 @@ export function MasterDetailLinks() {
           onHover={(on) =>
             setHovered((current) => (on ? link.id : current === link.id ? null : current))
           }
+        />
+      ))}
+      {syncs.map((sync, index) => (
+        <ScrollSyncButton
+          key={`${panes[sync.first]}|${panes[sync.second]}`}
+          first={sync.first}
+          second={sync.second}
+          anchor={anchors[links.length + index]}
         />
       ))}
     </div>
