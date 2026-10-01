@@ -998,7 +998,10 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 Err(e) => return Err(map_pg_err(e)),
             };
-            let rows: Vec<serde_json::Value> = data_rows.iter().map(|row| row.get(0)).collect();
+            let rows: Vec<serde_json::Value> = data_rows
+                .iter()
+                .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+                .collect();
 
             Ok(TableData { columns, rows })
         })
@@ -1122,7 +1125,7 @@ impl DatabaseAdapter for PostgresAdapter {
             let mut values: Vec<serde_json::Value> = data_rows
                 .iter()
                 .take(remaining as usize)
-                .map(|row| row.get(0))
+                .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
                 .collect();
             for mask in request
                 .masks
@@ -4437,7 +4440,10 @@ pub async fn run_params_query(
         .query(&wrapped_statement, &values)
         .await
         .map_err(map_pg_err)?;
-    let rows: Vec<serde_json::Value> = data.iter().map(|row| row.get(0)).collect();
+    let rows: Vec<serde_json::Value> = data
+        .iter()
+        .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+        .collect();
     let count = rows.len() as u64;
 
     Ok(QueryResult {
@@ -4917,6 +4923,42 @@ mod tests {
         }
         adapter
             .execute_query("DROP TABLE export_benchmark")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lab_table_rows_keep_exact_numbers() {
+        let adapter = lab_adapter();
+        adapter
+            .execute_query("DROP TABLE IF EXISTS l8db_exact; CREATE TABLE l8db_exact (id bigint PRIMARY KEY, amount numeric, ratio numeric, doc jsonb); INSERT INTO l8db_exact VALUES (9007199254740993, 12345678901234567890.123456789, 12.50, '{\"n\": 1}')")
+            .await
+            .unwrap();
+        let data = adapter
+            .fetch_rows(
+                "public",
+                "l8db_exact",
+                None,
+                10,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let row = &data.rows[0];
+        assert_eq!(row["id"], serde_json::json!("9007199254740993"));
+        assert_eq!(
+            row["amount"],
+            serde_json::json!("12345678901234567890.123456789")
+        );
+        assert_eq!(row["ratio"], serde_json::json!(12.5));
+        assert_eq!(row["doc"], serde_json::json!({"n": 1}));
+        adapter
+            .execute_query("DROP TABLE l8db_exact")
             .await
             .unwrap();
     }

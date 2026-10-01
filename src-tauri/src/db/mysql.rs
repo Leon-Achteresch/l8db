@@ -79,18 +79,29 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
     match value {
         Value::NULL => serde_json::Value::Null,
         Value::Bytes(bytes) => {
+            if column.column_type() == ColumnType::MYSQL_TYPE_BIT && bytes.len() <= 8 {
+                return super::exact_number::uint(
+                    bytes.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b)),
+                );
+            }
             if is_binary(column) {
                 return serde_json::Value::String(hex_blob(&bytes));
             }
             let text = String::from_utf8_lossy(&bytes).into_owned();
             if is_numeric(column) {
-                if let Ok(i) = text.parse::<i64>() {
-                    return serde_json::Value::from(i);
-                }
-                if let Ok(f) = text.parse::<f64>() {
-                    if let Some(n) = serde_json::Number::from_f64(f) {
+                if matches!(
+                    column.column_type(),
+                    ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE
+                ) {
+                    if let Some(n) = text
+                        .parse::<f64>()
+                        .ok()
+                        .and_then(serde_json::Number::from_f64)
+                    {
                         return serde_json::Value::Number(n);
                     }
+                } else {
+                    return super::exact_number::decimal(&text);
                 }
             }
             if column.column_type() == ColumnType::MYSQL_TYPE_JSON {
@@ -100,8 +111,8 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
             }
             serde_json::Value::String(text)
         }
-        Value::Int(i) => serde_json::Value::from(i),
-        Value::UInt(u) => serde_json::Value::from(u),
+        Value::Int(i) => super::exact_number::int(i),
+        Value::UInt(u) => super::exact_number::uint(u),
         Value::Float(f) => serde_json::Number::from_f64(f as f64)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),

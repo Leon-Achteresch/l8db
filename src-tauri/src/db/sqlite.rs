@@ -60,7 +60,7 @@ pub fn file_path(connection_string: &str) -> Result<String, String> {
 fn value_to_json(value: ValueRef<'_>) -> serde_json::Value {
     match value {
         ValueRef::Null => serde_json::Value::Null,
-        ValueRef::Integer(i) => serde_json::Value::from(i),
+        ValueRef::Integer(i) => super::exact_number::int(i),
         ValueRef::Real(f) => serde_json::Number::from_f64(f)
             .map(serde_json::Value::Number)
             .unwrap_or_else(|| serde_json::Value::String(f.to_string())),
