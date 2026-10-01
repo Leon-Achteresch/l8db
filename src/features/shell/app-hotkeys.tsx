@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
 import { useActiveConnection } from "@/lib/connections";
+import { openAppWindow } from "@/lib/db";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -137,6 +138,13 @@ export function AppHotkeys() {
     { id: "go.forward", action: () => router.history.forward() },
     { id: "go.connections", action: () => void navigate({ to: "/connections" }) },
     { id: "settings.open", action: () => void navigate({ to: "/settings" }) },
+    {
+      id: "window.new",
+      action: () =>
+        void openAppWindow().catch((error) =>
+          toast.error(`Fenster konnte nicht geöffnet werden: ${String(error)}`),
+        ),
+    },
     { id: "view.zoomIn", action: () => zoom(UI_SCALE_STEP) },
     { id: "view.zoomOut", action: () => zoom(-UI_SCALE_STEP) },
     { id: "view.zoomReset", action: () => zoom(null) },

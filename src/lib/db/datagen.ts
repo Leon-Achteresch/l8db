@@ -120,3 +120,12 @@ export async function datagenRun(
 ): Promise<DatagenOutcome> {
   return invoke("datagen_run", { kind, connectionString, database, request, options });
 }
+
+export function datagenSeedScript(
+  kind: DatabaseKind,
+  connectionString: string,
+  request: DatagenRequest,
+  database?: string,
+): Promise<string> {
+  return invoke("datagen_seed_script", { kind, connectionString, database, request });
+}

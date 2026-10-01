@@ -10,7 +10,7 @@ export {
   queryTabBookmarks,
 } from "./query-tabs";
 export * from "./store";
-export { tabKey } from "./tab-keys";
+export { remoteTableTab, tabKey } from "./tab-keys";
 export type {
   AlterTableTab,
   ClosedTab,

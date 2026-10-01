@@ -280,7 +280,7 @@ pub async fn append(
     Ok(())
 }
 
-fn journal_sql(
+pub(super) fn journal_sql(
     connection: &Connection,
     run: &str,
     event: &str,

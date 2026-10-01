@@ -36,7 +36,7 @@ async fn settled(url: &str, id: &str) -> Snapshot {
 async fn postgres_debugger_live_steps_breakpoints_variables_and_stop() {
     let url = std::env::var("L8DB_DEBUG_PG_URL").expect("L8DB_DEBUG_PG_URL required");
     let (config, ssl) = crate::db::connection::parse_connection(&url, None).unwrap();
-    let client = crate::db::execution::connect_postgres(&config, ssl)
+    let client = crate::db::execution::connect_postgres(&config, &ssl)
         .await
         .unwrap();
     client.batch_execute("CREATE OR REPLACE FUNCTION public.l8db_debug_test(n integer) RETURNS integer LANGUAGE plpgsql AS $body$\nDECLARE value integer := n;\nBEGIN\nvalue := value + 1;\nvalue := value * 2;\nRETURN value;\nEND;\n$body$;").await.unwrap();
@@ -200,7 +200,7 @@ async fn oracle_debugger_live_steps_variables_and_stop() {
 async fn postgres_debugger_live_finish_rollback_error_and_running_cancel() {
     let url = std::env::var("L8DB_DEBUG_PG_URL").unwrap();
     let (config, ssl) = crate::db::connection::parse_connection(&url, None).unwrap();
-    let client = crate::db::execution::connect_postgres(&config, ssl)
+    let client = crate::db::execution::connect_postgres(&config, &ssl)
         .await
         .unwrap();
     client.batch_execute("CREATE TABLE IF NOT EXISTS public.l8db_debug_writes(value integer); CREATE OR REPLACE FUNCTION public.l8db_debug_write() RETURNS void LANGUAGE plpgsql AS $body$\nBEGIN\nINSERT INTO public.l8db_debug_writes VALUES (1);\nEND;\n$body$;").await.unwrap();
@@ -336,7 +336,7 @@ async fn oracle_debugger_live_package_breakpoint_finish() {
 async fn postgres_debugger_live_nested_frames_and_step_out() {
     let url = std::env::var("L8DB_DEBUG_PG_URL").unwrap();
     let (config, ssl) = crate::db::connection::parse_connection(&url, None).unwrap();
-    let client = crate::db::execution::connect_postgres(&config, ssl)
+    let client = crate::db::execution::connect_postgres(&config, &ssl)
         .await
         .unwrap();
     client.batch_execute("CREATE OR REPLACE FUNCTION public.l8db_debug_child(n integer) RETURNS integer LANGUAGE plpgsql AS $body$\nBEGIN\nRETURN n + 1;\nEND;\n$body$; CREATE OR REPLACE FUNCTION public.l8db_debug_parent(n integer) RETURNS integer LANGUAGE plpgsql AS $body$\nDECLARE value integer;\nBEGIN\nvalue := public.l8db_debug_child(n);\nRETURN value;\nEND;\n$body$;").await.unwrap();

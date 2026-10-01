@@ -6,7 +6,7 @@ use tokio_postgres::Client;
 use tokio_util::sync::CancellationToken;
 
 use super::{Action, Availability, Backend, Breakpoint, Frame, Launch, Snapshot, Variable, Watch};
-use crate::db::{connection, execution, map_pg_err, quote_ident, SslMode};
+use crate::db::{connection, execution, map_pg_err, quote_ident};
 
 async fn extension(client: &Client) -> Result<String, String> {
     let row = client.query_opt("SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'pldbgapi'", &[]).await.map_err(map_pg_err)?;
@@ -15,7 +15,7 @@ async fn extension(client: &Client) -> Result<String, String> {
 
 pub async fn availability(url: &str, database: Option<&str>) -> Result<Availability, String> {
     let (config, ssl) = connection::parse_connection(url, database)?;
-    let client = execution::connect_postgres(&config, ssl).await?;
+    let client = execution::connect_postgres(&config, &ssl).await?;
     match extension(&client).await {
         Ok(schema) => {
             let probe = client
@@ -35,7 +35,7 @@ pub async fn availability(url: &str, database: Option<&str>) -> Result<Availabil
 pub struct PgDebugger {
     control: Arc<Client>,
     target: Arc<Client>,
-    ssl: SslMode,
+    ssl: connection::PgTls,
     schema: String,
     handle: i32,
     breakpoints: Vec<Breakpoint>,
@@ -47,14 +47,14 @@ impl Drop for PgDebugger {
     fn drop(&mut self) {
         let control = self.control.clone();
         let target = self.target.clone();
-        let ssl = self.ssl;
+        let ssl = self.ssl.clone();
         let task = self.execution.take();
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                if let Ok(tls) = connection::tls_connector(ssl) {
+                if let Ok(tls) = connection::tls_connector(&ssl) {
                     let _ = control.cancel_token().cancel_query(tls).await;
                 }
-                if let Ok(tls) = connection::tls_connector(ssl) {
+                if let Ok(tls) = connection::tls_connector(&ssl) {
                     let _ = target.cancel_token().cancel_query(tls).await;
                 }
                 if let Some(task) = task {
@@ -80,9 +80,9 @@ pub async fn launch(
         .parse()
         .map_err(|_| "Ungültige PostgreSQL-Routinen-ID")?;
     let (config, ssl) = connection::parse_connection(url, database)?;
-    let control = Arc::new(execution::connect_postgres(&config, ssl).await?);
+    let control = Arc::new(execution::connect_postgres(&config, &ssl).await?);
     let schema = extension(&control).await?;
-    let target = Arc::new(execution::connect_postgres(&config, ssl).await?);
+    let target = Arc::new(execution::connect_postgres(&config, &ssl).await?);
     let mut backend = PgDebugger {
         control,
         target,
@@ -352,12 +352,12 @@ impl Backend for PgDebugger {
         let _ = self
             .control
             .cancel_token()
-            .cancel_query(connection::tls_connector(self.ssl)?)
+            .cancel_query(connection::tls_connector(&self.ssl)?)
             .await;
         let _ = self
             .target
             .cancel_token()
-            .cancel_query(connection::tls_connector(self.ssl)?)
+            .cancel_query(connection::tls_connector(&self.ssl)?)
             .await;
         let _ = tokio::time::timeout(
             Duration::from_secs(3),

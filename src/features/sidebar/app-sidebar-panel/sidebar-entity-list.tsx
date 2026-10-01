@@ -5,6 +5,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarEntityResults } from "./sidebar-entity-results";
+import { SidebarPickResults } from "./sidebar-pick-results";
 import { useSidebarEntityFilter } from "./use-sidebar-entity-filter";
 
 export interface SidebarEntityListProps {
@@ -14,6 +15,8 @@ export interface SidebarEntityListProps {
   error: unknown;
   emptyMessage: string;
   type: "table" | "view";
+  activeItem?: string | null;
+  onPick?: (schema: string, name: string) => void;
 }
 
 export function SidebarEntityList({
@@ -23,6 +26,8 @@ export function SidebarEntityList({
   error,
   emptyMessage,
   type,
+  activeItem,
+  onPick,
 }: SidebarEntityListProps) {
   const {
     search,
@@ -87,7 +92,16 @@ export function SidebarEntityList({
           </TooltipContent>
         </Tooltip>
       </div>
-      <SidebarEntityResults filtered={filtered ?? []} type={type} />
+      {onPick ? (
+        <SidebarPickResults
+          filtered={filtered ?? []}
+          type={type}
+          activeItem={activeItem}
+          onPick={onPick}
+        />
+      ) : (
+        <SidebarEntityResults filtered={filtered ?? []} type={type} />
+      )}
     </div>
   );
 }

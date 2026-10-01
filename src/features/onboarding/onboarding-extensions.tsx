@@ -1,6 +1,9 @@
-import { useNavigate } from "@tanstack/react-router";
+import { ArrowLeftIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { CommunityExtensionCard } from "@/features/community-extensions/community-extension-card";
+import { errorText } from "@/features/community-extensions/password-manager";
 import { OnboardingExtensionCard } from "@/features/onboarding/onboarding-extension-card";
 import {
   downloadMarketExtension,
@@ -9,19 +12,15 @@ import {
 } from "@/lib/extensions/market";
 import { useExtensionHost, useExtensionSnapshot } from "@/lib/extensions/react-context";
 
-interface OnboardingExtensionsProps {
-  onFinish: () => void;
-}
-
-export function OnboardingExtensions({ onFinish }: OnboardingExtensionsProps) {
+export function OnboardingExtensions() {
   const host = useExtensionHost();
-  const navigate = useNavigate();
-  const installed = useExtensionSnapshot((manager) =>
-    manager.listExtensions().map((item) => item.archive.manifest.id),
-  );
+  const extensions = useExtensionSnapshot((manager) => manager.listExtensions());
   const [entries, setEntries] = useState<MarketExtension[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const current = extensions.find((item) => item.archive.manifest.id === open);
 
   useEffect(() => {
     let alive = true;
@@ -39,6 +38,7 @@ export function OnboardingExtensions({ onFinish }: OnboardingExtensionsProps) {
     try {
       await host.installExtension(await downloadMarketExtension(entry));
       toast.success(`${entry.name} installiert.`);
+      setOpen(entry.id);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -46,10 +46,27 @@ export function OnboardingExtensions({ onFinish }: OnboardingExtensionsProps) {
     }
   };
 
-  const setup = () => {
-    onFinish();
-    void navigate({ to: "/settings", search: { tab: "extensions" } });
+  const run = (action: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
+    void Promise.resolve()
+      .then(action)
+      .catch((cause) => toast.error(errorText(cause)))
+      .finally(() => setBusy(false));
   };
+
+  if (current)
+    return (
+      <div className="@container mt-8 space-y-3">
+        <Button variant="ghost" size="sm" className="-ml-2" onClick={() => setOpen(null)}>
+          <ArrowLeftIcon />
+          Alle Erweiterungen
+        </Button>
+        <fieldset disabled={busy} className="min-w-0">
+          <CommunityExtensionCard extension={current} run={run} />
+        </fieldset>
+      </div>
+    );
 
   if (error)
     return (
@@ -67,10 +84,10 @@ export function OnboardingExtensions({ onFinish }: OnboardingExtensionsProps) {
               key={entry.id}
               entry={entry}
               index={index}
-              installed={installed.includes(entry.id)}
+              installed={extensions.some((item) => item.archive.manifest.id === entry.id)}
               pending={pending === entry.id}
               onInstall={() => void install(entry)}
-              onSetup={setup}
+              onSetup={() => setOpen(entry.id)}
             />
           ))
         : [0, 1].map((i) => <div key={i} className="h-64 animate-pulse rounded-2xl bg-muted" />)}

@@ -46,6 +46,7 @@ const CONFIGURED_COMMANDS = new Set([
 ]);
 
 const WRITE_COMMANDS = new Set([
+  "versioning_run_seed",
   "debug_launch",
   "debug_action",
   "add_column",

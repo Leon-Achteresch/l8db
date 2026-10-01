@@ -73,7 +73,7 @@ export function parseProject(text: string): VersioningProject {
       ids.has(object.id) ||
       paths.has(object.path) ||
       identities.has(identity) ||
-      (object.metadataVersion !== undefined && object.metadataVersion !== 2) ||
+      (object.metadataVersion !== undefined && ![2, 3].includes(object.metadataVersion)) ||
       !/^database\/objects\/[a-zA-Z0-9._-]+\.(sql|pks|pkb)$/.test(object.path) ||
       !object.selection?.schema ||
       !object.selection.objectName ||

@@ -4,7 +4,7 @@ Speichert l8db-Verbindungen in Keeper, Bitwarden oder 1Password und lädt sie vo
 
 Aktivierung erfordert `process:execute` (die CLIs und Paketmanager aus `capabilities.process`), `connections:read` (Speichern im Tresor), `connections:write` (Laden aus dem Tresor, Entfernen entzogener Zugänge über `connections.remove`) und `filesystem:extension-storage` (merkt sich, welche Verbindungen aus dem Tresor stammen; ohne diese Freigabe werden entzogene Zugänge nicht entfernt).
 
-Einrichtung: In den Einstellungen unter „Erweiterungen“ zeigt die Karte nach dem Aktivieren einen Assistenten in drei Schritten: Passwortmanager wählen, CLI installieren, anmelden. Er nutzt den Befehl `vault.setup` (Payload `{ action: "status" | "install" | "login" | "logout", provider, … }`, Rückgabe ist der Status).
+Einrichtung: Nach dem Aktivieren zeigt die Karte der Extension einen Assistenten in drei Schritten: Passwortmanager wählen, CLI installieren, anmelden. Er nutzt den Befehl `vault.setup` (Payload `{ action: "status" | "install" | "login" | "logout", provider, … }`, Rückgabe ist der Status). Im Onboarding öffnet sich die Karte direkt nach der Installation, sonst liegt sie in den Einstellungen unter „Erweiterungen“.
 
 - Bitwarden: Server (bitwarden.com, bitwarden.eu oder eigener), E-Mail und Master-Passwort; verlangt Bitwarden einen zweiten Faktor, fragt der Assistent den Code ab (Authenticator-App oder E-Mail). Alternativ Anmeldung per API-Schlüssel (`client_id`/`client_secret`), die auch die Bestätigung neuer Geräte umgeht. Ein gesperrter Tresor wird nur mit dem Master-Passwort entsperrt; die Sitzung bleibt im Speicher.
 - 1Password: Anmeldung über die Desktop-App („Mit 1Password CLI integrieren“); bei mehreren Konten wird eines ausgewählt.
@@ -24,13 +24,13 @@ Einträge können auch direkt im Passwortmanager angelegt werden: Titel `l8db: <
 
 CLI-Installation: Der Assistent zeigt die installierte CLI-Version oder „Jetzt installieren“ (auch als Befehl `Passwortmanager: CLI installieren`). l8db probiert die Paketmanager der Reihe nach und nimmt den ersten, der funktioniert:
 
-- Keeper: `pipx`, `pip --user`, eigenes venv unter `~/.local/share/l8db/keeper`, unter Windows `py -m pip`
+- Keeper: `pipx`, Homebrew (`keeper-commander`), eigenes venv unter `~/.local/share/l8db/keeper`, `pip --user`, unter Windows `py -m pip` und winget (`KeeperSecurity.Commander`, landet unter `Program Files (x86)\Keeper Commander`)
 - Bitwarden: `npm -g`, Homebrew, winget (`Bitwarden.CLI`)
 - 1Password: Homebrew-Cask, winget (`AgileBits.1Password.CLI`), unter Linux der offizielle ZIP-Download nach `~/.local/bin`
 
 Schlägt alles fehl, verweist die Meldung auf die offizielle Installationsanleitung.
 
-Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.4.1.l8db-extension`
+Build: `bun run extension pack extention/password-manager extention/password-manager/l8db.password-manager-1.5.0.l8db-extension`
 
 Browser-Test des ganzen Firmen-Ablaufs in der echten Sandbox: `L8DB_EXTENSION_BROWSER=1 bun test tests/password-manager-browser.test.ts`.
 

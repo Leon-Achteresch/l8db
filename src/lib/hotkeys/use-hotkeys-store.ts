@@ -2,6 +2,7 @@ import type { Hotkey } from "@tanstack/react-hotkeys";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import { commandById, HOTKEY_COMMANDS } from "./commands";
 
 interface HotkeysState {
@@ -56,3 +57,5 @@ export function useAllResolvedHotkeys(): Record<string, Hotkey> {
     return resolved;
   }, [overrides]);
 }
+
+syncAcrossWindows("l8db.hotkeys", () => void useHotkeysStore.persist.rehydrate());

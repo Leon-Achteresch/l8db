@@ -18,7 +18,7 @@ use super::{
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
     super::provider::list_providers()
 }
@@ -584,6 +584,7 @@ pub async fn run_scheduler_job(
 pub const MAX_RESULT_ROWS: usize = 1000;
 
 fn truncate_rows(mut result: QueryResult) -> QueryResult {
+    result.truncated |= result.rows.len() > MAX_RESULT_ROWS;
     result.rows.truncate(MAX_RESULT_ROWS);
     result
 }

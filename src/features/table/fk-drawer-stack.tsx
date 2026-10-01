@@ -1,7 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TableView } from "@/features/table/table-view";
-import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
+import { ConnectionScopeContext } from "@/lib/connections";
+import { type FkDrawerEntry, openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useTableTabs } from "@/lib/table-tabs";
 import { DrawerChrome } from "./fk-drawer-stack/drawer-chrome";
 import { clampWidth, defaultWidth, FOCUSABLE } from "./fk-drawer-stack/drawer-width";
@@ -72,8 +73,12 @@ export function FkDrawerStack() {
   }, [stack.length]);
 
   const openInTab = useCallback(
-    (schema: string, table: string, filter?: string, filterRaw?: boolean) => {
+    ({ schema, table, filter, filterRaw, connectionId }: FkDrawerEntry) => {
       clear();
+      if (connectionId) {
+        openScopedTable(connectionId, schema, table, filter, filterRaw);
+        return;
+      }
       openTab({ schema, table, entityType: "table" });
       void navigate({
         to: "/tables/$schema/$table",
@@ -117,19 +122,19 @@ export function FkDrawerStack() {
                 onFocus={() => popTo(entry.id)}
                 onClose={() => (depth === 0 ? pop() : useFkDrawerStack.getState().popTo(entry.id))}
                 onCloseAll={() => clear()}
-                onOpenTab={() =>
-                  openInTab(entry.schema, entry.table, entry.filter, entry.filterRaw)
-                }
+                onOpenTab={() => openInTab(entry)}
                 title={`${entry.schema}.${entry.table}`}
                 subtitle={entry.filter}
               >
-                <TableView
-                  schema={entry.schema}
-                  table={entry.table}
-                  fkFilter={entry.filter}
-                  fkRaw={entry.filterRaw}
-                  drawerId={entry.id}
-                />
+                <ConnectionScopeContext.Provider value={entry.connectionId ?? null}>
+                  <TableView
+                    schema={entry.schema}
+                    table={entry.table}
+                    fkFilter={entry.filter}
+                    fkRaw={entry.filterRaw}
+                    drawerId={entry.id}
+                  />
+                </ConnectionScopeContext.Provider>
               </DrawerChrome>
             );
           })}

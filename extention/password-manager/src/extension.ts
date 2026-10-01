@@ -610,9 +610,11 @@ export const binaries: Record<string, string> = {
 export const installers: Record<string, string[][]> = {
   keeper: [
     ["pipx", "install", "keepercommander"],
-    ["python3", "-m", "pip", "install", "--user", "keepercommander"],
+    ["brew", "install", "keeper-commander"],
     ["sh", "-c", KEEPER_VENV],
+    ["python3", "-m", "pip", "install", "--user", "keepercommander"],
     ["py", "-m", "pip", "install", "--user", "keepercommander"],
+    ["winget", "install", "--id", "KeeperSecurity.Commander", ...WINGET],
   ],
   bitwarden: [
     ["npm", "install", "-g", "@bitwarden/cli"],

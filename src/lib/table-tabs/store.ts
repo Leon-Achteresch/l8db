@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import { createCloseActions } from "./close-actions";
 import { createOpenActions } from "./open-actions";
 import { createQueryActions } from "./query-actions";
@@ -83,4 +84,31 @@ useConnectionsStore.subscribe((state, previous) => {
   useTableTabs.setState({
     tabs: useTableTabs.getState().tabsByConnection[keyForConnection(state.activeId)] ?? [],
   });
+});
+
+export function mergeWindowTabs(
+  stored: Record<string, Tab[]>,
+  current: Record<string, Tab[]>,
+  key: string,
+): Record<string, Tab[]> {
+  return current[key] ? { ...stored, [key]: current[key] } : stored;
+}
+
+syncAcrossWindows("l8db.table-tabs", (value) => {
+  let stored: Record<string, Tab[]> | undefined;
+  try {
+    stored = (JSON.parse(value ?? "null") as { state?: Partial<TabsState> } | null)?.state
+      ?.tabsByConnection;
+  } catch {
+    return;
+  }
+  if (!stored) return;
+  const current = useTableTabs.getState().tabsByConnection;
+  const next = mergeWindowTabs(
+    stored,
+    current,
+    keyForConnection(useConnectionsStore.getState().activeId),
+  );
+  if (JSON.stringify(next) !== JSON.stringify(current))
+    useTableTabs.setState({ tabsByConnection: next });
 });

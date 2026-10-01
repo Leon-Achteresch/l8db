@@ -616,6 +616,7 @@ impl DatabaseAdapter for SqliteHttpAdapter {
             rows: rows_to_objects(&columns, outcome.rows),
             columns,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

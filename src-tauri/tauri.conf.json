@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "l8db",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "identifier": "com.leon.l8db",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run production:check && bun run build",
+    "beforeBuildCommand": "bun run production:check && bun run licenses && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -89,10 +89,15 @@
       "icons/icon.ico"
     ],
     "homepage": "https://github.com/Leon-Achteresch/l8db",
-    "license": "Elastic-2.0",
+    "license": "Apache-2.0",
     "fileAssociations": [
       {
-        "ext": ["sqlite", "sqlite3", "db", "db3"],
+        "ext": [
+          "sqlite",
+          "sqlite3",
+          "db",
+          "db3"
+        ],
         "name": "SQLite-Datenbank",
         "description": "SQLite-Datenbank",
         "mimeType": "application/vnd.sqlite3",
@@ -100,7 +105,10 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["duckdb", "ddb"],
+        "ext": [
+          "duckdb",
+          "ddb"
+        ],
         "name": "DuckDB-Datenbank",
         "description": "DuckDB-Datenbank",
         "mimeType": "application/x-duckdb",
@@ -108,7 +116,9 @@
         "rank": "Default"
       },
       {
-        "ext": ["parquet"],
+        "ext": [
+          "parquet"
+        ],
         "name": "Parquet-Datei",
         "description": "Parquet-Datei",
         "mimeType": "application/vnd.apache.parquet",
@@ -116,7 +126,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["csv"],
+        "ext": [
+          "csv"
+        ],
         "name": "CSV-Datei",
         "description": "CSV-Datei",
         "mimeType": "text/csv",
@@ -124,7 +136,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["sql"],
+        "ext": [
+          "sql"
+        ],
         "name": "SQL-Skript",
         "description": "SQL-Skript",
         "mimeType": "application/sql",
@@ -132,7 +146,9 @@
         "rank": "Alternate"
       },
       {
-        "ext": ["l8nb"],
+        "ext": [
+          "l8nb"
+        ],
         "name": "l8db-Notebook",
         "description": "l8db-Notebook",
         "mimeType": "application/x-l8db-notebook",
@@ -140,7 +156,9 @@
         "rank": "Owner",
         "exportedType": {
           "identifier": "com.leon.l8db.notebook",
-          "conformsTo": ["public.json"]
+          "conformsTo": [
+            "public.json"
+          ]
         }
       }
     ],

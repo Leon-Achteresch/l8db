@@ -32,6 +32,7 @@ export default defineConfig(async () => ({
       "react-grid-layout",
       "recharts",
       "@xyflow/react",
+      "sql-formatter",
     ],
   },
 

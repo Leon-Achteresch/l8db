@@ -662,7 +662,7 @@ describe("CLI installation", () => {
     let installed = false;
     const { api, calls } = installApi({
       pipx: () => ({ status: 1, stderr: "pipx broken" }),
-      python3: () => {
+      brew: () => {
         installed = true;
         return { status: 0 };
       },
@@ -672,15 +672,23 @@ describe("CLI installation", () => {
     expect(await extension.installCli(api, "keeper")).toBe("17.1.0");
     expect(calls).toEqual([
       "pipx install keepercommander",
-      "python3 -m pip install --user keepercommander",
+      "brew install keeper-commander",
       "keeper --version",
     ]);
   });
 
-  test("keeper falls back to a private venv", async () => {
+  test("keeper tries Homebrew, a private venv, pip and winget without Python", async () => {
     const { api, calls } = installApi({});
     await expect(extension.installCli(api, "keeper")).rejects.toThrow("docs.keeper.io");
-    expect(calls.map((call) => call.split(" ")[0])).toEqual(["pipx", "python3", "sh", "py"]);
+    expect(calls.map((call) => call.split(" ")[0])).toEqual([
+      "pipx",
+      "brew",
+      "sh",
+      "python3",
+      "py",
+      "winget",
+    ]);
+    expect(calls.at(-1)).toContain("--id KeeperSecurity.Commander");
   });
 
   test("skips missing package managers and reports a manual link", async () => {

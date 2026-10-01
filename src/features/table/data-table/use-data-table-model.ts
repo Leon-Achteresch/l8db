@@ -58,15 +58,17 @@ export function useDataTableModel({
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
     [columnDetails],
   );
+  const tableKey =
+    stateKey ?? JSON.stringify([connection?.id, database, currentSchema, currentTable]);
   const { markedRows, toggleRowMarker, hasEphemeralMarkers } = useRowMarkers(
     data,
-    stateKey ?? JSON.stringify([connection?.id, database, currentSchema, currentTable]),
+    tableKey,
     markerKeys,
   );
   const [activeCell, setActiveCell] = useGridActiveCell(data, columnNames, autoSelectFirstCell);
   const [inspectCell, setInspectCell] = useState<InspectCell | null>(null);
   const [fkPickerCell, setFkPickerCell] = useState<FkPickerCell | null>(null);
-  const drafts = useDraftRow(onInsertRow);
+  const drafts = useDraftRow(onInsertRow, tableKey);
   const { draft, setDraft, setInsertError, isInserting, draftRef, draftHeight, hasDraft } = drafts;
   const filter = useColumnFilter(onApplyFilter, compileColumnFilter, connection, columnDetails);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -137,8 +139,14 @@ export function useDataTableModel({
   const [menuRow, setMenuRow] = useState<MenuRow | null>(null);
   const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];
-  const { visibleColumns, visibleDataColumns, columnWidths, pinnedIndices, columnWindow } =
-    useVisibleColumns(table, columnSizing, columnPinning, scrollRef);
+  const {
+    visibleColumns,
+    visibleDataColumns,
+    columnWidths,
+    pinnedIndices,
+    columnWindow,
+    keepColumn,
+  } = useVisibleColumns(table, columnSizing, columnPinning, scrollRef);
   return {
     connection,
     layout,
@@ -194,6 +202,7 @@ export function useDataTableModel({
     columnWidths,
     pinnedIndices,
     columnWindow,
+    keepColumn,
     activeCell,
     setActiveCell,
     inspectCell,

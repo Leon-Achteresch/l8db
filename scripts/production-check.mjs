@@ -33,7 +33,7 @@ assert.equal(
 );
 assert(!security.dangerousDisableAssetCspModification, "Keep Tauri CSP injection enabled");
 assert.deepEqual(security.capabilities, ["default"]);
-assert.deepEqual(capability.windows, ["main", "conn-*"]);
+assert.deepEqual(capability.windows, ["main", "conn-*", "win-*"]);
 assert(!capability.remote, "Native permissions must remain local");
 for (const window of [...config.app.windows, ...windows.app.windows]) {
   assert.equal(window.label, "main");

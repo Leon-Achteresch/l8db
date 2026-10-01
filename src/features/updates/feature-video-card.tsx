@@ -17,7 +17,6 @@ interface Props {
 export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
   const reduce = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const cardRef = useRef<HTMLElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [wantsPlay, setWantsPlay] = useState(!reduce);
   const [playing, setPlaying] = useState(false);
@@ -78,23 +77,6 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
     };
   }, [suspended, wantsPlay, failed, sourceIndex]);
 
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    const update = () =>
-      document.documentElement.style.setProperty(
-        "--feature-video-height",
-        suspended ? "0px" : `${card.getBoundingClientRect().height + 12}px`,
-      );
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(card);
-    return () => {
-      observer.disconnect();
-      document.documentElement.style.removeProperty("--feature-video-height");
-    };
-  }, [suspended]);
-
   const toggle = () => {
     if (ended) {
       if (videoRef.current) videoRef.current.currentTime = 0;
@@ -105,7 +87,6 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
 
   return (
     <motion.aside
-      ref={cardRef}
       data-feature-video
       aria-label={`Neues Feature: ${item.title}`}
       aria-hidden={suspended}

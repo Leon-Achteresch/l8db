@@ -115,6 +115,7 @@ const {
   isOracleKeyValue,
   isTrustedConnection,
   updateOracleConnectionEndpoint,
+  sslModeFromUrl,
 } = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
@@ -125,8 +126,12 @@ const {
   loadSecret,
   deleteSecret,
 } = await import("../src/lib/secrets");
-const { effectiveConnectionString, activateConnection, restoreSshTunnel, tunneledConnectionString } =
-  await import("../src/lib/ssh");
+const {
+  effectiveConnectionString,
+  activateConnection,
+  restoreSshTunnel,
+  tunneledConnectionString,
+} = await import("../src/lib/ssh");
 const { truncateTable, executeQuery } = await import("../src/lib/db");
 
 const direct = {
@@ -1077,4 +1082,13 @@ describe("mssql windows auth", () => {
   test("plain mssql url still needs a user", () => {
     expect(() => parseConnectionUrl("mssql://sqlhost/master", "mssql")).toThrow();
   });
+});
+
+test("ADO encrypt keeps certificate verification unless the server certificate is trusted", () => {
+  expect(sslModeFromUrl("mssql://sa@db/master?encrypt=true")).toBe("verify-full");
+  expect(
+    sslModeFromUrl("mssql://sa@db/master?encrypt=true&TrustServerCertificate=true".toLowerCase()),
+  ).toBe("require");
+  expect(sslModeFromUrl("mssql://sa@db/master?encrypt=false")).toBe("disable");
+  expect(sslModeFromUrl("postgres://u@h/db?sslmode=verify-ca")).toBe("verify-ca");
 });

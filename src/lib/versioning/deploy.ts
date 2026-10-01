@@ -21,6 +21,7 @@ import {
 } from "./model";
 import {
   committedRelease,
+  committedTeamConfiguration,
   loadReleases,
   readTargets,
   resolveRelease,
@@ -211,8 +212,28 @@ export async function planDeployment(
   connection: SavedConnection,
   releaseId: string,
 ): Promise<DeploymentPlan> {
+  const team = await committedTeamConfiguration(repo, project.id);
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
   const shared = await sharedTarget(connection, project, target);
+  if (team) {
+    for (const field of [
+      "production",
+      "track",
+      "pinnedRelease",
+      "paused",
+      "requireApproval",
+      "operators",
+      "reviewers",
+      "administrators",
+    ] as const)
+      if (
+        target[field] !== undefined &&
+        JSON.stringify(target[field]) !== JSON.stringify(shared.record.policy[field])
+      )
+        throw new Error(
+          "Git-Update-Regeln und gemeinsame Datenbankregeln unterscheiden sich. Update-Regeln zuerst abgleichen.",
+        );
+  }
   target = shared.target;
   if (target.paused) throw new Error("Updates für diese Datenbank sind pausiert.");
   if (target.history.some((event) => event.status === "running" || event.status === "failed"))
@@ -329,6 +350,7 @@ export async function planDeployment(
     ),
   };
   const reviewArtifact = JSON.stringify({
+    teamHash: team ? await checksum(team) : null,
     execution,
     policyRevision: shared.record.revision,
     connectionId: target.connectionId,

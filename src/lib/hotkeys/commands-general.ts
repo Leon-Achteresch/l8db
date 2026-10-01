@@ -31,6 +31,15 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
     reference: "VS Code: F1 Befehlspalette/Hilfe",
   },
   {
+    id: "window.new",
+    label: "Neues Fenster öffnen",
+    description: "Weiteres l8db-Fenster für eine andere Verbindung",
+    area: "Allgemein",
+    defaultHotkey: "Mod+Shift+N",
+    origin: "VS Code",
+    reference: "VS Code: Strg+Umschalt+N Neues Fenster",
+  },
+  {
     id: "settings.open",
     label: "Einstellungen öffnen",
     description: "App-Einstellungen inklusive Hotkey-Konfiguration",

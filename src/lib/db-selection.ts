@@ -5,6 +5,7 @@ import { useActiveConnection } from "@/lib/connections";
 import type { Capabilities } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
+import { oracleLoginSchema } from "@/lib/schema-selection";
 
 interface DbSelectionState {
   databaseByConnection: Record<string, string>;
@@ -86,6 +87,10 @@ export function useActiveSchema(): string {
   if (capabilities.query_language === "redis") return "keys";
   if (capabilities.query_language === "json" && database) return database;
   if (selected && (!schemas || schemas.includes(selected))) return selected;
+  if (connection?.kind === "oracle" && schemas) {
+    const login = oracleLoginSchema(connection.connectionString, schemas);
+    if (login) return login;
+  }
   if (database && schemas?.includes(database)) return database;
   if (!schemas?.length || schemas.includes("public")) return "public";
   return schemas[0];

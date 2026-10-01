@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { type CsvOptions, DEFAULT_CSV_OPTIONS } from "@/lib/export";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface ExportTemplate {
   id: string;
@@ -65,3 +66,5 @@ export const useExportTemplatesStore = create<ExportTemplatesState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.export-templates", () => void useExportTemplatesStore.persist.rehydrate());

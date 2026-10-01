@@ -18,7 +18,12 @@ import {
 import { packageOid } from "@/lib/plsql";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { checksum, deployable, normalizeSource } from "./model";
-import { oracleConstraintMetadataSql, portableOracleMetadata } from "./oracle-metadata";
+import {
+  oracleConstraintMetadataSql,
+  oracleIdentityMetadataSql,
+  portableOracleIdentityColumns,
+  portableOracleMetadata,
+} from "./oracle-metadata";
 import { requalify } from "./schema";
 import type { ManagedObject, ObjectSnapshot } from "./types";
 
@@ -54,7 +59,7 @@ export async function captureObject(
     ]);
     if (!columns.length) throw new Error(`Tabelle ${schema}.${name} fehlt oder ist nicht lesbar.`);
     const metadata =
-      connection.kind === "oracle" && object.metadataVersion === 2
+      connection.kind === "oracle" && [2, 3].includes(object.metadataVersion ?? 0)
         ? await portableOracleMetadata(
             constraints,
             indexes,
@@ -68,12 +73,21 @@ export async function captureObject(
             ).rows,
             schema,
             object.selection.schema ?? schema,
+            object.metadataVersion === 3 ? columns : undefined,
           )
         : { constraints, indexes };
+    const portableColumns =
+      connection.kind === "oracle" && object.metadataVersion === 3
+        ? portableOracleIdentityColumns(
+            columns,
+            (await executeQuery(connection.kind, url, oracleIdentityMetadataSql(schema, name), db))
+              .rows,
+          )
+        : columns;
     definition = formatTableDefinition({
       schema,
       table: name,
-      columns,
+      columns: portableColumns,
       constraints: metadata.constraints,
       indexes: metadata.indexes,
       triggers,

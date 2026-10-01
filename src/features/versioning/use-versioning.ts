@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { CompareSideSelection } from "@/lib/compare-types";
+import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
 import { useVersioningPanel } from "@/lib/versioning/panel";
-import { loadReleases, loadRepository, readTargets } from "@/lib/versioning/repository";
+import {
+  loadReleases,
+  loadRepository,
+  readTargets,
+  saveTargets,
+} from "@/lib/versioning/repository";
 import { pendingVersioningCount } from "@/lib/versioning/status";
+import { ensureTeamConnection } from "@/lib/versioning/team";
 import type {
   DatabaseRelease,
   RepositoryStatus,
@@ -18,6 +26,8 @@ export function useVersioning() {
   const [projectText, setProjectText] = useState<string | null>(null);
   const [releases, setReleases] = useState<DatabaseRelease[]>([]);
   const [targets, setTargets] = useState<TargetStore | null>(null);
+  const [branchTargetId, updateBranchTargetId] = useState("");
+  const [requestedReleaseId, setRequestedReleaseId] = useState("");
   const [dirty, updateDirty] = useState(false);
   const dirtyRef = useRef(false);
   const setDirty = useCallback((value: boolean) => {
@@ -49,6 +59,17 @@ export function useVersioning() {
       setProjectText(loaded.projectText);
       setReleases(nextReleases);
       setTargets(nextTargets);
+      updateBranchTargetId(
+        loaded.project && loaded.status.branch
+          ? (nextTargets?.branches?.[loaded.status.branch]?.targetId ??
+              (nextTargets?.teamConfigured
+                ? ""
+                : localStorage.getItem(
+                    `l8db.versioning.branch-target.${loaded.project.id}.${loaded.status.branch}`,
+                  )) ??
+              "")
+          : "",
+      );
     },
     [repo],
   );
@@ -101,9 +122,41 @@ export function useVersioning() {
       setBusy(false);
     }
   };
-  const git = async (action: "branch" | "checkout" | "commit", name: string, paths?: string[]) => {
+  const git = async (
+    action: "branch" | "checkout" | "commit",
+    name: string,
+    paths?: string[],
+    revision?: string,
+  ) => {
     if (dirty) throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
-    await versioningRepository({ action, repo, name, paths });
+    await versioningRepository({ action, repo, name, paths, revision });
+    await refresh();
+  };
+  const setBranchTargetId = async (id: string) => {
+    if (!project || !status?.branch) return;
+    const { store, text } = await readTargets(repo, project.id);
+    const target = store.targets.find((target) => target.id === id && !target.production);
+    if (!target) throw new Error("Eine Development-Umgebung zuordnen.");
+    store.branches ??= {};
+    store.branches[status.branch] = { ...store.branches[status.branch], targetId: id };
+    await saveTargets(repo, store, text);
+    await refresh();
+  };
+  const setDevelopmentSource = async (source: CompareSideSelection) => {
+    if (!project || !status?.branch) return;
+    const connection = useConnectionsStore
+      .getState()
+      .connections.find((entry) => entry.id === source.connectionId);
+    if (!connection || connection.kind !== project.kind || !source.schema)
+      throw new Error("Passende Entwicklungsverbindung und Schema auswählen.");
+    const { store, text } = await readTargets(repo, project.id);
+    const connectionRef = ensureTeamConnection(store, connection);
+    store.branches ??= {};
+    store.branches[status.branch] = {
+      ...store.branches[status.branch],
+      source: { connectionRef, database: source.database, schema: source.schema },
+    };
+    await saveTargets(repo, store, text);
     await refresh();
   };
   return {
@@ -116,6 +169,11 @@ export function useVersioning() {
     projectText,
     releases,
     targets,
+    branchTargetId,
+    setBranchTargetId,
+    setDevelopmentSource,
+    requestedReleaseId,
+    setRequestedReleaseId,
     busy,
     error: error ?? statusError,
     message,

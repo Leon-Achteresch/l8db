@@ -1,5 +1,5 @@
 use super::control::{hash, literal, quote};
-use crate::db::{provider::DatabaseKind, DatabaseAdapter};
+use crate::db::{provider::DatabaseKind, DatabaseAdapter, DetailedColumnInfo};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -154,6 +154,67 @@ fn columns(row: &Value) -> Vec<String> {
         })
         .unwrap_or_default()
 }
+
+pub(super) fn oracle_identity_default(row: &Value) -> Result<String, String> {
+    let generation = row["generation"].as_str().unwrap_or("");
+    let on_null = row["onNull"].as_str().unwrap_or("");
+    let options = row["options"].as_str().unwrap_or("");
+    if !["ALWAYS", "BY DEFAULT"].contains(&generation)
+        || !["YES", "NO"].contains(&on_null)
+        || (generation == "ALWAYS" && on_null == "YES")
+        || options.trim().is_empty()
+    {
+        return Err("Identity-Metadaten unvollständig".into());
+    }
+    let mut keys = std::collections::HashSet::new();
+    let mut normalized = Vec::new();
+    for option in options.split(',') {
+        let (key, value) = option
+            .split_once(':')
+            .ok_or("Identity-Option nicht eindeutig")?;
+        let key = key.split_whitespace().collect::<Vec<_>>().join(" ");
+        let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        if key.is_empty() || value.is_empty() || value.contains(':') || !keys.insert(key.clone()) {
+            return Err("Identity-Option nicht eindeutig".into());
+        }
+        normalized.push(format!("{key}: {value}"));
+    }
+    normalized.sort();
+    Ok(format!(
+        "IDENTITY {generation}{} ({})",
+        if on_null == "YES" { " ON NULL" } else { "" },
+        normalized.join(", ")
+    ))
+}
+
+pub(super) fn redundant_oracle_not_null(
+    constraint: &Value,
+    row: &Value,
+    cols: &[DetailedColumnInfo],
+) -> bool {
+    if row["generated"] != "GENERATED NAME"
+        || row["status"] != "ENABLED"
+        || row["validated"] != "VALIDATED"
+        || row["deferrable"] != "NOT DEFERRABLE"
+        || row["deferred"] != "IMMEDIATE"
+        || constraint["constraint_type"] != "CHECK"
+    {
+        return false;
+    }
+    let names = columns(constraint);
+    if names.len() != 1 {
+        return false;
+    }
+    cols.iter().any(|col| {
+        col.name == names[0]
+            && !col.is_nullable
+            && value(constraint, "definition")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                == format!("CHECK ({} IS NOT NULL)", quote(&col.name))
+    })
+}
 fn section(lines: &mut Vec<String>, title: &str, mut entries: Vec<String>, expected: &str) {
     if entries.is_empty() {
         return;
@@ -173,7 +234,7 @@ pub async fn definition(
     let normalize = |s: &str| requalify(s, schema, &object.source_schema);
     let result = match object.kind.as_str() {
         "table" => {
-            let cols = adapter.list_table_columns_detailed(schema, name).await?;
+            let mut cols = adapter.list_table_columns_detailed(schema, name).await?;
             if cols.is_empty() {
                 return Err(format!(
                     "Tabelle {schema}.{name} fehlt oder ist nicht lesbar"
@@ -187,9 +248,37 @@ pub async fn definition(
                 .as_array()
                 .cloned()
                 .unwrap_or_default();
-            if kind == DatabaseKind::Oracle && object.metadata_version == Some(2) {
+            if kind == DatabaseKind::Oracle && matches!(object.metadata_version, Some(2 | 3)) {
                 let sql = format!("SELECT c.constraint_name AS \"name\", c.generated AS \"generated\", c.status AS \"status\", c.validated AS \"validated\", c.deferrable AS \"deferrable\", c.deferred AS \"deferred\", c.delete_rule AS \"delete_rule\", p.owner AS \"referenced_schema\", p.table_name AS \"referenced_table\", (SELECT LISTAGG(cc.column_name, ',') WITHIN GROUP (ORDER BY cc.position) FROM all_cons_columns cc WHERE cc.owner = p.owner AND cc.constraint_name = p.constraint_name) AS \"referenced_columns\" FROM all_constraints c LEFT JOIN all_constraints p ON p.owner = c.r_owner AND p.constraint_name = c.r_constraint_name WHERE c.owner = {} AND c.table_name = {}",literal(schema),literal(name));
                 let metadata = adapter.execute_query(&sql).await?;
+                if object.metadata_version == Some(3) {
+                    let mut retained = Vec::new();
+                    for constraint in constraints {
+                        let row = metadata
+                            .rows
+                            .iter()
+                            .find(|r| r["name"] == constraint["name"])
+                            .ok_or("Constraint-Metadaten unvollständig")?;
+                        if !redundant_oracle_not_null(&constraint, row, &cols) {
+                            retained.push(constraint);
+                        }
+                    }
+                    constraints = retained;
+                    let sql = format!("SELECT i.column_name AS \"column\", i.generation_type AS \"generation\", i.sequence_name AS \"sequence\", i.identity_options AS \"options\", c.default_on_null AS \"onNull\" FROM all_tab_identity_cols i JOIN all_tab_cols c ON c.owner = i.owner AND c.table_name = i.table_name AND c.column_name = i.column_name WHERE i.owner = {} AND i.table_name = {}",literal(schema),literal(name));
+                    let identities = adapter.execute_query(&sql).await?;
+                    let mut seen = std::collections::HashSet::new();
+                    for row in identities.rows {
+                        let column = row["column"].as_str().ok_or("Identity-Spalte fehlt")?;
+                        if !seen.insert(column.to_owned()) {
+                            return Err("Identity-Spalte nicht eindeutig".into());
+                        }
+                        let col = cols
+                            .iter_mut()
+                            .find(|col| col.name == column)
+                            .ok_or("Identity-Spalte fehlt")?;
+                        col.column_default = Some(oracle_identity_default(&row)?);
+                    }
+                }
                 for constraint in &mut constraints {
                     let row = metadata
                         .rows
@@ -262,7 +351,6 @@ pub async fn definition(
                     constraint["definition"] = json!(definition);
                 }
             }
-            let mut cols = cols;
             cols.sort_by_key(|c| c.ordinal_position);
             let mut lines = vec![
                 normalize(&format!("TABLE {schema}.{name}")),
@@ -271,7 +359,7 @@ pub async fn definition(
             for col in cols {
                 let width = col
                     .character_maximum_length
-                    .filter(|n| *n != 0)
+                    .filter(|n| *n != 0 && !col.data_type.contains('('))
                     .map(|n| format!("({n})"))
                     .unwrap_or_default();
                 let default = col

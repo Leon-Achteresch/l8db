@@ -1,3 +1,4 @@
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowDownIcon,
   ArrowDownUpIcon,
@@ -8,9 +9,13 @@ import {
   GitBranchIcon,
   GitPullRequestIcon,
   HistoryIcon,
+  LayoutDashboardIcon,
+  PanelRightIcon,
+  PanelsTopLeftIcon,
   PlusIcon,
   RefreshCwIcon,
   ServerIcon,
+  SproutIcon,
   TagIcon,
   XIcon,
 } from "lucide-react";
@@ -20,42 +25,60 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { providerForKind } from "@/lib/providers";
+import { useTableTabs } from "@/lib/table-tabs";
 import { deployable, isVersioningKind, PROJECT_PATH } from "@/lib/versioning/model";
 import { useVersioningPanel } from "@/lib/versioning/panel";
 import { encode, saveFile } from "@/lib/versioning/repository";
 import { changedFiles } from "@/lib/versioning/status";
+import type { VersioningArea } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningActivity } from "./versioning-activity";
+import { VersioningBranches } from "./versioning-branches";
 import { VersioningDevelopment } from "./versioning-development";
 import { VersioningIconButton } from "./versioning-icon-button";
+import { VersioningOverview } from "./versioning-overview";
 import { VersioningPopover } from "./versioning-popover";
 import { VersioningReleases } from "./versioning-releases";
 import { VersioningRepositoryPopover } from "./versioning-repository-popover";
+import { VersioningSeeds } from "./versioning-seeds";
 import { VersioningSelect } from "./versioning-select";
 import { VersioningTargets } from "./versioning-targets";
 import "./versioning.css";
 
 export function VersioningView({ workspace }: { workspace: VersioningWorkspace }) {
-  const { repo, status, project, releases, busy, error, message, run, refresh } = workspace;
+  const { repo, status, project, busy, error, message, run, refresh } = workspace;
   const connection = useActiveConnection();
-  const [tab, setTab] = useState("development");
+  const [tab, setTab] = useState<VersioningArea>("overview");
+  const navigate = useNavigate();
+  const path = useRouterState({ select: (state) => state.location.pathname });
+  const panel = useVersioningPanel();
+  const tabFeature = useNewFeatureVisibility<HTMLButtonElement>("versioning.tab-view");
+  const changeArea = (next: VersioningArea) => {
+    if (next === tab) return;
+    if (workspace.dirty)
+      void run(async () => {
+        throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
+      });
+    else setTab(next);
+  };
+  const toggleMode = () => {
+    if (panel.mode === "panel") {
+      panel.setReturnPath(path === "/versioning" ? "/query" : path);
+      panel.setMode("tab");
+      useTableTabs.getState().openToolTab("versioning");
+      void navigate({ to: "/versioning" });
+    } else {
+      panel.setMode("panel");
+      void navigate({ to: panel.returnPath });
+    }
+  };
   const [name, setName] = useState("");
   const [branch, setBranch] = useState("");
   const changes = changedFiles(status?.changes ?? "");
   const count = changes.size;
-  const baselineReady = Boolean(
-    status?.head &&
-      releases.some(
-        (release) => !release.parent && !changes.has(`database/releases/${release.id}.json`),
-      ),
-  );
-  const customersReady = Boolean(
-    workspace.targets?.targets.length &&
-      workspace.targets.targets.every((target) => Boolean(target.release)),
-  );
   const deploys = deployable(project?.kind);
-  const committed = Boolean(status?.head) && count === 0;
   const create = async () => {
     if (!name.trim() || !connection || !isVersioningKind(connection.kind))
       throw new Error("Projektname und eine SQL-Verbindung auswählen.");
@@ -82,6 +105,24 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
         <GitPullRequestIcon className="size-4 text-primary" strokeWidth={1.7} />
         <h1 className="flex-1 text-xs font-semibold">Versionierung</h1>
         {status && <VersioningRepositoryPopover workspace={workspace} />}
+        <button
+          ref={tabFeature.ref}
+          type="button"
+          aria-label={
+            panel.mode === "panel"
+              ? "Versionierung als Tab öffnen"
+              : "Versionierung als Seitenpanel öffnen"
+          }
+          title={panel.mode === "panel" ? "Als Tab öffnen" : "Als Seitenpanel öffnen"}
+          onClick={toggleMode}
+          className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {panel.mode === "panel" ? (
+            <PanelsTopLeftIcon className="size-4" />
+          ) : (
+            <PanelRightIcon className="size-4" />
+          )}
+        </button>
         <VersioningIconButton
           icon={RefreshCwIcon}
           label="Versionierung aktualisieren"
@@ -251,73 +292,28 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
               ))}
             </VersioningPopover>
           </div>
-          <div className="mx-5 mb-3 rounded-xl bg-muted/35 px-3 py-3">
-            <p className="text-[11px] font-semibold">Einrichtung</p>
-            <div className="mt-2 grid grid-cols-3 gap-1">
-              {(deploys
-                ? [
-                    { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
-                    { id: "releases", label: "2 · Baseline", done: baselineReady },
-                    { id: "targets", label: "3 · Kunden", done: customersReady },
-                  ]
-                : [
-                    { id: "development", label: "1 · Schema", done: project.objects.length > 0 },
-                    { id: "development", label: "2 · Commit", done: committed },
-                    { id: "activity", label: "3 · Verlauf", done: committed },
-                  ]
-              ).map((step) => (
-                <button
-                  key={step.label}
-                  type="button"
-                  disabled={busy || workspace.dirty}
-                  onClick={() => setTab(step.id)}
-                  className={`rounded-md px-2 py-1.5 text-left text-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-ring ${step.done ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-background/70 text-muted-foreground hover:text-foreground"}`}
-                >
-                  {step.label}
-                  {step.done ? " ✓" : ""}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-              {!project.objects.length
-                ? "Entwicklungsdatenbank verknüpfen, vergleichen und ins Repository übernehmen. Es werden Definitionen gespeichert, keine Datenzeilen."
-                : !deploys
-                  ? committed
-                    ? "Nach Schemaänderungen erneut vergleichen, übernehmen und committen. Releases und Kunden-Deployments gibt es für PostgreSQL und Oracle."
-                    : "Übernommene Definitionen prüfen und committen."
-                  : !baselineReady
-                    ? "Aus den Definitionen eine Baseline erstellen und committen."
-                    : !workspace.targets?.targets.length
-                      ? "Kunden mit eigener Connection, Datenbank und eigenem Schema zuordnen."
-                      : !customersReady
-                        ? "Für jedes Kundenziel den vorhandenen Stand gegen die Baseline prüfen."
-                        : "Kundenziel wählen, Baseline prüfen und spätere Releases zuerst planen."}
-            </p>
-          </div>
           <Tabs
             value={tab}
-            onValueChange={(next) => {
-              if (next === tab) return;
-              if (workspace.dirty)
-                void run(async () => {
-                  throw new Error("Ungespeicherten Entwurf zuerst speichern oder verwerfen.");
-                });
-              else setTab(next);
-            }}
+            onValueChange={(next) => changeArea(next as VersioningArea)}
             className="min-h-0 flex-1 gap-0"
           >
             <TabsList
               variant="line"
               aria-label="Versionierungsbereiche"
-              className="mx-4 h-10 w-auto shrink-0 justify-start gap-1 border-b border-border/50 px-0"
+              className="mx-4 h-10 w-auto shrink-0 justify-start gap-1 overflow-x-auto border-b border-border/50 px-0"
             >
               {[
+                { id: "overview", label: "Übersicht", icon: LayoutDashboardIcon },
+                { id: "branches", label: "Branches", icon: GitBranchIcon },
                 { id: "development", label: "Änderungen", icon: FileDiffIcon, count },
                 { id: "releases", label: "Releases", icon: TagIcon },
-                { id: "targets", label: "Datenbanken", icon: ServerIcon },
+                { id: "targets", label: "Kunden", icon: ServerIcon },
+                { id: "seeds", label: "Seeds", icon: SproutIcon },
                 { id: "activity", label: "Aktivität", icon: HistoryIcon },
               ]
-                .filter(({ id }) => deploys || (id !== "releases" && id !== "targets"))
+                .filter(
+                  ({ id }) => deploys || (id !== "releases" && id !== "targets" && id !== "seeds"),
+                )
                 .map(({ id, label, icon: Icon, count: badge }) => (
                   <TabsTrigger
                     key={id}
@@ -337,6 +333,18 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-4">
               <fieldset disabled={busy} className="min-w-0">
+                <TabsContent value="overview" className="m-0">
+                  <VersioningOverview workspace={workspace} onNavigate={changeArea} />
+                </TabsContent>
+                <TabsContent value="branches" className="m-0">
+                  <VersioningBranches workspace={workspace} />
+                </TabsContent>
+                <TabsContent value="seeds" className="m-0">
+                  <VersioningSeeds
+                    key={`${status.repo}:${project.id}:${status.branch}`}
+                    workspace={workspace}
+                  />
+                </TabsContent>
                 <TabsContent value="development" className="m-0">
                   <VersioningDevelopment
                     key={`${status.repo}:${project.id}:${status.branch}`}
@@ -347,6 +355,10 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
                   <VersioningReleases
                     key={`${status.repo}:${project.id}:${status.branch}`}
                     workspace={workspace}
+                    onRollout={(id) => {
+                      workspace.setRequestedReleaseId(id);
+                      changeArea("targets");
+                    }}
                   />
                 </TabsContent>
                 <TabsContent value="targets" className="m-0">

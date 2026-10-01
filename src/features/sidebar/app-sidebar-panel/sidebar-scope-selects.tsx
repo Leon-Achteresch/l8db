@@ -22,7 +22,7 @@ interface SidebarScopeSelectsProps {
   caps: ReturnType<typeof useActiveCapabilities>;
   isSwitching: boolean;
   scope: SidebarScope;
-  onManageSchemas: () => void;
+  onManageSchemas?: () => void;
 }
 
 export function SidebarScopeSelects({
@@ -87,14 +87,16 @@ export function SidebarScopeSelects({
         <div className="grid min-w-0 flex-1 gap-1.5">
           <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
             {showSchemaSwitcher ? "Schema" : `Schema: ${activeSchema}`}
-            <button
-              type="button"
-              onClick={onManageSchemas}
-              className="rounded p-0.5 hover:bg-muted hover:text-foreground"
-              title="Schemas verwalten"
-            >
-              <WrenchIcon className="size-3" />
-            </button>
+            {onManageSchemas && (
+              <button
+                type="button"
+                onClick={onManageSchemas}
+                className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                title="Schemas verwalten"
+              >
+                <WrenchIcon className="size-3" />
+              </button>
+            )}
           </span>
           {showSchemaSwitcher && (
             <Select

@@ -34,10 +34,10 @@ export function initialPolicy(target: DatabaseTarget): SharedPolicy {
     pinnedRelease: target.pinnedRelease ?? null,
     paused: target.paused ?? false,
     production: target.production,
-    requireApproval: false,
-    operators: [],
-    administrators: [],
-    reviewers: [],
+    requireApproval: target.requireApproval ?? false,
+    operators: target.operators ?? [],
+    administrators: target.administrators ?? [],
+    reviewers: target.reviewers ?? [],
   };
 }
 

@@ -1,8 +1,11 @@
 import { listCompareObjects } from "@/lib/compare-definition";
 import { type CompareSideSelection, supportedCompareObjectTypes } from "@/lib/compare-types";
 import type { SavedConnection } from "@/lib/connections";
+import { executeQuery } from "@/lib/db";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { captureObject } from "./capture";
 import { PROJECT_PATH } from "./model";
+import { oracleIdentityMetadataSql } from "./oracle-metadata";
 import { deleteFile, encode, readFile, saveFile } from "./repository";
 import { newManagedObject, sourceFiles } from "./sources";
 import type { ManagedObject, VersioningProject } from "./types";
@@ -40,6 +43,18 @@ export async function scanDrift(
   if (!schema) throw new Error("Ein Schema der Entwicklungsdatenbank auswählen.");
   const entries: DriftEntry[] = [];
   const seen = new Set<string>();
+  const identitySequences = new Set(
+    connection.kind === "oracle"
+      ? (
+          await executeQuery(
+            connection.kind,
+            effectiveConnectionString(connection),
+            oracleIdentityMetadataSql(schema),
+            source.database ?? undefined,
+          )
+        ).rows.map((row) => String(row.sequence))
+      : [],
+  );
   const read = async (files: string[]) =>
     Object.fromEntries(
       await Promise.all(files.map(async (file) => [file, await readFile(repo, file)])),
@@ -47,7 +62,13 @@ export async function scanDrift(
   for (const objectType of supportedCompareObjectTypes(connection)) {
     const listed = await listCompareObjects(connection, { ...source, objectType });
     for (const item of listed) {
-      if (item.name === "L8DB_VERSIONING_STATE") continue;
+      if (item.name.toUpperCase().startsWith("L8DB_VERSIONING_")) continue;
+      if (
+        objectType === "sequence" &&
+        identitySequences.has(item.name) &&
+        !project.objects.some((entry) => sameObject(entry, schema, objectType, item.name))
+      )
+        continue;
       if (seen.size >= 5000)
         throw new Error("Mehr als 5000 Objekte. Bitte ein kleineres Schema wählen.");
       progress(item.name);

@@ -51,7 +51,7 @@ test.skipIf(!enabled)(
         releases: ["v2", "v2", "v2"],
       });
       await page.getByRole("button", { name: "Versionierung aktualisieren" }).click();
-      await page.getByRole("tab", { name: "Datenbanken", exact: true }).click();
+      await page.getByRole("tab", { name: "Kunden", exact: true }).click();
       await page.getByText("Kunde Nord", { exact: true }).waitFor();
       await page.getByText("tenant_nord_", { exact: false }).waitFor();
       await page.getByRole("button", { name: "Kundenziel hinzufügen" }).click();
@@ -75,7 +75,7 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: "Kundenziel speichern" }).click();
       await page
         .getByRole("alert")
-        .getByText("Kunde Nord verwendet bereits dieselbe Datenbank und dasselbe Schema", {
+        .getByText("Kunde Nord · Produktion verwendet bereits dieselbe Datenbank und dasselbe Schema", {
           exact: false,
         })
         .waitFor();
