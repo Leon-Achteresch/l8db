@@ -270,7 +270,7 @@ impl Lab {
     }
 
     fn url(&self, scheme: &str, file: &str) -> String {
-        format!("{scheme}://{}", self.dir.join(file).display())
+        format!("{scheme}://{}?mode=rwc", self.dir.join(file).display())
     }
 }
 

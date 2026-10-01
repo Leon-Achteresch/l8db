@@ -5,7 +5,7 @@ use duckdb::types::{TimeUnit, ValueRef};
 use duckdb::Connection;
 
 use super::pool::PoolState;
-use super::sqlite::file_path;
+use super::sqlite::existing_file_path;
 use super::{
     create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
@@ -188,7 +188,7 @@ impl DuckdbAdapter {
         key: String,
     ) -> Result<Self, String> {
         Ok(Self {
-            path: file_path(connection_string)?,
+            path: existing_file_path(connection_string)?,
             pool_state,
             key,
         })
@@ -800,7 +800,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("fk.duckdb");
         let adapter = DuckdbAdapter::new(
-            &format!("duckdb:{}", path.display()),
+            &format!("duckdb:{}?mode=rwc", path.display()),
             create_pool_state(),
             "fk".into(),
         )
