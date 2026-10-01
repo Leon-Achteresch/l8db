@@ -75,6 +75,7 @@ for (const engine of [chromium, webkit]) {
         await page.waitForTimeout(350);
         await page.getByRole("combobox").first().click();
         await page.getByRole("option", { name: "name", exact: true }).click();
+        await page.getByRole("listbox").waitFor({ state: "detached" });
         await page.getByPlaceholder("Wert", { exact: true }).fill("Berlin");
         await page.keyboard.press("End");
         await page.keyboard.press("Alt+ArrowDown");
