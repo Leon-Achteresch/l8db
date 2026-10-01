@@ -154,7 +154,6 @@ export function useTableHeader({
                 <DataTableHeaderCell
                   key={header.id}
                   header={header}
-                  sortableIndex={visibleDataColumns.indexOf(header.id)}
                   isFetching={isFetching}
                   sorting={sorting}
                   onSortingChange={onSortingChange}

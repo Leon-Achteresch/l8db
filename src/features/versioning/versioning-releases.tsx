@@ -1,19 +1,17 @@
-import {
-  ArrowLeftIcon,
-  FileDiffIcon,
-  PlusIcon,
-  ShieldCheckIcon,
-  TagIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ArrowLeftIcon, FileDiffIcon, PlusIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { buildCompareApplyPlan } from "@/lib/compare-apply-plan";
+import { Textarea } from "@/components/ui/textarea";
+import { versioningRepository } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
+import { generateMigration, type MigrationDraft } from "@/lib/versioning/migrations";
 import {
   checksum,
   deployKind,
+  PROJECT_PATH,
   parseRelease,
   releasePath,
   releaseTrack,
@@ -27,13 +25,23 @@ import { changedFiles } from "@/lib/versioning/status";
 import type { DatabaseRelease, ObjectSnapshot } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningIconButton } from "./versioning-icon-button";
-import { VersioningPopover } from "./versioning-popover";
 import { VersioningSafetyEditor } from "./versioning-safety-editor";
 import { VersioningSelect } from "./versioning-select";
 
-export function VersioningReleases({ workspace }: { workspace: VersioningWorkspace }) {
+export function VersioningReleases({
+  workspace,
+  onRollout,
+}: {
+  workspace: VersioningWorkspace;
+  onRollout: (id: string) => void;
+}) {
   const { repo, project, releases, run, refresh } = workspace;
+  const feature = useNewFeatureVisibility<HTMLDivElement>("versioning.releases.generate");
   const [creating, setCreating] = useState(false);
+  const [migration, setMigration] = useState<MigrationDraft | null>(null);
+  const [allowDrops, setAllowDrops] = useState(false);
+  const [manualReviewed, setManualReviewed] = useState(false);
+  const [generatedFor, setGeneratedFor] = useState("");
   const [id, setId] = useState("");
   const [parent, setParent] = useState("");
   const [sql, setSql] = useState("");
@@ -58,32 +66,29 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
     }
     return result;
   };
-  const generate = async () => {
+  const generate = async (predecessor = parent) => {
     if (!project) return;
-    const before = releases.find((release) => release.id === parent);
+    const before = releases.find((release) => release.id === predecessor);
     if (!before) throw new Error("Für einen Migrationsentwurf einen Vorgänger auswählen.");
     const current = await snapshots();
-    if (before.objects.some((item) => !current.some((next) => next.object.id === item.object.id)))
-      throw new Error("Objektentfernungen benötigen eine ausdrücklich geschriebene Migration.");
-    const statements: string[] = [];
-    for (const item of current) {
-      const old = before.objects.find((previous) => previous.object.id === item.object.id);
-      if (!old)
-        throw new Error("Neue Objekte benötigen eine ausdrücklich geschriebene CREATE-Migration.");
-      if (old.checksum === item.checksum) continue;
-      statements.push(
-        ...buildCompareApplyPlan(
-          project.kind,
-          { ...item.object.selection, connectionId: null, database: null },
-          old.definition,
-          item.definition,
-        ),
+    const result = generateMigration(project.kind, before, current, allowDrops);
+    setMigration(result);
+    setManualReviewed(false);
+    setGeneratedFor(JSON.stringify(current.map((item) => [item.object.id, item.checksum])));
+    setSql(result.sql);
+    if (!result.changes.length)
+      workspace.setMessage(
+        "Keine Schemaänderungen. Datenmigrationen können als SQL ergänzt werden.",
       );
-    }
-    if (!statements.length) throw new Error("Keine Änderungen an den verwalteten Definitionen.");
-    setSql(statements.join(project.kind === "oracle" ? "\n/\n" : "\n\n"));
   };
-  const create = async () => {
+  const prepare = async () => {
+    const latest = releases.filter((release) => releaseTrack(release) === "main").at(-1);
+    setParent(latest?.id ?? "");
+    setId(latest ? "" : `baseline-${new Date().toISOString().slice(0, 10)}`);
+    setCreating(true);
+    if (latest) await generate(latest.id);
+  };
+  const create = async (commit: boolean) => {
     if (!project) return;
     const path = releasePath(id);
     if (releases.some((release) => release.id === id))
@@ -93,6 +98,15 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
         "Für diese Release-Linie existiert bereits eine Baseline. Einen Vorgänger auswählen.",
       );
     const objects = await snapshots();
+    if (
+      generatedFor &&
+      generatedFor !== JSON.stringify(objects.map((item) => [item.object.id, item.checksum]))
+    )
+      throw new Error(
+        "Definitionen wurden seit der SQL-Erzeugung geändert. Migration erneut erzeugen und prüfen.",
+      );
+    if (migration?.issues.length && !manualReviewed)
+      throw new Error("Offene Migrationspunkte im SQL ergänzen und ihre Prüfung bestätigen.");
     if (parent && !sql.trim())
       throw new Error("Ein Update-Release benötigt eine geprüfte Migration.");
     if (!parent && sql.trim())
@@ -132,22 +146,56 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
     validateReleaseGraph([...releases, release]);
     await saveFile(repo, path, encode(release), null);
     workspace.setDirty(false);
-    await refresh();
     setSelected(release);
     setCreating(false);
     setId("");
     setSql("");
     setTrack("main");
     setSafety(defaultSafety());
+    setMigration(null);
+    setGeneratedFor("");
+    setManualReviewed(false);
+    setAllowDrops(false);
     workspace.setDirty(false);
+    try {
+      if (commit) {
+        const paths = [
+          ...new Set(
+            [
+              PROJECT_PATH,
+              path,
+              ...objects.flatMap((item) => [
+                item.object.path,
+                ...(item.object.bodyPath ? [item.object.bodyPath] : []),
+              ]),
+              ...changedFiles(workspace.status?.changes ?? "").keys(),
+            ].filter(
+              (file) =>
+                file === PROJECT_PATH || file === path || file.startsWith("database/objects/"),
+            ),
+          ),
+        ];
+        await versioningRepository({
+          action: "commit",
+          repo,
+          name: `Database release ${id}`,
+          paths,
+        });
+      }
+    } finally {
+      await refresh();
+    }
   };
   const chosen = selected ?? releases.at(-1);
   const changes = changedFiles(workspace.status?.changes ?? "");
   return (
-    <div className="space-y-5">
+    <div ref={feature.ref} className="space-y-5">
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <h2 className="text-xs font-semibold">{creating ? "Release vorbereiten" : "Releases"}</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            {creating ? "Migration & Release vorbereiten" : "Releases"}
+            {feature.isNew && <NewBadge />}
+          </h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {creating
               ? "Definitionen und Migrationen gemeinsam fixieren."
@@ -165,6 +213,10 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
                 setTrack("main");
                 setSafety(defaultSafety());
                 workspace.setDirty(false);
+                setMigration(null);
+                setGeneratedFor("");
+                setAllowDrops(false);
+                setManualReviewed(false);
                 setCreating(false);
               }}
             />
@@ -184,13 +236,7 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
           <VersioningIconButton
             icon={PlusIcon}
             label="Release vorbereiten"
-            onClick={() => {
-              if (!releases.length) setId(`baseline-${new Date().toISOString().slice(0, 10)}`);
-              setParent(
-                releases.filter((release) => releaseTrack(release) === "main").at(-1)?.id ?? "",
-              );
-              setCreating(true);
-            }}
+            onClick={() => void run(prepare)}
           />
         )}
       </div>
@@ -212,7 +258,12 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
               <VersioningSelect
                 label="Vorgänger-Release"
                 value={parent}
-                onChange={setParent}
+                onChange={(value) => {
+                  setParent(value);
+                  setMigration(null);
+                  setGeneratedFor("");
+                  setManualReviewed(false);
+                }}
                 options={[
                   { value: "", label: "Baseline" },
                   ...releases.map((release) => ({ value: release.id, label: release.id })),
@@ -230,7 +281,15 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
               placeholder="main oder Kundenvariante"
             />
           </label>
-          <div className="flex items-center justify-between">
+          <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={allowDrops}
+              onChange={(event) => setAllowDrops(event.target.checked)}
+            />
+            Entfernungen beim nächsten Erzeugen einschließen. DROP-Anweisungen können Daten löschen.
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="vcs-migration-sql" className="text-xs font-medium">
               Migrations-SQL
             </label>
@@ -241,30 +300,69 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
                 disabled={!parent}
                 onClick={() =>
                   void run(
-                    generate,
+                    () => generate(),
                     "Migrationsentwurf erzeugt. Vor Freigabe in einer Testdatenbank prüfen.",
                   )
                 }
               >
                 <FileDiffIcon className="size-3.5" />
-                SQL entwerfen
+                Migration automatisch erzeugen
               </Button>
-              <VersioningPopover
-                icon={ShieldCheckIcon}
-                label="Betriebsplan und Prüfungen"
-                className="w-[440px] max-h-[min(70vh,var(--radix-popover-content-available-height))] overflow-y-auto"
-                disabled={workspace.busy}
-              >
-                <VersioningSafetyEditor value={safety} onChange={setSafety} />
-              </VersioningPopover>
             </div>
           </div>
-          <textarea
+          {migration && (
+            <div className="space-y-2 rounded-lg bg-muted/25 p-3">
+              <p className="text-xs font-medium">
+                {migration.changes.filter((change) => change.generated).length} von{" "}
+                {migration.changes.length} Änderungen automatisch erzeugt
+              </p>
+              {migration.changes.map((change) => (
+                <p key={change.label} className="text-[11px] text-muted-foreground">
+                  {change.status === "added"
+                    ? "Neu"
+                    : change.status === "removed"
+                      ? "Entfernt"
+                      : "Geändert"}{" "}
+                  · {change.label} · {change.generated ? "SQL erzeugt" : "Manuell ergänzen"}
+                </p>
+              ))}
+              {migration.issues.map((issue) => (
+                <p
+                  key={issue.label}
+                  className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300"
+                >
+                  {issue.label}: {issue.reason}
+                </p>
+              ))}
+              {migration.issues.length > 0 && (
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={manualReviewed}
+                    onChange={(event) => setManualReviewed(event.target.checked)}
+                  />
+                  Alle offenen Punkte im SQL ergänzt und geprüft
+                </label>
+              )}
+            </div>
+          )}
+          <details className="rounded-lg bg-muted/20 p-3">
+            <summary className="cursor-pointer text-xs font-medium">
+              Betriebsplan und Datenprüfungen
+            </summary>
+            <div className="mt-4">
+              <VersioningSafetyEditor value={safety} onChange={setSafety} />
+            </div>
+          </details>
+          <Textarea
             id="vcs-migration-sql"
             aria-label="Migrations-SQL"
-            className="min-h-64 w-full resize-y rounded-lg bg-muted/35 p-3 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-64 resize-y font-mono text-xs leading-relaxed"
             value={sql}
-            onChange={(event) => setSql(event.target.value)}
+            onChange={(event) => {
+              setSql(event.target.value);
+              setManualReviewed(false);
+            }}
             placeholder={
               parent
                 ? "Geprüfte Migration für diesen Release …"
@@ -272,17 +370,33 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
             }
           />
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Der Release wird zunächst als Datei angelegt. Nach dem Commit kann er geprüft und
-            ausgerollt werden.
+            Speichern und committen fixiert den Release mit seinen Definitionen. Danach direkt zu
+            den Kundenzielen wechseln und den Rollout prüfen.
           </p>
           <Button
             size="sm"
-            disabled={!id.trim()}
+            disabled={!id.trim() || Boolean(migration?.issues.length && !manualReviewed)}
             onClick={() =>
-              void run(create, "Release-Datei erstellt. Unter Änderungen auswählen und committen.")
+              void run(
+                () => create(true),
+                "Release und Definitionen gespeichert und committet. Rollout unter Kunden planen.",
+              )
             }
           >
-            Release-Datei anlegen
+            Release speichern und committen
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!id.trim() || Boolean(migration?.issues.length && !manualReviewed)}
+            onClick={() =>
+              void run(
+                () => create(false),
+                "Release-Entwurf gespeichert. Vor dem Rollout committen.",
+              )
+            }
+          >
+            Nur als Entwurf speichern
           </Button>
         </div>
       ) : (
@@ -294,7 +408,7 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
               <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
                 Nimm deine Definitionen auf und erstelle daraus eine Baseline.
               </p>
-              <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
+              <Button size="sm" variant="ghost" onClick={() => void run(prepare)}>
                 Baseline vorbereiten
               </Button>
             </div>
@@ -346,6 +460,42 @@ export function VersioningReleases({ workspace }: { workspace: VersioningWorkspa
                 {chosen.migrations.map((entry) => entry.sql).join("\n\n") ||
                   "Baseline · bestehender Ausgangsstand ohne Migration"}
               </pre>
+              {changes.has(releasePath(chosen.id)) || !workspace.status?.head ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void run(async () => {
+                      await versioningRepository({
+                        action: "commit",
+                        repo,
+                        name: `Database release ${chosen.id}`,
+                        paths: [
+                          PROJECT_PATH,
+                          releasePath(chosen.id),
+                          ...chosen.objects.flatMap((item) => [
+                            item.object.path,
+                            ...(item.object.bodyPath ? [item.object.bodyPath] : []),
+                          ]),
+                          ...changedFiles(workspace.status?.changes ?? "").keys(),
+                        ].filter(
+                          (file) =>
+                            file === PROJECT_PATH ||
+                            file === releasePath(chosen.id) ||
+                            file.startsWith("database/objects/"),
+                        ),
+                      });
+                      await refresh();
+                    }, "Release committet")
+                  }
+                >
+                  Release committen
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => onRollout(chosen.id)}>
+                  Rollout für {chosen.id} planen
+                </Button>
+              )}
               {chosen.safety && (
                 <details className="text-xs">
                   <summary className="cursor-pointer">Betriebsplan · {chosen.safety.phase}</summary>

@@ -94,6 +94,12 @@ jobs:
           workspaces: src-tauri
       - run: cargo fmt --check
         working-directory: src-tauri
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: RustSec audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
+        working-directory: src-tauri
       - run: cargo clippy --all-targets --locked
         working-directory: src-tauri
       - run: cargo clippy --all-targets --locked --no-default-features

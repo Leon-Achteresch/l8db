@@ -2,12 +2,21 @@ import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
 import { closeSshTunnel } from "@/lib/db";
-import { deleteSecret, loadSecret, scrubUrlPassword, storeSecret } from "@/lib/secrets";
+import {
+  deleteSecret,
+  extractUrlPassword,
+  injectUrlPassword,
+  loadSecret,
+  scrubUrlPassword,
+  storeSecret,
+} from "@/lib/secrets";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import type { ConnectionInput, SavedConnection } from "./types";
 
 interface ConnectionsState {
   connections: SavedConnection[];
   activeId: string | null;
+  recentIds: string[];
   favoriteServerKeys: string[];
   serverOrder: string[];
   collapsedServerKeys: string[];
@@ -31,12 +40,15 @@ export function createConnectionId(): string {
   return createId();
 }
 
-export const windowConnectionId: string | null =
-  typeof window === "undefined"
-    ? null
-    : new URLSearchParams(window.location?.search ?? "").get("connection");
+const windowParams = new URLSearchParams(
+  typeof window === "undefined" ? "" : (window.location?.search ?? ""),
+);
 
-export const isMainWindow = windowConnectionId === null;
+export const windowConnectionId: string | null = windowParams.get("connection");
+
+export const isMainWindow = windowConnectionId === null && !windowParams.has("window");
+
+export const RECENT_CONNECTION_LIMIT = 10;
 
 export const NETWORK_SECRET_SUFFIXES = [":ssh", ":ssh-jumps", ":proxy"];
 
@@ -67,6 +79,33 @@ export function restorableActiveId(
   }
   return active.id;
 }
+
+export function mergeWindowSync(
+  saved: Pick<ConnectionsState, "connections">,
+  current: Pick<ConnectionsState, "connections" | "activeId">,
+): Pick<ConnectionsState, "connections" | "activeId"> {
+  const live = new Map(current.connections.map((connection) => [connection.id, connection]));
+  const connections = [
+    ...saved.connections.map((connection) => {
+      const known = live.get(connection.id);
+      return known && scrubUrlPassword(known.connectionString) === connection.connectionString
+        ? { ...connection, connectionString: known.connectionString, tunnelPort: known.tunnelPort }
+        : connection;
+    }),
+    ...current.connections.filter(
+      (connection) =>
+        connection.temporary && !saved.connections.some((entry) => entry.id === connection.id),
+    ),
+  ];
+  return {
+    connections,
+    activeId: connections.some((connection) => connection.id === current.activeId)
+      ? current.activeId
+      : null,
+  };
+}
+
+let syncingWindows = false;
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -106,6 +145,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
     (set, get) => ({
       connections: [],
       activeId: null,
+      recentIds: [],
       favoriteServerKeys: [],
       serverOrder: [],
       collapsedServerKeys: [],
@@ -186,7 +226,16 @@ export const useConnectionsStore = create<ConnectionsState>()(
           const fresh = imported.filter((connection) => !known.has(connection.id));
           return { connections: [...state.connections, ...fresh] };
         }),
-      setActiveId: (id) => set({ activeId: id }),
+      setActiveId: (id) =>
+        set((state) => ({
+          activeId: id,
+          recentIds: id
+            ? [id, ...state.recentIds.filter((entry) => entry !== id)].slice(
+                0,
+                RECENT_CONNECTION_LIMIT,
+              )
+            : state.recentIds,
+        })),
       toggleServerFavorite: (key) =>
         set((state) => ({
           favoriteServerKeys: state.favoriteServerKeys.includes(key)
@@ -207,6 +256,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
       partialize: (state) => ({
         connections: state.connections.filter((connection) => !connection.temporary),
         activeId: isMainWindow ? restorableActiveId(state) : readStoredActiveId(),
+        recentIds: state.recentIds,
         favoriteServerKeys: state.favoriteServerKeys,
         serverOrder: state.serverOrder,
         collapsedServerKeys: state.collapsedServerKeys,
@@ -215,18 +265,48 @@ export const useConnectionsStore = create<ConnectionsState>()(
       merge: (persisted, current) => {
         const saved = persisted as Partial<ConnectionsState> | undefined;
         const merged = { ...current, ...saved };
+        if (syncingWindows) return { ...merged, ...mergeWindowSync(merged, current) };
         return {
           ...merged,
-          activeId: isMainWindow ? restorableActiveId(merged) : merged.activeId,
+          activeId: isMainWindow ? restorableActiveId(merged) : null,
         };
       },
     },
   ),
 );
 
-if (
-  windowConnectionId &&
-  useConnectionsStore.getState().connections.some((entry) => entry.id === windowConnectionId)
-) {
-  useConnectionsStore.setState({ activeId: windowConnectionId });
+async function loadSyncedSecrets(previous: SavedConnection[]): Promise<void> {
+  const known = new Map(previous.map((connection) => [connection.id, connection.connectionString]));
+  const missing = useConnectionsStore
+    .getState()
+    .connections.filter(
+      (connection) =>
+        known.get(connection.id) !== connection.connectionString &&
+        extractUrlPassword(connection.connectionString) === null,
+    );
+  for (const connection of missing) {
+    const secret = await loadSecret(connection.id).catch(() => null);
+    if (!secret) continue;
+    useConnectionsStore.setState((state) => ({
+      connections: state.connections.map((entry) =>
+        entry.id === connection.id && entry.connectionString === connection.connectionString
+          ? { ...entry, connectionString: injectUrlPassword(entry.connectionString, secret) }
+          : entry,
+      ),
+    }));
+  }
 }
+
+export function syncConnectionsFromStorage(): void {
+  const previous = useConnectionsStore.getState().connections;
+  syncingWindows = true;
+  let rehydrated: Promise<void> | void;
+  try {
+    rehydrated = useConnectionsStore.persist.rehydrate();
+  } finally {
+    syncingWindows = false;
+  }
+  void Promise.resolve(rehydrated).then(() => loadSyncedSecrets(previous));
+}
+
+syncAcrossWindows("l8db.connections", syncConnectionsFromStorage);

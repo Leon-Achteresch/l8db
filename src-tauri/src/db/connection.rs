@@ -37,63 +37,111 @@ pub fn proxy_user(url: &url::Url) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, SslMode), String> {
+const PG_OPTIONS: [&str; 18] = [
+    "user",
+    "password",
+    "dbname",
+    "options",
+    "application_name",
+    "sslnegotiation",
+    "host",
+    "hostaddr",
+    "port",
+    "connect_timeout",
+    "tcp_user_timeout",
+    "keepalives",
+    "keepalives_idle",
+    "keepalives_interval",
+    "keepalives_retries",
+    "target_session_attrs",
+    "channel_binding",
+    "load_balance_hosts",
+];
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PgTls {
+    pub mode: SslMode,
+    pub root_cert: Option<String>,
+    pub cert: Option<String>,
+    pub key: Option<String>,
+    pub password: Option<String>,
+}
+
+fn escape_option(value: &str) -> String {
+    value
+        .chars()
+        .flat_map(|c| {
+            let escape = (c == '\\' || c.is_whitespace()).then_some('\\');
+            escape.into_iter().chain(std::iter::once(c))
+        })
+        .collect()
+}
+
+fn append_option(config: &mut Config, option: String) {
+    let options = match config.get_options() {
+        Some(existing) if !existing.trim().is_empty() => format!("{existing} {option}"),
+        _ => option,
+    };
+    config.options(options);
+}
+
+pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, PgTls), String> {
     let mut url = url::Url::parse(value).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?;
     if !matches!(url.scheme(), "postgres" | "postgresql") {
         return Err("Eine postgresql:// oder postgres:// URL ist erforderlich".to_string());
     }
     let role = proxy_user(&url);
-    let mut ssl = SslMode::Prefer;
-
-    for (key, value) in url.query_pairs() {
-        if key == "sslmode" {
-            ssl = match value.as_ref() {
-                "disable" => SslMode::Disable,
-                "prefer" => SslMode::Prefer,
-                "require" => SslMode::Require,
-                "verify-ca" => SslMode::VerifyCa,
-                "verify-full" => SslMode::VerifyFull,
-                _ => return Err("Ungültiger SSL-Modus".to_string()),
-            };
+    let mut tls = PgTls::default();
+    let mut schema = None;
+    let mut params = Vec::new();
+    for part in url.query().unwrap_or_default().split('&') {
+        let Some((key, value)) = url::form_urlencoded::parse(part.as_bytes()).next() else {
+            continue;
+        };
+        let text = || Some(value.to_string()).filter(|v| !v.is_empty());
+        match key.as_ref() {
+            "sslmode" => {
+                tls.mode = match value.as_ref() {
+                    "disable" | "allow" => SslMode::Disable,
+                    "prefer" => SslMode::Prefer,
+                    "require" => SslMode::Require,
+                    "verify-ca" => SslMode::VerifyCa,
+                    "verify-full" => SslMode::VerifyFull,
+                    _ => return Err("Ungültiger SSL-Modus".to_string()),
+                }
+            }
+            "sslrootcert" => tls.root_cert = text(),
+            "sslcert" => tls.cert = text(),
+            "sslkey" => tls.key = text(),
+            "sslpassword" => tls.password = text(),
+            "schema" | "currentSchema" | "search_path" => schema = text(),
+            known if PG_OPTIONS.contains(&known) => params.push(part.to_string()),
+            _ => {}
         }
     }
-    let params: Vec<_> = url
-        .query()
-        .unwrap_or_default()
-        .split('&')
-        .filter(|part| {
-            !part.is_empty() && !part.starts_with("sslmode=") && !part.starts_with("proxy_user=")
-        })
-        .map(str::to_string)
-        .collect();
     let query = params.join("&");
     url.set_query(if query.is_empty() { None } else { Some(&query) });
     let mut config =
         Config::from_str(url.as_str()).map_err(|e| format!("Ungültiger Connection String: {e}"))?;
     config
-        .ssl_mode(ssl.to_pg())
+        .ssl_mode(tls.mode.to_pg())
         .connect_timeout(super::execution::connection_duration());
     if let Some(database) = database.filter(|db| !db.is_empty()) {
         config.dbname(database);
     }
+    if let Some(schema) = schema {
+        append_option(
+            &mut config,
+            format!("-c search_path={}", escape_option(&schema)),
+        );
+    }
     if let Some(role) = role {
-        let role: String = role
-            .chars()
-            .flat_map(|c| {
-                let escape = (c == '\\' || c.is_whitespace()).then_some('\\');
-                escape.into_iter().chain(std::iter::once(c))
-            })
-            .collect();
-        let options = match config.get_options() {
-            Some(existing) if !existing.trim().is_empty() => format!("{existing} -c role={role}"),
-            _ => format!("-c role={role}"),
-        };
-        config.options(options);
+        append_option(&mut config, format!("-c role={}", escape_option(&role)));
     }
     if config.get_application_name().is_none() {
         config.application_name("l8db");
     }
-    Ok((config, ssl))
+    Ok((config, tls))
 }
 
 pub fn connection_key(value: &str, database: Option<&str>) -> String {
@@ -104,10 +152,52 @@ pub fn connection_key(value: &str, database: Option<&str>) -> String {
     super::hex_blob(hash.finalize().as_slice())
 }
 
-pub fn tls_connector(ssl: SslMode) -> Result<MakeTlsConnector, String> {
+fn read_tls_file(path: &str, label: &str) -> Result<Vec<u8>, String> {
+    let expanded = match path.strip_prefix("~/") {
+        Some(rest) => std::env::var("HOME")
+            .map(|home| format!("{home}/{rest}"))
+            .unwrap_or_else(|_| path.to_string()),
+        None => path.to_string(),
+    };
+    std::fs::read(&expanded)
+        .map_err(|e| format!("{label} konnte nicht gelesen werden ({expanded}): {e}"))
+}
+
+pub fn tls_connector(tls: &PgTls) -> Result<MakeTlsConnector, String> {
     let mut builder = native_tls::TlsConnector::builder();
-    if matches!(ssl, SslMode::VerifyCa) {
-        builder.danger_accept_invalid_hostnames(true);
+    let root = tls.root_cert.as_deref().filter(|path| *path != "system");
+    let verify_chain = match tls.mode {
+        SslMode::VerifyCa | SslMode::VerifyFull => true,
+        SslMode::Require => root.is_some(),
+        SslMode::Prefer | SslMode::Disable => false,
+    };
+    builder
+        .danger_accept_invalid_certs(!verify_chain)
+        .danger_accept_invalid_hostnames(!matches!(tls.mode, SslMode::VerifyFull));
+    if let Some(path) = root {
+        let roots = native_tls::Certificate::stack_from_pem(&read_tls_file(path, "sslrootcert")?)
+            .map_err(|e| format!("sslrootcert ist kein gültiges PEM-Zertifikat: {e}"))?;
+        builder.disable_built_in_roots(true);
+        for root in roots {
+            builder.add_root_certificate(root);
+        }
+    }
+    if let Some(cert_path) = tls.cert.as_deref() {
+        let cert = read_tls_file(cert_path, "sslcert")?;
+        let lower = cert_path.to_ascii_lowercase();
+        let identity = if lower.ends_with(".p12") || lower.ends_with(".pfx") {
+            native_tls::Identity::from_pkcs12(&cert, tls.password.as_deref().unwrap_or(""))
+        } else {
+            let key_path = tls
+                .key
+                .as_deref()
+                .ok_or("sslcert benötigt sslkey (PKCS#8-PEM) oder eine .p12/.pfx-Datei")?;
+            native_tls::Identity::from_pkcs8(&cert, &read_tls_file(key_path, "sslkey")?)
+        }
+        .map_err(|e| {
+            format!("Client-Zertifikat konnte nicht geladen werden: {e}. Unverschlüsselte Schlüssel müssen im PKCS#8-Format vorliegen (openssl pkcs8 -topk8 -nocrypt), verschlüsselte als .p12 mit sslpassword.")
+        })?;
+        builder.identity(identity);
     }
     builder
         .build()
@@ -123,8 +213,8 @@ mod tests {
     fn parses_all_ssl_modes_and_preserves_cloud_options() {
         for mode in ["disable", "prefer", "require", "verify-ca", "verify-full"] {
             let value = format!("postgresql://user:p%40ss@db.example.com:5432/app?sslmode={mode}&channel_binding=require&application_name=l8db");
-            let (config, ssl) = parse_connection(&value, Some("other")).unwrap();
-            assert_eq!(ssl.as_url_param(), mode);
+            let (config, tls) = parse_connection(&value, Some("other")).unwrap();
+            assert_eq!(tls.mode.as_url_param(), mode);
             assert_eq!(config.get_dbname(), Some("other"));
             assert_eq!(config.get_password(), Some(b"p@ss".as_slice()));
             assert_eq!(config.get_application_name(), Some("l8db"));
@@ -199,6 +289,173 @@ mod tests {
         );
         assert_eq!(config.get_hostaddrs()[0].to_string(), "127.0.0.1");
         assert_eq!(config.get_ports(), &[12345]);
+    }
+
+    #[test]
+    fn extracts_tls_files_schema_and_drops_client_only_params() {
+        let (config, tls) = parse_connection(
+            "postgresql://u@h/app?sslmode=verify-ca&sslrootcert=~/ca.pem&sslcert=/c.pem&sslkey=/k.pem&sslpassword=pw&schema=my%20app&pgbouncer=true&connection_limit=1&options=-c%20statement_timeout%3D5s",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            tls,
+            PgTls {
+                mode: SslMode::VerifyCa,
+                root_cert: Some("~/ca.pem".into()),
+                cert: Some("/c.pem".into()),
+                key: Some("/k.pem".into()),
+                password: Some("pw".into()),
+            }
+        );
+        assert_eq!(
+            config.get_options(),
+            Some("-c statement_timeout=5s -c search_path=my\\ app")
+        );
+        assert_eq!(
+            parse_connection("postgres://u@h/app?sslmode=allow", None)
+                .unwrap()
+                .1
+                .mode
+                .as_url_param(),
+            "disable"
+        );
+    }
+
+    #[test]
+    fn tls_modes_follow_libpq_semantics() {
+        for mode in [
+            SslMode::Prefer,
+            SslMode::Require,
+            SslMode::VerifyCa,
+            SslMode::VerifyFull,
+        ] {
+            assert!(tls_connector(&PgTls {
+                mode,
+                ..PgTls::default()
+            })
+            .is_ok());
+        }
+        let missing = PgTls {
+            mode: SslMode::VerifyFull,
+            root_cert: Some("/does/not/exist.pem".into()),
+            ..PgTls::default()
+        };
+        assert!(tls_connector(&missing)
+            .err()
+            .is_some_and(|e| e.contains("sslrootcert")));
+        let without_key = PgTls {
+            cert: Some("/does/not/exist.pem".into()),
+            ..PgTls::default()
+        };
+        assert!(tls_connector(&without_key).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_tls_modes_and_client_certificates() {
+        let dir = std::env::var("L8DB_E2E_PG_TLS_DIR").unwrap_or_else(|_| "/tmp/l8db-pgtls".into());
+        let port = std::env::var("L8DB_E2E_PG_TLS_PORT").unwrap_or_else(|_| "55460".into());
+        let connect = |user: &str, host: &str, query: String| {
+            let url =
+                format!("postgresql://{user}@{host}:{port}/postgres?hostaddr=127.0.0.1&{query}");
+            async move {
+                let (config, tls) = parse_connection(&url, None)?;
+                let client = super::super::execution::connect_postgres(&config, &tls).await?;
+                client
+                    .query_one(
+                        "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+                        &[],
+                    )
+                    .await
+                    .map(|row| row.get::<_, bool>(0))
+                    .map_err(|e| e.to_string())
+            }
+        };
+        let ca = format!("sslrootcert={dir}/ca.pem");
+        assert_eq!(
+            connect("postgres:testpw", "localhost", "sslmode=require".into()).await,
+            Ok(true)
+        );
+        assert_eq!(
+            connect("postgres:testpw", "localhost", "sslmode=prefer".into()).await,
+            Ok(true)
+        );
+        assert_eq!(
+            connect("postgres:testpw", "localhost", "sslmode=disable".into()).await,
+            Ok(false)
+        );
+        assert!(connect(
+            "postgres:testpw",
+            "pg.l8db.test",
+            "sslmode=verify-full".into()
+        )
+        .await
+        .is_err());
+        assert_eq!(
+            connect(
+                "postgres:testpw",
+                "pg.l8db.test",
+                format!("sslmode=verify-full&{ca}")
+            )
+            .await,
+            Ok(true)
+        );
+        assert!(connect(
+            "postgres:testpw",
+            "localhost",
+            format!("sslmode=verify-full&{ca}")
+        )
+        .await
+        .is_err());
+        assert_eq!(
+            connect(
+                "postgres:testpw",
+                "localhost",
+                format!("sslmode=verify-ca&{ca}")
+            )
+            .await,
+            Ok(true)
+        );
+        assert_eq!(
+            connect(
+                "postgres:testpw",
+                "localhost",
+                format!("sslmode=require&{ca}")
+            )
+            .await,
+            Ok(true)
+        );
+        assert_eq!(
+            connect(
+                "certuser",
+                "pg.l8db.test",
+                format!(
+                    "sslmode=verify-full&{ca}&sslcert={dir}/client.pem&sslkey={dir}/client.pk8.pem"
+                )
+            )
+            .await,
+            Ok(true)
+        );
+        assert_eq!(
+            connect(
+                "certuser",
+                "localhost",
+                format!("sslmode=require&sslcert={dir}/client.p12&sslpassword=secret")
+            )
+            .await,
+            Ok(true)
+        );
+        assert!(connect("certuser", "localhost", "sslmode=require".into())
+            .await
+            .is_err());
+        let rsa = connect(
+            "certuser",
+            "localhost",
+            format!("sslmode=require&sslcert={dir}/client.pem&sslkey={dir}/client.key"),
+        )
+        .await;
+        assert!(rsa.is_ok() || rsa.unwrap_err().contains("PKCS#8"));
     }
 
     #[test]

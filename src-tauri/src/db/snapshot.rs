@@ -98,8 +98,8 @@ pub async fn read(
     request: &SnapshotRequest,
 ) -> Result<TableData, String> {
     let (config, ssl) = connection::parse_connection(connection_string, database)?;
-    let client = execution::connect_postgres(&config, ssl).await?;
-    let result = execution::postgres(&client, ssl, None, async {
+    let client = execution::connect_postgres(&config, &ssl).await?;
+    let result = execution::postgres(&client, &ssl, None, async {
         client.batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY").await.map_err(map_pg_err)?;
         let columns = client.query("SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position", &[&request.schema, &request.table]).await.map_err(map_pg_err)?.iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>();
         if columns.is_empty() { return Err("Keine Exportspalten gefunden.".into()); }
@@ -119,7 +119,7 @@ pub async fn read(
             let page = client.query("FETCH FORWARD 1000 FROM l8db_snapshot", &[]).await.map_err(map_pg_err)?;
             if page.is_empty() { break; }
             for row in page {
-                let value: Value = row.get(0);
+                let value: Value = row.get::<_, super::exact_number::ExactJson>(0).0;
                 bytes += serde_json::to_vec(&value).map_err(|error| error.to_string())?.len();
                 if bytes > 64 * 1024 * 1024 { return Err("Der Lesevorgang überschreitet 64 MiB Rohdaten je Seite. Filter einschränken oder CSV verwenden.".into()); }
                 if rows.len() >= request.max_rows.min(1_048_576) { return Err("Die Daten überschreiten das gewählte Zeilenlimit.".into()); }
@@ -143,9 +143,9 @@ mod tests {
     async fn snapshot_keeps_rows_during_concurrent_changes() {
         let url = std::env::var("L8DB_E2E_PG_URL").expect("PostgreSQL lab required");
         let (config, ssl) = connection::parse_connection(&url, None).unwrap();
-        let client = execution::connect_postgres(&config, ssl).await.unwrap();
+        let client = execution::connect_postgres(&config, &ssl).await.unwrap();
         client.batch_execute("DROP TABLE IF EXISTS snapshot_test; CREATE TABLE snapshot_test AS SELECT n AS id FROM generate_series(1, 3000) n").await.unwrap();
-        let writer = execution::connect_postgres(&config, ssl).await.unwrap();
+        let writer = execution::connect_postgres(&config, &ssl).await.unwrap();
         let changed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let signal = changed.clone();
         let request = SnapshotRequest {

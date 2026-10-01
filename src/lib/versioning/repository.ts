@@ -1,3 +1,4 @@
+import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
 import {
   PROJECT_PATH,
@@ -6,6 +7,12 @@ import {
   releasePath,
   validateReleaseGraph,
 } from "./model";
+import {
+  createTeamConfiguration,
+  mergeTeamTargets,
+  parseTeamConfiguration,
+  TEAM_PATH,
+} from "./team";
 import type {
   DatabaseRelease,
   ReleaseReference,
@@ -93,12 +100,30 @@ export async function committedRelease(repo: string, project: VersioningProject,
   return { release, reference: { id, commit: status.head, path } };
 }
 
+export async function committedTeamConfiguration(
+  repo: string,
+  projectId: string,
+): Promise<string | null> {
+  const current = await readFile(repo, TEAM_PATH);
+  const files = await versioningRepository<string[]>({ action: "files", repo, revision: "HEAD" });
+  const committed = files.includes(TEAM_PATH) ? await readFile(repo, TEAM_PATH, "HEAD") : null;
+  if (current !== committed)
+    throw new Error(
+      "Teamkonfiguration enthält offene Git-Änderungen. Vor dem Rollout prüfen und committen.",
+    );
+  if (current) parseTeamConfiguration(current, projectId);
+  return current;
+}
+
 export async function readTargets(
   repo: string,
   projectId: string,
 ): Promise<{ store: TargetStore; text: string | null }> {
-  const text = await versioningRepository<string | null>({ action: "local-read", repo });
-  const store: TargetStore = text ? JSON.parse(text) : { format: 1, projectId, targets: [] };
+  const [local, team] = await Promise.all([
+    versioningRepository<string | null>({ action: "local-read", repo }),
+    readFile(repo, TEAM_PATH),
+  ]);
+  const store: TargetStore = local ? JSON.parse(local) : { format: 1, projectId, targets: [] };
   if (
     store.format !== 1 ||
     store.projectId !== projectId ||
@@ -108,7 +133,11 @@ export async function readTargets(
       (t) =>
         !t.id ||
         !t.name ||
-        !t.connectionId ||
+        typeof t.connectionId !== "string" ||
+        (!t.connectionId && !t.connectionRef) ||
+        (t.customer !== undefined && (typeof t.customer !== "string" || !t.customer.trim())) ||
+        (t.environment !== undefined &&
+          (typeof t.environment !== "string" || !t.environment.trim())) ||
         !Array.isArray(t.history) ||
         (t.track !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(t.track)) ||
         (t.paused !== undefined && typeof t.paused !== "boolean") ||
@@ -120,7 +149,10 @@ export async function readTargets(
     throw new Error(
       "Lokale Kundenzuordnungen sind ungültig oder gehören zu einem anderen Projekt.",
     );
-  return { store, text };
+  return {
+    store: team ? mergeTeamTargets(store, parseTeamConfiguration(team, projectId)) : store,
+    text: encode({ local, team }),
+  };
 }
 
 export async function saveTargets(
@@ -128,7 +160,19 @@ export async function saveTargets(
   store: TargetStore,
   expected: string | null,
 ): Promise<string> {
-  const content = encode(store);
-  await versioningRepository({ action: "local-write", repo, content, expected });
+  const team = encode(createTeamConfiguration(store, useConnectionsStore.getState().connections));
+  const { teamConfigured: _, ...localStore } = store;
+  const previous = expected ? (JSON.parse(expected) as { local: string | null }) : null;
+  const archived: TargetStore | null = previous?.local ? JSON.parse(previous.local) : null;
+  localStore.targets = [
+    ...localStore.targets,
+    ...(archived?.targets.filter(
+      (target) => !store.targets.some((entry) => entry.id === target.id),
+    ) ?? []),
+  ];
+  localStore.connectionBindings = { ...archived?.connectionBindings, ...store.connectionBindings };
+  const local = encode(localStore);
+  const content = encode({ local, team });
+  await versioningRepository({ action: "targets-write", repo, content, expected });
   return content;
 }

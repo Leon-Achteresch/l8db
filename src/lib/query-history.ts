@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface QueryHistoryEntry {
   id: string;
@@ -149,3 +150,5 @@ export const useQueryHistoryStore = create<QueryHistoryState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.query-history", () => void useQueryHistoryStore.persist.rehydrate());

@@ -29,7 +29,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page
           .getByRole("button", { name: "Versionierungsprojekt anlegen", exact: true })
           .click();
-        await page.getByRole("tab", { name: "Datenbanken", exact: true }).waitFor();
+        await page.getByRole("tab", { name: "Kunden", exact: true }).waitFor();
         const result = await page.evaluate(
           async ({ repo }) => {
             const { runPostgresScenario } = await import(
@@ -53,7 +53,7 @@ for (const engine of ["chromium", "webkit"] as const) {
           failureRecorded: true,
         });
         await page.getByRole("button", { name: "Versionierung aktualisieren" }).click();
-        await page.getByRole("tab", { name: "Datenbanken", exact: true }).click();
+        await page.getByRole("tab", { name: "Kunden", exact: true }).click();
         await page.getByText("Kunde A", { exact: true }).waitFor();
         const panel = page.locator("#versioning-panel");
         expect(await panel.getAttribute("aria-hidden")).toBe("false");

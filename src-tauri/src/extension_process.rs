@@ -77,9 +77,7 @@ pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> 
 }
 
 fn truncate(mut text: String) -> String {
-    if text.len() > MAX_OUTPUT {
-        text.truncate(MAX_OUTPUT);
-    }
+    text.truncate(text.floor_char_boundary(MAX_OUTPUT));
     text
 }
 
@@ -96,6 +94,11 @@ fn dirs() -> Vec<std::path::PathBuf> {
     }
     if let Some(local) = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) {
         dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
+    }
+    for programs in ["ProgramFiles(x86)", "ProgramFiles"] {
+        if let Some(programs) = std::env::var_os(programs) {
+            dirs.push(std::path::PathBuf::from(programs).join("Keeper Commander"));
+        }
     }
     dirs
 }
@@ -127,7 +130,7 @@ pub async fn extension_process_run(
     options: ProcessOptions,
 ) -> Result<ProcessResult, String> {
     let timeout = validate(&command, &options)?;
-    let mut child = tokio::process::Command::new(resolve(&command));
+    let mut child = crate::db::backup_tools::command(std::path::Path::new(&resolve(&command)));
     child
         .args(&options.args)
         .env("PATH", child_path())
@@ -369,6 +372,14 @@ mod tests {
         }
     }
     #[test]
+    fn truncate_cuts_at_a_char_boundary() {
+        let text = format!("a{}", "ü".repeat(MAX_OUTPUT));
+        let cut = truncate(text);
+        assert_eq!(cut.len(), MAX_OUTPUT - 1);
+        assert!(cut.ends_with('ü'));
+        assert_eq!(truncate("äöü".into()), "äöü");
+    }
+    #[test]
     fn rejects_unknown_or_unsafe_commands() {
         assert!(validate("git", &options()).is_ok());
         assert!(validate("../git", &options()).is_err());
@@ -405,6 +416,13 @@ mod tests {
             assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
             assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
         }
+    }
+    #[test]
+    fn finds_the_keeper_commander_windows_installer() {
+        std::env::set_var("ProgramFiles(x86)", "/l8db-test/Program Files (x86)");
+        assert!(dirs().contains(&std::path::PathBuf::from(
+            "/l8db-test/Program Files (x86)/Keeper Commander"
+        )));
     }
     #[tokio::test]
     async fn scripts_find_their_interpreter_without_an_inherited_path() {

@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { withTimeout } from "@/lib/async";
 import { connectionError, isAuthFailure } from "@/lib/connection-url";
 import { useConnectionsStore, usesTunnel } from "@/lib/connections";
-import { closeSshTunnel, testConnectionString } from "@/lib/db";
+import { closeSshTunnel, connectionInOtherWindow, testConnectionString } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
@@ -21,6 +21,12 @@ export const useConnectionSwitch = create<ConnectionSwitchState>(() => ({
   isSwitching: false,
   errorId: null,
 }));
+
+function sharedWithOtherWindow(id: string): Promise<boolean> {
+  return connectionInOtherWindow(id)
+    .then(Boolean)
+    .catch(() => false);
+}
 
 async function performActivation(
   id: string | null,
@@ -62,7 +68,8 @@ async function performActivation(
         }
       } catch (error) {
         if (usesTunnel(next) && previous?.id !== next.id) {
-          await closeSshTunnel(next.id).catch(() => undefined);
+          if (!(await sharedWithOtherWindow(next.id)))
+            await closeSshTunnel(next.id).catch(() => undefined);
           useConnectionsStore.setState((state) => ({
             connections: state.connections.map((entry) =>
               entry.id === next.id ? { ...entry, tunnelPort: null } : entry,
@@ -74,7 +81,7 @@ async function performActivation(
     }
     if (previous?.tunnelPort && previous.id !== id) {
       try {
-        await closeSshTunnel(previous.id);
+        if (!(await sharedWithOtherWindow(previous.id))) await closeSshTunnel(previous.id);
       } catch {
         toast.warning("Der bisherige Netzwerk-Tunnel konnte nicht geschlossen werden.");
       }

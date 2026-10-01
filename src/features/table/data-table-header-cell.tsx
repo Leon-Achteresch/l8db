@@ -1,4 +1,4 @@
-import { useSortable } from "@dnd-kit/react/sortable";
+import { useDraggable } from "@dnd-kit/react";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
 import { Pin, PinOff } from "lucide";
 import {
@@ -25,12 +25,12 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { headerDragPlugins } from "@/features/table/data-table/constants";
 import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
 type DataTableHeaderCellProps = {
   header: Header<Record<string, unknown>, unknown>;
-  sortableIndex: number;
   isFetching: boolean;
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
@@ -54,7 +54,6 @@ type DataTableHeaderCellProps = {
 
 export function DataTableHeaderCell({
   header,
-  sortableIndex,
   isFetching,
   sorting,
   onSortingChange,
@@ -75,7 +74,7 @@ export function DataTableHeaderCell({
   onTogglePin,
   onCopyColumn,
 }: DataTableHeaderCellProps) {
-  const { ref, handleRef, isDragging } = useSortable({ id: header.id, index: sortableIndex });
+  const { ref, handleRef } = useDraggable({ id: header.id, plugins: headerDragPlugins });
   const pinnedOffset =
     header.column.getIsPinned() === "left" ? header.column.getStart("left") : null;
 
@@ -90,7 +89,6 @@ export function DataTableHeaderCell({
               className={cn(
                 "relative sticky top-0 z-20 border-b border-r border-border bg-muted px-3 py-2 text-left align-middle",
                 pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
-                isDragging && "z-40 opacity-80",
               )}
               style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}
             >

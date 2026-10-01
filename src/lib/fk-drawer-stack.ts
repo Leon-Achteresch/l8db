@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import { useConnectionsStore } from "@/lib/connections";
+import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { useSplitView } from "@/lib/split-view";
+import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 
 export interface FkDrawerEntry {
   id: string;
@@ -6,6 +10,7 @@ export interface FkDrawerEntry {
   table: string;
   filter?: string;
   filterRaw?: boolean;
+  connectionId?: string | null;
 }
 
 interface FkDrawerState {
@@ -16,6 +21,36 @@ interface FkDrawerState {
   popTo: (id: string) => void;
   clear: () => void;
   setWidth: (id: string, width: number) => void;
+}
+
+export function openScopedTable(
+  connectionId: string,
+  schema: string,
+  table: string,
+  filter?: string,
+  filterRaw?: boolean,
+) {
+  const connection = useConnectionsStore
+    .getState()
+    .connections.find((entry) => entry.id === connectionId);
+  const key = tableViewStateKey(
+    connectionId,
+    useDbSelectionStore.getState().databaseByConnection[connectionId] ??
+      (connection ? databaseFromConnectionString(connection.connectionString) : null),
+    schema,
+    table,
+  );
+  if (key && filter !== undefined) {
+    useTableViewStateStore.getState().patch(key, {
+      filter,
+      filterRaw: Boolean(filterRaw),
+      sorting: [],
+      page: 0,
+      detailTab: "data",
+    });
+  }
+  const { focusedPane, setPaneTable } = useSplitView.getState();
+  setPaneTable(focusedPane, connectionId, { schema, table, entityType: "table" });
 }
 
 let counter = 0;

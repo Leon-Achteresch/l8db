@@ -26,6 +26,7 @@ export interface QueryResult {
   rows: Record<string, unknown>[];
   rows_affected: number | null;
   execution_time_ms: number;
+  truncated?: boolean;
   notice?: string;
 }
 

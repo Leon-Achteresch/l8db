@@ -1,7 +1,9 @@
 pub mod control;
 pub mod metadata;
 pub mod runner;
+pub mod seeds;
 pub mod snapshot;
+mod team;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -32,8 +34,12 @@ pub struct Request {
     pub incoming: Option<String>,
 }
 
+fn git_command() -> Command {
+    crate::db::backup_tools::command(Path::new("git"))
+}
+
 async fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
+    let mut command = git_command();
     command
         .current_dir(root)
         .args(["--no-pager", "--literal-pathspecs"])
@@ -421,6 +427,14 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 return Err("Branchwechsel benötigt einen sauberen Arbeitsbaum, einschließlich anderer Projektdateien".into());
             }
             let args = if request.action == "branch" {
+                let start = match request.revision.as_deref() {
+                    Some(value) => Some(revision(&root, value).await?),
+                    None => None,
+                };
+                if let Some(start) = start {
+                    git(&root, &["switch", "-c", &name, &start]).await?;
+                    return Ok(Value::Null);
+                }
                 vec!["switch", "-c", &name]
             } else {
                 vec!["switch", &name]
@@ -457,6 +471,94 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 }
             }
             Ok(json!({"head":head,"base":base.trim(),"incoming":incoming}))
+        }
+        "graph" => {
+            if revision(&root, "HEAD").await.is_err() {
+                return Ok(json!(""));
+            }
+            Ok(json!(
+                git(
+                    &root,
+                    &[
+                        "log",
+                        "--all",
+                        "--topo-order",
+                        "-120",
+                        "--format=%H%x09%P%x09%D%x09%cI%x09%s"
+                    ]
+                )
+                .await?
+            ))
+        }
+        "delete-branch" => {
+            let name = request.name.ok_or("Branchname fehlt")?;
+            if name.starts_with('-') || !seeds::allowed_branch(&name) {
+                return Err("Dieser Branch darf nicht gelöscht werden.".into());
+            }
+            git(&root, &["check-ref-format", &format!("refs/heads/{name}")]).await?;
+            let default = git(
+                &root,
+                &[
+                    "symbolic-ref",
+                    "--quiet",
+                    "--short",
+                    "refs/remotes/origin/HEAD",
+                ],
+            )
+            .await
+            .ok();
+            if default
+                .as_deref()
+                .and_then(|value| value.trim().strip_prefix("origin/"))
+                == Some(name.as_str())
+            {
+                return Err("Der Standardbranch darf nicht gelöscht werden.".into());
+            }
+            git(&root, &["branch", "--delete", &name]).await?;
+            Ok(Value::Null)
+        }
+        "merge-branch" => {
+            let name = request.name.ok_or("Quell-Branch fehlt")?;
+            if name.starts_with('-') || name == "HEAD" {
+                return Err("Ungültiger Branchname".into());
+            }
+            git(&root, &["check-ref-format", &format!("refs/heads/{name}")]).await?;
+            let incoming = revision(&root, &format!("refs/heads/{name}")).await?;
+            if !git(&root, &["status", "--porcelain"]).await?.is_empty() {
+                return Err("Vor dem Merge alle Änderungen committen oder sichern.".into());
+            }
+            git(&root, &["symbolic-ref", "--quiet", "HEAD"]).await?;
+            let base = git(&root, &["merge-base", "HEAD", &incoming]).await?;
+            if !git(
+                &root,
+                &[
+                    "diff",
+                    "--name-only",
+                    "--no-renames",
+                    "--diff-filter=MDT",
+                    base.trim(),
+                    &incoming,
+                    "--",
+                    "database/releases/",
+                ],
+            )
+            .await?
+            .is_empty()
+            {
+                return Err("Der Quell-Branch verändert bereits commitete Releases. Einen neuen Release anlegen.".into());
+            }
+            if let Err(error) = git(&root, &["merge", "--no-edit", &incoming]).await {
+                if git(&root, &["rev-parse", "--verify", "MERGE_HEAD"])
+                    .await
+                    .is_ok()
+                {
+                    git(&root, &["merge", "--abort"]).await.map_err(|abort| {
+                        format!("Merge fehlgeschlagen: {error}. Abbruch fehlgeschlagen: {abort}")
+                    })?;
+                }
+                return Err(format!("Branch konnte nicht zusammengeführt werden. Konflikte im Dateieditor mit Drei-Wege-Merge auflösen: {error}"));
+            }
+            Ok(Value::Null)
         }
         "fetch" | "pull" | "push" => {
             if request.action != "fetch"
@@ -497,7 +599,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 }
                 let output = tokio::time::timeout(
                     Duration::from_secs(30),
-                    Command::new("git")
+                    git_command()
                         .current_dir(&dir)
                         .args([
                             "merge-file",
@@ -531,7 +633,7 @@ pub async fn handle(request: Request) -> Result<Value, String> {
             let _ = fs::remove_dir_all(dir);
             result
         }
-        "local-read" | "local-write" => {
+        "local-read" | "local-write" | "targets-write" => {
             let common = PathBuf::from(
                 git(
                     &root,
@@ -541,6 +643,15 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 .trim(),
             );
             let file = common.join("l8db-targets.json");
+            if request.action == "targets-write" {
+                team::write(
+                    &root,
+                    &common,
+                    &request.content.ok_or("Inhalt fehlt")?,
+                    request.expected.as_deref(),
+                )?;
+                return Ok(Value::Null);
+            }
             if request.action == "local-read" {
                 return Ok(json!(read(&file)?));
             }

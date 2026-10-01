@@ -673,7 +673,7 @@ fn caller_label(owner: &str, name: &str, kind: &str) -> String {
     format!("Aufrufer {owner}.{name} ({kind})")
 }
 
-const NLS_SESSION: &str = "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
+const NLS_SESSION: &str = "ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,' NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
 const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
 
 fn validate_rowid(rowid: &str) -> Result<&str, String> {
@@ -715,28 +715,27 @@ fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {
     }
     let text: Option<String> = match row.get(index) {
         Ok(v) => v,
-        Err(_) => return serde_json::Value::Null,
+        Err(_) => {
+            return match row.get::<usize, Option<Vec<u8>>>(index) {
+                Ok(Some(bytes)) => serde_json::Value::String(super::hex_blob(&bytes)),
+                Ok(None) => serde_json::Value::Null,
+                Err(_) => serde_json::Value::String(format!("<{kind} nicht darstellbar>")),
+            };
+        }
     };
     let Some(text) = text else {
         return serde_json::Value::Null;
     };
     match kind {
-        OracleType::Number(..)
-        | OracleType::Float(_)
-        | OracleType::BinaryFloat
-        | OracleType::BinaryDouble
-        | OracleType::Int64
-        | OracleType::UInt64 => {
-            if let Ok(i) = text.parse::<i64>() {
-                return serde_json::Value::from(i);
-            }
-            if let Ok(f) = text.parse::<f64>() {
-                if let Some(n) = serde_json::Number::from_f64(f) {
-                    return serde_json::Value::Number(n);
-                }
-            }
-            serde_json::Value::String(text)
+        OracleType::Number(..) | OracleType::Float(_) | OracleType::Int64 | OracleType::UInt64 => {
+            super::exact_number::decimal(&text)
         }
+        OracleType::BinaryFloat | OracleType::BinaryDouble => text
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::String(text)),
         _ => serde_json::Value::String(text),
     }
 }
@@ -893,16 +892,20 @@ impl OracleAdapter {
     }
 
     async fn open_raw(&self) -> Result<Connection, String> {
-        ensure_client_lib();
         self.ensure_reachable().await?;
         let (user, password, connect_string) = (
             self.user.clone(),
             self.password.clone(),
             self.connect_string.clone(),
         );
-        tokio::task::spawn_blocking(move || connect_sync(&user, &password, &connect_string))
-            .await
-            .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+        tokio::task::spawn_blocking(move || {
+            ensure_client_lib();
+            oracle::Version::client()
+                .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
+            connect_sync(&user, &password, &connect_string)
+        })
+        .await
+        .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
     }
 
     async fn conn(&self) -> Result<Arc<Mutex<(Connection, Instant)>>, String> {
@@ -1319,9 +1322,6 @@ fn ezconnect_endpoint(value: &str) -> Option<(String, u16)> {
 #[async_trait]
 impl DatabaseAdapter for OracleAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        ensure_client_lib();
-        oracle::Version::client()
-            .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
         self.rows("SELECT 1 FROM dual".to_string())
             .await
             .map(|_| ())
@@ -1484,6 +1484,7 @@ impl DatabaseAdapter for OracleAdapter {
                 columns,
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         let affected = self.exec(statement).await?;
@@ -1492,6 +1493,7 @@ impl DatabaseAdapter for OracleAdapter {
             rows: vec![],
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 
@@ -1525,6 +1527,7 @@ impl DatabaseAdapter for OracleAdapter {
                     columns,
                     rows_affected: None,
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             } else {
                 let affected = conn
@@ -1537,6 +1540,7 @@ impl DatabaseAdapter for OracleAdapter {
                     rows: vec![],
                     rows_affected: Some(affected),
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             }
         })
@@ -2726,7 +2730,7 @@ fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn client_lib_candidates() -> Vec<PathBuf> {
+fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
     let mut dirs = Vec::new();
     if let Some(home) = std::env::var_os("ORACLE_HOME") {
         dirs.push(PathBuf::from(&home).join("lib"));
@@ -2750,6 +2754,17 @@ fn client_lib_candidates() -> Vec<PathBuf> {
         .map(PathBuf::from)
     {
         dirs.push(home.join("lib"));
+    }
+    dirs.into_iter()
+        .chain(std::iter::once_with(discovered_client_lib_candidates).flatten())
+}
+
+fn discovered_client_lib_candidates() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    {
         dirs.extend(instant_client_dirs(&home));
         dirs.extend(instant_client_dirs(&home.join("Downloads")));
     }
@@ -2766,9 +2781,10 @@ fn client_lib_candidates() -> Vec<PathBuf> {
 }
 
 pub fn find_client_lib_dir() -> Option<PathBuf> {
-    find_client_lib_in(&client_lib_candidates())
+    client_lib_candidates().find(|dir| has_client_lib(dir))
 }
 
+#[cfg(test)]
 fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|dir| has_client_lib(dir)).cloned()
 }
@@ -4230,6 +4246,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         });
     }
     let affected = c
@@ -4242,6 +4259,7 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
         rows: vec![],
         rows_affected: Some(affected),
         execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
     })
 }
 

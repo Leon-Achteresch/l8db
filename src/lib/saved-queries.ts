@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface SavedQuery {
   id: string;
@@ -58,3 +59,5 @@ export const useSavedQueriesStore = create<SavedQueriesState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.saved-queries", () => void useSavedQueriesStore.persist.rehydrate());

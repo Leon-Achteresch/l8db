@@ -6,7 +6,7 @@ import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
 import { initAppearance } from "@/lib/appearance";
-import { initConnectionSecrets, isMainWindow } from "@/lib/connections";
+import { initConnectionSecrets, isMainWindow, windowConnectionId } from "@/lib/connections";
 import { initCrashReporting } from "@/lib/crash-reporting";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
@@ -15,8 +15,9 @@ import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { installNativeGuards } from "@/lib/native-guards";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
-import { restoreSshTunnel } from "@/lib/ssh";
+import { activateConnectionWithToast, restoreSshTunnel } from "@/lib/ssh";
 import { recordCount, recordDuration } from "@/lib/telemetry";
+import { initWindowIntegration } from "@/lib/window-integration";
 import { router } from "./router";
 
 installDiagnosticsErrorCapture();
@@ -69,6 +70,9 @@ Promise.all([
   .finally(() => {
     render();
     recordDuration("app.startup", performance.now(), { ready: String(startupReady) });
+    const disposeWindowIntegration = initWindowIntegration();
+    if (import.meta.hot) import.meta.hot.dispose(disposeWindowIntegration);
+    if (startupReady && windowConnectionId) void activateConnectionWithToast(windowConnectionId);
     if (startupReady)
       requestAnimationFrame(() => {
         void import("@/lib/dashboards/mcp-sync")

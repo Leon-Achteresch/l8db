@@ -5,7 +5,7 @@ import { ExtensionError, assertCompatible, matchesHost, validateArchive, validat
 import type { CoreServices, ExtensionArchive, ExtensionDescriptor, ExtensionRuntime, ExtensionStorage, InstalledExtension, Json, Permission, RpcHandler } from "../src/lib/extensions/contracts";
 
 function archive(id = "test.example", events: string[] = ["onCommand:test.hello"]): ExtensionArchive {
-  return validateArchive({ format: 1, manifest: { id, publisher: id.split(".")[0], name: "Test", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: events, permissions: ["database:read", "filesystem:extension-storage"], contributes: { commands: [{ id: "test.hello", title: "Hello" }], configuration: { "test.enabled": { type: "boolean", default: true } } } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
+  return validateArchive({ format: 1, manifest: { id, publisher: id.split(".")[0], name: "Test", version: "1.0.0", engines: { l8db: ">=0.1.0 <2.0.0" }, main: "dist/extension.js", activationEvents: events, permissions: ["database:read", "filesystem:extension-storage"], contributes: { commands: [{ id: "test.hello", title: "Hello" }], configuration: { "test.enabled": { type: "boolean", default: true } } } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
 }
 class MemoryStorage implements ExtensionStorage {
   entries = new Map<string, InstalledExtension>();
@@ -97,7 +97,14 @@ describe("extension manifest", () => {
     const manifest = archive().manifest;
     assertCompatible(manifest, "0.1.0");
     assertCompatible(manifest, "0.9.9");
-    for (const version of ["1.0.0", "0.0.9", "0.2.0-beta.1"]) expect(() => assertCompatible(manifest, version)).toThrow(ExtensionError);
+    assertCompatible(manifest, "1.0.0");
+    for (const version of ["2.0.0", "0.0.9", "0.2.0-beta.1"]) expect(() => assertCompatible(manifest, version)).toThrow(ExtensionError);
+  });
+  test("official extensions accept l8db 1.x", async () => {
+    for (const path of ["../extention/l8db-extension.json", "../extention/password-manager/l8db-extension.json", "../examples/hello-extension/l8db-extension.json"]) {
+      const manifest = validateManifest(await Bun.file(new URL(path, import.meta.url)).json());
+      for (const version of ["0.7.0", "1.0.0", "1.9.3"]) assertCompatible(manifest, version);
+    }
   });
 });
 describe("extension lifecycle integration", () => {
@@ -254,7 +261,7 @@ test("updateExtension keeps grants and configuration and rejects non-newer versi
   expect(manager.listExtensions()[0].archive.manifest.version).toBe("2.0.0");
 });
 function richArchive(): ExtensionArchive {
-  return validateArchive({ format: 1, manifest: { id: "test.rich", publisher: "test", name: "Rich", version: "1.0.0", engines: { l8db: ">=0.1.0 <1.0.0" }, main: "dist/extension.js", activationEvents: ["onStartup", "onView:test.view"], permissions: ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write"], capabilities: { network: { hosts: ["example.com", "*.example.org"] }, process: { commands: ["tool"] } }, contributes: { commands: [{ id: "test.run", title: "Run" }], configuration: { "test.mode": { type: "string", default: "a", enum: ["a", "b"] } }, views: [{ id: "test.view", title: "View", location: "sidebar" }], panels: [{ id: "test.panel", title: "Panel" }], statusBar: [{ id: "test.status", alignment: "right", priority: 5 }], menus: [{ command: "test.run", location: "palette" }] } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
+  return validateArchive({ format: 1, manifest: { id: "test.rich", publisher: "test", name: "Rich", version: "1.0.0", engines: { l8db: ">=0.1.0 <2.0.0" }, main: "dist/extension.js", activationEvents: ["onStartup", "onView:test.view"], permissions: ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write"], capabilities: { network: { hosts: ["example.com", "*.example.org"] }, process: { commands: ["tool"] } }, contributes: { commands: [{ id: "test.run", title: "Run" }], configuration: { "test.mode": { type: "string", default: "a", enum: ["a", "b"] } }, views: [{ id: "test.view", title: "View", location: "sidebar" }], panels: [{ id: "test.panel", title: "Panel" }], statusBar: [{ id: "test.status", alignment: "right", priority: 5 }], menus: [{ command: "test.run", location: "palette" }] } }, files: { "dist/extension.js": "exports.activate = () => {}" } });
 }
 test("manifest validates views, panels, status bar, menus and capabilities", () => {
   expect(() => richArchive()).not.toThrow();
@@ -264,8 +271,8 @@ test("manifest validates views, panels, status bar, menus and capabilities", () 
   expect(() => validateManifest({ ...base, capabilities: { network: { hosts: ["not a host!!"] } } })).toThrow();
   expect(() => validateManifest({ ...base, capabilities: { process: { commands: ["../evil"] } } })).toThrow();
   expect(() => validateManifest({ ...base, contributes: { ...base.contributes, views: [{ id: "x", title: "X", location: "nowhere" }] } })).toThrow();
-  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <1.0.0", api: "^1.1.0" } })).not.toThrow();
-  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <1.0.0", api: "^2.0.0" } })).toThrow();
+  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <2.0.0", api: "^1.1.0" } })).not.toThrow();
+  expect(() => validateManifest({ ...base, engines: { l8db: ">=0.1.0 <2.0.0", api: "^2.0.0" } })).toThrow();
 });
 test("matchesHost supports wildcards and ports", () => {
   expect(matchesHost("example.com", "example.com")).toBe(true);

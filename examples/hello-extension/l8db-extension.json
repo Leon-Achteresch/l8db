@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "A minimal community extension demonstrating commands, events, views, panels and configuration.",
   "publisher": "community",
-  "engines": { "l8db": ">=0.1.0 <1.0.0", "api": "^1.0.0" },
+  "engines": { "l8db": ">=0.1.0 <2.0.0", "api": "^1.0.0" },
   "main": "./dist/extension.js",
   "activationEvents": ["onCommand:hello.greet", "onCommand:hello.inspect", "onDatabaseOpen", "onView:hello.overview"],
   "permissions": ["database:read"],

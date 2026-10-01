@@ -15,7 +15,7 @@ export interface ManagedObject {
   id: string;
   path: string;
   bodyPath?: string;
-  metadataVersion?: 2;
+  metadataVersion?: 2 | 3;
   selection: Omit<CompareSideSelection, "connectionId" | "database">;
 }
 
@@ -94,7 +94,11 @@ export interface DeploymentEvent {
 export interface DatabaseTarget {
   id: string;
   name: string;
+  customer?: string;
+  environment?: string;
   connectionId: string;
+  connectionRef?: string;
+  expectedPhysicalKey?: string;
   database: string | null;
   production: boolean;
   schema?: string | null;
@@ -104,6 +108,10 @@ export interface DatabaseTarget {
   pinnedRelease?: string | null;
   paused?: boolean;
   ledgerSchema?: string;
+  requireApproval?: boolean;
+  operators?: string[];
+  administrators?: string[];
+  reviewers?: string[];
   binding?: {
     locationFingerprint?: string;
     fingerprint: string;
@@ -117,6 +125,41 @@ export interface TargetStore {
   format: 1;
   projectId: string;
   targets: DatabaseTarget[];
+  connections?: TeamConnection[];
+  branches?: Record<string, TeamBranch>;
+  teamConfigured?: boolean;
+  connectionBindings?: Record<string, string>;
+}
+
+export interface TeamConnection {
+  id: string;
+  name: string;
+  kind: VersioningProject["kind"];
+  host: string;
+  port: string;
+  service: string | null;
+  sslMode: string;
+  requiresTunnel: boolean;
+}
+
+export interface TeamBranch {
+  targetId?: string;
+  source?: { connectionRef: string; database: string | null; schema: string | null };
+}
+
+export type TeamTarget = Omit<
+  DatabaseTarget,
+  "connectionId" | "binding" | "release" | "history"
+> & {
+  connectionRef: string;
+};
+
+export interface TeamConfiguration {
+  format: 1;
+  projectId: string;
+  connections: TeamConnection[];
+  targets: TeamTarget[];
+  branches: Record<string, TeamBranch>;
 }
 
 export interface RepositoryStatus {
@@ -131,6 +174,9 @@ export interface RepositoryStatus {
 
 export interface RepositoryRequest {
   action:
+    | "graph"
+    | "merge-branch"
+    | "delete-branch"
     | "fetch"
     | "pull"
     | "push"
@@ -146,6 +192,7 @@ export interface RepositoryRequest {
     | "checkout"
     | "local-read"
     | "local-write"
+    | "targets-write"
     | "merge-base"
     | "merge";
   repo: string;

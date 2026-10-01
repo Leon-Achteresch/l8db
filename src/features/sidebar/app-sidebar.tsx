@@ -4,6 +4,7 @@ import { memo, useEffect } from "react";
 import { Sidebar, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebarPanel } from "@/features/sidebar/app-sidebar-panel";
 import { AppSidebarResizeHandle } from "@/features/sidebar/app-sidebar-resize-handle";
+import { PaneSidebarScope } from "@/features/sidebar/pane-sidebar-scope";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +56,9 @@ export const AppSidebar = memo(function AppSidebar({
         )}
         {...props}
       >
-        <AppSidebarPanel />
+        <PaneSidebarScope>
+          <AppSidebarPanel />
+        </PaneSidebarScope>
         <AppSidebarResizeHandle liveWidth={liveWidth} />
       </Sidebar>
     </motion.div>

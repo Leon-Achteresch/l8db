@@ -1,5 +1,5 @@
 import type { ColumnPinningState, ColumnSizingState, Table } from "@tanstack/react-table";
-import { type RefObject, useMemo } from "react";
+import { type RefObject, useMemo, useState } from "react";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import type { TableRow } from "../data-table-types";
 import { INDEX_COLUMN } from "./constants";
@@ -29,6 +29,18 @@ export function useVisibleColumns(
     () => visibleColumns.flatMap((column, index) => (column.getIsPinned() ? [index] : [])),
     [visibleColumns, columnPinning],
   );
-  const columnWindow = useColumnWindow(scrollRef, columnWidths, pinnedIndices);
-  return { visibleColumns, visibleDataColumns, columnWidths, pinnedIndices, columnWindow };
+  const [keptColumn, keepColumn] = useState<string | null>(null);
+  const windowIndices = useMemo(() => {
+    const kept = visibleColumns.findIndex((column) => column.id === keptColumn);
+    return kept < 0 || pinnedIndices.includes(kept) ? pinnedIndices : [...pinnedIndices, kept];
+  }, [visibleColumns, pinnedIndices, keptColumn]);
+  const columnWindow = useColumnWindow(scrollRef, columnWidths, windowIndices);
+  return {
+    visibleColumns,
+    visibleDataColumns,
+    columnWidths,
+    pinnedIndices,
+    columnWindow,
+    keepColumn,
+  };
 }

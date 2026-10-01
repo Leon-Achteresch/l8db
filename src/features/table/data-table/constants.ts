@@ -1,4 +1,4 @@
-import { PointerActivationConstraints } from "@dnd-kit/dom";
+import { Feedback, PointerActivationConstraints } from "@dnd-kit/dom";
 import { PointerSensor } from "@dnd-kit/react";
 
 export const headerSensors = [
@@ -7,5 +7,7 @@ export const headerSensors = [
     preventActivation: () => false,
   }),
 ];
+
+export const headerDragPlugins = [Feedback.configure({ feedback: "none" })];
 
 export const INDEX_COLUMN = "__row_index__";

@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ReleaseSafety } from "@/lib/versioning/types";
 import { VersioningCheckEditor } from "./versioning-check-editor";
 import { VersioningSelect } from "./versioning-select";
@@ -34,11 +35,11 @@ export function VersioningSafetyEditor({
           { value: "maintenance", label: "Wartungsfenster erforderlich" },
         ]}
       />
-      <textarea
+      <Textarea
         aria-label="Betriebsplan"
         value={value.notes}
         onChange={(event) => onChange({ ...value, notes: event.target.value })}
-        className="min-h-24 w-full resize-y rounded-lg bg-muted/40 p-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="min-h-24 resize-y text-xs"
         placeholder="Kompatible App-Versionen, Backfill, Wiederherstellung und bei Oracle der Umgang mit bestehenden Sessions …"
       />
       <div className="grid grid-cols-2 gap-2">

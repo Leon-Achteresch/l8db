@@ -455,6 +455,7 @@ impl DatabaseAdapter for MongoAdapter {
             rows,
             rows_affected: affected,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

@@ -7,6 +7,7 @@ mod cassandra;
 mod clickhouse;
 pub mod commands;
 mod connection;
+pub(crate) use connection::connection_string_is_read_only;
 pub mod constraints;
 pub mod csv_stream;
 pub mod data_compare;
@@ -17,6 +18,7 @@ pub mod debugger;
 mod duckdb;
 mod dynamodb;
 pub(crate) mod elasticsearch;
+pub(crate) mod exact_number;
 pub mod execution;
 pub mod export;
 pub mod export_formats;
@@ -47,7 +49,7 @@ pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
 mod snowflake;
-mod sql_script;
+pub(crate) mod sql_script;
 mod sqlite;
 mod sqlite_http;
 pub mod ssh;
@@ -61,7 +63,7 @@ use pool::PoolState;
 pub use provider::DatabaseKind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum SslMode {
     Disable,
@@ -304,6 +306,7 @@ pub struct QueryResult {
     pub rows: Vec<serde_json::Value>,
     pub rows_affected: Option<u64>,
     pub execution_time_ms: u64,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1474,7 +1477,16 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         }
         msg
     } else {
-        format!("Datenbankfehler: {e}")
+        let mut msg = format!("Datenbankfehler: {e}");
+        let mut source = std::error::Error::source(&e);
+        while let Some(cause) = source {
+            let text = cause.to_string();
+            if !msg.contains(&text) {
+                msg.push_str(&format!(": {text}"));
+            }
+            source = cause.source();
+        }
+        msg
     }
 }
 
@@ -1686,6 +1698,36 @@ pub(crate) fn pretty_bytes(bytes: i64) -> String {
     } else {
         format!("{value:.1} {}", units[unit])
     }
+}
+
+pub(crate) fn interval_text(months: i32, days: i32, nanos: i64) -> String {
+    let mut parts = Vec::new();
+    let (years, months) = (months / 12, months % 12);
+    for (amount, unit) in [(years, "year"), (months, "month"), (days, "day")] {
+        if amount != 0 {
+            parts.push(format!(
+                "{amount} {unit}{}",
+                if amount.abs() == 1 { "" } else { "s" }
+            ));
+        }
+    }
+    if nanos != 0 || parts.is_empty() {
+        let sign = if nanos < 0 { "-" } else { "" };
+        let total = nanos.unsigned_abs();
+        let seconds = total / 1_000_000_000;
+        let fraction = total % 1_000_000_000;
+        let mut clock = format!(
+            "{sign}{:02}:{:02}:{:02}",
+            seconds / 3600,
+            seconds / 60 % 60,
+            seconds % 60
+        );
+        if fraction != 0 {
+            clock.push_str(format!(".{fraction:09}").trim_end_matches('0'));
+        }
+        parts.push(clock);
+    }
+    parts.join(" ")
 }
 
 pub(crate) fn hex_blob(bytes: &[u8]) -> String {
