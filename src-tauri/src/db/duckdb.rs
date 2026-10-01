@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use duckdb::types::ValueRef;
+use duckdb::types::{TimeUnit, ValueRef};
 use duckdb::Connection;
 
 use super::pool::PoolState;
@@ -9,7 +9,8 @@ use super::sqlite::file_path;
 use super::{
     create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DetailedColumnInfo, IndexInfo, QueryResult, SchemaSize, TableData, TableInfo,
+    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult, SchemaSize,
+    TableData, TableInfo,
 };
 
 pub struct DuckdbAdapter {
@@ -50,28 +51,123 @@ fn map_err(e: duckdb::Error) -> String {
 }
 
 fn value_to_json(value: ValueRef<'_>) -> serde_json::Value {
-    fn num(f: f64) -> serde_json::Value {
+    match value {
+        ValueRef::Text(t) => serde_json::Value::String(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) | ValueRef::Geometry(b) => serde_json::Value::String(hex_blob(b)),
+        other => owned_to_json(duckdb::types::Value::from(other)),
+    }
+}
+
+fn instant(unit: TimeUnit, value: i64) -> Option<chrono::NaiveDateTime> {
+    let micros = match unit {
+        TimeUnit::Second => value.checked_mul(1_000_000)?,
+        TimeUnit::Millisecond => value.checked_mul(1_000)?,
+        TimeUnit::Microsecond => value,
+        TimeUnit::Nanosecond => {
+            return Some(chrono::DateTime::from_timestamp_nanos(value).naive_utc());
+        }
+    };
+    chrono::DateTime::from_timestamp_micros(micros).map(|dt| dt.naive_utc())
+}
+
+fn interval_text(months: i32, days: i32, nanos: i64) -> String {
+    let mut parts = Vec::new();
+    let (years, months) = (months / 12, months % 12);
+    for (amount, unit) in [(years, "year"), (months, "month"), (days, "day")] {
+        if amount != 0 {
+            parts.push(format!(
+                "{amount} {unit}{}",
+                if amount.abs() == 1 { "" } else { "s" }
+            ));
+        }
+    }
+    if nanos != 0 || parts.is_empty() {
+        let sign = if nanos < 0 { "-" } else { "" };
+        let total = nanos.unsigned_abs();
+        let seconds = total / 1_000_000_000;
+        let fraction = total % 1_000_000_000;
+        let mut clock = format!(
+            "{sign}{:02}:{:02}:{:02}",
+            seconds / 3600,
+            seconds / 60 % 60,
+            seconds % 60
+        );
+        if fraction != 0 {
+            clock.push_str(format!(".{fraction:09}").trim_end_matches('0'));
+        }
+        parts.push(clock);
+    }
+    parts.join(" ")
+}
+
+fn owned_to_json(value: duckdb::types::Value) -> serde_json::Value {
+    use super::exact_number::{decimal, int, uint};
+    use duckdb::types::Value as V;
+    use serde_json::Value as J;
+    fn num(f: f64) -> J {
         serde_json::Number::from_f64(f)
-            .map(serde_json::Value::Number)
-            .unwrap_or_else(|| serde_json::Value::String(f.to_string()))
+            .map(J::Number)
+            .unwrap_or_else(|| J::String(f.to_string()))
+    }
+    fn text(value: impl ToString) -> J {
+        J::String(value.to_string())
     }
     match value {
-        ValueRef::Null => serde_json::Value::Null,
-        ValueRef::Boolean(b) => serde_json::Value::Bool(b),
-        ValueRef::TinyInt(i) => serde_json::Value::from(i),
-        ValueRef::SmallInt(i) => serde_json::Value::from(i),
-        ValueRef::Int(i) => serde_json::Value::from(i),
-        ValueRef::BigInt(i) => serde_json::Value::from(i),
-        ValueRef::HugeInt(i) => serde_json::Value::String(i.to_string()),
-        ValueRef::UTinyInt(i) => serde_json::Value::from(i),
-        ValueRef::USmallInt(i) => serde_json::Value::from(i),
-        ValueRef::UInt(i) => serde_json::Value::from(i),
-        ValueRef::UBigInt(i) => serde_json::Value::from(i),
-        ValueRef::Float(f) => num(f as f64),
-        ValueRef::Double(f) => num(f),
-        ValueRef::Text(t) => serde_json::Value::String(String::from_utf8_lossy(t).into_owned()),
-        ValueRef::Blob(b) => serde_json::Value::String(hex_blob(b)),
-        other => serde_json::Value::String(format!("{:?}", duckdb::types::Value::from(other))),
+        V::Null => J::Null,
+        V::Boolean(b) => J::Bool(b),
+        V::TinyInt(i) => J::from(i),
+        V::SmallInt(i) => J::from(i),
+        V::Int(i) => J::from(i),
+        V::BigInt(i) => int(i),
+        V::HugeInt(i) => decimal(&i.to_string()),
+        V::UTinyInt(i) => J::from(i),
+        V::USmallInt(i) => J::from(i),
+        V::UInt(i) => J::from(i),
+        V::UBigInt(i) => uint(i),
+        V::UHugeInt(i) => decimal(&i.to_string()),
+        V::Float(f) => num(f as f64),
+        V::Double(f) => num(f),
+        V::Decimal(d) => decimal(&d.to_string()),
+        V::Timestamp(unit, t) => instant(unit, t)
+            .map(|dt| text(dt.format("%Y-%m-%d %H:%M:%S%.f")))
+            .unwrap_or_else(|| text(t)),
+        V::Date32(days) => chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+            .and_then(|epoch| epoch.checked_add_signed(chrono::Duration::days(days.into())))
+            .map(|date| text(date.format("%Y-%m-%d")))
+            .unwrap_or_else(|| text(days)),
+        V::Time64(unit, t) => instant(unit, t)
+            .map(|dt| text(dt.time().format("%H:%M:%S%.f")))
+            .unwrap_or_else(|| text(t)),
+        V::Interval {
+            months,
+            days,
+            nanos,
+        } => text(interval_text(months, days, nanos)),
+        V::Text(s) | V::Enum(s) => J::String(s),
+        V::Blob(b) | V::Geometry(b) => J::String(hex_blob(&b)),
+        V::List(items) | V::Array(items) => {
+            J::Array(items.into_iter().map(owned_to_json).collect())
+        }
+        V::Struct(fields) => J::Object(
+            fields
+                .iter()
+                .map(|(key, value)| (key.clone(), owned_to_json(value.clone())))
+                .collect(),
+        ),
+        V::Map(entries) => J::Object(
+            entries
+                .iter()
+                .map(|(key, value)| {
+                    let key = match owned_to_json(key.clone()) {
+                        J::String(key) => key,
+                        other => other.to_string(),
+                    };
+                    (key, owned_to_json(value.clone()))
+                })
+                .collect(),
+        ),
+        V::Union(inner) => owned_to_json(*inner),
+        other => text(format!("{other:?}")),
     }
 }
 
@@ -615,6 +711,40 @@ impl DatabaseAdapter for DuckdbAdapter {
             .collect())
     }
 
+    async fn list_foreign_keys(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ForeignKeyInfo>, String> {
+        let sql = format!("SELECT constraint_name, constraint_column_names, referenced_table, referenced_column_names FROM duckdb_constraints() WHERE schema_name = {} AND table_name = {} AND constraint_type = 'FOREIGN KEY' ORDER BY constraint_index", lit(schema), lit(table));
+        let names = |value: &serde_json::Value| -> Vec<String> {
+            value
+                .as_array()
+                .map(|a| a.iter().map(text).collect())
+                .unwrap_or_default()
+        };
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .flat_map(|r| {
+                names(&r[1])
+                    .into_iter()
+                    .zip(names(&r[3]))
+                    .map(|(from_column, to_column)| ForeignKeyInfo {
+                        constraint_name: text(&r[0]),
+                        from_schema: schema.to_string(),
+                        from_table: table.to_string(),
+                        from_column,
+                        to_schema: schema.to_string(),
+                        to_table: text(&r[2]),
+                        to_column,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect())
+    }
+
     async fn preview_create_table_ddl(&self, req: &CreateTableRequest) -> Result<String, String> {
         create_table_ddl(
             req,
@@ -691,6 +821,79 @@ impl DatabaseAdapter for DuckdbAdapter {
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn foreign_keys_and_constraint_columns_are_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fk.duckdb");
+        let adapter = DuckdbAdapter::new(
+            &format!("duckdb:{}", path.display()),
+            create_pool_state(),
+            "fk".into(),
+        )
+        .unwrap();
+        adapter
+            .exec(
+                "CREATE TABLE parent (a INTEGER, b INTEGER, PRIMARY KEY (a, b)); \
+                 CREATE TABLE child (id INTEGER PRIMARY KEY, pa INTEGER, pb INTEGER, \
+                 FOREIGN KEY (pa, pb) REFERENCES parent (a, b))"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let fks = adapter.list_foreign_keys("main", "child").await.unwrap();
+        let pairs: Vec<_> = fks
+            .iter()
+            .map(|fk| {
+                (
+                    fk.from_column.as_str(),
+                    fk.to_table.as_str(),
+                    fk.to_column.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(pairs, [("pa", "parent", "a"), ("pb", "parent", "b")]);
+        let constraints = adapter.list_constraints("main", "parent").await.unwrap();
+        assert!(constraints
+            .iter()
+            .any(|c| c.constraint_type == "PRIMARY KEY" && c.columns == ["a", "b"]));
+    }
+
+    #[test]
+    fn values_render_as_readable_exact_json() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (_, rows) = query_all(
+            &conn,
+            "SELECT DATE '2024-01-02', TIMESTAMP '2024-01-02 03:04:05.123456', TIME '13:14:15', \
+             12.50::DECIMAL(10,2), 12345678901234567890.123456789::DECIMAL(38,9), \
+             9007199254740993::BIGINT, 170141183460469231731687303715884105727::HUGEINT, \
+             [1, 2], {'a': 1, 'b': 'x'}, MAP {'k': 1}, INTERVAL 1 DAY + INTERVAL 90 MINUTE, \
+             '00000000-0000-0000-0000-000000000001'::UUID, 'x'::ENUM('x', 'y'), [1, 2]::INTEGER[2], \
+             TIMESTAMPTZ '2024-01-02 03:04:05+00'",
+        )
+        .unwrap();
+        assert_eq!(
+            rows[0],
+            vec![
+                json!("2024-01-02"),
+                json!("2024-01-02 03:04:05.123456"),
+                json!("13:14:15"),
+                json!(12.5),
+                json!("12345678901234567890.123456789"),
+                json!("9007199254740993"),
+                json!("170141183460469231731687303715884105727"),
+                json!([1, 2]),
+                json!({"a": 1, "b": "x"}),
+                json!({"k": 1}),
+                json!("1 day 01:30:00"),
+                json!("00000000-0000-0000-0000-000000000001"),
+                json!("x"),
+                json!([1, 2]),
+                json!("2024-01-02 03:04:05"),
+            ]
+        );
+    }
 
     #[test]
     fn file_views_cover_csv_and_parquet() {

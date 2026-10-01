@@ -264,6 +264,7 @@ impl DatabaseKind {
                 ssl: false,
                 ssh: false,
                 functions: false,
+                triggers: false,
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
