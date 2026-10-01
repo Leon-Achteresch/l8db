@@ -97,6 +97,11 @@ fn dirs() -> Vec<std::path::PathBuf> {
     if let Some(local) = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from) {
         dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
     }
+    for programs in ["ProgramFiles(x86)", "ProgramFiles"] {
+        if let Some(programs) = std::env::var_os(programs) {
+            dirs.push(std::path::PathBuf::from(programs).join("Keeper Commander"));
+        }
+    }
     dirs
 }
 
@@ -405,6 +410,13 @@ mod tests {
             assert!(entries.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
             assert!(entries.contains(&std::path::PathBuf::from("/usr/local/bin")));
         }
+    }
+    #[test]
+    fn finds_the_keeper_commander_windows_installer() {
+        std::env::set_var("ProgramFiles(x86)", "/l8db-test/Program Files (x86)");
+        assert!(dirs().contains(&std::path::PathBuf::from(
+            "/l8db-test/Program Files (x86)/Keeper Commander"
+        )));
     }
     #[tokio::test]
     async fn scripts_find_their_interpreter_without_an_inherited_path() {
