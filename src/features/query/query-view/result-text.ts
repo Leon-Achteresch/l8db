@@ -23,8 +23,8 @@ export function buildStatusText(result: QueryResult | null): string | null {
   if (result.notice) parts.push(result.notice);
   if (result.columns.length > 0) {
     parts.push(`${result.rows.length} Zeile${result.rows.length === 1 ? "" : "n"}`);
-    // ponytail: Backend kappt bei 1000; exakte Flag-Übertragung erst, wenn QueryResult ein truncated-Feld bekommt
-    if (result.rows.length === MAX_RESULT_ROWS) parts.push("auf 1000 begrenzt");
+    if (result.truncated)
+      parts.push(result.rows.length >= MAX_RESULT_ROWS ? "auf 1000 begrenzt" : "Werte gekürzt");
   }
   if (
     result.rows_affected !== null &&

@@ -123,14 +123,14 @@ pub struct PostgresAdapter {
     config: Config,
     pool_state: PoolState,
     pool_key: String,
-    ssl: SslMode,
+    ssl: super::connection::PgTls,
     read_only: bool,
 }
 
 impl PostgresAdapter {
     pub fn from_session(
         session: std::sync::Arc<super::execution::PgSession>,
-        ssl: SslMode,
+        ssl: super::connection::PgTls,
         pool_state: PoolState,
     ) -> Self {
         Self {
@@ -144,21 +144,24 @@ impl PostgresAdapter {
     }
 
     pub fn from_config(config: ConnectionConfig, pool_state: PoolState) -> Self {
-        let ssl = config.ssl_mode.unwrap_or(SslMode::Prefer);
+        let ssl = super::connection::PgTls {
+            mode: config.ssl_mode.unwrap_or(SslMode::Prefer),
+            ..Default::default()
+        };
         let mut pg = Config::new();
         pg.host(&config.host)
             .port(config.port)
             .user(&config.user)
             .password(&config.password)
             .dbname(&config.database)
-            .ssl_mode(ssl.to_pg())
+            .ssl_mode(ssl.mode.to_pg())
             .application_name("l8db")
             .connect_timeout(super::execution::connection_duration());
         if config.read_only {
             pg.options(super::connection::READ_ONLY_OPTION);
         }
         let pool_key = super::connection::connection_key(
-            &format!("{pg:?}{:?}{}", config.password, ssl.as_url_param()),
+            &format!("{pg:?}{:?}{}", config.password, ssl.mode.as_url_param()),
             None,
         );
         Self {
@@ -201,7 +204,7 @@ impl PostgresAdapter {
             .get_pool(
                 &self.pool_key,
                 self.config.clone(),
-                self.ssl,
+                &self.ssl,
                 PoolUse::Query,
             )
             .await?;
@@ -223,7 +226,7 @@ impl PostgresAdapter {
             .get_pool(
                 &self.pool_key,
                 self.config.clone(),
-                self.ssl,
+                &self.ssl,
                 PoolUse::Metadata,
             )
             .await?;
@@ -251,14 +254,14 @@ impl PostgresAdapter {
     where
         F: std::future::Future<Output = Result<T, String>>,
     {
-        super::execution::postgres(client, self.ssl, None, future).await
+        super::execution::postgres(client, &self.ssl, None, future).await
     }
 
     async fn timed<F, T>(&self, token: tokio_postgres::CancelToken, future: F) -> Result<T, String>
     where
         F: std::future::Future<Output = Result<T, String>>,
     {
-        super::execution::guarded(token, self.ssl, self.session.as_deref(), future).await
+        super::execution::guarded(token, &self.ssl, self.session.as_deref(), future).await
     }
 
     async fn run_ddl(&self, statements: &[String], commit: bool) -> Result<(), String> {
@@ -385,7 +388,7 @@ pub(crate) fn session_guards(settings: &[&str]) -> String {
 
 async fn cancellable_export<T>(
     conn: &tokio_postgres::Client,
-    ssl: SslMode,
+    ssl: &super::connection::PgTls,
     job_id: &str,
     query: impl std::future::Future<Output = Result<T, tokio_postgres::Error>>,
 ) -> Result<T, String> {
@@ -439,7 +442,7 @@ pub(crate) fn capped_count(
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
+        let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         self.timed(conn.cancel_token(), async {
             conn.simple_query("SELECT 1")
                 .await
@@ -998,7 +1001,10 @@ impl DatabaseAdapter for PostgresAdapter {
                 }
                 Err(e) => return Err(map_pg_err(e)),
             };
-            let rows: Vec<serde_json::Value> = data_rows.iter().map(|row| row.get(0)).collect();
+            let rows: Vec<serde_json::Value> = data_rows
+                .iter()
+                .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+                .collect();
 
             Ok(TableData { columns, rows })
         })
@@ -1027,7 +1033,7 @@ impl DatabaseAdapter for PostgresAdapter {
             }
         }
 
-        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
+        let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
             .query(
                 "SELECT column_name, data_type \
@@ -1095,7 +1101,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut cancelled = false;
 
         if let Err(e) =
-            cancellable_export(&conn, self.ssl, &request.job_id, conn.query(&sql, &[])).await
+            cancellable_export(&conn, &self.ssl, &request.job_id, conn.query(&sql, &[])).await
         {
             failure = Some(e);
         }
@@ -1108,21 +1114,25 @@ impl DatabaseAdapter for PostgresAdapter {
             let remaining = max_rows - total;
             let batch = (remaining + 1).min(export::EXPORT_BATCH_ROWS);
             let fetch = format!("FETCH FORWARD {batch} FROM l8db_export");
-            let data_rows =
-                match cancellable_export(&conn, self.ssl, &request.job_id, conn.query(&fetch, &[]))
-                    .await
-                {
-                    Ok(rows) => rows,
-                    Err(e) => {
-                        failure = Some(e);
-                        break;
-                    }
-                };
+            let data_rows = match cancellable_export(
+                &conn,
+                &self.ssl,
+                &request.job_id,
+                conn.query(&fetch, &[]),
+            )
+            .await
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            };
             let fetched = data_rows.len() as i64;
             let mut values: Vec<serde_json::Value> = data_rows
                 .iter()
                 .take(remaining as usize)
-                .map(|row| row.get(0))
+                .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
                 .collect();
             for mask in request
                 .masks
@@ -1304,7 +1314,7 @@ impl DatabaseAdapter for PostgresAdapter {
             let conn = session.lock().await?;
             let outcome = super::execution::postgres(
                 &conn,
-                self.ssl,
+                &self.ssl,
                 Some(session),
                 server_output::pg_run_query(&conn, sql, false),
             )
@@ -1312,19 +1322,19 @@ impl DatabaseAdapter for PostgresAdapter {
             return session.finish(outcome);
         }
         if let Some(client) =
-            server_output::pg_session(&self.pool_key, &self.config, self.ssl).await?
+            server_output::pg_session(&self.pool_key, &self.config, &self.ssl).await?
         {
             let conn = client.lock().await?;
             let outcome = super::execution::postgres(
                 &conn,
-                self.ssl,
+                &self.ssl,
                 Some(&client),
                 server_output::pg_run_query(&conn, sql, self.read_only),
             )
             .await;
             return client.finish(outcome);
         }
-        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
+        let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let start = std::time::Instant::now();
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
@@ -1371,6 +1381,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     rows,
                     rows_affected,
                     execution_time_ms: start.elapsed().as_millis() as u64,
+                    truncated: false,
                 })
             })
             .await;
@@ -1389,14 +1400,14 @@ impl DatabaseAdapter for PostgresAdapter {
             let conn = session.lock().await?;
             let outcome = super::execution::postgres(
                 &conn,
-                self.ssl,
+                &self.ssl,
                 Some(session),
                 run_params_query(&conn, sql, params),
             )
             .await;
             return session.finish(outcome);
         }
-        let conn = super::execution::connect_postgres(&self.config, self.ssl).await?;
+        let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         if self.read_only {
             conn.simple_query("BEGIN TRANSACTION READ ONLY")
                 .await
@@ -2171,7 +2182,7 @@ impl DatabaseAdapter for PostgresAdapter {
             request.conflict.as_ref(),
         )
         .await?;
-        let session = super::import::PgTx::open(&self.config, self.ssl).await?;
+        let session = super::import::PgTx::open(&self.config, &self.ssl).await?;
         super::import::run_import(plan, Box::new(session), request).await
     }
 
@@ -4420,6 +4431,7 @@ pub async fn run_params_query(
             rows: Vec::new(),
             rows_affected: Some(affected),
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         });
     }
 
@@ -4437,7 +4449,10 @@ pub async fn run_params_query(
         .query(&wrapped_statement, &values)
         .await
         .map_err(map_pg_err)?;
-    let rows: Vec<serde_json::Value> = data.iter().map(|row| row.get(0)).collect();
+    let rows: Vec<serde_json::Value> = data
+        .iter()
+        .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+        .collect();
     let count = rows.len() as u64;
 
     Ok(QueryResult {
@@ -4445,6 +4460,7 @@ pub async fn run_params_query(
         rows,
         rows_affected: Some(count),
         execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
     })
 }
 
@@ -4863,7 +4879,7 @@ mod tests {
         };
         for count in [100_000, 1_000_000] {
             adapter.execute_query(&format!("DROP TABLE IF EXISTS export_benchmark; CREATE TABLE export_benchmark AS SELECT n AS id, repeat('x',64) AS value FROM generate_series(1,{count}) n; CREATE UNIQUE INDEX ON export_benchmark(id); ANALYZE export_benchmark")).await.unwrap();
-            let client = super::super::execution::connect_postgres(&adapter.config, adapter.ssl)
+            let client = super::super::execution::connect_postgres(&adapter.config, &adapter.ssl)
                 .await
                 .unwrap();
             client
@@ -4917,6 +4933,42 @@ mod tests {
         }
         adapter
             .execute_query("DROP TABLE export_benchmark")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lab_table_rows_keep_exact_numbers() {
+        let adapter = lab_adapter();
+        adapter
+            .execute_query("DROP TABLE IF EXISTS l8db_exact; CREATE TABLE l8db_exact (id bigint PRIMARY KEY, amount numeric, ratio numeric, doc jsonb); INSERT INTO l8db_exact VALUES (9007199254740993, 12345678901234567890.123456789, 12.50, '{\"n\": 1}')")
+            .await
+            .unwrap();
+        let data = adapter
+            .fetch_rows(
+                "public",
+                "l8db_exact",
+                None,
+                10,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let row = &data.rows[0];
+        assert_eq!(row["id"], serde_json::json!("9007199254740993"));
+        assert_eq!(
+            row["amount"],
+            serde_json::json!("12345678901234567890.123456789")
+        );
+        assert_eq!(row["ratio"], serde_json::json!(12.5));
+        assert_eq!(row["doc"], serde_json::json!({"n": 1}));
+        adapter
+            .execute_query("DROP TABLE l8db_exact")
             .await
             .unwrap();
     }

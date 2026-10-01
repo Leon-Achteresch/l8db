@@ -983,6 +983,7 @@ impl DatabaseAdapter for InfluxAdapter {
                 rows: vec![],
                 rows_affected: Some(written),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             });
         }
         let (columns, rows) = match self.version().await? {
@@ -1017,6 +1018,7 @@ impl DatabaseAdapter for InfluxAdapter {
             rows,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 

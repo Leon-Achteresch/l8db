@@ -171,7 +171,16 @@ pub fn pg_env(
     {
         env.push(("PGOPTIONS".into(), options.to_string()));
     }
-    env.push(("PGSSLMODE".into(), ssl.as_url_param().to_string()));
+    env.push(("PGSSLMODE".into(), ssl.mode.as_url_param().to_string()));
+    for (name, value) in [
+        ("PGSSLROOTCERT", &ssl.root_cert),
+        ("PGSSLCERT", &ssl.cert),
+        ("PGSSLKEY", &ssl.key),
+    ] {
+        if let Some(value) = value {
+            env.push((name.into(), value.clone()));
+        }
+    }
     env.push(("PGAPPNAME".into(), "l8db".into()));
     env.push(("PGCONNECT_TIMEOUT".into(), "15".into()));
     Ok((env, secrets))
@@ -317,6 +326,7 @@ pub struct MysqlTarget {
     pub password: String,
     pub database: Option<String>,
     pub ssl: Option<SslMode>,
+    pub ssl_ca: Option<String>,
 }
 
 pub fn mysql_target(
@@ -329,8 +339,12 @@ pub fn mysql_target(
         return Err("Eine mysql:// URL ist erforderlich".into());
     }
     let mut ssl = None;
+    let mut ssl_ca = None;
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
+            "sslrootcert" | "ssl-ca" | "ssl_ca" | "sslca" if !value.is_empty() => {
+                ssl_ca = Some(value.into_owned())
+            }
             "sslmode" => {
                 ssl = Some(
                     serde_json::from_value(serde_json::Value::String(value.into_owned()))
@@ -365,6 +379,7 @@ pub fn mysql_target(
             .map(str::to_string)
             .or_else(|| (!path_db.is_empty()).then_some(path_db)),
         ssl,
+        ssl_ca,
     })
 }
 
@@ -399,6 +414,9 @@ pub fn mysql_connection_args(
         args.push(format!("--user={}", target.user));
     }
     args.push("--protocol=TCP".into());
+    if let Some(ca) = &target.ssl_ca {
+        args.push(format!("--ssl-ca={ca}"));
+    }
     if let Some(ssl) = target.ssl {
         if mariadb {
             match ssl {

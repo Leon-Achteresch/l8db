@@ -764,27 +764,30 @@ pub async fn prepare_plan(
 
 pub struct PgTx {
     client: tokio_postgres::Client,
-    ssl: super::SslMode,
+    ssl: super::connection::PgTls,
 }
 
 impl PgTx {
     pub async fn open(
         config: &tokio_postgres::Config,
-        ssl: super::SslMode,
+        ssl: &super::connection::PgTls,
     ) -> Result<Self, String> {
         Self::open_with(config, ssl, "BEGIN").await
     }
 
     pub async fn open_with(
         config: &tokio_postgres::Config,
-        ssl: super::SslMode,
+        ssl: &super::connection::PgTls,
         begin: &str,
     ) -> Result<Self, String> {
         let client = super::execution::connect_postgres(config, ssl).await?;
         super::postgres::begin_guarded(&client, begin, &[super::postgres::STREAM_IDLE_GUARD])
             .await
             .map_err(super::map_pg_err)?;
-        Ok(Self { client, ssl })
+        Ok(Self {
+            client,
+            ssl: ssl.clone(),
+        })
     }
 }
 
@@ -793,7 +796,7 @@ impl TxSession for PgTx {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
         use tokio_postgres::SimpleQueryMessage;
         let client = &self.client;
-        super::execution::postgres(client, self.ssl, None, async {
+        super::execution::postgres(client, &self.ssl, None, async {
             let start = std::time::Instant::now();
             let messages = client.simple_query(sql).await.map_err(super::map_pg_err)?;
             let mut columns = Vec::new();
@@ -832,6 +835,7 @@ impl TxSession for PgTx {
                 rows,
                 rows_affected: affected,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         })
         .await
@@ -839,7 +843,7 @@ impl TxSession for PgTx {
 
     async fn commit(&mut self) -> Result<(), String> {
         let client = &self.client;
-        super::execution::postgres(client, self.ssl, None, async {
+        super::execution::postgres(client, &self.ssl, None, async {
             client
                 .simple_query("COMMIT")
                 .await
@@ -928,7 +932,7 @@ pub async fn open_session(
                 return Err("Lesemodus: Diese Verbindung ist schreibgeschützt.".into());
             }
             let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-            Box::new(PgTx::open(&config, ssl).await?)
+            Box::new(PgTx::open(&config, &ssl).await?)
         }
         DatabaseKind::Oracle => {
             let key = super::connection::connection_key(connection_string, database);
@@ -1594,6 +1598,7 @@ mod tests {
                 },
                 rows_affected: None,
                 execution_time_ms: 0,
+                truncated: false,
             })
         }
         async fn commit(&mut self) -> Result<(), String> {

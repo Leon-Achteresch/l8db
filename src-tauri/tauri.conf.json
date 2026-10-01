@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run production:check && bun run build",
+    "beforeBuildCommand": "bun run production:check && bun run licenses && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -89,7 +89,7 @@
       "icons/icon.ico"
     ],
     "homepage": "https://github.com/Leon-Achteresch/l8db",
-    "license": "Elastic-2.0",
+    "license": "Apache-2.0",
     "fileAssociations": [
       {
         "ext": ["sqlite", "sqlite3", "db", "db3"],

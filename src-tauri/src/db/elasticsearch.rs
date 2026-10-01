@@ -1080,6 +1080,7 @@ impl DatabaseAdapter for ElasticAdapter {
             rows,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 
