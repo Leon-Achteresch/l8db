@@ -1,4 +1,8 @@
-import { buildCompareApplyPlan, parseTableColumns } from "@/lib/compare-apply-plan";
+import {
+  buildCompareApplyPlan,
+  parseTableColumns,
+  postgresTableStructure,
+} from "@/lib/compare-apply-plan";
 import { quoteIdentifier } from "@/lib/export";
 import { columnDefinitionSql } from "@/lib/migration-script/sql";
 import { deployKind, validateMigration } from "./model";
@@ -12,10 +16,15 @@ export interface MigrationDraft {
 }
 
 function createTable(kind: VersioningKind, snapshot: ObjectSnapshot) {
-  const { columns, rest } = parseTableColumns(snapshot.definition);
-  if (columns.some((column) => column.column_default === "IDENTITY"))
+  const parsed = parseTableColumns(snapshot.definition);
+  const { columns } = parsed;
+  if (columns.some((column) => column.column_default?.startsWith("IDENTITY")))
     throw new Error("Identitätsspalten benötigen eine manuell geprüfte CREATE-Migration.");
   const { schema, objectName } = snapshot.object.selection;
+  const rest =
+    kind === "postgres"
+      ? postgresTableStructure(parsed.rest, columns, objectName ?? "")
+      : parsed.rest;
   const target = `${quoteIdentifier(schema ?? "", "double")}.${quoteIdentifier(objectName ?? "", "double")}`;
   const definitions = columns.map((column) => `  ${columnDefinitionSql(column, "double")}`);
   const constraints =

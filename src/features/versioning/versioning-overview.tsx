@@ -90,7 +90,7 @@ export function VersioningOverview({
   const visibleSteps = steps.filter(
     (step) => deployable(project.kind) || step.area === "development",
   );
-  const next = visibleSteps.find((step) => !step.done) ?? visibleSteps[0];
+  const next = visibleSteps.find((step) => !step.done);
   return (
     <section ref={feature.ref} className="space-y-6" aria-label="Versionierungsübersicht">
       <div className="flex items-center gap-2">
@@ -99,11 +99,16 @@ export function VersioningOverview({
         {feature.isNew && <NewBadge />}
       </div>
       <div className="rounded-xl bg-primary/5 p-4">
-        <p className="text-[11px] text-muted-foreground">Nächster Schritt</p>
-        <h3 className="mt-1 text-sm font-semibold">{next.title}</h3>
-        <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">{next.detail}</p>
-        <Button size="sm" className="mt-3" onClick={() => onNavigate(next.area)}>
-          {next.action}
+        <p className="text-[11px] text-muted-foreground">
+          {next ? "Nächster Schritt" : "Aktueller Stand"}
+        </p>
+        <h3 className="mt-1 text-sm font-semibold">{next?.title ?? "Keine offenen Aufgaben"}</h3>
+        <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
+          {next?.detail ??
+            "Alle bekannten Git- und Rollout-Aufgaben sind erledigt. Vergleiche neue Entwicklungsänderungen erneut mit dem Repository."}
+        </p>
+        <Button size="sm" className="mt-3" onClick={() => onNavigate(next?.area ?? "development")}>
+          {next?.action ?? "Entwicklungsdatenbank vergleichen"}
           <ArrowRightIcon className="size-3.5" />
         </Button>
       </div>

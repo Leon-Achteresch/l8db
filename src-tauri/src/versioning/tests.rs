@@ -1,5 +1,131 @@
 use super::*;
 
+#[test]
+fn oracle_identity_metadata_is_portable_and_preserves_semantics() {
+    let row = serde_json::json!({"generation":"BY DEFAULT","onNull":"NO","options":"START WITH: 1, INCREMENT BY: 1, CACHE_SIZE: 20","sequence":"ISEQ$$_123"});
+    let expected = "IDENTITY BY DEFAULT (CACHE_SIZE: 20, INCREMENT BY: 1, START WITH: 1)";
+    assert_eq!(snapshot::oracle_identity_default(&row).unwrap(), expected);
+    let mut changed = row.clone();
+    changed["options"] = serde_json::json!(" CACHE_SIZE: 20, START WITH: 1, INCREMENT BY: 1 ");
+    changed["sequence"] = serde_json::json!("ISEQ$$_987");
+    assert_eq!(
+        snapshot::oracle_identity_default(&changed).unwrap(),
+        expected
+    );
+    for (key, value) in [
+        ("generation", "ALWAYS"),
+        ("onNull", "YES"),
+        ("options", "CACHE_SIZE: 40"),
+    ] {
+        let mut changed = row.clone();
+        changed[key] = serde_json::json!(value);
+        assert_ne!(
+            snapshot::oracle_identity_default(&changed).unwrap(),
+            expected
+        );
+    }
+    for options in ["", "CACHE_SIZE: 20, CACHE_SIZE: 40", "CACHE_SIZE: 20: 40"] {
+        let mut changed = row.clone();
+        changed["options"] = serde_json::json!(options);
+        assert!(snapshot::oracle_identity_default(&changed).is_err());
+    }
+    let mut incomplete = row;
+    incomplete.as_object_mut().unwrap().remove("onNull");
+    assert!(snapshot::oracle_identity_default(&incomplete).is_err());
+}
+
+#[test]
+fn oracle_not_null_normalization_preserves_custom_constraints_and_states() {
+    let constraint = serde_json::json!({"constraint_type":"CHECK","columns":["ID"],"definition":"CHECK (\"ID\" IS NOT NULL)"});
+    let row = serde_json::json!({"generated":"GENERATED NAME","status":"ENABLED","validated":"VALIDATED","deferrable":"NOT DEFERRABLE","deferred":"IMMEDIATE"});
+    let mut cols = vec![crate::db::DetailedColumnInfo {
+        name: "ID".into(),
+        data_type: "NUMBER".into(),
+        is_nullable: false,
+        column_default: None,
+        is_primary_key: true,
+        ordinal_position: 1,
+        character_maximum_length: None,
+        comment: None,
+    }];
+    assert!(snapshot::redundant_oracle_not_null(
+        &constraint,
+        &row,
+        &cols
+    ));
+    for (key, value) in [
+        ("generated", "USER NAME"),
+        ("status", "DISABLED"),
+        ("validated", "NOT VALIDATED"),
+        ("deferrable", "DEFERRABLE"),
+        ("deferred", "DEFERRED"),
+    ] {
+        let mut changed = row.clone();
+        changed[key] = serde_json::json!(value);
+        assert!(!snapshot::redundant_oracle_not_null(
+            &constraint,
+            &changed,
+            &cols
+        ));
+    }
+    cols[0].is_nullable = true;
+    assert!(!snapshot::redundant_oracle_not_null(
+        &constraint,
+        &row,
+        &cols
+    ));
+}
+
+#[tokio::test]
+#[ignore = "three isolated Oracle customer logins with identical CUSTOMERS and ORDERS fixtures"]
+async fn oracle_customer_snapshots_are_portable() {
+    use crate::db::{create_adapter_from_string, pool::create_pool_state, provider::DatabaseKind};
+    for table in ["CUSTOMERS", "ORDERS"] {
+        let mut expected = String::new();
+        for (suffix, schema) in [
+            ("DEV", "L8DB_DEV"),
+            ("A", "L8DB_CUSTOMER_A"),
+            ("B", "L8DB_CUSTOMER_B"),
+        ] {
+            let url = std::env::var(format!("L8DB_VERSIONING_ORACLE_TEST_URL_{suffix}"))
+                .expect("isolated Oracle test URL required");
+            let adapter =
+                create_adapter_from_string(DatabaseKind::Oracle, &url, None, create_pool_state())
+                    .expect("valid Oracle test URL");
+            let object = snapshot::Snapshot {
+                schema: schema.into(),
+                source_schema: "L8DB_DEV".into(),
+                name: table.into(),
+                kind: "table".into(),
+                metadata_version: Some(3),
+                definition: expected.clone(),
+            };
+            let actual = snapshot::definition(adapter.as_ref(), DatabaseKind::Oracle, &object)
+                .await
+                .expect("Oracle snapshot readable");
+            assert!(actual.contains("DEFAULT IDENTITY BY DEFAULT ("));
+            assert!(!actual.contains("ISEQ$$_"));
+            assert!(!actual.contains("VARCHAR2(200)(200)"));
+            assert!(!actual.contains("IS NOT NULL) [ENABLED"));
+            if expected.is_empty() {
+                expected = actual;
+                let legacy = snapshot::Snapshot {
+                    metadata_version: Some(2),
+                    ..object
+                };
+                let previous =
+                    snapshot::definition(adapter.as_ref(), DatabaseKind::Oracle, &legacy)
+                        .await
+                        .expect("legacy Oracle snapshot readable");
+                assert!(previous.contains("ISEQ$$_"));
+                assert!(previous.contains("IS NOT NULL) [ENABLED"));
+            } else {
+                assert_eq!(actual, expected, "{suffix}.{table}");
+            }
+        }
+    }
+}
+
 fn request(repo: &Path, action: &str) -> Request {
     Request {
         action: action.into(),
