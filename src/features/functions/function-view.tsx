@@ -21,6 +21,7 @@ import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 import { SqlEditorPane } from "./function-view/sql-editor-pane";
 
 export interface FunctionViewProps {
@@ -33,6 +34,7 @@ export interface FunctionViewProps {
 export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   const connection = useActiveConnection();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
+  const pane = useWorkspacePane();
   const capabilities = useActiveCapabilities();
   const { compile, state: compileState } = useCompileObject();
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
@@ -44,10 +46,10 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
   );
 
   useEffect(() => {
-    if (oid) {
+    if (oid && !pane) {
       openFunctionTab({ schema, name, oid });
     }
-  }, [schema, name, oid, openFunctionTab]);
+  }, [schema, name, oid, openFunctionTab, pane]);
 
   if (!connection) {
     return (

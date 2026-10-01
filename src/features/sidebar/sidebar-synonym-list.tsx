@@ -9,6 +9,7 @@ import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SynonymInfo } from "@/lib/db";
 import { isSynonymTargetInvalid } from "@/lib/invalid-objects";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { resolveSynonym } from "@/lib/synonyms";
 import { normalizeObjectType } from "@/lib/used-by";
 
@@ -21,6 +22,7 @@ interface SidebarSynonymListProps {
 
 export function SidebarSynonymList({ items, isLoading, isError, error }: SidebarSynonymListProps) {
   const navigate = useNavigate();
+  const paneTarget = usePaneTabTarget();
   const all = useMemo(() => items ?? [], [items]);
 
   if (isLoading) {
@@ -57,6 +59,10 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
     }
     const type = normalizeObjectType(target.type);
     if (type === "view" || type === "materialized_view") {
+      if (paneTarget) {
+        paneTarget.open({ kind: "view-editor", schema: target.owner, view: target.name });
+        return;
+      }
       void navigate({
         to: "/view-editor/$schema/$view",
         params: { schema: target.owner, view: target.name },
@@ -64,6 +70,10 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
       return;
     }
     if (type === "table") {
+      if (paneTarget) {
+        paneTarget.open({ kind: "table", schema: target.owner, table: target.name });
+        return;
+      }
       void navigate({
         to: "/tables/$schema/$table",
         params: { schema: target.owner, table: target.name },

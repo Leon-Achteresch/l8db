@@ -45,12 +45,14 @@ export interface VaultStatus {
   account?: string;
   server?: string;
   accounts?: { id: string; label: string }[];
-  needs?: "code" | "terminal" | "device" | "2fa";
+  needs?: "code" | "terminal" | "device" | "2fa" | "browser";
   channels?: { id: string; label: string }[];
   detail?: string;
+  url?: string;
+  settings?: Record<string, string>;
 }
 
-type VaultPrompt = Pick<VaultStatus, "needs" | "channels" | "detail">;
+type VaultPrompt = Pick<VaultStatus, "needs" | "channels" | "detail" | "url">;
 
 export interface VaultLogin {
   email?: string;
@@ -62,12 +64,27 @@ export interface VaultLogin {
   clientSecret?: string;
   account?: string;
   channel?: string;
+  token?: string;
+  path?: string;
+  mount?: string;
+  role?: string;
+}
+
+export interface BaoSettings {
+  address: string;
+  path: string;
+  method: "oidc" | "token";
+  mount: string;
+  role: string;
+  active: boolean;
 }
 
 export interface VaultSession {
   bw: string | null;
   op: string | null;
   keeper?: { session: ProcessSession; needs: VaultStatus["needs"] } | null;
+  bao?: ProcessSession | null;
+  baoSettings?: BaoSettings | null;
 }
 
 export interface VaultBackend {
@@ -415,16 +432,235 @@ export function onePassword(
   };
 }
 
+const BAO_CALLBACK = "http://localhost:8250/oidc/callback";
+const BAO_EXPIRED = "Die OpenBao-Anmeldung ist abgelaufen. Bitte melde dich erneut an.";
+
+function baoEnv(settings: BaoSettings) {
+  return { BAO_ADDR: settings.address };
+}
+
+async function baoSettings(api: L8dbApi, auth: VaultSession) {
+  if (auth.baoSettings === undefined) {
+    const stored = (await api.storage.get("openbao").catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    auth.baoSettings =
+      stored && typeof stored.address === "string" ? (stored as unknown as BaoSettings) : null;
+  }
+  return auth.baoSettings;
+}
+
+async function baoRemember(api: L8dbApi, auth: VaultSession, settings: BaoSettings) {
+  auth.baoSettings = settings;
+  await api.storage.set("openbao", settings as unknown as Json).catch(() => undefined);
+}
+
+function baoError(log: string) {
+  if (/Unable to authorize role/.test(log))
+    return new Error(
+      `OpenBao lässt die Rückleitung zu l8db nicht zu. Die IT muss ${BAO_CALLBACK} in der OIDC-Rolle unter allowed_redirect_uris eintragen.`,
+    );
+  if (/Timed out waiting/.test(log))
+    return new Error(
+      `Die Anmeldung im Browser wurde nicht rechtzeitig abgeschlossen. Meldet der Identity Provider (z. B. Keycloak) eine ungültige Redirect-URI, muss die IT ${BAO_CALLBACK} dort eintragen.`,
+    );
+  if (/address already in use/.test(log))
+    return new Error(
+      "Port 8250 ist belegt. Beende das Programm, das ihn nutzt, oder eine laufende Anmeldung im Terminal.",
+    );
+  const reason =
+    [...log.matchAll(/^\s*\* (.+)$/gm)].map((match) => match[1].trim()).join("; ") ||
+    log.trim().split("\n").pop()?.trim();
+  return new Error(`OpenBao-Anmeldung fehlgeschlagen${reason ? `: ${reason.slice(0, 300)}` : "."}`);
+}
+
+async function baoStop(auth: VaultSession) {
+  const pending = auth.bao;
+  auth.bao = null;
+  await pending?.stop().catch(() => undefined);
+}
+
+async function baoRead(auth: VaultSession, until: RegExp | null, timeout: number) {
+  const session = auth.bao;
+  if (!session) return null;
+  let log = "";
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const chunk = await session.read(1000).catch(() => null);
+    if (auth.bao !== session) return null;
+    if (!chunk) {
+      auth.bao = null;
+      throw new Error(BAO_EXPIRED);
+    }
+    log += chunk.output.replace(ANSI, "");
+    if (chunk.exited) {
+      auth.bao = null;
+      if (chunk.status !== 0) throw baoError(log);
+      return log;
+    }
+    if (until?.test(log)) return log;
+  }
+  await baoStop(auth);
+  throw baoError("Timed out waiting");
+}
+
+async function baoStart(api: L8dbApi, auth: VaultSession, settings: BaoSettings, args: string[]) {
+  await baoStop(auth);
+  auth.bao = await api.process.start("bao", {
+    args: ["login", "-no-print", ...args],
+    env: baoEnv(settings),
+    timeoutMs: 600000,
+  });
+}
+
+async function baoBrowserLogin(api: L8dbApi, auth: VaultSession, settings: BaoSettings) {
+  await baoStart(api, auth, settings, [
+    "-method=oidc",
+    `-path=${settings.mount}`,
+    ...(settings.role ? [`role=${settings.role}`] : []),
+  ]);
+  const log = await baoRead(auth, /Waiting for OIDC/, TIMEOUT);
+  return log && auth.bao ? (/^\s*(https?:\/\/\S+)\s*$/m.exec(log)?.[1] ?? "") : null;
+}
+
+async function baoTokenLogin(
+  api: L8dbApi,
+  auth: VaultSession,
+  settings: BaoSettings,
+  token: string,
+) {
+  await baoStart(api, auth, settings, ["-method=token"]);
+  if (!(await baoRead(auth, /Token.*: ?$/, TIMEOUT)) || !auth.bao) return;
+  await auth.bao.write(`${token.trim()}\n`);
+  await baoRead(auth, null, TIMEOUT);
+}
+
+async function baoWhoami(api: L8dbApi, settings: BaoSettings) {
+  const found = json(
+    await run(api, "bao", ["token", "lookup", "-format=json"], baoEnv(settings)),
+  ) as { data?: { display_name?: string } };
+  return found.data?.display_name;
+}
+
+function kvValue(value: string) {
+  if (value === "-" || value.startsWith("\\@"))
+    throw new Error(
+      "Ein Wert ist genau „-“ oder beginnt mit „\\@“. Die OpenBao-CLI kann ihn nicht speichern, bitte trage ihn direkt in OpenBao ein.",
+    );
+  return value.startsWith("@") ? `\\${value}` : value;
+}
+
+export function openBao(api: L8dbApi, auth: VaultSession = { bw: null, op: null }): VaultBackend {
+  let settings: BaoSettings | null = null;
+  const taken = new Set<string>();
+  const call = (...args: string[]) => {
+    if (!settings) throw new Error("OpenBao ist noch nicht eingerichtet.");
+    return run(api, "bao", args, baoEnv(settings));
+  };
+  const ready = async () => {
+    settings = await baoSettings(api, auth);
+    if (!settings)
+      throw new Error(
+        "OpenBao ist noch nicht eingerichtet. Öffne Einstellungen → Erweiterungen → Passwortmanager-Sync.",
+      );
+    const valid = await baoWhoami(api, settings).then(
+      () => true,
+      () => false,
+    );
+    if (valid) return settings;
+    if (settings.method !== "oidc")
+      throw new Error(
+        "Das OpenBao-Token ist abgelaufen. Melde dich unter Einstellungen → Erweiterungen → Passwortmanager-Sync neu an.",
+      );
+    if ((await baoBrowserLogin(api, auth, settings)) !== null) await baoRead(auth, null, 180000);
+    return settings;
+  };
+  const keys = (dir: string) =>
+    call("kv", "list", "-format=json", dir).then(
+      (out) => json(out) as string[],
+      (error) => {
+        if (/: \{\}$/.test(message(error))) return [];
+        throw error;
+      },
+    );
+  const fields = (connection: VaultConnection) =>
+    Object.entries({
+      title: connection.name,
+      url: link(connection) ?? "",
+      username: username(connection.connectionString),
+      password: connection.password ?? "",
+      notes: toNotes(connection),
+    }).map(([key, value]) => `${key}=${kvValue(value)}`);
+  return {
+    async list() {
+      const base = (await ready()).path;
+      const records: VaultRecord[] = [];
+      taken.clear();
+      const visit = async (dir: string) => {
+        for (const key of await keys(dir)) {
+          const path = `${dir}/${key.replace(/\/$/, "")}`;
+          if (key.endsWith("/")) {
+            await visit(path);
+            continue;
+          }
+          taken.add(path);
+          const raw =
+            (
+              json(await call("kv", "get", "-format=json", path)) as {
+                data?: Record<string, unknown>;
+              }
+            ).data ?? {};
+          const data = (
+            raw.metadata && raw.data && typeof raw.data === "object" ? raw.data : raw
+          ) as Record<string, unknown>;
+          const connection = readEntry("openbao", {
+            ref: path
+              .slice(base.length + 1)
+              .replace(/[^a-zA-Z0-9-]/gu, (char) => `_${char.codePointAt(0)?.toString(16)}_`),
+            title: data.title ?? key,
+            notes: data.notes,
+            username: data.username,
+            password: data.password,
+            urls: [data.url],
+          });
+          if (connection) records.push({ ref: path, connection });
+        }
+      };
+      await visit(base);
+      return records;
+    },
+    async create(connection) {
+      const base = `${settings?.path}/${
+        connection.name
+          .normalize("NFKD")
+          .replace(/\p{M}/gu, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9_.-]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "verbindung"
+      }`;
+      const path = taken.has(base) ? `${base}-${connection.id.slice(0, 8)}` : base;
+      await call("kv", "put", path, ...fields(connection));
+      taken.add(path);
+    },
+    async update(ref, connection) {
+      await call("kv", "patch", "-method=rw", ref, ...fields(connection));
+    },
+  };
+}
+
 export const backends: Record<string, (api: L8dbApi, auth?: VaultSession) => VaultBackend> = {
   keeper,
   bitwarden,
   "1password": onePassword,
+  openbao: openBao,
 };
 
 const labels: Record<string, string> = {
   keeper: "Keeper",
   bitwarden: "Bitwarden",
   "1password": "1Password",
+  openbao: "OpenBao",
 };
 
 async function pick(api: L8dbApi, connections: VaultConnection[], placeholder: string) {
@@ -599,12 +835,20 @@ const KEEPER_VENV = [
   '"$d/bin/pip" install -q keepercommander; mkdir -p "$HOME/.local/bin"',
   'ln -sf "$d/bin/keeper" "$HOME/.local/bin/keeper"',
 ].join("\n");
+const BAO_DOWNLOAD = [
+  'set -e; case "$(uname -s)" in Linux) o=linux;; Darwin) o=darwin;; *) exit 1;; esac',
+  'case "$(uname -m)" in x86_64|amd64) a=amd64;; aarch64|arm64) a=arm64;; *) exit 1;; esac',
+  'v=2.7.1; d="$HOME/.local/bin"; t="$(mktemp -d)"; mkdir -p "$d"',
+  'curl -fsSLo "$t/bao.tgz" "https://github.com/openbao/openbao/releases/download/v$v/openbao_${v}_${o}_$a.tar.gz"',
+  'tar -xzf "$t/bao.tgz" -C "$t" bao; mv -f "$t/bao" "$d/bao"; chmod +x "$d/bao"; rm -rf "$t"',
+].join("\n");
 const WINGET = ["-e", "--silent", "--accept-source-agreements", "--accept-package-agreements"];
 
 export const binaries: Record<string, string> = {
   keeper: "keeper",
   bitwarden: "bw",
   "1password": "op",
+  openbao: "bao",
 };
 
 export const installers: Record<string, string[][]> = {
@@ -626,12 +870,18 @@ export const installers: Record<string, string[][]> = {
     ["winget", "install", "--id", "AgileBits.1Password.CLI", ...WINGET],
     ["sh", "-c", OP_LINUX],
   ],
+  openbao: [
+    ["brew", "install", "openbao"],
+    ["winget", "install", "--id", "OpenBao.OpenBao", ...WINGET],
+    ["sh", "-c", BAO_DOWNLOAD],
+  ],
 };
 
 const manualInstall: Record<string, string> = {
   keeper: "https://docs.keeper.io/en/keeperpam/commander-cli/commander-installation-setup",
   bitwarden: "https://bitwarden.com/help/cli/#download-and-install",
   "1password": "https://developer.1password.com/docs/cli/get-started/",
+  openbao: "https://openbao.org/docs/install/",
 };
 
 export async function cliVersion(api: L8dbApi, provider: string): Promise<string | null> {
@@ -874,6 +1124,67 @@ export const accounts: Record<string, VaultAccount> = {
       if (auth.op) await run(api, "op", ["signout", "--account", auth.op]).catch(() => undefined);
     },
   },
+  openbao: {
+    async status(api, auth) {
+      const settings = await baoSettings(api, auth);
+      if (!settings) return { state: "signed-out" };
+      const { active: _active, address, ...rest } = settings;
+      const known = { server: address, settings: rest };
+      try {
+        return { ...known, state: "signed-in", account: await baoWhoami(api, settings) };
+      } catch (error) {
+        const reason = message(error);
+        return {
+          ...known,
+          state: settings.active ? "locked" : "signed-out",
+          detail: /permission denied|missing client token/i.test(reason) ? undefined : reason,
+        };
+      }
+    },
+    async login(api, auth, input) {
+      const address = (input.server ?? "").trim().replace(/\/+$/, "");
+      if (
+        !/^(https:\/\/[^/\s]+|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?)(\/\S*)?$/.test(
+          address,
+        )
+      )
+        throw new Error(
+          "Bitte gib die Adresse des OpenBao-Servers mit https:// an, z. B. https://bao.firma.de.",
+        );
+      const settings: BaoSettings = {
+        address,
+        path: (input.path ?? "").trim().replace(/^\/+|\/+$/g, "") || "secret/l8db",
+        method: input.method === "token" ? "token" : "oidc",
+        mount: (input.mount ?? "").trim().replace(/^\/+|\/+$/g, "") || "oidc",
+        role: (input.role ?? "").trim(),
+        active: false,
+      };
+      await baoRemember(api, auth, settings);
+      if (settings.method === "token") await baoTokenLogin(api, auth, settings, input.token ?? "");
+      else {
+        const url = await baoBrowserLogin(api, auth, settings);
+        if (url !== null) return { needs: "browser", url };
+      }
+      await baoRemember(api, auth, { ...settings, active: true });
+    },
+    async answer(api, auth) {
+      const settings = await baoSettings(api, auth);
+      if ((await baoRead(auth, null, 180000)) !== null && settings)
+        await baoRemember(api, auth, { ...settings, active: true });
+      return undefined;
+    },
+    async logout(api, auth) {
+      const pending = !!auth.bao;
+      await baoStop(auth);
+      const settings = await baoSettings(api, auth);
+      if (!settings) return;
+      if (!pending)
+        await run(api, "bao", ["token", "revoke", "-self"], baoEnv(settings)).catch(
+          () => undefined,
+        );
+      await baoRemember(api, auth, { ...settings, active: false });
+    },
+  },
   keeper: {
     async status(api) {
       if (!/^Logged in$/m.test(await run(api, "keeper", ["--batch-mode", "login-status"])))
@@ -1008,9 +1319,12 @@ export function activate(context: ExtensionContext, api: L8dbApi): void {
     const current = await vaultStatus(api, provider, auth);
     if (!current.cli || current.state === "signed-out") return;
     if (current.state === "locked") {
+      const bao = provider === "openbao";
       await status({
-        text: `${labels[provider]} gesperrt`,
-        tooltip: "Klicken, um den Tresor zu entsperren und die Datenbank-Zugänge zu laden.",
+        text: bao ? "OpenBao: Anmeldung nötig" : `${labels[provider]} gesperrt`,
+        tooltip: bao
+          ? `${current.detail ?? "Die Anmeldung ist abgelaufen."} Klicken, um dich im Browser anzumelden und die Datenbank-Zugänge zu laden.`
+          : "Klicken, um den Tresor zu entsperren und die Datenbank-Zugänge zu laden.",
         command: "vault.sync",
         background: "warning",
       });

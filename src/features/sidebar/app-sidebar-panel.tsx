@@ -1,17 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ArchiveIcon,
-  BracesIcon,
-  EyeIcon,
-  FileCodeIcon,
-  FilterIcon,
-  LinkIcon,
-  ListOrderedIcon,
-  PackageIcon,
-  SquareFunctionIcon,
-  TableIcon,
-  UsersIcon,
-} from "lucide-react";
+import { FilterIcon } from "lucide-react";
 import { lazy, Suspense, startTransition, useState } from "react";
 import {
   Sidebar,
@@ -29,7 +17,6 @@ import { SidebarObjectTabs } from "@/features/sidebar/sidebar-object-tabs";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { INVALID_GROUP_TYPES } from "@/lib/invalid-objects";
-import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 
 import { SchemaManagerDialog } from "./app-sidebar-panel/schema-manager-dialog";
@@ -41,6 +28,7 @@ import { type SidebarTabValue, sidebarTabLabel } from "./app-sidebar-panel/sideb
 import { SidebarTabContent } from "./app-sidebar-panel/sidebar-tab-content";
 import { useSidebarObjectQueries } from "./app-sidebar-panel/use-sidebar-object-queries";
 import { useSidebarScope } from "./app-sidebar-panel/use-sidebar-scope";
+import { useSidebarTabs } from "./app-sidebar-panel/use-sidebar-tabs";
 
 const TableSearchModal = lazy(() =>
   import("@/features/sidebar/table-search-modal").then((module) => ({
@@ -49,7 +37,6 @@ const TableSearchModal = lazy(() =>
 );
 
 export function AppSidebarPanel() {
-  const easyMode = useSettingsStore((state) => state.easyMode);
   const connections = useConnectionsStore((state) => state.connections);
   const activeConnection = useActiveConnection();
   const isSwitching = useConnectionSwitch((state) => state.isSwitching);
@@ -63,38 +50,7 @@ export function AppSidebarPanel() {
   const caps = useActiveCapabilities();
   const packages = q.functions?.filter((f) => f.return_type === "PACKAGE");
   const plainFunctions = q.functions?.filter((f) => f.return_type !== "PACKAGE");
-  const sidebarTabs = [
-    {
-      value: "tables",
-      label: caps.object_storage ? "Buckets" : "Tabellen",
-      icon: caps.object_storage ? ArchiveIcon : TableIcon,
-      enabled: true,
-    },
-    { value: "views", label: "Views", icon: EyeIcon, enabled: caps.views },
-    { value: "functions", label: "Funktionen", icon: BracesIcon, enabled: caps.functions },
-    {
-      value: "procedures",
-      label: "Prozeduren",
-      icon: SquareFunctionIcon,
-      enabled: caps.procedures,
-    },
-    {
-      value: "packages",
-      label: "Packages",
-      icon: PackageIcon,
-      enabled: Boolean(packages?.length),
-    },
-    { value: "synonyms", label: "Synonyme", icon: LinkIcon, enabled: caps.synonyms },
-    { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
-    { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
-    { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
-    {
-      value: "sequences",
-      label: "Sequenzen",
-      icon: ListOrderedIcon,
-      enabled: !easyMode && caps.sequences,
-    },
-  ].filter((tab) => tab.enabled);
+  const sidebarTabs = useSidebarTabs(Boolean(packages?.length));
   const sidebarTab = sidebarTabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);

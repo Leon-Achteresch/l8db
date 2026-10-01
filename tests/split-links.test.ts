@@ -7,8 +7,10 @@ import {
   masterCandidates,
   normalizeMasters,
   removeMaster,
+  sameTable,
   spreadAnchors,
   swapMasters,
+  syncAnchor,
 } from "../src/lib/split-links";
 
 const table = (name: string) => ({ kind: "table" as const, schema: "public", table: name });
@@ -88,5 +90,22 @@ describe("split links", () => {
       { x: 600, y: 675, angle: 0 },
     ]);
     expect(apart.map((anchor) => anchor.y)).toEqual([225, 675]);
+  });
+
+  test("bietet synchrones Scrollen nur für dieselbe Tabelle im Kopf an", () => {
+    expect(sameTable(table("a"), { ...table("a"), connectionId: "prod" })).toBe(true);
+    expect(sameTable(table("a"), table("b"))).toBe(false);
+    expect(sameTable(table("a"), { ...table("a"), entityType: "view" })).toBe(false);
+    expect(sameTable(table("a"), undefined)).toBe(false);
+    expect(syncAnchor(box(0, 0, 100, 200), box(100, 0, 200, 200))).toEqual({
+      x: 100,
+      y: 14,
+      angle: 0,
+    });
+    expect(syncAnchor(box(0, 0, 200, 100), box(0, 100, 200, 200))).toEqual({
+      x: 100,
+      y: 100,
+      angle: 90,
+    });
   });
 });

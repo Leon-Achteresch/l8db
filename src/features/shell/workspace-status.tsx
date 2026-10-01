@@ -7,6 +7,7 @@ import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
+import { version } from "../../../package.json";
 import { DraftRecoveryDialog } from "./draft-recovery-dialog";
 
 export function WorkspaceStatus() {
@@ -72,6 +73,7 @@ export function WorkspaceStatus() {
                   : `TLS ${connection.sslMode}`}
           </span>
         )}
+        <span className="tabular-nums">v{version}</span>
       </div>
     </footer>
   );

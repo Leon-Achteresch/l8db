@@ -9,6 +9,7 @@ import { useExtensionHost } from "@/lib/extensions/react-context";
 import { BitwardenLoginForm } from "./bitwarden-login-form";
 import { KeeperLoginForm } from "./keeper-login-form";
 import { OnePasswordLoginForm } from "./one-password-login-form";
+import { OpenBaoLoginForm } from "./openbao-login-form";
 import {
   errorText,
   hasCommand,
@@ -199,6 +200,15 @@ export function PasswordManagerSetup({ extension }: { extension: ExtensionDescri
               onAnswer={onAnswer}
               onCancel={onLogout}
               onRefresh={onRefresh}
+            />
+          )}
+          {live && provider?.id === "openbao" && (
+            <OpenBaoLoginForm
+              status={live}
+              busy={!!busy}
+              onLogin={onLogin}
+              onAnswer={onAnswer}
+              onCancel={onLogout}
             />
           )}
         </SetupStep>

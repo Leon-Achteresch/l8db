@@ -221,6 +221,72 @@ function fakeBitwarden() {
   return { cli, items };
 }
 
+function fakeBao() {
+  const items = new Map<string, Record<string, string>>();
+  const state = { token: true };
+  const base = "secret/l8db";
+  const relative = (path: string) => (path === base ? "" : path.slice(base.length + 1));
+  const value = (raw: string) => {
+    if (raw === "-" || raw.startsWith("@")) throw new Error(`would read ${raw}`);
+    return raw.startsWith("\\@") ? raw.slice(1) : raw;
+  };
+  const fields = (args: string[]) =>
+    Object.fromEntries(
+      args.map((arg) => [arg.slice(0, arg.indexOf("=")), value(arg.slice(arg.indexOf("=") + 1))]),
+    );
+  const cli: Cli = (args, env) => {
+    if (args[0] === "--version") return { status: 0, stdout: "OpenBao v2.7.1 (a5db72c)" };
+    expect(env?.BAO_ADDR).toBe("https://bao.firma.de");
+    if (args[0] === "token" && args[1] === "revoke") {
+      state.token = false;
+      return { status: 0, stdout: "Success! Revoked token (if it existed)" };
+    }
+    if (args[0] === "token")
+      return state.token
+        ? { status: 0, stdout: JSON.stringify({ data: { display_name: "keycloak-me" } }) }
+        : { status: 2, stdout: "", stderr: "Code: 403. Errors:\n\n* permission denied" };
+    if (!state.token) return { status: 2, stdout: "", stderr: "* permission denied" };
+    const [, command, ...rest] = args;
+    try {
+      if (command === "list") {
+        const dir = relative(rest[1]);
+        const prefix = dir ? `${dir}/` : "";
+        const keys = new Set(
+          [...items.keys()]
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => key.slice(prefix.length))
+            .map((key) => (key.includes("/") ? `${key.split("/")[0]}/` : key)),
+        );
+        return keys.size
+          ? { status: 0, stdout: JSON.stringify([...keys]) }
+          : { status: 2, stdout: "{}" };
+      }
+      if (command === "get") {
+        const item = items.get(relative(rest[1]));
+        if (!item) return { status: 2, stdout: "", stderr: "No value found" };
+        return {
+          status: 0,
+          stdout: JSON.stringify({ data: { data: item, metadata: { version: 1 } } }),
+        };
+      }
+      if (command === "put") {
+        items.set(relative(rest[0]), fields(rest.slice(1)));
+        return { status: 0, stdout: "" };
+      }
+      if (command === "patch") {
+        expect(rest[0]).toBe("-method=rw");
+        const key = relative(rest[1]);
+        items.set(key, { ...items.get(key), ...fields(rest.slice(2)) });
+        return { status: 0, stdout: "" };
+      }
+    } catch (error) {
+      return { status: 1, stdout: "", stderr: String(error) };
+    }
+    return { status: 1, stdout: "", stderr: "unknown" };
+  };
+  return { cli, items, state };
+}
+
 function fakeOnePassword() {
   const items = new Map<
     string,
@@ -292,6 +358,15 @@ function fakeOnePassword() {
   return { cli, items };
 }
 
+const BAO = {
+  address: "https://bao.firma.de",
+  path: "secret/l8db",
+  method: "token",
+  mount: "oidc",
+  role: "",
+  active: true,
+};
+
 function harness(
   provider: string,
   clis: Record<string, Cli>,
@@ -302,7 +377,7 @@ function harness(
   const messages: string[] = [];
   const savedBatches: VaultConnection[][] = [];
   const removed: string[][] = [];
-  const storage = new Map<string, Json>();
+  const storage = new Map<string, Json>([["openbao", BAO]]);
   const statusBar: { text: string; background?: string }[] = [];
   const connections = [...local];
   const api = {
@@ -404,6 +479,7 @@ describe.each([
   ["keeper", () => fakeKeeper(), "keeper"],
   ["bitwarden", () => fakeBitwarden(), "bw"],
   ["1password", () => fakeOnePassword(), "op"],
+  ["openbao", () => fakeBao(), "bao"],
 ] as const)("%s backend", (provider, create, binary) => {
   test("saves connections, updates them in place and loads them back", async () => {
     const fake = create();
@@ -455,6 +531,7 @@ describe.each([
   ["keeper", () => fakeKeeper(), "keeper"],
   ["bitwarden", () => fakeBitwarden(), "bw"],
   ["1password", () => fakeOnePassword(), "op"],
+  ["openbao", () => fakeBao(), "bao"],
 ] as const)("%s as connection store", (provider, create, binary) => {
   const entries = (fake: ReturnType<typeof create>) =>
     [...("records" in fake ? fake.records : fake.items).values()] as Record<string, unknown>[];
@@ -472,7 +549,7 @@ describe.each([
     own.connections[0] = { ...local[0], name: "Prod umbenannt" };
     await own.run("vault.save", { id: local[0].id });
     expect(entries(fake)).toHaveLength(1);
-    expect(entries(fake)[0].title ?? entries(fake)[0].name).toBe("l8db: Prod umbenannt");
+    expect(String(entries(fake)[0].title ?? entries(fake)[0].name)).toEndWith("Prod umbenannt");
     await expect(own.run("vault.save", { id: "missing" })).rejects.toThrow("nicht gespeichert");
   });
 
@@ -996,5 +1073,219 @@ describe("vault setup", () => {
     );
     expect(status).toEqual({ provider: "bitwarden", cli: null, state: "signed-out" });
     expect(calls).toEqual([["bw", "--version"]]);
+  });
+});
+
+describe("openbao", () => {
+  type Chunk = { output: string; exited: boolean; status: number | null };
+  const browser: Chunk[] = [
+    {
+      output:
+        "Complete the login via your OIDC provider. Launching browser to:\r\n\r\n    https://sso.firma.de/realms/firma/protocol/openid-connect/auth?client_id=openbao&state=st_1\r\n\r\n\r\n",
+      exited: false,
+      status: null,
+    },
+    { output: "Waiting for OIDC authentication to complete...\r\n", exited: false, status: null },
+    { output: "", exited: false, status: null },
+  ];
+  const client = (fake: ReturnType<typeof fakeBao>, chunks: Chunk[], stored: Json[] = []) => {
+    const storage = new Map<string, Json>(stored.length ? [["openbao", stored[0]]] : []);
+    const started: { command: string; options: ProcessOptions }[] = [];
+    const calls: string[][] = [];
+    const writes: string[] = [];
+    const api = {
+      storage: {
+        get: async (key: string) => storage.get(key) ?? null,
+        set: async (key: string, value: Json) => void storage.set(key, value),
+      },
+      process: {
+        run: async (command: string, options: ProcessOptions = {}) => {
+          calls.push([command, ...(options.args ?? [])]);
+          return { stderr: "", ...fake.cli(options.args ?? [], options.env) };
+        },
+        start: async (command: string, options: ProcessOptions) => {
+          started.push({ command, options });
+          return {
+            id: started.length,
+            write: async (data: string) => void writes.push(data),
+            read: async () => {
+              const next = chunks.shift() ?? { output: "", exited: true, status: 0 };
+              if (next.exited && next.status === 0) fake.state.token = true;
+              return next;
+            },
+            stop: async () => undefined,
+          };
+        },
+      },
+    } as unknown as L8dbApi;
+    return { api, storage, started, calls, writes };
+  };
+
+  test("signs in through the browser and remembers the server", async () => {
+    const fake = fakeBao();
+    fake.state.token = false;
+    const lab = client(fake, [...browser]);
+    const auth = { bw: null, op: null };
+    const step = (request: Record<string, string>) =>
+      extension.vaultSetup(lab.api, auth, request, "openbao");
+
+    expect(await step({})).toMatchObject({ cli: "2.7.1", state: "signed-out" });
+    const pending = await step({
+      action: "login",
+      server: " https://bao.firma.de/ ",
+      path: "/secret/l8db/",
+      mount: "keycloak",
+      role: "db",
+    });
+    expect(pending).toMatchObject({
+      state: "signed-out",
+      needs: "browser",
+      url: "https://sso.firma.de/realms/firma/protocol/openid-connect/auth?client_id=openbao&state=st_1",
+      server: "https://bao.firma.de",
+      settings: { path: "secret/l8db", method: "oidc", mount: "keycloak", role: "db" },
+    });
+    expect(lab.started).toEqual([
+      {
+        command: "bao",
+        options: {
+          args: ["login", "-no-print", "-method=oidc", "-path=keycloak", "role=db"],
+          env: { BAO_ADDR: "https://bao.firma.de" },
+          timeoutMs: 600000,
+        },
+      },
+    ]);
+    const done = await step({ action: "answer" });
+    expect(done).toMatchObject({ state: "signed-in", account: "keycloak-me" });
+    expect(done.needs).toBeUndefined();
+    expect(lab.storage.get("openbao")).toMatchObject({ active: true, mount: "keycloak" });
+
+    const later = { bw: null, op: null };
+    expect(await extension.vaultSetup(lab.api, later, {}, "openbao")).toMatchObject({
+      state: "signed-in",
+    });
+    fake.state.token = false;
+    expect(await extension.vaultSetup(lab.api, later, {}, "openbao")).toMatchObject({
+      state: "locked",
+      server: "https://bao.firma.de",
+    });
+  });
+
+  test("explains a missing redirect URI and passes other server errors through", async () => {
+    const fail = (output: string) =>
+      extension.vaultSetup(
+        client(fakeBao(), [{ output, exited: true, status: 2 }]).api,
+        { bw: null, op: null },
+        { action: "login", server: "https://bao.firma.de" },
+        "openbao",
+      );
+    await expect(
+      fail(
+        'Error authenticating: Unable to authorize role "db" with redirect_uri "http://localhost:8250/oidc/callback".\r\n',
+      ),
+    ).rejects.toThrow("http://localhost:8250/oidc/callback in der OIDC-Rolle");
+    await expect(
+      fail(
+        'Error authenticating: Error making API request.\r\n\r\nCode: 400. Errors:\r\n\r\n* role "nope" could not be found\r\n',
+      ),
+    ).rejects.toThrow('fehlgeschlagen: role "nope" could not be found');
+    await expect(
+      extension.vaultSetup(
+        client(fakeBao(), []).api,
+        { bw: null, op: null },
+        { action: "login", server: "bao.firma.de" },
+        "openbao",
+      ),
+    ).rejects.toThrow("Adresse des OpenBao-Servers");
+    await expect(
+      extension.vaultSetup(
+        client(fakeBao(), []).api,
+        { bw: null, op: null },
+        { action: "login", server: "http://bao.firma.de" },
+        "openbao",
+      ),
+    ).rejects.toThrow("mit https://");
+  });
+
+  test("types a pasted token into the CLI prompt and revokes it on logout", async () => {
+    const fake = fakeBao();
+    fake.state.token = false;
+    const lab = client(fake, [
+      { output: "Token (will be hidden): ", exited: false, status: null },
+      { output: "\r\n", exited: true, status: 0 },
+    ]);
+    const auth = { bw: null, op: null };
+    const step = (request: Record<string, string>) =>
+      extension.vaultSetup(lab.api, auth, request, "openbao");
+    const done = await step({
+      action: "login",
+      server: "https://bao.firma.de",
+      method: "token",
+      token: " s.secret ",
+    });
+    expect(done).toMatchObject({ state: "signed-in", settings: { method: "token" } });
+    expect(lab.started[0].options.args).toEqual(["login", "-no-print", "-method=token"]);
+    expect(JSON.stringify(lab.started)).not.toContain("s.secret");
+    expect(lab.writes).toEqual(["s.secret\n"]);
+    expect(await step({ action: "logout" })).toMatchObject({ state: "signed-out" });
+    expect(lab.calls).toContainEqual(["bao", "token", "revoke", "-self"]);
+  });
+
+  test("an expired SSO login reopens the browser before syncing", async () => {
+    const fake = fakeBao();
+    fake.state.token = false;
+    fake.items.set("team/billing", {
+      title: "Billing",
+      url: "postgres://db.firma.local:5432/billing",
+      username: "app",
+      password: "pw",
+    });
+    const lab = client(fake, [...browser], [{ ...BAO, method: "oidc", mount: "keycloak" }]);
+    const records = await extension.openBao(lab.api, { bw: null, op: null }).list();
+    expect(lab.started).toHaveLength(1);
+    expect(records).toEqual([
+      {
+        ref: "secret/l8db/team/billing",
+        connection: expect.objectContaining({
+          id: "pm-openbao-team_2f_billing",
+          name: "Billing",
+          connectionString: "postgres://app@db.firma.local:5432/billing",
+          password: "pw",
+        }),
+      },
+    ]);
+    const token = fakeBao();
+    token.state.token = false;
+    await expect(
+      extension.openBao(client(token, [], [BAO]).api, { bw: null, op: null }).list(),
+    ).rejects.toThrow("Token ist abgelaufen");
+  });
+
+  test("keeps fields added in OpenBao, escapes @ and avoids name collisions", async () => {
+    const fake = fakeBao();
+    const twin = { ...local[0], id: "99999999-0000-0000-0000-000000000000" };
+    const vault = harness("openbao", { bao: fake.cli }, [{ ...local[0], password: "@home" }, twin]);
+    await vault.run("vault.save", { id: local[0].id });
+    fake.items.set("prod-db", { ...fake.items.get("prod-db"), owner: "team-a" });
+    await vault.run("vault.save", { id: local[0].id });
+    expect(fake.items.get("prod-db")).toMatchObject({ owner: "team-a", password: "@home" });
+    await vault.run("vault.save", { id: twin.id });
+    expect([...fake.items.keys()]).toEqual(["prod-db", "prod-db-99999999"]);
+    vault.connections[0] = { ...local[0], password: "-" };
+    await expect(vault.run("vault.save", { id: local[0].id })).rejects.toThrow("genau „-“");
+  });
+
+  test("installs the CLI with Homebrew, winget or the release download", async () => {
+    const calls: string[] = [];
+    const api = {
+      process: {
+        run: async (command: string, options: ProcessOptions = {}) => {
+          calls.push([command, ...(options.args ?? [])].join(" "));
+          throw new Error("No such file or directory");
+        },
+      },
+    } as unknown as L8dbApi;
+    await expect(extension.installCli(api, "openbao")).rejects.toThrow("openbao.org");
+    expect(calls.map((call) => call.split(" ")[0])).toEqual(["brew", "winget", "sh"]);
+    expect(calls[1]).toContain("--id OpenBao.OpenBao");
   });
 });

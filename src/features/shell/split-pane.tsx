@@ -14,7 +14,8 @@ import {
   usePaneSourceKey,
 } from "@/lib/master-detail";
 import { ensurePassword } from "@/lib/password-prompt";
-import { usePaneConnectionId, useSplitView } from "@/lib/split-view";
+import { sameTable } from "@/lib/split-links";
+import { usePaneConnectionId, usePaneTabs, useSplitView } from "@/lib/split-view";
 import { ensureSshTunnel } from "@/lib/ssh";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -46,9 +47,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const navigate = useNavigate();
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
-  const setPaneTable = useSplitView((state) => state.setPaneTable);
+  const setPaneTab = useSplitView((state) => state.setPaneTab);
   const openTab = useTableTabs((state) => state.openTab);
-  const remote = tab?.kind === "table" && Boolean(tab.connectionId);
+  const remote = Boolean(tab?.connectionId);
   const key = tab ? tabKey(tab) : `split-detail:${index}`;
   const masterKey = useSplitView((state) => {
     const master = state.masters[index];
@@ -62,6 +63,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     linkKey ? state.sourceColumns[linkKey] : undefined,
   );
   const feedsNext = useSplitView((state) => state.masters.includes(index));
+  const synced = usePaneTabs().some((other, pane) => pane !== index && sameTable(tab, other));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -92,14 +94,19 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
         }
       }
     }
-    if (tab?.kind !== "table") {
+    if (tab?.kind !== "table" && !remote) {
       setPaneConnection(key, id);
       if (!focused && tab) navigateToTab(navigate, tab);
       onFocus();
       return;
     }
+    if (tab?.kind !== "table") {
+      setPaneTab(index, null, null);
+      setPaneConnection(`split-detail:${index}`, id);
+      return;
+    }
     if (!id) openTab(tab);
-    setPaneTable(index, id, tab);
+    setPaneTab(index, id, tab);
     if (!id) navigateToTab(navigate, { ...tab, connectionId: undefined });
   };
 
@@ -124,7 +131,10 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
       >
         <div
           ref={dragRef}
-          className="@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40 px-1"
+          className={cn(
+            "@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40",
+            synced ? "px-3" : "px-1",
+          )}
           style={override ? { backgroundColor: `${override.color ?? "#64748b"}1a` } : undefined}
           title={override ? `Verbindung: ${override.name}` : undefined}
         >
@@ -224,7 +234,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
             <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
               <p className="max-w-56 text-center text-sm text-muted-foreground">
                 {override
-                  ? `Tabelle von ${override.name} in der Sidebar wählen.`
+                  ? `Objekt von ${override.name} in der Sidebar wählen.`
                   : "Tab hierher ziehen oder in der Sidebar öffnen."}
               </p>
             </div>
