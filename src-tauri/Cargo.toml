@@ -55,7 +55,9 @@ mime_guess = "2"
 mongodb = "3"
 redis = { version = "1", features = ["tokio-comp", "tokio-native-tls-comp"] }
 oracle = "0.6"
-scylla = "1"
+scylla = { version = "1", features = ["rustls-023"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-platform-verifier = "0.7"
 futures-util = "0.3"
 duckdb = { version = "1", features = ["bundled"], optional = true }
 odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80"], optional = true }
