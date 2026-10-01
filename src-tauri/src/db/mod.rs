@@ -63,7 +63,7 @@ use pool::PoolState;
 pub use provider::DatabaseKind;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum SslMode {
     Disable,
@@ -1477,7 +1477,16 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         }
         msg
     } else {
-        format!("Datenbankfehler: {e}")
+        let mut msg = format!("Datenbankfehler: {e}");
+        let mut source = std::error::Error::source(&e);
+        while let Some(cause) = source {
+            let text = cause.to_string();
+            if !msg.contains(&text) {
+                msg.push_str(&format!(": {text}"));
+            }
+            source = cause.source();
+        }
+        msg
     }
 }
 

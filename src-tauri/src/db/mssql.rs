@@ -344,6 +344,7 @@ impl MssqlAdapter {
         let mut ssl = SslMode::Prefer;
         let mut trust = false;
         let mut trusted = false;
+        let mut ca = None;
         for (key, value) in url.query_pairs() {
             match key.as_ref() {
                 "sslmode" => {
@@ -354,8 +355,13 @@ impl MssqlAdapter {
                     ssl = match value.to_lowercase().as_str() {
                         "optional" => SslMode::Prefer,
                         "false" | "no" | "0" | "disable" | "disabled" => SslMode::Disable,
-                        _ => SslMode::Require,
+                        _ => SslMode::VerifyFull,
                     }
+                }
+                "sslrootcert" | "trust_server_certificate_ca" | "trustservercertificateca"
+                    if !value.is_empty() =>
+                {
+                    ca = Some(value.into_owned())
                 }
                 "trusted_connection"
                 | "trustedconnection"
@@ -379,7 +385,9 @@ impl MssqlAdapter {
             SslMode::Prefer => EncryptionLevel::Off,
             SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull => EncryptionLevel::Required,
         });
-        if trust {
+        if let Some(ca) = ca {
+            config.trust_cert_ca(ca);
+        } else if trust || matches!(ssl, SslMode::Prefer | SslMode::Require) {
             config.trust_cert();
         }
         Ok(Self {
@@ -1610,6 +1618,41 @@ mod tests {
         assert!(is_tx_control("begin tran"));
         assert!(is_tx_control("ROLLBACK"));
         assert!(!is_tx_control("BEGIN SELECT 1 END"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_tls_modes() {
+        let Ok(base) = std::env::var("L8DB_E2E_MSSQL_TLS_URL") else {
+            return;
+        };
+        let connect = |query: &str| {
+            let url = format!("{base}{query}");
+            async move {
+                MssqlAdapter::new(
+                    &url,
+                    None,
+                    crate::db::pool::create_pool_state(),
+                    url.clone(),
+                )?
+                .test_connection()
+                .await
+            }
+        };
+        assert_eq!(connect("").await, Ok(()));
+        assert_eq!(connect("?sslmode=require").await, Ok(()));
+        assert_eq!(connect("?sslmode=disable").await, Ok(()));
+        assert!(connect("?sslmode=verify-full").await.is_err());
+        assert!(connect("?encrypt=true").await.is_err());
+        assert_eq!(
+            connect("?encrypt=true&trustservercertificate=true").await,
+            Ok(())
+        );
+        assert!(
+            connect("?sslmode=verify-ca&sslrootcert=/does/not/exist.pem")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

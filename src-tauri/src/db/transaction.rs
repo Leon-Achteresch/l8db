@@ -41,7 +41,7 @@ fn validate_ctid(ctid: &str) -> Result<String, String> {
 type OracleConn = Arc<std::sync::Mutex<oracle::Connection>>;
 
 enum TransactionEntry {
-    Pg(Arc<super::execution::PgSession>, super::SslMode),
+    Pg(Arc<super::execution::PgSession>, super::connection::PgTls),
     Oracle(OracleConn),
     Generic(Generic),
     Dynamo(Box<super::dynamodb::DynamoTx>),
@@ -447,7 +447,7 @@ impl TransactionManager {
             }
         }
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-        let conn = super::execution::connect_postgres(&config, ssl).await?;
+        let conn = super::execution::connect_postgres(&config, &ssl).await?;
         super::postgres::begin_guarded(&conn, "BEGIN", &[super::postgres::TRANSACTION_IDLE_GUARD])
             .await
             .map_err(map_pg_err)?;
@@ -467,7 +467,7 @@ impl TransactionManager {
     ) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
         let (session, ssl) = match &*entry {
-            TransactionEntry::Pg(c, ssl) => (c, *ssl),
+            TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             _ => {
                 return Err(super::unsupported("Bind-Parameter"));
             }
@@ -475,7 +475,7 @@ impl TransactionManager {
         let conn = session.lock().await?;
         let outcome = super::execution::postgres(
             &conn,
-            ssl,
+            &ssl,
             Some(session),
             super::postgres::run_params_query(&conn, sql, params),
         )
@@ -490,7 +490,7 @@ impl TransactionManager {
     ) -> Result<Box<dyn DatabaseAdapter>, String> {
         match &*self.entry(tx_id).await? {
             TransactionEntry::Pg(session, ssl) => Ok(Box::new(
-                super::postgres::PostgresAdapter::from_session(session.clone(), *ssl, pool),
+                super::postgres::PostgresAdapter::from_session(session.clone(), ssl.clone(), pool),
             )),
             _ => Err("Transaktionsgebundene Metadaten benötigen PostgreSQL".into()),
         }
@@ -519,7 +519,7 @@ impl TransactionManager {
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
         let entry = self.entry(tx_id).await?;
         let (session, ssl) = match &*entry {
-            TransactionEntry::Pg(c, ssl) => (c, *ssl),
+            TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             TransactionEntry::Oracle(c) => {
                 let sql = sql.to_string();
                 return ora(c.clone(), move |c| oracle::tx_execute(c, &sql)).await;
@@ -528,7 +528,7 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.execute(sql).await,
         };
         let conn = session.lock().await?;
-        let outcome = super::execution::postgres(&conn, ssl, Some(session), async {
+        let outcome = super::execution::postgres(&conn, &ssl, Some(session), async {
             let start = std::time::Instant::now();
             let messages = conn.simple_query_raw(sql).await.map_err(map_pg_err)?;
             futures_util::pin_mut!(messages);

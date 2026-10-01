@@ -104,7 +104,7 @@ impl TransactionManager {
             }
             TransactionEntry::Pg(c, ssl) => {
                 let conn = c.lock().await?;
-                pg_read(&conn, *ssl, async {
+                pg_read(&conn, ssl, async {
                     let column_rows = conn.query(
                         "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
                         &[&request.schema, &request.table],
@@ -179,7 +179,7 @@ impl TransactionManager {
                     quote_ident(table),
                     where_sql
                 );
-                pg_read(&conn, *ssl, async {
+                pg_read(&conn, ssl, async {
                     conn.query_one(&sql, &[])
                         .await
                         .map(|row| row.get(0))
@@ -216,7 +216,7 @@ impl TransactionManager {
         let sql = capped_count_sql(schema, table, &where_sql, cap);
         let name = relation_name(schema, table);
         let conn = c.lock().await?;
-        pg_read(&conn, *ssl, async {
+        pg_read(&conn, ssl, async {
             let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
             Ok(capped_count(
                 row.get(0),
@@ -231,7 +231,7 @@ impl TransactionManager {
 
 async fn pg_read<T, F>(
     conn: &tokio_postgres::Client,
-    ssl: crate::db::SslMode,
+    ssl: &crate::db::connection::PgTls,
     read: F,
 ) -> Result<T, String>
 where
