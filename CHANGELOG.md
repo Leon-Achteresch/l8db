@@ -3,6 +3,40 @@
 Alle veröffentlichten Änderungen dieser App, automatisch aus der Git-Historie erzeugt.
 Nicht von Hand bearbeiten: `bun run changelog` regeneriert diese Datei.
 
+## [0.8.13] - 2026-10-01
+
+### Features
+- multiple app windows with dock menu, jump list and cross-window store sync
+- slide columns into place while dragging headers
+- opt-in TLS with CA files, hostname checks and client certificates
+- libpq SSL semantics, CA files and client certificates for Postgres, MySQL and SQL Server
+- ship third-party license notices and show them in settings
+- drop toasts out of the header search like a water drop
+- Bereiche mit anderer Verbindung wählen Tabellen über die Sidebar
+- GitHub Copilot CLI als Client und Anbieter-Logos via thesvg
+- add branch workflows, customer environments and development seeds
+- keep new/duplicate row draft across tab switches
+
+### Fixes
+- stop showing the dev server's index.html as license list
+- allow win-* windows in the production check and badge the feature as 0.8.0
+- update DOMPurify for GHSA-p98j-92pf-mc4p
+- badge features introduced since the last release as 0.8.0
+- install Keeper CLI without Python and set it up during onboarding
+- stop creating empty database files for mistyped paths
+- page Cassandra results, keep their values exact and report truncated query results
+- render every value type as readable JSON and list foreign keys
+- keep numbers exact between database and grid
+- stop unreadable column types from crashing the app
+- update rustls for RUSTSEC-2026-0285 and audit Rust dependencies in CI
+- allow official extensions on l8db 1.x
+- cut process output at a char boundary
+- hide console windows for git, extension and credential processes
+
+### Weitere Änderungen
+- Fix database versioning metadata and validate native customer rollouts
+- Share database team configuration in Git and validate isolated customer profiles
+
 ## [0.7.167] - 2026-09-30
 
 ### Features
