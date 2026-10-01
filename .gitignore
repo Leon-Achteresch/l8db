@@ -31,6 +31,9 @@ src-tauri/gen/
 .env.*
 !.env.example
 
+# Generated third-party notices
+public/third-party-licenses.txt
+
 # Test artifacts
 coverage/
 test-artifacts/
