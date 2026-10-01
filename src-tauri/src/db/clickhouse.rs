@@ -164,6 +164,7 @@ impl ClickhouseAdapter {
                     ("database", self.database.as_str()),
                     ("default_format", "JSONCompact"),
                     ("output_format_json_quote_64bit_integers", "1"),
+                    ("output_format_json_quote_decimals", "1"),
                 ])
                 .query(extra)
                 .header("X-ClickHouse-User", &self.user)
@@ -223,7 +224,10 @@ impl ClickhouseAdapter {
         let columns = super::unique_column_names(meta.iter().map(|c| text(&c["name"])).collect());
         let wide: Vec<bool> = meta
             .iter()
-            .map(|c| WIDE_INT.iter().any(|w| text(&c["type"]).contains(w)))
+            .map(|c| {
+                let column_type = text(&c["type"]);
+                column_type.contains("Decimal") || WIDE_INT.iter().any(|w| column_type.contains(w))
+            })
             .collect();
         let rows: Vec<Vec<serde_json::Value>> = parsed
             .get("data")
@@ -259,10 +263,8 @@ const WIDE_INT: [&str; 6] = ["Int64", "UInt64", "Int128", "UInt128", "Int256", "
 fn unquote_safe_ints(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
-            if let Ok(n) = s.parse::<i64>() {
-                if n.unsigned_abs() <= (1u64 << 53) {
-                    *value = serde_json::Value::from(n);
-                }
+            if super::exact_number::is_exact_in_js(s) {
+                *value = super::exact_number::decimal(s);
             }
         }
         serde_json::Value::Array(items) => items.iter_mut().for_each(unquote_safe_ints),
@@ -733,6 +735,28 @@ impl DatabaseAdapter for ClickhouseAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unquotes_only_exact_wide_values() {
+        let mut value = serde_json::json!([
+            "42",
+            "12.50",
+            "9007199254740993",
+            "12345678901234567890.12345",
+            "abc"
+        ]);
+        unquote_safe_ints(&mut value);
+        assert_eq!(
+            value,
+            serde_json::json!([
+                42,
+                12.5,
+                "9007199254740993",
+                "12345678901234567890.12345",
+                "abc"
+            ])
+        );
+    }
 
     #[test]
     fn builds_http_base() {

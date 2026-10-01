@@ -18,6 +18,7 @@ pub mod debugger;
 mod duckdb;
 mod dynamodb;
 pub(crate) mod elasticsearch;
+pub(crate) mod exact_number;
 pub mod execution;
 pub mod export;
 pub mod export_formats;

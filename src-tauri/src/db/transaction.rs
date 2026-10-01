@@ -733,7 +733,7 @@ impl TransactionManager {
                     .await
                     .map_err(map_pg_err)?;
                 match rows.first() {
-                    Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+                    Some(row) => Ok(row.get::<_, super::exact_number::ExactJson>(0).0),
                     None => Err("Zeile konnte nicht eingefügt werden".to_string()),
                 }
             }
@@ -814,7 +814,7 @@ impl TransactionManager {
                     .await
                     .map_err(map_pg_err)?;
                 match rows.first() {
-                    Some(row) => Ok(row.get::<_, serde_json::Value>(0)),
+                    Some(row) => Ok(row.get::<_, super::exact_number::ExactJson>(0).0),
                     None => Err("Zeile konnte nicht dupliziert werden".to_string()),
                 }
             }

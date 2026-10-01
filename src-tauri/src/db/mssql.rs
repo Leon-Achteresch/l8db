@@ -183,7 +183,7 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             .map(serde_json::Value::from)
             .unwrap_or(serde_json::Value::Null),
         ColumnData::I64(v) => v
-            .map(serde_json::Value::from)
+            .map(super::exact_number::int)
             .unwrap_or(serde_json::Value::Null),
         ColumnData::F32(v) => v.map(|f| num(f as f64)).unwrap_or(serde_json::Value::Null),
         ColumnData::F64(v) => v.map(num).unwrap_or(serde_json::Value::Null),
