@@ -163,6 +163,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
         <div className="relative flex min-h-0 flex-1 basis-0 flex-col">
           <div
             ref={scrollRef}
+            data-grid-scroll
             style={{ contain: "strict" }}
             className={cn(
               "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
