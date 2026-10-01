@@ -1,6 +1,5 @@
 import { DragDropProvider } from "@dnd-kit/react";
-import { isSortable } from "@dnd-kit/react/sortable";
-import { memo, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
 import { DataTableDraftRow } from "../data-table-draft-row";
@@ -13,6 +12,7 @@ import { DataTableDraftControls } from "./data-table-draft-controls";
 import { DataTableFooter } from "./data-table-footer";
 import { DataTableSearchBar } from "./data-table-search-bar";
 import { EditTargetContext } from "./edit-target-context";
+import { useColumnDragPreview } from "./use-column-drag-preview";
 import { useDataTable } from "./use-data-table";
 
 export const DataTableContent = memo(function DataTableContent(props: DataTableProps) {
@@ -72,6 +72,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     inspectCell,
     isInserting,
     isSaving,
+    keepColumn,
     markedRows,
     matchKeys,
     menuRow,
@@ -109,6 +110,14 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     visibleColumns,
     waveRefs,
   } = useDataTable(props);
+  const columnScope = useId();
+  const dragPreview = useColumnDragPreview({
+    scope: columnScope,
+    scrollRef,
+    visibleColumns,
+    columnWidths,
+    onMove: (from, to) => setOrder(reorderVisibleColumns(order, hidden, from, to)),
+  });
   const editTarget = useMemo(
     () =>
       currentSchema !== undefined && currentTable
@@ -164,15 +173,27 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
             <div className="pb-3">
               <DragDropProvider
                 sensors={headerSensors}
+                onDragStart={(event) => {
+                  const id = event.operation.source?.id;
+                  if (id === undefined) return;
+                  keepColumn(String(id));
+                  dragPreview.start(String(id));
+                }}
+                onDragMove={(event) =>
+                  dragPreview.update(
+                    event.to
+                      ? event.to.x - event.operation.position.initial.x
+                      : event.operation.transform.x,
+                  )
+                }
                 onDragEnd={(event) => {
-                  const { operation, canceled } = event;
-                  if (canceled || !isSortable(operation.source)) return;
-                  const source = operation.source;
-                  if (source.initialIndex === source.index) return;
-                  setOrder(reorderVisibleColumns(order, hidden, source.initialIndex, source.index));
+                  dragPreview.end(event.canceled);
+                  keepColumn(null);
                 }}
               >
+                <style ref={dragPreview.styleRef} />
                 <table
+                  data-column-scope={columnScope}
                   className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
                   style={{ width: tableWidth }}
                 >

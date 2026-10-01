@@ -64,7 +64,11 @@ export function useTableColumnLayout(
 
   const setOrder = useCallback(
     (order: string[]) => {
-      write({ order, hidden: resolved.hidden, pinned: resolved.pinned });
+      write({
+        order,
+        hidden: resolved.hidden,
+        pinned: order.filter((column) => resolved.pinned.includes(column)),
+      });
     },
     [write, resolved.hidden, resolved.pinned],
   );

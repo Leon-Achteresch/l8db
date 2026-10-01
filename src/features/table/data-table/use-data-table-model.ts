@@ -139,8 +139,14 @@ export function useDataTableModel({
   const [menuRow, setMenuRow] = useState<MenuRow | null>(null);
   const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];
-  const { visibleColumns, visibleDataColumns, columnWidths, pinnedIndices, columnWindow } =
-    useVisibleColumns(table, columnSizing, columnPinning, scrollRef);
+  const {
+    visibleColumns,
+    visibleDataColumns,
+    columnWidths,
+    pinnedIndices,
+    columnWindow,
+    keepColumn,
+  } = useVisibleColumns(table, columnSizing, columnPinning, scrollRef);
   return {
     connection,
     layout,
@@ -196,6 +202,7 @@ export function useDataTableModel({
     columnWidths,
     pinnedIndices,
     columnWindow,
+    keepColumn,
     activeCell,
     setActiveCell,
     inspectCell,
