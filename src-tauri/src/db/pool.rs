@@ -8,7 +8,7 @@ use bb8_postgres::PostgresConnectionManager;
 use postgres_native_tls::MakeTlsConnector;
 use tokio::sync::{Mutex, OnceCell};
 
-use super::{connection::tls_connector, SslMode};
+use super::connection::tls_connector;
 
 pub type PgPool = Pool<PostgresConnectionManager<MakeTlsConnector>>;
 
@@ -44,7 +44,7 @@ impl PoolManager {
         &self,
         connection_key: &str,
         config: tokio_postgres::Config,
-        ssl: SslMode,
+        ssl: &super::connection::PgTls,
         pool_use: PoolUse,
     ) -> Result<PgPool, String> {
         let timeout = super::execution::connection_duration();
@@ -249,7 +249,7 @@ mod tests {
             .parse()
             .expect("config");
         manager
-            .get_pool("key", config.clone(), SslMode::Disable, PoolUse::Query)
+            .get_pool("key", config.clone(), &Default::default(), PoolUse::Query)
             .await
             .expect("pool");
         {
@@ -268,7 +268,7 @@ mod tests {
             );
         }
         manager
-            .get_pool("key", config, SslMode::Disable, PoolUse::Query)
+            .get_pool("key", config, &Default::default(), PoolUse::Query)
             .await
             .expect("pool");
         let pools = manager.pools.lock().await;

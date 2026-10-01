@@ -1,12 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { Check, Copy } from "lucide";
-import { BookOpen, Bug, ExternalLink, Info, Terminal } from "lucide-react";
+import { BookOpen, Bug, ExternalLink, Info, Scale, Terminal } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { BugReportDialog, collectDiagnosticText } from "@/features/settings/bug-report-dialog";
+import { OpenSourceLicensesDialog } from "@/features/settings/open-source-licenses-dialog";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { UpdateSection } from "@/features/settings/update-section";
 import { copyText } from "@/lib/clipboard";
@@ -15,6 +16,7 @@ import { useSettingsStore } from "@/lib/settings";
 export function SettingsAboutTab() {
   const [copied, setCopied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [licensesOpen, setLicensesOpen] = useState(false);
   const crashReports = useSettingsStore((s) => s.crashReports);
   const setCrashReports = useSettingsStore((s) => s.setCrashReports);
   const usageMetrics = useSettingsStore((s) => s.usageMetrics);
@@ -65,6 +67,18 @@ export function SettingsAboutTab() {
           </Link>
         </Button>
       </SettingsRow>
+
+      <SettingsRow
+        title="Open-Source-Lizenzen"
+        description="l8db ist Open Source unter der Apache License 2.0. Lizenzen aller enthaltenen Komponenten anzeigen."
+        featureId="settings.about.open-source-licenses"
+      >
+        <Button variant="outline" size="sm" onClick={() => setLicensesOpen(true)}>
+          <Scale className="size-3.5" />
+          <span>Lizenzen anzeigen</span>
+        </Button>
+      </SettingsRow>
+      <OpenSourceLicensesDialog open={licensesOpen} onOpenChange={setLicensesOpen} />
 
       <UpdateSection />
 

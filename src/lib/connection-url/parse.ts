@@ -133,7 +133,8 @@ export function sslModeFromUrl(value: string): SslMode {
     if (encrypt) {
       if (["false", "no", "0", "disable", "disabled", "optional"].includes(encrypt))
         return "disable";
-      return "require";
+      const trust = params.get("trustservercertificate") ?? params.get("trust_server_certificate");
+      return ["true", "yes", "1"].includes(trust?.toLowerCase() ?? "") ? "require" : "verify-full";
     }
   } catch {
     return "prefer";

@@ -34,6 +34,10 @@ unterdrückt; `cargo audit` meldet sie weiterhin:
 | [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html) | `glib` 0.18 über den Linux-GTK-Unterbau | Die korrigierte Major-Version erfordert eine entsprechende Umstellung im Tauri/GTK-Unterbau. |
 | [RUSTSEC-2026-0097](https://rustsec.org/advisories/RUSTSEC-2026-0097.html) | `rand` 0.7 über `winauth` | Windows Integrated Authentication bindet die alte Version transitiv ein. |
 
+Die CI führt `cargo audit` aus und ignoriert dabei ausschließlich RUSTSEC-2023-0071, weil
+dafür kein Patch existiert. Die übrigen Einträge sind Warnungen (unsound/unmaintained) und
+lassen den Lauf nicht scheitern; jede neue Schwachstelle bricht die CI ab.
+
 Zusätzlich bestehen Wartungshinweise zu `paste`, `proc-macro-error` und den
 `unic-*`-Paketen aus transitiven Abhängigkeiten. Neue Upstream-Versionen erneut mit
 `cargo audit` prüfen. Diese Liste ist keine pauschale Risikoakzeptanz und kein

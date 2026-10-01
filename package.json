@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Fast, native desktop client for PostgreSQL and other databases.",
   "author": "Leon Achteresch",
-  "license": "Elastic-2.0",
+  "license": "Apache-2.0",
   "homepage": "https://github.com/Leon-Achteresch/l8db",
   "repository": {
     "type": "git",
@@ -34,6 +34,7 @@
     "changelog": "node .github/scripts/generate-changelog.mjs",
     "extension": "bun packages/extension-sdk/src/cli.ts",
     "production:check": "node scripts/production-check.mjs",
+    "licenses": "node scripts/third-party-licenses.mjs",
     "feature-videos:record": "bun scripts/feature-videos/record.ts",
     "feature-videos:plan": "bun scripts/feature-videos/publish.ts plan",
     "feature-videos:cleanup": "bun scripts/feature-videos/publish.ts cleanup"

@@ -213,6 +213,7 @@ pub fn records_to_result(records: &[u8], elapsed_ms: u64) -> QueryResult {
         rows,
         rows_affected: None,
         execution_time_ms: elapsed_ms,
+        truncated: false,
     }
 }
 
@@ -253,6 +254,7 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
                     .collect(),
                 rows_affected: None,
                 execution_time_ms: elapsed(start),
+                truncated: false,
             })
         }
         Statement::List { bucket, prefix } => {
@@ -287,6 +289,7 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
                 rows,
                 rows_affected: None,
                 execution_time_ms: elapsed(start),
+                truncated: false,
             })
         }
         Statement::Select {
