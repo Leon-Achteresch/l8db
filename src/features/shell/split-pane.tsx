@@ -47,9 +47,9 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const navigate = useNavigate();
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
-  const setPaneTable = useSplitView((state) => state.setPaneTable);
+  const setPaneTab = useSplitView((state) => state.setPaneTab);
   const openTab = useTableTabs((state) => state.openTab);
-  const remote = tab?.kind === "table" && Boolean(tab.connectionId);
+  const remote = Boolean(tab?.connectionId);
   const key = tab ? tabKey(tab) : `split-detail:${index}`;
   const masterKey = useSplitView((state) => {
     const master = state.masters[index];
@@ -94,14 +94,19 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
         }
       }
     }
-    if (tab?.kind !== "table") {
+    if (tab?.kind !== "table" && !remote) {
       setPaneConnection(key, id);
       if (!focused && tab) navigateToTab(navigate, tab);
       onFocus();
       return;
     }
+    if (tab?.kind !== "table") {
+      setPaneTab(index, null, null);
+      setPaneConnection(`split-detail:${index}`, id);
+      return;
+    }
     if (!id) openTab(tab);
-    setPaneTable(index, id, tab);
+    setPaneTab(index, id, tab);
     if (!id) navigateToTab(navigate, { ...tab, connectionId: undefined });
   };
 
@@ -229,7 +234,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
             <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
               <p className="max-w-56 text-center text-sm text-muted-foreground">
                 {override
-                  ? `Tabelle von ${override.name} in der Sidebar wählen.`
+                  ? `Objekt von ${override.name} in der Sidebar wählen.`
                   : "Tab hierher ziehen oder in der Sidebar öffnen."}
               </p>
             </div>

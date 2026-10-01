@@ -4,6 +4,7 @@ import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export interface SidebarRoleListProps {
@@ -16,6 +17,7 @@ export interface SidebarRoleListProps {
 export function SidebarRoleList({ items, isLoading, isError, error }: SidebarRoleListProps) {
   const navigate = useNavigate();
   const openRoleTab = useTableTabs((state) => state.openRoleTab);
+  const target = usePaneTabTarget();
 
   if (isLoading) {
     return (
@@ -40,6 +42,10 @@ export function SidebarRoleList({ items, isLoading, isError, error }: SidebarRol
         <SidebarMenuItem key={items[index].name}>
           <SidebarMenuButton
             onClick={() => {
+              if (target) {
+                target.open({ kind: "role", name: items[index].name });
+                return;
+              }
               openRoleTab({ name: items[index].name });
               navigate({
                 to: "/users/$name",

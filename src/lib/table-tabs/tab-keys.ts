@@ -1,12 +1,17 @@
 import type { Tab, TableTab } from "./types";
 
 const REMOTE_PREFIX = "remote:";
+const REMOTE_TAB_PREFIX = "remote-tab:";
 
 export function tabKey(tab: Tab): string {
   if (tab.kind === "table")
     return tab.connectionId
       ? `${REMOTE_PREFIX}${JSON.stringify([tab.connectionId, tab.schema, tab.table, tab.entityType ?? "table"])}`
       : `table:${tab.schema}.${tab.table}`;
+  if (tab.connectionId) {
+    const { connectionId, ...local } = tab;
+    return `${REMOTE_TAB_PREFIX}${JSON.stringify([connectionId, local])}`;
+  }
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
   if (tab.kind === "procedure") return `procedure:${tab.oid}`;
@@ -26,6 +31,16 @@ export function remoteTableTab(key: string | null | undefined): TableTab | null 
   try {
     const [connectionId, schema, table, entityType] = JSON.parse(key.slice(REMOTE_PREFIX.length));
     return { kind: "table", schema, table, entityType, connectionId };
+  } catch {
+    return null;
+  }
+}
+
+export function remoteTab(key: string | null | undefined): Tab | null {
+  if (!key?.startsWith(REMOTE_TAB_PREFIX)) return remoteTableTab(key);
+  try {
+    const [connectionId, local] = JSON.parse(key.slice(REMOTE_TAB_PREFIX.length));
+    return { ...local, connectionId };
   } catch {
     return null;
   }

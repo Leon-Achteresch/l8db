@@ -22,6 +22,7 @@ import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import { useActiveConnection } from "@/lib/connections";
 import { createMaterializedView } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function SidebarMatviewList({
@@ -40,6 +41,7 @@ export function SidebarMatviewList({
   const [query, setQuery] = useState("");
   const [withData, setWithData] = useState(true);
   const [saving, setSaving] = useState(false);
+  const paneTarget = usePaneTabTarget();
 
   const handleCreate = async () => {
     if (!activeConnection || !name.trim() || !query.trim()) return;
@@ -67,6 +69,8 @@ export function SidebarMatviewList({
       setSaving(false);
     }
   };
+
+  if (paneTarget) return null;
 
   return (
     <div className="mt-2">

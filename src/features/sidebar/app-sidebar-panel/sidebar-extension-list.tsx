@@ -3,6 +3,7 @@ import { PackageIcon, SearchIcon } from "lucide-react";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useTableTabs } from "@/lib/table-tabs";
 
 export interface SidebarExtensionListProps {
@@ -20,6 +21,7 @@ export function SidebarExtensionList({
 }: SidebarExtensionListProps) {
   const navigate = useNavigate();
   const openExtensionTab = useTableTabs((state) => state.openExtensionTab);
+  const target = usePaneTabTarget();
 
   if (isLoading) {
     return (
@@ -35,6 +37,9 @@ export function SidebarExtensionList({
   }
 
   if (!items || items.length === 0) {
+    if (target) {
+      return <p className="py-1 text-sm text-muted-foreground">Keine Packages gefunden.</p>;
+    }
     return (
       <SidebarMenu>
         <SidebarMenuItem>
@@ -49,16 +54,22 @@ export function SidebarExtensionList({
 
   return (
     <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
-          <SearchIcon className="text-muted-foreground" />
-          <span className="truncate">Extensions durchsuchen</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
+      {target ? null : (
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={() => navigate({ to: "/available-extensions" })}>
+            <SearchIcon className="text-muted-foreground" />
+            <span className="truncate">Extensions durchsuchen</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
       {items.map((item) => (
         <SidebarMenuItem key={item.name}>
           <SidebarMenuButton
             onClick={() => {
+              if (target) {
+                target.open({ kind: "extension", name: item.name });
+                return;
+              }
               openExtensionTab({ name: item.name });
               navigate({
                 to: "/extensions/$name",

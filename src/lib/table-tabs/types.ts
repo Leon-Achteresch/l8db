@@ -59,7 +59,7 @@ export type ToolTab = {
   title?: string;
   compare?: CompareWorkspace;
 };
-export type Tab =
+export type Tab = (
   | TableTab
   | QueryTab
   | FunctionTab
@@ -72,7 +72,8 @@ export type Tab =
   | AlterTableTab
   | PackageTab
   | BucketTab
-  | ToolTab;
+  | ToolTab
+) & { connectionId?: string };
 
 export type ClosedTab = Tab & {
   recoveryId?: string;

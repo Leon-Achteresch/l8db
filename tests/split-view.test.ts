@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { useConnectionsStore } = await import("../src/lib/connections");
-const { remoteTableTab, tabKey, useTableTabs } = await import("../src/lib/table-tabs");
+const { remoteTab, remoteTableTab, tabKey, useTableTabs } = await import("../src/lib/table-tabs");
 const { MAX_SPLIT_PANES, useSplitView } = await import("../src/lib/split-view");
 
 await useConnectionsStore.persist.rehydrate();
@@ -233,7 +233,9 @@ describe("Verbindung pro Bereich", () => {
 
     useSplitView.getState().addPane(users);
     useSplitView.getState().setPaneConnection("split-detail:1", b.id);
-    useSplitView.getState().setPaneTable(1, b.id, { schema: "public", table: "users" });
+    useSplitView
+      .getState()
+      .setPaneTab(1, b.id, { kind: "table", schema: "public", table: "users" });
     expect(useSplitView.getState().panes).toEqual([users, remoteUsers]);
     expect(useSplitView.getState().paneConnections).toEqual({});
 
@@ -244,12 +246,58 @@ describe("Verbindung pro Bereich", () => {
     expect(useSplitView.getState().panes).toEqual([orders, remoteUsers]);
     expect(useSplitView.getState().focusedPane).toBe(0);
 
-    useSplitView.getState().setPaneTable(0, b.id, { schema: "public", table: "users" });
+    useSplitView
+      .getState()
+      .setPaneTab(0, b.id, { kind: "table", schema: "public", table: "users" });
     expect(useSplitView.getState().panes).toEqual([orders, remoteUsers]);
     expect(useSplitView.getState().focusedPane).toBe(1);
 
-    useSplitView.getState().setPaneTable(1, null, { schema: "public", table: "users" });
+    useSplitView
+      .getState()
+      .setPaneTab(1, null, { kind: "table", schema: "public", table: "users" });
     expect(useSplitView.getState().panes).toEqual([orders, users]);
+  });
+
+  test("Bereich einer anderen Verbindung zeigt auch Packages und Funktionen", () => {
+    const a = addConnection("A");
+    const b = addConnection("B");
+    useConnectionsStore.getState().setActiveId(a.id);
+    useTableTabs.getState().openTab({ schema: "public", table: "users" });
+    const users = tabKey({ kind: "table", schema: "public", table: "users" });
+    useSplitView.getState().addPane(users);
+
+    useSplitView.getState().setPaneTab(1, b.id, { kind: "package", schema: "HR", name: "PAYROLL" });
+    const key = useSplitView.getState().panes[1];
+    expect(remoteTableTab(key)).toBeNull();
+    expect(remoteTab(key)).toEqual({
+      kind: "package",
+      schema: "HR",
+      name: "PAYROLL",
+      connectionId: b.id,
+    });
+    const parsed = remoteTab(key);
+    expect(parsed && tabKey(parsed)).toBe(key);
+
+    useTableTabs.getState().openTab({ schema: "public", table: "orders" });
+    expect(useSplitView.getState().panes).toEqual([users, key]);
+
+    useSplitView.getState().setPaneTab(0, b.id, { kind: "package", schema: "HR", name: "PAYROLL" });
+    expect(useSplitView.getState().panes).toEqual([users, key]);
+    expect(useSplitView.getState().focusedPane).toBe(1);
+
+    useSplitView
+      .getState()
+      .setPaneTab(1, b.id, { kind: "function", schema: "public", name: "f", oid: "42" });
+    expect(remoteTab(useSplitView.getState().panes[1])).toEqual({
+      kind: "function",
+      schema: "public",
+      name: "f",
+      oid: "42",
+      connectionId: b.id,
+    });
+
+    useSplitView.getState().setPaneTab(1, null, null);
+    expect(useSplitView.getState().panes).toEqual([users, null]);
   });
 });
 

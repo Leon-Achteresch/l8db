@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { CompareObjectMenuItem } from "@/features/sidebar/compare-object-menu-item";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { SidebarWindow } from "@/features/sidebar/sidebar-window";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 
 export interface SidebarSequenceListProps {
   items: { schema: string; name: string }[] | undefined;
@@ -21,6 +22,7 @@ export function SidebarSequenceList({
   error,
 }: SidebarSequenceListProps) {
   const navigate = useNavigate();
+  const target = usePaneTabTarget();
 
   if (isLoading) {
     return (
@@ -47,7 +49,13 @@ export function SidebarSequenceList({
           <SidebarMenuItem key={`${item.schema}.${item.name}`}>
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <SidebarMenuButton onClick={() => navigate({ to: "/sequences" })}>
+                <SidebarMenuButton
+                  onClick={() =>
+                    target
+                      ? target.open({ kind: "tool", tool: "sequences" })
+                      : navigate({ to: "/sequences" })
+                  }
+                >
                   <ListOrderedIcon className="text-muted-foreground" />
                   <span className="truncate">{item.name}</span>
                 </SidebarMenuButton>

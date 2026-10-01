@@ -20,6 +20,7 @@ import { SidebarWindow } from "@/features/sidebar/sidebar-window";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isFunctionInvalid, isPackageInvalid } from "@/lib/invalid-objects";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { packageOid } from "@/lib/plsql";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
@@ -68,6 +69,7 @@ export function SidebarFunctionList({
   const navigate = useNavigate();
   const openFunctionTab = useTableTabs((state) => state.openFunctionTab);
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
+  const target = usePaneTabTarget();
   const caps = useActiveCapabilities();
   const { compile } = useCompileObject();
   const [copyTarget, setCopyTarget] = useState<{
@@ -123,6 +125,19 @@ export function SidebarFunctionList({
                   <ContextMenuTrigger asChild>
                     <SidebarMenuButton
                       onClick={() => {
+                        if (target) {
+                          target.open(
+                            item.return_type === "PACKAGE"
+                              ? { kind: "package", schema: item.schema, name: item.name }
+                              : {
+                                  kind: "function",
+                                  schema: item.schema,
+                                  name: item.name,
+                                  oid: item.oid,
+                                },
+                          );
+                          return;
+                        }
                         if (item.return_type === "PACKAGE") {
                           openPackageTab({ schema: item.schema, name: item.name });
                           navigate({

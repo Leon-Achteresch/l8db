@@ -21,6 +21,7 @@ import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { copyText } from "@/lib/clipboard";
 import { s3ListBuckets } from "@/lib/db";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { useTableTabs } from "@/lib/table-tabs";
 import { CreateBucketDialog } from "./create-bucket-dialog";
 import { DeleteBucketDialog } from "./delete-bucket-dialog";
@@ -29,6 +30,7 @@ import { formatDate, useStorageConnection } from "./use-storage-connection";
 export function SidebarBucketList() {
   const { connection, url, readOnly } = useStorageConnection();
   const navigate = useNavigate();
+  const target = usePaneTabTarget();
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -40,6 +42,10 @@ export function SidebarBucketList() {
   });
 
   function open(bucket: string) {
+    if (target) {
+      target.open({ kind: "bucket", bucket });
+      return;
+    }
     useTableTabs.getState().openBucketTab({ bucket });
     void navigate({ to: "/buckets/$bucket", params: { bucket } });
   }

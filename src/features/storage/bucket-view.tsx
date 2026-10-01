@@ -2,6 +2,7 @@ import { ArchiveIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTableTabs } from "@/lib/table-tabs";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 import { BucketSettings } from "./bucket-settings";
 import { MultipartUploads } from "./multipart-uploads";
 import { ObjectBrowser } from "./object-browser";
@@ -10,11 +11,12 @@ import { useStorageConnection } from "./use-storage-connection";
 export function BucketView({ bucket }: { bucket: string }) {
   const { connection } = useStorageConnection();
   const openBucketTab = useTableTabs((state) => state.openBucketTab);
+  const pane = useWorkspacePane();
   const [tab, setTab] = useState("objects");
 
   useEffect(() => {
-    openBucketTab({ bucket });
-  }, [bucket, openBucketTab]);
+    if (!pane) openBucketTab({ bucket });
+  }, [bucket, openBucketTab, pane]);
 
   if (!connection) {
     return (

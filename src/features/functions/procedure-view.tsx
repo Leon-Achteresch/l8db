@@ -26,6 +26,7 @@ import {
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface ProcedureViewProps {
   schema: string;
@@ -38,6 +39,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const connection = useActiveConnection();
   const capabilities = useActiveCapabilities();
   const openProcedureTab = useTableTabs((state) => state.openProcedureTab);
+  const pane = useWorkspacePane();
   const { data, isLoading, isError, error } = useFunctionDefinitionQuery(oid ?? "");
   const procedures = useProceduresQuery();
   const { compile, state: compileState } = useCompileObject();
@@ -57,10 +59,10 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   const [runOpen, setRunOpen] = useState(false);
 
   useEffect(() => {
-    if (oid) {
+    if (oid && !pane) {
       openProcedureTab({ schema, name, oid });
     }
-  }, [schema, name, oid, openProcedureTab]);
+  }, [schema, name, oid, openProcedureTab, pane]);
 
   const current = procedures.data?.find((item) => item.oid === oid);
   const identityArgs = current?.identity_args ?? "";
