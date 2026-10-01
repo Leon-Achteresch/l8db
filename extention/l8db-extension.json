@@ -5,7 +5,7 @@
   "description": "Optionale BYOK-Diagnose für EXPLAIN-Pläne mit TypeSafe Jev. Überträgt nur freigegebene Strukturmerkmale.",
   "publisher": "l8db",
   "engines": {
-    "l8db": ">=0.6.0 <1.0.0",
+    "l8db": ">=0.6.0 <2.0.0",
     "api": "^1.1.0"
   },
   "main": "dist/extension.js",
