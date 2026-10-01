@@ -15,6 +15,8 @@ mock.module("@tauri-apps/api/core", () => ({
   Resource: class {},
   Channel: class {},
   transformCallback: () => 0,
+  addPluginListener: async () => ({ unregister: async () => {} }),
+  PluginListener: class {},
 }));
 
 Object.defineProperty(globalThis, "window", {

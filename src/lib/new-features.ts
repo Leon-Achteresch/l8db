@@ -17,7 +17,7 @@ export const NEW_FEATURES = {
   "settings.about.usage-metrics": "0.7.0",
   "settings.about.open-source-licenses": "0.8.0",
   "connections.baas": "0.7.0",
-  "connections.open-window": "0.7.0",
+  "connections.open-window": "0.8.0",
   "baas.supabase": "0.7.0",
   "baas.supabase.project-key-import": "0.7.0",
   "baas.supabase.database": "0.7.0",
