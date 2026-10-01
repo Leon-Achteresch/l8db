@@ -7,11 +7,16 @@ use scylla::response::{PagingState, PagingStateResponse};
 use scylla::statement::Statement;
 use scylla::value::{CqlValue, Row};
 
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::DigitallySignedStruct;
+
 use super::pool::PoolState;
 use super::{
     hex_blob, rows_to_objects, timed, unsupported, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo,
-    IndexInfo, QueryResult, RowCount, TableData, TableInfo,
+    IndexInfo, QueryResult, RowCount, SslMode, TableData, TableInfo,
 };
 
 const PAGE_SIZE: i32 = 1000;
@@ -21,6 +26,7 @@ pub struct CassandraAdapter {
     nodes: Vec<String>,
     user: Option<(String, String)>,
     keyspace: Option<String>,
+    tls: CassandraTls,
     pool_state: PoolState,
     key: String,
 }
@@ -35,6 +41,127 @@ fn lit(value: &str) -> String {
 
 fn map_err<E: std::fmt::Display>(e: E) -> String {
     format!("Cassandra: {e}")
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct CassandraTls {
+    mode: SslMode,
+    host: String,
+    root_cert: Option<String>,
+    cert: Option<String>,
+    key: Option<String>,
+}
+
+#[derive(Debug)]
+struct HostVerifier {
+    inner: Arc<dyn ServerCertVerifier>,
+    host: Option<ServerName<'static>>,
+    verify_chain: bool,
+}
+
+impl ServerCertVerifier for HostVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        if !self.verify_chain {
+            return Ok(ServerCertVerified::assertion());
+        }
+        let name = self.host.clone().unwrap_or_else(|| server_name.to_owned());
+        match self
+            .inner
+            .verify_server_cert(end_entity, intermediates, &name, ocsp, now)
+        {
+            Err(rustls::Error::InvalidCertificate(
+                rustls::CertificateError::NotValidForName
+                | rustls::CertificateError::NotValidForNameContext { .. },
+            )) if self.host.is_none() => Ok(ServerCertVerified::assertion()),
+            other => other,
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.inner.supported_verify_schemes()
+    }
+}
+
+impl CassandraTls {
+    fn client_config(&self) -> Result<Arc<rustls::ClientConfig>, String> {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let tls_err = |e: rustls::Error| format!("Cassandra-TLS: {e}");
+        let inner: Arc<dyn ServerCertVerifier> = match &self.root_cert {
+            Some(path) => {
+                let mut roots = rustls::RootCertStore::empty();
+                for cert in CertificateDer::pem_file_iter(path)
+                    .map_err(|e| format!("sslrootcert konnte nicht gelesen werden ({path}): {e}"))?
+                {
+                    roots
+                        .add(cert.map_err(|e| format!("sslrootcert ist ungültig: {e}"))?)
+                        .map_err(tls_err)?;
+                }
+                rustls::client::WebPkiServerVerifier::builder_with_provider(
+                    Arc::new(roots),
+                    provider.clone(),
+                )
+                .build()
+                .map_err(|e| format!("Cassandra-TLS: {e}"))?
+            }
+            None => Arc::new(
+                rustls_platform_verifier::Verifier::new(provider.clone()).map_err(tls_err)?,
+            ),
+        };
+        let verifier = HostVerifier {
+            inner,
+            host: (self.mode == SslMode::VerifyFull)
+                .then(|| ServerName::try_from(self.host.clone()).ok())
+                .flatten(),
+            verify_chain: match self.mode {
+                SslMode::VerifyCa | SslMode::VerifyFull => true,
+                SslMode::Require => self.root_cert.is_some(),
+                SslMode::Prefer | SslMode::Disable => false,
+            },
+        };
+        let builder = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(tls_err)?
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(verifier));
+        let config = match (&self.cert, &self.key) {
+            (Some(cert), Some(key)) => {
+                let chain = CertificateDer::pem_file_iter(cert)
+                    .and_then(|certs| certs.collect::<Result<Vec<_>, _>>())
+                    .map_err(|e| format!("sslcert konnte nicht gelesen werden ({cert}): {e}"))?;
+                let key = PrivateKeyDer::from_pem_file(key)
+                    .map_err(|e| format!("sslkey konnte nicht gelesen werden ({key}): {e}"))?;
+                builder.with_client_auth_cert(chain, key).map_err(tls_err)?
+            }
+            (None, None) => builder.with_no_client_auth(),
+            _ => return Err("sslcert und sslkey müssen gemeinsam angegeben werden".into()),
+        };
+        Ok(Arc::new(config))
+    }
 }
 
 fn value_to_json(value: Option<CqlValue>) -> serde_json::Value {
@@ -141,15 +268,31 @@ impl CassandraAdapter {
         let host = url.host_str().ok_or("Host fehlt")?;
         let port = url.port().unwrap_or(9042);
         let mut nodes = vec![format!("{host}:{port}")];
+        let mut tls = CassandraTls {
+            host: host.trim_matches(['[', ']']).to_string(),
+            ..CassandraTls::default()
+        };
         for (k, v) in url.query_pairs() {
-            if k == "nodes" || k == "hosts" {
-                nodes.extend(v.split(',').map(|n| {
+            let text = || Some(v.to_string()).filter(|v| !v.is_empty());
+            match k.as_ref() {
+                "nodes" | "hosts" => nodes.extend(v.split(',').map(|n| {
                     if n.contains(':') {
                         n.to_string()
                     } else {
                         format!("{n}:{port}")
                     }
-                }));
+                })),
+                "sslmode" => {
+                    tls.mode = serde_json::from_value(serde_json::Value::String(v.to_string()))
+                        .map_err(|_| "Ungültiger SSL-Modus".to_string())?
+                }
+                "ssl" | "tls" if matches!(v.as_ref(), "true" | "1") => {
+                    tls.mode = tls.mode.max(SslMode::Require)
+                }
+                "sslrootcert" => tls.root_cert = text(),
+                "sslcert" => tls.cert = text(),
+                "sslkey" => tls.key = text(),
+                _ => {}
             }
         }
         let user = if url.username().is_empty() {
@@ -165,6 +308,7 @@ impl CassandraAdapter {
             nodes,
             user,
             keyspace,
+            tls,
             pool_state,
             key,
         })
@@ -173,6 +317,10 @@ impl CassandraAdapter {
     async fn session(&self) -> Result<Arc<Session>, String> {
         let (nodes, user, keyspace) =
             (self.nodes.clone(), self.user.clone(), self.keyspace.clone());
+        let tls = match self.tls.mode {
+            SslMode::Disable | SslMode::Prefer => None,
+            _ => Some(self.tls.client_config()?),
+        };
         self.pool_state
             .shared(
                 &format!(
@@ -190,6 +338,7 @@ impl CassandraAdapter {
                     if let Some(ks) = keyspace {
                         builder = builder.use_keyspace(ks, true);
                     }
+                    let builder = builder.tls_context(tls);
                     super::execution::connect(async { builder.build().await.map_err(map_err) })
                         .await
                 },
@@ -654,6 +803,57 @@ impl DatabaseAdapter for CassandraAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_tls_modes() {
+        let dir = std::env::var("L8DB_E2E_PG_TLS_DIR").unwrap_or_else(|_| "/tmp/l8db-pgtls".into());
+        let connect = |host: &str, query: String| {
+            let url = format!("cassandra://{host}:9042?{query}");
+            async move {
+                CassandraAdapter::new(&url, crate::db::pool::create_pool_state(), url.clone())?
+                    .test_connection()
+                    .await
+            }
+        };
+        let ca = format!("sslrootcert={dir}/ca.pem");
+        assert_eq!(connect("127.0.0.1", "sslmode=require".into()).await, Ok(()));
+        assert_eq!(connect("127.0.0.1", "ssl=true".into()).await, Ok(()));
+        assert!(connect("127.0.0.1", "sslmode=disable".into())
+            .await
+            .is_err());
+        assert!(connect("localhost", "sslmode=verify-full".into())
+            .await
+            .is_err());
+        assert_eq!(
+            connect("localhost", format!("sslmode=verify-full&{ca}")).await,
+            Ok(())
+        );
+        assert!(connect("127.0.0.1", format!("sslmode=verify-full&{ca}"))
+            .await
+            .is_err());
+        assert_eq!(
+            connect("127.0.0.1", format!("sslmode=verify-ca&{ca}")).await,
+            Ok(())
+        );
+        assert_eq!(
+            connect(
+                "localhost",
+                format!(
+                    "sslmode=verify-full&{ca}&sslcert={dir}/client.pem&sslkey={dir}/client.key"
+                )
+            )
+            .await,
+            Ok(())
+        );
+        assert!(connect(
+            "127.0.0.1",
+            format!("sslmode=require&sslcert={dir}/client.pem")
+        )
+        .await
+        .unwrap_err()
+        .contains("gemeinsam"));
+    }
 
     #[tokio::test]
     #[ignore]
