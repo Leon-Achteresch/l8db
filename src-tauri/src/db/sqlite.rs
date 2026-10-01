@@ -57,10 +57,23 @@ pub fn file_path(connection_string: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
+pub fn existing_file_path(connection_string: &str) -> Result<String, String> {
+    let path = file_path(connection_string)?;
+    if path == ":memory:"
+        || std::path::Path::new(&path).exists()
+        || connection_string.contains("mode=rwc")
+    {
+        return Ok(path);
+    }
+    Err(format!(
+        "Datenbankdatei nicht gefunden: {path}. Für eine neue Datenbank „?mode=rwc“ an den Pfad anhängen."
+    ))
+}
+
 fn value_to_json(value: ValueRef<'_>) -> serde_json::Value {
     match value {
         ValueRef::Null => serde_json::Value::Null,
-        ValueRef::Integer(i) => serde_json::Value::from(i),
+        ValueRef::Integer(i) => super::exact_number::int(i),
         ValueRef::Real(f) => serde_json::Number::from_f64(f)
             .map(serde_json::Value::Number)
             .unwrap_or_else(|| serde_json::Value::String(f.to_string())),
@@ -129,7 +142,7 @@ impl SqliteAdapter {
         key: String,
     ) -> Result<Self, String> {
         Ok(Self {
-            path: file_path(connection_string)?,
+            path: existing_file_path(connection_string)?,
             pool_state,
             key,
         })
@@ -210,6 +223,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: rows_to_objects(&columns, rows),
                 rows_affected: None,
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Ok(mut stmt) => {
@@ -219,6 +233,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: vec![],
                 rows_affected: Some(affected as u64),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Err(rusqlite::Error::MultipleStatement) => {
@@ -228,6 +243,7 @@ fn run_query(c: &Connection, sql: &str) -> Result<QueryResult, String> {
                 rows: vec![],
                 rows_affected: Some(c.changes()),
                 execution_time_ms: start.elapsed().as_millis() as u64,
+                truncated: false,
             })
         }
         Err(e) => Err(map_err(e)),
@@ -888,6 +904,20 @@ mod catalog;
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn missing_files_are_only_created_on_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("typo.sqlite");
+        let err = existing_file_path(&format!("sqlite://{}", path.display())).unwrap_err();
+        assert!(err.contains("nicht gefunden"));
+        assert!(!path.exists());
+        assert_eq!(
+            existing_file_path(&format!("sqlite://{}?mode=rwc", path.display())).unwrap(),
+            path.display().to_string()
+        );
+        assert_eq!(existing_file_path("sqlite::memory:").unwrap(), ":memory:");
+    }
 
     fn adapter() -> SqliteAdapter {
         SqliteAdapter::new(":memory:", create_pool_state(), "test".to_string()).unwrap()

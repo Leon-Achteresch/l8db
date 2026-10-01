@@ -1786,7 +1786,7 @@ impl Reader {
             Box::new(
                 import::PgTx::open_with(
                     &config,
-                    ssl,
+                    &ssl,
                     "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
                 )
                 .await?,

@@ -19,7 +19,7 @@ fn request(schema: &str, table: &str) -> TransactionTableRead {
 async fn sqlite_reads_see_pending_changes_and_preserve_keys() {
     let path = std::env::temp_dir().join(format!("l8db-tx-read-{}.sqlite", std::process::id()));
     let _ = std::fs::remove_file(&path);
-    let url = format!("sqlite://{}", path.display());
+    let url = format!("sqlite://{}?mode=rwc", path.display());
     let pool = create_pool_state();
     let adapter =
         create_adapter_from_string(DatabaseKind::Sqlite, &url, None, pool.clone()).unwrap();

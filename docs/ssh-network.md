@@ -25,6 +25,26 @@ Secrets never enter localStorage. Keychain accounts per connection: `<id>` (data
 
 "Aus ~/.ssh/config übernehmen" reads `Host` blocks (`HostName`, `User`, `Port`, `IdentityFile`, `IdentityAgent`, `ProxyJump`, `Host *` defaults). Aliases in `ProxyJump` are resolved against other blocks. `Include`, `Match` and wildcard host patterns are ignored.
 
+## TLS
+
+`sslmode` follows libpq for every SQL family that supports TLS:
+
+| Mode | Encrypted | Certificate chain | Hostname |
+|---|---|---|---|
+| `disable` | no | – | – |
+| `prefer` | if the server offers it | not checked | not checked |
+| `require` | yes | only checked when `sslrootcert` is set | not checked |
+| `verify-ca` | yes | checked | not checked |
+| `verify-full` | yes | checked | checked |
+
+Without `sslrootcert` the OS trust store is used. With `sslrootcert` only that CA (PEM) is trusted.
+
+- **PostgreSQL**: `sslrootcert`, `sslcert` + `sslkey` (PKCS#8 PEM) or `sslcert=<file>.p12` + `sslpassword`. `schema=`/`currentSchema=` become `search_path`; client-only parameters (e.g. Prisma's `pgbouncer`, `connection_limit`) are dropped. `pg_dump`/`pg_restore` get `PGSSLROOTCERT`, `PGSSLCERT`, `PGSSLKEY`.
+- **MySQL/MariaDB**: `sslrootcert` (alias `ssl-ca`), client certificates as PKCS#12 (`sslcert=<file>.p12`, `sslpassword`). `prefer` falls back to plaintext only when the server has no TLS; `require` then fails. JDBC parameters (`useSSL`, `requireSSL`, `verifyServerCertificate`, `serverTimezone`, …) are accepted, unknown ones are ignored. `enable_cleartext_plugin=true` enables the cleartext auth plugin (PAM/LDAP, AWS IAM tokens over TLS).
+- **SQL Server**: `sslmode` as above, CA via `sslrootcert` or `TrustServerCertificateCA`. ADO-style `encrypt=true` keeps verifying the certificate unless `TrustServerCertificate=true`.
+- **Cassandra/ScyllaDB**: TLS is opt-in via `sslmode=require|verify-ca|verify-full` or `ssl=true`; `prefer` stays plaintext because CQL has no TLS negotiation. Hostname checks use the host from the URL, not the node IP. Client certificates via `sslcert` + `sslkey` (PEM).
+- **SQLite/DuckDB**: a missing file is an error; append `?mode=rwc` to create a new database file.
+
 ## Limitations
 
 - SSH host certificates are rejected (host keys only), as before.

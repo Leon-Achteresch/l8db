@@ -240,7 +240,7 @@ mod tests {
     async fn compare_large_filtered_and_cancelled() {
         let url = std::env::var("L8DB_E2E_PG_URL").expect("PostgreSQL lab required");
         let (config, ssl) = crate::db::connection::parse_connection(&url, None).unwrap();
-        let client = execution::connect_postgres(&config, ssl).await.unwrap();
+        let client = execution::connect_postgres(&config, &ssl).await.unwrap();
         client.batch_execute("DROP TABLE IF EXISTS compare_left, compare_right; CREATE TABLE compare_left AS SELECT n AS a, 'key'::text AS b, 'same'::text AS value FROM generate_series(1,100000) n; CREATE TABLE compare_right AS TABLE compare_left; UPDATE compare_right SET value = 'changed' WHERE a = 50000").await.unwrap();
         let side = |table: &str| CompareSide {
             connection_string: url.clone(),

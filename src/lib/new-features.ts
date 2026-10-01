@@ -2,19 +2,20 @@ import { useSyncExternalStore } from "react";
 import { version as appVersion } from "../../package.json";
 
 export const NEW_FEATURES = {
-  "versioning.overview": "0.7.0",
-  "versioning.branches.swimlanes": "0.7.0",
-  "versioning.releases.generate": "0.7.0",
-  "versioning.targets.customers": "0.7.0",
-  "versioning.targets.team": "0.7.0",
-  "versioning.seeds": "0.7.0",
-  "versioning.tab-view": "0.7.0",
+  "versioning.overview": "0.8.0",
+  "versioning.branches.swimlanes": "0.8.0",
+  "versioning.releases.generate": "0.8.0",
+  "versioning.targets.customers": "0.8.0",
+  "versioning.targets.team": "0.8.0",
+  "versioning.seeds": "0.8.0",
+  "versioning.tab-view": "0.8.0",
   "table.pagination.keyboard": "0.7.0",
   "query.select-row-limit": "0.7.0",
   "query.analysis.index-advisor": "0.7.0",
   "onboarding.drivers": "0.7.0",
   "settings.about.crash-reports": "0.7.0",
   "settings.about.usage-metrics": "0.7.0",
+  "settings.about.open-source-licenses": "0.8.0",
   "connections.baas": "0.7.0",
   "connections.open-window": "0.7.0",
   "baas.supabase": "0.7.0",
@@ -59,7 +60,7 @@ export const NEW_FEATURES = {
   "settings.data.transfer": "0.7.0",
   "query.transaction.changes": "0.7.0",
   "compare.scroll-sync": "0.7.0",
-  "split.pane-tables": "0.7.0",
+  "split.pane-tables": "0.8.0",
 } as const;
 
 export type NewFeatureId = keyof typeof NEW_FEATURES;

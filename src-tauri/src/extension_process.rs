@@ -77,9 +77,7 @@ pub fn validate(command: &str, options: &ProcessOptions) -> Result<u64, String> 
 }
 
 fn truncate(mut text: String) -> String {
-    if text.len() > MAX_OUTPUT {
-        text.truncate(MAX_OUTPUT);
-    }
+    text.truncate(text.floor_char_boundary(MAX_OUTPUT));
     text
 }
 
@@ -372,6 +370,14 @@ mod tests {
             env: HashMap::new(),
             timeout_ms: None,
         }
+    }
+    #[test]
+    fn truncate_cuts_at_a_char_boundary() {
+        let text = format!("a{}", "ü".repeat(MAX_OUTPUT));
+        let cut = truncate(text);
+        assert_eq!(cut.len(), MAX_OUTPUT - 1);
+        assert!(cut.ends_with('ü'));
+        assert_eq!(truncate("äöü".into()), "äöü");
     }
     #[test]
     fn rejects_unknown_or_unsafe_commands() {

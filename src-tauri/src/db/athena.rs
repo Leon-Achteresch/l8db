@@ -556,7 +556,7 @@ impl DatabaseAdapter for AthenaAdapter {
         let start = Instant::now();
         let statement = sql.trim().trim_end_matches(';').trim();
         let result = self
-            .run(statement, super::commands::MAX_RESULT_ROWS)
+            .run(statement, super::commands::MAX_RESULT_ROWS + 1)
             .await?;
         if server_output::is_enabled(&self.key) {
             server_output::push(
@@ -574,6 +574,7 @@ impl DatabaseAdapter for AthenaAdapter {
             columns: result.columns,
             rows_affected: no_result.then_some(0),
             execution_time_ms: start.elapsed().as_millis() as u64,
+            truncated: false,
         })
     }
 
