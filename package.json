@@ -131,7 +131,7 @@
   "overrides": {
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "dompurify": "^3.4.15"
+    "dompurify": "^3.4.16"
   },
   "packageManager": "bun@1.3.10"
 }
