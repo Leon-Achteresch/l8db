@@ -1,4 +1,6 @@
 import { useId } from "react";
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { VAULT_PROVIDERS, type VaultProvider } from "./password-manager";
 
@@ -12,15 +14,19 @@ export function VaultProviderPicker({
   disabled?: boolean;
 }) {
   const name = useId();
+  const openbao = useNewFeatureVisibility<HTMLLabelElement>(
+    "settings.extensions.extensions.openbao",
+  );
   return (
     <div
       role="radiogroup"
       aria-label="Passwortmanager"
-      className="grid gap-2 @min-[40rem]:grid-cols-3"
+      className="grid gap-2 @min-[40rem]:grid-cols-2"
     >
       {VAULT_PROVIDERS.map((provider) => (
         <label
           key={provider.id}
+          ref={provider.id === "openbao" ? openbao.ref : undefined}
           className="flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 shadow-xs transition-[border-color,box-shadow,scale] duration-150 ease-out hover:border-foreground/25 active:scale-[0.98] has-checked:border-primary has-checked:ring-3 has-checked:ring-primary/15 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring has-disabled:pointer-events-none has-disabled:opacity-60"
         >
           <input
@@ -42,7 +48,10 @@ export function VaultProviderPicker({
             {provider.mark}
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-medium">{provider.name}</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              {provider.name}
+              {provider.id === "openbao" && openbao.isNew && <NewBadge />}
+            </span>
             <span className="block truncate text-xs text-muted-foreground">{provider.tagline}</span>
           </span>
         </label>
